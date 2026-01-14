@@ -73,10 +73,10 @@ def main():
         scheduler_thread = threading.Thread(
             target=_run_scheduler,
             name="SchedulerInitThread",
-            daemon=False  # Changed: Prevents silent termination
+            daemon=True  # Daemon is correct - allows Streamlit to start without blocking
         )
         scheduler_thread.start()
-        logger.info(f"[PID:{process_id}] ℹ️ Scheduler thread initiated (non-daemon)")
+        logger.info(f"[PID:{process_id}] ℹ️ Scheduler thread initiated (daemon)")
         
     except ImportError:
         logger.warning("⚠️ Could not import scheduler modules - skipping auto-start")

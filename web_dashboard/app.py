@@ -501,16 +501,16 @@ def _start_scheduler_background():
         finally:
             logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Thread exiting")
     
-    # Start scheduler in NON-daemon thread to prevent silent termination
-    # This ensures the thread stays alive even if main process has issues
+    # Start scheduler in daemon thread (daemon=True is correct)
+    # Daemon threads won't prevent Flask from starting/stopping
     process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
     init_thread = threading.Thread(
         target=_scheduler_init_thread,
         name="SchedulerInitThread",
-        daemon=False  # Changed: Prevents silent termination when main process exits
+        daemon=True  # Daemon is correct - allows Flask to start without blocking
     )
     init_thread.start()
-    logger.debug(f"[PID:{process_id}] Started scheduler initialization thread (non-daemon)")
+    logger.debug(f"[PID:{process_id}] Started scheduler initialization thread (daemon)")
 
 # Start scheduler immediately when module loads
 _start_scheduler_background()
@@ -889,8 +889,12 @@ def index():
         return redirect('/')
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
-        # On error, redirect to auth page to avoid breaking
-        return redirect('/auth')
+        # On error, try v2 dashboard as fallback
+        try:
+            return redirect(url_for('dashboard.dashboard_page'))
+        except Exception:
+            # Ultimate fallback - auth page
+            return redirect('/auth')
 
 @app.route('/auth')
 def auth_page():
