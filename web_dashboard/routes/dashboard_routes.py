@@ -864,21 +864,25 @@ def get_dividend_data():
             })
             
         # Calculate Metrics (LTM) from list of dicts
-        # Note: DB column is 'amount_cad' not 'amount', and 'pay_date' not 'date'
-        total_dividends = sum(float(d.get('amount_cad', 0) or 0) for d in dividend_list)
-        total_us_tax = sum(float(d.get('tax_paid', 0) or 0) for d in dividend_list)
+        # Columns: net_amount, gross_amount, reinvested_shares, pay_date, ticker
+        total_dividends = sum(float(d.get('net_amount', 0) or 0) for d in dividend_list)
+        # Tax = gross - net
+        total_us_tax = sum(
+            float(d.get('gross_amount', 0) or 0) - float(d.get('net_amount', 0) or 0) 
+            for d in dividend_list
+        )
         
         # Find largest dividend
         largest_dividend = 0.0
         largest_ticker = "N/A"
         for d in dividend_list:
-            amt = float(d.get('amount_cad', 0) or 0)
+            amt = float(d.get('net_amount', 0) or 0)
             if amt > largest_dividend:
                 largest_dividend = amt
                 largest_ticker = d.get('ticker', 'N/A')
         
         # Calculate Reinvested Shares (DRIP)
-        total_reinvested = sum(float(d.get('shares_added', 0) or 0) for d in dividend_list)
+        total_reinvested = sum(float(d.get('reinvested_shares', 0) or 0) for d in dividend_list)
             
         payout_events = len(dividend_list)
         
@@ -886,13 +890,16 @@ def get_dividend_data():
         log_data = []
         for row in dividend_list:
             pay_date = row.get('pay_date', '')
+            net_amt = float(row.get('net_amount', 0) or 0)
+            gross_amt = float(row.get('gross_amount', 0) or 0)
+            reinvested = float(row.get('reinvested_shares', 0) or 0)
             log_data.append({
                 "date": pay_date if isinstance(pay_date, str) else str(pay_date),
                 "ticker": row.get('ticker', ''),
-                "amount": float(row.get('amount_cad', 0) or 0),
-                "tax": float(row.get('tax_paid', 0) or 0),
-                "shares": float(row.get('shares_added', 0) or 0),
-                "type": "DRIP" if float(row.get('shares_added', 0) or 0) > 0 else "CASH"
+                "amount": net_amt,
+                "tax": gross_amt - net_amt,
+                "shares": reinvested,
+                "type": "DRIP" if reinvested > 0 else "CASH"
             })
             
         return jsonify({
