@@ -65,7 +65,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Helper function for FIFO P&L calculation
-def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: float) -> float:
+def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: float, existing_trades: list = None) -> float:
     """Calculate P&L for a sell using FIFO method.
     
     Args:
@@ -73,6 +73,7 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
         ticker: Ticker symbol
         sell_shares: Number of shares being sold
         sell_price: Price per share for the sell
+        existing_trades: Optional list of trade dicts. If not provided, will be fetched from DB.
         
     Returns:
         Calculated P&L as float. Returns 0.0 if calculation fails.
@@ -81,31 +82,41 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
         from collections import deque
         from decimal import Decimal
         from app import get_supabase_client
+        import re
         
-        # Fetch existing trades - try to get action column if available
-        client = get_supabase_client()
-        # First try with action column
-        try:
-            existing_trades = client.supabase.table("trade_log") \
-                .select("shares, price, reason, action") \
-                .eq("fund", fund) \
-                .eq("ticker", ticker) \
-                .order("date") \
-                .execute()
-            has_action_column = True
-        except Exception:
-            # Fallback if action column doesn't exist
-            existing_trades = client.supabase.table("trade_log") \
-                .select("shares, price, reason") \
-                .eq("fund", fund) \
-                .eq("ticker", ticker) \
-                .order("date") \
-                .execute()
-            has_action_column = False
+        has_action_column = False
+
+        if existing_trades is None:
+            # Fetch existing trades - try to get action column if available
+            client = get_supabase_client()
+            # First try with action column
+            try:
+                result = client.supabase.table("trade_log") \
+                    .select("shares, price, reason, action") \
+                    .eq("fund", fund) \
+                    .eq("ticker", ticker) \
+                    .order("date") \
+                    .execute()
+                existing_trades = result.data or []
+                has_action_column = True
+            except Exception:
+                # Fallback if action column doesn't exist
+                result = client.supabase.table("trade_log") \
+                    .select("shares, price, reason") \
+                    .eq("fund", fund) \
+                    .eq("ticker", ticker) \
+                    .order("date") \
+                    .execute()
+                existing_trades = result.data or []
+                has_action_column = False
+        else:
+            # Check if provided trades have action column
+            if existing_trades and len(existing_trades) > 0 and 'action' in existing_trades[0]:
+                has_action_column = True
         
         # Build FIFO queue
         lots = deque()
-        for t in (existing_trades.data or []):
+        for t in existing_trades:
             # Determine if this is a BUY or SELL
             trade_action = None
             
@@ -129,7 +140,7 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
                     trade_action = 'BUY'
                 else:
                     # No clear action found - default to BUY (assume purchases)
-                    logger.warning(f"Could not determine trade action from reason: {reason_text}. Defaulting to BUY.")
+                    # Don't log for every trade to avoid spam, but this is a potential issue
                     trade_action = 'BUY'
             
             if trade_action == 'BUY':
@@ -1663,7 +1674,9 @@ def api_submit_trade():
             
         # 2. Calculate P&L for SELLs (FIFO)
         if action == "SELL":
-            pnl = calculate_fifo_pnl(fund, ticker, shares, price)
+            # For bulk uploads or optimizations, we could pre-fetch trades here
+            # For now, we pass None to existing_trades, preserving current behavior but enabling future optimization
+            pnl = calculate_fifo_pnl(fund, ticker, shares, price, existing_trades=None)
         
         # 3. Format Reason
         final_reason = reason
