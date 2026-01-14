@@ -331,12 +331,13 @@ def format_price_volume_table(positions_df: pd.DataFrame) -> str:
 def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
     """Format Company Fundamentals table for portfolio tickers.
     
-    Uses securities data from positions_df FIRST (sector, industry, country, market_cap 
-    already joined in DB). Only fetches P/E, Div%, 52W High/Low from yfinance.
+    Uses fundamentals data from DB FIRST (via securities table join).
+    Only fetches from yfinance if data is missing or stale (>24 hours).
+    Updates DB after fetching fresh data for future use.
     
     Args:
         positions_df: DataFrame with current positions (from get_current_positions)
-                     Expected columns: ticker, securities (join with sector, industry, etc.)
+                     Expected columns: ticker, securities (join with sector, industry, P/E, etc.)
         
     Returns:
         Formatted string with Company Fundamentals data
@@ -345,6 +346,7 @@ def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
         return ""
     
     import logging
+    from datetime import datetime, timedelta, timezone
     logger = logging.getLogger(__name__)
     logger.debug(f"[ai_context_builder.format_fundamentals_table] Processing {len(positions_df)} positions")
     
@@ -354,102 +356,183 @@ def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
         "-----------|---------------------|---------------------------|----------|--------------|--------|--------|------------|----------"
     ]
     
-    # Try to import MarketDataFetcher ONLY for P/E, Div%, 52W High/Low (not in securities table)
-    market_fetcher = None
-    try:
-        from market_data.data_fetcher import MarketDataFetcher
-        from market_data.price_cache import PriceCache
-        from config.settings import get_settings
-        
-        settings = get_settings()
-        price_cache = PriceCache(settings=settings)
-        market_fetcher = MarketDataFetcher(cache_instance=price_cache)
-        logger.debug(f"[ai_context_builder.format_fundamentals_table] MarketDataFetcher ready for P/E, Div%, 52W")
-    except Exception as e:
-        logger.error(f"[ai_context_builder.format_fundamentals_table] MarketDataFetcher FAILED: {e}", exc_info=True)
+    # Track which tickers need fresh data (stale or missing)
+    stale_tickers = []
+    ticker_data_map = {}  # ticker -> fundamentals dict
     
+   # First pass: Read from DB (securities join) and identify stale data
     for idx, row in positions_df.iterrows():
-        # pandas Series: use row['key'] or row.get('key') both work, but check for column existence
         ticker = row.get('ticker', row.get('symbol', 'N/A'))
         
-        # 1. Try getting directly from row (if flat)
-        sector = row.get('sector')
-        industry = row.get('industry')
-        country = row.get('country')
-        
-        # 2. If missing, try getting from securities join object
-        market_cap = "N/A"
+        # Extract securities data
         securities = row.get('securities')
-        
+        sec_data = {}
         if securities:
-            # Handle both list and dict formats for joined data
-            sec_data = {}
             if isinstance(securities, dict):
                 sec_data = securities
             elif isinstance(securities, list) and len(securities) > 0:
                 sec_data = securities[0] if isinstance(securities[0], dict) else {}
-            
-            # Fill in missing values from securities relation
-            if not sector or str(sector) == 'N/A':
-                sector = sec_data.get('sector')
-            if not industry or str(industry) == 'N/A':
-                industry = sec_data.get('industry')
-            if not country or str(country) == 'N/A':
-                country = sec_data.get('country')
-                
-            # Handle market cap
-            raw_cap = sec_data.get('market_cap')
-            if raw_cap and raw_cap != 'N/A':
-                market_cap = _format_market_cap(raw_cap)
         
-        # Final fallbacks and string conversion
-        sector = str(sector) if sector and str(sector) != 'nan' else 'N/A'
-        industry = str(industry) if industry and str(industry) != 'nan' else 'N/A'
-        country = str(country) if country and str(country) != 'nan' else 'N/A'
-
+        # Read from DB
+        sector = sec_data.get('sector', 'N/A') or 'N/A'
+        industry = sec_data.get('industry', 'N/A') or 'N/A'
+        country = sec_data.get('country', 'N/A') or 'N/A'
+        market_cap = sec_data.get('market_cap', 'N/A') or 'N/A'
+        pe_ratio = sec_data.get('trailing_pe')
+        div_yield = sec_data.get('dividend_yield')
+        high_52w = sec_data.get('fifty_two_week_high')
+        low_52w = sec_data.get('fifty_two_week_low')
+        last_updated_str = sec_data.get('last_updated')
         
-        # SECOND: Only fetch P/E, Div%, 52W High/Low from yfinance (not in securities table)
-        pe_ratio = "N/A"
-        div_yield = "N/A"
-        high_52w = "N/A"
-        low_52w = "N/A"
-        
-        if market_fetcher:
+        # Check staleness (24 hours)
+        is_stale = False
+        if last_updated_str:
             try:
-                fundamentals = market_fetcher.fetch_fundamentals(ticker)
-                if fundamentals:
-                    # Only take P/E, Div%, 52W - sector/industry/country/market_cap already from DB
-                    pe_ratio = fundamentals.get('trailingPE', 'N/A') or 'N/A'
-                    div_yield = fundamentals.get('dividendYield', 'N/A') or 'N/A'
-                    high_52w = fundamentals.get('fiftyTwoWeekHigh', 'N/A') or 'N/A'
-                    low_52w = fundamentals.get('fiftyTwoWeekLow', 'N/A') or 'N/A'
+                last_updated = datetime.fromisoformat(last_updated_str.replace('Z', '+00:00'))
+                age = datetime.now(timezone.utc) - last_updated
+                if age > timedelta(hours=24):
+                    is_stale = True
+                    logger.debug(f"[fundamentals] {ticker}: stale (age={age})")
             except Exception as e:
-                logger.error(f"[ai_context_builder.format_fundamentals_table] Fetch FAILED for {ticker}: {e}")
+                logger.warning(f"[fundamentals] {ticker}: failed to parse last_updated: {e}")
+                is_stale = True
+        else:
+            is_stale = True
         
-        # Check if ETF and provide better labeling
-        is_etf = market_cap == 'ETF' or (isinstance(market_cap, str) and 'ETF' in str(market_cap).upper())
-        if is_etf and sector == 'N/A':
-            sector = 'ETF'
-        if is_etf and industry == 'N/A':
-            industry = 'ETF'
+        # Check if any fundamentals are missing
+        if pe_ratio is None or div_yield is None or high_52w is None or low_52w is None:
+            is_stale = True
+            logger.debug(f"[fundamentals] {ticker}: missing fields (P/E={pe_ratio}, Div={div_yield}, High={high_52w}, Low={low_52w})")
         
-        # Truncate long values to fit columns
-        sector_str = str(sector)[:20] if sector != "N/A" else "N/A"
-        industry_str = str(industry)[:26] if industry != "N/A" else "N/A"
-        country_str = str(country)[:8] if country != "N/A" else "N/A"
-        market_cap_str = str(market_cap)[:12] if market_cap != "N/A" else "N/A"
-        pe_str = str(pe_ratio)[:6] if pe_ratio != "N/A" else "N/A"
-        div_str = str(div_yield)[:6] if div_yield != "N/A" else "N/A"
-        high_str = str(high_52w)[:10] if high_52w != "N/A" else "N/A"
-        low_str = str(low_52w)[:10] if low_52w != "N/A" else "N/A"
+        # Store current data
+        ticker_data_map[ticker] = {
+            'sector': sector,
+            'industry': industry,
+            'country': country,
+            'market_cap': market_cap,
+            'pe_ratio': pe_ratio,
+            'div_yield': div_yield,
+            'high_52w': high_52w,
+            'low_52w': low_52w,
+            'is_stale': is_stale
+        }
+        
+        if is_stale:
+            stale_tickers.append(ticker)
+    
+    # Second pass: Batch fetch stale tickers from yfinance
+    if stale_tickers:
+        logger.info(f"[fundamentals] Fetching fresh data for {len(stale_tickers)} stale tickers")
+        
+        try:
+            from market_data.data_fetcher import MarketDataFetcher
+            from market_data.price_cache import PriceCache
+            from config.settings import get_settings
+            from web_dashboard.supabase_client import SupabaseClient
+            
+            settings = get_settings()
+            price_cache = PriceCache(settings=settings)
+            market_fetcher = MarketDataFetcher(cache_instance=price_cache)
+            
+            # Fetch data for each stale ticker (could parallelize here in future)
+            updates = []
+            for ticker in stale_tickers:
+                try:
+                    fundamentals = market_fetcher.fetch_fundamentals(ticker)
+                    if fundamentals:
+                        # Update in-memory map
+                        ticker_data_map[ticker]['pe_ratio'] = fundamentals.get('trailingPE', 'N/A')
+                        ticker_data_map[ticker]['div_yield'] = fundamentals.get('dividendYield', 'N/A')
+                        ticker_data_map[ticker]['high_52w'] = fundamentals.get('fiftyTwoWeekHigh', 'N/A')
+                        ticker_data_map[ticker]['low_52w'] = fundamentals.get('fiftyTwoWeekLow', 'N/A')
+                        
+                        # Prepare DB update
+                        update = {'ticker': ticker}
+                        
+                        # Only update fundamentals fields, not sector/industry/etc (those are managed elsewhere)
+                        if isinstance(ticker_data_map[ticker]['pe_ratio'], str) and ticker_data_map[ticker]['pe_ratio'] != 'N/A':
+                            try:
+                                update['trailing_pe'] = float(ticker_data_map[ticker]['pe_ratio'])
+                            except:
+                                pass
+                        
+                        if isinstance(ticker_data_map[ticker]['div_yield'], str) and ticker_data_map[ticker]['div_yield'] != 'N/A':
+                            try:
+                                # Remove % sign and convert
+                                div_str = ticker_data_map[ticker]['div_yield'].replace('%', '')
+                                update['dividend_yield'] = float(div_str)
+                            except:
+                                pass
+                        
+                        if isinstance(ticker_data_map[ticker]['high_52w'], str) and ticker_data_map[ticker]['high_52w'] != 'N/A':
+                            try:
+                                high_str = ticker_data_map[ticker]['high_52w'].replace('$', '')
+                                update['fifty_two_week_high'] = float(high_str)
+                            except:
+                                pass
+                        
+                        if isinstance(ticker_data_map[ticker]['low_52w'], str) and ticker_data_map[ticker]['low_52w'] != 'N/A':
+                            try:
+                                low_str = ticker_data_map[ticker]['low_52w'].replace('$', '')
+                                update['fifty_two_week_low'] = float(low_str)
+                            except:
+                                pass
+                        
+                        if len(update) > 1:  # Has more than just ticker
+                            updates.append(update)
+                        
+                except Exception as e:
+                    logger.error(f"[fundamentals] Failed to fetch {ticker}: {e}")
+            
+            # Batch update DB
+            if updates:
+                try:
+                    client = SupabaseClient()
+                    client.batch_update_securities(updates)
+                    logger.info(f"[fundamentals] Updated {len(updates)} tickers in DB")
+                except Exception as e:
+                    logger.error(f"[fundamentals] Failed to update DB: {e}")
+                    
+        except Exception as e:
+            logger.error(f"[fundamentals] Batch fetch failed: {e}", exc_info=True)
+    
+    # Third pass: Format table using merged data
+    for idx, row in positions_df.iterrows():
+        ticker = row.get('ticker', row.get('symbol', 'N/A'))
+        data = ticker_data_map.get(ticker, {})
+        
+        sector = str(data.get('sector', 'N/A'))
+        industry = str(data.get('industry', 'N/A'))
+        country = str(data.get('country', 'N/A'))
+        market_cap = data.get('market_cap', 'N/A')
+        pe_ratio = data.get('pe_ratio', 'N/A')
+        div_yield = data.get('div_yield', 'N/A')
+        high_52w = data.get('high_52w', 'N/A')
+        low_52w = data.get('low_52w', 'N/A')
+        
+        # Format market cap
+        if market_cap and market_cap != 'N/A':
+            market_cap = _format_market_cap(market_cap)
+        else:
+            market_cap = "N/A"
+        
+        # Truncate long strings
+        sector_trunc = (sector[:20] if len(sector) > 20 else sector).ljust(20)
+        industry_trunc = (industry[:25] if len(industry) > 25 else industry).ljust(25)
+        country_trunc = (country[:8] if len(country) > 8 else country).ljust(8)
+        market_cap_trunc = (str(market_cap)[:12] if market_cap and len(str(market_cap)) > 12 else str(market_cap) or "N/A").ljust(12)
+        pe_trunc = (str(pe_ratio)[:6] if pe_ratio and str(pe_ratio) != 'N/A' else "N/A").ljust(6)
+        div_trunc = (str(div_yield)[:6] if div_yield and str(div_yield) != 'N/A' else "N/A").ljust(6)
+        high_trunc = (str(high_52w)[:10] if high_52w and str(high_52w) != 'N/A' else "N/A").ljust(10)
+        low_trunc = (str(low_52w)[:10] if low_52w and str(low_52w) != 'N/A' else "N/A").ljust(10)
+        
+        ticker_padded = ticker.ljust(10)
         
         lines.append(
-            f"{ticker:<10} | {sector_str:<20} | {industry_str:<26} | {country_str:<8} | "
-            f"{market_cap_str:<12} | {pe_str:<6} | {div_str:<6} | {high_str:<10} | {low_str}"
+            f"{ticker_padded} | {sector_trunc} | {industry_trunc} | {country_trunc} | {market_cap_trunc} | {pe_trunc} | {div_trunc} | {high_trunc} | {low_trunc}"
         )
     
     return "\n".join(lines)
-
 
 
 def _format_market_cap(value) -> str:

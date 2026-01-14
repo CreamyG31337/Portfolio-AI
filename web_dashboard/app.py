@@ -446,7 +446,11 @@ def _start_scheduler_background():
     import os
     from scheduler.scheduler_core import start_scheduler, is_scheduler_running
     
+    # Global reference to keep thread alive
+    _scheduler_thread = None
+    
     def _scheduler_init_thread():
+        global _scheduler_thread
         thread_name = threading.current_thread().name
         thread_id = threading.current_thread().ident
         process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
@@ -469,22 +473,27 @@ def _start_scheduler_background():
                 logger.debug(f"[PID:{process_id} TID:{thread_id}] ℹ️ Scheduler already running, skipping auto-start")
             
             logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Scheduler initialization complete")
+            # CRITICAL: Thread stays alive to execute scheduler jobs
+            # Sleep forever to keep thread alive and log heartbeat
+            sleep_count = 0
+            while True:
+                sleep_count += 1
+                logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Keeping scheduler thread alive (cycle {sleep_count})")
+                time.sleep(60)
         except Exception as e:
             # Don't crash Flask if scheduler fails to start
             logger.error(f"[PID:{process_id} TID:{thread_id}] ❌ Failed to auto-start scheduler: {e}", exc_info=True)
             logger.warning(f"[PID:{process_id} TID:{thread_id}] ⚠️ Flask will continue without scheduler - start manually via jobs page")
-        finally:
-            logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Thread exiting")
     
-    # Start scheduler in daemon thread (won't block Flask startup)
+    # Start scheduler in NON-daemon thread (keeps it alive)
     process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
-    init_thread = threading.Thread(
+    _scheduler_thread = threading.Thread(
         target=_scheduler_init_thread,
         name="SchedulerInitThread",
-        daemon=True
+        daemon=False  # Non-daemon: thread stays alive to run scheduler jobs
     )
-    init_thread.start()
-    logger.debug(f"[PID:{process_id}] Started scheduler initialization thread (daemon)")
+    _scheduler_thread.start()
+    logger.debug(f"[PID:{process_id}] Started scheduler initialization thread (non-daemon - keeps alive)")
 
 # Start scheduler immediately when module loads
 _start_scheduler_background()

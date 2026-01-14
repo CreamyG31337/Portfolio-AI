@@ -909,3 +909,43 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"❌ Error caching benchmark data: {e}")
             return False
+    
+    def batch_update_securities(self, updates: List[Dict[str, Any]]) -> bool:
+        """Batch update securities table with fundamentals data.
+        
+        Args:
+            updates: List of dictionaries containing:
+                - ticker (required): Stock ticker symbol
+                - trailing_pe: P/E ratio
+                - dividend_yield: Dividend yield (as decimal, e.g., 0.025 for 2.5%)
+                - fifty_two_week_high: 52-week high price
+                - fifty_two_week_low: 52-week low price
+                - last_updated: ISO timestamp (defaults to now if not provided)
+                
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not updates:
+                return True
+            
+            # Ensure each update has last_updated timestamp
+            formatted_updates = []
+            for update in updates:
+                formatted_update = update.copy()
+                if 'last_updated' not in formatted_update:
+                    formatted_update['last_updated'] = datetime.now(timezone.utc).isoformat()
+                formatted_updates.append(formatted_update)
+            
+            # Batch upsert
+            result = self.supabase.table("securities").upsert(
+                formatted_updates,
+                on_conflict="ticker"
+            ).execute()
+            
+            logger.info(f"✅ Batch updated {len(formatted_updates)} securities with fundamentals")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error batch updating securities: {e}")
+            return False
