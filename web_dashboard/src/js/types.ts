@@ -56,3 +56,24 @@ export interface ApiResponse {
     error?: string;
     [key: string]: any;
 }
+
+export interface MoverItem {
+    ticker: string;
+    company_name?: string;
+    daily_pnl_pct?: number;
+    daily_pnl?: number;
+    five_day_pnl_pct?: number;
+    five_day_pnl?: number;
+    return_pct?: number;       // total return %
+    total_return_pct?: number; // Normalized field name in frontend
+    total_pnl?: number;
+    current_price?: number;
+    market_value?: number;
+}
+
+export interface MoversData {
+    gainers: MoverItem[];
+    losers: MoverItem[];
+    display_currency: string;
+    processing_time?: number;
+}

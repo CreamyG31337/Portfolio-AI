@@ -398,13 +398,13 @@ function initGrid(): void {
         { field: 'avg_price', headerName: 'Avg Price', flex: 0.9, minWidth: 90, maxWidth: 140, type: 'numericColumn', valueFormatter: (params: any) => formatMoney(params.value) },
         { field: 'price', headerName: 'Current', flex: 0.9, minWidth: 90, maxWidth: 140, type: 'numericColumn', valueFormatter: (params: any) => formatMoney(params.value) },
         { field: 'value', headerName: 'Value', flex: 1, minWidth: 100, maxWidth: 160, type: 'numericColumn', valueFormatter: (params: any) => formatMoney(params.value) },
-        { 
-            field: 'total_return', 
-            headerName: 'Total P&L', 
-            flex: 1.2, 
-            minWidth: 130, 
-            maxWidth: 180, 
-            type: 'numericColumn', 
+        {
+            field: 'total_return',
+            headerName: 'Total P&L',
+            flex: 1.2,
+            minWidth: 130,
+            maxWidth: 180,
+            type: 'numericColumn',
             valueFormatter: (params: any) => {
                 const val = params.value || 0;
                 const pct = params.data?.total_return_pct || 0;
@@ -418,13 +418,13 @@ function initGrid(): void {
                 return { textAlign: 'right' };
             }
         },
-        { 
-            field: 'day_change', 
-            headerName: '1-Day P&L', 
-            flex: 1.2, 
-            minWidth: 130, 
-            maxWidth: 180, 
-            type: 'numericColumn', 
+        {
+            field: 'day_change',
+            headerName: '1-Day P&L',
+            flex: 1.2,
+            minWidth: 130,
+            maxWidth: 180,
+            type: 'numericColumn',
             valueFormatter: (params: any) => {
                 const val = params.value || 0;
                 const pct = params.data?.day_change_pct || 0;
@@ -438,13 +438,13 @@ function initGrid(): void {
                 return { textAlign: 'right' };
             }
         },
-        { 
-            field: 'five_day_pnl', 
-            headerName: '5-Day P&L', 
-            flex: 1.2, 
-            minWidth: 130, 
-            maxWidth: 180, 
-            type: 'numericColumn', 
+        {
+            field: 'five_day_pnl',
+            headerName: '5-Day P&L',
+            flex: 1.2,
+            minWidth: 130,
+            maxWidth: 180,
+            type: 'numericColumn',
             valueFormatter: (params: any) => {
                 const val = params.value || 0;
                 const pct = params.data?.five_day_pnl_pct || 0;
@@ -742,7 +742,7 @@ async function fetchSummary(): Promise<void> {
             // Format rates with 4 decimals
             const usdCadEl = document.getElementById('metric-usd-cad');
             if (usdCadEl) usdCadEl.textContent = data.exchange_rates.USD_CAD.toFixed(4);
-            
+
             const cadUsdEl = document.getElementById('metric-cad-usd');
             if (cadUsdEl) cadUsdEl.textContent = data.exchange_rates.CAD_USD.toFixed(4);
         }
@@ -1223,7 +1223,7 @@ function renderPillars(pillars: Array<{ name: string; allocation: string; thesis
     pillars.forEach(pillar => {
         const div = document.createElement('div');
         div.className = 'flex flex-col gap-2';
-        
+
         // Parse markdown for thesis text if available
         let thesisHtml = pillar.thesis || '';
         if (typeof (window as any).marked !== 'undefined') {
@@ -1251,7 +1251,7 @@ async function fetchDividends(): Promise<void> {
         const response = await fetch(url, { credentials: 'include' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data: DividendData = await response.json();
-        
+
         renderDividends(data);
     } catch (error) {
         console.error('[Dashboard] Error fetching dividends:', error);
@@ -1265,19 +1265,19 @@ async function fetchDividends(): Promise<void> {
 
 function renderDividends(data: DividendData): void {
     const currency = data.currency || 'USD';
-    
+
     // Update Metrics
     const fmt = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency }).format(val);
-    
+
     updateMetricText('div-total', fmt(data.metrics.total_dividends));
     updateMetricText('div-tax', fmt(data.metrics.total_us_tax));
     updateMetricText('div-largest', fmt(data.metrics.largest_dividend));
     updateMetricText('div-reinvested', data.metrics.reinvested_shares.toFixed(4));
     updateMetricText('div-events', data.metrics.payout_events.toString());
-    
+
     const largestTickerEl = document.getElementById('div-largest-ticker');
     if (largestTickerEl) largestTickerEl.textContent = data.metrics.largest_ticker;
-    
+
     // Update Log Table
     const tbody = document.getElementById('dividend-log-body');
     if (tbody) {
@@ -1312,7 +1312,7 @@ function updateMetricText(id: string, text: string): void {
 
 async function fetchCurrencyChart(): Promise<void> {
     showSpinner('currency-chart-spinner');
-    
+
     // Theme logic (same as other charts)
     const htmlElement = document.documentElement;
     const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
@@ -1331,7 +1331,7 @@ async function fetchCurrencyChart(): Promise<void> {
     try {
         const response = await fetch(url, { credentials: 'include' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+
         const data: AllocationChartData = await response.json();
         renderCurrencyChart(data);
     } catch (error) {
@@ -1346,7 +1346,7 @@ async function fetchCurrencyChart(): Promise<void> {
 function renderCurrencyChart(data: AllocationChartData): void {
     const chartEl = document.getElementById('currency-chart');
     if (!chartEl) return;
-    
+
     const Plotly = (window as any).Plotly;
     if (!Plotly) return;
 
@@ -1361,7 +1361,7 @@ function renderCurrencyChart(data: AllocationChartData): void {
             responsive: true,
             displayModeBar: false
         });
-        
+
         // Add resize handler
         if (!(window as any).__currencyChartResizeHandler) {
             const resizeHandler = () => {
@@ -1377,61 +1377,74 @@ function renderCurrencyChart(data: AllocationChartData): void {
     }
 }
 
+const MOVERS_COLUMN_COUNT = 10;
+
 function renderMovers(data: MoversData): void {
     const gainersBody = document.getElementById('gainers-table-body');
     const losersBody = document.getElementById('losers-table-body');
 
-    if (gainersBody) {
-        gainersBody.innerHTML = '';
-        if (!data.gainers || data.gainers.length === 0) {
-            gainersBody.innerHTML = '<tr class="bg-white dark:bg-gray-800"><td colspan="4" class="px-4 py-4 text-center text-gray-500">No gainers to display</td></tr>';
-        } else {
-            data.gainers.forEach(item => {
-                const tr = document.createElement('tr');
-                tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
+    const formatPct = (val: number | undefined | null, forcePlus: boolean = false) => {
+        if (val == null) return '--';
+        const sign = forcePlus && val > 0 ? '+' : '';
+        return `${sign}${val.toFixed(2)}%`;
+    };
 
-                const pctDisplay = item.daily_pnl_pct != null ? `+${item.daily_pnl_pct.toFixed(2)}%` : '--';
-                const pnlDisplay = item.daily_pnl != null ? `+${formatMoney(item.daily_pnl, data.display_currency)}` : '--';
-                const priceDisplay = item.current_price != null ? formatMoney(item.current_price, data.display_currency) : '--';
+    const formatPnl = (val: number | undefined | null, currency: string, forcePlus: boolean = false) => {
+        if (val == null) return '--';
+        const sign = forcePlus && val > 0 ? '+' : '';
+        return `${sign}${formatMoney(val, currency)}`;
+    };
 
-                tr.innerHTML = `
-                    <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">
-                        <a href="/v2/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
-                    </td>
-                    <td class="px-4 py-3 text-right text-green-600 dark:text-green-400 font-medium">${pctDisplay}</td>
-                    <td class="px-4 py-3 text-right text-green-600 dark:text-green-400">${pnlDisplay}</td>
-                    <td class="px-4 py-3 text-right">${priceDisplay}</td>
-                `;
-                gainersBody.appendChild(tr);
-            });
+    const getPnlColor = (val: number | null | undefined) => {
+        if (val == null) return '';
+        return val > 0
+            ? 'text-green-600 dark:text-green-400 font-bold'
+            : (val < 0 ? 'text-red-600 dark:text-red-400 font-bold' : '');
+    };
+
+    // For 5-day, matching the original styling which didn't have bold by default
+    const getFiveDayColor = (val: number | null | undefined) => {
+        if (val == null) return '';
+        return val > 0
+            ? 'text-green-600 dark:text-green-400'
+            : (val < 0 ? 'text-red-600 dark:text-red-400' : '');
+    };
+
+    const renderTable = (tbody: HTMLElement, items: MoverItem[], isGainer: boolean) => {
+        tbody.innerHTML = '';
+        if (!items || items.length === 0) {
+            tbody.innerHTML = `<tr class="bg-white dark:bg-gray-800"><td colspan="${MOVERS_COLUMN_COUNT}" class="px-4 py-4 text-center text-gray-500">No ${isGainer ? 'gainers' : 'losers'} to display</td></tr>`;
+            return;
         }
-    }
 
-    if (losersBody) {
-        losersBody.innerHTML = '';
-        if (!data.losers || data.losers.length === 0) {
-            losersBody.innerHTML = '<tr class="bg-white dark:bg-gray-800"><td colspan="4" class="px-4 py-4 text-center text-gray-500">No losers to display</td></tr>';
-        } else {
-            data.losers.forEach(item => {
-                const tr = document.createElement('tr');
-                tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
+        const dayColorClass = isGainer
+            ? 'text-green-600 dark:text-green-400 font-medium'
+            : 'text-red-600 dark:text-red-400 font-medium';
 
-                const pctDisplay = item.daily_pnl_pct != null ? `${item.daily_pnl_pct.toFixed(2)}%` : '--';
-                const pnlDisplay = item.daily_pnl != null ? formatMoney(item.daily_pnl, data.display_currency) : '--';
-                const priceDisplay = item.current_price != null ? formatMoney(item.current_price, data.display_currency) : '--';
+        items.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
 
-                tr.innerHTML = `
-                    <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">
-                        <a href="/v2/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
-                    </td>
-                    <td class="px-4 py-3 text-right text-red-600 dark:text-red-400 font-medium">${pctDisplay}</td>
-                    <td class="px-4 py-3 text-right text-red-600 dark:text-red-400">${pnlDisplay}</td>
-                    <td class="px-4 py-3 text-right">${priceDisplay}</td>
-                `;
-                losersBody.appendChild(tr);
-            });
-        }
-    }
+            tr.innerHTML = `
+                <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">
+                    <a href="/v2/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
+                </td>
+                <td class="px-4 py-3 truncate max-w-[150px]" title="${item.company_name || item.ticker}">${item.company_name || item.ticker}</td>
+                <td class="px-4 py-3 text-right ${dayColorClass}">${formatPct(item.daily_pnl_pct, isGainer)}</td>
+                <td class="px-4 py-3 text-right ${dayColorClass}">${formatPnl(item.daily_pnl, data.display_currency, isGainer)}</td>
+                <td class="px-4 py-3 text-right ${getFiveDayColor(item.five_day_pnl_pct)}">${formatPct(item.five_day_pnl_pct, true)}</td>
+                <td class="px-4 py-3 text-right ${getFiveDayColor(item.five_day_pnl)}">${formatPnl(item.five_day_pnl, data.display_currency, true)}</td>
+                <td class="px-4 py-3 text-right ${getPnlColor(item.total_return_pct)}">${formatPct(item.total_return_pct, true)}</td>
+                <td class="px-4 py-3 text-right ${getPnlColor(item.total_pnl)}">${formatPnl(item.total_pnl, data.display_currency, true)}</td>
+                <td class="px-4 py-3 text-right">${formatMoney(item.current_price || 0, data.display_currency)}</td>
+                <td class="px-4 py-3 text-right font-medium">${formatMoney(item.market_value || 0, data.display_currency)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    };
+
+    if (gainersBody) renderTable(gainersBody, data.gainers, true);
+    if (losersBody) renderTable(losersBody, data.losers, false);
 }
 
 // --- Rendering Helpers ---
@@ -1550,13 +1563,13 @@ function renderSectorChart(data: AllocationChartData): void {
 
     // Update layout height to match container and ensure centered margins
     const layout = { ...data.layout };
-    
+
     // Use fixed height of 700px to match HTML container height
     // Disable autosize to prevent Plotly from shrinking the chart in flex container
     const containerHeight = 700;
     layout.height = containerHeight;
     layout.autosize = false;
-    
+
     // Ensure proper margins - increase bottom margin for legend
     if (!layout.margin) {
         layout.margin = { l: 20, r: 20, t: 50, b: 100 };
@@ -1575,7 +1588,7 @@ function renderSectorChart(data: AllocationChartData): void {
             modeBarButtonsToRemove: ['pan2d', 'lasso2d']
         });
         console.log('[Dashboard] Sector chart rendered with Plotly');
-        
+
         // Add resize handler to redraw chart when window resizes (only once)
         // Use relayout instead of resize to maintain fixed height of 700px
         if (!(window as any).__sectorChartResizeHandler) {
@@ -1590,7 +1603,7 @@ function renderSectorChart(data: AllocationChartData): void {
             (window as any).__sectorChartResizeHandler = resizeHandler;
             window.addEventListener('resize', resizeHandler);
         }
-        
+
     } catch (error) {
         console.error('[Dashboard] Error rendering Plotly sector chart:', error);
         chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error rendering chart</p></div>';
@@ -1623,12 +1636,12 @@ function renderPnlChart(data: PnlChartData): void {
 
     // Update layout height to match container
     const layout = { ...data.layout };
-    
+
     // Get actual container height or use default
     const containerHeight = chartEl.offsetHeight || 500;
     layout.height = containerHeight;
     layout.autosize = true;
-    
+
     // Ensure proper margins
     if (!layout.margin) {
         layout.margin = { l: 20, r: 20, t: 50, b: 100 };
@@ -1647,7 +1660,7 @@ function renderPnlChart(data: PnlChartData): void {
             modeBarButtonsToRemove: ['pan2d', 'lasso2d']
         });
         console.log('[Dashboard] P&L chart rendered with Plotly');
-        
+
         // Add resize handler to redraw chart when window resizes (only once)
         if (!(window as any).__pnlChartResizeHandler) {
             const resizeHandler = () => {
@@ -1659,7 +1672,7 @@ function renderPnlChart(data: PnlChartData): void {
             (window as any).__pnlChartResizeHandler = resizeHandler;
             window.addEventListener('resize', resizeHandler);
         }
-        
+
     } catch (error) {
         console.error('[Dashboard] Error rendering Plotly P&L chart:', error);
         chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error rendering chart</p></div>';
@@ -1688,12 +1701,12 @@ async function loadPnlChart(fund: string): Promise<void> {
 
     const startTime = performance.now();
     const url = `/api/dashboard/charts/pnl?fund=${encodeURIComponent(fund || '')}&theme=${encodeURIComponent(theme)}`;
-    
+
     console.log('[Dashboard] Loading P&L chart:', { fund, theme, url });
-    
+
     try {
         showSpinner('pnl-chart-spinner');
-        
+
         const response = await fetch(url, {
             method: 'GET',
             credentials: 'include',
