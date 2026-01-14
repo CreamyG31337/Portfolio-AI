@@ -1038,13 +1038,14 @@ OUTPUT JSON ONLY:
                         session_id = result[0]['id']
                         
                         # Update social_metrics with session_id
-                        for post in posts:
+                        if posts:
+                            metric_ids = tuple(p['metric_id'] for p in posts)
                             update_query = """
                                 UPDATE social_metrics 
                                 SET analysis_session_id = %s, has_ai_analysis = FALSE
-                                WHERE id = %s
+                                WHERE id IN %s
                             """
-                            self.postgres.execute_update(update_query, (session_id, post['metric_id']))
+                            self.postgres.execute_update(update_query, (session_id, metric_ids))
                         
                         sessions_created += 1
                         posts_assigned += post_count
