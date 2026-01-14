@@ -1053,16 +1053,45 @@ def get_dividend_data():
             
         payout_events = len(dividend_list)
         
+        # Extract unique tickers for batch company name lookup
+        unique_tickers = list(set(d.get('ticker', '') for d in dividend_list if d.get('ticker')))
+        company_names_map = {}
+        
+        # Batch fetch company names from securities table
+        if unique_tickers:
+            try:
+                client = get_supabase_client_flask()
+                if client:
+                    # Query in batches to avoid hitting limits
+                    batch_size = 50
+                    for i in range(0, len(unique_tickers), batch_size):
+                        ticker_batch = unique_tickers[i:i+batch_size]
+                        result = client.supabase.table("securities")\
+                            .select("ticker, company_name")\
+                            .in_("ticker", ticker_batch)\
+                            .execute()
+                        
+                        if result.data:
+                            for item in result.data:
+                                ticker = item.get('ticker', '').upper()
+                                company_name = item.get('company_name', '')
+                                if company_name and company_name.strip() and company_name != 'Unknown':
+                                    company_names_map[ticker] = company_name.strip()
+            except Exception as ce:
+                logger.warning(f"Error fetching company names for dividends: {ce}")
+        
         # Prepare Log (for table) - already sorted by pay_date desc from query
         log_data = []
         for row in dividend_list:
             pay_date = row.get('pay_date', '')
+            ticker = row.get('ticker', '')
             net_amt = float(row.get('net_amount', 0) or 0)
             gross_amt = float(row.get('gross_amount', 0) or 0)
             reinvested = float(row.get('reinvested_shares', 0) or 0)
             log_data.append({
                 "date": pay_date if isinstance(pay_date, str) else str(pay_date),
-                "ticker": row.get('ticker', ''),
+                "ticker": ticker,
+                "company_name": company_names_map.get(ticker.upper(), ''),
                 "amount": net_amt,
                 "tax": gross_amt - net_amt,
                 "shares": reinvested,

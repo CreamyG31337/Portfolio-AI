@@ -58,6 +58,7 @@ interface DividendData {
     log: Array<{
         date: string;
         ticker: string;
+        company_name?: string;
         type: string;
         amount: number;
         tax: number;
@@ -1414,7 +1415,7 @@ function renderDividends(data: DividendData): void {
     if (tbody) {
         tbody.innerHTML = '';
         if (data.log.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-2 text-center text-gray-500">No dividend history</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-2 text-center text-gray-500">No dividend history</td></tr>';
         } else {
             data.log.forEach(row => {
                 const tr = document.createElement('tr');
@@ -1422,6 +1423,7 @@ function renderDividends(data: DividendData): void {
                 tr.innerHTML = `
                     <td class="px-4 py-2 font-medium text-gray-900 dark:text-white whitespace-nowrap">${row.date}</td>
                     <td class="px-4 py-2 text-blue-600 dark:text-blue-400 font-bold">${row.ticker}</td>
+                    <td class="px-4 py-2 text-gray-700 dark:text-gray-300">${row.company_name || ''}</td>
                     <td class="px-4 py-2">
                         <span class="px-2 py-0.5 rounded text-xs font-medium ${row.type === 'DRIP' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}">
                             ${row.type}
