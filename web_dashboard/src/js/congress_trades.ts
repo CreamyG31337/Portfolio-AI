@@ -22,6 +22,7 @@ interface AgGridApi {
     getSelectedRows(): CongressTrade[];
     getSelectedNodes(): AgGridNode[];
     sizeColumnsToFit(): void;
+    addEventListener(event: string, callback: () => void): void;
 }
 
 interface AgGridColumnApi {
@@ -60,6 +61,8 @@ interface AgGridColumnDef {
     field: string;
     headerName: string;
     width?: number;
+    minWidth?: number;
+    flex?: number;
     pinned?: string;
     cellRenderer?: any;
     sortable?: boolean;
@@ -258,7 +261,8 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Ticker',
             headerName: 'Ticker',
-            width: 80,
+            minWidth: 80,
+            flex: 0.8,
             pinned: 'left',
             cellRenderer: TickerCellRenderer,
             sortable: true,
@@ -267,77 +271,88 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Company',
             headerName: 'Company',
-            width: 200,
+            minWidth: 150,
+            flex: 2,
             sortable: true,
             filter: true
         },
         {
             field: 'Politician',
             headerName: 'Politician',
-            width: 180,
+            minWidth: 150,
+            flex: 1.8,
             sortable: true,
             filter: true
         },
         {
             field: 'Chamber',
             headerName: 'Chamber',
-            width: 90,
+            minWidth: 90,
+            flex: 0.9,
             sortable: true,
             filter: true
         },
         {
             field: 'Party',
             headerName: 'Party',
-            width: 80,
+            minWidth: 80,
+            flex: 0.8,
             sortable: true,
             filter: true
         },
         {
             field: 'State',
             headerName: 'State',
-            width: 70,
+            minWidth: 70,
+            flex: 0.7,
             sortable: true,
             filter: true
         },
         {
             field: 'Date',
             headerName: 'Date',
-            width: 110,
+            minWidth: 110,
+            flex: 1.1,
             sortable: true,
             filter: true
         },
         {
             field: 'Type',
             headerName: 'Type',
-            width: 90,
+            minWidth: 90,
+            flex: 0.9,
             sortable: true,
             filter: true
         },
         {
             field: 'Amount',
             headerName: 'Amount',
-            width: 120,
+            minWidth: 120,
+            flex: 1.2,
             sortable: true,
             filter: true
         },
         {
             field: 'Score',
             headerName: 'Score',
-            width: 100,
+            minWidth: 100,
+            flex: 1,
             sortable: true,
             filter: true
         },
         {
             field: 'Owner',
             headerName: 'Owner',
-            width: 100,
+            minWidth: 100,
+            flex: 1,
             sortable: true,
             filter: true
         },
         {
             field: 'AI Reasoning',
             headerName: 'AI Reasoning',
-            width: 400,
+            minWidth: 200,
+            flex: 3,
             sortable: true,
             filter: true,
             tooltipValueGetter: function (params: AgGridParams): string {
@@ -400,9 +415,36 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     gridApi = gridInstance.api;
     gridColumnApi = gridInstance.columnApi;
 
-    // Auto-size columns on first data render
+    // Auto-size columns to fit container
     if (gridApi) {
-        gridApi.sizeColumnsToFit();
+        // Function to resize columns
+        const resizeColumns = () => {
+            if (gridApi) {
+                // Fit all columns to available width
+                gridApi.sizeColumnsToFit();
+            }
+        };
+
+        // Wait for grid to be ready before auto-sizing
+        gridApi.addEventListener('firstDataRendered', () => {
+            resizeColumns();
+        });
+        
+        // Also auto-size on window resize (with debounce for performance)
+        let resizeTimeout: number | null = null;
+        window.addEventListener('resize', () => {
+            if (resizeTimeout) {
+                clearTimeout(resizeTimeout);
+            }
+            resizeTimeout = window.setTimeout(() => {
+                resizeColumns();
+            }, 150);
+        });
+
+        // Initial resize after a short delay to ensure grid is fully rendered
+        setTimeout(() => {
+            resizeColumns();
+        }, 100);
     }
 }
 
