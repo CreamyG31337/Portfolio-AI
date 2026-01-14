@@ -42,33 +42,8 @@ logger = logging.getLogger(__name__)
 
 # Setup file logging to write to app.log
 try:
-    from log_handler import setup_logging, log_message
+    from log_handler import setup_logging
     setup_logging()
-    
-    # Log deployment info on startup
-    logger.info("=" * 60)
-    logger.info("🚀 APPLICATION STARTUP")
-    try:
-        import os
-        build_stamp_paths = [
-            os.path.join(os.path.dirname(__file__), 'build_stamp.json'),
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'build_stamp.json'),
-            os.path.join(os.getcwd(), 'build_stamp.json')
-        ]
-        
-        for build_stamp_path in build_stamp_paths:
-            if os.path.exists(build_stamp_path):
-                with open(build_stamp_path, 'r') as f:
-                    build_info = json.load(f)
-                    logger.info(f"📦 DEPLOYMENT INFO:")
-                    logger.info(f"   Commit: {build_info.get('commit', 'unknown')}")
-                    logger.info(f"   Branch: {build_info.get('branch', 'unknown')}")
-                    logger.info(f"   Build Date: {build_info.get('build_date', 'unknown')}")
-                    logger.info(f"   Timestamp: {build_info.get('timestamp', 'unknown')}")
-                break
-    except Exception as e:
-        logger.warning(f"Could not load build stamp: {e}")
-    logger.info("=" * 60)
 except ImportError:
     pass  # Fallback to basicConfig if log_handler not available
 
@@ -468,49 +443,36 @@ except Exception as e:
 def _start_scheduler_background():
     """Start scheduler in background thread on Flask app initialization."""
     import threading
-    import os
     from scheduler.scheduler_core import start_scheduler, is_scheduler_running
     
     def _scheduler_init_thread():
-        thread_name = threading.current_thread().name
-        thread_id = threading.current_thread().ident
-        process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
-        
         try:
-            logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Starting scheduler initialization...")
-            
             # Small delay to ensure Flask app is fully initialized
             import time
             time.sleep(0.5)
             
             if not is_scheduler_running():
-                logger.info(f"[PID:{process_id} TID:{thread_id}] 🚀 Auto-starting scheduler on Flask initialization...")
+                logger.info("🚀 Auto-starting scheduler on Flask initialization...")
                 result = start_scheduler()
                 if result:
-                    logger.info(f"[PID:{process_id} TID:{thread_id}] ✅ Scheduler started successfully on Flask initialization")
+                    logger.info("✅ Scheduler started successfully on Flask initialization")
                 else:
-                    logger.info(f"[PID:{process_id} TID:{thread_id}] ℹ️ Scheduler was already running or failed to start")
+                    logger.info("ℹ️ Scheduler was already running or failed to start")
             else:
-                logger.debug(f"[PID:{process_id} TID:{thread_id}] ℹ️ Scheduler already running, skipping auto-start")
-            
-            logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Scheduler initialization complete")
+                logger.debug("ℹ️ Scheduler already running, skipping auto-start")
         except Exception as e:
             # Don't crash Flask if scheduler fails to start
-            logger.error(f"[PID:{process_id} TID:{thread_id}] ❌ Failed to auto-start scheduler: {e}", exc_info=True)
-            logger.warning(f"[PID:{process_id} TID:{thread_id}] ⚠️ Flask will continue without scheduler - start manually via jobs page")
-        finally:
-            logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Thread exiting")
+            logger.error(f"❌ Failed to auto-start scheduler: {e}", exc_info=True)
+            logger.warning("⚠️ Flask will continue without scheduler - start manually via jobs page")
     
-    # Start scheduler in daemon thread (daemon=True is correct)
-    # Daemon threads won't prevent Flask from starting/stopping
-    process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
+    # Start scheduler in daemon thread (won't block Flask startup)
     init_thread = threading.Thread(
         target=_scheduler_init_thread,
         name="SchedulerInitThread",
-        daemon=True  # Daemon is correct - allows Flask to start without blocking
+        daemon=True
     )
     init_thread.start()
-    logger.debug(f"[PID:{process_id}] Started scheduler initialization thread (daemon)")
+    logger.debug("Started scheduler initialization thread")
 
 # Start scheduler immediately when module loads
 _start_scheduler_background()
@@ -879,22 +841,11 @@ def dashboard_fallback():
 @app.route('/')
 def index():
     """Redirect based on V2 preference"""
-    try:
-        from user_preferences import get_user_preference
-        v2_enabled = get_user_preference('v2_enabled', default=False)
-        if v2_enabled:
-            return redirect(url_for('dashboard.dashboard_page'))
-        # Redirect to Caddy root (Streamlit) - this is NOT a circular redirect
-        # Flask's '/' -> Caddy root -> Streamlit on different port
-        return redirect('/')
-    except Exception as e:
-        logger.error(f"Error in root route: {e}", exc_info=True)
-        # On error, try v2 dashboard as fallback
-        try:
-            return redirect(url_for('dashboard.dashboard_page'))
-        except Exception:
-            # Ultimate fallback - auth page
-            return redirect('/auth')
+    from user_preferences import get_user_preference
+    v2_enabled = get_user_preference('v2_enabled', default=False)
+    if v2_enabled:
+        return redirect(url_for('dashboard.dashboard_page'))
+    return redirect('/') # Redirect to Caddy root (Streamlit)
 
 @app.route('/auth')
 def auth_page():
@@ -1743,7 +1694,7 @@ def logs_debug():
 
 
 @cache_data(ttl=5)
-def _get_cached_application_logs(level_filter, search, exclude_modules, since_deployment=False):
+def _get_cached_application_logs(level_filter, search, exclude_modules):
     """Get application logs with caching (5s TTL for near real-time)"""
     from log_handler import read_logs_from_file
     
@@ -1754,8 +1705,7 @@ def _get_cached_application_logs(level_filter, search, exclude_modules, since_de
             level=level_filter,
             search=search if search else None,
             return_all=True,
-            exclude_modules=exclude_modules if exclude_modules else None,
-            since_deployment=since_deployment
+            exclude_modules=exclude_modules if exclude_modules else None
         )
         
         # Convert datetime objects to strings for cache compatibility
