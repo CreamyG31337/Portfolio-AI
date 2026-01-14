@@ -29,16 +29,28 @@ _scheduler_init_timeout = 30  # seconds
 
 def _start_scheduler_with_result(result_holder: dict):
     """Helper function to run scheduler start in a thread and store result."""
+    import threading
+    import os
+    
+    thread_name = threading.current_thread().name
+    thread_id = threading.current_thread().ident
+    process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
+    
     try:
+        _logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Starting scheduler...")
         from scheduler import start_scheduler
         started = start_scheduler()
         result_holder["started"] = started
         result_holder["success"] = True
+        _logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Scheduler start completed (started={started})")
     except Exception as e:
         import traceback
         result_holder["success"] = False
         result_holder["error"] = str(e)
         result_holder["traceback"] = traceback.format_exc()
+        _logger.error(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Scheduler start failed: {e}", exc_info=True)
+    finally:
+        _logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Thread exiting")
 
 
 # Use @st.cache_resource to ensure scheduler starts exactly once per process

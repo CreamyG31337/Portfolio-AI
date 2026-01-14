@@ -46,21 +46,37 @@ def main():
     try:
         import threading
         import time
+        import os
         from scheduler.scheduler_core import start_scheduler
         
         def _run_scheduler():
-            logger.info("🚀 Starting scheduler from entrypoint...")
-            # Wait a bit for imports to settle
-            time.sleep(2)
+            thread_name = threading.current_thread().name
+            thread_id = threading.current_thread().ident
+            process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
+            
             try:
-                start_scheduler()
-                logger.info("✅ Scheduler started successfully")
+                logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] 🚀 Starting scheduler from entrypoint...")
+                # Wait a bit for imports to settle
+                time.sleep(2)
+                try:
+                    start_scheduler()
+                    logger.info(f"[PID:{process_id} TID:{thread_id}] ✅ Scheduler started successfully")
+                except Exception as e:
+                    logger.error(f"[PID:{process_id} TID:{thread_id}] ❌ Failed to start scheduler: {e}", exc_info=True)
+                logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Scheduler initialization complete")
             except Exception as e:
-                logger.error(f"❌ Failed to start scheduler: {e}")
+                logger.error(f"[PID:{process_id} TID:{thread_id}] ❌ Unexpected error in scheduler thread: {e}", exc_info=True)
+            finally:
+                logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Thread exiting")
 
-        scheduler_thread = threading.Thread(target=_run_scheduler, daemon=True)
+        process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
+        scheduler_thread = threading.Thread(
+            target=_run_scheduler,
+            name="SchedulerInitThread",
+            daemon=False  # Changed: Prevents silent termination
+        )
         scheduler_thread.start()
-        logger.info("ℹ️ Scheduler thread initiated")
+        logger.info(f"[PID:{process_id}] ℹ️ Scheduler thread initiated (non-daemon)")
         
     except ImportError:
         logger.warning("⚠️ Could not import scheduler modules - skipping auto-start")

@@ -708,7 +708,16 @@ def start_scheduler() -> bool:
     # PHASE 1.5: Check if another process has scheduler running (cross-process check)
     logger.debug("[PHASE 1.5] Checking if another process has scheduler running...")
     if _check_heartbeat():
-        logger.info("  → Another process has scheduler running (heartbeat detected), returning False")
+        try:
+            if _HEARTBEAT_FILE.exists():
+                last_beat = float(_HEARTBEAT_FILE.read_text().strip())
+                age = time.time() - last_beat
+                logger.info(f"  → Another process has scheduler running (heartbeat: {age:.1f}s ago), returning False")
+            else:
+                logger.info("  → Another process has scheduler running (heartbeat detected), returning False")
+        except Exception as e:
+            logger.debug(f"  → Error reading heartbeat file: {e}")
+            logger.info("  → Another process has scheduler running (heartbeat detected), returning False")
         return False
     
     # PHASE 1.6: Check if another process is currently starting scheduler
@@ -726,7 +735,16 @@ def start_scheduler() -> bool:
     try:
         # Double-check heartbeat after acquiring lock (another process might have started)
         if _check_heartbeat():
-            logger.info("  → Another process started scheduler while we were acquiring lock, returning False")
+            try:
+                if _HEARTBEAT_FILE.exists():
+                    last_beat = float(_HEARTBEAT_FILE.read_text().strip())
+                    age = time.time() - last_beat
+                    logger.info(f"  → Another process started scheduler while we were acquiring lock (heartbeat: {age:.1f}s ago), returning False")
+                else:
+                    logger.info("  → Another process started scheduler while we were acquiring lock, returning False")
+            except Exception as e:
+                logger.debug(f"  → Error reading heartbeat file: {e}")
+                logger.info("  → Another process started scheduler while we were acquiring lock, returning False")
             return False
         
         # PHASE 2: Cleanup stale jobs OUTSIDE lock (DB operation, may be slow)

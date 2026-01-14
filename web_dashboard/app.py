@@ -468,36 +468,49 @@ except Exception as e:
 def _start_scheduler_background():
     """Start scheduler in background thread on Flask app initialization."""
     import threading
+    import os
     from scheduler.scheduler_core import start_scheduler, is_scheduler_running
     
     def _scheduler_init_thread():
+        thread_name = threading.current_thread().name
+        thread_id = threading.current_thread().ident
+        process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
+        
         try:
+            logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Starting scheduler initialization...")
+            
             # Small delay to ensure Flask app is fully initialized
             import time
             time.sleep(0.5)
             
             if not is_scheduler_running():
-                logger.info("🚀 Auto-starting scheduler on Flask initialization...")
+                logger.info(f"[PID:{process_id} TID:{thread_id}] 🚀 Auto-starting scheduler on Flask initialization...")
                 result = start_scheduler()
                 if result:
-                    logger.info("✅ Scheduler started successfully on Flask initialization")
+                    logger.info(f"[PID:{process_id} TID:{thread_id}] ✅ Scheduler started successfully on Flask initialization")
                 else:
-                    logger.info("ℹ️ Scheduler was already running or failed to start")
+                    logger.info(f"[PID:{process_id} TID:{thread_id}] ℹ️ Scheduler was already running or failed to start")
             else:
-                logger.debug("ℹ️ Scheduler already running, skipping auto-start")
+                logger.debug(f"[PID:{process_id} TID:{thread_id}] ℹ️ Scheduler already running, skipping auto-start")
+            
+            logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Scheduler initialization complete")
         except Exception as e:
             # Don't crash Flask if scheduler fails to start
-            logger.error(f"❌ Failed to auto-start scheduler: {e}", exc_info=True)
-            logger.warning("⚠️ Flask will continue without scheduler - start manually via jobs page")
+            logger.error(f"[PID:{process_id} TID:{thread_id}] ❌ Failed to auto-start scheduler: {e}", exc_info=True)
+            logger.warning(f"[PID:{process_id} TID:{thread_id}] ⚠️ Flask will continue without scheduler - start manually via jobs page")
+        finally:
+            logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Thread exiting")
     
-    # Start scheduler in daemon thread (won't block Flask startup)
+    # Start scheduler in NON-daemon thread to prevent silent termination
+    # This ensures the thread stays alive even if main process has issues
+    process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
     init_thread = threading.Thread(
         target=_scheduler_init_thread,
         name="SchedulerInitThread",
-        daemon=True
+        daemon=False  # Changed: Prevents silent termination when main process exits
     )
     init_thread.start()
-    logger.debug("Started scheduler initialization thread")
+    logger.debug(f"[PID:{process_id}] Started scheduler initialization thread (non-daemon)")
 
 # Start scheduler immediately when module loads
 _start_scheduler_background()
