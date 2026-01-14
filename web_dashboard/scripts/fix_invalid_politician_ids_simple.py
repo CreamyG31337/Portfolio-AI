@@ -13,6 +13,7 @@ Usage:
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
+from collections import Counter
 import argparse
 
 # Add project root to path
@@ -212,9 +213,14 @@ def fix_invalid_ids(dry_run: bool = True):
             print(f"      [NOT FOUND] Need to create")
             
             # Get metadata from trades
-            party = max(set(t.get('party') for t in trades if t.get('party')), key=lambda x: list(t.get('party') for t in trades if t.get('party')).count(x)) if any(t.get('party') for t in trades) else None
-            state = max(set(t.get('state') for t in trades if t.get('state')), key=lambda x: list(t.get('state') for t in trades if t.get('state')).count(x)) if any(t.get('state') for t in trades) else None
-            chamber = max(set(t.get('chamber') for t in trades if t.get('chamber')), key=lambda x: list(t.get('chamber') for t in trades if t.get('chamber')).count(x)) if any(t.get('chamber') for t in trades) else None
+            party_counts = Counter(t.get('party') for t in trades if t.get('party'))
+            party = party_counts.most_common(1)[0][0] if party_counts else None
+
+            state_counts = Counter(t.get('state') for t in trades if t.get('state'))
+            state = state_counts.most_common(1)[0][0] if state_counts else None
+
+            chamber_counts = Counter(t.get('chamber') for t in trades if t.get('chamber'))
+            chamber = chamber_counts.most_common(1)[0][0] if chamber_counts else None
             
             # Use first non-None value if max doesn't work
             if not party:
