@@ -43,6 +43,9 @@ class TickerCellRenderer {
     }
 }
 
+// Make TickerCellRenderer globally accessible for AgGrid
+(window as any).TickerCellRenderer = TickerCellRenderer;
+
 export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
     const gridDiv = document.querySelector('#etf-holdings-grid');
     if (!gridDiv) {

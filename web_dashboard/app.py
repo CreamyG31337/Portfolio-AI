@@ -194,12 +194,16 @@ except ImportError:
     logger.debug("Repository system not available (optional for Settings page)")
 
 def get_supabase_client() -> Optional[SupabaseClient]:
-    """Get Supabase client instance"""
+    """Get Supabase client instance with user authentication"""
     if not SUPABASE_AVAILABLE:
         return None
     
     try:
-        return SupabaseClient()
+        # Get user token from cookies to respect RLS policies
+        from flask import request
+        user_token = request.cookies.get('auth_token') or request.cookies.get('session_token')
+        
+        return SupabaseClient(user_token=user_token)
     except Exception as e:
         logger.error(f"Failed to initialize Supabase client: {e}", exc_info=True)
         return None
