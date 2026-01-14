@@ -256,17 +256,114 @@
                 </div>
             </div>
 
-            <!-- Currency Exposure Chart -->
+            <!-- Currency Exposure Section -->
             <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Currency Exposure</h3>
-                <div class="w-full relative" id="currency-chart" style="min-height: 350px;">
-                    <!-- Loading spinner -->
-                    <div id="currency-chart-spinner"
-                        class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white">Currency Exposure</h3>
+                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600 dark:text-gray-400">
+                        <input type="checkbox" id="inverse-exchange-rate" 
+                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                        <span>Show CAD/USD</span>
+                    </label>
+                </div>
+                
+                <!-- Two-column layout: Rate metrics + Pie chart -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <!-- Left column: Exchange rate metric and historical chart -->
+                    <div class="lg:col-span-1">
+                        <!-- Current Rate Metric -->
+                        <div id="exchange-rate-metric" class="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                            <div class="text-sm text-gray-500 dark:text-gray-400" id="exchange-rate-label">USD/CAD Rate</div>
+                            <div class="text-2xl font-bold text-gray-900 dark:text-white" id="exchange-rate-value">
+                                <div class="animate-pulse bg-gray-200 dark:bg-gray-600 h-8 w-24 rounded"></div>
+                            </div>
+                            <div class="text-xs text-gray-400 dark:text-gray-500" id="exchange-rate-help">1 USD = X CAD</div>
+                        </div>
+                        
+                        <!-- Historical Rate Chart -->
+                        <div class="w-full relative" id="exchange-rate-chart" style="min-height: 200px;">
+                            <div id="exchange-rate-chart-spinner"
+                                class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400">
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <!-- Plotly Chart -->
+                    
+                    <!-- Right column: Currency exposure pie chart -->
+                    <div class="lg:col-span-2">
+                        <div class="w-full relative" id="currency-chart" style="min-height: 300px;">
+                            <!-- Loading spinner -->
+                            <div id="currency-chart-spinner"
+                                class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
+                                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
+                                </div>
+                            </div>
+                            <!-- Plotly Chart -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Individual Stock Performance (Collapsible) -->
+    <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 mb-6">
+        <div class="flex justify-between items-center mb-4">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="show-individual-holdings"
+                    class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                <span class="text-lg font-bold text-gray-900 dark:text-white">📊 Show Individual Stock Performance</span>
+            </label>
+        </div>
+        
+        <!-- Individual Holdings Controls (hidden by default) -->
+        <div id="individual-holdings-container" class="hidden">
+            <div class="flex flex-wrap items-center gap-4 mb-4">
+                <!-- Date Range Radio Buttons -->
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">Date Range:</span>
+                    <div class="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
+                        <label class="px-3 py-1.5 text-sm cursor-pointer bg-blue-600 text-white individual-range-btn" data-days="7">
+                            <input type="radio" name="individual-range" value="7" checked class="sr-only">
+                            7 Days
+                        </label>
+                        <label class="px-3 py-1.5 text-sm cursor-pointer bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 individual-range-btn" data-days="30">
+                            <input type="radio" name="individual-range" value="30" class="sr-only">
+                            30 Days
+                        </label>
+                        <label class="px-3 py-1.5 text-sm cursor-pointer bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 individual-range-btn" data-days="0">
+                            <input type="radio" name="individual-range" value="0" class="sr-only">
+                            All Time
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Stock Filter Dropdown -->
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">Filter:</span>
+                    <select id="individual-stock-filter" 
+                        class="text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 py-1.5 focus:ring-blue-500 focus:border-blue-500">
+                        <option value="all">All stocks</option>
+                        <option value="winners">Winners (↑ total %)</option>
+                        <option value="losers">Losers (↓ total %)</option>
+                        <option value="daily_winners">Daily winners (↑ 1-day %)</option>
+                        <option value="daily_losers">Daily losers (↓ 1-day %)</option>
+                        <option value="top5">Top 5 performers</option>
+                        <option value="bottom5">Bottom 5 performers</option>
+                        <option value="cad">Canadian (CAD)</option>
+                        <option value="usd">American (USD)</option>
+                    </select>
+                </div>
+                
+                <!-- Stock Count -->
+                <span id="individual-stock-count" class="text-sm text-gray-500 dark:text-gray-400"></span>
+            </div>
+            
+            <!-- Chart Container -->
+            <div class="w-full relative" id="individual-holdings-chart" style="min-height: 500px;">
+                <div id="individual-holdings-spinner" class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10 hidden">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
                 </div>
             </div>
         </div>
@@ -302,7 +399,7 @@
             
             <!-- Dividend Metrics -->
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
-                <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded border border-green-100 dark:border-green-800">
+                <div class="p-3 bg-green-50 dark:bg-gray-700/30 rounded border border-green-100 dark:border-gray-600">
                     <div class="text-xs text-green-800 dark:text-green-200 font-medium">Total (LTM)</div>
                     <div class="text-lg font-bold text-green-700 dark:text-green-300" id="div-total">--</div>
                 </div>

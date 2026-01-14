@@ -443,3 +443,153 @@ def fetch_dividend_log_flask(days_lookback: int = 365, fund: Optional[str] = Non
     except Exception as e:
         logger.error(f"Error fetching dividend log (Flask): {e}", exc_info=True)
         return []
+
+
+@cache_data(ttl=300)
+def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.DataFrame:
+    """Get performance data for individual holdings in a fund.
+    
+    Args:
+        fund: Fund name (required)
+        days: Number of days to fetch (7, 30, or 0 for all)
+        
+    Returns:
+        DataFrame with columns: ticker, date, performance_index, return_pct, daily_pnl_pct, sector, industry, currency
+    """
+    from datetime import timedelta, timezone
+    
+    if not fund:
+        raise ValueError("Fund name is required")
+    
+    client = get_supabase_client_flask()
+    if not client:
+        return pd.DataFrame()
+    
+    try:
+        # Calculate date cutoff
+        # Query for more days than requested to account for weekends and missing days
+        if days > 0:
+            query_days = max(int(days * 1.5), days + 3)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=query_days)
+            cutoff_str = cutoff_date.strftime('%Y-%m-%d')
+        else:
+            cutoff_str = None  # All time
+        
+        # Fetch position data with pagination - join with securities for sector/industry/currency
+        all_rows = []
+        batch_size = 1000
+        offset = 0
+        
+        while True:
+            query = client.supabase.table("portfolio_positions").select(
+                "ticker, date, shares, price, total_value, currency, securities(sector, industry, currency)"
+            )
+            
+            query = query.eq("fund", fund)
+            
+            if cutoff_str:
+                query = query.gte("date", f"{cutoff_str}T00:00:00")
+            
+            result = query.order("date").range(offset, offset + batch_size - 1).execute()
+            
+            rows = result.data
+            if not rows:
+                break
+            
+            all_rows.extend(rows)
+            
+            if len(rows) < batch_size:
+                break
+            
+            offset += batch_size
+            
+            # Safety break
+            if offset > 50000:
+                logger.warning("Reached 50,000 row safety limit")
+                break
+        
+        if not all_rows:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(all_rows)
+        
+        # Flatten nested securities data
+        if 'securities' in df.columns:
+            securities_df = pd.json_normalize(df['securities'])
+            if not securities_df.empty:
+                if 'sector' in securities_df.columns:
+                    df['sector'] = securities_df['sector']
+                if 'industry' in securities_df.columns:
+                    df['industry'] = securities_df['industry']
+                if 'currency' in securities_df.columns:
+                    df['currency'] = securities_df['currency'].fillna(df.get('currency', 'USD'))
+            df = df.drop(columns=['securities'], errors='ignore')
+        
+        # Normalize to date-only (midnight) for consistent charting
+        df['date'] = pd.to_datetime(df['date']).dt.normalize()
+        
+        # Calculate performance index per ticker (baseline 100) and return percentages
+        holdings_performance = []
+        
+        for ticker in df['ticker'].unique():
+            ticker_df = df[df['ticker'] == ticker].copy()
+            ticker_df = ticker_df.sort_values('date')
+            
+            if len(ticker_df) < 1:
+                continue
+            
+            # Use first date's total_value as baseline
+            baseline_value = float(ticker_df['total_value'].iloc[0])
+            
+            if baseline_value == 0:
+                continue  # Skip if no valid baseline
+            
+            # Calculate performance index
+            ticker_df['performance_index'] = (ticker_df['total_value'].astype(float) / baseline_value) * 100
+            
+            # Calculate total return percentage (from baseline to last value)
+            last_value = float(ticker_df['total_value'].iloc[-1])
+            return_pct = ((last_value / baseline_value) - 1) * 100
+            ticker_df['return_pct'] = return_pct
+            
+            # Calculate daily P&L percentage
+            ticker_df['daily_pnl_pct'] = ticker_df['performance_index'].diff()
+            
+            # Get metadata (sector, industry, currency) - use first non-null value
+            if 'sector' in ticker_df.columns:
+                sector_val = ticker_df['sector'].dropna().iloc[0] if not ticker_df['sector'].dropna().empty else None
+                ticker_df['sector'] = sector_val
+            else:
+                ticker_df['sector'] = None
+                
+            if 'industry' in ticker_df.columns:
+                industry_val = ticker_df['industry'].dropna().iloc[0] if not ticker_df['industry'].dropna().empty else None
+                ticker_df['industry'] = industry_val
+            else:
+                ticker_df['industry'] = None
+                
+            if 'currency' in ticker_df.columns:
+                currency_val = ticker_df['currency'].dropna().iloc[0] if not ticker_df['currency'].dropna().empty else 'USD'
+                ticker_df['currency'] = currency_val
+            else:
+                ticker_df['currency'] = 'USD'
+            
+            # Keep only needed columns
+            cols_to_keep = ['ticker', 'date', 'performance_index', 'return_pct', 'daily_pnl_pct', 'sector', 'industry', 'currency']
+            holdings_performance.append(ticker_df[cols_to_keep])
+        
+        if not holdings_performance:
+            return pd.DataFrame()
+        
+        result_df = pd.concat(holdings_performance, ignore_index=True)
+        
+        # If days > 0, filter to the last N unique dates
+        if days > 0:
+            unique_dates = sorted(result_df['date'].unique(), reverse=True)[:days]
+            result_df = result_df[result_df['date'].isin(unique_dates)]
+        
+        return result_df
+        
+    except Exception as e:
+        logger.error(f"Error fetching individual holdings (Flask): {e}", exc_info=True)
+        return pd.DataFrame()

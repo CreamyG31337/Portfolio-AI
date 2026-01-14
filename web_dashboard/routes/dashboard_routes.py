@@ -417,6 +417,173 @@ def get_performance_chart():
         logger.error(f"[Dashboard API] Error fetching performance chart (took {processing_time:.3f}s): {e}", exc_info=True)
         return jsonify({"error": str(e), "processing_time": processing_time}), 500
 
+
+@dashboard_bp.route('/api/dashboard/charts/individual-holdings', methods=['GET'])
+def get_individual_holdings_chart():
+    """Get individual stock performance chart as Plotly JSON.
+    
+    GET /api/dashboard/charts/individual-holdings
+    
+    Query Parameters:
+        fund (str): Fund name (required)
+        days (int): Number of days - 7, 30, or 0 for all (default: 7)
+        filter (str): Stock filter - 'all', 'winners', 'losers', 'top5', 'bottom5', 'cad', 'usd' (default: 'all')
+        use_solid (str): 'true' to use solid lines for benchmarks (default: 'false')
+        theme (str): Chart theme - 'dark', 'light', 'midnight-tokyo', 'abyss' (optional)
+        
+    Returns:
+        JSON response with Plotly chart data and metadata
+            
+    Error Responses:
+        400: Fund is required
+        500: Server error during data fetch
+    """
+    import plotly.utils
+    from chart_utils import create_individual_holdings_chart, get_chart_theme_config
+    from flask_data_utils import get_individual_holdings_performance_flask
+    from plotly_utils import serialize_plotly_figure
+    
+    fund = request.args.get('fund')
+    if not fund or fund.lower() == 'all':
+        return jsonify({"error": "Fund name is required for individual holdings chart"}), 400
+    
+    days = int(request.args.get('days', '7'))
+    stock_filter = request.args.get('filter', 'all')
+    use_solid = request.args.get('use_solid', 'false').lower() == 'true'
+    client_theme = request.args.get('theme', '').strip().lower()
+    
+    logger.info(f"[Dashboard API] /api/dashboard/charts/individual-holdings called - fund={fund}, days={days}, filter={stock_filter}")
+    start_time = time.time()
+    
+    try:
+        # Get holdings data
+        holdings_df = get_individual_holdings_performance_flask(fund, days=days)
+        
+        if holdings_df.empty:
+            logger.warning(f"[Dashboard API] No individual holdings data found for fund={fund}, days={days}")
+            import plotly.graph_objs as go
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No holdings data available",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False
+            )
+            return Response(
+                serialize_plotly_figure(fig),
+                mimetype='application/json'
+            )
+        
+        # Apply stock filter
+        if stock_filter != 'all' and not holdings_df.empty:
+            latest_per_ticker = holdings_df.sort_values('date').groupby('ticker').last().reset_index()
+            tickers_to_show = latest_per_ticker['ticker'].tolist()
+            
+            if stock_filter == 'winners':
+                if 'return_pct' in latest_per_ticker.columns:
+                    tickers_to_show = latest_per_ticker[latest_per_ticker['return_pct'].fillna(0) > 0]['ticker'].tolist()
+            elif stock_filter == 'losers':
+                if 'return_pct' in latest_per_ticker.columns:
+                    tickers_to_show = latest_per_ticker[latest_per_ticker['return_pct'].fillna(0) < 0]['ticker'].tolist()
+            elif stock_filter == 'daily_winners':
+                if 'daily_pnl_pct' in latest_per_ticker.columns:
+                    tickers_to_show = latest_per_ticker[latest_per_ticker['daily_pnl_pct'].fillna(0) > 0]['ticker'].tolist()
+            elif stock_filter == 'daily_losers':
+                if 'daily_pnl_pct' in latest_per_ticker.columns:
+                    tickers_to_show = latest_per_ticker[latest_per_ticker['daily_pnl_pct'].fillna(0) < 0]['ticker'].tolist()
+            elif stock_filter == 'top5':
+                if 'return_pct' in latest_per_ticker.columns:
+                    top_5 = latest_per_ticker.nlargest(5, 'return_pct')
+                    tickers_to_show = top_5['ticker'].tolist()
+            elif stock_filter == 'bottom5':
+                if 'return_pct' in latest_per_ticker.columns:
+                    bottom_5 = latest_per_ticker.nsmallest(5, 'return_pct')
+                    tickers_to_show = bottom_5['ticker'].tolist()
+            elif stock_filter == 'cad':
+                if 'currency' in latest_per_ticker.columns:
+                    tickers_to_show = latest_per_ticker[latest_per_ticker['currency'] == 'CAD']['ticker'].tolist()
+            elif stock_filter == 'usd':
+                if 'currency' in latest_per_ticker.columns:
+                    tickers_to_show = latest_per_ticker[latest_per_ticker['currency'] == 'USD']['ticker'].tolist()
+            elif stock_filter.startswith('sector:'):
+                sector_name = stock_filter.replace('sector:', '')
+                if 'sector' in latest_per_ticker.columns:
+                    tickers_to_show = latest_per_ticker[latest_per_ticker['sector'] == sector_name]['ticker'].tolist()
+            elif stock_filter.startswith('industry:'):
+                industry_name = stock_filter.replace('industry:', '')
+                if 'industry' in latest_per_ticker.columns:
+                    tickers_to_show = latest_per_ticker[latest_per_ticker['industry'] == industry_name]['ticker'].tolist()
+            
+            holdings_df = holdings_df[holdings_df['ticker'].isin(tickers_to_show)].copy()
+        
+        # All benchmarks (S&P 500 visible, others in legend)
+        all_benchmarks = ['sp500', 'qqq', 'russell2000', 'vti']
+        
+        # Create chart
+        fig = create_individual_holdings_chart(
+            holdings_df,
+            fund_name=fund,
+            show_benchmarks=all_benchmarks,
+            show_weekend_shading=True,
+            use_solid_lines=use_solid
+        )
+        
+        # Apply theme
+        if not client_theme or client_theme not in ['dark', 'light', 'midnight-tokyo', 'abyss']:
+            user_theme = get_user_theme() or 'system'
+            theme = user_theme if user_theme in ['dark', 'light', 'midnight-tokyo', 'abyss'] else 'light'
+        else:
+            theme = client_theme
+        
+        chart_json = serialize_plotly_figure(fig)
+        chart_data = json.loads(chart_json)
+        
+        theme_config = get_chart_theme_config(theme)
+        
+        # Update layout for theme
+        if 'layout' in chart_data:
+            chart_data['layout']['template'] = theme_config['template']
+            chart_data['layout']['paper_bgcolor'] = theme_config['paper_bgcolor']
+            chart_data['layout']['plot_bgcolor'] = theme_config['plot_bgcolor']
+            chart_data['layout']['font'] = {'color': theme_config['font_color']}
+            
+            if 'xaxis' in chart_data['layout']:
+                chart_data['layout']['xaxis']['gridcolor'] = theme_config['grid_color']
+            if 'yaxis' in chart_data['layout']:
+                chart_data['layout']['yaxis']['gridcolor'] = theme_config['grid_color']
+            if 'legend' in chart_data['layout']:
+                chart_data['layout']['legend']['bgcolor'] = theme_config['legend_bg_color']
+        
+        # Get metadata for filter dropdowns
+        sectors = sorted([s for s in holdings_df['sector'].dropna().unique() if s]) if 'sector' in holdings_df.columns else []
+        industries = sorted([i for i in holdings_df['industry'].dropna().unique() if i]) if 'industry' in holdings_df.columns else []
+        num_stocks = holdings_df['ticker'].nunique()
+        
+        processing_time = time.time() - start_time
+        logger.info(f"[Dashboard API] Individual holdings chart created - {num_stocks} stocks, processing_time={processing_time:.3f}s")
+        
+        # Return chart data with metadata
+        response_data = {
+            **chart_data,
+            'metadata': {
+                'num_stocks': num_stocks,
+                'sectors': sectors,
+                'industries': industries,
+                'days': days,
+                'filter': stock_filter
+            }
+        }
+        
+        return Response(
+            json.dumps(response_data),
+            mimetype='application/json'
+        )
+        
+    except Exception as e:
+        processing_time = time.time() - start_time
+        logger.error(f"[Dashboard API] Error fetching individual holdings chart (took {processing_time:.3f}s): {e}", exc_info=True)
+        return jsonify({"error": str(e), "processing_time": processing_time}), 500
+
+
 @dashboard_bp.route('/api/dashboard/charts/allocation', methods=['GET'])
 def get_allocation_charts():
     """Get allocation chart as Plotly JSON (Sector pie chart).
@@ -933,13 +1100,12 @@ def get_currency_chart():
         cash_balances = get_cash_balances(fund)
         
         # Create chart using shared utility
-        # Note: create_currency_exposure_chart takes positions_df and cash_balances
-        # We need to make sure we're using the right version or args
-        # Streamlit version: create_currency_exposure_chart(positions_df, cash_balances)
+        # Note: create_currency_exposure_chart takes positions_df and fund_name
+        # We pass fund as fund_name since the function signature expects fund_name, not cash_balances
         from chart_utils import create_currency_exposure_chart, get_chart_theme_config
         from plotly_utils import serialize_plotly_figure
-        
-        fig = create_currency_exposure_chart(positions_df, cash_balances)
+
+        fig = create_currency_exposure_chart(positions_df, fund_name=fund)
         
         if not fig:
              return jsonify({"error": "Could not create chart"}), 500
@@ -963,6 +1129,110 @@ def get_currency_chart():
     except Exception as e:
         logger.error(f"Error creating currency chart: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+@dashboard_bp.route('/api/dashboard/exchange-rate', methods=['GET'])
+def get_exchange_rate_data():
+    """Get current exchange rate and 90-day historical data.
+    
+    GET /api/dashboard/exchange-rate
+    
+    Query Parameters:
+        inverse (bool): If true, show CAD/USD instead of USD/CAD (default: false)
+        
+    Returns:
+        JSON response with current rate and historical data for chart
+    """
+    from datetime import timedelta
+    from exchange_rates_utils import get_supabase_client
+    
+    inverse = request.args.get('inverse', 'false').lower() == 'true'
+    theme = request.args.get('theme', 'light')
+    
+    try:
+        client = get_supabase_client()
+        if not client:
+            return jsonify({"error": "Could not connect to database"}), 500
+        
+        # Get latest rate
+        latest_rate = client.get_latest_exchange_rate('USD', 'CAD')
+        
+        # Get 90-day historical rates
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=90)
+        historical_rates = client.get_exchange_rates(start_date, end_date, 'USD', 'CAD')
+        
+        # Prepare response
+        current_rate = float(latest_rate) if latest_rate else None
+        if inverse and current_rate:
+            current_rate = 1.0 / current_rate
+        
+        # Prepare chart data
+        chart_data = None
+        if historical_rates:
+            import plotly.graph_objects as go
+            from chart_utils import get_chart_theme_config
+            from plotly_utils import serialize_plotly_figure
+            
+            dates = []
+            rates = []
+            for r in historical_rates:
+                timestamp = r.get('timestamp')
+                rate = r.get('rate')
+                if timestamp and rate:
+                    if isinstance(timestamp, str):
+                        dates.append(timestamp)
+                    else:
+                        dates.append(timestamp.isoformat())
+                    rate_val = float(rate)
+                    rates.append(1.0 / rate_val if inverse else rate_val)
+            
+            if dates and rates:
+                y_label = 'CAD/USD' if inverse else 'USD/CAD'
+                chart_title = f'{y_label} Rate (90 Days)'
+                
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=dates,
+                    y=rates,
+                    mode='lines',
+                    name=y_label,
+                    line=dict(color='#3b82f6', width=2),
+                    hovertemplate='%{x|%b %d}<br>%{y:.4f}<extra></extra>'
+                ))
+                
+                fig.update_layout(
+                    title=chart_title,
+                    xaxis_title='Date',
+                    yaxis_title='Rate',
+                    template='plotly_white',
+                    height=250,
+                    margin=dict(l=40, r=20, t=40, b=30),
+                    showlegend=False
+                )
+                
+                # Apply theme
+                chart_json = serialize_plotly_figure(fig)
+                chart_data = json.loads(chart_json)
+                theme_config = get_chart_theme_config(theme)
+                
+                if 'layout' in chart_data:
+                    chart_data['layout']['template'] = theme_config['template']
+                    chart_data['layout']['paper_bgcolor'] = theme_config['paper_bgcolor']
+                    chart_data['layout']['plot_bgcolor'] = theme_config['plot_bgcolor']
+                    chart_data['layout']['font'] = {'color': theme_config['font_color']}
+        
+        return jsonify({
+            "current_rate": current_rate,
+            "rate_label": "CAD/USD" if inverse else "USD/CAD",
+            "rate_help": "1 CAD = X USD" if inverse else "1 USD = X CAD",
+            "inverse": inverse,
+            "chart": chart_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching exchange rate data: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 
 @dashboard_bp.route('/api/dashboard/movers', methods=['GET'])
 @require_auth

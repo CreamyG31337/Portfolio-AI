@@ -80,6 +80,18 @@ interface PnlChartData {
     layout: any; // Plotly layout
 }
 
+interface IndividualHoldingsChartData {
+    data: any[]; // Plotly trace data
+    layout: any; // Plotly layout
+    metadata?: {
+        num_stocks: number;
+        sectors: string[];
+        industries: string[];
+        days: number;
+        filter: string;
+    };
+}
+
 interface HoldingsData {
     data: Array<{
         ticker: string;
@@ -126,6 +138,14 @@ interface MoversData {
     processing_time: number;
 }
 
+interface ExchangeRateData {
+    current_rate: number | null;
+    rate_label: string;
+    rate_help: string;
+    inverse: boolean;
+    chart: AllocationChartData | null;
+}
+
 interface Fund {
     name: string;
 }
@@ -136,7 +156,13 @@ const state = {
     timeRange: 'ALL' as '1M' | '3M' | '6M' | '1Y' | 'ALL',
     useSolidLines: false, // Solid lines checkbox state
     charts: {} as Record<string, any>, // Charts now use Plotly (no longer ApexCharts)
-    gridApi: null as any // AG Grid API
+    gridApi: null as any, // AG Grid API
+    // Individual holdings state
+    showIndividualHoldings: false,
+    individualHoldingsDays: 7,
+    individualHoldingsFilter: 'all',
+    // Exchange rate state
+    inverseExchangeRate: false
 };
 
 // Initialize theme sync for charts
@@ -152,6 +178,11 @@ function initThemeSync(): void {
             fetchPerformanceChart().catch(err => console.error('[Dashboard] Error refreshing performance chart on theme change:', err));
             fetchSectorChart().catch(err => console.error('[Dashboard] Error refreshing sector chart on theme change:', err));
             fetchCurrencyChart().catch(err => console.error('[Dashboard] Error refreshing currency chart on theme change:', err));
+            fetchExchangeRateData().catch(err => console.error('[Dashboard] Error refreshing exchange rate chart on theme change:', err));
+            // Refresh individual holdings chart if visible
+            if (state.showIndividualHoldings) {
+                fetchIndividualHoldingsChart().catch(err => console.error('[Dashboard] Error refreshing individual holdings chart on theme change:', err));
+            }
         });
     } else {
         console.warn('[Dashboard] ThemeManager not found. Chart theme synchronization disabled.');
@@ -167,6 +198,8 @@ document.addEventListener('DOMContentLoaded', (): void => {
     initFundSelector();
     initTimeRangeControls();
     initSolidLinesCheckbox();
+    initIndividualHoldingsControls();
+    initExchangeRateControls();
     initGrid(); // Initialize empty grid
     initThemeSync(); // Initialize theme synchronization
 
@@ -300,6 +333,98 @@ function initSolidLinesCheckbox(): void {
         console.log('[Dashboard] Solid lines changed to:', state.useSolidLines);
         // Refresh performance chart only
         fetchPerformanceChart();
+        // Also refresh individual holdings if visible
+        if (state.showIndividualHoldings) {
+            fetchIndividualHoldingsChart();
+        }
+    });
+}
+
+function initIndividualHoldingsControls(): void {
+    const showCheckbox = document.getElementById('show-individual-holdings') as HTMLInputElement | null;
+    const container = document.getElementById('individual-holdings-container');
+    const rangeButtons = document.querySelectorAll('.individual-range-btn');
+    const filterSelect = document.getElementById('individual-stock-filter') as HTMLSelectElement | null;
+
+    if (!showCheckbox || !container) {
+        console.warn('[Dashboard] Individual holdings controls not found');
+        return;
+    }
+
+    // Toggle container visibility
+    showCheckbox.addEventListener('change', (): void => {
+        state.showIndividualHoldings = showCheckbox.checked;
+        if (showCheckbox.checked) {
+            container.classList.remove('hidden');
+            // Fetch chart if fund is selected (not "All")
+            if (state.currentFund && state.currentFund.toLowerCase() !== 'all') {
+                fetchIndividualHoldingsChart();
+            } else {
+                const chartEl = document.getElementById('individual-holdings-chart');
+                if (chartEl) {
+                    chartEl.innerHTML = '<div class="text-center text-gray-500 py-8">Select a specific fund to view individual stock performance</div>';
+                }
+            }
+        } else {
+            container.classList.add('hidden');
+        }
+    });
+
+    // Date range buttons
+    rangeButtons.forEach(btn => {
+        btn.addEventListener('click', (e): void => {
+            const target = e.currentTarget as HTMLElement;
+            const days = parseInt(target.dataset.days || '7', 10);
+            
+            // Update visual state
+            rangeButtons.forEach(b => {
+                b.classList.remove('bg-blue-600', 'text-white');
+                b.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            });
+            target.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            target.classList.add('bg-blue-600', 'text-white');
+            
+            // Update state and fetch
+            state.individualHoldingsDays = days;
+            if (state.showIndividualHoldings && state.currentFund && state.currentFund.toLowerCase() !== 'all') {
+                fetchIndividualHoldingsChart();
+            }
+        });
+    });
+
+    // Filter dropdown
+    if (filterSelect) {
+        filterSelect.addEventListener('change', (): void => {
+            state.individualHoldingsFilter = filterSelect.value;
+            if (state.showIndividualHoldings && state.currentFund && state.currentFund.toLowerCase() !== 'all') {
+                fetchIndividualHoldingsChart();
+            }
+        });
+    }
+}
+
+function initExchangeRateControls(): void {
+    const checkbox = document.getElementById('inverse-exchange-rate') as HTMLInputElement | null;
+    
+    if (!checkbox) {
+        console.warn('[Dashboard] Exchange rate toggle not found');
+        return;
+    }
+    
+    // Set initial state from localStorage if available
+    const savedPref = localStorage.getItem('inverse_exchange_rate');
+    if (savedPref !== null) {
+        state.inverseExchangeRate = savedPref === 'true';
+        checkbox.checked = state.inverseExchangeRate;
+    }
+    
+    // Listen for changes
+    checkbox.addEventListener('change', (): void => {
+        state.inverseExchangeRate = checkbox.checked;
+        // Save preference to localStorage
+        localStorage.setItem('inverse_exchange_rate', String(checkbox.checked));
+        // Refresh exchange rate display
+        fetchExchangeRateData();
     });
 }
 
@@ -593,12 +718,18 @@ async function refreshDashboard(): Promise<void> {
             fetchPerformanceChart(),
             fetchSectorChart(),
             fetchCurrencyChart(),
+            fetchExchangeRateData(),
             loadPnlChart(state.currentFund),
             fetchMovers(),
             fetchHoldings(),
             fetchActivity(),
             fetchDividends()
         ]);
+
+        // Refresh individual holdings chart if visible
+        if (state.showIndividualHoldings) {
+            await fetchIndividualHoldingsChart();
+        }
 
         const duration = performance.now() - startTime;
         console.log('[Dashboard] Dashboard refresh completed successfully', {
@@ -1377,6 +1508,83 @@ function renderCurrencyChart(data: AllocationChartData): void {
     }
 }
 
+async function fetchExchangeRateData(): Promise<void> {
+    showSpinner('exchange-rate-chart-spinner');
+    
+    // Theme logic
+    const htmlElement = document.documentElement;
+    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
+    let theme: string = 'light';
+    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
+        theme = dataTheme;
+    } else if (dataTheme === 'system') {
+        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+        const isDark = bodyBg && (bodyBg.includes('rgb(31, 41, 55)') || bodyBg.includes('rgb(17, 24, 39)') || bodyBg.includes('rgb(55, 65, 81)'));
+        theme = isDark ? 'dark' : 'light';
+    }
+    
+    const url = `/api/dashboard/exchange-rate?inverse=${state.inverseExchangeRate}&theme=${encodeURIComponent(theme)}`;
+    console.log('[Dashboard] Fetching exchange rate data...', { url });
+    
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data: ExchangeRateData = await response.json();
+        renderExchangeRateData(data);
+    } catch (error) {
+        console.error('[Dashboard] Error fetching exchange rate data:', error);
+        const valueEl = document.getElementById('exchange-rate-value');
+        if (valueEl) valueEl.textContent = '--';
+    } finally {
+        hideSpinner('exchange-rate-chart-spinner');
+    }
+}
+
+function renderExchangeRateData(data: ExchangeRateData): void {
+    // Update metric display
+    const labelEl = document.getElementById('exchange-rate-label');
+    const valueEl = document.getElementById('exchange-rate-value');
+    const helpEl = document.getElementById('exchange-rate-help');
+    
+    if (labelEl) labelEl.textContent = data.rate_label;
+    if (valueEl) valueEl.textContent = data.current_rate !== null ? data.current_rate.toFixed(4) : '--';
+    if (helpEl) helpEl.textContent = data.rate_help;
+    
+    // Render historical chart
+    if (data.chart) {
+        const chartEl = document.getElementById('exchange-rate-chart');
+        if (!chartEl) return;
+        
+        const Plotly = (window as any).Plotly;
+        if (!Plotly) return;
+        
+        const layout = { ...data.chart.layout };
+        layout.height = 200;
+        layout.autosize = true;
+        
+        try {
+            Plotly.newPlot('exchange-rate-chart', data.chart.data, layout, {
+                responsive: true,
+                displayModeBar: false
+            });
+            
+            // Add resize handler
+            if (!(window as any).__exchangeRateChartResizeHandler) {
+                const resizeHandler = () => {
+                    if (document.getElementById('exchange-rate-chart')) {
+                        Plotly.Plots.resize('exchange-rate-chart');
+                    }
+                };
+                (window as any).__exchangeRateChartResizeHandler = resizeHandler;
+                window.addEventListener('resize', resizeHandler);
+            }
+        } catch (error) {
+            console.error('[Dashboard] Error rendering exchange rate chart:', error);
+        }
+    }
+}
+
 const MOVERS_COLUMN_COUNT = 10;
 
 function renderMovers(data: MoversData): void {
@@ -1537,6 +1745,175 @@ function renderPerformanceChart(data: PerformanceChartData): void {
     }
 }
 
+async function fetchIndividualHoldingsChart(): Promise<void> {
+    // Check if fund is selected
+    if (!state.currentFund || state.currentFund.toLowerCase() === 'all') {
+        const chartEl = document.getElementById('individual-holdings-chart');
+        if (chartEl) {
+            chartEl.innerHTML = '<div class="text-center text-gray-500 py-8">Select a specific fund to view individual stock performance</div>';
+        }
+        return;
+    }
+
+    // Show spinner
+    showSpinner('individual-holdings-spinner');
+
+    // Detect theme
+    const htmlElement = document.documentElement;
+    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
+    let theme: string = 'light';
+
+    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
+        theme = dataTheme;
+    } else if (dataTheme === 'system') {
+        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+        const isDark = bodyBg && (
+            bodyBg.includes('rgb(31, 41, 55)') ||
+            bodyBg.includes('rgb(17, 24, 39)') ||
+            bodyBg.includes('rgb(55, 65, 81)')
+        );
+        theme = isDark ? 'dark' : 'light';
+    }
+
+    const url = `/api/dashboard/charts/individual-holdings?fund=${encodeURIComponent(state.currentFund)}&days=${state.individualHoldingsDays}&filter=${encodeURIComponent(state.individualHoldingsFilter)}&use_solid=${state.useSolidLines}&theme=${encodeURIComponent(theme)}`;
+    const startTime = performance.now();
+
+    console.log('[Dashboard] Fetching individual holdings chart...', { url, fund: state.currentFund, days: state.individualHoldingsDays, filter: state.individualHoldingsFilter });
+
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+
+        console.log('[Dashboard] Individual holdings chart response received', {
+            status: response.status,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorMsg = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+            throw new Error(errorMsg);
+        }
+
+        const data: IndividualHoldingsChartData = await response.json();
+        renderIndividualHoldingsChart(data);
+        hideSpinner('individual-holdings-spinner');
+
+    } catch (error) {
+        hideSpinner('individual-holdings-spinner');
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error('[Dashboard] Error fetching individual holdings chart:', errorMsg);
+        const chartEl = document.getElementById('individual-holdings-chart');
+        if (chartEl) {
+            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading chart: ${errorMsg}</p></div>`;
+        }
+    }
+}
+
+function renderIndividualHoldingsChart(data: IndividualHoldingsChartData): void {
+    const chartEl = document.getElementById('individual-holdings-chart');
+    if (!chartEl) {
+        console.warn('[Dashboard] Individual holdings chart element not found');
+        return;
+    }
+
+    // Clear previous content
+    chartEl.innerHTML = '';
+
+    if (!data || !data.data || !data.layout) {
+        chartEl.innerHTML = '<div class="text-center text-gray-500 py-8"><p>No holdings data available</p></div>';
+        return;
+    }
+
+    // Render with Plotly
+    const Plotly = (window as any).Plotly;
+    if (!Plotly) {
+        console.error('[Dashboard] Plotly not loaded');
+        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error: Plotly library not loaded</p></div>';
+        return;
+    }
+
+    try {
+        Plotly.newPlot('individual-holdings-chart', data.data, data.layout, {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d']
+        });
+        console.log('[Dashboard] Individual holdings chart rendered with Plotly');
+
+        // Update stock count display
+        if (data.metadata) {
+            const countEl = document.getElementById('individual-stock-count');
+            if (countEl) {
+                const daysText = data.metadata.days === 0 ? 'all time' : `last ${data.metadata.days} days`;
+                countEl.textContent = `Showing ${data.metadata.num_stocks} stocks over ${daysText}`;
+            }
+
+            // Update filter dropdown with dynamic sector/industry options
+            updateIndividualHoldingsFilters(data.metadata.sectors, data.metadata.industries);
+        }
+    } catch (error) {
+        console.error('[Dashboard] Error rendering individual holdings chart:', error);
+        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error rendering chart</p></div>';
+    }
+}
+
+function updateIndividualHoldingsFilters(sectors: string[], industries: string[]): void {
+    const filterSelect = document.getElementById('individual-stock-filter') as HTMLSelectElement | null;
+    if (!filterSelect) return;
+
+    // Get current value to preserve selection
+    const currentValue = filterSelect.value;
+
+    // Remove any existing sector/industry options
+    const existingOptions = Array.from(filterSelect.options);
+    let foundSeparator = false;
+    for (const opt of existingOptions) {
+        if (opt.value.startsWith('---') || opt.value.startsWith('sector:') || opt.value.startsWith('industry:')) {
+            opt.remove();
+            foundSeparator = true;
+        }
+    }
+
+    // Add sector options if available
+    if (sectors.length > 0) {
+        const sectorSep = document.createElement('option');
+        sectorSep.value = '---sectors---';
+        sectorSep.textContent = '--- By Sector ---';
+        sectorSep.disabled = true;
+        filterSelect.appendChild(sectorSep);
+
+        for (const sector of sectors) {
+            const opt = document.createElement('option');
+            opt.value = `sector:${sector}`;
+            opt.textContent = `Sector: ${sector}`;
+            filterSelect.appendChild(opt);
+        }
+    }
+
+    // Add industry options if available
+    if (industries.length > 0) {
+        const industrySep = document.createElement('option');
+        industrySep.value = '---industries---';
+        industrySep.textContent = '--- By Industry ---';
+        industrySep.disabled = true;
+        filterSelect.appendChild(industrySep);
+
+        for (const industry of industries) {
+            const opt = document.createElement('option');
+            opt.value = `industry:${industry}`;
+            opt.textContent = `Industry: ${industry}`;
+            filterSelect.appendChild(opt);
+        }
+    }
+
+    // Restore selection if still valid
+    if (currentValue && Array.from(filterSelect.options).some(o => o.value === currentValue)) {
+        filterSelect.value = currentValue;
+    }
+}
+
 function renderSectorChart(data: AllocationChartData): void {
     // Clear any existing chart
     const chartEl = document.getElementById('sector-chart');
@@ -1570,15 +1947,16 @@ function renderSectorChart(data: AllocationChartData): void {
     layout.height = containerHeight;
     layout.autosize = false;
 
-    // Ensure proper margins - increase bottom margin for legend
+    // Ensure proper margins - use reasonable values for centering
     if (!layout.margin) {
-        layout.margin = { l: 20, r: 20, t: 50, b: 100 };
+        layout.margin = { l: 20, r: 20, t: 40, b: 40 };
     } else {
         // Ensure left and right margins are equal for centering
-        layout.margin.l = Math.max(20, layout.margin.l || 20);
-        layout.margin.r = Math.max(20, layout.margin.r || 20);
-        // Increase bottom margin to prevent legend cutoff
-        layout.margin.b = Math.max(100, layout.margin.b || 100);
+        layout.margin.l = 20;
+        layout.margin.r = 20;
+        // Use reasonable top/bottom margins
+        layout.margin.t = Math.min(60, layout.margin.t || 40);
+        layout.margin.b = Math.min(80, layout.margin.b || 40);
     }
 
     try {
