@@ -667,12 +667,16 @@ def api_admin_contributor_access():
         contributors = _get_cached_contributors_flask()
         users = _get_cached_users_flask()
         
+        # Optimize lookups by creating dictionaries
+        contributors_map = {c['id']: c for c in contributors}
+        users_map = {u.get('user_id'): u for u in users if u.get('user_id')}
+
         access_list = []
         for access in access_result.data:
             # Get contributor details
-            contrib = next((c for c in contributors if c['id'] == access['contributor_id']), {})
+            contrib = contributors_map.get(access['contributor_id'], {})
             # Get user details
-            user = next((u for u in users if u.get('user_id') == access['user_id']), {})
+            user = users_map.get(access['user_id'], {})
             
             access_list.append({
                 "id": access['id'],
