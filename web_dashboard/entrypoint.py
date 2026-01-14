@@ -69,6 +69,20 @@ def main():
             finally:
                 logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Thread exiting")
 
+        # Start Flask web server (daemon thread, won't block)
+        def start_flask_app():
+            import threading
+            from app import app
+            logger.info(f"[PID:{process_id}] Starting Flask web server on port 5000...")
+            try:
+                app.run(host='0.0.0.0', port=5000, threaded=True)
+            except Exception as e:
+                logger.error(f"[PID:{process_id}] ❌ Flask web server failed: {e}", exc_info=True)
+        
+        flask_thread = threading.Thread(target=start_flask_app, daemon=True)
+        flask_thread.start()
+        logger.info(f"[PID:{process_id}] Flask web server thread started")
+
         process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
         scheduler_thread = threading.Thread(
             target=_run_scheduler,
@@ -76,15 +90,10 @@ def main():
             daemon=True  # Daemon is correct - allows Streamlit to start without blocking
         )
         scheduler_thread.start()
-        logger.info(f"[PID:{process_id}] ℹ️ Scheduler thread initiated (daemon)")
-        
-    except ImportError:
-        logger.warning("⚠️ Could not import scheduler modules - skipping auto-start")
-    except Exception as e:
-        logger.error(f"❌ Error initializing scheduler: {e}")
-    
-    # Launch Streamlit
-    logger.info("Launching Streamlit application...")
+        logger.info(f"[PID:{process_id}] Flask web server thread started")
+
+        # Now start Streamlit (blocks until container stops)
+        logger.info("Launching Streamlit application...")
     
     # Verify pages directory exists
     pages_dir = os.path.join(web_dashboard_dir, "pages")
@@ -103,7 +112,8 @@ def main():
     streamlit_app = os.path.join(web_dashboard_dir, "streamlit_app.py")
     
     # Get port from environment or use default
-    port = os.environ.get("PORT", "8501")
+    streamlit_port = os.environ.get("STREAMLIT_PORT", "8501")
+    flask_port = os.environ.get("FLASK_PORT", "5000")
     
     # Build streamlit command
     # Run Streamlit from web_dashboard directory so it can find pages/ correctly
@@ -111,7 +121,7 @@ def main():
     cmd = [
         sys.executable, "-m", "streamlit", "run",
         "streamlit_app.py",  # Use relative path - Streamlit will look for pages/ in same directory
-        f"--server.port={port}",
+        f"--server.port={streamlit_port}",
         "--server.address=0.0.0.0",
         "--server.headless=true"
     ]
@@ -122,6 +132,8 @@ def main():
     # This prevents web_dashboard/utils from shadowing root utils/ directory
     logger.info(f"Running: {' '.join(cmd)}")
     logger.info(f"Working directory: {web_dashboard_dir}")
+    logger.info(f"Flask web server running on port 5000 (for v2 routes)")
+    logger.info(f"Streamlit app running on port {streamlit_port} (for streamlit UI)")
     
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{parent_dir}:{web_dashboard_dir}:{env.get('PYTHONPATH', '')}"
