@@ -20,6 +20,18 @@ declare global {
         };
         // agGrid is NOT declared here - each file that uses it declares its own type
         // This avoids conflicts since different files use different AgGrid type definitions
+        // Flowbite Modal instances (used by funds.ts)
+        editModal?: any;
+        createModal?: any;
+        // Funds page global functions
+        toggleProduction?: (fundName: string, isProduction: boolean) => Promise<void>;
+        openEditModal?: (fundName: string) => void;
+        createFund?: (event: Event) => Promise<void>;
+        updateFund?: (event: Event) => Promise<void>;
+        showDeleteConfirm?: () => void;
+        confirmDeleteFund?: () => Promise<void>;
+        refreshTickerMetadata?: () => Promise<void>;
+        rebuildPortfolio?: () => Promise<void>;
     }
     
     // ApexCharts removed - all charts now use Plotly

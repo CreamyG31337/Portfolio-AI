@@ -895,12 +895,21 @@ def api_logs_ollama():
         search = request.args.get('search', '')
         page = int(request.args.get('page', 1))
         
+        # Validate inputs
+        if limit < 1 or limit > 10000:
+            limit = 100
+        if page < 1:
+            page = 1
+        
         all_lines = _get_cached_ollama_log_lines()
         
         # Filter by search if provided
         if search:
             search_lower = search.lower()
-            all_lines = [line for line in all_lines if search_lower in line.lower()]
+            all_lines = [line for line in all_lines if line and search_lower in line.lower()]
+        
+        # Filter out empty lines
+        all_lines = [line for line in all_lines if line and line.strip()]
         
         # Pagination
         total = len(all_lines)
@@ -911,19 +920,25 @@ def api_logs_ollama():
         # Format logs (Ollama logs may not have structured format)
         logs = []
         for line in lines:
-            logs.append({
-                'timestamp': '',  # Ollama logs may not have timestamps
-                'level': 'INFO',
-                'module': 'ollama',
-                'message': line
-            })
+            if line and line.strip():  # Only add non-empty lines
+                logs.append({
+                    'timestamp': '',  # Ollama logs may not have timestamps
+                    'level': 'INFO',
+                    'module': 'ollama',
+                    'message': line.strip()
+                })
+        
+        pages = (total + limit - 1) // limit if total > 0 else 1
         
         return jsonify({
             'logs': logs,
             'total': total,
             'page': page,
-            'pages': (total + limit - 1) // limit if total > 0 else 1
+            'pages': pages
         })
+    except ValueError as e:
+        logger.error(f"Invalid parameter in Ollama logs request: {e}")
+        return jsonify({"error": f"Invalid parameter: {str(e)}"}), 400
     except Exception as e:
         logger.error(f"Error fetching Ollama logs: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -1392,6 +1407,10 @@ def api_run_job(job_id):
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot run jobs"}), 403
+        
+        # Check if scheduler is running
+        if not is_scheduler_running():
+            return jsonify({"error": "Scheduler is not running. Please start the scheduler first."}), 400
             
         params = request.get_json() or {}
         
@@ -1412,10 +1431,22 @@ def api_run_job(job_id):
         if success:
             return jsonify({"success": True, "message": "Job started successfully"})
         else:
-            return jsonify({"error": "Failed to start job (check logs)"}), 500
+            # Check if job exists
+            try:
+                scheduler = get_scheduler(create=False)
+                if scheduler:
+                    job = scheduler.get_job(job_id)
+                    if not job:
+                        return jsonify({"error": f"Job '{job_id}' not found. It may not be registered or may have been removed."}), 404
+                    if not job.func:
+                        return jsonify({"error": f"Job '{job_id}' has no function attached. This is a configuration error."}), 500
+            except Exception as check_error:
+                logger.warning(f"Error checking job status: {check_error}")
+            
+            return jsonify({"error": "Failed to start job. Check server logs for details."}), 500
     except Exception as e:
-        logger.error(f"Error running job: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error running job {job_id}: {e}", exc_info=True)
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @admin_bp.route('/api/admin/scheduler/jobs/<job_id>/pause', methods=['POST'])
 @require_admin
@@ -1891,7 +1922,7 @@ def api_add_contribution():
         logger.error(f"Error adding contribution: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-@admin_bp.route('/api/admin/contributions/summary')
+@admin_bp.route('/api/admin/contributions/summary', methods=['GET'])
 @require_admin
 def api_contributions_summary():
     """Get contributor summary (aggregated).
@@ -1995,9 +2026,11 @@ def api_ai_status():
         ollama_ok = False
         ollama_msg = ""
         try:
-             ollama_ok, ollama_msg = check_ollama_health()
+            ollama_ok = check_ollama_health()
+            ollama_msg = "Online" if ollama_ok else "Offline"
         except Exception as e:
-             ollama_msg = str(e)
+            ollama_msg = str(e)
+            logger.error(f"Error checking Ollama health: {e}", exc_info=True)
              
         # Postgres
         pg_status = get_postgres_status_cached()
@@ -2007,7 +2040,8 @@ def api_ai_status():
             "postgres": pg_status
         })
     except Exception as e:
-         return jsonify({"error": str(e)}), 500
+        logger.error(f"Error in api_ai_status: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 @admin_bp.route('/api/admin/ai/settings', methods=['GET'])
 @require_admin

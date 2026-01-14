@@ -5,24 +5,11 @@
 {% block content %}
 <div class="px-4 py-6">
     <!-- Header -->
-    <div class="mb-6 flex justify-between items-center">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <span class="text-3xl">📈</span> Trade Entry
-            </h1>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Record manual trades or parse from emails</p>
-        </div>
-
-        <!-- Global Fund Selector (managed by base.js/funds.js but we can reuse or just have a local one) -->
-        <div class="w-64">
-            <label for="trade-fund-select"
-                class="block mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">Selected Fund</label>
-            <select id="trade-fund-select"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white">
-                <option value="" disabled selected>Select a fund...</option>
-                <!-- Populated by JS -->
-            </select>
-        </div>
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <span class="text-3xl">📈</span> Trade Entry
+        </h1>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Record manual trades or parse from emails. Use the fund selector in the sidebar menu.</p>
     </div>
 
     <!-- Tabs -->

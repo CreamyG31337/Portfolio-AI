@@ -237,8 +237,37 @@
             document.getElementById('logs-container').classList.add('hidden');
             document.getElementById('error-message').classList.add('hidden');
 
-            const response = await fetch(url);
-            const data = await response.json();
+            // Add timeout to prevent hanging
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+            
+            let response;
+            try {
+                response = await fetch(url, { 
+                    credentials: 'include',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+            } catch (fetchError) {
+                clearTimeout(timeoutId);
+                if (fetchError.name === 'AbortError') {
+                    throw new Error('Request timed out after 10 seconds. The server may be slow or unresponsive.');
+                }
+                throw fetchError;
+            }
+            
+            // Check if response is JSON before parsing
+            const contentType = response.headers.get('content-type');
+            const isJson = contentType && contentType.includes('application/json');
+            
+            let data;
+            if (isJson) {
+                data = await response.json();
+            } else {
+                // If not JSON, try to get text for error message
+                const text = await response.text();
+                throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
+            }
             
             if (!response.ok) {
                 // Show full error with traceback
@@ -274,13 +303,44 @@
 
         const url = `/api/logs/ollama?limit=${limit}&search=${encodeURIComponent(search)}&page=${currentPageOllama}`;
 
+        console.log('[Ollama Logs] Fetching logs from:', url);
+
         try {
             document.getElementById('loading-ollama').classList.remove('hidden');
             document.getElementById('logs-container-ollama').classList.add('hidden');
             document.getElementById('error-message-ollama').classList.add('hidden');
 
-            const response = await fetch(url);
-            const data = await response.json();
+            // Add timeout to prevent hanging
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+            
+            let response;
+            try {
+                response = await fetch(url, { 
+                    credentials: 'include',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+            } catch (fetchError) {
+                clearTimeout(timeoutId);
+                if (fetchError.name === 'AbortError') {
+                    throw new Error('Request timed out after 10 seconds. The server may be slow or unresponsive.');
+                }
+                throw fetchError;
+            }
+            
+            // Check if response is JSON before parsing
+            const contentType = response.headers.get('content-type');
+            const isJson = contentType && contentType.includes('application/json');
+            
+            let data;
+            if (isJson) {
+                data = await response.json();
+            } else {
+                // If not JSON, try to get text for error message
+                const text = await response.text();
+                throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
+            }
             
             if (!response.ok) {
                 // Show full error with traceback
@@ -301,16 +361,24 @@
                 return;
             }
             
+            console.log('[Ollama Logs] Received data:', { logs: data.logs?.length || 0, total: data.total, page: data.page });
+            
             displayOllamaLogs(data);
 
             document.getElementById('loading-ollama').classList.add('hidden');
             document.getElementById('logs-container-ollama').classList.remove('hidden');
+            console.log('[Ollama Logs] Successfully displayed logs');
         } catch (error) {
+            console.error('[Ollama Logs] Fetch error:', error);
             document.getElementById('loading-ollama').classList.add('hidden');
             document.getElementById('error-message-ollama').classList.remove('hidden');
             const errorText = error.message || String(error);
             document.getElementById('error-text-ollama').textContent = errorText;
-            console.error('Ollama logs fetch error:', error);
+            console.error('Ollama logs fetch error details:', {
+                message: error.message,
+                name: error.name,
+                stack: error.stack
+            });
         }
     }
 

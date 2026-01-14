@@ -225,10 +225,10 @@
                                 <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Jobs Scheduler</span>
                                 {% if scheduler_status == 'running' %}
                                 <span
-                                    class="inline-flex items-center justify-center w-3 h-3 p-3 ms-3 text-sm font-medium text-green-800 bg-green-100 rounded-full dark:bg-green-900 dark:text-green-300 sidebar-badge">Run</span>
+                                    class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-green-800 bg-green-100 rounded-full dark:bg-green-900 dark:text-green-300 sidebar-badge">Running</span>
                                 {% else %}
                                 <span
-                                    class="inline-flex items-center justify-center w-3 h-3 p-3 ms-3 text-sm font-medium text-red-800 bg-red-100 rounded-full dark:bg-red-900 dark:text-red-300 sidebar-badge">Stop</span>
+                                    class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-red-800 bg-red-100 rounded-full dark:bg-red-900 dark:text-red-300 sidebar-badge">Stopped</span>
                                 {% endif %}
                             </a>
                         </li>
@@ -515,6 +515,52 @@
     </script>
 
     {% block extra_scripts %}{% endblock %}
+    
+    <!-- Scheduler Status Badge Auto-Update -->
+    <script>
+        // Update scheduler status badge in navigation menu
+        async function updateSchedulerBadge() {
+            try {
+                const response = await fetch('/api/admin/scheduler/status');
+                if (!response.ok) {
+                    // If not authorized or endpoint unavailable, silently fail
+                    return;
+                }
+                const data = await response.json();
+                
+                // Find the badge within the Jobs Scheduler link
+                const schedulerLink = Array.from(document.querySelectorAll('a')).find(
+                    link => link.href.includes('scheduler') || link.textContent.includes('Jobs Scheduler')
+                );
+                
+                if (!schedulerLink) return;
+                
+                const badge = schedulerLink.querySelector('.sidebar-badge');
+                if (!badge) return;
+                
+                if (data.scheduler_running) {
+                    badge.textContent = 'Running';
+                    badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-green-800 bg-green-100 rounded-full dark:bg-green-900 dark:text-green-300 sidebar-badge';
+                } else {
+                    badge.textContent = 'Stopped';
+                    badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-red-800 bg-red-100 rounded-full dark:bg-red-900 dark:text-red-300 sidebar-badge';
+                }
+            } catch (error) {
+                // Silently fail - badge will show server-rendered status
+                console.debug('Scheduler badge update failed (non-critical):', error);
+            }
+        }
+        
+        // Initial update and then poll every 5 seconds
+        document.addEventListener('DOMContentLoaded', () => {
+            // Only update if user is admin (badge exists)
+            const badge = document.querySelector('a[href*="scheduler"] .sidebar-badge');
+            if (badge) {
+                updateSchedulerBadge();
+                setInterval(updateSchedulerBadge, 5000);
+            }
+        });
+    </script>
 </body>
 
 </html>

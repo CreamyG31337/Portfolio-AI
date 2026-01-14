@@ -280,7 +280,7 @@ function updateStatusUI(running: boolean): void {
             elements.runningContainer.classList.remove('hidden');
         }
         if (elements.infoText) {
-            elements.infoText.textContent = `Running normally • Last updated: ${new Date().toLocaleTimeString()}`;
+            elements.infoText.textContent = `Running normally • Last updated: ${new Date().toLocaleString()}`;
         }
         // Hide start button when running
         if (elements.startBtn) {
@@ -336,6 +336,22 @@ function renderJobs(jobsData: Job[]): void {
         return;
     }
 
+    // Before re-rendering, save which parameter forms are currently open
+    const openParamForms: string[] = [];
+    if (elements.jobsList) {
+        const paramForms = elements.jobsList.querySelectorAll('.parameter-form');
+        paramForms.forEach((form) => {
+            if (!form.classList.contains('hidden')) {
+                // Extract job ID from the form ID (format: params-{jobId})
+                const formId = form.id;
+                if (formId.startsWith('params-')) {
+                    const jobId = formId.substring(7); // Remove 'params-' prefix
+                    openParamForms.push(jobId);
+                }
+            }
+        });
+    }
+
     if (elements.noJobs) {
         elements.noJobs.classList.add('hidden');
     }
@@ -343,6 +359,15 @@ function renderJobs(jobsData: Job[]): void {
         const jobCards = jobs.map(job => createJobCard(job));
         elements.jobsList.innerHTML = jobCards.join('');
         console.log('[Jobs] Rendered', jobs.length, 'job cards to element:', elements.jobsList.id);
+        
+        // Restore open parameter forms after re-rendering
+        openParamForms.forEach(jobId => {
+            const paramForm = document.getElementById(`params-${jobId}`);
+            if (paramForm) {
+                paramForm.classList.remove('hidden');
+                console.log('[Jobs] Restored open parameter form for job:', jobId);
+            }
+        });
     } else {
         console.error('[Jobs] jobsList element not found! Cannot render jobs.', {
             available_ids: Array.from(document.querySelectorAll('[id*="job"]')).map(el => el.id),
@@ -383,7 +408,7 @@ function createJobCard(job: Job): string {
                 <div class="max-h-32 overflow-y-auto">
                     ${job.recent_logs.map(log => `
                         <div class="log-entry ${getLogClass(log.level || '')}">
-                            <span class="text-gray-400">[${new Date(log.timestamp).toLocaleTimeString()}]</span>
+                            <span class="text-gray-400">[${new Date(log.timestamp).toLocaleString()}]</span>
                             <span class="${getLogLevelColor(log.level || '')} font-bold">${log.level || 'INFO'}</span>: 
                             ${escapeHtmlForJobs(log.message)}
                         </div>
@@ -675,13 +700,25 @@ async function handleJobAction(e: Event): Promise<void> {
     try {
         const response = await fetch(`/api/admin/scheduler/jobs/${jobId}/${action}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
         });
 
-        const data: JobsApiResponse = await response.json();
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        
+        let data: JobsApiResponse;
+        if (isJson) {
+            data = await response.json();
+        } else {
+            // If not JSON, try to get text for error message
+            const text = await response.text();
+            throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
+        }
 
         if (!response.ok) {
-            throw new Error(data.error || 'Action failed');
+            throw new Error(data.error || `Action failed (${response.status})`);
         }
 
         // Refresh immediately
@@ -699,10 +736,26 @@ async function handleJobAction(e: Event): Promise<void> {
 
 async function startScheduler(): Promise<void> {
     try {
-        const response = await fetch('/api/admin/scheduler/start', { method: 'POST' });
-        const data: JobsApiResponse = await response.json();
+        const response = await fetch('/api/admin/scheduler/start', { 
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        
+        let data: JobsApiResponse;
+        if (isJson) {
+            data = await response.json();
+        } else {
+            // If not JSON, try to get text for error message
+            const text = await response.text();
+            throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
+        }
+        
         if (!response.ok) {
-            throw new Error(data.error || 'Failed to start scheduler');
+            throw new Error(data.error || `Failed to start scheduler (${response.status})`);
         }
         fetchStatus();
     } catch (error) {
@@ -780,12 +833,25 @@ async function runJobWithParams(id: string, actualJobId: string): Promise<void> 
         const response = await fetch(`/api/admin/scheduler/jobs/${actualJobId}/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(params)
+            body: JSON.stringify(params),
+            credentials: 'include'
         });
-        const data: JobsApiResponse = await response.json();
+        
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        
+        let data: JobsApiResponse;
+        if (isJson) {
+            data = await response.json();
+        } else {
+            // If not JSON, try to get text for error message
+            const text = await response.text();
+            throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
+        }
 
         if (!response.ok) {
-            throw new Error(data.error || 'Failed to run job');
+            throw new Error(data.error || `Failed to run job (${response.status})`);
         }
 
         // Hide params and refresh
