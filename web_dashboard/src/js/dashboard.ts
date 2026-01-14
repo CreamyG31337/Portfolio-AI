@@ -1551,8 +1551,9 @@ function renderSectorChart(data: AllocationChartData): void {
     // Update layout height to match container and ensure centered margins
     const layout = { ...data.layout };
     
-    // Get actual container height or use default
-    const containerHeight = chartEl.offsetHeight || 700;
+    // Use fixed height of 700px to match HTML container height
+    // Reading offsetHeight can be unreliable due to flex container constraints
+    const containerHeight = 700;
     layout.height = containerHeight;
     layout.autosize = true;
     
