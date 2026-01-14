@@ -94,6 +94,9 @@ def main():
 
         # Now start Streamlit (blocks until container stops)
         logger.info("Launching Streamlit application...")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize background services: {e}", exc_info=True)
+        # Continue anyway - Streamlit might still work
     
     # Verify pages directory exists
     pages_dir = os.path.join(web_dashboard_dir, "pages")
