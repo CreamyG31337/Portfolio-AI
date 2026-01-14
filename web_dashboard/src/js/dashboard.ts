@@ -1577,11 +1577,14 @@ function renderSectorChart(data: AllocationChartData): void {
         console.log('[Dashboard] Sector chart rendered with Plotly');
         
         // Add resize handler to redraw chart when window resizes (only once)
+        // Use relayout instead of resize to maintain fixed height of 700px
         if (!(window as any).__sectorChartResizeHandler) {
             const resizeHandler = () => {
                 const Plotly = (window as any).Plotly;
-                if (Plotly && document.getElementById('sector-chart')) {
-                    Plotly.Plots.resize('sector-chart');
+                const el = document.getElementById('sector-chart');
+                if (Plotly && el) {
+                    // Relayout with fixed height to prevent flex container shrinking
+                    Plotly.relayout('sector-chart', { height: 700 });
                 }
             };
             (window as any).__sectorChartResizeHandler = resizeHandler;
