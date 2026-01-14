@@ -80,6 +80,18 @@ class SocialSentimentService:
         # FlareSolverr URL (can be overridden per instance if needed)
         self.flaresolverr_url = FLARESOLVERR_URL
     
+    def _wait_for_reddit_rate_limit(self, min_interval: float = 2.0) -> None:
+        """Enforce rate limit between Reddit requests.
+
+        Args:
+            min_interval: Minimum seconds between requests (default: 2.0)
+        """
+        now = time.time()
+        elapsed = now - getattr(self, 'last_reddit_request_time', 0)
+        if elapsed < min_interval:
+            time.sleep(min_interval - elapsed)
+        self.last_reddit_request_time = time.time()
+
     def make_flaresolverr_request(self, url: str) -> Optional[Dict[str, Any]]:
         """Make a request through FlareSolverr to bypass Cloudflare protection.
         
@@ -370,13 +382,6 @@ class SocialSentimentService:
         """
         fetch_start = time.time()
         try:
-            # Rate limiting: ensure at least 2 seconds between Reddit requests
-            now = time.time()
-            elapsed = now - getattr(self, 'last_reddit_request_time', 0)
-            if elapsed < 2:
-                time.sleep(2 - elapsed)
-            self.last_reddit_request_time = time.time()
-            
             # Use browser-like User-Agent to avoid 429 errors
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -448,6 +453,9 @@ class SocialSentimentService:
                         # Format: /r/subreddit/search.json?q=query&sort=relevance&t=week&limit=25&restrict_sr=1
                         url = f"https://www.reddit.com/r/{subreddit_name}/search.json?q={query}&sort=relevance&t=week&limit=25&restrict_sr=1"
                         
+                        # Rate limiting before request
+                        self._wait_for_reddit_rate_limit()
+
                         response = requests.get(url, headers=headers, timeout=10)
                         
                         # Handle rate limiting
@@ -511,9 +519,6 @@ class SocialSentimentService:
                                             # Log filtered posts for debugging
                                             logger.debug(f"Filtered out post for {ticker} in r/{subreddit_name}: '{title[:50]}...' (no ticker mention)")
                         
-                        # Small delay between subreddit searches to be respectful
-                        time.sleep(0.5)
-                    
                     except requests.exceptions.HTTPError as e:
                         if e.response.status_code == 429:
                             logger.warning(f"Reddit rate limit for {ticker} in r/{subreddit_name}. Skipping.")
@@ -680,20 +685,14 @@ class SocialSentimentService:
         try:
             logger.info(f"🔎 Scanning r/{subreddit} for opportunities...")
             
-            # Rate limiting check
-            now = time.time()
-            elapsed = now - getattr(self, 'last_reddit_request_time', 0)
-            if elapsed < 2:
-                time.sleep(2 - elapsed)
-            
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
             
-            # Fetch top posts
+            # Fetch top posts with rate limiting
             url = f"https://www.reddit.com/r/{subreddit}/top.json?t=day&limit={limit}"
+            self._wait_for_reddit_rate_limit()
             response = requests.get(url, headers=headers, timeout=10)
-            self.last_reddit_request_time = time.time()
             
             if response.status_code == 429:
                 logger.warning(f"Rate limited scanning r/{subreddit}")
@@ -727,12 +726,10 @@ class SocialSentimentService:
                 comments_text = ""
                 try:
                     # Rate limit for comment fetch
-                    time.sleep(2) 
-                    
                     comments_url = f"https://www.reddit.com/comments/{post_id}.json?sort=top&limit=10"
+                    self._wait_for_reddit_rate_limit()
                     
                     c_resp = requests.get(comments_url, headers=headers, timeout=10)
-                    self.last_reddit_request_time = time.time()
                     
                     if c_resp.status_code == 200:
                         c_data = c_resp.json()
