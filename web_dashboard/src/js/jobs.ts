@@ -12,7 +12,7 @@
 console.log('[Jobs] jobs.ts file loaded and executing...');
 
 // Export empty object to make this a module
-export {};
+export { };
 
 // Type definitions
 interface Job {
@@ -22,7 +22,7 @@ interface Job {
     next_run?: string | null;
     trigger?: string;
     status?: 'running' | 'error' | 'idle' | 'paused';
-    parameters?: Record<string, string>;
+    parameters?: Record<string, JobParameter>;
     scheduler_stopped?: boolean;
     has_schedule?: boolean;
     recent_logs?: JobLogEntry[];
@@ -38,6 +38,13 @@ interface JobLogEntry {
     message: string;
     success?: boolean;
     duration_ms?: number;
+}
+
+interface JobParameter {
+    type: 'text' | 'number' | 'date' | 'boolean';
+    default?: any;
+    description?: string;
+    optional?: boolean;
 }
 
 interface JobsStatusResponse {
@@ -114,7 +121,7 @@ function initializeDOMElements(): void {
     elements.errorMsg = document.getElementById('error-message');
     elements.errorText = document.getElementById('error-text');
     elements.autoRefreshCheckbox = document.getElementById('auto-refresh') as HTMLInputElement | null;
-    
+
     console.log('[Jobs] DOM elements initialized:', {
         statusContainer: !!elements.statusContainer,
         errorContainer: !!elements.errorContainer,
@@ -129,10 +136,10 @@ function initializeDOMElements(): void {
 // Initialize
 document.addEventListener('DOMContentLoaded', (): void => {
     console.log('[Jobs] DOMContentLoaded event fired, initializing jobs page...');
-    
+
     // Initialize DOM elements
     initializeDOMElements();
-    
+
     fetchStatus();
     startAutoRefresh();
 
@@ -158,7 +165,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
         });
         console.log('[Jobs] Auto-refresh checkbox listener attached');
     }
-    
+
     // Expose refreshJobs globally for onclick handlers
     if (typeof window !== 'undefined') {
         (window as any).refreshJobs = fetchStatus;
@@ -191,14 +198,14 @@ function stopAutoRefresh(): void {
 async function fetchStatus(): Promise<void> {
     const startTime = performance.now();
     console.log('[Jobs] fetchStatus() called, fetching scheduler status...');
-    
+
     try {
         const url = '/api/admin/scheduler/status';
         console.log('[Jobs] Making API request to:', url);
-        
+
         const response = await fetch(url, { credentials: 'include' });
         const duration = performance.now() - startTime;
-        
+
         console.log('[Jobs] API response received:', {
             status: response.status,
             statusText: response.statusText,
@@ -206,7 +213,7 @@ async function fetchStatus(): Promise<void> {
             duration: `${duration.toFixed(2)}ms`,
             url: url
         });
-        
+
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
             console.error('[Jobs] API error response:', {
@@ -218,7 +225,7 @@ async function fetchStatus(): Promise<void> {
             });
             throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data: JobsStatusResponse = await response.json();
         console.log('[Jobs] Status data received:', {
             scheduler_running: data.scheduler_running,
@@ -229,7 +236,7 @@ async function fetchStatus(): Promise<void> {
             raw_data_keys: Object.keys(data),
             jobs_sample: data.jobs && data.jobs.length > 0 ? data.jobs[0] : null
         });
-        
+
         // Log full response for debugging (truncated)
         if (data.jobs && data.jobs.length > 0) {
             console.log('[Jobs] First job sample:', JSON.stringify(data.jobs[0], null, 2));
@@ -239,7 +246,7 @@ async function fetchStatus(): Promise<void> {
 
         updateStatusUI(data.scheduler_running);
         renderJobs(data.jobs);
-        
+
         console.log('[Jobs] fetchStatus() completed successfully');
     } catch (error) {
         const duration = performance.now() - startTime;
@@ -305,14 +312,14 @@ function updateStatusUI(running: boolean): void {
 
 // Render Jobs
 function renderJobs(jobsData: Job[]): void {
-    console.log('[Jobs] renderJobs called:', { 
+    console.log('[Jobs] renderJobs called:', {
         jobs_count: jobsData ? jobsData.length : 0,
         has_jobsList: !!elements.jobsList,
         jobsList_id: elements.jobsList?.id,
         jobsList_element: elements.jobsList
     });
     jobs = jobsData || [];
-    
+
     if (elements.jobsLoading) {
         elements.jobsLoading.classList.add('hidden');
         console.log('[Jobs] Hidden loading indicator');
@@ -389,23 +396,125 @@ function createJobCard(job: Job): string {
     // Parameters HTML
     let paramsHtml = '';
     if (job.parameters && Object.keys(job.parameters).length > 0) {
-        paramsHtml = `
-            <div class="mt-4 parameter-form hidden" id="params-${job.id}">
-                <h4 class="text-sm font-semibold mb-2">Run with Parameters</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    ${Object.entries(job.parameters).map(([key, desc]) => `
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">${key}</label>
-                            <input type="text" data-param="${key}" placeholder="${desc}" 
-                                class="w-full text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 p-1">
-                        </div>
-                    `).join('')}
+        const params = job.parameters;
+
+        // Define helpers within closure to generate HTML
+        const renderInput = (key: string, p: JobParameter) => {
+            const label = p.description || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const defaultValue = p.default !== undefined ? p.default : '';
+
+            if (p.type === 'boolean') {
+                const isChecked = defaultValue === true ? 'checked' : '';
+                return `
+                    <div class="flex items-center mt-4 mb-2">
+                        <input type="checkbox" id="param-${job.id}-${key}" data-param="${key}" 
+                               class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" ${isChecked}>
+                        <label for="param-${job.id}-${key}" class="ml-2 block text-sm text-gray-900 leading-none">
+                            ${label}
+                        </label>
+                    </div>
+                `;
+            } else if (p.type === 'date') {
+                // Default to today if no default provided for date inputs
+                let val = defaultValue;
+                if (!val && !p.optional) {
+                    val = new Date().toISOString().split('T')[0];
+                }
+                return `
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">${label}</label>
+                        <input type="date" data-param="${key}" value="${val}" 
+                            class="w-full text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 p-1">
+                    </div>
+                `;
+            } else if (p.type === 'number') {
+                return `
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">${label}</label>
+                        <input type="number" data-param="${key}" value="${defaultValue}" 
+                            class="w-full text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 p-1">
+                    </div>
+                `;
+            } else {
+                return `
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">${label}</label>
+                        <input type="text" data-param="${key}" placeholder="${defaultValue}" value="${defaultValue}"
+                            class="w-full text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 p-1">
+                    </div>
+                `;
+            }
+        };
+
+        // Special handling for use_date_range logic
+        const hasDateRange = 'use_date_range' in params;
+        let fieldsHtml = '';
+
+        if (hasDateRange) {
+            // Render use_date_range checkbox
+            fieldsHtml += `
+                <div class="col-span-full mb-2">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="param-${job.id}-use_date_range" data-param="use_date_range" 
+                               onchange="toggleDateRange('${job.id}', this)"
+                               class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                        <label for="param-${job.id}-use_date_range" class="ml-2 block text-sm font-medium text-gray-900">
+                            Use Date Range
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 ml-6 mt-0.5">Process data for a range of dates instead of a single day</p>
                 </div>
-                <div class="mt-3 flex justify-end">
-                     <button class="text-xs text-gray-500 mr-2 hover:text-gray-700" onclick="toggleParams('${job.id}')">Cancel</button>
-                     <button class="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700" 
+            `;
+
+            // Render Single Date Group (Target Date)
+            fieldsHtml += '<div class="col-span-full param-group-single-date">';
+            if (params['target_date']) {
+                fieldsHtml += renderInput('target_date', params['target_date']);
+            }
+            fieldsHtml += '</div>';
+
+            // Render Date Range Group (From/To) - Hidden by default
+            fieldsHtml += '<div class="col-span-full grid grid-cols-2 gap-3 param-group-date-range hidden">';
+            if (params['from_date']) {
+                fieldsHtml += renderInput('from_date', params['from_date']);
+            }
+            if (params['to_date']) {
+                fieldsHtml += renderInput('to_date', params['to_date']);
+            }
+            fieldsHtml += '</div>';
+
+            // Render other params
+            Object.entries(params).forEach(([key, p]) => {
+                if (key !== 'use_date_range' && key !== 'target_date' && key !== 'from_date' && key !== 'to_date') {
+                    fieldsHtml += renderInput(key, p as JobParameter);
+                }
+            });
+
+        } else {
+            // standard rendering
+            Object.entries(params).forEach(([key, p]) => {
+                fieldsHtml += renderInput(key, p as JobParameter);
+            });
+        }
+
+        paramsHtml = `
+            <div class="mt-4 parameter-form hidden bg-gray-50 p-4 rounded-md border border-gray-200" id="params-${job.id}">
+                <div class="flex justify-between items-center mb-3">
+                    <h4 class="text-sm font-bold text-gray-800">⚙️ Job Parameters</h4>
+                    <button class="text-xs text-gray-500 hover:text-gray-700" onclick="toggleParams('${job.id}')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${fieldsHtml}
+                </div>
+                
+                <div class="mt-4 flex justify-end border-t border-gray-200 pt-3">
+                     <button class="text-sm text-gray-600 mr-3 hover:text-gray-800 px-3 py-1.5" onclick="toggleParams('${job.id}')">Cancel</button>
+                     <button class="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 shadow-sm flex items-center run-btn" 
                         onclick="runJobWithParams('${job.id}', '${job.actual_job_id || job.id}')">
-                        Run Now
+                        <i class="fas fa-play mr-1.5 text-xs"></i> Run Now
                      </button>
                 </div>
             </div>
@@ -602,11 +711,28 @@ async function startScheduler(): Promise<void> {
     }
 }
 
+
 // Global functions for inline onclick handlers
 function toggleParams(id: string): void {
     const el = document.getElementById(`params-${id}`);
     if (el) {
         el.classList.toggle('hidden');
+    }
+}
+
+function toggleDateRange(jobId: string, checkbox: HTMLInputElement): void {
+    const container = document.getElementById(`params-${jobId}`);
+    if (!container) return;
+
+    const singleDateGroup = container.querySelector('.param-group-single-date');
+    const dateRangeGroup = container.querySelector('.param-group-date-range');
+
+    if (checkbox.checked) {
+        singleDateGroup?.classList.add('hidden');
+        dateRangeGroup?.classList.remove('hidden');
+    } else {
+        singleDateGroup?.classList.remove('hidden');
+        dateRangeGroup?.classList.add('hidden');
     }
 }
 
@@ -616,25 +742,48 @@ async function runJobWithParams(id: string, actualJobId: string): Promise<void> 
         return;
     }
 
-    const inputs = container.querySelectorAll<HTMLInputElement>('input');
-    const params: Record<string, string> = {};
+    const inputs = container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select');
+    const params: Record<string, any> = {};
+
+    // Check for date range mode
+    const useDateRangeInfo = container.querySelector('input[data-param="use_date_range"]') as HTMLInputElement;
+    const isDateRangeMode = useDateRangeInfo && useDateRangeInfo.checked;
 
     inputs.forEach(input => {
-        if (input.value.trim()) {
-            const paramKey = input.getAttribute('data-param');
-            if (paramKey) {
-                params[paramKey] = input.value.trim();
+        const paramKey = input.getAttribute('data-param');
+        if (!paramKey) return;
+
+        // Skip fields that are hidden due to date range logic
+        if (paramKey === 'target_date' && isDateRangeMode) return;
+        if ((paramKey === 'from_date' || paramKey === 'to_date') && !isDateRangeMode) return;
+
+        if (input.type === 'checkbox') {
+            params[paramKey] = (input as HTMLInputElement).checked;
+        } else if (input.type === 'number') {
+            const val = parseFloat(input.value);
+            if (!isNaN(val)) {
+                params[paramKey] = val;
             }
+        } else if (input.value.trim() !== '') {
+            params[paramKey] = input.value.trim();
         }
     });
 
     try {
+        const btn = container.querySelector('button.run-btn') as HTMLButtonElement;
+        const originalContent = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+            btn.disabled = true;
+        }
+
         const response = await fetch(`/api/admin/scheduler/jobs/${actualJobId}/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(params)
         });
         const data: JobsApiResponse = await response.json();
+
         if (!response.ok) {
             throw new Error(data.error || 'Failed to run job');
         }
@@ -643,9 +792,18 @@ async function runJobWithParams(id: string, actualJobId: string): Promise<void> 
         toggleParams(id);
         fetchStatus();
 
+        // Show success toast/message
+        // You might want to implement a toast notification here
+
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         showJobsError(errorMessage);
+    } finally {
+        const btn = container.querySelector('button.run-btn') as HTMLButtonElement;
+        if (btn) {
+            btn.innerHTML = 'Run Now';
+            btn.disabled = false;
+        }
     }
 }
 
@@ -654,6 +812,7 @@ async function runJobWithParams(id: string, actualJobId: string): Promise<void> 
 if (typeof window !== 'undefined') {
     (window as any).refreshJobs = fetchStatus;
     (window as any).toggleParams = toggleParams;
+    (window as any).toggleDateRange = toggleDateRange;
     (window as any).runJobWithParams = runJobWithParams;
-    console.log('[Jobs] Global functions exposed: refreshJobs, toggleParams, runJobWithParams');
+    console.log('[Jobs] Global functions exposed: refreshJobs, toggleParams, toggleDateRange, runJobWithParams');
 }

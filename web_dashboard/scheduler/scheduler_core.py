@@ -1440,9 +1440,13 @@ def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
     import time
     start_time = time.perf_counter()
     
-    import time
-    start_time = time.perf_counter()
-    
+    # Import AVAILABLE_JOBS for parameter definitions
+    try:
+        from scheduler.jobs import AVAILABLE_JOBS
+    except ImportError:
+        # Fallback if import fails (shouldn't happen in normal operation)
+        AVAILABLE_JOBS = {}
+        
     # Use create=False to avoid creating a new scheduler instance if one doesn't exist
     # This prevents "Duplicate scheduler created" logs from UI workers
     scheduler = get_scheduler(create=False)
@@ -1506,7 +1510,8 @@ def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
             'last_error': None,
             'recent_logs': [],
             'scheduler_stopped': scheduler_stopped,  # Flag to help frontend show appropriate message
-            'has_schedule': has_schedule  # Flag to show if job has a schedule
+            'has_schedule': has_schedule,  # Flag to show if job has a schedule
+            'parameters': AVAILABLE_JOBS.get(job.id, {}).get('parameters', {})  # Expose parameters for frontend UI
         }
     
     # Batch query 1: Get all running jobs
