@@ -46,7 +46,7 @@ def main():
     try:
         import threading
         import time
-        import os
+        # Note: os is already imported at module level - don't re-import here
         from scheduler.scheduler_core import start_scheduler
         
         def _run_scheduler():
