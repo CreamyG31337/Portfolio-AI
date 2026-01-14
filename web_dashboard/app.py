@@ -750,6 +750,93 @@ try:
 except Exception as e:
     logger.error(f"Failed to register Dashboard Blueprint: {e}", exc_info=True)
 
+# Fallback route for dashboard if blueprint registration fails
+# This prevents 404 errors and provides helpful error info
+@app.route('/v2/dashboard')
+def dashboard_fallback():
+    """Fallback route when dashboard blueprint fails to register"""
+    return f"""
+    <html>
+        <head>
+            <title>Dashboard Unavailable</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    padding: 2rem;
+                    line-height: 1.6;
+                    background: #f9fafb;
+                }}
+                .container {{
+                    max-width: 600px;
+                    margin: 2rem auto;
+                    background: white;
+                    padding: 2rem;
+                    border-radius: 8px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                }}
+                h1 {{
+                    color: #dc2626;
+                    margin-top: 0;
+                    border-bottom: 2px solid #fee2e2;
+                    padding-bottom: 0.5rem;
+                }}
+                .error-icon {{
+                    font-size: 3rem;
+                    margin-bottom: 1rem;
+                }}
+                .info {{
+                    background: #eff6ff;
+                    border-left: 4px solid #3b82f6;
+                    padding: 1rem;
+                    margin: 1rem 0;
+                }}
+                .actions {{
+                    margin-top: 1.5rem;
+                }}
+                .action-link {{
+                    display: inline-block;
+                    padding: 0.5rem 1rem;
+                    background: #3b82f6;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 4px;
+                    margin-right: 0.5rem;
+                }}
+                .action-link:hover {{
+                    background: #2563eb;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="error-icon">⚠️</div>
+                <h1>Dashboard Unavailable</h1>
+                <p>The dashboard route failed to initialize due to a code error.</p>
+                
+                <div class="info">
+                    <strong>What this means:</strong><br>
+                    The dashboard routes are currently unavailable because an error occurred during initialization.
+                    This is typically caused by an import error, missing dependency, or runtime error in the code.
+                </div>
+                
+                <p><strong>What to do:</strong></p>
+                <ul>
+                    <li>Check the server logs for detailed error information</li>
+                    <li>Review recent code changes for syntax or import errors</li>
+                    <li>Ensure all required dependencies are installed</li>
+                    <li>Try restarting the Flask server</li>
+                </ul>
+                
+                <div class="actions">
+                    <a href="/" class="action-link">Go to Home</a>
+                    <a href="/auth" class="action-link">Login Page</a>
+                </div>
+            </div>
+        </body>
+    </html>
+    """, 503  # Service Unavailable (more appropriate than 404 or 500)
+
+
 # Root route - redirect to dashboard
 @app.route('/')
 def index():
