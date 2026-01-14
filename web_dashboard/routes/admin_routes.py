@@ -170,7 +170,7 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
 
 # Cached log helper
 @cache_data(ttl=5)
-def _get_cached_application_logs(level_filter, search, exclude_modules):
+def _get_cached_application_logs(level_filter, search, exclude_modules, since_deployment=False):
     """Get application logs with caching (5s TTL for near real-time)"""
     from log_handler import read_logs_from_file
     
@@ -181,7 +181,8 @@ def _get_cached_application_logs(level_filter, search, exclude_modules):
             level=level_filter,
             search=search if search else None,
             return_all=True,
-            exclude_modules=exclude_modules if exclude_modules else None
+            exclude_modules=exclude_modules if exclude_modules else None,
+            since_deployment=since_deployment
         )
         
         # Convert datetime objects to strings for cache compatibility
@@ -854,6 +855,7 @@ def api_logs_application():
         limit = int(request.args.get('limit', 100))
         search = request.args.get('search', '')
         page = int(request.args.get('page', 1))
+        since_deployment = request.args.get('since_deployment', 'false').lower() == 'true'
         
         # Handle "INFO + ERROR" logic
         if level == "INFO + ERROR":
@@ -866,7 +868,7 @@ def api_logs_application():
         exclude_heartbeat = request.args.get('exclude_heartbeat', 'true').lower() == 'true'
         exclude_modules = ['scheduler.scheduler_core.heartbeat'] if exclude_heartbeat else None
         
-        all_logs = _get_cached_application_logs(level_filter, search, exclude_modules)
+        all_logs = _get_cached_application_logs(level_filter, search, exclude_modules, since_deployment)
         
         # Pagination
         total = len(all_logs)
@@ -935,6 +937,7 @@ def api_admin_logs_application():
         limit = int(request.args.get('limit', 100))
         search = request.args.get('search', '')
         page = int(request.args.get('page', 1))
+        since_deployment = request.args.get('since_deployment', 'false').lower() == 'true'
         
         # Handle "INFO + ERROR" logic
         if level == "INFO + ERROR":
@@ -947,7 +950,7 @@ def api_admin_logs_application():
         exclude_heartbeat = request.args.get('exclude_heartbeat', 'true').lower() == 'true'
         exclude_modules = ['scheduler.scheduler_core.heartbeat'] if exclude_heartbeat else None
         
-        all_logs = _get_cached_application_logs(level_filter, search, exclude_modules)
+        all_logs = _get_cached_application_logs(level_filter, search, exclude_modules, since_deployment)
         
         # Pagination
         total = len(all_logs)
@@ -1039,6 +1042,42 @@ def api_list_log_files():
         return jsonify({"files": sorted(files)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/admin/system/deployment-info')
+@require_admin
+def api_deployment_info():
+    """Get deployment information from build_stamp.json"""
+    try:
+        from log_handler import get_deployment_timestamp
+        import os
+        
+        deployment_timestamp = get_deployment_timestamp()
+        
+        # Try to read full build stamp
+        build_info = {}
+        build_stamp_paths = [
+            os.path.join(os.path.dirname(__file__), '..', 'build_stamp.json'),
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'build_stamp.json'),
+            os.path.join(os.getcwd(), 'build_stamp.json')
+        ]
+        
+        for build_stamp_path in build_stamp_paths:
+            if os.path.exists(build_stamp_path):
+                with open(build_stamp_path, 'r') as f:
+                    build_info = json.load(f)
+                break
+        
+        return jsonify({
+            "deployment_timestamp": deployment_timestamp.isoformat() if deployment_timestamp else None,
+            "build_info": build_info
+        })
+    except Exception as e:
+        logger.error(f"[System API] Error getting deployment info: {e}", exc_info=True)
+        return jsonify({
+            "deployment_timestamp": None,
+            "build_info": {},
+            "error": str(e)
+        }), 500
 
 @admin_bp.route('/api/admin/system/cache/clear', methods=['POST'])
 @require_admin

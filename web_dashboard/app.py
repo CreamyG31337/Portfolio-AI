@@ -42,8 +42,33 @@ logger = logging.getLogger(__name__)
 
 # Setup file logging to write to app.log
 try:
-    from log_handler import setup_logging
+    from log_handler import setup_logging, log_message
     setup_logging()
+    
+    # Log deployment info on startup
+    logger.info("=" * 60)
+    logger.info("🚀 APPLICATION STARTUP")
+    try:
+        import os
+        build_stamp_paths = [
+            os.path.join(os.path.dirname(__file__), 'build_stamp.json'),
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'build_stamp.json'),
+            os.path.join(os.getcwd(), 'build_stamp.json')
+        ]
+        
+        for build_stamp_path in build_stamp_paths:
+            if os.path.exists(build_stamp_path):
+                with open(build_stamp_path, 'r') as f:
+                    build_info = json.load(f)
+                    logger.info(f"📦 DEPLOYMENT INFO:")
+                    logger.info(f"   Commit: {build_info.get('commit', 'unknown')}")
+                    logger.info(f"   Branch: {build_info.get('branch', 'unknown')}")
+                    logger.info(f"   Build Date: {build_info.get('build_date', 'unknown')}")
+                    logger.info(f"   Timestamp: {build_info.get('timestamp', 'unknown')}")
+                break
+    except Exception as e:
+        logger.warning(f"Could not load build stamp: {e}")
+    logger.info("=" * 60)
 except ImportError:
     pass  # Fallback to basicConfig if log_handler not available
 
@@ -1694,7 +1719,7 @@ def logs_debug():
 
 
 @cache_data(ttl=5)
-def _get_cached_application_logs(level_filter, search, exclude_modules):
+def _get_cached_application_logs(level_filter, search, exclude_modules, since_deployment=False):
     """Get application logs with caching (5s TTL for near real-time)"""
     from log_handler import read_logs_from_file
     
@@ -1705,7 +1730,8 @@ def _get_cached_application_logs(level_filter, search, exclude_modules):
             level=level_filter,
             search=search if search else None,
             return_all=True,
-            exclude_modules=exclude_modules if exclude_modules else None
+            exclude_modules=exclude_modules if exclude_modules else None,
+            since_deployment=since_deployment
         )
         
         # Convert datetime objects to strings for cache compatibility

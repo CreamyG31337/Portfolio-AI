@@ -4,6 +4,7 @@ In-memory log handler for capturing application logs.
 Provides a thread-safe circular buffer for recent log messages.
 """
 
+import json
 import logging
 from logging.handlers import RotatingFileHandler
 from collections import deque
@@ -81,14 +82,15 @@ class InMemoryLogHandler(logging.Handler):
         except Exception:
             self.handleError(record)
     
-    def get_logs(self, n=None, level=None, module=None, search=None) -> List[Dict]:
+    def get_logs(self, n=None, level=None, module=None, search=None, since_deployment=False) -> List[Dict]:
         """Get recent log records with optional filtering.
         
         Args:
             n: Number of recent logs to return (None = all)
             level: Filter by log level (str) or list of levels (e.g., ['INFO', 'ERROR'])
             module: Filter by module name (partial match)
-            search: Filter by message text (case-insensitive)
+            search: Filter by message, module, level, or full log text (case-insensitive)
+            since_deployment: If True, only return logs since last deployment timestamp
             
         Returns:
             List of log record dictionaries
@@ -110,7 +112,17 @@ class InMemoryLogHandler(logging.Handler):
         
         if search:
             search_lower = search.lower()
-            logs = [log for log in logs if search_lower in log['message'].lower()]
+            logs = [log for log in logs if (
+                search_lower in log['message'].lower() or
+                search_lower in log['module'].lower() or
+                search_lower in log['level'].lower() or
+                (log.get('formatted') and search_lower in log['formatted'].lower())
+            )]
+        
+        if since_deployment:
+            deployment_cutoff = get_deployment_timestamp()
+            if deployment_cutoff:
+                logs = [log for log in logs if log['timestamp'] >= deployment_cutoff]
         
         # Return last n logs
         if n:
@@ -118,7 +130,7 @@ class InMemoryLogHandler(logging.Handler):
         
         return logs
     
-    def get_formatted_logs(self, n=None, level=None, module=None, search=None) -> List[str]:
+    def get_formatted_logs(self, n=None, level=None, module=None, search=None, since_deployment=False) -> List[str]:
         """Get formatted log strings (for download/display).
         
         Args:
@@ -127,7 +139,7 @@ class InMemoryLogHandler(logging.Handler):
         Returns:
             List of formatted log strings
         """
-        logs = self.get_logs(n=n, level=level, module=module, search=search)
+        logs = self.get_logs(n=n, level=level, module=module, search=search, since_deployment=since_deployment)
         return [log['formatted'] for log in logs]
     
     def clear(self):
@@ -244,7 +256,36 @@ def setup_logging(level=logging.INFO):
     # For now, let's just stick to FileHandler as the source of truth.
 
 
-def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclude_modules=None) -> List[Dict]:
+def get_deployment_timestamp() -> datetime:
+    """Get the last deployment timestamp from build_stamp.json.
+    
+    Returns:
+        datetime object of last deployment, or None if file doesn't exist
+    """
+    import os
+    
+    # Try both web_dashboard directory and parent directory
+    build_stamp_paths = [
+        os.path.join(os.path.dirname(__file__), 'build_stamp.json'),
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), 'build_stamp.json'),
+        os.path.join(os.getcwd(), 'build_stamp.json')
+    ]
+    
+    for build_stamp_path in build_stamp_paths:
+        if os.path.exists(build_stamp_path):
+            try:
+                with open(build_stamp_path, 'r') as f:
+                    build_info = json.load(f)
+                    timestamp_str = build_info.get('timestamp')
+                    if timestamp_str:
+                        return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            except Exception:
+                continue
+    
+    return None
+
+
+def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclude_modules=None, since_deployment=False) -> List[Dict]:
     """Read recent logs from the log file efficiently.
     
     Reads from the end of the file to avoid loading the entire file into memory.
@@ -253,9 +294,10 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
     Args:
         n: Number of recent logs to return (ignored if return_all=True)
         level: Filter by log level (str) or list of levels (e.g., ['INFO', 'ERROR'])
-        search: Filter by message text
+        search: Filter by message, module, level, or full log text (case-insensitive)
         return_all: If True, return all filtered logs (up to reasonable limit)
         exclude_modules: List of module/logger names to exclude (e.g., ['scheduler.scheduler_core.heartbeat'])
+        since_deployment: If True, only return logs since last deployment timestamp
         
     Returns:
         List of dicts with timestamp, level, module, message keys
@@ -265,6 +307,9 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
     log_file = os.path.join(os.path.dirname(__file__), 'logs', 'app.log')
     if not os.path.exists(log_file):
         return []
+    
+    # Get deployment timestamp if needed
+    deployment_cutoff = get_deployment_timestamp() if since_deployment else None
         
     logs = []
     
@@ -333,7 +378,16 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
         
         if search:
             search_lower = search.lower()
-            logs = [log for log in logs if search_lower in log['message'].lower()]
+            logs = [log for log in logs if (
+                search_lower in log['message'].lower() or
+                search_lower in log['module'].lower() or
+                search_lower in log['level'].lower() or
+                search_lower in log['formatted'].lower()
+            )]
+        
+        if deployment_cutoff:
+            # Filter logs since last deployment
+            logs = [log for log in logs if log['timestamp'] >= deployment_cutoff]
             
         # Return last n (unless return_all is True)
         if not return_all and n:

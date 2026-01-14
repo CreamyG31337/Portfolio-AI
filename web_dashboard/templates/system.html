@@ -149,6 +149,11 @@
         </button>
     </div>
 
+    <!-- Deployment Info Banner -->
+    <div id="deployment-info" class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-center">
+        <span class="text-xs text-gray-500">Loading deployment info...</span>
+    </div>
+
     <!-- Controls Toolbar -->
     <div id="log-controls"
         class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-4 grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -169,6 +174,13 @@
                 <input type="text" id="log-search" onkeydown="if(event.key==='Enter') refreshLogs()"
                     class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5"
                     placeholder="Filter text...">
+            </div>
+            <div class="flex items-center mt-6 space-x-4">
+                <div class="flex items-center">
+                    <input id="since-deployment" type="checkbox" onchange="refreshLogs()"
+                        class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500">
+                    <label for="since-deployment" class="ml-2 text-sm font-medium text-gray-900">🚀 Last Deployment Only</label>
+                </div>
             </div>
             <div class="flex items-center mt-6">
                 <input id="auto-refresh" type="checkbox"

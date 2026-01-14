@@ -80,6 +80,7 @@ let currentLogMode: LogMode = 'app';
 
 document.addEventListener('DOMContentLoaded', () => {
     fetchSystemStatus();
+    fetchDeploymentInfo();
     switchLogMode('app');
 
     // Auto-refresh timer
@@ -90,6 +91,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 5000);
 });
+
+async function fetchDeploymentInfo(): Promise<void> {
+    try {
+        const response = await fetch('/api/admin/system/deployment-info');
+        const data = await response.json();
+        
+        if (data.build_info && data.build_info.commit) {
+            const deployInfo = document.getElementById('deployment-info');
+            if (deployInfo) {
+                deployInfo.innerHTML = `
+                    <span class="text-xs text-gray-500">
+                        🚀 Deployed: ${data.build_info.build_date || 'Unknown'} 
+                        | Commit: <code class="bg-gray-100 px-1 rounded">${data.build_info.commit.substring(0, 8)}</code>
+                        | Branch: ${data.build_info.branch || 'Unknown'}
+                    </span>
+                `;
+            }
+        }
+    } catch (error) {
+        console.error("Error fetching deployment info:", error);
+    }
+}
 
 async function fetchSystemStatus(): Promise<void> {
     try {
@@ -221,12 +244,14 @@ async function fetchAppLogs(): Promise<void> {
 
     const levelSelect = document.getElementById('log-level') as HTMLSelectElement | null;
     const searchInput = document.getElementById('log-search') as HTMLInputElement | null;
+    const sinceDeploymentCheckbox = document.getElementById('since-deployment') as HTMLInputElement | null;
     
     const level = levelSelect?.value || 'All';
     const search = searchInput?.value || '';
+    const sinceDeployment = sinceDeploymentCheckbox?.checked ? 'true' : 'false';
 
     try {
-        const response = await fetch(`/api/admin/system/logs/application?level=${encodeURIComponent(level)}&search=${encodeURIComponent(search)}&limit=200`);
+        const response = await fetch(`/api/admin/system/logs/application?level=${encodeURIComponent(level)}&search=${encodeURIComponent(search)}&limit=200&since_deployment=${sinceDeployment}`);
         const data: LogsResponse = await response.json();
 
         if (data.logs) {
