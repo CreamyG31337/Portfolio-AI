@@ -1552,10 +1552,10 @@ function renderSectorChart(data: AllocationChartData): void {
     const layout = { ...data.layout };
     
     // Use fixed height of 700px to match HTML container height
-    // Reading offsetHeight can be unreliable due to flex container constraints
+    // Disable autosize to prevent Plotly from shrinking the chart in flex container
     const containerHeight = 700;
     layout.height = containerHeight;
-    layout.autosize = true;
+    layout.autosize = false;
     
     // Ensure proper margins - increase bottom margin for legend
     if (!layout.margin) {
@@ -1570,7 +1570,7 @@ function renderSectorChart(data: AllocationChartData): void {
 
     try {
         Plotly.newPlot('sector-chart', data.data, layout, {
-            responsive: true,
+            responsive: false,  // Disable responsive to respect fixed height of 700px
             displayModeBar: true,
             modeBarButtonsToRemove: ['pan2d', 'lasso2d']
         });
