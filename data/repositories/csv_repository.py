@@ -266,39 +266,36 @@ class CSVRepository(BaseRepository):
                     # Both existing_df and df have datetimes now
                     combined_df = pd.concat([existing_df, df], ignore_index=True)
 
-                    # Update cache (store copy with datetimes)
-                    self._portfolio_cache = combined_df.copy()
-
                     # Convert to string for CSV
                     write_df = combined_df.copy()
                     write_df['Date'] = write_df['Date'].apply(
                         lambda x: self._format_timestamp_for_csv(x) if pd.notna(x) else ''
                     )
                     write_df.to_csv(self.portfolio_file, index=False)
+                    # Only update cache after successful write to avoid phantom data on write failure
+                    self._portfolio_cache = combined_df.copy()
                     self._portfolio_mtime = os.path.getmtime(self.portfolio_file)
                 else:
                     # No duplicates, append normally
-                    # Update cache
-                    self._portfolio_cache = pd.concat([existing_df_cache, df], ignore_index=True)
-
                     # Write to CSV
                     write_df = df.copy()
                     write_df['Date'] = write_df['Date'].apply(
                         lambda x: self._format_timestamp_for_csv(x) if pd.notna(x) else ''
                     )
                     write_df.to_csv(self.portfolio_file, mode='a', header=False, index=False)
+                    # Only update cache after successful write to avoid phantom data on write failure
+                    self._portfolio_cache = pd.concat([existing_df_cache, df], ignore_index=True)
                     self._portfolio_mtime = os.path.getmtime(self.portfolio_file)
             else:
                 # File doesn't exist or is empty, create new
-                # Update cache
-                self._portfolio_cache = df.copy()
-
                 # Write to CSV
                 write_df = df.copy()
                 write_df['Date'] = write_df['Date'].apply(
                     lambda x: self._format_timestamp_for_csv(x) if pd.notna(x) else ''
                 )
                 write_df.to_csv(self.portfolio_file, index=False)
+                # Only update cache after successful write to avoid phantom data on write failure
+                self._portfolio_cache = df.copy()
                 self._portfolio_mtime = os.path.getmtime(self.portfolio_file)
             
             logger.info(f"Saved portfolio snapshot with {len(snapshot.positions)} positions")
