@@ -375,7 +375,7 @@ function initIndividualHoldingsControls(): void {
         btn.addEventListener('click', (e): void => {
             const target = e.currentTarget as HTMLElement;
             const days = parseInt(target.dataset.days || '7', 10);
-            
+
             // Update visual state
             rangeButtons.forEach(b => {
                 b.classList.remove('bg-blue-600', 'text-white');
@@ -383,7 +383,7 @@ function initIndividualHoldingsControls(): void {
             });
             target.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
             target.classList.add('bg-blue-600', 'text-white');
-            
+
             // Update state and fetch
             state.individualHoldingsDays = days;
             if (state.showIndividualHoldings && state.currentFund && state.currentFund.toLowerCase() !== 'all') {
@@ -405,19 +405,19 @@ function initIndividualHoldingsControls(): void {
 
 function initExchangeRateControls(): void {
     const checkbox = document.getElementById('inverse-exchange-rate') as HTMLInputElement | null;
-    
+
     if (!checkbox) {
         console.warn('[Dashboard] Exchange rate toggle not found');
         return;
     }
-    
+
     // Set initial state from localStorage if available
     const savedPref = localStorage.getItem('inverse_exchange_rate');
     if (savedPref !== null) {
         state.inverseExchangeRate = savedPref === 'true';
         checkbox.checked = state.inverseExchangeRate;
     }
-    
+
     // Listen for changes
     checkbox.addEventListener('change', (): void => {
         state.inverseExchangeRate = checkbox.checked;
@@ -1510,7 +1510,7 @@ function renderCurrencyChart(data: AllocationChartData): void {
 
 async function fetchExchangeRateData(): Promise<void> {
     showSpinner('exchange-rate-chart-spinner');
-    
+
     // Theme logic
     const htmlElement = document.documentElement;
     const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
@@ -1522,14 +1522,14 @@ async function fetchExchangeRateData(): Promise<void> {
         const isDark = bodyBg && (bodyBg.includes('rgb(31, 41, 55)') || bodyBg.includes('rgb(17, 24, 39)') || bodyBg.includes('rgb(55, 65, 81)'));
         theme = isDark ? 'dark' : 'light';
     }
-    
+
     const url = `/api/dashboard/exchange-rate?inverse=${state.inverseExchangeRate}&theme=${encodeURIComponent(theme)}`;
     console.log('[Dashboard] Fetching exchange rate data...', { url });
-    
+
     try {
         const response = await fetch(url, { credentials: 'include' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+
         const data: ExchangeRateData = await response.json();
         renderExchangeRateData(data);
     } catch (error) {
@@ -1546,29 +1546,29 @@ function renderExchangeRateData(data: ExchangeRateData): void {
     const labelEl = document.getElementById('exchange-rate-label');
     const valueEl = document.getElementById('exchange-rate-value');
     const helpEl = document.getElementById('exchange-rate-help');
-    
+
     if (labelEl) labelEl.textContent = data.rate_label;
     if (valueEl) valueEl.textContent = data.current_rate !== null ? data.current_rate.toFixed(4) : '--';
     if (helpEl) helpEl.textContent = data.rate_help;
-    
+
     // Render historical chart
     if (data.chart) {
         const chartEl = document.getElementById('exchange-rate-chart');
         if (!chartEl) return;
-        
+
         const Plotly = (window as any).Plotly;
         if (!Plotly) return;
-        
+
         const layout = { ...data.chart.layout };
         layout.height = 200;
         layout.autosize = true;
-        
+
         try {
             Plotly.newPlot('exchange-rate-chart', data.chart.data, layout, {
                 responsive: true,
                 displayModeBar: false
             });
-            
+
             // Add resize handler
             if (!(window as any).__exchangeRateChartResizeHandler) {
                 const resizeHandler = () => {
@@ -2020,12 +2020,12 @@ function renderPnlChart(data: PnlChartData): void {
     layout.height = containerHeight;
     layout.autosize = true;
 
-    // Ensure proper margins
+    // Ensure proper margins - increase left margin for y-axis labels
     if (!layout.margin) {
-        layout.margin = { l: 20, r: 20, t: 50, b: 100 };
+        layout.margin = { l: 80, r: 20, t: 50, b: 100 };
     } else {
-        // Ensure left and right margins are equal for centering
-        layout.margin.l = Math.max(20, layout.margin.l || 20);
+        // Use larger left margin to prevent y-axis labels from being cut off
+        layout.margin.l = Math.max(80, layout.margin.l || 80);
         layout.margin.r = Math.max(20, layout.margin.r || 20);
         // Increase bottom margin to prevent legend cutoff
         layout.margin.b = Math.max(100, layout.margin.b || 100);
