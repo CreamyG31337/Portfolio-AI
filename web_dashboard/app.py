@@ -883,19 +883,13 @@ def index():
         from user_preferences import get_user_preference
         v2_enabled = get_user_preference('v2_enabled', default=False)
         if v2_enabled:
-            try:
-                return redirect(url_for('dashboard.dashboard_page'))
-            except Exception as e:
-                logger.error(f"Failed to redirect to dashboard: {e}", exc_info=True)
-                # Fallback: redirect to auth page
-                return redirect('/auth')
-        else:
-            # V2 not enabled - redirect to auth page (user can access Streamlit from there)
-            # Don't redirect to '/' as that causes infinite loop
-            return redirect('/auth')
+            return redirect(url_for('dashboard.dashboard_page'))
+        # Redirect to Caddy root (Streamlit) - this is NOT a circular redirect
+        # Flask's '/' -> Caddy root -> Streamlit on different port
+        return redirect('/')
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
-        # Fallback: redirect to auth page on any error
+        # On error, redirect to auth page to avoid breaking
         return redirect('/auth')
 
 @app.route('/auth')
