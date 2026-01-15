@@ -62,9 +62,23 @@
 
             <!-- Date Filter -->
             <div>
-                <label class="block mb-2 text-sm font-medium text-gray-900">Date</label>
+                <label class="block mb-2 text-sm font-medium text-gray-900">
+                    <i class="fas fa-calendar-alt mr-1"></i>View Data As Of
+                    <span class="text-xs text-gray-500 font-normal ml-1">(shows most recent data on or before selected date)</span>
+                </label>
                 <input type="date" name="date" value="{{ current_date }}" max="{{ latest_date }}"
                     class="w-full text-sm border border-gray-300 rounded-lg p-2" onchange="updateFilters()">
+                {% if as_of_date and not date_has_data %}
+                <p class="text-xs text-amber-600 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    No data for {{ current_date }}. Showing data as of <strong>{{ as_of_date }}</strong>
+                </p>
+                {% elif as_of_date and date_has_data %}
+                <p class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-check-circle mr-1"></i>
+                    Showing data as of <strong>{{ as_of_date }}</strong>
+                </p>
+                {% endif %}
             </div>
 
             <!-- Fund Filter (Multi-select) -->
@@ -192,13 +206,21 @@
 
 <!-- Data Table -->
 <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-    <h2 class="text-xl font-bold mb-4">
-        {% if view_mode == 'holdings' %}
-        Current Holdings - {{ current_etf }}
-        {% else %}
-        Latest Changes
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold">
+            {% if view_mode == 'holdings' %}
+            Current Holdings - {{ current_etf }}
+            {% else %}
+            Latest Changes
+            {% endif %}
+        </h2>
+        {% if as_of_date %}
+        <div class="text-sm text-gray-600">
+            <i class="fas fa-calendar-check mr-1"></i>
+            Data as of: <strong>{{ as_of_date }}</strong>
+        </div>
         {% endif %}
-    </h2>
+    </div>
     <div id="etf-holdings-grid" class="ag-theme-alpine" style="height: 600px; width: 100%;"></div>
 </div>
 

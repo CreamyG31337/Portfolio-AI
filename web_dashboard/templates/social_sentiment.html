@@ -8,6 +8,7 @@
 <!-- AgGrid Community Edition -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine-dark.css">
 <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
 {% endblock %}
 
@@ -41,11 +42,11 @@
 </div>
 
 <!-- Refresh Button -->
-<div class="bg-white rounded-lg shadow-sm p-4 mb-6 border border-gray-200">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:border-gray-700">
     <div class="flex items-center justify-between">
         <div>
             <h2 class="text-lg font-semibold">Data Refresh</h2>
-            <p class="text-sm text-gray-600">Last updated: <span id="last-updated">{{
+            <p class="text-sm text-gray-600 dark:text-gray-400">Last updated: <span id="last-updated">{{
                     newest_timestamp|default('Loading...') }}</span></p>
         </div>
         <button type="button" onclick="refreshData()"
@@ -56,34 +57,34 @@
 </div>
 
 <!-- Watchlist Section -->
-<div class="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
     <h2 class="text-xl font-bold mb-4">📋 Watchlist</h2>
-    <p class="text-sm text-gray-600 mb-4">Dynamic watchlist combining tickers from trade log, congress trades (30 days),
+    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Dynamic watchlist combining tickers from trade log, congress trades (30 days),
         research articles (30 days), extreme sentiment alerts (24h), and bullish sentiment alerts (24h)</p>
 
     <div id="watchlist-loading" class="text-center py-8">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p class="mt-2 text-sm text-gray-600">Loading watchlist...</p>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Loading watchlist...</p>
     </div>
 
     <div id="watchlist-content" class="hidden">
         <!-- Summary Metrics -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-gray-900" id="watchlist-total">0</div>
-                <div class="text-sm text-gray-600">Total Tickers</div>
+            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="watchlist-total">0</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Total Tickers</div>
             </div>
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-gray-900" id="watchlist-tier-a">0</div>
-                <div class="text-sm text-gray-600">Priority A</div>
+            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="watchlist-tier-a">0</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Priority A</div>
             </div>
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-gray-900" id="watchlist-tier-b">0</div>
-                <div class="text-sm text-gray-600">Priority B</div>
+            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="watchlist-tier-b">0</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Priority B</div>
             </div>
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-gray-900" id="watchlist-tier-c">0</div>
-                <div class="text-sm text-gray-600">Priority C</div>
+            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="watchlist-tier-c">0</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Priority C</div>
             </div>
         </div>
 
@@ -100,15 +101,15 @@
     </div>
 </div>
 
-<div class="border-t border-gray-200 my-6"></div>
+<div class="border-t border-gray-200 dark:border-gray-700 my-6"></div>
 
 <!-- Alerts Section -->
-<div class="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
     <h2 class="text-xl font-bold mb-4">🚨 Extreme Sentiment Alerts</h2>
 
     <div id="alerts-loading" class="text-center py-8">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p class="mt-2 text-sm text-gray-600">Loading alerts...</p>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Loading alerts...</p>
     </div>
 
     <div id="alerts-content" class="hidden">
@@ -122,35 +123,35 @@
     </div>
 </div>
 
-<div class="border-t border-gray-200 my-6"></div>
+<div class="border-t border-gray-200 dark:border-gray-700 my-6"></div>
 
 <!-- AI Analysis Section -->
-<div class="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
     <h2 class="text-xl font-bold mb-4">🤖 AI Sentiment Analysis</h2>
 
     <div id="ai-loading" class="text-center py-8">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p class="mt-2 text-sm text-gray-600">Loading AI analyses...</p>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Loading AI analyses...</p>
     </div>
 
     <div id="ai-content" class="hidden">
         <!-- Summary Metrics -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-gray-900" id="ai-total">0</div>
-                <div class="text-sm text-gray-600">AI Analyses</div>
+            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="ai-total">0</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">AI Analyses</div>
             </div>
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-gray-900" id="ai-avg-confidence">0%</div>
-                <div class="text-sm text-gray-600">Avg Confidence</div>
+            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="ai-avg-confidence">0%</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Avg Confidence</div>
             </div>
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-gray-900" id="ai-euphoric">0</div>
-                <div class="text-sm text-gray-600">Euphoric</div>
+            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="ai-euphoric">0</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Euphoric</div>
             </div>
-            <div class="bg-gray-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-gray-900" id="ai-fearful">0</div>
-                <div class="text-sm text-gray-600">Fearful</div>
+            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="ai-fearful">0</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Fearful</div>
             </div>
         </div>
 
@@ -166,22 +167,22 @@
     </div>
 </div>
 
-<div class="border-t border-gray-200 my-6"></div>
+<div class="border-t border-gray-200 dark:border-gray-700 my-6"></div>
 
 <!-- Latest Sentiment Table Section -->
-<div class="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
     <h2 class="text-xl font-bold mb-4">📊 Latest Sentiment by Ticker</h2>
 
     <div class="mb-4">
         <label class="flex items-center">
             <input type="checkbox" id="show-only-watchlist" class="mr-2" checked>
-            <span class="text-sm text-gray-700">Show only watchlist tickers</span>
+            <span class="text-sm text-gray-700 dark:text-gray-300">Show only watchlist tickers</span>
         </label>
     </div>
 
     <div id="sentiment-loading" class="text-center py-8">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p class="mt-2 text-sm text-gray-600">Loading sentiment data...</p>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Loading sentiment data...</p>
     </div>
 
     <div id="sentiment-content" class="hidden">
@@ -197,24 +198,24 @@
 </div>
 
 <!-- Summary Statistics -->
-<div class="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
     <h2 class="text-xl font-bold mb-4">📈 Summary Statistics</h2>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-gray-50 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900" id="stats-unique-tickers">0</div>
-            <div class="text-sm text-gray-600">Unique Tickers</div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="stats-unique-tickers">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">Unique Tickers</div>
         </div>
-        <div class="bg-gray-50 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900" id="stats-total-metrics">0</div>
-            <div class="text-sm text-gray-600">Total Metrics</div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="stats-total-metrics">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">Total Metrics</div>
         </div>
-        <div class="bg-gray-50 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900" id="stats-euphoric">0</div>
-            <div class="text-sm text-gray-600">Euphoric</div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="stats-euphoric">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">Euphoric</div>
         </div>
-        <div class="bg-gray-50 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900" id="stats-fearful">0</div>
-            <div class="text-sm text-gray-600">Fearful</div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="stats-fearful">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">Fearful</div>
         </div>
     </div>
 </div>

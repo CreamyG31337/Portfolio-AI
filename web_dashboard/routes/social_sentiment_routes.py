@@ -375,7 +375,7 @@ def get_cached_latest_sentiment(
         return []
 
 # Main route
-@social_sentiment_bp.route('/social_sentiment')
+@social_sentiment_bp.route('/v2/social_sentiment')
 @require_auth
 def social_sentiment_page():
     """Social Sentiment Dashboard page"""

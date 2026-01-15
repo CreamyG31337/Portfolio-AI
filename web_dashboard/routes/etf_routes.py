@@ -31,6 +31,26 @@ def get_latest_date(db_client) -> Optional[date]:
         logger.error(f"Error fetching latest date: {e}")
         return None
 
+def get_as_of_date(db_client, target_date: date, etf_ticker: Optional[str] = None) -> Optional[date]:
+    """Get the most recent date <= target_date (As Of logic)"""
+    if db_client is None:
+        return None
+    try:
+        target_date_str = target_date.isoformat()
+        query = db_client.supabase.table("etf_holdings_log").select("date").lte("date", target_date_str)
+        
+        if etf_ticker:
+            query = query.eq("etf_ticker", etf_ticker)
+        
+        result = query.order("date", desc=True).limit(1).execute()
+        
+        if result.data and result.data[0].get('date'):
+            return datetime.strptime(result.data[0]['date'], '%Y-%m-%d').date()
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching As Of date: {e}")
+        return None
+
 def check_etf_ownership(db_client, etf_ticker: str) -> Optional[Dict[str, Any]]:
     """Check if user owns shares of the ETF itself"""
     if db_client is None or not etf_ticker:
@@ -75,19 +95,28 @@ def get_all_holdings(
     target_date: date,
     etf_ticker: str,
     fund_filter: Optional[str] = None
-) -> pd.DataFrame:
-    """Get ALL current holdings for a specific ETF"""
+) -> tuple[pd.DataFrame, Optional[date]]:
+    """Get ALL current holdings for a specific ETF using As Of date logic.
+    
+    Returns:
+        tuple: (DataFrame with holdings, actual date used (As Of date))
+    """
     if db_client is None:
-        return pd.DataFrame()
+        return pd.DataFrame(), None
     
     try:
-        target_date_str = target_date.isoformat()
+        # Find the most recent date <= target_date (As Of logic)
+        as_of_date = get_as_of_date(db_client, target_date, etf_ticker)
+        if not as_of_date:
+            return pd.DataFrame(), None
+        
+        as_of_date_str = as_of_date.isoformat()
         holdings_res = db_client.supabase.table("etf_holdings_log").select(
             "date, etf_ticker, holding_ticker, holding_name, shares_held, weight_percent"
-        ).eq("date", target_date_str).eq("etf_ticker", etf_ticker).gt("shares_held", 0).execute()
+        ).eq("date", as_of_date_str).eq("etf_ticker", etf_ticker).gt("shares_held", 0).execute()
         
         if not holdings_res.data:
-            return pd.DataFrame()
+            return pd.DataFrame(), as_of_date
         
         holdings_df = pd.DataFrame(holdings_res.data)
         holdings_df = holdings_df.rename(columns={'shares_held': 'current_shares'})
@@ -115,35 +144,46 @@ def get_all_holdings(
         else:
             holdings_df['user_shares'] = 0
             
-        return holdings_df.sort_values(by=['weight_percent', 'current_shares'], ascending=[False, False])
+        return holdings_df.sort_values(by=['weight_percent', 'current_shares'], ascending=[False, False]), as_of_date
         
     except Exception as e:
         logger.error(f"Error fetching all holdings: {e}", exc_info=True)
-        return pd.DataFrame()
+        return pd.DataFrame(), None
 
 def get_holdings_changes(
     db_client,
     target_date: date,
     etf_ticker: Optional[str] = None,
     fund_filter: Optional[str] = None
-) -> pd.DataFrame:
-    """Calculate holdings changes"""
+) -> tuple[pd.DataFrame, Optional[date]]:
+    """Calculate holdings changes using As Of date logic.
+    
+    Returns:
+        tuple: (DataFrame with changes, actual date used (As Of date))
+    """
     if db_client is None:
-        return pd.DataFrame()
+        return pd.DataFrame(), None
     
     try:
-        target_date_str = target_date.isoformat()
+        # For changes view, we need to find the most recent date <= target_date
+        # But we need to handle multiple ETFs, so we'll find the date per ETF or use a common date
+        # For simplicity, use the latest date <= target_date across all ETFs
+        as_of_date = get_as_of_date(db_client, target_date, None)
+        if not as_of_date:
+            return pd.DataFrame(), None
+        
+        as_of_date_str = as_of_date.isoformat()
         
         curr_query = db_client.supabase.table("etf_holdings_log").select(
             "date, etf_ticker, holding_ticker, holding_name, shares_held"
-        ).eq("date", target_date_str)
+        ).eq("date", as_of_date_str)
         
         if etf_ticker and etf_ticker != "All ETFs":
             curr_query = curr_query.eq("etf_ticker", etf_ticker)
             
         curr_res = curr_query.execute()
         if not curr_res.data:
-            return pd.DataFrame()
+            return pd.DataFrame(), as_of_date
         
         curr_df = pd.DataFrame(curr_res.data)
         
@@ -241,10 +281,10 @@ def get_holdings_changes(
         else:
             curr_df['user_shares'] = 0
             
-        return curr_df
+        return curr_df, as_of_date
     except Exception as e:
         logger.error(f"Error fetching holdings changes: {e}", exc_info=True)
-        return pd.DataFrame()
+        return pd.DataFrame(), None
 
 # --- Route ---
 
@@ -288,14 +328,15 @@ def etf_holdings():
     # 4. View Mode & Data Fetching
     view_mode = "changes"
     etf_ownership = None
+    as_of_date = None
     
     if selected_etf and selected_etf != "All ETFs":
         view_mode = "holdings"
-        changes_df = get_all_holdings(db_client, selected_date, selected_etf, selected_fund)
+        changes_df, as_of_date = get_all_holdings(db_client, selected_date, selected_etf, selected_fund)
         etf_ownership = check_etf_ownership(db_client, selected_etf)
     else:
         view_mode = "changes"
-        changes_df = get_holdings_changes(db_client, selected_date, None, selected_fund)
+        changes_df, as_of_date = get_holdings_changes(db_client, selected_date, None, selected_fund)
     
     # 5. Process Data for Frontend (JSON)
     if not changes_df.empty:
@@ -364,6 +405,8 @@ def etf_holdings():
         # Params
         current_etf=selected_etf,
         current_date=selected_date.strftime('%Y-%m-%d'),
+        as_of_date=as_of_date.strftime('%Y-%m-%d') if as_of_date else None,
+        date_has_data=as_of_date == selected_date if as_of_date else False,
         current_fund=selected_fund,
         latest_date=latest_date.strftime('%Y-%m-%d') if latest_date else date.today().strftime('%Y-%m-%d'),
         available_etfs=available_etfs_list,

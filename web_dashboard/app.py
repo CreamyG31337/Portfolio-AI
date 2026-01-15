@@ -417,8 +417,8 @@ except Exception as e:
 
 try:
     from routes.social_sentiment_routes import social_sentiment_bp
-    app.register_blueprint(social_sentiment_bp, url_prefix='/v2')
-    logger.debug("Registered Social Sentiment Blueprint at /v2")
+    app.register_blueprint(social_sentiment_bp)
+    logger.debug("Registered Social Sentiment Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Social Sentiment Blueprint: {e}", exc_info=True)
 

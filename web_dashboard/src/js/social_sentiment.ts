@@ -197,6 +197,29 @@ class SentimentCellRenderer implements AgGridCellRenderer {
 // Initialize watchlist grid
 function initializeWatchlistGrid(data: WatchlistTicker[]): void {
     const gridDiv = document.querySelector('#watchlist-grid') as HTMLElement;
+    
+    // Detect theme and apply appropriate AgGrid theme
+    const htmlElement = document.documentElement;
+    const theme = htmlElement.getAttribute('data-theme') || 'system';
+    let isDark = false;
+
+    if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+        isDark = true;
+    } else if (theme === 'system') {
+        // Check system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            isDark = true;
+        }
+    }
+
+    // Update grid container class based on theme
+    if (isDark) {
+        gridDiv.classList.remove('ag-theme-alpine');
+        gridDiv.classList.add('ag-theme-alpine-dark');
+    } else {
+        gridDiv.classList.remove('ag-theme-alpine-dark');
+        gridDiv.classList.add('ag-theme-alpine');
+    }
     if (!gridDiv) {
         console.error('Watchlist grid container not found');
         return;
@@ -276,6 +299,29 @@ function initializeSentimentGrid(data: SentimentRow[]): void {
     if (!(window as any).agGrid) {
         console.error('AgGrid not loaded');
         return;
+    }
+
+    // Detect theme and apply appropriate AgGrid theme
+    const htmlElement = document.documentElement;
+    const theme = htmlElement.getAttribute('data-theme') || 'system';
+    let isDark = false;
+
+    if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+        isDark = true;
+    } else if (theme === 'system') {
+        // Check system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            isDark = true;
+        }
+    }
+
+    // Update grid container class based on theme
+    if (isDark) {
+        gridDiv.classList.remove('ag-theme-alpine');
+        gridDiv.classList.add('ag-theme-alpine-dark');
+    } else {
+        gridDiv.classList.remove('ag-theme-alpine-dark');
+        gridDiv.classList.add('ag-theme-alpine');
     }
 
     const columnDefs: AgGridColumnDef[] = [
@@ -469,19 +515,19 @@ async function loadAlertsData(refreshKey: number): Promise<void> {
                     alertDiv.className = 'mb-4 p-4 rounded-lg border';
                     alertDiv.classList.add(
                         alert.sentiment_label === 'EUPHORIC'
-                            ? 'bg-green-50 border-green-200'
-                            : 'bg-red-50 border-red-200'
+                            ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700'
+                            : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700'
                     );
 
                     alertDiv.innerHTML = `
                         <div class="flex items-center justify-between mb-2">
                             <div>
-                                <span class="font-bold text-lg">${alert.ticker}</span>
-                                <span class="ml-2 text-sm text-gray-600">(${alert.platform.toUpperCase()})</span>
-                                <span class="ml-2 font-semibold">${alert.sentiment_label}</span>
-                                <span class="ml-2 text-sm">Score: ${alert.sentiment_score.toFixed(1)}</span>
+                                <span class="font-bold text-lg text-gray-900 dark:text-gray-100">${alert.ticker}</span>
+                                <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">(${alert.platform.toUpperCase()})</span>
+                                <span class="ml-2 font-semibold text-gray-900 dark:text-gray-100">${alert.sentiment_label}</span>
+                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Score: ${alert.sentiment_score.toFixed(1)}</span>
                             </div>
-                            <div class="text-sm text-gray-600">${alert.created_at}</div>
+                            <div class="text-sm text-gray-600 dark:text-gray-400">${alert.created_at}</div>
                         </div>
                         <div class="flex gap-2 mt-2">
                             <button onclick="loadAlertPosts(${alert.id}, ${alert.analysis_session_id || 'null'}, ${idx})" 
@@ -537,29 +583,29 @@ async function loadAlertPosts(metricId: number, sessionId: number | null, alertI
             if (posts.length > 0) {
                 posts.forEach((post: any) => {
                     const postDiv = document.createElement('div');
-                    postDiv.className = 'mb-3 p-3 bg-white rounded border border-gray-200';
+                    postDiv.className = 'mb-3 p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700';
                     postDiv.innerHTML = `
                         <div class="flex justify-between mb-1">
-                            <span class="font-semibold">${post.author || 'Unknown'}</span>
-                            <span class="text-sm text-gray-600">${post.posted_at}</span>
+                            <span class="font-semibold text-gray-900 dark:text-gray-100">${post.author || 'Unknown'}</span>
+                            <span class="text-sm text-gray-600 dark:text-gray-400">${post.posted_at}</span>
                         </div>
-                        <p class="text-sm mb-2">${post.content || ''}</p>
-                        <div class="flex justify-between text-xs text-gray-600">
+                        <p class="text-sm mb-2 text-gray-700 dark:text-gray-300">${post.content || ''}</p>
+                        <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400">
                             <span>👍 ${post.engagement_score || 0} engagement</span>
-                            ${post.url ? `<a href="${post.url}" target="_blank" class="text-blue-600 hover:underline">View Original Post</a>` : ''}
+                            ${post.url ? `<a href="${post.url}" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">View Original Post</a>` : ''}
                         </div>
                     `;
                     postsDiv.appendChild(postDiv);
                 });
             } else {
-                postsDiv.innerHTML += '<p class="text-sm text-gray-600">No posts found for this alert.</p>';
+                postsDiv.innerHTML += '<p class="text-sm text-gray-600 dark:text-gray-400">No posts found for this alert.</p>';
             }
 
             postsDiv.classList.remove('hidden');
         }
     } catch (error) {
         console.error('Error loading alert posts:', error);
-        postsDiv.innerHTML = '<p class="text-sm text-red-600">Error loading posts.</p>';
+        postsDiv.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Error loading posts.</p>';
         postsDiv.classList.remove('hidden');
     }
 }
@@ -594,19 +640,19 @@ async function loadAIAnalysesData(refreshKey: number): Promise<void> {
 
                 analyses.forEach((analysis) => {
                     const analysisDiv = document.createElement('div');
-                    analysisDiv.className = 'mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200';
+                    analysisDiv.className = 'mb-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600';
                     analysisDiv.innerHTML = `
                         <div class="flex items-center justify-between mb-2">
                             <div>
-                                <span class="font-bold">${analysis.ticker}</span>
-                                <span class="ml-2 text-sm text-gray-600">${analysis.platform.toUpperCase()}</span>
-                                <span class="ml-2 font-semibold ${analysis.sentiment_label === 'EUPHORIC' ? 'text-green-600' : analysis.sentiment_label === 'FEARFUL' ? 'text-red-600' : ''}">
+                                <span class="font-bold text-gray-900 dark:text-gray-100">${analysis.ticker}</span>
+                                <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">${analysis.platform.toUpperCase()}</span>
+                                <span class="ml-2 font-semibold ${analysis.sentiment_label === 'EUPHORIC' ? 'text-green-600 dark:text-green-400' : analysis.sentiment_label === 'FEARFUL' ? 'text-red-600 dark:text-red-400' : ''}">
                                     ${analysis.sentiment_label}
                                 </span>
                             </div>
-                            <div class="text-sm text-gray-600">${analysis.analyzed_at}</div>
+                            <div class="text-sm text-gray-600 dark:text-gray-400">${analysis.analyzed_at}</div>
                         </div>
-                        <div class="grid grid-cols-4 gap-4 text-sm mb-2">
+                        <div class="grid grid-cols-4 gap-4 text-sm mb-2 text-gray-700 dark:text-gray-300">
                             <div>Score: ${analysis.sentiment_score.toFixed(1)}</div>
                             <div>Confidence: ${(analysis.confidence_score * 100).toFixed(1)}%</div>
                             <div>Posts: ${analysis.post_count}</div>
@@ -654,44 +700,44 @@ async function loadAIDetails(analysisId: number, sessionId: number): Promise<voi
             const posts = data.posts || [];
 
             detailsDiv.innerHTML = `
-                <div class="bg-white p-4 rounded border border-gray-300">
-                    <h4 class="font-semibold mb-2">Analysis Summary</h4>
-                    <p class="text-sm mb-4">${analysis.summary || 'No summary available'}</p>
+                <div class="bg-white dark:bg-gray-800 p-4 rounded border border-gray-300 dark:border-gray-600">
+                    <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Analysis Summary</h4>
+                    <p class="text-sm mb-4 text-gray-700 dark:text-gray-300">${analysis.summary || 'No summary available'}</p>
                     
-                    <h4 class="font-semibold mb-2">Key Themes</h4>
-                    <ul class="list-disc list-inside text-sm mb-4">
+                    <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Key Themes</h4>
+                    <ul class="list-disc list-inside text-sm mb-4 text-gray-700 dark:text-gray-300">
                         ${analysis.key_themes && analysis.key_themes.length > 0
                     ? analysis.key_themes.map((theme: string) => `<li>${theme}</li>`).join('')
                     : '<li>No themes identified</li>'}
                     </ul>
                     
-                    <h4 class="font-semibold mb-2">Detailed Reasoning</h4>
-                    <p class="text-sm mb-4">${analysis.reasoning || 'No reasoning provided'}</p>
+                    <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Detailed Reasoning</h4>
+                    <p class="text-sm mb-4 text-gray-700 dark:text-gray-300">${analysis.reasoning || 'No reasoning provided'}</p>
                     
                     ${extractedTickers.length > 0 ? `
-                        <h4 class="font-semibold mb-2">Extracted Tickers</h4>
-                        <div class="text-sm mb-4">
+                        <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Extracted Tickers</h4>
+                        <div class="text-sm mb-4 text-gray-700 dark:text-gray-300">
                             ${extractedTickers.map((t: any) => `
                                 <div class="mb-1">
                                     <strong>${t.ticker}</strong> (${(t.confidence * 100).toFixed(1)}%) - ${t.company_name || 'Unknown'}
-                                    ${t.is_primary ? ' <span class="text-green-600">Primary</span>' : ''}
+                                    ${t.is_primary ? ' <span class="text-green-600 dark:text-green-400">Primary</span>' : ''}
                                 </div>
                             `).join('')}
                         </div>
                     ` : ''}
                     
                     ${posts.length > 0 ? `
-                        <h4 class="font-semibold mb-2">Sample Posts</h4>
+                        <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Sample Posts</h4>
                         ${posts.map((post: any) => `
-                            <div class="mb-3 p-2 bg-gray-50 rounded border border-gray-200">
+                            <div class="mb-3 p-2 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
                                 <div class="flex justify-between mb-1">
-                                    <span class="font-semibold text-sm">${post.author || 'Unknown'}</span>
-                                    <span class="text-xs text-gray-600">${post.posted_at}</span>
+                                    <span class="font-semibold text-sm text-gray-900 dark:text-gray-100">${post.author || 'Unknown'}</span>
+                                    <span class="text-xs text-gray-600 dark:text-gray-400">${post.posted_at}</span>
                                 </div>
-                                <p class="text-sm">${post.content ? (post.content.length > 300 ? post.content.substring(0, 300) + '...' : post.content) : ''}</p>
-                                <div class="flex justify-between text-xs text-gray-600 mt-1">
+                                <p class="text-sm text-gray-700 dark:text-gray-300">${post.content ? (post.content.length > 300 ? post.content.substring(0, 300) + '...' : post.content) : ''}</p>
+                                <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400 mt-1">
                                     <span>👍 ${post.engagement_score || 0} engagement</span>
-                                    ${post.url ? `<a href="${post.url}" target="_blank" class="text-blue-600 hover:underline">View Original</a>` : ''}
+                                    ${post.url ? `<a href="${post.url}" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">View Original</a>` : ''}
                                 </div>
                             </div>
                         `).join('')}
