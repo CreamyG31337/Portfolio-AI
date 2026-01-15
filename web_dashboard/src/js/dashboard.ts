@@ -480,7 +480,7 @@ function updateGridTheme(): void {
     const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
     let effectiveTheme: string = 'light';
 
-    if (dataTheme === 'dark' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
+    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
         effectiveTheme = 'dark';
     } else if (dataTheme === 'light') {
         effectiveTheme = 'light';
@@ -542,8 +542,8 @@ function initGrid(): void {
                     // Negative: Red color (handled by style), no negative sign
                     return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
                 } else {
-                    // Positive: Green color, add + sign
-                    return `+${formatMoney(val)} +${pct.toFixed(1)}%`;
+                    // Positive: Green color, no + sign
+                    return `${formatMoney(val)} ${pct.toFixed(1)}%`;
                 }
             },
             cellStyle: (params: any) => {
@@ -571,8 +571,8 @@ function initGrid(): void {
                     // Negative: Red color (handled by style), no negative sign
                     return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
                 } else {
-                    // Positive: Green color, add + sign
-                    return `+${formatMoney(val)} +${pct.toFixed(1)}%`;
+                    // Positive: Green color, no + sign
+                    return `${formatMoney(val)} ${pct.toFixed(1)}%`;
                 }
             },
             cellStyle: (params: any) => {
@@ -600,8 +600,8 @@ function initGrid(): void {
                     // Negative: Red color (handled by style), no negative sign
                     return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
                 } else {
-                    // Positive: Green color, add + sign
-                    return `+${formatMoney(val)} +${pct.toFixed(1)}%`;
+                    // Positive: Green color, no + sign
+                    return `${formatMoney(val)} ${pct.toFixed(1)}%`;
                 }
             },
             cellStyle: (params: any) => {
@@ -1639,8 +1639,8 @@ function renderMovers(data: MoversData): void {
             // Negative: Red color (handled by class), no negative sign
             return `${pnlStr} ${pctStr}`;
         } else {
-            // Positive: Green color, add + sign
-            return `+${pnlStr} +${pctStr}`;
+            // Positive: Green color, no + sign
+            return `${pnlStr} ${pctStr}`;
         }
     };
 
