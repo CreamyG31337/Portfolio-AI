@@ -61,7 +61,10 @@ interface DividendData {
         company_name?: string;
         type: string;
         amount: number;
+        gross: number;
         tax: number;
+        shares: number;
+        drip_price: number;
     }>;
     currency: string;
 }
@@ -1447,18 +1450,50 @@ function renderDividends(data: DividendData): void {
             data.log.forEach(row => {
                 const tr = document.createElement('tr');
                 tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
-                tr.innerHTML = `
-                    <td class="px-4 py-2 font-medium text-gray-900 dark:text-white whitespace-nowrap">${row.date}</td>
-                    <td class="px-4 py-2 text-blue-600 dark:text-blue-400 font-bold">${row.ticker}</td>
-                    <td class="px-4 py-2 text-gray-700 dark:text-gray-300">${row.company_name || ''}</td>
-                    <td class="px-4 py-2">
-                        <span class="px-2 py-0.5 rounded text-xs font-medium ${row.type === 'DRIP' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}">
-                            ${row.type}
-                        </span>
-                    </td>
-                    <td class="px-4 py-2 text-right font-medium text-green-600 dark:text-green-400">${fmt(row.amount)}</td>
-                    <td class="px-4 py-2 text-right text-gray-500">${fmt(row.tax)}</td>
-                `;
+                
+                // Pay Date
+                const dateCell = document.createElement('td');
+                dateCell.className = 'px-4 py-2 font-medium text-gray-900 dark:text-white whitespace-nowrap';
+                dateCell.textContent = row.date;
+                tr.appendChild(dateCell);
+                
+                // Ticker (clickable)
+                const tickerCell = document.createElement('td');
+                tickerCell.className = 'px-4 py-2 text-blue-600 dark:text-blue-400 font-bold cursor-pointer hover:underline';
+                tickerCell.textContent = row.ticker;
+                tickerCell.style.cursor = 'pointer';
+                tickerCell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (row.ticker && row.ticker !== 'N/A') {
+                        window.location.href = `/v2/ticker?ticker=${encodeURIComponent(row.ticker)}`;
+                    }
+                });
+                tr.appendChild(tickerCell);
+                
+                // Gross ($)
+                const grossCell = document.createElement('td');
+                grossCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
+                grossCell.textContent = fmt(row.gross || 0);
+                tr.appendChild(grossCell);
+                
+                // Net ($)
+                const netCell = document.createElement('td');
+                netCell.className = 'px-4 py-2 text-right font-medium text-green-600 dark:text-green-400';
+                netCell.textContent = fmt(row.amount);
+                tr.appendChild(netCell);
+                
+                // Reinvested Shares
+                const sharesCell = document.createElement('td');
+                sharesCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
+                sharesCell.textContent = (row.shares || 0).toFixed(4);
+                tr.appendChild(sharesCell);
+                
+                // DRIP Price ($)
+                const dripPriceCell = document.createElement('td');
+                dripPriceCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
+                dripPriceCell.textContent = row.drip_price > 0 ? fmt(row.drip_price) : 'N/A';
+                tr.appendChild(dripPriceCell);
+                
                 tbody.appendChild(tr);
             });
         }

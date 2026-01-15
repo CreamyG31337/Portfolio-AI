@@ -1088,13 +1088,16 @@ def get_dividend_data():
             net_amt = float(row.get('net_amount', 0) or 0)
             gross_amt = float(row.get('gross_amount', 0) or 0)
             reinvested = float(row.get('reinvested_shares', 0) or 0)
+            drip_price = float(row.get('drip_price', 0) or 0)
             log_data.append({
                 "date": pay_date if isinstance(pay_date, str) else str(pay_date),
                 "ticker": ticker,
                 "company_name": company_names_map.get(ticker.upper(), ''),
                 "amount": net_amt,
+                "gross": gross_amt,
                 "tax": gross_amt - net_amt,
                 "shares": reinvested,
+                "drip_price": drip_price,
                 "type": "DRIP" if reinvested > 0 else "CASH"
             })
             
