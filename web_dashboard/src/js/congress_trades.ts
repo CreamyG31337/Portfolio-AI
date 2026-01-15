@@ -610,6 +610,16 @@ async function fetchTradeData(): Promise<void> {
         // Calculate stats from full dataset
         calculateAndRenderStats(newTrades);
 
+        // Show/Hide "No Trades" message
+        const noTradesMsg = document.getElementById('no-trades-message');
+        if (noTradesMsg) {
+            if (newTrades.length === 0) {
+                noTradesMsg.classList.remove('hidden');
+            } else {
+                noTradesMsg.classList.add('hidden');
+            }
+        }
+
         // Done loading
         if (titleEl) {
             titleEl.textContent = '📋 Congress Trades';

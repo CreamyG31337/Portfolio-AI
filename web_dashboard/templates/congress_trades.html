@@ -264,16 +264,14 @@
     </div>
 </div>
 
-{% if total_trades == 0 %}
-<div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+<div id="no-trades-message" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6 hidden">
     <p class="text-sm text-blue-800">
         📭 No congress trades found matching the current filters.
     </p>
     <p class="text-xs text-blue-600 mt-2">
-        Try adjusting your filter criteria or check back later when more data is available.
+        Try adjusting your filter criteria.
     </p>
 </div>
-{% endif %}
 
 {% endif %}
 {% endblock %}

@@ -191,8 +191,11 @@ def _make_cache_key(func_name: str, args: tuple, kwargs: dict, cache_version: Op
     
     # Include keyword arguments (sorted for consistency)
     if kwargs:
-        kwargs_str = json.dumps(kwargs, sort_keys=True, default=str)
-        key_parts.append(f"kwargs:{hashlib.md5(kwargs_str.encode()).hexdigest()}")
+        # Filter out kwargs that start with '_' (like Streamlit)
+        filtered_kwargs = {k: v for k, v in kwargs.items() if not k.startswith('_')}
+        if filtered_kwargs:
+            kwargs_str = json.dumps(filtered_kwargs, sort_keys=True, default=str)
+            key_parts.append(f"kwargs:{hashlib.md5(kwargs_str.encode()).hexdigest()}")
     
     # Include cache version if available
     if cache_version:

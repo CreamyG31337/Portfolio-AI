@@ -3687,9 +3687,10 @@ def api_congress_trades_data():
         max_score = float(max_score) if max_score else None
         
         # Get ALL trades (cached - internal pagination happens in the function)
+        # Pass clients as kwargs starting with '_' to be excluded from cache key
         all_trades = get_congress_trades_cached(
-            supabase_client,
             refresh_key,
+            _supabase_client=supabase_client,
             ticker_filter=ticker_filter if ticker_filter and ticker_filter != 'All' else None,
             politician_filter=politician_filter if politician_filter and politician_filter != 'All' else None,
             chamber_filter=chamber_filter if chamber_filter and chamber_filter != 'All' else None,
