@@ -13,6 +13,26 @@ logger = logging.getLogger(__name__)
 
 fund_bp = Blueprint('fund_routes', __name__)
 
+def validate_fund_name(name: str) -> bool:
+    """
+    Validate fund name to prevent path traversal and ensure it's safe for filesystem.
+    Returns True if valid, False otherwise.
+    Allows spaces, letters, numbers, underscores, hyphens.
+    Rejects '..', '/', '\\'.
+    """
+    if not name or not isinstance(name, str):
+        return False
+
+    # Check for path traversal characters
+    if '..' in name or '/' in name or '\\' in name:
+        return False
+
+    # Check for empty or whitespace only
+    if not name.strip():
+        return False
+
+    return True
+
 @fund_bp.route('/v2/admin/funds')
 @require_admin
 def admin_funds_page():
@@ -86,6 +106,9 @@ def create_fund():
         if not name:
             return jsonify({"error": "Fund name is required"}), 400
             
+        if not validate_fund_name(name):
+             return jsonify({"error": "Invalid fund name. Names cannot contain '/', '\\', or '..'"}), 400
+
         client = get_supabase_client()
         
         # Check if exists
@@ -118,6 +141,10 @@ def create_fund():
 def update_fund(fund_name):
     """Update fund details"""
     try:
+        # Note: We don't validate fund_name here because it's in the URL and Flask handles routing.
+        # However, checking it doesn't hurt if we use it for anything other than DB lookup.
+        # But here it's just used for DB update key.
+
         data = request.get_json()
         client = get_supabase_client()
         
@@ -151,6 +178,9 @@ def rename_fund():
         if not old_name or not new_name:
             return jsonify({"error": "Old and new names are required"}), 400
             
+        if not validate_fund_name(new_name):
+             return jsonify({"error": "Invalid new fund name. Names cannot contain '/', '\\', or '..'"}), 400
+
         client = get_supabase_client()
         
         # Check new name availability
@@ -236,6 +266,9 @@ def rebuild_portfolio():
         
         if not fund_name:
             return jsonify({"error": "Fund name is required"}), 400
+
+        if not validate_fund_name(fund_name):
+             return jsonify({"error": "Invalid fund name. Names cannot contain '/', '\\', or '..'"}), 400
             
         # Check for existing rebuild
         import tempfile
@@ -266,6 +299,7 @@ def rebuild_portfolio():
                 return jsonify({"error": "Rebuild script not found"}), 500
                 
         # Data dir
+        # Using f-string here is now safe because validate_fund_name ensures no path traversal
         data_dir = f"trading_data/funds/{fund_name}"
         
         # Launch process
