@@ -604,6 +604,8 @@ async function fetchTradeData(): Promise<void> {
             }
 
             const data: CongressTradeApiResponse = await response.json();
+            
+            console.log(`[CongressTrades] Batch received: offset=${offset}, trades=${data.trades?.length || 0}, has_more=${data.has_more}, next_offset=${data.next_offset}`);
 
             if (data.error) {
                 console.error('API Error:', data.error);
@@ -627,8 +629,8 @@ async function fetchTradeData(): Promise<void> {
             calculateAndRenderStats(newTrades);
 
             // Prepare next iteration
-            hasMore = data.has_more;
-            if (data.next_offset) {
+            hasMore = data.has_more === true;
+            if (hasMore && typeof data.next_offset === 'number') {
                 offset = data.next_offset;
             } else {
                 hasMore = false;
@@ -698,9 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Check for lazy load flag
             if (config.lazyLoad) {
-                // Initialize empty grid to show loading state
-                initializeCongressTradesGrid([]);
-                // Fetch data
+                // Fetch data - grid will be initialized on first batch
                 fetchTradeData();
             } else if (config.tradesData) {
                 // Legacy direct load (if we revert)

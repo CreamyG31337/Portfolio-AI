@@ -1060,74 +1060,30 @@ def get_dividend_data():
     display_currency = get_user_currency() or 'CAD'
     
     try:
-        # Fetch dividend data (last 365 days for LTM metrics)
-        # Returns a list of dicts, not a DataFrame
-        dividend_list = fetch_dividend_log_flask(days_lookback=365, fund=fund)
+        # Fetch dividend data with company names (join with securities table like trade_log does)
+        client = get_supabase_client_flask()
+        if not client:
+            return jsonify({"error": "Database client not available"}), 500
         
-        if not dividend_list:
-            return jsonify({
-                "metrics": {
-                    "total_dividends": 0.0,
-                    "total_us_tax": 0.0,
-                    "largest_dividend": 0.0,
-                    "largest_ticker": "N/A",
-                    "reinvested_shares": 0.0,
-                    "payout_events": 0
-                },
-                "log": []
-            })
-            
-        # Calculate Metrics (LTM) from list of dicts
-        # Columns: net_amount, gross_amount, reinvested_shares, pay_date, ticker
-        total_dividends = sum(float(d.get('net_amount', 0) or 0) for d in dividend_list)
-        # Tax = gross - net
-        total_us_tax = sum(
-            float(d.get('gross_amount', 0) or 0) - float(d.get('net_amount', 0) or 0) 
-            for d in dividend_list
-        )
+        # Calculate start date for LTM metrics
+        from datetime import datetime, timedelta
+        start_date_ltm = (datetime.now() - timedelta(days=365)).date().isoformat()
         
-        # Find largest dividend
-        largest_dividend = 0.0
-        largest_ticker = "N/A"
-        for d in dividend_list:
-            amt = float(d.get('net_amount', 0) or 0)
-            if amt > largest_dividend:
-                largest_dividend = amt
-                largest_ticker = d.get('ticker', 'N/A')
+        # Build query to fetch dividend data
+        query = client.supabase.table("dividend_log").select(
+            "*, securities(company_name)"
+        ).gte('pay_date', start_date_ltm)
         
-        # Calculate Reinvested Shares (DRIP)
-        total_reinvested = sum(float(d.get('reinvested_shares', 0) or 0) for d in dividend_list)
-            
-        payout_events = len(dividend_list)
+        # Apply fund filter if provided
+        if fund:
+            query = query.eq('fund', fund)
         
-        # Extract unique tickers for batch company name lookup
-        unique_tickers = list(set(d.get('ticker', '') for d in dividend_list if d.get('ticker')))
-        company_names_map = {}
-        
-        # Batch fetch company names from securities table
-        if unique_tickers:
-            try:
-                client = get_supabase_client_flask()
-                if client:
-                    # Query in batches to avoid hitting limits
-                    batch_size = 50
-                    for i in range(0, len(unique_tickers), batch_size):
-                        ticker_batch = unique_tickers[i:i+batch_size]
-                        result = client.supabase.table("securities")\
-                            .select("ticker, company_name")\
-                            .in_("ticker", ticker_batch)\
-                            .execute()
-                        
-                        if result.data:
-                            for item in result.data:
-                                ticker = item.get('ticker', '').upper()
-                                company_name = item.get('company_name', '')
-                                if company_name and company_name.strip() and company_name != 'Unknown':
-                                    company_names_map[ticker] = company_name.strip()
-            except Exception as ce:
-                logger.warning(f"Error fetching company names for dividends: {ce}")
+        # Fetch all LTM dividend data
+        dividend_response = query.order('pay_date', desc=True).execute()
+        dividend_list = dividend_response.data or []
         
         # Prepare Log (for table) - already sorted by pay_date desc from query
+        # Extract company_name from nested securities object (same as get_trade_log does)
         log_data = []
         for row in dividend_list:
             pay_date = row.get('pay_date', '')
@@ -1136,10 +1092,16 @@ def get_dividend_data():
             gross_amt = float(row.get('gross_amount', 0) or 0)
             reinvested = float(row.get('reinvested_shares', 0) or 0)
             drip_price = float(row.get('drip_price', 0) or 0)
+            
+            # Extract company_name from nested securities object (same pattern as get_trade_log)
+            company_name = None
+            if 'securities' in row and row['securities']:
+                company_name = row['securities'].get('company_name')
+            
             log_data.append({
                 "date": pay_date if isinstance(pay_date, str) else str(pay_date),
                 "ticker": ticker,
-                "company_name": company_names_map.get(ticker.upper(), ''),
+                "company_name": company_name if company_name else None,
                 "amount": net_amt,
                 "gross": gross_amt,
                 "tax": gross_amt - net_amt,
