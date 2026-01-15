@@ -1,0 +1,1 @@
+CREATE POLICY "Service role full access to user_profiles" ON "user_profiles" FOR ALL TO public USING ((auth.role() = 'service_role'::text));

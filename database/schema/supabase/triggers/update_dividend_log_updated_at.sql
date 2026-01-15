@@ -1,0 +1,1 @@
+CREATE TRIGGER update_dividend_log_updated_at BEFORE UPDATE ON public.dividend_log FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

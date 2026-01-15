@@ -1,0 +1,1 @@
+CREATE POLICY "Service role can manage congress_trades_staging" ON "congress_trades_staging" FOR ALL TO service_role USING (true) WITH CHECK (true);

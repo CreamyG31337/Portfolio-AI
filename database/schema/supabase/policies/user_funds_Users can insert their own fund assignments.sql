@@ -1,0 +1,1 @@
+CREATE POLICY "Users can insert their own fund assignments" ON "user_funds" FOR INSERT TO public WITH CHECK ((auth.uid() = user_id));

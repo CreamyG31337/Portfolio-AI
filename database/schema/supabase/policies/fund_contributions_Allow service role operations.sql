@@ -1,0 +1,1 @@
+CREATE POLICY "Allow service role operations" ON "fund_contributions" FOR ALL TO public USING (true);

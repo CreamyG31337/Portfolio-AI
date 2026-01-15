@@ -1,0 +1,1 @@
+CREATE POLICY "Service role full access to trade_log" ON "trade_log" FOR ALL TO public USING ((auth.role() = 'service_role'::text));

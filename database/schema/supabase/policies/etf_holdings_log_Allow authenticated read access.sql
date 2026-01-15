@@ -1,0 +1,1 @@
+CREATE POLICY "Allow authenticated read access" ON "etf_holdings_log" FOR SELECT TO authenticated USING (true);

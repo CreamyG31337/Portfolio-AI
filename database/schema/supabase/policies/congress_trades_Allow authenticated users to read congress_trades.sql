@@ -1,0 +1,1 @@
+CREATE POLICY "Allow authenticated users to read congress_trades" ON "congress_trades" FOR SELECT TO authenticated USING (true);

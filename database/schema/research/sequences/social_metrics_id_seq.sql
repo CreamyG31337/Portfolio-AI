@@ -1,0 +1,1 @@
+CREATE SEQUENCE social_metrics_id_seq;

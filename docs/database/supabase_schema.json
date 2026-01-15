@@ -1,0 +1,3073 @@
+{
+  "database_name": "Supabase Production",
+  "generated_at": "2026-01-15T02:41:21.416187",
+  "tables": {
+    "securities": {
+      "columns": [
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "company_name",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sector",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "industry",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "country",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "market_cap",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "currency",
+          "type": "VARCHAR(3)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "last_updated",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "trailing_pe",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "dividend_yield",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "fifty_two_week_high",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "fifty_two_week_low",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "ticker"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_securities_currency",
+          "columns": [
+            "currency"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_securities_industry",
+          "columns": [
+            "industry"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_securities_last_updated",
+          "columns": [
+            "last_updated"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_securities_sector",
+          "columns": [
+            "sector"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "cash_balances": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "fund",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "currency",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "amount",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "cash_balances_fund_currency_key",
+          "columns": [
+            "fund",
+            "currency"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_cash_balances_fund",
+          "columns": [
+            "fund"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "performance_metrics": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "fund",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "total_value",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "cost_basis",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "unrealized_pnl",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "performance_pct",
+          "type": "NUMERIC(5, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "total_trades",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "winning_trades",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "losing_trades",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "fund"
+          ],
+          "referenced_table": "funds",
+          "referenced_columns": [
+            "name"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_performance_metrics_date",
+          "columns": [
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_performance_metrics_fund",
+          "columns": [
+            "fund"
+          ],
+          "unique": false
+        },
+        {
+          "name": "performance_metrics_fund_date_key",
+          "columns": [
+            "fund",
+            "date"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "system_settings": {
+      "columns": [
+        {
+          "name": "key",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "value",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_by",
+          "type": "UUID",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "key"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "updated_by"
+          ],
+          "referenced_table": "users",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_system_settings_updated_at",
+          "columns": [
+            "updated_at"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "trade_log": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "fund",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "date",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "shares",
+          "type": "NUMERIC(15, 6)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "price",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "cost_basis",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "pnl",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "reason",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "currency",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "default": "'USD'::character varying"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "fund"
+          ],
+          "referenced_table": "funds",
+          "referenced_columns": [
+            "name"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "ticker"
+          ],
+          "referenced_table": "securities",
+          "referenced_columns": [
+            "ticker"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_trade_log_date",
+          "columns": [
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_trade_log_fund",
+          "columns": [
+            "fund"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_trade_log_ticker",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_trade_log_ticker_fk",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "user_profiles": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "user_id",
+          "type": "UUID",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "full_name",
+          "type": "VARCHAR(255)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "role",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": "'user'::character varying"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "preferences",
+          "type": "JSONB",
+          "nullable": true,
+          "default": "'{}'::jsonb"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "referenced_table": "users",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_user_profiles_preferences",
+          "columns": [
+            "preferences"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_user_profiles_user_id",
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "user_profiles_user_id_key",
+          "columns": [
+            "user_id"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "exchange_rates": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "from_currency",
+          "type": "VARCHAR(3)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "to_currency",
+          "type": "VARCHAR(3)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "rate",
+          "type": "NUMERIC(10, 6)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "timestamp",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "exchange_rates_from_currency_to_currency_timestamp_key",
+          "columns": [
+            "from_currency",
+            "to_currency",
+            "timestamp"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_exchange_rates_currencies",
+          "columns": [
+            "from_currency",
+            "to_currency"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_exchange_rates_currencies_timestamp",
+          "columns": [
+            "from_currency",
+            "to_currency",
+            "timestamp"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_exchange_rates_timestamp",
+          "columns": [
+            "timestamp"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "user_funds": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "user_id",
+          "type": "UUID",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "fund_name",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "fund_id",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "fund_id"
+          ],
+          "referenced_table": "funds",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "referenced_table": "users",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_user_funds_fund_id",
+          "columns": [
+            "fund_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_user_funds_fund_name",
+          "columns": [
+            "fund_name"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_user_funds_user_id",
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "user_funds_user_id_fund_name_key",
+          "columns": [
+            "user_id",
+            "fund_name"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "fund_thesis": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "fund",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "title",
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "overview",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "fund"
+          ],
+          "referenced_table": "funds",
+          "referenced_columns": [
+            "name"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "fund_thesis_fund_key",
+          "columns": [
+            "fund"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_fund_thesis_fund",
+          "columns": [
+            "fund"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "fund_thesis_pillars": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "thesis_id",
+          "type": "UUID",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "allocation",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "thesis",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "pillar_order",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "thesis_id"
+          ],
+          "referenced_table": "fund_thesis",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_fund_thesis_pillars_thesis_id",
+          "columns": [
+            "thesis_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "apscheduler_jobs": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(191)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "next_run_time",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "job_state",
+          "type": "BYTEA",
+          "nullable": false,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_apscheduler_jobs_next_run_time",
+          "columns": [
+            "next_run_time"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "fund_contributions": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "fund",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "contributor",
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR(255)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "amount",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "contribution_type",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "timestamp",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "fund_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "contributor_id",
+          "type": "UUID",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "fund"
+          ],
+          "referenced_table": "funds",
+          "referenced_columns": [
+            "name"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "fund_id"
+          ],
+          "referenced_table": "funds",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_fund_contributions_contributor",
+          "columns": [
+            "contributor"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_fund_contributions_fund",
+          "columns": [
+            "fund"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_fund_contributions_fund_contributor",
+          "columns": [
+            "fund",
+            "contributor"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_fund_contributions_fund_id",
+          "columns": [
+            "fund_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_fund_contributions_timestamp",
+          "columns": [
+            "timestamp"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "funds": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('funds_id_seq'::regclass)"
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(100)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "currency",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "default": "'CAD'::character varying"
+        },
+        {
+          "name": "fund_type",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": "'investment'::character varying"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "base_currency",
+          "type": "VARCHAR(3)",
+          "nullable": true,
+          "default": "'CAD'::character varying"
+        },
+        {
+          "name": "is_production",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "false"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "funds_name_key",
+          "columns": [
+            "name"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_funds_base_currency",
+          "columns": [
+            "base_currency"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_funds_is_production",
+          "columns": [
+            "is_production"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "contributors": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR(255)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "phone",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "address",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "kyc_status",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": "'pending'::character varying"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "contributors_email_key",
+          "columns": [
+            "email"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_contributors_email",
+          "columns": [
+            "email"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_contributors_name",
+          "columns": [
+            "name"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "contributor_access": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "contributor_id",
+          "type": "UUID",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "user_id",
+          "type": "UUID",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "access_level",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": "'viewer'::character varying"
+        },
+        {
+          "name": "granted_by",
+          "type": "UUID",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "granted_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "expires_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "contributor_id"
+          ],
+          "referenced_table": "contributors",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "granted_by"
+          ],
+          "referenced_table": "users",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "referenced_table": "users",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "contributor_access_contributor_id_user_id_key",
+          "columns": [
+            "contributor_id",
+            "user_id"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_contributor_access_contributor",
+          "columns": [
+            "contributor_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_contributor_access_user",
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "benchmark_data": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "BIGINT",
+          "nullable": false,
+          "default": "nextval('benchmark_data_id_seq'::regclass)"
+        },
+        {
+          "name": "ticker",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "open",
+          "type": "NUMERIC(12, 4)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "high",
+          "type": "NUMERIC(12, 4)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "low",
+          "type": "NUMERIC(12, 4)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "close",
+          "type": "NUMERIC(12, 4)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "volume",
+          "type": "BIGINT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "adjusted_close",
+          "type": "NUMERIC(12, 4)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "benchmark_data_ticker_date_key",
+          "columns": [
+            "ticker",
+            "date"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_benchmark_ticker_date",
+          "columns": [
+            "ticker",
+            "date"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "research_domain_health": {
+      "columns": [
+        {
+          "name": "domain",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "total_attempts",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "total_successes",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "total_failures",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "consecutive_failures",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "last_failure_reason",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "last_attempt_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "last_success_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "auto_blacklisted",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "false"
+        },
+        {
+          "name": "auto_blacklisted_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "domain"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_domain_health_blacklisted",
+          "columns": [
+            "auto_blacklisted",
+            "domain"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_domain_health_consecutive",
+          "columns": [
+            "consecutive_failures",
+            "domain"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "watched_tickers": {
+      "columns": [
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "priority_tier",
+          "type": "VARCHAR(10)",
+          "nullable": true,
+          "default": "'B'::character varying"
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "true"
+        },
+        {
+          "name": "source",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "ticker"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_watched_tickers_active",
+          "columns": [
+            "is_active"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_watched_tickers_priority",
+          "columns": [
+            "priority_tier"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "job_executions": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('job_executions_id_seq'::regclass)"
+        },
+        {
+          "name": "job_name",
+          "type": "VARCHAR(100)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "target_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "fund_name",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "started_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "completed_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "funds_processed",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "error_message",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "duration_ms",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_job_executions_date",
+          "columns": [
+            "target_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_job_executions_running",
+          "columns": [
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_job_executions_status",
+          "columns": [
+            "job_name",
+            "target_date",
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "name": "unique_job_execution",
+          "columns": [
+            "job_name",
+            "target_date",
+            "fund_name"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "committees": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('committees_id_seq'::regclass)"
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "code",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "chamber",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "target_sectors",
+          "type": "JSONB",
+          "nullable": true,
+          "default": "'[]'::jsonb"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "committees_name_chamber_key",
+          "columns": [
+            "name",
+            "chamber"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_committees_chamber",
+          "columns": [
+            "chamber"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_committees_code",
+          "columns": [
+            "code"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_committees_name",
+          "columns": [
+            "name"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_committees_target_sectors",
+          "columns": [
+            "target_sectors"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "politicians": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('politicians_id_seq'::regclass)"
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "bioguide_id",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "party",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "state",
+          "type": "VARCHAR(2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "chamber",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_politicians_bioguide_id",
+          "columns": [
+            "bioguide_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_politicians_chamber",
+          "columns": [
+            "chamber"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_politicians_name",
+          "columns": [
+            "name"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_politicians_state",
+          "columns": [
+            "state"
+          ],
+          "unique": false
+        },
+        {
+          "name": "politicians_bioguide_id_key",
+          "columns": [
+            "bioguide_id"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "portfolio_positions": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "fund",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "shares",
+          "type": "NUMERIC(15, 6)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "price",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "cost_basis",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "pnl",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "total_value",
+          "type": "NUMERIC(10, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "currency",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "default": "'USD'::character varying"
+        },
+        {
+          "name": "date",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "base_currency",
+          "type": "VARCHAR(3)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "total_value_base",
+          "type": "NUMERIC(15, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "cost_basis_base",
+          "type": "NUMERIC(15, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "pnl_base",
+          "type": "NUMERIC(15, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "exchange_rate",
+          "type": "NUMERIC(10, 6)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "date_only",
+          "type": "DATE",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "fund"
+          ],
+          "referenced_table": "funds",
+          "referenced_columns": [
+            "name"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "ticker"
+          ],
+          "referenced_table": "securities",
+          "referenced_columns": [
+            "ticker"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_portfolio_positions_base_currency",
+          "columns": [
+            "base_currency"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_date",
+          "columns": [
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_date_fund",
+          "columns": [
+            "date",
+            "fund"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_fund",
+          "columns": [
+            "fund"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_fund_date",
+          "columns": [
+            "fund",
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_fund_date_ticker",
+          "columns": [
+            "fund",
+            "date",
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_fund_ticker",
+          "columns": [
+            "fund",
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_fund_ticker_date",
+          "columns": [
+            "fund",
+            "ticker",
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_ticker",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_ticker_fk",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_ticker_fund_date",
+          "columns": [
+            "ticker",
+            "fund",
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_portfolio_positions_unique",
+          "columns": [
+            "fund",
+            "ticker",
+            "date_only"
+          ],
+          "unique": true
+        },
+        {
+          "name": "portfolio_positions_unique_fund_ticker_date",
+          "columns": [
+            "fund",
+            "ticker",
+            "date_only"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "committee_assignments": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('committee_assignments_id_seq'::regclass)"
+        },
+        {
+          "name": "politician_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "committee_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "rank",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "title",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "party",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "committee_id"
+          ],
+          "referenced_table": "committees",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "politician_id"
+          ],
+          "referenced_table": "politicians",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "committee_assignments_politician_id_committee_id_key",
+          "columns": [
+            "politician_id",
+            "committee_id"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_committee_assignments_committee",
+          "columns": [
+            "committee_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_committee_assignments_politician",
+          "columns": [
+            "politician_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_committee_assignments_politician_committee",
+          "columns": [
+            "politician_id",
+            "committee_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "congress_trades": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('congress_trades_id_seq'::regclass)"
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "chamber",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "transaction_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "disclosure_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "type",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "amount",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "asset_type",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "conflict_score",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "price",
+          "type": "NUMERIC(10, 2)",
+          "nullable": true,
+          "default": "NULL::numeric"
+        },
+        {
+          "name": "party",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "state",
+          "type": "VARCHAR(2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "owner",
+          "type": "VARCHAR(100)",
+          "nullable": false,
+          "default": "'Unknown'::character varying"
+        },
+        {
+          "name": "politician_id",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "politician_id"
+          ],
+          "referenced_table": "politicians",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "congress_trades_politician_ticker_date_amount_type_owner_key",
+          "columns": [
+            "politician_id",
+            "ticker",
+            "transaction_date",
+            "amount",
+            "type",
+            "owner"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_congress_chamber",
+          "columns": [
+            "chamber"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_conflict_score",
+          "columns": [
+            "conflict_score"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_disclosure_date",
+          "columns": [
+            "disclosure_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_owner",
+          "columns": [
+            "owner"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_party",
+          "columns": [
+            "party"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_state",
+          "columns": [
+            "state"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_ticker",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trades_politician_id",
+          "columns": [
+            "politician_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_transaction_date",
+          "columns": [
+            "transaction_date"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "congress_trades_staging": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('congress_trades_staging_id_seq'::regclass)"
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "politician",
+          "type": "VARCHAR(200)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "chamber",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "transaction_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "disclosure_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "type",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "amount",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "price",
+          "type": "NUMERIC(10, 2)",
+          "nullable": true,
+          "default": "NULL::numeric"
+        },
+        {
+          "name": "asset_type",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "party",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "state",
+          "type": "VARCHAR(2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "owner",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "conflict_score",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "import_batch_id",
+          "type": "UUID",
+          "nullable": true,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "import_timestamp",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "validation_status",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": "'pending'::character varying"
+        },
+        {
+          "name": "validation_notes",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "promoted_to_production",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "false"
+        },
+        {
+          "name": "promoted_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "source_url",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "raw_data",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_staging_batch",
+          "columns": [
+            "import_batch_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_staging_date",
+          "columns": [
+            "transaction_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_staging_politician",
+          "columns": [
+            "politician"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_staging_promoted",
+          "columns": [
+            "promoted_to_production"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_staging_status",
+          "columns": [
+            "validation_status"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_staging_ticker",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "rss_feeds": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('rss_feeds_id_seq'::regclass)"
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(200)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "url",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "category",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "enabled",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "true"
+        },
+        {
+          "name": "last_fetched_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_rss_feeds_enabled",
+          "columns": [
+            "enabled"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_rss_feeds_last_fetched",
+          "columns": [
+            "last_fetched_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "rss_feeds_url_key",
+          "columns": [
+            "url"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "dividend_log": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "uuid_generate_v4()"
+        },
+        {
+          "name": "fund",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "ex_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "pay_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "gross_amount",
+          "type": "NUMERIC(15, 6)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "withholding_tax",
+          "type": "NUMERIC(15, 6)",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "net_amount",
+          "type": "NUMERIC(15, 6)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "reinvested_shares",
+          "type": "NUMERIC(15, 6)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "drip_price",
+          "type": "NUMERIC(10, 2)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "is_verified",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "false"
+        },
+        {
+          "name": "trade_log_id",
+          "type": "UUID",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "currency",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "default": "'USD'::character varying"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "fund"
+          ],
+          "referenced_table": "funds",
+          "referenced_columns": [
+            "name"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "trade_log_id"
+          ],
+          "referenced_table": "trade_log",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "ticker"
+          ],
+          "referenced_table": "securities",
+          "referenced_columns": [
+            "ticker"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "dividend_log_fund_ticker_ex_date_key",
+          "columns": [
+            "fund",
+            "ticker",
+            "ex_date"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_dividend_log_ex_date",
+          "columns": [
+            "ex_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_dividend_log_fund",
+          "columns": [
+            "fund"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_dividend_log_pay_date",
+          "columns": [
+            "pay_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_dividend_log_ticker",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_dividend_log_ticker_fk",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_dividend_log_trade_log_id",
+          "columns": [
+            "trade_log_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "job_retry_queue": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('job_retry_queue_id_seq'::regclass)"
+        },
+        {
+          "name": "job_name",
+          "type": "VARCHAR(100)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "target_date",
+          "type": "DATE",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "entity_id",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "entity_type",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": "'fund'::character varying"
+        },
+        {
+          "name": "failure_reason",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "error_message",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "failed_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "retry_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "last_retry_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": "'pending'::character varying"
+        },
+        {
+          "name": "context",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "resolved_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_retry_queue_created",
+          "columns": [
+            "created_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_retry_queue_job_entity",
+          "columns": [
+            "job_name",
+            "entity_type",
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_retry_queue_pending",
+          "columns": [
+            "target_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_retry_queue_status",
+          "columns": [
+            "status",
+            "target_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "unique_retry_entry",
+          "columns": [
+            "job_name",
+            "target_date",
+            "entity_id",
+            "entity_type"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "etf_holdings_log": {
+      "columns": [
+        {
+          "name": "date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "etf_ticker",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "holding_ticker",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "holding_name",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "shares_held",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "weight_percent",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "market_value",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "date",
+        "etf_ticker",
+        "holding_ticker"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_etf_holdings_date",
+          "columns": [
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_etf_holdings_etf",
+          "columns": [
+            "etf_ticker",
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_etf_holdings_ticker",
+          "columns": [
+            "holding_ticker"
+          ],
+          "unique": false
+        }
+      ]
+    }
+  }
+}

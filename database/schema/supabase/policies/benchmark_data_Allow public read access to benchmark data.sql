@@ -1,0 +1,1 @@
+CREATE POLICY "Allow public read access to benchmark data" ON "benchmark_data" FOR SELECT TO public USING (true);

@@ -1,0 +1,1 @@
+CREATE POLICY "Users can view their own fund assignments" ON "user_funds" FOR SELECT TO public USING ((auth.uid() = user_id));

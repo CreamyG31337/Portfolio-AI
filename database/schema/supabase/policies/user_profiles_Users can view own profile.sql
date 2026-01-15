@@ -1,0 +1,1 @@
+CREATE POLICY "Users can view own profile" ON "user_profiles" FOR SELECT TO public USING ((auth.uid() = user_id));

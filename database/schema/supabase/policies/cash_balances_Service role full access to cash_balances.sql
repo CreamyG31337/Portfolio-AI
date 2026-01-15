@@ -1,0 +1,1 @@
+CREATE POLICY "Service role full access to cash_balances" ON "cash_balances" FOR ALL TO public USING ((auth.role() = 'service_role'::text));

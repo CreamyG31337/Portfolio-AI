@@ -1,0 +1,1 @@
+CREATE POLICY "Service role can manage politicians" ON "politicians" FOR ALL TO service_role USING (true) WITH CHECK (true);

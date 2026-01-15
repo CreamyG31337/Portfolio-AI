@@ -1,0 +1,1 @@
+CREATE SEQUENCE social_sentiment_analysis_id_seq;

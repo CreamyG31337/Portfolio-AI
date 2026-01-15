@@ -1,0 +1,1 @@
+CREATE SEQUENCE congress_trade_sessions_id_seq;

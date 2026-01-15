@@ -1,0 +1,1 @@
+CREATE SEQUENCE post_summaries_id_seq;

@@ -1,0 +1,1 @@
+CREATE POLICY "Allow service role to manage benchmark data" ON "benchmark_data" FOR ALL TO service_role USING (true) WITH CHECK (true);

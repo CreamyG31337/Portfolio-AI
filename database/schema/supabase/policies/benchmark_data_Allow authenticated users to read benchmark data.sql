@@ -1,0 +1,1 @@
+CREATE POLICY "Allow authenticated users to read benchmark data" ON "benchmark_data" FOR SELECT TO authenticated USING (true);

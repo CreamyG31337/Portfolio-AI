@@ -1,0 +1,1 @@
+CREATE POLICY "Allow public read access to exchange_rates" ON "exchange_rates" FOR SELECT TO public USING (true);

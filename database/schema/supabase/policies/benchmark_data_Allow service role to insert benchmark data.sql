@@ -1,0 +1,1 @@
+CREATE POLICY "Allow service role to insert benchmark data" ON "benchmark_data" FOR INSERT TO public WITH CHECK ((((auth.jwt() ->> 'role'::text) = 'service_role'::text) OR ((auth.jwt() ->> 'role'::text) = 'anon'::text) OR (auth.uid() IS NOT NULL)));

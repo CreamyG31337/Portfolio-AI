@@ -1,0 +1,1 @@
+CREATE SEQUENCE committee_assignments_id_seq;

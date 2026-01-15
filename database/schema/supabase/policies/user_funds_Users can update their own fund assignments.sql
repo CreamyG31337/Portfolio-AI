@@ -1,0 +1,1 @@
+CREATE POLICY "Users can update their own fund assignments" ON "user_funds" FOR UPDATE TO public USING ((auth.uid() = user_id));

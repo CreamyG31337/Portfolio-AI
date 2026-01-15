@@ -1,0 +1,1 @@
+CREATE POLICY "Allow read access to securities" ON "securities" FOR SELECT TO public USING (true);

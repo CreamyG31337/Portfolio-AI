@@ -368,3 +368,52 @@ python social_sentiment_ai_job.py
 2. Run social sentiment collection to generate data
 3. Execute AI analysis job
 4. Check web dashboard for AI analysis results
+## Database Schema Documentation
+
+### Schema Documentation Files
+
+**Location:** docs/database/
+
+The project maintains comprehensive, auto-generated database schema documentation in multiple formats:
+
+1. **Markdown Documentation** (Human & LLM-readable):
+   - docs/database/supabase_schema.md - Supabase Production DB (29 tables)
+   - docs/database/research_schema.md - Research/AI DB (13 tables)
+   - Includes: table list, columns, types, constraints, foreign keys, indexes
+   - Well-organized with table of contents for easy navigation
+
+2. **JSON Schema** (Machine/LLM-parseable):
+   - docs/database/supabase_schema.json - Structured data for programmatic access
+   - docs/database/research_schema.json - Structured research DB schema
+   - Perfect for LLM analysis and automated tooling
+
+3. **Clean SQL Schema** (Table-specific files):
+   - `database/schema/supabase/*.sql` - Individual table definitions for Supabase
+   - `database/schema/research/*.sql` - Individual table definitions for Research DB
+   - `_init_schema.sql` in each folder pulls all tables together
+   - Generated directly from production database, bypassing migration artifacts
+
+### Generating/Updating Schema Documentation
+
+**Generate Documentation (Markdown + JSON):**
+```powershell
+.\web_dashboard\venv\Scripts\python.exe scripts\generate_schema_docs.py
+```
+
+**Export Clean SQL Schema (Split by Table):**
+```powershell
+.\web_dashboard\venv\Scripts\python.exe scripts\export_clean_schema.py
+```
+
+### Migration Strategy
+
+**Current State:**
+- `database/schema/` - Clean, modular production schema (**SOURCE OF TRUTH**)
+- `database/archive/` - Historical migrations kept for context only
+
+**Recommended Approach:**
+1. Use `database/schema/` SQL files as the absolute source of truth for all database objects (Tables, Views, Functions, Polices).
+2. If you need to verify or recreate an object, look in the corresponding subdirectory of `database/schema/<db_folder>/`.
+3. Use the `_init_schema.sql` script for fresh environment setups.
+4. Always run `export_clean_schema.py` after making changes to the production database to keep the repository's modular schema synced.
+

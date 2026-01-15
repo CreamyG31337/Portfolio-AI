@@ -1,0 +1,1 @@
+CREATE POLICY "Allow service role full access" ON "etf_holdings_log" FOR ALL TO service_role USING (true) WITH CHECK (true);

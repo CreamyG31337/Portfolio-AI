@@ -1,0 +1,1 @@
+CREATE POLICY "Service role can manage rss_feeds" ON "rss_feeds" FOR ALL TO service_role USING (true) WITH CHECK (true);

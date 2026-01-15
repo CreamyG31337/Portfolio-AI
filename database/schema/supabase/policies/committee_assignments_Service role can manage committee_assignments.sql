@@ -1,0 +1,1 @@
+CREATE POLICY "Service role can manage committee_assignments" ON "committee_assignments" FOR ALL TO service_role USING (true) WITH CHECK (true);

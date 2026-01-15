@@ -1,0 +1,1 @@
+CREATE POLICY "Allow authenticated users to manage exchange_rates" ON "exchange_rates" FOR ALL TO public USING ((auth.role() = 'authenticated'::text));

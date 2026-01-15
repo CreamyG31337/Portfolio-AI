@@ -1,0 +1,1 @@
+CREATE POLICY "Anyone can view system settings" ON "system_settings" FOR SELECT TO authenticated USING (true);

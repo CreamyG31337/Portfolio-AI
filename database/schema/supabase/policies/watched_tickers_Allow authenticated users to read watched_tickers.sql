@@ -1,0 +1,1 @@
+CREATE POLICY "Allow authenticated users to read watched_tickers" ON "watched_tickers" FOR SELECT TO authenticated USING (true);

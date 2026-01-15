@@ -1,0 +1,1 @@
+CREATE POLICY "Allow service role to write job executions" ON "job_executions" FOR ALL TO service_role USING (true) WITH CHECK (true);

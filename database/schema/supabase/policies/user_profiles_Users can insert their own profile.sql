@@ -1,0 +1,1 @@
+CREATE POLICY "Users can insert their own profile" ON "user_profiles" FOR INSERT TO public WITH CHECK ((auth.uid() = user_id));

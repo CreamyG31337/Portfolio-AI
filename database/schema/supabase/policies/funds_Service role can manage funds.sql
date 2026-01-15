@@ -1,0 +1,1 @@
+CREATE POLICY "Service role can manage funds" ON "funds" FOR ALL TO public USING ((auth.role() = 'service_role'::text));

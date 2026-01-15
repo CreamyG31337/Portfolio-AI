@@ -1,0 +1,1 @@
+CREATE POLICY "Users can delete their own fund assignments" ON "user_funds" FOR DELETE TO public USING ((auth.uid() = user_id));

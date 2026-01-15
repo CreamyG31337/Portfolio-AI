@@ -1,0 +1,1 @@
+CREATE SEQUENCE congress_trades_analysis_id_seq;

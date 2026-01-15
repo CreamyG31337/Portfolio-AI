@@ -1,0 +1,1 @@
+CREATE POLICY "Allow all operations on dividend_log" ON "dividend_log" FOR ALL TO public USING (true);

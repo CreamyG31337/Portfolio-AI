@@ -1,0 +1,1 @@
+CREATE SEQUENCE funds_id_seq;

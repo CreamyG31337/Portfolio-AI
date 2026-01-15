@@ -1,0 +1,1 @@
+CREATE POLICY "Service role full access to performance_metrics" ON "performance_metrics" FOR ALL TO public USING ((auth.role() = 'service_role'::text));

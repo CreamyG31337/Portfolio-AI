@@ -1,0 +1,1 @@
+CREATE POLICY "Allow authenticated users to read job executions" ON "job_executions" FOR SELECT TO authenticated USING (true);

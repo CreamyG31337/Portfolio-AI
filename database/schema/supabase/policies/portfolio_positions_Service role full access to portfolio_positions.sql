@@ -1,0 +1,1 @@
+CREATE POLICY "Service role full access to portfolio_positions" ON "portfolio_positions" FOR ALL TO public USING ((auth.role() = 'service_role'::text));

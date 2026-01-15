@@ -1,0 +1,1401 @@
+{
+  "database_name": "Research Database",
+  "generated_at": "2026-01-15T02:41:50.375622",
+  "tables": {
+    "research_articles": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sector",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "article_type",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "url",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "summary",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "source",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "published_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "fetched_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "relevance_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "embedding",
+          "type": "NULL",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "tickers",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "fund",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "claims",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "fact_check",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "conclusion",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sentiment",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sentiment_score",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "logic_check",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "archive_submitted_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "archive_checked_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "archive_url",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_research_articles_archive_submitted",
+          "columns": [
+            "archive_submitted_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_articles_archive_url",
+          "columns": [
+            "archive_url"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_claims",
+          "columns": [
+            "claims"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_fetched",
+          "columns": [
+            "fetched_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_fund",
+          "columns": [
+            "fund"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_logic_check",
+          "columns": [
+            "logic_check"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_sentiment",
+          "columns": [
+            "sentiment"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_sentiment_score",
+          "columns": [
+            "sentiment_score"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_ticker",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_tickers_gin",
+          "columns": [
+            "tickers"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_research_type",
+          "columns": [
+            "article_type"
+          ],
+          "unique": false
+        },
+        {
+          "name": "research_articles_url_key",
+          "columns": [
+            "url"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "social_metrics": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('social_metrics_id_seq'::regclass)"
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "platform",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "volume",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "bull_bear_ratio",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": "0.0"
+        },
+        {
+          "name": "sentiment_label",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sentiment_score",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "raw_data",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "basic_sentiment_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "has_ai_analysis",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "false"
+        },
+        {
+          "name": "analysis_session_id",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "raw_posts",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "post_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "engagement_score",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": "0.0"
+        },
+        {
+          "name": "data_quality_score",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": "0.0"
+        },
+        {
+          "name": "collection_metadata",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_social_created_at",
+          "columns": [
+            "created_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_social_platform",
+          "columns": [
+            "platform"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_social_ticker_platform",
+          "columns": [
+            "ticker",
+            "platform"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_social_ticker_time",
+          "columns": [
+            "ticker",
+            "created_at"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "social_posts": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('social_posts_id_seq'::regclass)"
+        },
+        {
+          "name": "metric_id",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "platform",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "post_id",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "author",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "posted_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "engagement_score",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "url",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "extracted_tickers",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "metric_id"
+          ],
+          "referenced_table": "social_metrics",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": []
+    },
+    "sentiment_sessions": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('sentiment_sessions_id_seq'::regclass)"
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "platform",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "session_start",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "session_end",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "post_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "total_engagement",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "needs_ai_analysis",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "congress_trades_analysis": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('congress_trades_analysis_id_seq'::regclass)"
+        },
+        {
+          "name": "trade_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "conflict_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "reasoning",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "model_used",
+          "type": "VARCHAR(100)",
+          "nullable": false,
+          "default": "'granite3.3:8b'::character varying"
+        },
+        {
+          "name": "analyzed_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "analysis_version",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "1"
+        },
+        {
+          "name": "confidence_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "session_id",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "risk_pattern",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "session_id"
+          ],
+          "referenced_table": "congress_trade_sessions",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "congress_trades_analysis_unique_trade_model_version",
+          "columns": [
+            "trade_id",
+            "model_used",
+            "analysis_version"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_congress_trades_analysis_analyzed_at",
+          "columns": [
+            "analyzed_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trades_analysis_confidence",
+          "columns": [
+            "confidence_score"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trades_analysis_risk_pattern",
+          "columns": [
+            "risk_pattern"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trades_analysis_score",
+          "columns": [
+            "conflict_score"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trades_analysis_session",
+          "columns": [
+            "session_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trades_analysis_trade_id",
+          "columns": [
+            "trade_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "social_sentiment_analysis": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('social_sentiment_analysis_id_seq'::regclass)"
+        },
+        {
+          "name": "session_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "platform",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "sentiment_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "confidence_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sentiment_label",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "summary",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "key_themes",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "reasoning",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "model_used",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": "'granite3.1:8b'::character varying"
+        },
+        {
+          "name": "analysis_version",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "1"
+        },
+        {
+          "name": "analyzed_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "congress_trade_sessions": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('congress_trade_sessions_id_seq'::regclass)"
+        },
+        {
+          "name": "politician_id",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "politician_name",
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "start_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "end_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "trade_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "total_value_estimate",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "conflict_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "confidence_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "ai_summary",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "last_analyzed_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "needs_reanalysis",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "model_used",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "analysis_version",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "1"
+        },
+        {
+          "name": "risk_pattern",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_congress_trade_sessions_dates",
+          "columns": [
+            "start_date",
+            "end_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trade_sessions_needs_reanalysis",
+          "columns": [
+            "needs_reanalysis"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trade_sessions_politician",
+          "columns": [
+            "politician_name"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trade_sessions_risk_pattern",
+          "columns": [
+            "risk_pattern"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_congress_trade_sessions_score",
+          "columns": [
+            "conflict_score"
+          ],
+          "unique": false
+        },
+        {
+          "name": "unique_politician_date_range",
+          "columns": [
+            "politician_name",
+            "start_date",
+            "end_date"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "extracted_tickers": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('extracted_tickers_id_seq'::regclass)"
+        },
+        {
+          "name": "analysis_id",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "confidence",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "context",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "is_primary",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "false"
+        },
+        {
+          "name": "company_name",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sector",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "extracted_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "analysis_id"
+          ],
+          "referenced_table": "social_sentiment_analysis",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": []
+    },
+    "post_summaries": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('post_summaries_id_seq'::regclass)"
+        },
+        {
+          "name": "post_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "summary",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "key_points",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sentiment_impact",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "summarized_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "rss_feeds": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('rss_feeds_id_seq'::regclass)"
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(200)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "url",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "category",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "enabled",
+          "type": "BOOLEAN",
+          "nullable": true,
+          "default": "true"
+        },
+        {
+          "name": "last_fetched_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_rss_feeds_enabled",
+          "columns": [
+            "enabled"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_rss_feeds_last_fetched",
+          "columns": [
+            "last_fetched_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "rss_feeds_url_key",
+          "columns": [
+            "url"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "securities": {
+      "columns": [
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sector",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "industry",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "asset_class",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "exchange",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "currency",
+          "type": "VARCHAR(10)",
+          "nullable": true,
+          "default": "'USD'::character varying"
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "last_updated",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "first_detected_by",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "ticker"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_securities_industry",
+          "columns": [
+            "industry"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_securities_name",
+          "columns": [
+            null
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_securities_sector",
+          "columns": [
+            "sector"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "market_relationships": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('market_relationships_id_seq'::regclass)"
+        },
+        {
+          "name": "source_ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "target_ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "relationship_type",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "confidence_score",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": "0.0"
+        },
+        {
+          "name": "detected_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "source_article_id",
+          "type": "UUID",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "source_article_id"
+          ],
+          "referenced_table": "research_articles",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_delete": null,
+          "on_update": null
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_relationships_article",
+          "columns": [
+            "source_article_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_relationships_confidence",
+          "columns": [
+            "confidence_score"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_relationships_source",
+          "columns": [
+            "source_ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_relationships_source_confidence",
+          "columns": [
+            "source_ticker",
+            "confidence_score"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_relationships_target",
+          "columns": [
+            "target_ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_relationships_type",
+          "columns": [
+            "relationship_type"
+          ],
+          "unique": false
+        },
+        {
+          "name": "unique_relationship",
+          "columns": [
+            "source_ticker",
+            "target_ticker",
+            "relationship_type"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "etf_holdings_log": {
+      "columns": [
+        {
+          "name": "date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "etf_ticker",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "holding_ticker",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "holding_name",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "shares_held",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "weight_percent",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "market_value",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "date",
+        "etf_ticker",
+        "holding_ticker"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_etf_holdings_date",
+          "columns": [
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_etf_holdings_etf",
+          "columns": [
+            "etf_ticker",
+            "date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_etf_holdings_ticker",
+          "columns": [
+            "holding_ticker"
+          ],
+          "unique": false
+        }
+      ]
+    }
+  }
+}

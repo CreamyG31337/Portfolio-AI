@@ -1,0 +1,1 @@
+CREATE SEQUENCE job_executions_id_seq;

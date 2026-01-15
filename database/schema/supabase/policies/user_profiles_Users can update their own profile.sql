@@ -1,0 +1,1 @@
+CREATE POLICY "Users can update their own profile" ON "user_profiles" FOR UPDATE TO public USING ((auth.uid() = user_id));

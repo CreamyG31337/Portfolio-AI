@@ -1,0 +1,1 @@
+CREATE SEQUENCE job_retry_queue_id_seq;

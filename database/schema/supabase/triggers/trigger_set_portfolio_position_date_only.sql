@@ -1,0 +1,1 @@
+CREATE TRIGGER trigger_set_portfolio_position_date_only BEFORE INSERT OR UPDATE ON public.portfolio_positions FOR EACH ROW EXECUTE FUNCTION set_portfolio_position_date_only();

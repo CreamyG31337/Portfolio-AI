@@ -1,0 +1,1 @@
+CREATE SEQUENCE sentiment_sessions_id_seq;

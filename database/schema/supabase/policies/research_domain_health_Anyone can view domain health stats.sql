@@ -1,0 +1,1 @@
+CREATE POLICY "Anyone can view domain health stats" ON "research_domain_health" FOR SELECT TO authenticated USING (true);

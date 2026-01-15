@@ -1,0 +1,1 @@
+CREATE POLICY "Allow authenticated users to read committee_assignments" ON "committee_assignments" FOR SELECT TO authenticated USING (true);

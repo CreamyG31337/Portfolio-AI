@@ -1,0 +1,1 @@
+CREATE POLICY "Allow all operations on fund_thesis" ON "fund_thesis" FOR ALL TO public USING (true);

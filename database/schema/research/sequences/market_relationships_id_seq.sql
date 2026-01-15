@@ -1,0 +1,1 @@
+CREATE SEQUENCE market_relationships_id_seq;

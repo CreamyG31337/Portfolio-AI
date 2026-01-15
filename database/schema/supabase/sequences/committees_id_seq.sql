@@ -1,0 +1,1 @@
+CREATE SEQUENCE committees_id_seq;

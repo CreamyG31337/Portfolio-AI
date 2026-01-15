@@ -1,0 +1,1 @@
+CREATE SEQUENCE rss_feeds_id_seq;

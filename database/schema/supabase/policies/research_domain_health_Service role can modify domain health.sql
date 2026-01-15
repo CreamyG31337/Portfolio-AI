@@ -1,0 +1,1 @@
+CREATE POLICY "Service role can modify domain health" ON "research_domain_health" FOR ALL TO service_role USING (true) WITH CHECK (true);

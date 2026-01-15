@@ -1,0 +1,1 @@
+CREATE POLICY "Allow authenticated users to read politicians" ON "politicians" FOR SELECT TO authenticated USING (true);

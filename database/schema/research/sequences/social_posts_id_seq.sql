@@ -1,0 +1,1 @@
+CREATE SEQUENCE social_posts_id_seq;

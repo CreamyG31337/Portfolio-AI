@@ -1,0 +1,1 @@
+CREATE SEQUENCE benchmark_data_id_seq;

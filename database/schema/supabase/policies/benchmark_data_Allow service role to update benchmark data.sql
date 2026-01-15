@@ -1,0 +1,1 @@
+CREATE POLICY "Allow service role to update benchmark data" ON "benchmark_data" FOR UPDATE TO public USING ((((auth.jwt() ->> 'role'::text) = 'service_role'::text) OR ((auth.jwt() ->> 'role'::text) = 'anon'::text) OR (auth.uid() IS NOT NULL)));

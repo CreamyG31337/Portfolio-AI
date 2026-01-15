@@ -1,0 +1,1 @@
+CREATE POLICY "Allow service role full access to exchange_rates" ON "exchange_rates" FOR ALL TO public USING ((auth.role() = 'service_role'::text));

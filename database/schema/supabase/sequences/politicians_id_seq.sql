@@ -1,0 +1,1 @@
+CREATE SEQUENCE politicians_id_seq;
