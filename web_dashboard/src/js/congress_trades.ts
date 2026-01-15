@@ -567,7 +567,7 @@ async function fetchTradeData(): Promise<void> {
         gridApi.showLoadingOverlay();
     }
 
-    const BATCH_SIZE = 2500;
+    const BATCH_SIZE = 1000; // Supabase default max is 1000 rows per request
     let offset = 0;
     let hasMore = true;
     const searchParams = new URLSearchParams(window.location.search);
