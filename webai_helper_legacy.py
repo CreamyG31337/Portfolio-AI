@@ -16,7 +16,7 @@ sys.path.insert(0, str(project_root / 'web_dashboard'))
 from webai_cookie_client_legacy import WebAICookieClientLegacy
 
 
-def get_gemini_client() -> GeminiCookieClient:
+def get_gemini_client() -> WebAICookieClientLegacy:
     """
     Get a Gemini client instance, automatically finding the cookie file.
     
