@@ -1447,12 +1447,10 @@ async function fetchDividends(): Promise<void> {
 function renderDividends(data: DividendData): void {
     const currency = data.currency || 'USD';
 
-    // Update Metrics
-    const fmt = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency }).format(val);
-
-    updateMetricText('div-total', fmt(data.metrics.total_dividends));
-    updateMetricText('div-tax', fmt(data.metrics.total_us_tax));
-    updateMetricText('div-largest', fmt(data.metrics.largest_dividend));
+    // Update Metrics - use formatMoney to avoid currency code prefix
+    updateMetricText('div-total', formatMoney(data.metrics.total_dividends, currency));
+    updateMetricText('div-tax', formatMoney(data.metrics.total_us_tax, currency));
+    updateMetricText('div-largest', formatMoney(data.metrics.largest_dividend, currency));
     updateMetricText('div-reinvested', data.metrics.reinvested_shares.toFixed(4));
     updateMetricText('div-events', data.metrics.payout_events.toString());
 
@@ -1464,7 +1462,7 @@ function renderDividends(data: DividendData): void {
     if (tbody) {
         tbody.innerHTML = '';
         if (data.log.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-2 text-center text-gray-500">No dividend history</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-2 text-center text-gray-500">No dividend history</td></tr>';
         } else {
             data.log.forEach(row => {
                 const tr = document.createElement('tr');
@@ -1489,16 +1487,22 @@ function renderDividends(data: DividendData): void {
                 });
                 tr.appendChild(tickerCell);
                 
+                // Company Name
+                const companyCell = document.createElement('td');
+                companyCell.className = 'px-4 py-2 text-gray-700 dark:text-gray-300';
+                companyCell.textContent = row.company_name || '';
+                tr.appendChild(companyCell);
+                
                 // Gross ($)
                 const grossCell = document.createElement('td');
                 grossCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
-                grossCell.textContent = fmt(row.gross || 0);
+                grossCell.textContent = formatMoney(row.gross || 0, currency);
                 tr.appendChild(grossCell);
                 
                 // Net ($)
                 const netCell = document.createElement('td');
                 netCell.className = 'px-4 py-2 text-right font-medium text-green-600 dark:text-green-400';
-                netCell.textContent = fmt(row.amount);
+                netCell.textContent = formatMoney(row.amount, currency);
                 tr.appendChild(netCell);
                 
                 // Reinvested Shares
@@ -1510,7 +1514,7 @@ function renderDividends(data: DividendData): void {
                 // DRIP Price ($)
                 const dripPriceCell = document.createElement('td');
                 dripPriceCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
-                dripPriceCell.textContent = row.drip_price > 0 ? fmt(row.drip_price) : 'N/A';
+                dripPriceCell.textContent = row.drip_price > 0 ? formatMoney(row.drip_price, currency) : 'N/A';
                 tr.appendChild(dripPriceCell);
                 
                 tbody.appendChild(tr);
@@ -1565,22 +1569,32 @@ function renderCurrencyChart(data: AllocationChartData): void {
     if (!Plotly) return;
 
     const layout = { ...data.layout };
-    const containerHeight = chartEl.offsetHeight || 350;
+    // Constrain height to container size, with max of 400px
+    const containerHeight = Math.min(chartEl.offsetHeight || 350, 400);
     layout.height = containerHeight;
     layout.autosize = true;
     layout.margin = { l: 20, r: 20, t: 30, b: 20 };
+    // Ensure chart doesn't overflow
+    layout.width = chartEl.offsetWidth || undefined;
 
     try {
         Plotly.newPlot('currency-chart', data.data, layout, {
             responsive: true,
-            displayModeBar: false
+            displayModeBar: false,
+            useResizeHandler: true
         });
 
         // Add resize handler
         if (!(window as any).__currencyChartResizeHandler) {
             const resizeHandler = () => {
-                if (document.getElementById('currency-chart')) {
-                    Plotly.Plots.resize('currency-chart');
+                const el = document.getElementById('currency-chart');
+                if (el) {
+                    // Constrain to container size
+                    const maxHeight = Math.min(el.offsetHeight || 350, 400);
+                    Plotly.relayout('currency-chart', {
+                        height: maxHeight,
+                        width: el.offsetWidth
+                    });
                 }
             };
             (window as any).__currencyChartResizeHandler = resizeHandler;
@@ -1749,11 +1763,15 @@ function renderMovers(data: MoversData): void {
 function formatMoney(val: number, currency?: string): string {
     if (typeof val !== 'number' || isNaN(val)) return '--';
     // Format without currency symbol code (e.g. just $123.45 not CAD$123.45 or $123.45 CAD)
-    return new Intl.NumberFormat('en-US', {
+    // Use USD locale to ensure we get "$" symbol, then manually format
+    const formatted = new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: currency || 'USD',
-        currencyDisplay: 'narrowSymbol' // This usually displays just "$" for USD/CAD
+        currency: 'USD', // Always use USD formatting to get "$" symbol
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
     }).format(val);
+    // Remove any currency code that might have been added (e.g., "CA$" -> "$")
+    return formatted.replace(/^[A-Z]{2,3}\$?/, '$').replace(/\s*[A-Z]{2,3}$/, '');
 }
 
 function updateMetric(id: string, value: number, currency: string, isCurrency: boolean): void {

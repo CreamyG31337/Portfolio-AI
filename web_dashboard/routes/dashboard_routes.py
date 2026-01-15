@@ -1189,8 +1189,12 @@ def get_currency_chart():
         if not fig:
              return jsonify({"error": "Could not create chart"}), 500
              
-        # Update height
-        fig.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
+        # Update height and ensure it doesn't overflow
+        fig.update_layout(
+            height=350, 
+            margin=dict(l=20, r=20, t=30, b=20),
+            autosize=True
+        )
         
         # Apply theme
         chart_json = serialize_plotly_figure(fig)

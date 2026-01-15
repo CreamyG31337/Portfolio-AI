@@ -346,7 +346,7 @@
                     
                     <!-- Right column: Currency exposure pie chart -->
                     <div class="lg:col-span-2">
-                        <div class="w-full relative" id="currency-chart" style="min-height: 300px;">
+                        <div class="w-full relative overflow-hidden" id="currency-chart" style="min-height: 300px; max-height: 400px;">
                             <!-- Loading spinner -->
                             <div id="currency-chart-spinner"
                                 class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
@@ -421,6 +421,7 @@
                         <tr>
                             <th scope="col" class="px-4 py-2">Pay Date</th>
                             <th scope="col" class="px-4 py-2">Ticker</th>
+                            <th scope="col" class="px-4 py-2">Company</th>
                             <th scope="col" class="px-4 py-2 text-right">Gross ($)</th>
                             <th scope="col" class="px-4 py-2 text-right">Net ($)</th>
                             <th scope="col" class="px-4 py-2 text-right">Reinvested Shares</th>
