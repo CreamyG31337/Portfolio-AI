@@ -534,8 +534,17 @@ function initGrid(): void {
             valueFormatter: (params: any) => {
                 const val = params.value || 0;
                 const pct = params.data?.total_return_pct || 0;
-                const sign = val >= 0 ? '+' : '';
-                return `${formatMoney(val)} ${sign}${pct.toFixed(1)}%`;
+                const isNegative = val < 0;
+                const absVal = Math.abs(val);
+                const absPct = Math.abs(pct);
+
+                if (isNegative) {
+                    // Negative: Red color (handled by style), no negative sign
+                    return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
+                } else {
+                    // Positive: Green color, add + sign
+                    return `+${formatMoney(val)} +${pct.toFixed(1)}%`;
+                }
             },
             cellStyle: (params: any) => {
                 const val = params.value || 0;
@@ -554,8 +563,17 @@ function initGrid(): void {
             valueFormatter: (params: any) => {
                 const val = params.value || 0;
                 const pct = params.data?.day_change_pct || 0;
-                const sign = val >= 0 ? '+' : '';
-                return `${formatMoney(val)} ${sign}${pct.toFixed(1)}%`;
+                const isNegative = val < 0;
+                const absVal = Math.abs(val);
+                const absPct = Math.abs(pct);
+
+                if (isNegative) {
+                    // Negative: Red color (handled by style), no negative sign
+                    return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
+                } else {
+                    // Positive: Green color, add + sign
+                    return `+${formatMoney(val)} +${pct.toFixed(1)}%`;
+                }
             },
             cellStyle: (params: any) => {
                 const val = params.value || 0;
@@ -574,8 +592,17 @@ function initGrid(): void {
             valueFormatter: (params: any) => {
                 const val = params.value || 0;
                 const pct = params.data?.five_day_pnl_pct || 0;
-                const sign = val >= 0 ? '+' : '';
-                return `${formatMoney(val)} ${sign}${pct.toFixed(1)}%`;
+                const isNegative = val < 0;
+                const absVal = Math.abs(val);
+                const absPct = Math.abs(pct);
+
+                if (isNegative) {
+                    // Negative: Red color (handled by style), no negative sign
+                    return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
+                } else {
+                    // Positive: Green color, add + sign
+                    return `+${formatMoney(val)} +${pct.toFixed(1)}%`;
+                }
             },
             cellStyle: (params: any) => {
                 const val = params.value || 0;
@@ -1587,22 +1614,34 @@ function renderExchangeRateData(data: ExchangeRateData): void {
     }
 }
 
-const MOVERS_COLUMN_COUNT = 10;
+const MOVERS_COLUMN_COUNT = 7;
 
 function renderMovers(data: MoversData): void {
     const gainersBody = document.getElementById('gainers-table-body');
     const losersBody = document.getElementById('losers-table-body');
 
-    const formatPct = (val: number | undefined | null, forcePlus: boolean = false) => {
-        if (val == null) return '--';
-        const sign = forcePlus && val > 0 ? '+' : '';
-        return `${sign}${val.toFixed(2)}%`;
-    };
+    // Helper to format merged P&L column: "P&L Pct%"
+    // Rules:
+    // - Green/Red color based on value
+    // - No negative signs if red (color indicates negative)
+    // - Positive values have + sign
+    const formatMergedPnl = (pnl: number | undefined | null, pct: number | undefined | null, currency: string) => {
+        if (pnl == null || pct == null) return '--';
 
-    const formatPnl = (val: number | undefined | null, currency: string, forcePlus: boolean = false) => {
-        if (val == null) return '--';
-        const sign = forcePlus && val > 0 ? '+' : '';
-        return `${sign}${formatMoney(val, currency)}`;
+        const isNegative = pnl < 0;
+        const absPnl = Math.abs(pnl);
+        const absPct = Math.abs(pct);
+
+        const pnlStr = formatMoney(absPnl, currency); // formatMoney adds currency symbol but handles abs manually here
+        const pctStr = absPct.toFixed(2) + '%';
+
+        if (isNegative) {
+            // Negative: Red color (handled by class), no negative sign
+            return `${pnlStr} ${pctStr}`;
+        } else {
+            // Positive: Green color, add + sign
+            return `+${pnlStr} +${pctStr}`;
+        }
     };
 
     const getPnlColor = (val: number | null | undefined) => {
@@ -1612,14 +1651,6 @@ function renderMovers(data: MoversData): void {
             : (val < 0 ? 'text-red-600 dark:text-red-400 font-bold' : '');
     };
 
-    // For 5-day, matching the original styling which didn't have bold by default
-    const getFiveDayColor = (val: number | null | undefined) => {
-        if (val == null) return '';
-        return val > 0
-            ? 'text-green-600 dark:text-green-400'
-            : (val < 0 ? 'text-red-600 dark:text-red-400' : '');
-    };
-
     const renderTable = (tbody: HTMLElement, items: MoverItem[], isGainer: boolean) => {
         tbody.innerHTML = '';
         if (!items || items.length === 0) {
@@ -1627,25 +1658,23 @@ function renderMovers(data: MoversData): void {
             return;
         }
 
-        const dayColorClass = isGainer
-            ? 'text-green-600 dark:text-green-400 font-medium'
-            : 'text-red-600 dark:text-red-400 font-medium';
-
         items.forEach(item => {
             const tr = document.createElement('tr');
             tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
+
+            // Calculate colors
+            const dayColor = getPnlColor(item.daily_pnl);
+            const fiveDayColor = getPnlColor(item.five_day_pnl);
+            const totalColor = getPnlColor(item.total_pnl);
 
             tr.innerHTML = `
                 <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">
                     <a href="/v2/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
                 </td>
                 <td class="px-4 py-3 truncate max-w-[150px]" title="${item.company_name || item.ticker}">${item.company_name || item.ticker}</td>
-                <td class="px-4 py-3 text-right ${dayColorClass}">${formatPct(item.daily_pnl_pct, isGainer)}</td>
-                <td class="px-4 py-3 text-right ${dayColorClass}">${formatPnl(item.daily_pnl, data.display_currency, isGainer)}</td>
-                <td class="px-4 py-3 text-right ${getFiveDayColor(item.five_day_pnl_pct)}">${formatPct(item.five_day_pnl_pct, true)}</td>
-                <td class="px-4 py-3 text-right ${getFiveDayColor(item.five_day_pnl)}">${formatPnl(item.five_day_pnl, data.display_currency, true)}</td>
-                <td class="px-4 py-3 text-right ${getPnlColor(item.total_return_pct)}">${formatPct(item.total_return_pct, true)}</td>
-                <td class="px-4 py-3 text-right ${getPnlColor(item.total_pnl)}">${formatPnl(item.total_pnl, data.display_currency, true)}</td>
+                <td class="px-4 py-3 text-right ${dayColor}">${formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency)}</td>
+                <td class="px-4 py-3 text-right ${fiveDayColor}">${formatMergedPnl(item.five_day_pnl, item.five_day_pnl_pct, data.display_currency)}</td>
+                <td class="px-4 py-3 text-right ${totalColor}">${formatMergedPnl(item.total_pnl, item.total_return_pct, data.display_currency)}</td>
                 <td class="px-4 py-3 text-right">${formatMoney(item.current_price || 0, data.display_currency)}</td>
                 <td class="px-4 py-3 text-right font-medium">${formatMoney(item.market_value || 0, data.display_currency)}</td>
             `;
