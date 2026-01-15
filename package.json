@@ -10,9 +10,9 @@
     "test:ts": "tsc -p web_dashboard/tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "tailwindcss": "^3.4.1",
-    "postcss": "^8.4.35",
     "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
     "typescript": "^5.3.0"
   },
   "engines": {

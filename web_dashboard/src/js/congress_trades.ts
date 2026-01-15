@@ -23,6 +23,9 @@ interface AgGridApi {
     getSelectedNodes(): AgGridNode[];
     sizeColumnsToFit(): void;
     addEventListener(event: string, callback: () => void): void;
+    setGridOption(key: string, value: any): void;
+    showLoadingOverlay(): void;
+    hideOverlay(): void;
 }
 
 interface AgGridColumnApi {
@@ -55,6 +58,7 @@ interface AgGridOptions {
     onSelectionChanged?: () => void;
     animateRows?: boolean;
     suppressCellFocus?: boolean;
+    overlayLoadingTemplate?: string;
 }
 
 interface AgGridColumnDef {
@@ -103,12 +107,29 @@ interface CongressTrade {
     _full_reasoning?: string;
 }
 
+interface CongressTradeStats {
+    total_trades: number;
+    analyzed_count: number;
+    house_count: number;
+    senate_count: number;
+    purchase_count: number;
+    sale_count: number;
+    unique_tickers_count: number;
+    high_risk_count: number;
+    most_active_display: string;
+}
+
+interface CongressTradeApiResponse {
+    trades: CongressTrade[];
+    total: number;
+    stats: CongressTradeStats;
+    error?: string;
+}
+
 // Global AgGrid reference
-// Note: agGrid is also declared in globals.d.ts as optional 'any'
-// This declaration makes it required and properly typed for this file
 declare global {
     interface Window {
-        agGrid: AgGridGlobal; // Override the optional 'any' from globals.d.ts with proper type
+        agGrid: AgGridGlobal;
     }
 }
 
@@ -231,6 +252,14 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     if (!window.agGrid) {
         console.error('AgGrid not loaded');
         return;
+    }
+
+    // Check if grid is already initialized
+    if (gridDiv.getAttribute('data-initialized') === 'true') {
+        if (gridApi) {
+             gridApi.setGridOption('rowData', tradesData);
+             return;
+        }
     }
 
     // Detect theme and apply appropriate AgGrid theme
@@ -396,7 +425,6 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             checkboxes: false,
             enableClickSelection: false,
         },
-        // suppressRowClickSelection deprecated
         enableRangeSelection: true,
         enableCellTextSelection: true,
         ensureDomOrder: true,
@@ -407,13 +435,15 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         onCellClicked: onCellClicked,
         onSelectionChanged: onSelectionChanged,
         animateRows: true,
-        suppressCellFocus: false
+        suppressCellFocus: false,
+        overlayLoadingTemplate: '<span class="ag-overlay-loading-center">Please wait while your rows are loading...</span>'
     };
 
     // Create grid
     const gridInstance = new window.agGrid.Grid(gridDiv, gridOptions);
     gridApi = gridInstance.api;
     gridColumnApi = gridInstance.columnApi;
+    gridDiv.setAttribute('data-initialized', 'true');
 
     // Auto-size columns to fit container
     if (gridApi) {
@@ -445,6 +475,62 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         setTimeout(() => {
             resizeColumns();
         }, 100);
+    }
+}
+
+function updateStats(stats: CongressTradeStats): void {
+    const setText = (id: string, text: string) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+
+    setText('stat-total-trades', stats.total_trades.toString());
+    setText('stat-analyzed', `${stats.analyzed_count}/${stats.total_trades}`);
+    setText('stat-house', stats.house_count.toString());
+    setText('stat-senate', stats.senate_count.toString());
+    setText('stat-buy-sell', `${stats.purchase_count}/${stats.sale_count}`);
+    setText('stat-tickers', stats.unique_tickers_count.toString());
+    setText('stat-high-risk', stats.high_risk_count.toString());
+    setText('stat-most-active', stats.most_active_display);
+}
+
+async function fetchTradeData(): Promise<void> {
+    if (gridApi) {
+        gridApi.showLoadingOverlay();
+    }
+
+    try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const response = await fetch(`/api/congress_trades/data?${searchParams.toString()}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data: CongressTradeApiResponse = await response.json();
+
+        if (data.error) {
+            console.error('API Error:', data.error);
+            // Optionally show error in UI
+            return;
+        }
+
+        // Initialize grid with data
+        initializeCongressTradesGrid(data.trades);
+        if (gridApi) {
+            gridApi.hideOverlay();
+        }
+
+        // Update stats
+        if (data.stats) {
+            updateStats(data.stats);
+        }
+
+    } catch (error) {
+        console.error('Failed to fetch trades data:', error);
+        if (gridApi) {
+            gridApi.hideOverlay();
+        }
     }
 }
 
@@ -491,7 +577,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (configElement) {
         try {
             const config = JSON.parse(configElement.textContent || '{}');
-            if (config.tradesData) {
+
+            // Check for lazy load flag
+            if (config.lazyLoad) {
+                // Initialize empty grid to show loading state
+                initializeCongressTradesGrid([]);
+                // Fetch data
+                fetchTradeData();
+            } else if (config.tradesData) {
+                // Legacy direct load (if we revert)
                 initializeCongressTradesGrid(config.tradesData);
             }
         } catch (err) {

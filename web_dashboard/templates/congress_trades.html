@@ -173,35 +173,51 @@
     <h2 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">📊 Summary Statistics</h2>
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ total_trades }}</div>
+            <div id="stat-total-trades" class="text-2xl font-bold text-gray-900 dark:text-white">
+                <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
             <div class="text-sm text-gray-600 dark:text-gray-300">Total Trades</div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ analyzed_count }}/{{ total_trades }}</div>
+            <div id="stat-analyzed" class="text-2xl font-bold text-gray-900 dark:text-white">
+                <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
             <div class="text-sm text-gray-600 dark:text-gray-300">Analyzed</div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ house_count }}</div>
+            <div id="stat-house" class="text-2xl font-bold text-gray-900 dark:text-white">
+                <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
             <div class="text-sm text-gray-600 dark:text-gray-300">House</div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ senate_count }}</div>
+            <div id="stat-senate" class="text-2xl font-bold text-gray-900 dark:text-white">
+                <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
             <div class="text-sm text-gray-600 dark:text-gray-300">Senate</div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ purchase_count }}/{{ sale_count }}</div>
+            <div id="stat-buy-sell" class="text-2xl font-bold text-gray-900 dark:text-white">
+                <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
             <div class="text-sm text-gray-600 dark:text-gray-300">Buy/Sell</div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ unique_tickers_count }}</div>
+            <div id="stat-tickers" class="text-2xl font-bold text-gray-900 dark:text-white">
+                <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
             <div class="text-sm text-gray-600 dark:text-gray-300">Unique Tickers</div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ high_risk_count }}</div>
+            <div id="stat-high-risk" class="text-2xl font-bold text-gray-900 dark:text-white">
+                <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
             <div class="text-sm text-gray-600 dark:text-gray-300">High Risk</div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{{ most_active_display }}</div>
+            <div id="stat-most-active" class="text-lg font-bold text-gray-900 dark:text-white">
+                <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
             <div class="text-xs text-gray-600 dark:text-gray-300">Most Active (31d)</div>
         </div>
     </div>
@@ -266,7 +282,7 @@
 <!-- Congress Trades Configuration -->
 <script id="congress-trades-config" type="application/json">
 {
-    "tradesData": {{ trades_data|tojson|safe }}
+    "lazyLoad": true
 }
 </script>
 
