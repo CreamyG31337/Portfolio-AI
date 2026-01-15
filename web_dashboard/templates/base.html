@@ -79,7 +79,7 @@
 
 <body class="bg-gray-100 min-h-screen">
     <!-- Header with hamburger menu and user dropdown -->
-    <header class="gradient-bg text-white shadow-lg sticky top-0 z-50">
+    <header id="main-header" class="gradient-bg text-white shadow-lg sticky top-0 z-50 transition-transform duration-300">
         <div class="container mx-auto px-4 py-4">
             <div class="flex items-center justify-between">
                 <!-- Hamburger menu (mobile only) -->
@@ -516,6 +516,46 @@
 
     {% block extra_scripts %}{% endblock %}
     
+    <!-- Header Auto-Hide Script -->
+    <script>
+        (function() {
+            const header = document.getElementById('main-header');
+            if (!header) return;
+
+            let lastScrollY = window.scrollY;
+            let ticking = false;
+
+            function updateHeader() {
+                const scrollY = window.scrollY;
+                const headerHeight = header.offsetHeight;
+
+                // Only activate if we've scrolled past the header height
+                if (scrollY > headerHeight) {
+                    if (scrollY > lastScrollY) {
+                        // Scrolling down - hide
+                        header.style.transform = 'translateY(-100%)';
+                    } else {
+                        // Scrolling up - show
+                        header.style.transform = 'translateY(0)';
+                    }
+                } else {
+                    // At top - show
+                    header.style.transform = 'translateY(0)';
+                }
+
+                lastScrollY = scrollY;
+                ticking = false;
+            }
+
+            window.addEventListener('scroll', function() {
+                if (!ticking) {
+                    window.requestAnimationFrame(updateHeader);
+                    ticking = true;
+                }
+            });
+        })();
+    </script>
+
     <!-- Scheduler Status Badge Auto-Update -->
     <script>
         // Update scheduler status badge in navigation menu
