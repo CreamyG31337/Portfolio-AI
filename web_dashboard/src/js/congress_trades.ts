@@ -26,6 +26,7 @@ interface AgGridApi {
     setGridOption(key: string, value: any): void;
     showLoadingOverlay(): void;
     hideOverlay(): void;
+    applyTransaction(transaction: { add: CongressTrade[] }): void;
 }
 
 interface AgGridColumnApi {
@@ -121,8 +122,8 @@ interface CongressTradeStats {
 
 interface CongressTradeApiResponse {
     trades: CongressTrade[];
-    total: number;
-    stats: CongressTradeStats;
+    next_offset?: number;
+    has_more: boolean;
     error?: string;
 }
 
@@ -478,20 +479,87 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     }
 }
 
-function updateStats(stats: CongressTradeStats): void {
+// Statistics Accumulator
+const statsAccumulator = {
+    total_trades: 0,
+    analyzed_count: 0,
+    house_count: 0,
+    senate_count: 0,
+    purchase_count: 0,
+    sale_count: 0,
+    unique_tickers: new Set<string>(),
+    high_risk_count: 0,
+    politician_counts_31d: new Map<string, number>()
+};
+
+function calculateAndRenderStats(newTrades: CongressTrade[]): void {
+    const thirtyOneDaysAgo = new Date();
+    thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31);
+
+    for (const trade of newTrades) {
+        statsAccumulator.total_trades++;
+
+        // Analyzed count (check for non-null Score that isn't '⚪ N/A')
+        if (trade.Score && !trade.Score.includes('⚪')) {
+            statsAccumulator.analyzed_count++;
+        }
+
+        // High Risk
+        if (trade.Score && trade.Score.includes('🔴')) {
+            statsAccumulator.high_risk_count++;
+        }
+
+        // Chamber
+        if (trade.Chamber === 'House') statsAccumulator.house_count++;
+        if (trade.Chamber === 'Senate') statsAccumulator.senate_count++;
+
+        // Type
+        if (trade.Type === 'Purchase') statsAccumulator.purchase_count++;
+        if (trade.Type === 'Sale') statsAccumulator.sale_count++;
+
+        // Unique Tickers
+        if (trade.Ticker && trade.Ticker !== 'N/A') {
+            statsAccumulator.unique_tickers.add(trade.Ticker);
+        }
+
+        // Most Active (31d)
+        if (trade.Date && trade.Politician && trade.Politician !== 'N/A') {
+            const tradeDate = new Date(trade.Date);
+            if (tradeDate >= thirtyOneDaysAgo) {
+                // Check owner (skip spouse/child if needed, matching python logic)
+                const owner = (trade.Owner || '').toLowerCase();
+                if (owner !== 'child' && owner !== 'spouse') {
+                    const count = statsAccumulator.politician_counts_31d.get(trade.Politician) || 0;
+                    statsAccumulator.politician_counts_31d.set(trade.Politician, count + 1);
+                }
+            }
+        }
+    }
+
+    // Determine most active
+    let mostActiveDisplay = "N/A";
+    let maxCount = 0;
+    for (const [politician, count] of statsAccumulator.politician_counts_31d.entries()) {
+        if (count > maxCount) {
+            maxCount = count;
+            mostActiveDisplay = `${politician} (${count})`;
+        }
+    }
+
+    // Render
     const setText = (id: string, text: string) => {
         const el = document.getElementById(id);
         if (el) el.textContent = text;
     };
 
-    setText('stat-total-trades', stats.total_trades.toString());
-    setText('stat-analyzed', `${stats.analyzed_count}/${stats.total_trades}`);
-    setText('stat-house', stats.house_count.toString());
-    setText('stat-senate', stats.senate_count.toString());
-    setText('stat-buy-sell', `${stats.purchase_count}/${stats.sale_count}`);
-    setText('stat-tickers', stats.unique_tickers_count.toString());
-    setText('stat-high-risk', stats.high_risk_count.toString());
-    setText('stat-most-active', stats.most_active_display);
+    setText('stat-total-trades', statsAccumulator.total_trades.toString());
+    setText('stat-analyzed', `${statsAccumulator.analyzed_count}/${statsAccumulator.total_trades}`);
+    setText('stat-house', statsAccumulator.house_count.toString());
+    setText('stat-senate', statsAccumulator.senate_count.toString());
+    setText('stat-buy-sell', `${statsAccumulator.purchase_count}/${statsAccumulator.sale_count}`);
+    setText('stat-tickers', statsAccumulator.unique_tickers.size.toString());
+    setText('stat-high-risk', statsAccumulator.high_risk_count.toString());
+    setText('stat-most-active', mostActiveDisplay);
 }
 
 async function fetchTradeData(): Promise<void> {
@@ -499,37 +567,87 @@ async function fetchTradeData(): Promise<void> {
         gridApi.showLoadingOverlay();
     }
 
+    const BATCH_SIZE = 2500;
+    let offset = 0;
+    let hasMore = true;
+    const searchParams = new URLSearchParams(window.location.search);
+
     try {
-        const searchParams = new URLSearchParams(window.location.search);
-        const response = await fetch(`/api/congress_trades/data?${searchParams.toString()}`);
+        // Reset stats
+        statsAccumulator.total_trades = 0;
+        statsAccumulator.analyzed_count = 0;
+        statsAccumulator.house_count = 0;
+        statsAccumulator.senate_count = 0;
+        statsAccumulator.purchase_count = 0;
+        statsAccumulator.sale_count = 0;
+        statsAccumulator.unique_tickers.clear();
+        statsAccumulator.high_risk_count = 0;
+        statsAccumulator.politician_counts_31d.clear();
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        while (hasMore) {
+            // Update loading text
+            const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
+            if (titleEl) {
+                if (titleEl.textContent?.includes('Congress Trades')) {
+                    titleEl.textContent = `📋 Congress Trades (Loading... ${offset}+)`;
+                }
+            }
+
+            // Append pagination params
+            searchParams.set('offset', offset.toString());
+            searchParams.set('limit', BATCH_SIZE.toString());
+
+            const response = await fetch(`/api/congress_trades/data?${searchParams.toString()}`);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data: CongressTradeApiResponse = await response.json();
+
+            if (data.error) {
+                console.error('API Error:', data.error);
+                break;
+            }
+
+            const newTrades = data.trades || [];
+
+            // If first batch, initialize grid
+            if (offset === 0) {
+                initializeCongressTradesGrid(newTrades);
+                if (gridApi) gridApi.hideOverlay();
+            } else {
+                // Append rows
+                if (gridApi) {
+                    gridApi.applyTransaction({ add: newTrades });
+                }
+            }
+
+            // Update stats
+            calculateAndRenderStats(newTrades);
+
+            // Prepare next iteration
+            hasMore = data.has_more;
+            if (data.next_offset) {
+                offset = data.next_offset;
+            } else {
+                hasMore = false;
+            }
+
+            // Small delay to allow UI to update
+            await new Promise(resolve => setTimeout(resolve, 50));
         }
 
-        const data: CongressTradeApiResponse = await response.json();
-
-        if (data.error) {
-            console.error('API Error:', data.error);
-            // Optionally show error in UI
-            return;
-        }
-
-        // Initialize grid with data
-        initializeCongressTradesGrid(data.trades);
-        if (gridApi) {
-            gridApi.hideOverlay();
-        }
-
-        // Update stats
-        if (data.stats) {
-            updateStats(data.stats);
+        // Done loading
+        const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
+        if (titleEl && titleEl.textContent?.includes('Loading')) {
+            titleEl.textContent = '📋 Congress Trades';
         }
 
     } catch (error) {
         console.error('Failed to fetch trades data:', error);
         if (gridApi) {
-            gridApi.hideOverlay();
+            gridApi.hideOverlay(); // Or show error overlay
         }
     }
 }
