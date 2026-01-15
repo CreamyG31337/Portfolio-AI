@@ -225,25 +225,41 @@ def fetch_ark_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFrame]:
 
 
 def get_previous_holdings(db: SupabaseClient, etf_ticker: str, date: datetime) -> pd.DataFrame:
-    """Fetch yesterday's holdings from database.
+    """Fetch latest available previous holdings from database.
     
     Args:
         db: Database client
         etf_ticker: ETF ticker
-        date: Target date (will fetch day before)
+        date: Current processing date
         
     Returns:
         DataFrame with previous holdings
     """
-    previous_date = (date - timedelta(days=1)).strftime('%Y-%m-%d')
+    date_str = date.strftime('%Y-%m-%d')
     
     try:
+        # 1. Find latest date before today
+        date_res = db.supabase.table('etf_holdings_log') \
+            .select('date') \
+            .eq('etf_ticker', etf_ticker) \
+            .lt('date', date_str) \
+            .order('date', desc=True) \
+            .limit(1) \
+            .execute()
+
+        if not date_res.data:
+            logger.info(f"ℹ️  No previous history found for {etf_ticker} before {date_str}")
+            return pd.DataFrame(columns=['ticker', 'shares', 'weight_percent'])
+
+        previous_date = date_res.data[0]['date']
+        logger.info(f"Comparing {etf_ticker} against latest snapshot: {previous_date}")
+
+        # 2. Fetch holdings for that date
         result = db.supabase.table('etf_holdings_log').select(
             'holding_ticker, shares_held, weight_percent'
         ).eq('etf_ticker', etf_ticker).eq('date', previous_date).execute()
         
         if not result.data:
-            logger.info(f"No previous holdings found for {etf_ticker} on {previous_date}")
             return pd.DataFrame(columns=['ticker', 'shares', 'weight_percent'])
         
         df = pd.DataFrame(result.data)
