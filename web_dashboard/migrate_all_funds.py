@@ -130,24 +130,36 @@ class FundMigrator:
         try:
             # Convert DataFrame to Supabase format
             positions = []
+
+            # Collect unique tickers for batch verification
+            unique_tickers = set()
+            ticker_currencies = {}
+
             for _, row in portfolio_df.iterrows():
+                ticker = str(row.get("Ticker", ""))
+                currency = str(row.get("Currency", "USD"))
+
+                # Skip invalid positions
+                if not ticker or float(row.get("Shares", 0)) <= 0:
+                    continue
+
+                unique_tickers.add(ticker)
+                # Store first currency encountered for this ticker
+                if ticker not in ticker_currencies:
+                    ticker_currencies[ticker] = currency
+
                 position = {
                     "fund": fund_name,
-                    "ticker": str(row.get("Ticker", "")),
+                    "ticker": ticker,
                     "company": str(row.get("Company", "")),
                     "shares": float(row.get("Shares", 0)),
                     "price": float(row.get("Price", row.get("Current Price", 0))),
                     "cost_basis": float(row.get("Cost Basis", 0)),
                     "pnl": float(row.get("PnL", 0)),
-                    "currency": str(row.get("Currency", "USD")),
+                    "currency": currency,
                     "date": datetime.now().isoformat(),
                     "created_at": datetime.now().isoformat()
                 }
-                
-                # Skip invalid positions
-                if not position["ticker"] or position["shares"] <= 0:
-                    continue
-                    
                 positions.append(position)
             
             if not positions:
@@ -155,6 +167,15 @@ class FundMigrator:
                 return True
             
             if not self.dry_run:
+                # Ensure all tickers exist in securities table
+                print(f"  🔍 Verifying {len(unique_tickers)} tickers in securities table...")
+                for ticker in unique_tickers:
+                    currency = ticker_currencies.get(ticker, "USD")
+                    try:
+                        self.client.ensure_ticker_in_securities(ticker, currency)
+                    except Exception as e:
+                        print(f"  ⚠️  Warning: Could not ensure ticker {ticker}: {e}")
+
                 # Delete existing positions for this fund first
                 delete_result = self.client.supabase.table("portfolio_positions").delete().eq("fund", fund_name).execute()
                 print(f"  🗑️  Deleted {len(delete_result.data) if delete_result.data else 0} existing positions")
@@ -182,24 +203,34 @@ class FundMigrator:
         try:
             # Convert DataFrame to Supabase format
             trades = []
+
+            # Collect unique tickers for batch verification
+            unique_tickers = set()
+            ticker_currencies = {}
+
             for _, row in trades_df.iterrows():
+                ticker = str(row.get("Ticker", ""))
+                currency = str(row.get("Currency", "USD"))
+
+                if not ticker:
+                    continue
+
+                unique_tickers.add(ticker)
+                if ticker not in ticker_currencies:
+                    ticker_currencies[ticker] = currency
+
                 trade = {
                     "fund": fund_name,
-                    "ticker": str(row.get("Ticker", "")),
+                    "ticker": ticker,
                     "reason": str(row.get("Action", row.get("Reason", ""))),
                     "shares": float(row.get("Shares", 0)),
                     "price": float(row.get("Price", 0)),
                     "cost_basis": float(row.get("Cost Basis", 0)),
                     "pnl": float(row.get("PnL", row.get("P&L", 0))),
-                    "currency": str(row.get("Currency", "USD")),
+                    "currency": currency,
                     "date": str(row.get("Date", datetime.now().isoformat())),
                     "created_at": datetime.now().isoformat()
                 }
-                
-                # Skip invalid trades
-                if not trade["ticker"]:
-                    continue
-                    
                 trades.append(trade)
             
             if not trades:
@@ -207,6 +238,15 @@ class FundMigrator:
                 return True
             
             if not self.dry_run:
+                # Ensure all tickers exist in securities table
+                print(f"  🔍 Verifying {len(unique_tickers)} tickers in securities table...")
+                for ticker in unique_tickers:
+                    currency = ticker_currencies.get(ticker, "USD")
+                    try:
+                        self.client.ensure_ticker_in_securities(ticker, currency)
+                    except Exception as e:
+                        print(f"  ⚠️  Warning: Could not ensure ticker {ticker}: {e}")
+
                 # Delete existing trades for this fund first
                 delete_result = self.client.supabase.table("trade_log").delete().eq("fund", fund_name).execute()
                 print(f"  🗑️  Deleted {len(delete_result.data) if delete_result.data else 0} existing trades")

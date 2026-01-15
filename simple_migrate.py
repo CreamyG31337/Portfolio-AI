@@ -76,28 +76,46 @@ def migrate_portfolio_data(client, portfolio_df, fund_name="Project Chimera"):
     try:
         # Convert portfolio data to the expected format
         portfolio_records = []
+        unique_tickers = set()
+        ticker_currencies = {}
         
         for _, row in portfolio_df.iterrows():
             # Handle missing or NaN values
+            ticker = str(row.get("Ticker", ""))
+            currency = str(row.get("Currency", "USD"))
+
+            # Skip records with missing essential data
+            if not ticker or float(row.get("Shares", 0)) == 0:
+                continue
+
+            unique_tickers.add(ticker)
+            if ticker not in ticker_currencies:
+                ticker_currencies[ticker] = currency
+
             record = {
                 "fund": fund_name,
-                "ticker": str(row.get("Ticker", "")),
+                "ticker": ticker,
                 "company": str(row.get("Company", "")),
                 "shares": float(row.get("Shares", 0)),
                 "price": float(row.get("Current Price", 0)),
                 "cost_basis": float(row.get("Cost Basis", 0)),
                 "pnl": float(row.get("PnL", 0)),
-                "currency": str(row.get("Currency", "USD")),
+                "currency": currency,
                 "date": datetime.now().isoformat(),
                 "created_at": datetime.now().isoformat()
             }
             
-            # Skip records with missing essential data
-            if not record["ticker"] or record["shares"] == 0:
-                continue
-                
             portfolio_records.append(record)
         
+        # Ensure all tickers exist in securities table
+        print(f"Verifying {len(unique_tickers)} tickers in securities table...")
+        for ticker in unique_tickers:
+            currency = ticker_currencies.get(ticker, "USD")
+            try:
+                client.ensure_ticker_in_securities(ticker, currency)
+            except Exception as e:
+                print(f"WARNING: Could not ensure ticker {ticker}: {e}")
+
         # Insert portfolio data
         if portfolio_records:
             result = client.supabase.table("portfolio_positions").upsert(portfolio_records).execute()
@@ -118,28 +136,46 @@ def migrate_trade_data(client, trade_log_df, fund_name="Project Chimera"):
     try:
         # Convert trade log data to the expected format
         trade_records = []
+        unique_tickers = set()
+        ticker_currencies = {}
         
         for _, row in trade_log_df.iterrows():
             # Handle missing or NaN values
+            ticker = str(row.get("Ticker", ""))
+            currency = str(row.get("Currency", "USD"))
+
+            # Skip records with missing essential data
+            if not ticker:
+                continue
+
+            unique_tickers.add(ticker)
+            if ticker not in ticker_currencies:
+                ticker_currencies[ticker] = currency
+
             record = {
                 "fund": fund_name,
-                "ticker": str(row.get("Ticker", "")),
+                "ticker": ticker,
                 "reason": str(row.get("Action", "")),
                 "shares": float(row.get("Shares", 0)),
                 "price": float(row.get("Price", 0)),
                 "cost_basis": float(row.get("Cost Basis", 0)),
                 "pnl": float(row.get("P&L", 0)),
-                "currency": str(row.get("Currency", "USD")),
+                "currency": currency,
                 "date": str(row.get("Date", datetime.now().isoformat())),
                 "created_at": datetime.now().isoformat()
             }
             
-            # Skip records with missing essential data
-            if not record["ticker"] or record["shares"] == 0:
-                continue
-                
             trade_records.append(record)
         
+        # Ensure all tickers exist in securities table
+        print(f"Verifying {len(unique_tickers)} tickers in securities table...")
+        for ticker in unique_tickers:
+            currency = ticker_currencies.get(ticker, "USD")
+            try:
+                client.ensure_ticker_in_securities(ticker, currency)
+            except Exception as e:
+                print(f"WARNING: Could not ensure ticker {ticker}: {e}")
+
         # Insert trade data
         if trade_records:
             result = client.supabase.table("trade_log").upsert(trade_records).execute()
