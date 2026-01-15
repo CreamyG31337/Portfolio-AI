@@ -1625,6 +1625,7 @@ function renderMovers(data: MoversData): void {
     // - Green/Red color based on value
     // - No negative signs if red (color indicates negative)
     // - Positive values have + sign
+    // - Currencies removed, percentages in brackets with 1 decimal
     const formatMergedPnl = (pnl: number | undefined | null, pct: number | undefined | null, currency: string) => {
         if (pnl == null || pct == null) return '--';
 
@@ -1632,8 +1633,10 @@ function renderMovers(data: MoversData): void {
         const absPnl = Math.abs(pnl);
         const absPct = Math.abs(pct);
 
-        const pnlStr = formatMoney(absPnl, currency); // formatMoney adds currency symbol but handles abs manually here
-        const pctStr = absPct.toFixed(2) + '%';
+        // formatMoney now handles removing currency code globally
+        const pnlStr = formatMoney(absPnl, currency);
+        // 1 decimal place, wrapped in brackets
+        const pctStr = `(${absPct.toFixed(1)}%)`;
 
         if (isNegative) {
             // Negative: Red color (handled by class), no negative sign
@@ -1667,16 +1670,17 @@ function renderMovers(data: MoversData): void {
             const fiveDayColor = getPnlColor(item.five_day_pnl);
             const totalColor = getPnlColor(item.total_pnl);
 
+            // Use font-mono for numerical columns to ensure alignment
             tr.innerHTML = `
                 <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">
                     <a href="/v2/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
                 </td>
                 <td class="px-4 py-3 truncate max-w-[150px]" title="${item.company_name || item.ticker}">${item.company_name || item.ticker}</td>
-                <td class="px-4 py-3 text-right ${dayColor}">${formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency)}</td>
-                <td class="px-4 py-3 text-right ${fiveDayColor}">${formatMergedPnl(item.five_day_pnl, item.five_day_pnl_pct, data.display_currency)}</td>
-                <td class="px-4 py-3 text-right ${totalColor}">${formatMergedPnl(item.total_pnl, item.total_return_pct, data.display_currency)}</td>
-                <td class="px-4 py-3 text-right">${formatMoney(item.current_price || 0, data.display_currency)}</td>
-                <td class="px-4 py-3 text-right font-medium">${formatMoney(item.market_value || 0, data.display_currency)}</td>
+                <td class="px-4 py-3 text-right font-mono ${dayColor}">${formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency)}</td>
+                <td class="px-4 py-3 text-right font-mono ${fiveDayColor}">${formatMergedPnl(item.five_day_pnl, item.five_day_pnl_pct, data.display_currency)}</td>
+                <td class="px-4 py-3 text-right font-mono ${totalColor}">${formatMergedPnl(item.total_pnl, item.total_return_pct, data.display_currency)}</td>
+                <td class="px-4 py-3 text-right font-mono">${formatMoney(item.current_price || 0, data.display_currency)}</td>
+                <td class="px-4 py-3 text-right font-mono font-medium">${formatMoney(item.market_value || 0, data.display_currency)}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -1690,18 +1694,27 @@ function renderMovers(data: MoversData): void {
 
 function formatMoney(val: number, currency?: string): string {
     if (typeof val !== 'number' || isNaN(val)) return '--';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(val);
+    // Format without currency symbol code (e.g. just $123.45 not CAD$123.45 or $123.45 CAD)
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency || 'USD',
+        currencyDisplay: 'narrowSymbol' // This usually displays just "$" for USD/CAD
+    }).format(val);
 }
 
 function updateMetric(id: string, value: number, currency: string, isCurrency: boolean): void {
     const el = document.getElementById(id);
     if (el) {
         if (isCurrency) {
-            // Format number with commas and 2 decimal places, without currency symbol
-            el.textContent = new Intl.NumberFormat('en-US', {
+            // Format number with commas and 2 decimal places, with symbol but no code
+            const formatted = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: currency || 'USD',
+                currencyDisplay: 'narrowSymbol',
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
             }).format(value);
+            el.textContent = formatted;
         } else {
             el.textContent = String(value);
         }
