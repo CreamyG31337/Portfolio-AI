@@ -406,6 +406,10 @@ def insert_drip_transaction(
         reinvested_shares = net_amount / drip_price
         currency = 'CAD' if is_canadian_ticker(ticker) else 'USD'
         
+        # 3.5. Ensure ticker exists in securities table (required for FK constraint)
+        if not client.ensure_ticker_in_securities(ticker, currency):
+            logger.warning(f"Failed to ensure ticker {ticker} in securities table, continuing anyway")
+
         # 4. Insert Trade Log
         # Use 4 PM ET market close
         et_tz = pytz.timezone('America/New_York')

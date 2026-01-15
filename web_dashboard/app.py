@@ -3369,7 +3369,7 @@ def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, 
         logger.error(f"Error fetching analysis data: {e}")
         return {}
 
-@cache_data(ttl=60)
+@cache_data(ttl=21600)
 def get_congress_trades_cached(
     _supabase_client,
     refresh_key: int,
@@ -3382,16 +3382,17 @@ def get_congress_trades_cached(
     analyzed_only: bool = False,
     min_score: Optional[float] = None,
     max_score: Optional[float] = None,
-    _postgres_client = None,
-    offset: int = 0,
-    limit: int = 1000
-) -> Dict[str, Any]:
-    """Get congress trades with filters (cached 60s)"""
+    _postgres_client = None
+) -> List[Dict[str, Any]]:
+    """Get congress trades with filters (cached 6 hours). Fetches ALL matching rows."""
     try:
         if _supabase_client is None:
-            return {"trades": [], "has_more": False}
+            return []
         
-        query = _supabase_client.supabase.table("congress_trades_enriched").select("*")
+        # Optimize query to select only needed columns
+        query = _supabase_client.supabase.table("congress_trades_enriched").select(
+            "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner"
+        )
         
         if ticker_filter:
             query = query.eq("ticker", ticker_filter)
@@ -3408,20 +3409,38 @@ def get_congress_trades_cached(
         
         query = query.order("transaction_date", desc=True)
         
-        # Fetch only the requested batch
-        # Note: 'limit' here is the batch size requested by frontend
-        result = query.range(offset, offset + limit - 1).execute()
+        # Get analysis data for filtering (needed for analyzed_only and score filters)
+        analysis_map = get_analysis_data_congress(_postgres_client, refresh_key) if _postgres_client else {}
         
-        trades_batch = result.data if result.data else []
-        has_more = len(trades_batch) >= limit
+        # Fetch ALL rows using pagination (Supabase limits to 1000 per request)
+        all_trades = []
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            result = query.range(offset, offset + batch_size - 1).execute()
+
+            if not result.data:
+                break
+
+            all_trades.extend(result.data)
+
+            if len(result.data) < batch_size:
+                break
+
+            offset += batch_size
+
+            # Safety limit
+            if offset > 100000:
+                logger.warning("Reached 100,000 row safety limit in get_congress_trades_cached pagination")
+                break
+
+        logger.info(f"[CongressTrades] Fetched {len(all_trades)} total rows from Supabase")
         
         # Post-process: filter by analysis status and score
         if analyzed_only or min_score is not None or max_score is not None:
-            # Get analysis data for filtering
-            analysis_map = get_analysis_data_congress(_postgres_client, refresh_key) if _postgres_client else {}
-
             filtered_trades = []
-            for trade in trades_batch:
+            for trade in all_trades:
                 trade_id = trade.get('id')
                 
                 if analyzed_only and trade_id not in analysis_map:
@@ -3445,12 +3464,12 @@ def get_congress_trades_cached(
                 
                 filtered_trades.append(trade)
             
-            return {"trades": filtered_trades, "has_more": has_more}
+            return filtered_trades
         
-        return {"trades": trades_batch, "has_more": has_more}
+        return all_trades
     except Exception as e:
         logger.error(f"Error fetching congress trades: {e}", exc_info=True)
-        return {"trades": [], "has_more": False}
+        return []
 
 @cache_data(ttl=86400)  # Cache for 24 hours - company names don't change often
 def get_company_names_map_congress(_supabase_client, tickers_tuple: tuple, _cache_version: Optional[str] = None) -> Dict[str, str]:
@@ -3633,7 +3652,7 @@ def congress_trades_page():
 @app.route('/api/congress_trades/data')
 @require_auth
 def api_congress_trades_data():
-    """API endpoint for congress trades data (JSON)"""
+    """API endpoint for congress trades data (JSON) - fetches ALL data at once"""
     try:
         from flask_auth_utils import get_auth_token
         from flask_data_utils import get_supabase_client_flask
@@ -3667,12 +3686,8 @@ def api_congress_trades_data():
         min_score = float(min_score) if min_score else None
         max_score = float(max_score) if max_score else None
         
-        # Pagination
-        offset = int(request.args.get('offset', 0))
-        limit = int(request.args.get('limit', 1000))
-
-        # Get trades batch
-        result = get_congress_trades_cached(
+        # Get ALL trades (cached - internal pagination happens in the function)
+        all_trades = get_congress_trades_cached(
             supabase_client,
             refresh_key,
             ticker_filter=ticker_filter if ticker_filter and ticker_filter != 'All' else None,
@@ -3684,25 +3699,21 @@ def api_congress_trades_data():
             analyzed_only=analyzed_only,
             min_score=min_score,
             max_score=max_score,
-            _postgres_client=postgres_client,
-            offset=offset,
-            limit=limit
+            _postgres_client=postgres_client
         )
         
-        trades_batch = result.get('trades', [])
-        has_more = result.get('has_more', False)
-
         # Get analysis data
         analysis_map = get_analysis_data_congress(postgres_client, refresh_key) if postgres_client else {}
         
-        # Get company names (cached) - optimize by only fetching for this batch
-        unique_ticker_list = list(set([t.get('ticker') for t in trades_batch if t.get('ticker')]))
+        # Get company names (cached) - optimize by only fetching for unique tickers in result
+        unique_ticker_list = list(set([t.get('ticker') for t in all_trades if t.get('ticker')]))
         cache_version = get_cache_version()
+        # Fetch company names in chunks is handled by get_company_names_map_congress
         company_names_map = get_company_names_map_congress(supabase_client, tuple(unique_ticker_list), cache_version)
         
         # Format trades data
         formatted_trades = []
-        for trade in trades_batch:
+        for trade in all_trades:
             ticker = trade.get('ticker', 'N/A')
             ticker_upper = ticker.upper() if ticker != 'N/A' else 'N/A'
             company_name = company_names_map.get(ticker_upper, 'N/A')
@@ -3744,9 +3755,8 @@ def api_congress_trades_data():
 
         return jsonify({
             "trades": formatted_trades,
-            "next_offset": offset + limit if has_more else None,
-            "has_more": has_more,
-            "analysis_map": {str(k): v for k, v in analysis_map.items() if k in [t.get('id') for t in trades_batch]}
+            "has_more": False,
+            "total": len(all_trades)
         })
     except ValueError as e:
         logger.error(f"Invalid parameter in congress trades API: {e}", exc_info=True)
