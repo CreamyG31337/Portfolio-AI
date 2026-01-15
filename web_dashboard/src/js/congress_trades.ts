@@ -124,6 +124,7 @@ interface CongressTradeApiResponse {
     trades: CongressTrade[];
     next_offset?: number;
     has_more: boolean;
+    total?: number;
     error?: string;
 }
 
@@ -261,6 +262,9 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
              gridApi.setGridOption('rowData', tradesData);
              return;
         }
+        // Grid was marked initialized but gridApi is null - clear and recreate
+        gridDiv.innerHTML = '';
+        gridDiv.removeAttribute('data-initialized');
     }
 
     // Detect theme and apply appropriate AgGrid theme
@@ -563,11 +567,7 @@ function calculateAndRenderStats(newTrades: CongressTrade[]): void {
 }
 
 async function fetchTradeData(): Promise<void> {
-    if (gridApi) {
-        gridApi.showLoadingOverlay();
-    }
-
-    const BATCH_SIZE = 1000; // Supabase default max is 1000 rows per request
+    const BATCH_SIZE = 1000;
     let offset = 0;
     let hasMore = true;
     const searchParams = new URLSearchParams(window.location.search);
@@ -587,13 +587,11 @@ async function fetchTradeData(): Promise<void> {
         while (hasMore) {
             // Update loading text
             const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
-            if (titleEl) {
-                if (titleEl.textContent?.includes('Congress Trades')) {
-                    titleEl.textContent = `📋 Congress Trades (Loading... ${offset}+)`;
-                }
+            if (titleEl && titleEl.textContent?.includes('Congress Trades')) {
+                titleEl.textContent = `📋 Congress Trades (Loading... ${offset}+)`;
             }
 
-            // Append pagination params
+            // Set pagination params
             searchParams.set('offset', offset.toString());
             searchParams.set('limit', BATCH_SIZE.toString());
 
@@ -605,7 +603,7 @@ async function fetchTradeData(): Promise<void> {
 
             const data: CongressTradeApiResponse = await response.json();
             
-            console.log(`[CongressTrades] Batch received: offset=${offset}, trades=${data.trades?.length || 0}, has_more=${data.has_more}, next_offset=${data.next_offset}`);
+            console.log(`[CongressTrades] Batch: offset=${offset}, received=${data.trades?.length || 0}, has_more=${data.has_more}, total=${data.total}`);
 
             if (data.error) {
                 console.error('API Error:', data.error);
@@ -614,12 +612,11 @@ async function fetchTradeData(): Promise<void> {
 
             const newTrades = data.trades || [];
 
-            // If first batch, initialize grid
+            // First batch: initialize grid
             if (offset === 0) {
                 initializeCongressTradesGrid(newTrades);
-                if (gridApi) gridApi.hideOverlay();
             } else {
-                // Append rows
+                // Subsequent batches: append rows
                 if (gridApi) {
                     gridApi.applyTransaction({ add: newTrades });
                 }
@@ -636,20 +633,20 @@ async function fetchTradeData(): Promise<void> {
                 hasMore = false;
             }
 
-            // Small delay to allow UI to update
-            await new Promise(resolve => setTimeout(resolve, 50));
+            // Small delay to let UI update
+            await new Promise(resolve => setTimeout(resolve, 10));
         }
 
         // Done loading
         const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
-        if (titleEl && titleEl.textContent?.includes('Loading')) {
+        if (titleEl) {
             titleEl.textContent = '📋 Congress Trades';
         }
 
     } catch (error) {
         console.error('Failed to fetch trades data:', error);
         if (gridApi) {
-            gridApi.hideOverlay(); // Or show error overlay
+            gridApi.hideOverlay();
         }
     }
 }

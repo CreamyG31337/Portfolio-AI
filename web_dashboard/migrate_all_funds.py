@@ -155,6 +155,17 @@ class FundMigrator:
                 return True
             
             if not self.dry_run:
+                # Ensure all tickers exist in securities table before inserting
+                unique_tickers = set(pos['ticker'] for pos in positions)
+                for ticker in unique_tickers:
+                    # Get currency for this ticker from positions
+                    ticker_positions = [p for p in positions if p['ticker'] == ticker]
+                    currency = ticker_positions[0].get('currency', 'USD') if ticker_positions else 'USD'
+                    try:
+                        self.client.ensure_ticker_in_securities(ticker, currency)
+                    except Exception as e:
+                        print(f"  ⚠️  Warning: Could not ensure ticker {ticker} in securities: {e}")
+                
                 # Delete existing positions for this fund first
                 delete_result = self.client.supabase.table("portfolio_positions").delete().eq("fund", fund_name).execute()
                 print(f"  🗑️  Deleted {len(delete_result.data) if delete_result.data else 0} existing positions")
@@ -207,6 +218,17 @@ class FundMigrator:
                 return True
             
             if not self.dry_run:
+                # Ensure all tickers exist in securities table before inserting
+                unique_tickers = set(trade['ticker'] for trade in trades)
+                for ticker in unique_tickers:
+                    # Get currency for this ticker from trades
+                    ticker_trades = [t for t in trades if t['ticker'] == ticker]
+                    currency = ticker_trades[0].get('currency', 'USD') if ticker_trades else 'USD'
+                    try:
+                        self.client.ensure_ticker_in_securities(ticker, currency)
+                    except Exception as e:
+                        print(f"  ⚠️  Warning: Could not ensure ticker {ticker} in securities: {e}")
+                
                 # Delete existing trades for this fund first
                 delete_result = self.client.supabase.table("trade_log").delete().eq("fund", fund_name).execute()
                 print(f"  🗑️  Deleted {len(delete_result.data) if delete_result.data else 0} existing trades")
