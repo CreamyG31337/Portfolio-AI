@@ -47,7 +47,7 @@ class TickerCellRenderer {
 (window as any).TickerCellRenderer = TickerCellRenderer;
 
 export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
-    const gridDiv = document.querySelector('#etf-holdings-grid');
+    const gridDiv = document.querySelector('#etf-holdings-grid') as HTMLElement | null;
     if (!gridDiv) {
         console.error('ETF holdings grid container not found');
         return;
@@ -57,27 +57,54 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         return;
     }
 
+    // Detect theme and apply appropriate AgGrid theme
+    const htmlElement = document.documentElement;
+    const theme = htmlElement.getAttribute('data-theme') || 'system';
+    let isDark = false;
+
+    if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+        isDark = true;
+    } else if (theme === 'system') {
+        // Check system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            isDark = true;
+        }
+    }
+
+    // Update grid container class based on theme
+    if (isDark) {
+        gridDiv.classList.remove('ag-theme-alpine');
+        gridDiv.classList.add('ag-theme-alpine-dark');
+    } else {
+        gridDiv.classList.remove('ag-theme-alpine-dark');
+        gridDiv.classList.add('ag-theme-alpine');
+    }
+
     let columnDefs: any[] = [];
 
     if (viewMode === 'holdings') {
         columnDefs = [
-            { field: 'date', headerName: 'Date', width: 110, sortable: true, filter: true },
+            { field: 'date', headerName: 'Date', flex: 0.8, minWidth: 100, maxWidth: 130, sortable: true, filter: true },
             // ETF ticker is redundant if we selected one, but good for export/context
-            { field: 'etf_ticker', headerName: 'ETF', width: 80, sortable: true, filter: true },
+            { field: 'etf_ticker', headerName: 'ETF', flex: 0.6, minWidth: 70, maxWidth: 100, sortable: true, filter: true },
             {
                 field: 'holding_ticker',
                 headerName: 'Ticker',
-                width: 90,
+                flex: 0.7,
+                minWidth: 80,
+                maxWidth: 110,
                 pinned: 'left',
                 cellRenderer: TickerCellRenderer,
                 sortable: true,
                 filter: true
             },
-            { field: 'holding_name', headerName: 'Name', width: 250, sortable: true, filter: true },
+            { field: 'holding_name', headerName: 'Name', flex: 2, minWidth: 200, sortable: true, filter: true },
             {
                 field: 'user_shares',
                 headerName: 'We Hold',
-                width: 100,
+                flex: 0.6,
+                minWidth: 80,
+                maxWidth: 110,
                 sortable: true,
                 valueFormatter: (params: any) => params.value > 0 ? "✓" : "—",
                 cellStyle: (params: any) => params.value > 0 ? { color: '#2d5a3d', fontWeight: 'bold' } : null
@@ -85,21 +112,27 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
             {
                 field: 'user_shares',
                 headerName: 'Our Shares',
-                width: 110,
+                flex: 0.8,
+                minWidth: 90,
+                maxWidth: 130,
                 sortable: true,
                 valueFormatter: (params: any) => params.value > 0 ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"
             },
             {
                 field: 'current_shares',
                 headerName: 'Shares',
-                width: 120,
+                flex: 1,
+                minWidth: 100,
+                maxWidth: 150,
                 sortable: true,
                 valueFormatter: (params: any) => params.value ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0"
             },
             {
                 field: 'weight_percent',
                 headerName: 'Weight %',
-                width: 100,
+                flex: 0.7,
+                minWidth: 80,
+                maxWidth: 120,
                 sortable: true,
                 valueFormatter: (params: any) => params.value ? params.value.toFixed(2) + '%' : "0.00%"
             }
@@ -107,22 +140,26 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
     } else {
         // Changes View
         columnDefs = [
-            { field: 'date', headerName: 'Date', width: 110, sortable: true, filter: true },
-            { field: 'etf_ticker', headerName: 'ETF', width: 80, sortable: true, filter: true },
+            { field: 'date', headerName: 'Date', flex: 0.8, minWidth: 100, maxWidth: 130, sortable: true, filter: true },
+            { field: 'etf_ticker', headerName: 'ETF', flex: 0.6, minWidth: 70, maxWidth: 100, sortable: true, filter: true },
             {
                 field: 'holding_ticker',
                 headerName: 'Ticker',
-                width: 90,
+                flex: 0.7,
+                minWidth: 80,
+                maxWidth: 110,
                 pinned: 'left',
                 cellRenderer: TickerCellRenderer,
                 sortable: true,
                 filter: true
             },
-            { field: 'holding_name', headerName: 'Name', width: 200, sortable: true, filter: true },
+            { field: 'holding_name', headerName: 'Name', flex: 1.5, minWidth: 150, sortable: true, filter: true },
             {
                 field: 'user_shares',
                 headerName: 'We Hold',
-                width: 90,
+                flex: 0.5,
+                minWidth: 70,
+                maxWidth: 100,
                 sortable: true,
                 valueFormatter: (params: any) => params.value > 0 ? "✓" : "—",
                 cellStyle: (params: any) => params.value > 0 ? { color: '#2d5a3d', fontWeight: 'bold' } : null
@@ -130,14 +167,18 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
             {
                 field: 'user_shares',
                 headerName: 'Our Shares',
-                width: 100,
+                flex: 0.7,
+                minWidth: 80,
+                maxWidth: 120,
                 sortable: true,
                 valueFormatter: (params: any) => params.value > 0 ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"
             },
             {
                 field: 'action',
                 headerName: 'Action',
-                width: 90,
+                flex: 0.6,
+                minWidth: 70,
+                maxWidth: 100,
                 sortable: true,
                 filter: true,
                 cellStyle: (params: any) => {
@@ -149,7 +190,9 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
             {
                 field: 'share_change',
                 headerName: 'Change',
-                width: 100,
+                flex: 0.8,
+                minWidth: 90,
+                maxWidth: 130,
                 sortable: true,
                 valueFormatter: (params: any) => (params.value > 0 ? '+' : '') + params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }),
                 cellStyle: (params: any) => {
@@ -161,21 +204,27 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
             {
                 field: 'percent_change',
                 headerName: '% Change',
-                width: 100,
+                flex: 0.7,
+                minWidth: 80,
+                maxWidth: 120,
                 sortable: true,
                 valueFormatter: (params: any) => (params.value > 0 ? '+' : '') + params.value.toFixed(2) + '%'
             },
             {
                 field: 'previous_shares',
                 headerName: 'Prev Shares',
-                width: 110,
+                flex: 0.9,
+                minWidth: 100,
+                maxWidth: 140,
                 sortable: true,
                 valueFormatter: (params: any) => params.value ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0"
             },
             {
                 field: 'current_shares',
                 headerName: 'New Shares',
-                width: 110,
+                flex: 0.9,
+                minWidth: 100,
+                maxWidth: 140,
                 sortable: true,
                 valueFormatter: (params: any) => params.value ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0"
             }
@@ -210,9 +259,67 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
     gridApi = gridInstance.api;
     gridColumnApi = gridInstance.columnApi;
 
-    // Auto-size columns
+    // Auto-size columns to fit container
     if (gridApi) {
-        gridApi.sizeColumnsToFit();
+        // Function to resize columns
+        const resizeColumns = () => {
+            if (gridApi) {
+                // Fit all columns to available width
+                gridApi.sizeColumnsToFit();
+            }
+        };
+
+        // Wait for grid to be ready before auto-sizing
+        gridApi.addEventListener('firstDataRendered', () => {
+            resizeColumns();
+        });
+
+        // Also auto-size on window resize (with debounce for performance)
+        let resizeTimeout: number | null = null;
+        window.addEventListener('resize', () => {
+            if (resizeTimeout) {
+                clearTimeout(resizeTimeout);
+            }
+            resizeTimeout = window.setTimeout(() => {
+                resizeColumns();
+            }, 150);
+        });
+
+        // Initial resize after a short delay to ensure grid is fully rendered
+        setTimeout(() => {
+            resizeColumns();
+        }, 100);
+    }
+}
+
+// Function to update grid theme dynamically
+function updateEtfGridTheme(): void {
+    const gridDiv = document.querySelector('#etf-holdings-grid') as HTMLElement | null;
+    if (!gridDiv) {
+        return;
+    }
+
+    // Detect theme and apply appropriate AgGrid theme
+    const htmlElement = document.documentElement;
+    const theme = htmlElement.getAttribute('data-theme') || 'system';
+    let isDark = false;
+
+    if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+        isDark = true;
+    } else if (theme === 'system') {
+        // Check system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            isDark = true;
+        }
+    }
+
+    // Update grid container class based on theme
+    if (isDark) {
+        gridDiv.classList.remove('ag-theme-alpine');
+        gridDiv.classList.add('ag-theme-alpine-dark');
+    } else {
+        gridDiv.classList.remove('ag-theme-alpine-dark');
+        gridDiv.classList.add('ag-theme-alpine');
     }
 }
 
@@ -296,5 +403,27 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             console.error('[EtfHoldings] Failed to auto-init:', err);
         }
+    }
+
+    // Listen for theme changes
+    const themeManager = (window as any).themeManager;
+    if (themeManager && typeof themeManager.addListener === 'function') {
+        themeManager.addListener(() => {
+            console.log('[EtfHoldings] Theme changed, updating grid theme...');
+            updateEtfGridTheme();
+        });
+    } else {
+        // Fallback: Use MutationObserver to watch for data-theme attribute changes
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+                    updateEtfGridTheme();
+                }
+            });
+        });
+        observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-theme']
+        });
     }
 });
