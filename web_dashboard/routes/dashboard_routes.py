@@ -972,20 +972,67 @@ def get_recent_activity():
             logger.warning(f"[Dashboard API] No trades found for activity - fund={fund}")
             return jsonify({"data": []})
         
+        def infer_action(reason):
+            """Infer action type from reason field (matching Streamlit logic)"""
+            if pd.isna(reason) or reason is None:
+                return 'BUY'  # Default if no reason
+            reason_lower = str(reason).lower()
+            if 'sell' in reason_lower or 'limit sell' in reason_lower or 'market sell' in reason_lower:
+                return 'SELL'
+            if 'drip' in reason_lower or 'dividend' in reason_lower:
+                return 'DRIP'
+            return 'BUY'  # Default to BUY if no sell/drip keywords found
+        
+        def calculate_display_amount(row, action):
+            """Calculate display amount: P&L for sells, purchase amount for buys/drips"""
+            if action == 'SELL':
+                pnl = row.get('pnl', 0)
+                if pnl is not None and not pd.isna(pnl):
+                    return float(pnl)
+                # Fallback: calculate from amount if pnl not available
+                return abs(float(row.get('amount', 0)))
+            else:
+                # For BUYs/DRIPs: show purchase amount
+                shares = abs(float(row.get('shares', 0)))
+                price = float(row.get('price', 0))
+                return shares * price
+        
         data = []
         for _, row in trades_df.iterrows():
-            # Format logic
-            date_str = row['date'].strftime('%Y-%m-%d') if hasattr(row['date'], 'strftime') else str(row['date'])
+            # Format date as MM-DD-YY (matching Streamlit)
+            if hasattr(row['date'], 'strftime'):
+                date_str = row['date'].strftime('%m-%d-%y')
+            else:
+                # Try to parse and format if it's a string
+                try:
+                    from datetime import datetime
+                    date_obj = datetime.strptime(str(row['date']), '%Y-%m-%d')
+                    date_str = date_obj.strftime('%m-%d-%y')
+                except:
+                    date_str = str(row['date'])
+            
             ticker = row.get('ticker')
-            action = "BUY" if row.get('shares', 0) > 0 else "SELL"
+            reason = row.get('reason')
+            action = infer_action(reason)
+            
+            shares = abs(float(row.get('shares', 0)))
+            price = float(row.get('price', 0))
+            pnl = row.get('pnl', None)
+            company_name = row.get('company_name')
+            
+            display_amount = calculate_display_amount(row, action)
             
             data.append({
                 "date": date_str,
                 "ticker": ticker,
+                "company_name": company_name if company_name and not pd.isna(company_name) else None,
                 "action": action,
-                "shares": abs(row.get('shares', 0)),
-                "price": row.get('price', 0),
-                "amount": abs(row.get('amount', 0)) # Assuming amount col exists, else calculate
+                "reason": str(reason) if reason and not pd.isna(reason) else None,
+                "shares": shares,
+                "price": price,
+                "pnl": float(pnl) if pnl is not None and not pd.isna(pnl) else None,
+                "amount": abs(float(row.get('amount', 0))),
+                "display_amount": display_amount
             })
             
         processing_time = time.time() - start_time

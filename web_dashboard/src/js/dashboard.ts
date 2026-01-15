@@ -115,10 +115,14 @@ interface ActivityData {
     data: Array<{
         date: string;
         ticker: string;
-        action: 'BUY' | 'SELL';
+        company_name?: string | null;
+        action: 'BUY' | 'SELL' | 'DRIP';
+        reason?: string | null;
         shares: number;
         price: number;
+        pnl?: number | null;
         amount: number;
+        display_amount: number;
     }>;
 }
 
@@ -1272,26 +1276,41 @@ async function fetchActivity(): Promise<void> {
         tbody.innerHTML = '';
 
         if (!data.data || data.data.length === 0) {
-            tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="6" class="px-6 py-4 text-center text-gray-500">No recent activity</td></tr>';
+            tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="7" class="px-6 py-4 text-center text-gray-500">No recent activity</td></tr>';
         } else {
             data.data.forEach(row => {
                 const tr = document.createElement('tr');
                 tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
 
-                const isBuy = row.action === 'BUY';
-                const actionBadge = isBuy
-                    ? '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-300">BUY</span>'
-                    : '<span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-300">SELL</span>';
+                // Action badge with DRIP support
+                let actionBadge: string;
+                if (row.action === 'DRIP') {
+                    actionBadge = '<span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">DRIP</span>';
+                } else if (row.action === 'SELL') {
+                    actionBadge = '<span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-300">SELL</span>';
+                } else {
+                    actionBadge = '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-300">BUY</span>';
+                }
+
+                // Format shares to 4 decimal places
+                const sharesFormatted = row.shares.toFixed(4);
+                
+                // Use display_amount (P&L for sells, amount for buys/drips)
+                const displayAmount = row.display_amount || row.amount || (row.shares * row.price);
+                
+                // Company name (or empty string)
+                const companyName = row.company_name || '';
 
                 tr.innerHTML = `
                      <td class="px-6 py-4 whitespace-nowrap">${row.date}</td>
                      <td class="px-6 py-4 font-bold text-blue-600 dark:text-blue-400">
                          <a href="/v2/ticker?ticker=${row.ticker}" class="hover:underline">${row.ticker}</a>
                      </td>
+                     <td class="px-6 py-4 text-gray-700 dark:text-gray-300">${companyName}</td>
                      <td class="px-6 py-4">${actionBadge}</td>
-                     <td class="px-6 py-4 text-right">${row.shares}</td>
+                     <td class="px-6 py-4 text-right">${sharesFormatted}</td>
                      <td class="px-6 py-4 text-right format-currency">${formatMoney(row.price)}</td>
-                     <td class="px-6 py-4 text-right format-currency font-medium">${formatMoney(row.amount || (row.shares * row.price))}</td>
+                     <td class="px-6 py-4 text-right format-currency font-medium">${formatMoney(displayAmount)}</td>
                 `;
                 tbody.appendChild(tr);
             });
