@@ -23,6 +23,10 @@ interface AgGridApi {
     getSelectedNodes(): AgGridNode[];
     sizeColumnsToFit(): void;
     addEventListener(event: string, callback: () => void): void;
+    setGridOption(key: string, value: any): void;
+    showLoadingOverlay(): void;
+    hideOverlay(): void;
+    applyTransaction(transaction: { add: CongressTrade[] }): void;
 }
 
 interface AgGridColumnApi {
@@ -55,6 +59,7 @@ interface AgGridOptions {
     onSelectionChanged?: () => void;
     animateRows?: boolean;
     suppressCellFocus?: boolean;
+    overlayLoadingTemplate?: string;
 }
 
 interface AgGridColumnDef {
@@ -103,12 +108,29 @@ interface CongressTrade {
     _full_reasoning?: string;
 }
 
+interface CongressTradeStats {
+    total_trades: number;
+    analyzed_count: number;
+    house_count: number;
+    senate_count: number;
+    purchase_count: number;
+    sale_count: number;
+    unique_tickers_count: number;
+    high_risk_count: number;
+    most_active_display: string;
+}
+
+interface CongressTradeApiResponse {
+    trades: CongressTrade[];
+    next_offset?: number;
+    has_more: boolean;
+    error?: string;
+}
+
 // Global AgGrid reference
-// Note: agGrid is also declared in globals.d.ts as optional 'any'
-// This declaration makes it required and properly typed for this file
 declare global {
     interface Window {
-        agGrid: AgGridGlobal; // Override the optional 'any' from globals.d.ts with proper type
+        agGrid: AgGridGlobal;
     }
 }
 
@@ -231,6 +253,14 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     if (!window.agGrid) {
         console.error('AgGrid not loaded');
         return;
+    }
+
+    // Check if grid is already initialized
+    if (gridDiv.getAttribute('data-initialized') === 'true') {
+        if (gridApi) {
+             gridApi.setGridOption('rowData', tradesData);
+             return;
+        }
     }
 
     // Detect theme and apply appropriate AgGrid theme
@@ -396,7 +426,6 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             checkboxes: false,
             enableClickSelection: false,
         },
-        // suppressRowClickSelection deprecated
         enableRangeSelection: true,
         enableCellTextSelection: true,
         ensureDomOrder: true,
@@ -407,13 +436,15 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         onCellClicked: onCellClicked,
         onSelectionChanged: onSelectionChanged,
         animateRows: true,
-        suppressCellFocus: false
+        suppressCellFocus: false,
+        overlayLoadingTemplate: '<span class="ag-overlay-loading-center">Please wait while your rows are loading...</span>'
     };
 
     // Create grid
     const gridInstance = new window.agGrid.Grid(gridDiv, gridOptions);
     gridApi = gridInstance.api;
     gridColumnApi = gridInstance.columnApi;
+    gridDiv.setAttribute('data-initialized', 'true');
 
     // Auto-size columns to fit container
     if (gridApi) {
@@ -445,6 +476,179 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         setTimeout(() => {
             resizeColumns();
         }, 100);
+    }
+}
+
+// Statistics Accumulator
+const statsAccumulator = {
+    total_trades: 0,
+    analyzed_count: 0,
+    house_count: 0,
+    senate_count: 0,
+    purchase_count: 0,
+    sale_count: 0,
+    unique_tickers: new Set<string>(),
+    high_risk_count: 0,
+    politician_counts_31d: new Map<string, number>()
+};
+
+function calculateAndRenderStats(newTrades: CongressTrade[]): void {
+    const thirtyOneDaysAgo = new Date();
+    thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31);
+
+    for (const trade of newTrades) {
+        statsAccumulator.total_trades++;
+
+        // Analyzed count (check for non-null Score that isn't '⚪ N/A')
+        if (trade.Score && !trade.Score.includes('⚪')) {
+            statsAccumulator.analyzed_count++;
+        }
+
+        // High Risk
+        if (trade.Score && trade.Score.includes('🔴')) {
+            statsAccumulator.high_risk_count++;
+        }
+
+        // Chamber
+        if (trade.Chamber === 'House') statsAccumulator.house_count++;
+        if (trade.Chamber === 'Senate') statsAccumulator.senate_count++;
+
+        // Type
+        if (trade.Type === 'Purchase') statsAccumulator.purchase_count++;
+        if (trade.Type === 'Sale') statsAccumulator.sale_count++;
+
+        // Unique Tickers
+        if (trade.Ticker && trade.Ticker !== 'N/A') {
+            statsAccumulator.unique_tickers.add(trade.Ticker);
+        }
+
+        // Most Active (31d)
+        if (trade.Date && trade.Politician && trade.Politician !== 'N/A') {
+            const tradeDate = new Date(trade.Date);
+            if (tradeDate >= thirtyOneDaysAgo) {
+                // Check owner (skip spouse/child if needed, matching python logic)
+                const owner = (trade.Owner || '').toLowerCase();
+                if (owner !== 'child' && owner !== 'spouse') {
+                    const count = statsAccumulator.politician_counts_31d.get(trade.Politician) || 0;
+                    statsAccumulator.politician_counts_31d.set(trade.Politician, count + 1);
+                }
+            }
+        }
+    }
+
+    // Determine most active
+    let mostActiveDisplay = "N/A";
+    let maxCount = 0;
+    for (const [politician, count] of statsAccumulator.politician_counts_31d.entries()) {
+        if (count > maxCount) {
+            maxCount = count;
+            mostActiveDisplay = `${politician} (${count})`;
+        }
+    }
+
+    // Render
+    const setText = (id: string, text: string) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+
+    setText('stat-total-trades', statsAccumulator.total_trades.toString());
+    setText('stat-analyzed', `${statsAccumulator.analyzed_count}/${statsAccumulator.total_trades}`);
+    setText('stat-house', statsAccumulator.house_count.toString());
+    setText('stat-senate', statsAccumulator.senate_count.toString());
+    setText('stat-buy-sell', `${statsAccumulator.purchase_count}/${statsAccumulator.sale_count}`);
+    setText('stat-tickers', statsAccumulator.unique_tickers.size.toString());
+    setText('stat-high-risk', statsAccumulator.high_risk_count.toString());
+    setText('stat-most-active', mostActiveDisplay);
+}
+
+async function fetchTradeData(): Promise<void> {
+    if (gridApi) {
+        gridApi.showLoadingOverlay();
+    }
+
+    const BATCH_SIZE = 2500;
+    let offset = 0;
+    let hasMore = true;
+    const searchParams = new URLSearchParams(window.location.search);
+
+    try {
+        // Reset stats
+        statsAccumulator.total_trades = 0;
+        statsAccumulator.analyzed_count = 0;
+        statsAccumulator.house_count = 0;
+        statsAccumulator.senate_count = 0;
+        statsAccumulator.purchase_count = 0;
+        statsAccumulator.sale_count = 0;
+        statsAccumulator.unique_tickers.clear();
+        statsAccumulator.high_risk_count = 0;
+        statsAccumulator.politician_counts_31d.clear();
+
+        while (hasMore) {
+            // Update loading text
+            const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
+            if (titleEl) {
+                if (titleEl.textContent?.includes('Congress Trades')) {
+                    titleEl.textContent = `📋 Congress Trades (Loading... ${offset}+)`;
+                }
+            }
+
+            // Append pagination params
+            searchParams.set('offset', offset.toString());
+            searchParams.set('limit', BATCH_SIZE.toString());
+
+            const response = await fetch(`/api/congress_trades/data?${searchParams.toString()}`);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data: CongressTradeApiResponse = await response.json();
+
+            if (data.error) {
+                console.error('API Error:', data.error);
+                break;
+            }
+
+            const newTrades = data.trades || [];
+
+            // If first batch, initialize grid
+            if (offset === 0) {
+                initializeCongressTradesGrid(newTrades);
+                if (gridApi) gridApi.hideOverlay();
+            } else {
+                // Append rows
+                if (gridApi) {
+                    gridApi.applyTransaction({ add: newTrades });
+                }
+            }
+
+            // Update stats
+            calculateAndRenderStats(newTrades);
+
+            // Prepare next iteration
+            hasMore = data.has_more;
+            if (data.next_offset) {
+                offset = data.next_offset;
+            } else {
+                hasMore = false;
+            }
+
+            // Small delay to allow UI to update
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+
+        // Done loading
+        const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
+        if (titleEl && titleEl.textContent?.includes('Loading')) {
+            titleEl.textContent = '📋 Congress Trades';
+        }
+
+    } catch (error) {
+        console.error('Failed to fetch trades data:', error);
+        if (gridApi) {
+            gridApi.hideOverlay(); // Or show error overlay
+        }
     }
 }
 
@@ -491,7 +695,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (configElement) {
         try {
             const config = JSON.parse(configElement.textContent || '{}');
-            if (config.tradesData) {
+
+            // Check for lazy load flag
+            if (config.lazyLoad) {
+                // Initialize empty grid to show loading state
+                initializeCongressTradesGrid([]);
+                // Fetch data
+                fetchTradeData();
+            } else if (config.tradesData) {
+                // Legacy direct load (if we revert)
                 initializeCongressTradesGrid(config.tradesData);
             }
         } catch (err) {
