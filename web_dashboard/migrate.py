@@ -61,6 +61,17 @@ def load_fund_data(fund_name: str, base_dir: str = "../trading_data/funds") -> D
 
     return data
 
+def infer_currency_from_ticker(ticker: str) -> str:
+    """Infer currency from ticker symbol.
+    
+    Common patterns:
+    - Tickers ending in .TO are Canadian (CAD)
+    - Otherwise default to USD
+    """
+    if ticker.endswith('.TO'):
+        return 'CAD'
+    return 'USD'
+
 def migrate_fund(client: SupabaseClient, fund_name: str, fund_data: Dict[str, pd.DataFrame]) -> bool:
     """Migrate a single fund's data."""
     print(f"\n📊 Migrating {fund_name}...")
@@ -85,6 +96,15 @@ def migrate_fund(client: SupabaseClient, fund_name: str, fund_data: Dict[str, pd
             })
 
         try:
+            # Ensure all tickers exist in securities table before inserting
+            unique_tickers = set(pos['ticker'] for pos in positions)
+            for ticker in unique_tickers:
+                currency = infer_currency_from_ticker(ticker)
+                try:
+                    client.ensure_ticker_in_securities(ticker, currency)
+                except Exception as e:
+                    print(f"    ⚠️  Warning: Could not ensure ticker {ticker} in securities: {e}")
+            
             result = client.supabase.table("portfolio_positions").upsert(positions).execute()
             print(f"    ✅ {len(positions)} positions uploaded")
         except Exception as e:
@@ -110,6 +130,15 @@ def migrate_fund(client: SupabaseClient, fund_name: str, fund_data: Dict[str, pd
             })
 
         try:
+            # Ensure all tickers exist in securities table before inserting
+            unique_tickers = set(trade['ticker'] for trade in trades)
+            for ticker in unique_tickers:
+                currency = infer_currency_from_ticker(ticker)
+                try:
+                    client.ensure_ticker_in_securities(ticker, currency)
+                except Exception as e:
+                    print(f"    ⚠️  Warning: Could not ensure ticker {ticker} in securities: {e}")
+            
             result = client.supabase.table("trade_log").upsert(trades).execute()
             print(f"    ✅ {len(trades)} trades uploaded")
         except Exception as e:

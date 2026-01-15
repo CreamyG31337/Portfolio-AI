@@ -428,6 +428,26 @@ class SupabaseRepository(BaseRepository):
             RepositoryError: If data saving fails
         """
         try:
+            # Ensure ticker exists in securities table before inserting (required for FK constraint)
+            try:
+                import sys
+                from pathlib import Path
+                project_root = Path(__file__).resolve().parent.parent.parent
+                web_dashboard_path = project_root / 'web_dashboard'
+                if str(web_dashboard_path) not in sys.path:
+                    sys.path.insert(0, str(web_dashboard_path))
+                from supabase_client import SupabaseClient
+                
+                # Create a SupabaseClient to use ensure_ticker_in_securities
+                # Use service role to bypass RLS (console app context)
+                supabase_client = SupabaseClient(use_service_role=True)
+                currency = trade.currency or 'USD'
+                supabase_client.ensure_ticker_in_securities(trade.ticker, currency)
+            except Exception as ensure_error:
+                logger.warning(f"Could not ensure ticker {trade.ticker} in securities table: {ensure_error}")
+                # Continue anyway - the insert will fail with FK error if ticker doesn't exist
+                # This provides better error message than silent failure
+            
             # Use TradeMapper to convert Trade object to Supabase format
             trade_data = TradeMapper.model_to_db(trade, self.fund)
             

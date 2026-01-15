@@ -876,6 +876,24 @@ def update_portfolio_prices_job(
                     # If delete+insert pattern fails due to race condition, upsert will handle it
                     if updated_positions:
                         try:
+                            # Ensure all tickers exist in securities table before inserting (required for FK constraint)
+                            try:
+                                from supabase_client import SupabaseClient as SupabaseClientType
+                                supabase_client = SupabaseClientType(use_service_role=True)
+                                
+                                unique_tickers = set(pos['ticker'] for pos in updated_positions)
+                                for ticker in unique_tickers:
+                                    # Get currency for this ticker from positions
+                                    ticker_positions = [p for p in updated_positions if p['ticker'] == ticker]
+                                    currency = ticker_positions[0].get('currency', 'USD') if ticker_positions else 'USD'
+                                    try:
+                                        supabase_client.ensure_ticker_in_securities(ticker, currency)
+                                    except Exception as e:
+                                        logger.warning(f"  Could not ensure ticker {ticker} in securities: {e}")
+                            except Exception as ensure_error:
+                                logger.warning(f"  Failed to ensure tickers exist: {ensure_error}")
+                                # Continue anyway - the insert will fail with FK error if ticker doesn't exist
+                            
                             # Use upsert with on_conflict to handle duplicates from race conditions
                             # This is safer than insert alone - if the job runs twice concurrently,
                             # or if delete+insert fails, upsert will update existing records instead of erroring
@@ -1566,6 +1584,25 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                     if not validated_positions:
                         logger.warning(f"  No valid positions to insert for {fund_name}")
                         continue
+                    
+                    # Ensure all tickers exist in securities table before inserting (required for FK constraint)
+                    try:
+                        from supabase_client import SupabaseClient as SupabaseClientType
+                        supabase_client = SupabaseClientType(use_service_role=True)
+                        
+                        unique_tickers = set(pos['ticker'] for pos in validated_positions)
+                        logger.info(f"  Ensuring {len(unique_tickers)} unique tickers exist in securities table...")
+                        for ticker in unique_tickers:
+                            # Get currency for this ticker from positions
+                            ticker_positions = [p for p in validated_positions if p['ticker'] == ticker]
+                            currency = ticker_positions[0].get('currency', 'USD') if ticker_positions else 'USD'
+                            try:
+                                supabase_client.ensure_ticker_in_securities(ticker, currency)
+                            except Exception as e:
+                                logger.warning(f"  Could not ensure ticker {ticker} in securities: {e}")
+                    except Exception as ensure_error:
+                        logger.warning(f"  Failed to ensure tickers exist: {ensure_error}")
+                        # Continue anyway - the insert will fail with FK error if ticker doesn't exist
                     
                     # Split positions into chunks
                     num_chunks = (len(validated_positions) + CHUNK_SIZE - 1) // CHUNK_SIZE
