@@ -3369,7 +3369,7 @@ def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, 
         logger.error(f"Error fetching analysis data: {e}")
         return {}
 
-@cache_data(ttl=60)
+@cache_data(ttl=21600)
 def get_congress_trades_cached(
     _supabase_client,
     refresh_key: int,
@@ -3384,12 +3384,15 @@ def get_congress_trades_cached(
     max_score: Optional[float] = None,
     _postgres_client = None
 ) -> List[Dict[str, Any]]:
-    """Get congress trades with filters (cached 60s). Fetches ALL matching rows."""
+    """Get congress trades with filters (cached 6 hours). Fetches ALL matching rows."""
     try:
         if _supabase_client is None:
             return []
         
-        query = _supabase_client.supabase.table("congress_trades_enriched").select("*")
+        # Optimize query to select only needed columns
+        query = _supabase_client.supabase.table("congress_trades_enriched").select(
+            "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner"
+        )
         
         if ticker_filter:
             query = query.eq("ticker", ticker_filter)
@@ -3649,7 +3652,7 @@ def congress_trades_page():
 @app.route('/api/congress_trades/data')
 @require_auth
 def api_congress_trades_data():
-    """API endpoint for congress trades data (JSON)"""
+    """API endpoint for congress trades data (JSON) - fetches ALL data at once"""
     try:
         from flask_auth_utils import get_auth_token
         from flask_data_utils import get_supabase_client_flask
@@ -3683,10 +3686,6 @@ def api_congress_trades_data():
         min_score = float(min_score) if min_score else None
         max_score = float(max_score) if max_score else None
         
-        # Pagination params from frontend
-        offset = int(request.args.get('offset', 0))
-        limit = int(request.args.get('limit', 1000))
-        
         # Get ALL trades (cached - internal pagination happens in the function)
         all_trades = get_congress_trades_cached(
             supabase_client,
@@ -3703,23 +3702,18 @@ def api_congress_trades_data():
             _postgres_client=postgres_client
         )
         
-        # Slice for the requested batch
-        trades_batch = all_trades[offset:offset + limit]
-        has_more = (offset + limit) < len(all_trades)
-        
-        logger.info(f"[CongressTradesAPI] Returning batch: offset={offset}, limit={limit}, batch_size={len(trades_batch)}, total={len(all_trades)}, has_more={has_more}")
-
         # Get analysis data
         analysis_map = get_analysis_data_congress(postgres_client, refresh_key) if postgres_client else {}
         
-        # Get company names (cached) - only for this batch
-        unique_ticker_list = list(set([t.get('ticker') for t in trades_batch if t.get('ticker')]))
+        # Get company names (cached) - optimize by only fetching for unique tickers in result
+        unique_ticker_list = list(set([t.get('ticker') for t in all_trades if t.get('ticker')]))
         cache_version = get_cache_version()
+        # Fetch company names in chunks is handled by get_company_names_map_congress
         company_names_map = get_company_names_map_congress(supabase_client, tuple(unique_ticker_list), cache_version)
         
         # Format trades data
         formatted_trades = []
-        for trade in trades_batch:
+        for trade in all_trades:
             ticker = trade.get('ticker', 'N/A')
             ticker_upper = ticker.upper() if ticker != 'N/A' else 'N/A'
             company_name = company_names_map.get(ticker_upper, 'N/A')
@@ -3761,8 +3755,7 @@ def api_congress_trades_data():
 
         return jsonify({
             "trades": formatted_trades,
-            "has_more": has_more,
-            "next_offset": offset + limit if has_more else None,
+            "has_more": False,
             "total": len(all_trades)
         })
     except ValueError as e:

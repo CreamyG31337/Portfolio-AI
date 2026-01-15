@@ -259,8 +259,8 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     // Check if grid is already initialized
     if (gridDiv.getAttribute('data-initialized') === 'true') {
         if (gridApi) {
-             gridApi.setGridOption('rowData', tradesData);
-             return;
+            gridApi.setGridOption('rowData', tradesData);
+            return;
         }
         // Grid was marked initialized but gridApi is null - clear and recreate
         gridDiv.innerHTML = '';
@@ -271,7 +271,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     const htmlElement = document.documentElement;
     const theme = htmlElement.getAttribute('data-theme') || 'system';
     let isDark = false;
-    
+
     if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
         isDark = true;
     } else if (theme === 'system') {
@@ -280,7 +280,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             isDark = true;
         }
     }
-    
+
     // Update grid container class based on theme
     if (isDark) {
         gridDiv.classList.remove('ag-theme-alpine');
@@ -464,7 +464,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         gridApi.addEventListener('firstDataRendered', () => {
             resizeColumns();
         });
-        
+
         // Also auto-size on window resize (with debounce for performance)
         let resizeTimeout: number | null = null;
         window.addEventListener('resize', () => {
@@ -567,9 +567,6 @@ function calculateAndRenderStats(newTrades: CongressTrade[]): void {
 }
 
 async function fetchTradeData(): Promise<void> {
-    const BATCH_SIZE = 1000;
-    let offset = 0;
-    let hasMore = true;
     const searchParams = new URLSearchParams(window.location.search);
 
     try {
@@ -584,61 +581,36 @@ async function fetchTradeData(): Promise<void> {
         statsAccumulator.high_risk_count = 0;
         statsAccumulator.politician_counts_31d.clear();
 
-        while (hasMore) {
-            // Update loading text
-            const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
-            if (titleEl && titleEl.textContent?.includes('Congress Trades')) {
-                titleEl.textContent = `📋 Congress Trades (Loading... ${offset}+)`;
-            }
-
-            // Set pagination params
-            searchParams.set('offset', offset.toString());
-            searchParams.set('limit', BATCH_SIZE.toString());
-
-            const response = await fetch(`/api/congress_trades/data?${searchParams.toString()}`);
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data: CongressTradeApiResponse = await response.json();
-            
-            console.log(`[CongressTrades] Batch: offset=${offset}, received=${data.trades?.length || 0}, has_more=${data.has_more}, total=${data.total}`);
-
-            if (data.error) {
-                console.error('API Error:', data.error);
-                break;
-            }
-
-            const newTrades = data.trades || [];
-
-            // First batch: initialize grid
-            if (offset === 0) {
-                initializeCongressTradesGrid(newTrades);
-            } else {
-                // Subsequent batches: append rows
-                if (gridApi) {
-                    gridApi.applyTransaction({ add: newTrades });
-                }
-            }
-
-            // Update stats
-            calculateAndRenderStats(newTrades);
-
-            // Prepare next iteration
-            hasMore = data.has_more === true;
-            if (hasMore && typeof data.next_offset === 'number') {
-                offset = data.next_offset;
-            } else {
-                hasMore = false;
-            }
-
-            // Small delay to let UI update
-            await new Promise(resolve => setTimeout(resolve, 10));
+        // Update loading text
+        const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
+        if (titleEl && titleEl.textContent?.includes('Congress Trades')) {
+            titleEl.textContent = `📋 Congress Trades (Loading...)`;
         }
 
+        const response = await fetch(`/api/congress_trades/data?${searchParams.toString()}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data: CongressTradeApiResponse = await response.json();
+
+        console.log(`[CongressTrades] Received ${data.trades?.length || 0} trades`);
+
+        if (data.error) {
+            console.error('API Error:', data.error);
+            return;
+        }
+
+        const newTrades = data.trades || [];
+
+        // Initialize grid with ALL data
+        initializeCongressTradesGrid(newTrades);
+
+        // Calculate stats from full dataset
+        calculateAndRenderStats(newTrades);
+
         // Done loading
-        const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
         if (titleEl) {
             titleEl.textContent = '📋 Congress Trades';
         }
