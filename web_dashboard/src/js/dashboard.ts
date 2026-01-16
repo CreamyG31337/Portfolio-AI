@@ -173,6 +173,29 @@ const state = {
     inverseExchangeRate: false
 };
 
+// Helper to get effective theme
+function getEffectiveTheme(): string {
+    const htmlElement = document.documentElement;
+    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
+
+    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
+        return dataTheme;
+    }
+
+    if (dataTheme === 'system') {
+        // For 'system', check if page is actually in dark mode via CSS
+        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+        const isDark = bodyBg && (
+            bodyBg.includes('rgb(31, 41, 55)') ||  // --bg-primary dark
+            bodyBg.includes('rgb(17, 24, 39)') ||  // --bg-secondary dark
+            bodyBg.includes('rgb(55, 65, 81)')     // --bg-tertiary dark
+        );
+        return isDark ? 'dark' : 'light';
+    }
+
+    return 'light'; // default
+}
+
 // Initialize theme sync for charts
 function initThemeSync(): void {
     // Import chart theme utilities
@@ -482,29 +505,12 @@ function updateGridTheme(): void {
         return;
     }
 
-    // Detect current theme
-    const htmlElement = document.documentElement;
-    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
-    let effectiveTheme: string = 'light';
-
-    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
-        effectiveTheme = 'dark';
-    } else if (dataTheme === 'light') {
-        effectiveTheme = 'light';
-    } else if (dataTheme === 'system') {
-        // For 'system', check if page is actually in dark mode via CSS
-        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
-        const isDark = bodyBg && (
-            bodyBg.includes('rgb(31, 41, 55)') ||  // --bg-primary dark
-            bodyBg.includes('rgb(17, 24, 39)') ||  // --bg-secondary dark  
-            bodyBg.includes('rgb(55, 65, 81)')     // --bg-tertiary dark
-        );
-        effectiveTheme = isDark ? 'dark' : 'light';
-    }
+    const effectiveTheme = getEffectiveTheme();
+    const isDark = effectiveTheme === 'dark' || effectiveTheme === 'midnight-tokyo' || effectiveTheme === 'abyss';
 
     // Update AG Grid theme class
     gridEl.classList.remove('ag-theme-alpine', 'ag-theme-alpine-dark');
-    if (effectiveTheme === 'dark') {
+    if (isDark) {
         gridEl.classList.add('ag-theme-alpine-dark');
     } else {
         gridEl.classList.add('ag-theme-alpine');
@@ -974,24 +980,7 @@ async function fetchPerformanceChart(): Promise<void> {
     // Show spinner
     showSpinner('performance-chart-spinner');
 
-    // Detect actual theme from page (same as sector chart)
-    const htmlElement = document.documentElement;
-    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
-    let theme: string = 'light'; // default
-
-    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
-        theme = dataTheme;
-    } else if (dataTheme === 'system') {
-        // For 'system', check if page is actually in dark mode via CSS
-        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
-        // Check for dark mode background colors
-        const isDark = bodyBg && (
-            bodyBg.includes('rgb(31, 41, 55)') ||  // --bg-primary dark
-            bodyBg.includes('rgb(17, 24, 39)') ||  // --bg-secondary dark  
-            bodyBg.includes('rgb(55, 65, 81)')     // --bg-tertiary dark
-        );
-        theme = isDark ? 'dark' : 'light';
-    }
+    const theme = getEffectiveTheme();
 
     // Match Streamlit: use_solid_lines parameter from checkbox
     const url = `/api/dashboard/charts/performance?fund=${encodeURIComponent(state.currentFund)}&range=${state.timeRange}&use_solid=${state.useSolidLines}&theme=${encodeURIComponent(theme)}`;
@@ -1055,24 +1044,7 @@ async function fetchSectorChart(): Promise<void> {
     // Show spinner
     showSpinner('sector-chart-spinner');
 
-    // Detect actual theme from page (same as performance chart)
-    const htmlElement = document.documentElement;
-    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
-    let theme: string = 'light'; // default
-
-    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
-        theme = dataTheme;
-    } else if (dataTheme === 'system') {
-        // For 'system', check if page is actually in dark mode via CSS
-        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
-        // Check for dark mode background colors
-        const isDark = bodyBg && (
-            bodyBg.includes('rgb(31, 41, 55)') ||  // --bg-primary dark
-            bodyBg.includes('rgb(17, 24, 39)') ||  // --bg-secondary dark  
-            bodyBg.includes('rgb(55, 65, 81)')     // --bg-tertiary dark
-        );
-        theme = isDark ? 'dark' : 'light';
-    }
+    const theme = getEffectiveTheme();
 
     const url = `/api/dashboard/charts/allocation?fund=${encodeURIComponent(state.currentFund)}&theme=${encodeURIComponent(theme)}`;
     const startTime = performance.now();
@@ -1531,17 +1503,7 @@ function updateMetricText(id: string, text: string): void {
 async function fetchCurrencyChart(): Promise<void> {
     showSpinner('currency-chart-spinner');
 
-    // Theme logic (same as other charts)
-    const htmlElement = document.documentElement;
-    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
-    let theme: string = 'light';
-    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
-        theme = dataTheme;
-    } else if (dataTheme === 'system') {
-        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
-        const isDark = bodyBg && (bodyBg.includes('rgb(31, 41, 55)') || bodyBg.includes('rgb(17, 24, 39)') || bodyBg.includes('rgb(55, 65, 81)'));
-        theme = isDark ? 'dark' : 'light';
-    }
+    const theme = getEffectiveTheme();
 
     const url = `/api/dashboard/charts/currency?fund=${encodeURIComponent(state.currentFund)}&theme=${encodeURIComponent(theme)}`;
     console.log('[Dashboard] Fetching currency chart...', { url });
@@ -1608,17 +1570,7 @@ function renderCurrencyChart(data: AllocationChartData): void {
 async function fetchExchangeRateData(): Promise<void> {
     showSpinner('exchange-rate-chart-spinner');
 
-    // Theme logic
-    const htmlElement = document.documentElement;
-    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
-    let theme: string = 'light';
-    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
-        theme = dataTheme;
-    } else if (dataTheme === 'system') {
-        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
-        const isDark = bodyBg && (bodyBg.includes('rgb(31, 41, 55)') || bodyBg.includes('rgb(17, 24, 39)') || bodyBg.includes('rgb(55, 65, 81)'));
-        theme = isDark ? 'dark' : 'light';
-    }
+    const theme = getEffectiveTheme();
 
     const url = `/api/dashboard/exchange-rate?inverse=${state.inverseExchangeRate}&theme=${encodeURIComponent(theme)}`;
     console.log('[Dashboard] Fetching exchange rate data...', { url });
@@ -1760,16 +1712,20 @@ function renderMovers(data: MoversData): void {
 
 // --- Rendering Helpers ---
 
+// Cache formatter for better performance
+const usdFormatter = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+});
+
 function formatMoney(val: number, currency?: string): string {
     if (typeof val !== 'number' || isNaN(val)) return '--';
-    // Format without currency symbol code (e.g. just $123.45 not CAD$123.45 or $123.45 CAD)
-    // Use USD locale to ensure we get "$" symbol, then manually format
-    const formatted = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD', // Always use USD formatting to get "$" symbol
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(val);
+
+    // Use cached formatter
+    const formatted = usdFormatter.format(val);
+
     // Remove any currency code that might have been added (e.g., "CA$" -> "$")
     return formatted.replace(/^[A-Z]{2,3}\$?/, '$').replace(/\s*[A-Z]{2,3}$/, '');
 }
@@ -1874,22 +1830,7 @@ async function fetchIndividualHoldingsChart(): Promise<void> {
     // Show spinner
     showSpinner('individual-holdings-spinner');
 
-    // Detect theme
-    const htmlElement = document.documentElement;
-    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
-    let theme: string = 'light';
-
-    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
-        theme = dataTheme;
-    } else if (dataTheme === 'system') {
-        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
-        const isDark = bodyBg && (
-            bodyBg.includes('rgb(31, 41, 55)') ||
-            bodyBg.includes('rgb(17, 24, 39)') ||
-            bodyBg.includes('rgb(55, 65, 81)')
-        );
-        theme = isDark ? 'dark' : 'light';
-    }
+    const theme = getEffectiveTheme();
 
     const url = `/api/dashboard/charts/individual-holdings?fund=${encodeURIComponent(state.currentFund)}&days=${state.individualHoldingsDays}&filter=${encodeURIComponent(state.individualHoldingsFilter)}&use_solid=${state.useSolidLines}&theme=${encodeURIComponent(theme)}`;
     const startTime = performance.now();
@@ -2174,24 +2115,7 @@ function renderPnlChart(data: PnlChartData): void {
 }
 
 async function loadPnlChart(fund: string): Promise<void> {
-    // Detect actual theme from page (same as other charts)
-    const htmlElement = document.documentElement;
-    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
-    let theme: string = 'light'; // default
-
-    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
-        theme = dataTheme;
-    } else if (dataTheme === 'system') {
-        // For 'system', check if page is actually in dark mode via CSS
-        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
-        // Check for dark mode background colors
-        const isDark = bodyBg && (
-            bodyBg.includes('rgb(31, 41, 55)') ||  // --bg-primary dark
-            bodyBg.includes('rgb(17, 24, 39)') ||  // --bg-secondary dark  
-            bodyBg.includes('rgb(55, 65, 81)')     // --bg-tertiary dark
-        );
-        theme = isDark ? 'dark' : 'light';
-    }
+    const theme = getEffectiveTheme();
 
     const startTime = performance.now();
     const url = `/api/dashboard/charts/pnl?fund=${encodeURIComponent(fund || '')}&theme=${encodeURIComponent(theme)}`;
