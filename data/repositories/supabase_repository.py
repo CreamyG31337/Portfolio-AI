@@ -105,6 +105,104 @@ class SupabaseRepository(BaseRepository):
         except Exception as e:
             raise RepositoryError(f"Failed to initialize Supabase client: {e}")
     
+    def ensure_ticker_in_securities(self, ticker: str, currency: str, company_name: Optional[str] = None) -> bool:
+        """Ensure ticker exists in securities table with metadata from yfinance.
+
+        This method is called on first trade to populate the securities table.
+        It checks if the ticker exists and has company metadata. If not, it fetches
+        from yfinance and inserts/updates the record.
+
+        Args:
+            ticker: Stock ticker symbol (e.g., 'AAPL', 'SHOP.TO')
+            currency: Currency code ('CAD' or 'USD')
+            company_name: Optional company name if already known (avoids yfinance call)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Check if ticker already exists with complete metadata
+            existing = self.supabase.table("securities").select("ticker, company_name, sector, industry").eq("ticker", ticker).execute()
+
+            # Check if ticker exists with valid metadata (not just ticker name, has sector/industry)
+            existing_company_name = None
+            has_complete_metadata = False
+
+            if existing.data:
+                existing_company_name = existing.data[0].get('company_name')
+                existing_sector = existing.data[0].get('sector')
+                existing_industry = existing.data[0].get('industry')
+
+                # Consider metadata complete if:
+                # 1. Company name exists and is not just the ticker, not 'Unknown', and not empty
+                # 2. Has sector or industry (indicates yfinance data was fetched)
+                if (existing_company_name and
+                    existing_company_name != ticker and
+                    existing_company_name != 'Unknown' and
+                    existing_company_name.strip() and
+                    (existing_sector or existing_industry)):
+                    has_complete_metadata = True
+
+            # If ticker exists with complete metadata, no need to update
+            if has_complete_metadata:
+                logger.debug(f"Ticker {ticker} already exists in securities table with complete metadata")
+                return True
+
+            # Need to fetch/update metadata from yfinance
+            metadata = {
+                'ticker': ticker,
+                'currency': currency
+            }
+
+            # If company_name parameter was provided and ticker doesn't have complete metadata, use it
+            # Otherwise fetch from yfinance to get full metadata including sector/industry
+            if company_name and company_name.strip() and not existing.data:
+                # Only use provided company_name if ticker doesn't exist at all
+                metadata['company_name'] = company_name.strip()
+            else:
+                # Always fetch from yfinance to get complete metadata (company_name, sector, industry, etc.)
+                try:
+                    import yfinance as yf
+                    stock = yf.Ticker(ticker)
+                    info = stock.info
+
+                    if info:
+                        # Get company name (prefer longName over shortName)
+                        metadata['company_name'] = info.get('longName') or info.get('shortName', 'Unknown')
+
+                        # Get additional metadata
+                        metadata['sector'] = info.get('sector')
+                        metadata['industry'] = info.get('industry')
+                        metadata['country'] = info.get('country')
+
+                        # Get market cap (store as text since it can be very large)
+                        market_cap = info.get('marketCap')
+                        if market_cap:
+                            metadata['market_cap'] = str(market_cap)
+
+                        logger.debug(f"Fetched metadata for {ticker}: {metadata.get('company_name')}, sector={metadata.get('sector')}, industry={metadata.get('industry')}")
+                    else:
+                        logger.warning(f"No yfinance info available for {ticker}")
+                        metadata['company_name'] = 'Unknown'
+
+                except Exception as yf_error:
+                    logger.warning(f"Failed to fetch yfinance data for {ticker}: {yf_error}")
+                    metadata['company_name'] = 'Unknown'
+
+            # Set last_updated timestamp
+            from datetime import timezone
+            metadata['last_updated'] = datetime.now(timezone.utc).isoformat()
+
+            # Upsert into securities table
+            result = self.supabase.table("securities").upsert(metadata, on_conflict="ticker").execute()
+
+            logger.info(f"✅ Ensured {ticker} in securities table: {metadata.get('company_name')}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error ensuring ticker {ticker} in securities table: {e}")
+            return False
+
     def get_portfolio_data(self, date_range: Optional[Tuple[datetime, datetime]] = None) -> List[PortfolioSnapshot]:
         """Get portfolio data from Supabase.
         
@@ -288,16 +386,26 @@ class SupabaseRepository(BaseRepository):
             positions_data = []
             snapshot_date = snapshot.timestamp.date()
             
+            # Collect unique tickers to ensure existence
+            unique_tickers = set()
+            ticker_currencies = {}
+
             for position in snapshot.positions:
-                position_currency = (position.currency or 'CAD').upper()
+                ticker = position.ticker
+                currency = (position.currency or 'CAD').upper()
+
+                unique_tickers.add(ticker)
+                if ticker not in ticker_currencies:
+                    ticker_currencies[ticker] = currency
+
                 exchange_rate = None
                 
                 # Calculate exchange rate if needed
-                if base_currency and position_currency != base_currency:
+                if base_currency and currency != base_currency:
                     if get_exchange_rate_for_date_from_db:
                         try:
                             # Get exchange rate for this date
-                            if position_currency == 'USD' and base_currency != 'USD':
+                            if currency == 'USD' and base_currency != 'USD':
                                 # Converting USD to base currency
                                 rate = get_exchange_rate_for_date_from_db(
                                     snapshot.timestamp,
@@ -306,11 +414,11 @@ class SupabaseRepository(BaseRepository):
                                 )
                                 if rate is not None:
                                     exchange_rate = float(rate)
-                            elif base_currency == 'USD' and position_currency != 'USD':
+                            elif base_currency == 'USD' and currency != 'USD':
                                 # Converting from position currency to USD
                                 rate = get_exchange_rate_for_date_from_db(
                                     snapshot.timestamp,
-                                    position_currency,
+                                    currency,
                                     'USD'
                                 )
                                 if rate is not None:
@@ -320,12 +428,12 @@ class SupabaseRepository(BaseRepository):
                                     inverse_rate = get_exchange_rate_for_date_from_db(
                                         snapshot.timestamp,
                                         'USD',
-                                        position_currency
+                                        currency
                                     )
                                     if inverse_rate is not None and inverse_rate != 0:
                                         exchange_rate = 1.0 / float(inverse_rate)
                         except Exception as e:
-                            logger.warning(f"Could not get exchange rate for {position_currency}→{base_currency} on {snapshot_date}: {e}")
+                            logger.warning(f"Could not get exchange rate for {currency}→{base_currency} on {snapshot_date}: {e}")
                 
                 # Convert position with pre-converted values
                 position_data = PositionMapper.model_to_db(
@@ -337,6 +445,11 @@ class SupabaseRepository(BaseRepository):
                 )
                 positions_data.append(position_data)
             
+            # Ensure all tickers exist in securities table
+            for ticker in unique_tickers:
+                currency = ticker_currencies.get(ticker, "USD")
+                self.ensure_ticker_in_securities(ticker, currency)
+
             # Clear existing positions for this fund and date first
             # Delete all positions for this fund and DATE (not exact timestamp)
             snapshot_date_str = snapshot.timestamp.date().isoformat()
@@ -428,26 +541,9 @@ class SupabaseRepository(BaseRepository):
             RepositoryError: If data saving fails
         """
         try:
-            # Ensure ticker exists in securities table before inserting (required for FK constraint)
-            try:
-                import sys
-                from pathlib import Path
-                project_root = Path(__file__).resolve().parent.parent.parent
-                web_dashboard_path = project_root / 'web_dashboard'
-                if str(web_dashboard_path) not in sys.path:
-                    sys.path.insert(0, str(web_dashboard_path))
-                from supabase_client import SupabaseClient
-                
-                # Create a SupabaseClient to use ensure_ticker_in_securities
-                # Use service role to bypass RLS (console app context)
-                supabase_client = SupabaseClient(use_service_role=True)
-                currency = trade.currency or 'USD'
-                supabase_client.ensure_ticker_in_securities(trade.ticker, currency)
-            except Exception as ensure_error:
-                logger.warning(f"Could not ensure ticker {trade.ticker} in securities table: {ensure_error}")
-                # Continue anyway - the insert will fail with FK error if ticker doesn't exist
-                # This provides better error message than silent failure
-            
+            # Ensure ticker exists in securities table
+            self.ensure_ticker_in_securities(trade.ticker, trade.currency)
+
             # Use TradeMapper to convert Trade object to Supabase format
             trade_data = TradeMapper.model_to_db(trade, self.fund)
             

@@ -266,6 +266,37 @@ def _save_snapshot_batch(repository, snapshot_batch: list, fund_name: str, is_do
                 )
                 all_positions_data.append(position_data)
         
+        # Ensure all tickers exist in securities table using repository method
+        # This prevents FK constraint violation on batch insert
+        # Collect unique tickers first
+        unique_tickers = set()
+        ticker_currencies = {}
+        for pos_data in all_positions_data:
+            ticker = pos_data.get('ticker')
+            if ticker:
+                unique_tickers.add(ticker)
+                if ticker not in ticker_currencies:
+                    ticker_currencies[ticker] = pos_data.get('currency', 'USD')
+
+        if hasattr(repository, 'ensure_ticker_in_securities'):
+            for ticker in unique_tickers:
+                currency = ticker_currencies.get(ticker, 'USD')
+                repository.ensure_ticker_in_securities(ticker, currency)
+        elif hasattr(repository, 'supabase_repo') and hasattr(repository.supabase_repo, 'ensure_ticker_in_securities'):
+            for ticker in unique_tickers:
+                currency = ticker_currencies.get(ticker, 'USD')
+                repository.supabase_repo.ensure_ticker_in_securities(ticker, currency)
+        else:
+            # Fallback to SupabaseClient if repository doesn't have the method
+            try:
+                from web_dashboard.supabase_client import SupabaseClient
+                temp_client = SupabaseClient(use_service_role=True)
+                for ticker in unique_tickers:
+                    currency = ticker_currencies.get(ticker, 'USD')
+                    temp_client.ensure_ticker_in_securities(ticker, currency)
+            except Exception as e:
+                print_warning(f"   Could not ensure tickers in securities table: {e}")
+
         # Batch insert (Supabase limit is 1000, but we're batching 20 snapshots so should be fine)
         if all_positions_data:
             try:

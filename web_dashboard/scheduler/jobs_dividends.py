@@ -409,7 +409,7 @@ def insert_drip_transaction(
         # 3.5. Ensure ticker exists in securities table (required for FK constraint)
         if not client.ensure_ticker_in_securities(ticker, currency):
             logger.warning(f"Failed to ensure ticker {ticker} in securities table, continuing anyway")
-        
+
         # 4. Insert Trade Log
         # Use 4 PM ET market close
         et_tz = pytz.timezone('America/New_York')
@@ -429,6 +429,13 @@ def insert_drip_transaction(
             'currency': currency
         }
         
+        # Ensure ticker exists in securities table before inserting trade
+        try:
+            client.ensure_ticker_in_securities(ticker, currency)
+        except Exception as e:
+            logger.warning(f"Error ensuring ticker {ticker} in securities: {e}")
+            # Continue anyway, let the insert fail if FK constraint violation
+
         trade_res = client.supabase.table("trade_log").insert(trade_entry).execute()
         if not trade_res.data:
             return False

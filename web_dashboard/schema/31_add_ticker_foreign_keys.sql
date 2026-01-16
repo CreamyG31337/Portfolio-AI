@@ -11,21 +11,21 @@
 -- We'll validate after backfilling missing tickers
 
 -- Foreign key for dividend_log
-ALTER TABLE dividend_log 
-  ADD CONSTRAINT fk_dividend_log_ticker 
-  FOREIGN KEY (ticker) REFERENCES securities(ticker) 
+ALTER TABLE dividend_log
+  ADD CONSTRAINT fk_dividend_log_ticker
+  FOREIGN KEY (ticker) REFERENCES securities(ticker)
   NOT VALID;
 
 -- Foreign key for trade_log
-ALTER TABLE trade_log 
-  ADD CONSTRAINT fk_trade_log_ticker 
-  FOREIGN KEY (ticker) REFERENCES securities(ticker) 
+ALTER TABLE trade_log
+  ADD CONSTRAINT fk_trade_log_ticker
+  FOREIGN KEY (ticker) REFERENCES securities(ticker)
   NOT VALID;
 
 -- Foreign key for portfolio_positions
-ALTER TABLE portfolio_positions 
-  ADD CONSTRAINT fk_portfolio_positions_ticker 
-  FOREIGN KEY (ticker) REFERENCES securities(ticker) 
+ALTER TABLE portfolio_positions
+  ADD CONSTRAINT fk_portfolio_positions_ticker
+  FOREIGN KEY (ticker) REFERENCES securities(ticker)
   NOT VALID;
 
 -- Step 2: Add indexes for better join performance (if not already exist)
@@ -38,13 +38,13 @@ CREATE INDEX IF NOT EXISTS idx_portfolio_positions_ticker_fk ON portfolio_positi
 -- Step 3: Validate constraints (run this AFTER backfilling missing tickers)
 -- Uncomment these lines after running backfill_securities_tickers.py:
 /*
-ALTER TABLE dividend_log 
+ALTER TABLE dividend_log
   VALIDATE CONSTRAINT fk_dividend_log_ticker;
 
-ALTER TABLE trade_log 
+ALTER TABLE trade_log
   VALIDATE CONSTRAINT fk_trade_log_ticker;
 
-ALTER TABLE portfolio_positions 
+ALTER TABLE portfolio_positions
   VALIDATE CONSTRAINT fk_portfolio_positions_ticker;
 */
 

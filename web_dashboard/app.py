@@ -417,8 +417,8 @@ except Exception as e:
 
 try:
     from routes.social_sentiment_routes import social_sentiment_bp
-    app.register_blueprint(social_sentiment_bp)
-    logger.debug("Registered Social Sentiment Blueprint")
+    app.register_blueprint(social_sentiment_bp, url_prefix='/v2')
+    logger.debug("Registered Social Sentiment Blueprint at /v2")
 except Exception as e:
     logger.error(f"Failed to register Social Sentiment Blueprint: {e}", exc_info=True)
 
@@ -3416,25 +3416,25 @@ def get_congress_trades_cached(
         all_trades = []
         batch_size = 1000
         offset = 0
-        
+
         while True:
             result = query.range(offset, offset + batch_size - 1).execute()
-            
+
             if not result.data:
                 break
-            
+
             all_trades.extend(result.data)
-            
+
             if len(result.data) < batch_size:
                 break
-            
+
             offset += batch_size
-            
+
             # Safety limit
             if offset > 100000:
                 logger.warning("Reached 100,000 row safety limit in get_congress_trades_cached pagination")
                 break
-        
+
         logger.info(f"[CongressTrades] Fetched {len(all_trades)} total rows from Supabase")
         
         # Post-process: filter by analysis status and score
@@ -3687,10 +3687,9 @@ def api_congress_trades_data():
         max_score = float(max_score) if max_score else None
         
         # Get ALL trades (cached - internal pagination happens in the function)
-        # Pass clients as kwargs starting with '_' to be excluded from cache key
         all_trades = get_congress_trades_cached(
-            refresh_key=refresh_key,
-            _supabase_client=supabase_client,
+            supabase_client,
+            refresh_key,
             ticker_filter=ticker_filter if ticker_filter and ticker_filter != 'All' else None,
             politician_filter=politician_filter if politician_filter and politician_filter != 'All' else None,
             chamber_filter=chamber_filter if chamber_filter and chamber_filter != 'All' else None,

@@ -83,17 +83,38 @@ def migrate_fund(client: SupabaseClient, fund_name: str, fund_data: Dict[str, pd
         print(f"  📈 Portfolio: {len(df)} positions")
 
         positions = []
+        unique_tickers = set()
+        ticker_currencies = {}
+
         for _, row in df.iterrows():
+            ticker = str(row["Ticker"])
+            # Assuming default currency if not present in CSV, usually USD
+            currency = str(row.get("Currency", "USD"))
+
+            unique_tickers.add(ticker)
+            if ticker not in ticker_currencies:
+                ticker_currencies[ticker] = currency
+
             positions.append({
                 "fund": fund_name,  # Add fund name!
-                "ticker": str(row["Ticker"]),  # Clean ticker name!
+                "ticker": ticker,  # Clean ticker name!
                 "company": str(row["Company"]),
                 "shares": float(row["Shares"]),
                 "price": float(row["Current Price"]),
                 "cost_basis": float(row["Cost Basis"]),
                 "pnl": float(row["PnL"]),
+                "currency": currency,
                 "date": row["Date"].isoformat()
             })
+
+        # Ensure tickers exist in securities table
+        print(f"    Verifying {len(unique_tickers)} tickers in securities table...")
+        for ticker in unique_tickers:
+            currency = ticker_currencies.get(ticker, "USD")
+            try:
+                client.ensure_ticker_in_securities(ticker, currency)
+            except Exception as e:
+                print(f"    ⚠️  Warning: Could not ensure ticker {ticker}: {e}")
 
         try:
             # Ensure all tickers exist in securities table before inserting
@@ -117,17 +138,37 @@ def migrate_fund(client: SupabaseClient, fund_name: str, fund_data: Dict[str, pd
         print(f"  📊 Trades: {len(df)} entries")
 
         trades = []
+        unique_tickers = set()
+        ticker_currencies = {}
+
         for _, row in df.iterrows():
+            ticker = str(row["Ticker"])
+            currency = str(row.get("Currency", "USD"))
+
+            unique_tickers.add(ticker)
+            if ticker not in ticker_currencies:
+                ticker_currencies[ticker] = currency
+
             trades.append({
                 "fund": fund_name,  # Add fund name!
                 "date": row["Date"].isoformat(),
-                "ticker": str(row["Ticker"]),  # Clean ticker name!
+                "ticker": ticker,  # Clean ticker name!
                 "shares": float(row["Shares"]),
                 "price": float(row["Price"]),
                 "cost_basis": float(row["Cost Basis"]),
                 "pnl": float(row["PnL"]),
-                "reason": str(row["Reason"])
+                "reason": str(row["Reason"]),
+                "currency": currency
             })
+
+        # Ensure tickers exist in securities table
+        print(f"    Verifying {len(unique_tickers)} tickers in securities table...")
+        for ticker in unique_tickers:
+            currency = ticker_currencies.get(ticker, "USD")
+            try:
+                client.ensure_ticker_in_securities(ticker, currency)
+            except Exception as e:
+                print(f"    ⚠️  Warning: Could not ensure ticker {ticker}: {e}")
 
         try:
             # Ensure all tickers exist in securities table before inserting
