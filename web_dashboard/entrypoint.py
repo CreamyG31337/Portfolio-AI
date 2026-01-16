@@ -71,20 +71,7 @@ def main():
             finally:
                 logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Thread exiting")
 
-        # Start Flask web server (daemon thread, won't block)
-        def start_flask_app():
-            import threading
-            from app import app
-            # Use the process_id from outer scope
-            logger.info(f"[PID:{process_id}] Starting Flask web server on port 5000...")
-            try:
-                app.run(host='0.0.0.0', port=5000, threaded=True)
-            except Exception as e:
-                logger.error(f"[PID:{process_id}] ❌ Flask web server failed: {e}", exc_info=True)
-        
-        flask_thread = threading.Thread(target=start_flask_app, daemon=True)
-        flask_thread.start()
-        logger.info(f"[PID:{process_id}] Flask web server thread started")
+        logger.info(f"[PID:{process_id}] Scheduler thread started")
         scheduler_thread = threading.Thread(
             target=_run_scheduler,
             name="SchedulerInitThread",
@@ -117,7 +104,6 @@ def main():
     
     # Get port from environment or use default
     streamlit_port = os.environ.get("STREAMLIT_PORT", "8501")
-    flask_port = os.environ.get("FLASK_PORT", "5000")
     
     # Build streamlit command
     # Run Streamlit from web_dashboard directory so it can find pages/ correctly
@@ -136,8 +122,8 @@ def main():
     # This prevents web_dashboard/utils from shadowing root utils/ directory
     logger.info(f"Running: {' '.join(cmd)}")
     logger.info(f"Working directory: {web_dashboard_dir}")
-    logger.info(f"Flask web server running on port 5000 (for v2 routes)")
-    logger.info(f"Streamlit app running on port {streamlit_port} (for streamlit UI)")
+    logger.info(f"Streamlit app (legacy) running on port {streamlit_port}")
+    logger.info(f"Flask app runs in separate container on port 5001")
     
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{parent_dir}:{web_dashboard_dir}:{env.get('PYTHONPATH', '')}"
