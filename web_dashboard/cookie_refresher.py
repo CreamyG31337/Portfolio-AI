@@ -42,11 +42,46 @@ except ImportError:
     sys.exit(1)
 
 # Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Log to both file (in shared volume) and stdout
+LOG_FILE = os.getenv("COOKIE_REFRESH_LOG_FILE", "/shared/cookies/cookie_refresher.log")
+LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
+LOG_BACKUP_COUNT = 3
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Setup root logger
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Clear any existing handlers
+logger.handlers = []
+
+# File handler (with rotation)
+try:
+    from logging.handlers import RotatingFileHandler
+    # Ensure log directory exists
+    log_path = Path(LOG_FILE)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    file_handler = RotatingFileHandler(
+        LOG_FILE,
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+except Exception as e:
+    # If file logging fails, continue with stdout only
+    print(f"[WARNING] Could not setup file logging: {e}")
+
+# Console handler (stdout)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 # Configuration
 REFRESH_INTERVAL = int(os.getenv("COOKIE_REFRESH_INTERVAL", "1800"))  # 30 minutes default (__Secure-1PSIDTS expires frequently)

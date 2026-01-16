@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
-@dashboard_bp.route('/v2/dashboard')
+@dashboard_bp.route('/dashboard')
 @require_auth
 def dashboard_page():
     """Render the main dashboard page"""

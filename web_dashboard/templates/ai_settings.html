@@ -117,6 +117,31 @@
         </div>
     </div>
 
+    <!-- Cookie Refresher Logs -->
+    <div class="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">📋 Cookie Refresher Logs</h2>
+            <button id="refresh-cookie-logs-btn"
+                class="px-3 py-2 text-sm font-medium text-center text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                🔄 Refresh
+            </button>
+        </div>
+        <p class="mb-4 text-sm text-gray-600 dark:text-gray-400">View recent activity from the cookie refresher service</p>
+        <div class="mb-4">
+            <label for="cookie-log-lines" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Lines to show</label>
+            <input type="range" id="cookie-log-lines" min="50" max="500" value="100" step="50"
+                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700">
+            <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>50</span>
+                <span id="cookie-log-lines-value">100</span>
+                <span>500</span>
+            </div>
+        </div>
+        <div class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-xs overflow-x-auto" style="max-height: 400px; overflow-y: auto;">
+            <pre id="cookie-refresher-logs">Loading logs...</pre>
+        </div>
+    </div>
+
     <!-- WebAI Cookie Management -->
     <div class="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
         <h2 class="mb-4 text-xl font-bold tracking-tight text-gray-900 dark:text-white">🍪 WebAI Cookie Management</h2>
@@ -146,17 +171,18 @@
 
         <!-- Individual Values Method -->
         <div id="cookie-individual-method" class="cookie-method hidden">
+            <p class="mb-4 text-sm text-gray-600 dark:text-gray-400" id="cookie-current-info">💡 Current cookies will be loaded below</p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label for="cookie-1psid-input" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">__Secure-1PSID (required)</label>
-                    <input type="password" id="cookie-1psid-input"
-                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
+                    <input type="text" id="cookie-1psid-input"
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white font-mono text-xs"
                         placeholder="Cookie value">
                 </div>
                 <div>
                     <label for="cookie-1psidts-input" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">__Secure-1PSIDTS (optional)</label>
-                    <input type="password" id="cookie-1psidts-input"
-                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
+                    <input type="text" id="cookie-1psidts-input"
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white font-mono text-xs"
                         placeholder="Cookie value">
                 </div>
             </div>

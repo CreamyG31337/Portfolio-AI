@@ -71,6 +71,10 @@ const cookieJsonInput = document.getElementById('cookie-json-input') as HTMLText
 const cookie1psidInput = document.getElementById('cookie-1psid-input') as HTMLInputElement | null;
 const cookie1psidtsInput = document.getElementById('cookie-1psidts-input') as HTMLInputElement | null;
 const saveCookiesBtn = document.getElementById('save-cookies-btn');
+const cookieRefresherLogs = document.getElementById('cookie-refresher-logs');
+const refreshCookieLogsBtn = document.getElementById('refresh-cookie-logs-btn');
+const cookieLogLinesInput = document.getElementById('cookie-log-lines') as HTMLInputElement | null;
+const cookieLogLinesValue = document.getElementById('cookie-log-lines-value');
 
 // Status Check Function
 async function checkStatus() {
@@ -477,6 +481,72 @@ async function saveCookies() {
     }
 }
 
+// Load Current Cookies
+async function loadCurrentCookies() {
+    try {
+        const response = await fetch('/api/admin/ai/cookies');
+        const result: ApiResponse & { cookies?: { [key: string]: string }, has_cookies?: boolean } = await response.json();
+        
+        if (result.success && result.cookies && result.has_cookies) {
+            // Update JSON textarea
+            if (cookieJsonInput) {
+                cookieJsonInput.value = JSON.stringify(result.cookies, null, 2);
+            }
+            
+            // Update individual inputs
+            if (cookie1psidInput && result.cookies['__Secure-1PSID']) {
+                cookie1psidInput.value = result.cookies['__Secure-1PSID'];
+            }
+            if (cookie1psidtsInput && result.cookies['__Secure-1PSIDTS']) {
+                cookie1psidtsInput.value = result.cookies['__Secure-1PSIDTS'];
+            }
+            
+            // Update info message
+            const infoElement = document.getElementById('cookie-current-info');
+            if (infoElement) {
+                infoElement.textContent = '💡 Current cookies loaded below. Update if needed.';
+                infoElement.classList.remove('text-gray-600', 'dark:text-gray-400');
+                infoElement.classList.add('text-blue-600', 'dark:text-blue-400');
+            }
+        } else {
+            // No cookies found
+            const infoElement = document.getElementById('cookie-current-info');
+            if (infoElement) {
+                infoElement.textContent = 'ℹ️ No current cookies found. Enter new cookies below.';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading current cookies:', error);
+    }
+}
+
+// Load Cookie Refresher Logs
+async function loadCookieRefresherLogs() {
+    if (!cookieRefresherLogs) return;
+    
+    const lines = cookieLogLinesInput ? parseInt(cookieLogLinesInput.value) : 100;
+    
+    try {
+        const response = await fetch(`/api/admin/ai/cookies/logs?lines=${lines}`);
+        const result: ApiResponse & { logs?: string[], total_lines?: number, showing_lines?: number, message?: string } = await response.json();
+        
+        if (result.success && result.logs) {
+            cookieRefresherLogs.textContent = result.logs.join('');
+            if (result.total_lines !== undefined && result.showing_lines !== undefined) {
+                const info = `\n\n--- Showing last ${result.showing_lines} of ${result.total_lines} total log lines ---`;
+                cookieRefresherLogs.textContent += info;
+            }
+        } else {
+            cookieRefresherLogs.textContent = result.message || 'No logs available';
+            cookieRefresherLogs.classList.add('text-yellow-400');
+        }
+    } catch (error) {
+        console.error('Error loading cookie refresher logs:', error);
+        cookieRefresherLogs.textContent = 'Error loading logs: ' + (error as Error).message;
+        cookieRefresherLogs.classList.add('text-red-400');
+    }
+}
+
 // Cookie Method Toggle
 function toggleCookieMethod() {
     const selectedMethod = (document.querySelector('input[name="cookie-method"]:checked') as HTMLInputElement)?.value || 'json';
@@ -498,6 +568,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkStatus();
     loadSettings();
     loadBlacklist();
+    loadCurrentCookies();
 
     // Event Listeners
     if (testOllamaBtn) {
@@ -524,6 +595,24 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('input[name="cookie-method"]').forEach(radio => {
         radio.addEventListener('change', toggleCookieMethod);
     });
+
+    // Cookie refresher logs
+    if (cookieLogLinesInput) {
+        cookieLogLinesInput.addEventListener('input', (e) => {
+            const value = (e.target as HTMLInputElement).value;
+            if (cookieLogLinesValue) {
+                cookieLogLinesValue.textContent = value;
+            }
+            loadCookieRefresherLogs();
+        });
+    }
+
+    if (refreshCookieLogsBtn) {
+        refreshCookieLogsBtn.addEventListener('click', loadCookieRefresherLogs);
+    }
+
+    // Load logs on page load
+    loadCookieRefresherLogs();
 
     // Allow adding domain with Enter key
     if (addDomainInput) {

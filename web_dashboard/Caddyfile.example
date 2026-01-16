@@ -32,83 +32,25 @@
         header Cache-Control "public, max-age=3600"
     }
 
-	# v2 pages - route to Flask (migrated from Streamlit)
-	handle /v2/* {
-        reverse_proxy localhost:5001 {
-            # Add trusted proxies if behind Cloudflare
-            trusted_proxies private_ranges
-            # User provided trusted proxies (Cloudflare IPs)
-            trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
-        }
-	}
-
 	# API endpoints - route to Flask
-    # Required for form submissions and toggles
 	handle /api/* {
-        reverse_proxy localhost:5001 {
-            trusted_proxies private_ranges
-            trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
-        }
+		reverse_proxy localhost:5001 {
+			trusted_proxies private_ranges
+			trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
+		}
 	}
-
-	# Fix Streamlit asset loading when accessed from /pages/ subpaths
-	# Browser resolves assets like ./static/js/... relative to /pages/, creating 404s
-	# This regex strips /pages/ from the path for assets, components, and vendor files
-	@items_in_pages {
-		path_regexp pages_assets ^/pages/(static|vendor|component|favicon\.png|manifest\.json)(.*)$
+	
+	# Streamlit (Legacy) - accessible at /streamlit/* for rollback/debugging
+	# Fix Streamlit asset loading when accessed from /streamlit/pages/ subpaths
+	@streamlit_items_in_pages {
+		path_regexp streamlit_pages_assets ^/streamlit/pages/(static|vendor|component|favicon\.png|manifest\.json)(.*)$
 	}
-	handle @items_in_pages {
-		rewrite * /{re.pages_assets.1}{re.pages_assets.2}
-		reverse_proxy localhost:8501
+	handle @streamlit_items_in_pages {
+		rewrite * /streamlit/{re.streamlit_pages_assets.1}{re.streamlit_pages_assets.2}
 	}
-
-
-    # Flask Static Assets (Theme CSS etc)
-    # Routed to /assets to avoid conflict with Streamlit's /static
-    handle /assets/* {
-        reverse_proxy localhost:5001 {
-            trusted_proxies private_ranges
-        }
-    }
-    
-	# Redirect /pages/*.py to /pages/* (strip .py extension) - STREAMLIT ONLY
-	# This prevents issues when accessing Streamlit pages directly with .py extension
-	# Note: This only affects /pages/* paths (Streamlit), not /v2/* (Flask)
-	# Streamlit handles pages without .py extension in the URL
-	route /pages/*.py {
-		uri strip_suffix .py
-		redir {path} permanent
-	}
-    
-	# Streamlit static files - must be before general reverse_proxy
-	# This ensures JS/CSS files are served with correct MIME types
-	# CRITICAL: This handler must come before the general reverse_proxy
-	# to ensure static files are always served correctly, even during errors
-    handle /static/* {
-        reverse_proxy localhost:8501 {
-            header_up Host {host}
-        }
-        # Streamlit sets Cache-Control headers, we preserve them
-    }
-    
-	# WebSocket endpoint - must be before general reverse_proxy
-    handle /_stcore/stream {
-        reverse_proxy localhost:8501 {
-            transport http {
-                versions 1.1 2
-            }
-        }
-    }
-
-	# Fix Streamlit health/stream paths - Hybrid Safe Matcher
-	# 1. path glob: Ensures we NEVER match normal pages (Safety)
-	# 2. path_regexp: Extracts the /_stcore/... part for the rewrite (Functionality)
-	@stcore_safe {
-		path */_stcore/health */_stcore/host-config */_stcore/stream
-		path_regexp stcore_capture (/_stcore/.*)$
-	}
-	handle @stcore_safe {
-		rewrite * {re.stcore_capture.1}
+	
+	# Streamlit WebSocket support
+	handle /streamlit/_stcore/stream {
 		reverse_proxy localhost:8501 {
 			transport http {
 				versions 1.1 2
@@ -116,24 +58,54 @@
 		}
 	}
 	
-	# Health check endpoint
-    handle /health {
-        reverse_proxy localhost:8501
-    }
-
-	# Serve logs (optional)
-    handle_path /logs/* {
-        root * /srv/logs
-        file_server browse
-    }
+	# Redirect /streamlit/pages/*.py to /streamlit/pages/* (strip .py extension)
+	route /streamlit/pages/*.py {
+		uri strip_suffix .py
+		redir {path} permanent
+	}
 	
-	# Reverse proxy everything else to Streamlit (Default)
-    reverse_proxy localhost:8501 {
-        # WebSocket support for Streamlit
-        transport http {
-            versions 1.1 2
-        }
+	# Streamlit - all paths under /streamlit/*
+	handle_path /streamlit/* {
+		reverse_proxy localhost:8501 {
+			transport http {
+				versions 1.1 2
+			}
+			trusted_proxies private_ranges
+			trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
+		}
+	}
+	
+	# Flask static assets - route /assets/* to Flask (port 5001)
+	# Flask uses /assets for static files
+	handle /assets/* {
+		reverse_proxy localhost:5001 {
+			trusted_proxies private_ranges
+			trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
+		}
+	}
+	
+	# Flask static files - route /static/* to Flask (standard Flask path)
+	handle /static/* {
+		reverse_proxy localhost:5001 {
+			trusted_proxies private_ranges
+		}
+	}
+
+	# Health check endpoint - route to Flask
+	handle /health {
+		reverse_proxy localhost:5001
+	}
+	
+	# Serve logs directory (for AI access)
+	# Requires mounting host logs to /srv/logs in Caddy container
+	handle_path /logs/* {
+		root * /srv/logs
+		file_server browse
+	}
+	
+	# Reverse proxy everything else to Flask (Default)
+	reverse_proxy localhost:5001 {
 		trusted_proxies private_ranges
-        trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
-    }
+		trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
+	}
 }

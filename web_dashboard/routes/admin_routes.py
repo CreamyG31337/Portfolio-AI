@@ -273,7 +273,7 @@ def _get_cached_contributors_flask():
         return []
 
 # Page route
-@admin_bp.route('/v2/admin/users')
+@admin_bp.route('/admin/users')
 @require_admin
 def users_page():
     """Admin user & access management page (Flask v2)"""
@@ -793,7 +793,7 @@ def api_admin_revoke_contributor_access():
         logger.error(f"Error revoking contributor access: {e}", exc_info=True)
         return jsonify({"error": f"Failed to revoke access: {str(e)}"}), 500
 
-@admin_bp.route('/v2/admin/system')
+@admin_bp.route('/admin/system')
 @require_admin
 def system_page():
     """System Monitoring Page"""
@@ -867,7 +867,7 @@ def api_system_status():
         logger.error(f"Error getting system status: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-@admin_bp.route('/v2/logs')
+@admin_bp.route('/logs')
 @require_admin
 def logs_page():
     """Admin logs viewer page"""
@@ -1227,7 +1227,7 @@ def api_read_log_file():
 # Scheduler Routes
 # ==========================================
 
-@admin_bp.route('/v2/admin/scheduler')
+@admin_bp.route('/admin/scheduler')
 @require_admin
 def scheduler_page():
     """Scheduler/Jobs Management Page"""
@@ -1536,7 +1536,7 @@ def api_resume_job(job_id):
 # Trade Entry Routes
 # ==========================================
 
-@admin_bp.route('/v2/admin/trade-entry')
+@admin_bp.route('/admin/trade-entry')
 @require_admin
 def trade_entry_page():
     """Trade Entry Page"""
@@ -1870,7 +1870,7 @@ def api_recent_trades():
 # Contributions Routes
 # ==========================================
 
-@admin_bp.route('/v2/admin/contributions')
+@admin_bp.route('/admin/contributions')
 @require_admin
 def contributions_page():
     """Contributions Management Page"""
@@ -2041,7 +2041,7 @@ def api_contributions_summary():
 # AI Settings Routes
 # ==========================================
 
-@admin_bp.route('/v2/admin/ai-settings')
+@admin_bp.route('/admin/ai-settings')
 @require_admin
 def ai_settings_page():
     """AI Settings Page"""
@@ -2323,6 +2323,80 @@ def api_test_webai_cookies():
         logger.error(f"Error testing WebAI cookies: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
 
+@admin_bp.route('/api/admin/ai/cookies', methods=['GET'])
+@require_admin
+def api_get_webai_cookies():
+    """Get current WebAI cookies (for display/editing)"""
+    try:
+        from webai_wrapper import _load_cookies
+        
+        secure_1psid, secure_1psidts = _load_cookies()
+        
+        cookies = {}
+        if secure_1psid:
+            cookies["__Secure-1PSID"] = secure_1psid
+        if secure_1psidts:
+            cookies["__Secure-1PSIDTS"] = secure_1psidts
+        
+        return jsonify({
+            "success": True,
+            "cookies": cookies,
+            "has_cookies": bool(secure_1psid)
+        })
+    except Exception as e:
+        logger.error(f"Error getting WebAI cookies: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e), "cookies": {}, "has_cookies": False}), 500
+
+@admin_bp.route('/api/admin/ai/cookies/logs', methods=['GET'])
+@require_admin
+def api_get_cookie_refresher_logs():
+    """Get cookie refresher logs"""
+    try:
+        from pathlib import Path
+        
+        log_file = Path("/shared/cookies/cookie_refresher.log")
+        lines = request.args.get('lines', 100, type=int)
+        
+        if not log_file.exists():
+            return jsonify({
+                "success": False,
+                "error": "Log file not found",
+                "logs": [],
+                "message": "Cookie refresher log file does not exist. Logs may not be configured yet."
+            })
+        
+        try:
+            # Read last N lines from log file
+            with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+                all_lines = f.readlines()
+                # Get last N lines
+                log_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+            
+            return jsonify({
+                "success": True,
+                "logs": log_lines,
+                "total_lines": len(all_lines),
+                "showing_lines": len(log_lines)
+            })
+        except PermissionError:
+            return jsonify({
+                "success": False,
+                "error": "Permission denied",
+                "logs": [],
+                "message": "Cannot read log file. Check file permissions."
+            }), 403
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "error": str(e),
+                "logs": [],
+                "message": f"Error reading log file: {e}"
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error getting cookie refresher logs: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e), "logs": []}), 500
+
 @admin_bp.route('/api/admin/ai/cookies', methods=['POST'])
 @require_admin
 def api_update_webai_cookies():
@@ -2372,7 +2446,7 @@ def api_update_webai_cookies():
         return jsonify({"error": str(e)}), 500
 
 # Contributor Management Routes
-@admin_bp.route('/v2/admin/contributors')
+@admin_bp.route('/admin/contributors')
 @require_admin
 def contributors_page():
     """Contributor management page"""

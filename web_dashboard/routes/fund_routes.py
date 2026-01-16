@@ -33,7 +33,7 @@ def validate_fund_name(name: str) -> bool:
 
     return True
 
-@fund_bp.route('/v2/admin/funds')
+@fund_bp.route('/admin/funds')
 @require_admin
 def admin_funds_page():
     """Render the fund management page"""
@@ -53,7 +53,7 @@ def admin_funds_page():
                          user_theme=user_theme,
                          **nav_context)
 
-@fund_bp.route('/api/v2/funds', methods=['GET'])
+@fund_bp.route('/api/funds', methods=['GET'])
 @require_admin
 def get_all_funds():
     """Get all funds with statistics"""
@@ -92,7 +92,7 @@ def get_all_funds():
         logger.error(f"Error fetching funds: {e}")
         return jsonify({"error": str(e)}), 500
 
-@fund_bp.route('/api/v2/funds', methods=['POST'])
+@fund_bp.route('/api/funds', methods=['POST'])
 @require_admin
 def create_fund():
     """Create a new fund"""
@@ -136,7 +136,7 @@ def create_fund():
         logger.error(f"Error creating fund: {e}")
         return jsonify({"error": str(e)}), 500
 
-@fund_bp.route('/api/v2/funds/<fund_name>', methods=['PUT'])
+@fund_bp.route('/api/funds/<fund_name>', methods=['PUT'])
 @require_admin
 def update_fund(fund_name):
     """Update fund details"""
@@ -166,7 +166,7 @@ def update_fund(fund_name):
         logger.error(f"Error updating fund {fund_name}: {e}")
         return jsonify({"error": str(e)}), 500
 
-@fund_bp.route('/api/v2/funds/rename', methods=['POST'])
+@fund_bp.route('/api/funds/rename', methods=['POST'])
 @require_admin
 def rename_fund():
     """Rename a fund"""
@@ -198,7 +198,7 @@ def rename_fund():
         logger.error(f"Error renaming fund: {e}")
         return jsonify({"error": str(e)}), 500
 
-@fund_bp.route('/api/v2/funds/<fund_name>', methods=['DELETE'])
+@fund_bp.route('/api/funds/<fund_name>', methods=['DELETE'])
 @require_admin
 def delete_fund(fund_name):
     """Permanently delete a fund"""
@@ -223,7 +223,7 @@ def delete_fund(fund_name):
         logger.error(f"Error deleting fund {fund_name}: {e}")
         return jsonify({"error": str(e)}), 500
 
-@fund_bp.route('/api/v2/funds/<fund_name>/wipe', methods=['POST'])
+@fund_bp.route('/api/funds/<fund_name>/wipe', methods=['POST'])
 @require_admin
 def wipe_fund_data(fund_name):
     """Wipe positions and trades for a fund"""
@@ -256,7 +256,7 @@ def wipe_fund_data(fund_name):
         logger.error(f"Error wiping fund {fund_name}: {e}")
         return jsonify({"error": str(e)}), 500
 
-@fund_bp.route('/api/v2/funds/rebuild', methods=['POST'])
+@fund_bp.route('/api/funds/rebuild', methods=['POST'])
 @require_admin
 def rebuild_portfolio():
     """Start portfolio rebuild job"""
@@ -325,7 +325,7 @@ def rebuild_portfolio():
         logger.error(f"Error starting rebuild: {e}")
         return jsonify({"error": str(e)}), 500
 
-@fund_bp.route('/api/v2/ticker/refresh', methods=['POST'])
+@fund_bp.route('/api/ticker/refresh', methods=['POST'])
 @require_admin
 def refresh_ticker_metadata():
     """Refresh ticker metadata from yfinance"""

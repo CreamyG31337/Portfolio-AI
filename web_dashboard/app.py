@@ -777,7 +777,7 @@ except Exception as e:
 
 # Fallback route for dashboard if blueprint registration fails
 # This prevents 404 errors and provides helpful error info
-@app.route('/v2/dashboard')
+@app.route('/dashboard')
 def dashboard_fallback():
     """Fallback route when dashboard blueprint fails to register"""
     return f"""
@@ -862,25 +862,23 @@ def dashboard_fallback():
     """, 503  # Service Unavailable (more appropriate than 404 or 500)
 
 
-# Root route - redirect to dashboard
+# Root route - redirect to dashboard or auth
 @app.route('/')
 def index():
-    """Redirect based on V2 preference"""
+    """Redirect to dashboard if authenticated, otherwise to auth page"""
     try:
-        from user_preferences import get_user_preference
-        v2_enabled = get_user_preference('v2_enabled', default=False)
-        if v2_enabled:
+        from auth import is_authenticated
+        if is_authenticated():
             return redirect(url_for('dashboard.dashboard_page'))
-        # Redirect to Caddy root (Streamlit) - this is NOT a circular redirect
-        # Flask's '/' -> Caddy root -> Streamlit on different port
-        return redirect('/')
+        else:
+            return redirect(url_for('auth_page'))
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
-        # On error, try v2 dashboard as fallback
+        # On error, try dashboard as fallback
         try:
             return redirect(url_for('dashboard.dashboard_page'))
         except Exception:
-            # Ultimate fallback - auth page
+            # Final fallback - redirect to auth
             return redirect('/auth')
 
 @app.route('/auth')
@@ -1671,7 +1669,7 @@ def export_cash():
         logger.error(f"Cash export error: {e}")
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
 
-@app.route('/v2/logs/debug')
+@app.route('/logs/debug')
 @require_auth
 def logs_debug():
     """Debug endpoint to check admin status without requiring admin"""
@@ -1817,39 +1815,18 @@ def api_logs_clear():
         logger.error(f"Error clearing logs: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/v2/settings')
+@app.route('/settings')
 @require_auth
 def settings_page():
-    """User preferences/settings page (Flask v2)"""
+    """User preferences/settings page (Flask)"""
     try:
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_timezone, get_user_currency, get_user_theme, get_user_preference
+        from user_preferences import get_user_timezone, get_user_currency, get_user_theme
         
         user_email = get_user_email_flask()
         current_timezone = get_user_timezone() or 'America/Los_Angeles'
         current_currency = get_user_currency() or 'CAD'
         current_theme = get_user_theme() or 'system'
-        
-        # Get v2_enabled with fallback
-        is_v2_enabled = get_user_preference('v2_enabled', default=False)
-        if is_v2_enabled is False:
-            # Fallback: try getting from all preferences
-            try:
-                from user_preferences import get_all_user_preferences
-                all_prefs = get_all_user_preferences()
-                if isinstance(all_prefs, dict) and 'v2_enabled' in all_prefs:
-                    fallback_value = all_prefs['v2_enabled']
-                    if isinstance(fallback_value, bool):
-                        is_v2_enabled = fallback_value
-                    elif isinstance(fallback_value, str) and fallback_value.lower() in ('true', 'false'):
-                        is_v2_enabled = fallback_value.lower() == 'true'
-                    elif fallback_value:
-                        is_v2_enabled = bool(fallback_value)
-            except Exception:
-                pass
-        
-        # Debug logging
-        logger.debug(f"[SETTINGS DEBUG] Loaded preferences - timezone: {current_timezone}, currency: {current_currency}, theme: {current_theme}, v2_enabled: {is_v2_enabled} (type: {type(is_v2_enabled).__name__})")
         
         # Get navigation context
         nav_context = get_navigation_context(current_page='settings')
@@ -1860,7 +1837,6 @@ def settings_page():
                              current_currency=current_currency,
                              current_theme=current_theme,
                              user_theme=current_theme,
-                             is_v2_enabled=is_v2_enabled,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error loading settings page: {e}")
@@ -2088,7 +2064,7 @@ def settings_debug():
 # Ticker Details Page (Flask v2)
 # ============================================================================
 
-@app.route('/v2/ticker')
+@app.route('/ticker')
 @require_auth
 def ticker_details_page():
     """Ticker details page (Flask v2)"""
@@ -2615,7 +2591,7 @@ def _get_cached_ollama_models():
     from ollama_client import list_available_models
     return list_available_models()
 
-@app.route('/v2/ai_assistant')
+@app.route('/ai_assistant')
 @require_auth
 def ai_assistant_page():
     """AI Assistant chat interface page (Flask v2)"""
@@ -3531,7 +3507,7 @@ def format_date_congress(d) -> str:
     
     return str(d)
 
-@app.route('/v2/congress_trades')
+@app.route('/congress_trades')
 @require_auth
 def congress_trades_page():
     """Congress Trades page (Flask v2)"""

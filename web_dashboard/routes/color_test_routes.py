@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 color_test_bp = Blueprint('color_test', __name__)
 
-@color_test_bp.route('/v2/color-test')
+@color_test_bp.route('/color-test')
 @require_auth
 def color_test_page():
     """Color testing page for theme development"""

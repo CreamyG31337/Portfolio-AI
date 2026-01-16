@@ -6,23 +6,23 @@ Shared navigation configuration for both Streamlit and Flask.
 # MIGRATED_PAGES dictionary maps Streamlit page keys to Flask URLs.
 # Pages that have been migrated to Flask should be added here.
 MIGRATED_PAGES = {
-    'dashboard': '/v2/dashboard',
-    'settings': '/v2/settings',  # Routed to Flask via Caddy /v2/* handler
-    'research': '/v2/research',
-    'social_sentiment': '/v2/social_sentiment',
-    'etf_holdings': '/v2/etf_holdings',
-    'congress_trades': '/v2/congress_trades',
-    'ticker_details': '/v2/ticker',
-    'ai_assistant': '/v2/ai_assistant',
-    'admin_funds': '/v2/admin/funds',
-    'admin_logs': '/v2/logs',
-    'admin_users': '/v2/admin/users',
-    'admin_scheduler': '/v2/admin/scheduler',
-    'admin_trade_entry': '/v2/admin/trade-entry',
-    'admin_contributions': '/v2/admin/contributions',
-    'admin_contributors': '/v2/admin/contributors',
-    'admin_ai_settings': '/v2/admin/ai-settings',
-    'admin_system': '/v2/admin/system',
+    'dashboard': '/dashboard',
+    'settings': '/settings',  # Routed to Flask via Caddy /v2/* handler
+    'research': '/research',
+    'social_sentiment': '/social_sentiment',
+    'etf_holdings': '/etf_holdings',
+    'congress_trades': '/congress_trades',
+    'ticker_details': '/ticker',
+    'ai_assistant': '/ai_assistant',
+    'admin_funds': '/admin/funds',
+    'admin_logs': '/logs',
+    'admin_users': '/admin/users',
+    'admin_scheduler': '/admin/scheduler',
+    'admin_trade_entry': '/admin/trade-entry',
+    'admin_contributions': '/admin/contributions',
+    'admin_contributors': '/admin/contributors',
+    'admin_ai_settings': '/admin/ai-settings',
+    'admin_system': '/admin/system',
 }
 
 def is_page_migrated(page_key: str) -> bool:

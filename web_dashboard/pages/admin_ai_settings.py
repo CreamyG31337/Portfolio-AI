@@ -501,6 +501,39 @@ else:
                             with st.expander("Error Details"):
                                 st.code(traceback.format_exc())
                 
+                # Cookie Refresher Logs Section
+                st.markdown("---")
+                st.markdown("#### Cookie Refresher Logs")
+                st.caption("View recent activity from the cookie refresher service")
+                
+                log_lines = st.slider("Lines to show", min_value=50, max_value=500, value=100, step=50, key="cookie_log_lines")
+                
+                if st.button("🔄 Refresh Logs", key="refresh_cookie_logs"):
+                    st.rerun()
+                
+                try:
+                    from pathlib import Path
+                    log_file = Path("/shared/cookies/cookie_refresher.log")
+                    
+                    if log_file.exists():
+                        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+                            all_lines = f.readlines()
+                            # Get last N lines
+                            recent_logs = all_lines[-log_lines:] if len(all_lines) > log_lines else all_lines
+                        
+                        if recent_logs:
+                            st.code(''.join(recent_logs), language=None)
+                            st.caption(f"Showing last {len(recent_logs)} of {len(all_lines)} total log lines")
+                        else:
+                            st.info("Log file is empty")
+                    else:
+                        st.warning("⚠️ Log file not found at /shared/cookies/cookie_refresher.log")
+                        st.info("💡 Cookie refresher may not have started logging yet, or logs are not configured.")
+                except PermissionError:
+                    st.error("❌ Permission denied. Cannot read log file.")
+                except Exception as e:
+                    st.error(f"❌ Error reading logs: {e}")
+                
                 # Cookie Update Section
                 st.markdown("---")
                 st.markdown("#### Update Cookies")
@@ -514,9 +547,26 @@ else:
                 )
                 
                 if update_method == "Paste JSON":
+                    # Load current cookies to display
+                    current_cookies_json = None
+                    try:
+                        secure_1psid, secure_1psidts = _load_cookies()
+                        if secure_1psid:
+                            current_cookies_dict = {
+                                "__Secure-1PSID": secure_1psid
+                            }
+                            if secure_1psidts:
+                                current_cookies_dict["__Secure-1PSIDTS"] = secure_1psidts
+                            current_cookies_json = json.dumps(current_cookies_dict, indent=2)
+                    except Exception:
+                        current_cookies_json = None
+                    
+                    if current_cookies_json:
+                        st.info("💡 Current cookies loaded below. Update if needed.")
+                    
                     cookie_json_text = st.text_area(
                         "Cookie JSON",
-                        value='{\n  "__Secure-1PSID": "...",\n  "__Secure-1PSIDTS": "..."\n}',
+                        value=current_cookies_json if current_cookies_json else '{\n  "__Secure-1PSID": "...",\n  "__Secure-1PSIDTS": "..."\n}',
                         height=150,
                         help="Paste the cookie JSON here. Format: {\"__Secure-1PSID\":\"...\",\"__Secure-1PSIDTS\":\"...\"}",
                         key="cookie_json_paste"
@@ -569,12 +619,27 @@ else:
                             st.rerun()
                 
                 elif update_method == "Individual Values":
+                    # Load current cookies to display
+                    current_cookies = None
+                    try:
+                        secure_1psid, secure_1psidts = _load_cookies()
+                        if secure_1psid:
+                            current_cookies = {
+                                "__Secure-1PSID": secure_1psid,
+                                "__Secure-1PSIDTS": secure_1psidts or ""
+                            }
+                    except Exception:
+                        current_cookies = None
+                    
+                    if current_cookies:
+                        st.info("💡 Current cookies loaded below. Update if needed.")
+                    
                     col_cookie1, col_cookie2 = st.columns(2)
                     
                     with col_cookie1:
                         secure_1psid = st.text_input(
                             "__Secure-1PSID (required)",
-                            type="password",
+                            value=current_cookies.get("__Secure-1PSID", "") if current_cookies else "",
                             help="The __Secure-1PSID cookie value",
                             key="cookie_1psid_input"
                         )
@@ -582,7 +647,7 @@ else:
                     with col_cookie2:
                         secure_1psidts = st.text_input(
                             "__Secure-1PSIDTS (optional)",
-                            type="password",
+                            value=current_cookies.get("__Secure-1PSIDTS", "") if current_cookies else "",
                             help="The __Secure-1PSIDTS cookie value (optional but recommended)",
                             key="cookie_1psidts_input"
                         )

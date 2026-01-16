@@ -34,31 +34,6 @@
 
 {% block content %}
 <div class="max-w-4xl mx-auto">
-    <!-- Beta Features -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 card-hover border-l-4 border-accent">
-        <div class="flex items-center justify-between">
-            <div>
-                <h2 class="text-xl font-bold text-text-primary flex items-center">
-                    <i class="fas fa-flask mr-2 text-accent"></i>Beta Features
-                </h2>
-                <p class="text-text-secondary text-sm mt-1">Try experimental features before they're fully released.</p>
-            </div>
-        </div>
-
-        <div class="mt-4 flex items-center justify-between border-t border-border pt-4">
-            <div>
-                <h3 class="font-medium text-text-primary">Use Cloud Pages (Flask)</h3>
-                <p class="text-sm text-text-secondary">Enable new, faster page implementations across the dashboard.</p>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="v2-toggle" class="sr-only peer" {% if is_v2_enabled %}checked{% endif %}>
-                <div
-                    class="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent">
-                </div>
-            </label>
-        </div>
-    </div>
-
     <!-- Timezone Settings -->
     <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 card-hover">
         <h2 class="text-2xl font-bold text-text-primary mb-4">🌍 Timezone</h2>
@@ -121,33 +96,36 @@
                 theme:</label>
             <select id="theme-select"
                 class="w-full px-4 py-2 bg-dashboard-surface border border-border text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent">
-                <option value="system" {% if current_theme == 'system' %}selected{% endif %}>System Default</option>
-                <option value="light" {% if current_theme == 'light' %}selected{% endif %}>Light Mode</option>
-                <option value="dark" {% if current_theme == 'dark' %}selected{% endif %}>Dark Mode</option>
-                <option value="midnight-tokyo" {% if current_theme == 'midnight-tokyo' %}selected{% endif %}>Midnight Tokyo (Neon)</option>
-                <option value="abyss" {% if current_theme == 'abyss' %}selected{% endif %}>Abyss (Ocean)</option>
+                <option value="system" {% if current_theme=='system' %}selected{% endif %}>System Default</option>
+                <option value="light" {% if current_theme=='light' %}selected{% endif %}>Light Mode</option>
+                <option value="dark" {% if current_theme=='dark' %}selected{% endif %}>Dark Mode</option>
+                <option value="midnight-tokyo" {% if current_theme=='midnight-tokyo' %}selected{% endif %}>Midnight
+                    Tokyo (Neon)</option>
+                <option value="abyss" {% if current_theme=='abyss' %}selected{% endif %}>Abyss (Ocean)</option>
             </select>
         </div>
 
         <div id="theme-preview" class="text-sm text-gray-500 mb-4">
             {% if current_theme == 'system' %}
-                ℹ️ Theme will follow your browser/OS dark mode setting
+            ℹ️ Theme will follow your browser/OS dark mode setting
             {% elif current_theme == 'dark' %}
-                🌙 Dark mode will be forced on
+            🌙 Dark mode will be forced on
             {% elif current_theme == 'light' %}
-                ☀️ Light mode will be forced on
+            ☀️ Light mode will be forced on
             {% elif current_theme == 'midnight-tokyo' %}
-                🌃 Cyberpunk neon theme
+            🌃 Cyberpunk neon theme
             {% elif current_theme == 'abyss' %}
-                🌊 Deep ocean void theme
+            🌊 Deep ocean void theme
             {% endif %}
         </div>
         <div class="mb-4">
-            <a href="/v2/color-test" class="inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors">
+            <a href="/color-test"
+                class="inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors">
                 <i class="fas fa-palette mr-2"></i>
                 🎨 Test & Customize Theme Colors
             </a>
-            <p class="text-xs text-text-secondary mt-2">Open the color testing tool to preview and customize theme colors with live examples.</p>
+            <p class="text-xs text-text-secondary mt-2">Open the color testing tool to preview and customize theme
+                colors with live examples.</p>
         </div>
         <div id="theme-success" class="success-message" style="display: none;">✅ Theme saved successfully!</div>
         <div id="theme-error" class="error-message" style="display: none;">❌ Failed to save theme. Please try again.

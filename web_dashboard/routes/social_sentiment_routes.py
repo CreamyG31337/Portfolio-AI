@@ -375,7 +375,7 @@ def get_cached_latest_sentiment(
         return []
 
 # Main route
-@social_sentiment_bp.route('/v2/social_sentiment')
+@social_sentiment_bp.route('/social_sentiment')
 @require_auth
 def social_sentiment_page():
     """Social Sentiment Dashboard page"""
@@ -463,7 +463,7 @@ def social_sentiment_page():
                              **nav_context), 500
 
 # API Endpoints
-@social_sentiment_bp.route('/api/v2/social_sentiment/watchlist')
+@social_sentiment_bp.route('/api/social_sentiment/watchlist')
 @require_auth
 def api_watchlist():
     """API endpoint for dynamic watchlist tickers"""
@@ -489,7 +489,7 @@ def api_watchlist():
         logger.error(f"Error in watchlist API: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@social_sentiment_bp.route('/api/v2/social_sentiment/alerts')
+@social_sentiment_bp.route('/api/social_sentiment/alerts')
 @require_auth
 def api_alerts():
     """API endpoint for extreme sentiment alerts"""
@@ -525,7 +525,7 @@ def api_alerts():
         logger.error(f"Error in alerts API: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@social_sentiment_bp.route('/api/v2/social_sentiment/ai_analyses')
+@social_sentiment_bp.route('/api/social_sentiment/ai_analyses')
 @require_auth
 def api_ai_analyses():
     """API endpoint for AI sentiment analyses"""
@@ -563,7 +563,7 @@ def api_ai_analyses():
         logger.error(f"Error in AI analyses API: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@social_sentiment_bp.route('/api/v2/social_sentiment/latest_sentiment')
+@social_sentiment_bp.route('/api/social_sentiment/latest_sentiment')
 @require_auth
 def api_latest_sentiment():
     """API endpoint for latest sentiment per ticker"""
@@ -750,7 +750,7 @@ def api_latest_sentiment():
         logger.error(f"Error in latest sentiment API: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@social_sentiment_bp.route('/api/v2/social_sentiment/ai_details/<int:analysis_id>')
+@social_sentiment_bp.route('/api/social_sentiment/ai_details/<int:analysis_id>')
 @require_auth
 def api_ai_details(analysis_id: int):
     """API endpoint for detailed AI analysis"""
@@ -836,7 +836,7 @@ def api_ai_details(analysis_id: int):
         logger.error(f"Error in AI details API: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@social_sentiment_bp.route('/api/v2/social_sentiment/posts/<int:metric_id>')
+@social_sentiment_bp.route('/api/social_sentiment/posts/<int:metric_id>')
 @require_auth
 def api_posts_by_metric(metric_id: int):
     """API endpoint for social posts by metric ID"""
@@ -875,7 +875,7 @@ def api_posts_by_metric(metric_id: int):
         logger.error(f"Error in posts API: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@social_sentiment_bp.route('/api/v2/social_sentiment/posts/session/<int:session_id>')
+@social_sentiment_bp.route('/api/social_sentiment/posts/session/<int:session_id>')
 @require_auth
 def api_posts_by_session(session_id: int):
     """API endpoint for social posts by session ID"""
