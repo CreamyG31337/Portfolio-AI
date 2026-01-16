@@ -461,6 +461,143 @@ else:
                             with st.expander("Error Details"):
                                 st.code(traceback.format_exc())
                 
+                # Cookie Update Section
+                st.markdown("---")
+                st.markdown("#### Update Cookies")
+                st.caption("Update WebAI cookies by pasting JSON, uploading a file, or entering individual values")
+                
+                update_method = st.radio(
+                    "Update Method",
+                    ["Paste JSON", "Upload File", "Individual Values"],
+                    horizontal=True,
+                    key="cookie_update_method"
+                )
+                
+                def save_cookies_to_file(cookies_dict: dict) -> bool:
+                    """Helper function to save cookies to shared volume."""
+                    shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+                    
+                    # Ensure directory exists
+                    shared_cookie_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    try:
+                        # Prepare cookie data with metadata
+                        cookie_data = {
+                            "__Secure-1PSID": cookies_dict.get("__Secure-1PSID", ""),
+                            "__Secure-1PSIDTS": cookies_dict.get("__Secure-1PSIDTS", ""),
+                            "_updated_at": datetime.now().isoformat() + "Z",
+                            "_updated_by": "admin_ui"
+                        }
+                        
+                        # Remove empty values (but keep metadata)
+                        cookie_data = {k: v for k, v in cookie_data.items() if v or k.startswith("_")}
+                        
+                        # Write to shared volume
+                        with open(shared_cookie_path, 'w', encoding='utf-8') as f:
+                            json.dump(cookie_data, f, indent=2)
+                        
+                        st.success(f"✅ Cookies saved to {shared_cookie_path}")
+                        st.info("💡 Cookies will be available immediately. You may want to test the connection above.")
+                        return True
+                        
+                    except PermissionError:
+                        st.error(f"❌ Permission denied. Cannot write to {shared_cookie_path}")
+                        st.info("💡 Ensure the container has write access to /shared/cookies/")
+                        return False
+                    except Exception as e:
+                        st.error(f"❌ Error saving cookies: {e}")
+                        import traceback
+                        with st.expander("Error Details"):
+                            st.code(traceback.format_exc())
+                        return False
+                
+                if update_method == "Paste JSON":
+                    cookie_json_text = st.text_area(
+                        "Cookie JSON",
+                        value='{\n  "__Secure-1PSID": "...",\n  "__Secure-1PSIDTS": "..."\n}',
+                        height=150,
+                        help="Paste the cookie JSON here. Format: {\"__Secure-1PSID\":\"...\",\"__Secure-1PSIDTS\":\"...\"}",
+                        key="cookie_json_paste"
+                    )
+                    
+                    if st.button("💾 Save Cookies from JSON", type="primary", key="save_cookies_json"):
+                        try:
+                            cookies_to_save = json.loads(cookie_json_text)
+                            if not isinstance(cookies_to_save, dict):
+                                st.error("❌ JSON must be an object/dictionary")
+                            elif "__Secure-1PSID" not in cookies_to_save:
+                                st.error("❌ Missing required cookie: __Secure-1PSID")
+                            else:
+                                if save_cookies_to_file(cookies_to_save):
+                                    st.rerun()
+                        except json.JSONDecodeError as e:
+                            st.error(f"❌ Invalid JSON: {e}")
+                
+                elif update_method == "Upload File":
+                    uploaded_file = st.file_uploader(
+                        "Upload Cookie File",
+                        type=["json"],
+                        help="Upload a JSON file containing cookies",
+                        key="cookie_file_upload"
+                    )
+                    
+                    cookies_parsed = None
+                    if uploaded_file is not None:
+                        try:
+                            file_content = uploaded_file.read().decode('utf-8')
+                            cookies_parsed = json.loads(file_content)
+                            if not isinstance(cookies_parsed, dict):
+                                st.error("❌ JSON must be an object/dictionary")
+                                cookies_parsed = None
+                            elif "__Secure-1PSID" not in cookies_parsed:
+                                st.error("❌ Missing required cookie: __Secure-1PSID")
+                                cookies_parsed = None
+                            else:
+                                st.success("✅ File parsed successfully")
+                                st.json(cookies_parsed)
+                        except json.JSONDecodeError as e:
+                            st.error(f"❌ Invalid JSON in file: {e}")
+                            cookies_parsed = None
+                        except Exception as e:
+                            st.error(f"❌ Error reading file: {e}")
+                            cookies_parsed = None
+                    
+                    if cookies_parsed and st.button("💾 Save Cookies from File", type="primary", key="save_cookies_file"):
+                        if save_cookies_to_file(cookies_parsed):
+                            st.rerun()
+                
+                elif update_method == "Individual Values":
+                    col_cookie1, col_cookie2 = st.columns(2)
+                    
+                    with col_cookie1:
+                        secure_1psid = st.text_input(
+                            "__Secure-1PSID (required)",
+                            type="password",
+                            help="The __Secure-1PSID cookie value",
+                            key="cookie_1psid_input"
+                        )
+                    
+                    with col_cookie2:
+                        secure_1psidts = st.text_input(
+                            "__Secure-1PSIDTS (optional)",
+                            type="password",
+                            help="The __Secure-1PSIDTS cookie value (optional but recommended)",
+                            key="cookie_1psidts_input"
+                        )
+                    
+                    if st.button("💾 Save Individual Cookies", type="primary", key="save_cookies_individual"):
+                        if not secure_1psid:
+                            st.error("❌ __Secure-1PSID is required")
+                        else:
+                            cookies_to_save = {
+                                "__Secure-1PSID": secure_1psid
+                            }
+                            if secure_1psidts:
+                                cookies_to_save["__Secure-1PSIDTS"] = secure_1psidts
+                            
+                            if save_cookies_to_file(cookies_to_save):
+                                st.rerun()
+                
             except ImportError as e:
                 st.warning(f"⚠️ WebAI wrapper not available: {e}")
             except Exception as e:
