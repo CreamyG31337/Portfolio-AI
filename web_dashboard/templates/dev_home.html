@@ -1,249 +1,226 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Developer Tools - Trading Bot Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="w-full px-4 py-8">
-        <!-- Header -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-800">
-                        <i class="fas fa-tools text-blue-600 mr-3"></i>
-                        Developer Tools
-                    </h1>
-                    <p class="text-gray-600 mt-2">Shared data access for debugging and analysis</p>
-                </div>
-                <div class="flex space-x-4">
-                    <a href="/" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition">
-                        <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
-                    </a>
-                    <button onclick="logout()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition">
-                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
-                    </button>
-                </div>
-            </div>
-        </div>
+{% extends "base.html" %}
 
-        <!-- Quick Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center">
-                    <div class="p-3 bg-blue-100 rounded-full">
-                        <i class="fas fa-database text-blue-600 text-xl"></i>
-                    </div>
-                    <div class="ml-4">
-                        <h3 class="text-lg font-semibold text-gray-800">Database</h3>
-                        <p class="text-gray-600">Supabase Connected</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center">
-                    <div class="p-3 bg-green-100 rounded-full">
-                        <i class="fas fa-chart-line text-green-600 text-xl"></i>
-                    </div>
-                    <div class="ml-4">
-                        <h3 class="text-lg font-semibold text-gray-800">Analytics</h3>
-                        <p class="text-gray-600">Real-time Data</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center">
-                    <div class="p-3 bg-purple-100 rounded-full">
-                        <i class="fas fa-code text-purple-600 text-xl"></i>
-                    </div>
-                    <div class="ml-4">
-                        <h3 class="text-lg font-semibold text-gray-800">API Access</h3>
-                        <p class="text-gray-600">LLM Ready</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center">
-                    <div class="p-3 bg-orange-100 rounded-full">
-                        <i class="fas fa-bug text-orange-600 text-xl"></i>
-                    </div>
-                    <div class="ml-4">
-                        <h3 class="text-lg font-semibold text-gray-800">Debugging</h3>
-                        <p class="text-gray-600">SQL Interface</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+{% block title %}Developer Tools - Trading Bot Dashboard{% endblock %}
 
-        <!-- Main Tools -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- SQL Interface -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center mb-4">
-                    <i class="fas fa-terminal text-blue-600 text-2xl mr-3"></i>
-                    <h2 class="text-2xl font-bold text-gray-800">SQL Interface</h2>
-                </div>
-                <p class="text-gray-600 mb-4">Execute SQL queries directly on the database for debugging and analysis.</p>
-                <div class="space-y-3">
-                    <div class="flex items-center text-sm text-gray-500">
-                        <i class="fas fa-check-circle text-green-500 mr-2"></i>
-                        Safe query execution (read-only)
-                    </div>
-                    <div class="flex items-center text-sm text-gray-500">
-                        <i class="fas fa-check-circle text-green-500 mr-2"></i>
-                        Real-time results
-                    </div>
-                    <div class="flex items-center text-sm text-gray-500">
-                        <i class="fas fa-check-circle text-green-500 mr-2"></i>
-                        Query history
-                    </div>
-                </div>
-                <a href="/dev/sql" class="mt-4 inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition">
-                    <i class="fas fa-play mr-2"></i>Open SQL Interface
-                </a>
-            </div>
+{% block page_title %}
+<i class="fas fa-tools text-blue-600 mr-3"></i>Developer Tools
+{% endblock %}
 
-            <!-- Developer Dashboard -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center mb-4">
-                    <i class="fas fa-chart-bar text-green-600 text-2xl mr-3"></i>
-                    <h2 class="text-2xl font-bold text-gray-800">Developer Dashboard</h2>
-                </div>
-                <p class="text-gray-600 mb-4">Visual overview of key metrics and trading data.</p>
-                <div class="space-y-3">
-                    <div class="flex items-center text-sm text-gray-500">
-                        <i class="fas fa-check-circle text-green-500 mr-2"></i>
-                        Portfolio summary
-                    </div>
-                    <div class="flex items-center text-sm text-gray-500">
-                        <i class="fas fa-check-circle text-green-500 mr-2"></i>
-                        Recent trades
-                    </div>
-                    <div class="flex items-center text-sm text-gray-500">
-                        <i class="fas fa-check-circle text-green-500 mr-2"></i>
-                        Performance metrics
-                    </div>
-                </div>
-                <a href="/dev/dashboard" class="mt-4 inline-block bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition">
-                    <i class="fas fa-chart-line mr-2"></i>Open Dashboard
-                </a>
-            </div>
-        </div>
+{% block page_subtitle %}Shared data access for debugging and analysis{% endblock %}
 
-        <!-- API Documentation -->
-        <div class="bg-white rounded-lg shadow-md p-6 mt-8">
-            <div class="flex items-center mb-4">
-                <i class="fas fa-book text-purple-600 text-2xl mr-3"></i>
-                <h2 class="text-2xl font-bold text-gray-800">API Endpoints</h2>
+{% block content %}
+<!-- Quick Stats -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center">
+            <div class="p-3 bg-blue-100 dark:bg-blue-900 rounded-full">
+                <i class="fas fa-database text-blue-600 dark:text-blue-300 text-xl"></i>
             </div>
-            <p class="text-gray-600 mb-4">Programmatic access for LLM analysis and debugging.</p>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="border rounded-lg p-4">
-                    <h3 class="font-semibold text-gray-800 mb-2">Portfolio Data</h3>
-                    <code class="text-sm bg-gray-100 px-2 py-1 rounded">GET /api/export/portfolio</code>
-                    <p class="text-sm text-gray-600 mt-1">Export portfolio positions</p>
-                </div>
-                
-                <div class="border rounded-lg p-4">
-                    <h3 class="font-semibold text-gray-800 mb-2">Trade History</h3>
-                    <code class="text-sm bg-gray-100 px-2 py-1 rounded">GET /api/export/trades</code>
-                    <p class="text-sm text-gray-600 mt-1">Export trade log</p>
-                </div>
-                
-                <div class="border rounded-lg p-4">
-                    <h3 class="font-semibold text-gray-800 mb-2">Performance</h3>
-                    <code class="text-sm bg-gray-100 px-2 py-1 rounded">GET /api/export/performance</code>
-                    <p class="text-sm text-gray-600 mt-1">Export performance metrics</p>
-                </div>
-                
-                <div class="border rounded-lg p-4">
-                    <h3 class="font-semibold text-gray-800 mb-2">Cash Balances</h3>
-                    <code class="text-sm bg-gray-100 px-2 py-1 rounded">GET /api/export/cash</code>
-                    <p class="text-sm text-gray-600 mt-1">Export cash balances</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="bg-white rounded-lg shadow-md p-6 mt-8">
-            <div class="flex items-center mb-4">
-                <i class="fas fa-bolt text-yellow-600 text-2xl mr-3"></i>
-                <h2 class="text-2xl font-bold text-gray-800">Quick Actions</h2>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button onclick="testConnection()" class="bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-3 rounded-lg transition text-left">
-                    <i class="fas fa-plug mr-2"></i>
-                    Test Database Connection
-                </button>
-                
-                <button onclick="exportData()" class="bg-green-100 hover:bg-green-200 text-green-800 px-4 py-3 rounded-lg transition text-left">
-                    <i class="fas fa-download mr-2"></i>
-                    Export All Data
-                </button>
-                
-                <button onclick="viewLogs()" class="bg-purple-100 hover:bg-purple-200 text-purple-800 px-4 py-3 rounded-lg transition text-left">
-                    <i class="fas fa-file-alt mr-2"></i>
-                    View System Logs
-                </button>
+            <div class="ml-4">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Database</h3>
+                <p class="text-gray-600 dark:text-gray-400">Supabase Connected</p>
             </div>
         </div>
     </div>
 
-    <script>
-        function logout() {
-            fetch('/api/auth/logout', { method: 'POST' })
-                .then(() => window.location.href = '/auth');
-        }
-
-        function testConnection() {
-            fetch('/api/export/portfolio?limit=1')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('✅ Database connection successful!');
-                    } else {
-                        alert('❌ Database connection failed: ' + data.error);
-                    }
-                })
-                .catch(error => {
-                    alert('❌ Connection test failed: ' + error);
-                });
-        }
-
-        function exportData() {
-            const endpoints = [
-                '/api/export/portfolio',
-                '/api/export/trades',
-                '/api/export/performance',
-                '/api/export/cash'
-            ];
-            
-            endpoints.forEach(endpoint => {
-                const link = document.createElement('a');
-                link.href = endpoint;
-                link.download = endpoint.split('/').pop() + '.json';
-                link.click();
-            });
-        }
-
-        function viewLogs() {
-            alert('Logs feature coming soon!');
-        }
-    </script>
-
-    <!-- Footer -->
-    <footer class="bg-gray-800 text-white py-4 mt-auto">
-        <div class="container mx-auto px-4 text-center text-sm">
-            <p>Build: {{ build_timestamp|default('Development') }}</p>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center">
+            <div class="p-3 bg-green-100 dark:bg-green-900 rounded-full">
+                <i class="fas fa-chart-line text-green-600 dark:text-green-300 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Analytics</h3>
+                <p class="text-gray-600 dark:text-gray-400">Real-time Data</p>
+            </div>
         </div>
-    </footer>
-</body>
-</html>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center">
+            <div class="p-3 bg-purple-100 dark:bg-purple-900 rounded-full">
+                <i class="fas fa-code text-purple-600 dark:text-purple-300 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">API Access</h3>
+                <p class="text-gray-600 dark:text-gray-400">LLM Ready</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center">
+            <div class="p-3 bg-orange-100 dark:bg-orange-900 rounded-full">
+                <i class="fas fa-bug text-orange-600 dark:text-orange-300 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Debugging</h3>
+                <p class="text-gray-600 dark:text-gray-400">SQL Interface</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Tools -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <!-- SQL Interface -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center mb-4">
+            <i class="fas fa-terminal text-blue-600 dark:text-blue-400 text-2xl mr-3"></i>
+            <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">SQL Interface</h2>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400 mb-4">Execute SQL queries directly on the database for debugging and
+            analysis.</p>
+        <div class="space-y-3">
+            <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                Safe query execution (read-only)
+            </div>
+            <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                Real-time results
+            </div>
+            <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                Query history
+            </div>
+        </div>
+        <a href="/dev/sql"
+            class="mt-4 inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition">
+            <i class="fas fa-play mr-2"></i>Open SQL Interface
+        </a>
+    </div>
+
+    <!-- Developer Dashboard -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center mb-4">
+            <i class="fas fa-chart-bar text-green-600 dark:text-green-400 text-2xl mr-3"></i>
+            <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Developer Dashboard</h2>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400 mb-4">Visual overview of key metrics and trading data.</p>
+        <div class="space-y-3">
+            <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                Portfolio summary
+            </div>
+            <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                Recent trades
+            </div>
+            <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                Performance metrics
+            </div>
+        </div>
+        <a href="/dev/dashboard"
+            class="mt-4 inline-block bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition">
+            <i class="fas fa-chart-line mr-2"></i>Open Dashboard
+        </a>
+    </div>
+</div>
+
+<!-- API Documentation -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mt-8">
+    <div class="flex items-center mb-4">
+        <i class="fas fa-book text-purple-600 dark:text-purple-400 text-2xl mr-3"></i>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">API Endpoints</h2>
+    </div>
+    <p class="text-gray-600 dark:text-gray-400 mb-4">Programmatic access for LLM analysis and debugging.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="border dark:border-gray-700 rounded-lg p-4">
+            <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">Portfolio Data</h3>
+            <code
+                class="text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-2 py-1 rounded">GET /api/export/portfolio</code>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Export portfolio positions</p>
+        </div>
+
+        <div class="border dark:border-gray-700 rounded-lg p-4">
+            <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">Trade History</h3>
+            <code
+                class="text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-2 py-1 rounded">GET /api/export/trades</code>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Export trade log</p>
+        </div>
+
+        <div class="border dark:border-gray-700 rounded-lg p-4">
+            <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">Performance</h3>
+            <code
+                class="text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-2 py-1 rounded">GET /api/export/performance</code>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Export performance metrics</p>
+        </div>
+
+        <div class="border dark:border-gray-700 rounded-lg p-4">
+            <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">Cash Balances</h3>
+            <code
+                class="text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-2 py-1 rounded">GET /api/export/cash</code>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Export cash balances</p>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mt-8">
+    <div class="flex items-center mb-4">
+        <i class="fas fa-bolt text-yellow-600 dark:text-yellow-400 text-2xl mr-3"></i>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Quick Actions</h2>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button onclick="testConnection()"
+            class="bg-blue-100 dark:bg-blue-900/40 hover:bg-blue-200 dark:hover:bg-blue-900/60 text-blue-800 dark:text-blue-300 px-4 py-3 rounded-lg transition text-left">
+            <i class="fas fa-plug mr-2"></i>
+            Test Database Connection
+        </button>
+
+        <button onclick="exportData()"
+            class="bg-green-100 dark:bg-green-900/40 hover:bg-green-200 dark:hover:bg-green-900/60 text-green-800 dark:text-green-300 px-4 py-3 rounded-lg transition text-left">
+            <i class="fas fa-download mr-2"></i>
+            Export All Data
+        </button>
+
+        <button onclick="viewLogs()"
+            class="bg-purple-100 dark:bg-purple-900/40 hover:bg-purple-200 dark:hover:bg-purple-900/60 text-purple-800 dark:text-purple-300 px-4 py-3 rounded-lg transition text-left">
+            <i class="fas fa-file-alt mr-2"></i>
+            View System Logs
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function testConnection() {
+        fetch('/api/export/portfolio?limit=1')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Database connection successful!');
+                } else {
+                    alert('❌ Database connection failed: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('❌ Connection test failed: ' + error);
+            });
+    }
+
+    function exportData() {
+        const endpoints = [
+            '/api/export/portfolio',
+            '/api/export/trades',
+            '/api/export/performance',
+            '/api/export/cash'
+        ];
+
+        endpoints.forEach(endpoint => {
+            const link = document.createElement('a');
+            link.href = endpoint;
+            link.download = endpoint.split('/').pop() + '.json';
+            link.click();
+        });
+    }
+
+    function viewLogs() {
+        alert('Logs feature coming soon! (Check /admin/logs)');
+    }
+</script>
+{% endblock %}

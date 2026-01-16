@@ -1,377 +1,368 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Developer Dashboard - Trading Bot</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-</head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="w-full px-4 py-8">
-        <!-- Header -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-800">
-                        <i class="fas fa-chart-bar text-green-600 mr-3"></i>
-                        Developer Dashboard
-                    </h1>
-                    <p class="text-gray-600 mt-2">Real-time trading data overview</p>
-                </div>
-                <div class="flex space-x-4">
-                    <a href="/dev" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition">
-                        <i class="fas fa-arrow-left mr-2"></i>Back to Dev Tools
-                    </a>
-                    <button onclick="refreshData()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
-                        <i class="fas fa-sync-alt mr-2"></i>Refresh
-                    </button>
-                </div>
-            </div>
-        </div>
+{% extends "base.html" %}
 
-        <!-- Key Metrics -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-600">Total Portfolio Value</p>
-                        <p class="text-2xl font-bold text-gray-900" id="totalValue">$0.00</p>
-                    </div>
-                    <div class="p-3 bg-blue-100 rounded-full">
-                        <i class="fas fa-dollar-sign text-blue-600 text-xl"></i>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-600">Today's P&L</p>
-                        <p class="text-2xl font-bold text-gray-900" id="dailyPnL">$0.00</p>
-                    </div>
-                    <div class="p-3 bg-green-100 rounded-full">
-                        <i class="fas fa-chart-line text-green-600 text-xl"></i>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-600">Active Positions</p>
-                        <p class="text-2xl font-bold text-gray-900" id="activePositions">0</p>
-                    </div>
-                    <div class="p-3 bg-purple-100 rounded-full">
-                        <i class="fas fa-briefcase text-purple-600 text-xl"></i>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-600">Recent Trades</p>
-                        <p class="text-2xl font-bold text-gray-900" id="recentTrades">0</p>
-                    </div>
-                    <div class="p-3 bg-orange-100 rounded-full">
-                        <i class="fas fa-exchange-alt text-orange-600 text-xl"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
+{% block title %}Developer Dashboard - Trading Bot{% endblock %}
 
-        <!-- Charts and Data -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            <!-- Performance Chart -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-xl font-bold text-gray-800 mb-4">
-                    <i class="fas fa-chart-line mr-2"></i>Portfolio Performance
-                </h2>
-                <div id="performanceChart" class="h-64"></div>
-            </div>
-            
-            <!-- Recent Trades -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-xl font-bold text-gray-800 mb-4">
-                    <i class="fas fa-history mr-2"></i>Recent Trades
-                </h2>
-                <div id="recentTradesTable" class="overflow-x-auto">
-                    <div class="text-center text-gray-500 py-8">
-                        <i class="fas fa-spinner fa-spin text-2xl mb-4"></i>
-                        <p>Loading recent trades...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+{% block page_title %}
+<i class="fas fa-chart-bar text-green-600 mr-3"></i>Developer Dashboard
+{% endblock %}
 
-        <!-- Portfolio Summary -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">
-                <i class="fas fa-briefcase mr-2"></i>Portfolio Summary
-            </h2>
-            <div id="portfolioSummary" class="overflow-x-auto">
-                <div class="text-center text-gray-500 py-8">
-                    <i class="fas fa-spinner fa-spin text-2xl mb-4"></i>
-                    <p>Loading portfolio data...</p>
-                </div>
-            </div>
-        </div>
+{% block page_subtitle %}Real-time trading data overview{% endblock %}
 
-        <!-- Cash Balances -->
-        <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">
-                <i class="fas fa-wallet mr-2"></i>Cash Balances
-            </h2>
-            <div id="cashBalances" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="text-center text-gray-500 py-8">
-                    <i class="fas fa-spinner fa-spin text-2xl mb-4"></i>
-                    <p>Loading cash balances...</p>
-                </div>
+{% block header_extra %}
+<div class="flex space-x-4">
+    <a href="/dev" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition hover:no-underline">
+        <i class="fas fa-arrow-left mr-2"></i>Back to Dev Tools
+    </a>
+    <button onclick="refreshData()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+        <i class="fas fa-sync-alt mr-2"></i>Refresh
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<!-- Plotly.js -->
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- Key Metrics -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Portfolio Value</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="totalValue">$0.00</p>
+            </div>
+            <div class="p-3 bg-blue-100 dark:bg-blue-900 rounded-full">
+                <i class="fas fa-dollar-sign text-blue-600 dark:text-blue-300 text-xl"></i>
             </div>
         </div>
     </div>
 
-    <script>
-        // Load data on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadDashboardData();
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Today's P&L</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="dailyPnL">$0.00</p>
+            </div>
+            <div class="p-3 bg-green-100 dark:bg-green-900 rounded-full">
+                <i class="fas fa-chart-line text-green-600 dark:text-green-300 text-xl"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Active Positions</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="activePositions">0</p>
+            </div>
+            <div class="p-3 bg-purple-100 dark:bg-purple-900 rounded-full">
+                <i class="fas fa-briefcase text-purple-600 dark:text-purple-300 text-xl"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Recent Trades</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="recentTrades">0</p>
+            </div>
+            <div class="p-3 bg-orange-100 dark:bg-orange-900 rounded-full">
+                <i class="fas fa-exchange-alt text-orange-600 dark:text-orange-300 text-xl"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts and Data -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+    <!-- Performance Chart -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">
+            <i class="fas fa-chart-line mr-2"></i>Portfolio Performance
+        </h2>
+        <div id="performanceChart" class="h-64"></div>
+    </div>
+
+    <!-- Recent Trades -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">
+            <i class="fas fa-history mr-2"></i>Recent Trades
+        </h2>
+        <div id="recentTradesTable" class="overflow-x-auto">
+            <div class="text-center text-gray-500 py-8">
+                <i class="fas fa-spinner fa-spin text-2xl mb-4"></i>
+                <p>Loading recent trades...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Portfolio Summary -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8">
+    <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">
+        <i class="fas fa-briefcase mr-2"></i>Portfolio Summary
+    </h2>
+    <div id="portfolioSummary" class="overflow-x-auto">
+        <div class="text-center text-gray-500 py-8">
+            <i class="fas fa-spinner fa-spin text-2xl mb-4"></i>
+            <p>Loading portfolio data...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Cash Balances -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+    <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">
+        <i class="fas fa-wallet mr-2"></i>Cash Balances
+    </h2>
+    <div id="cashBalances" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="text-center text-gray-500 py-8">
+            <i class="fas fa-spinner fa-spin text-2xl mb-4"></i>
+            <p>Loading cash balances...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Load data on page load
+    document.addEventListener('DOMContentLoaded', function () {
+        loadDashboardData();
+    });
+
+    function refreshData() {
+        loadDashboardData();
+    }
+
+    async function loadDashboardData() {
+        try {
+            // Load performance data
+            const performanceResponse = await fetch('/api/export/performance', { credentials: 'include' });
+            const performanceData = await performanceResponse.json();
+
+            if (performanceData.success) {
+                updateMetrics(performanceData.performance);
+                updatePerformanceChart(performanceData.daily_data);
+            }
+
+            // Load recent trades
+            const tradesResponse = await fetch('/api/export/trades?limit=10', { credentials: 'include' });
+            const tradesData = await tradesResponse.json();
+
+            if (tradesData.success) {
+                updateRecentTrades(tradesData.data);
+            }
+
+            // Load portfolio data
+            const portfolioResponse = await fetch('/api/export/portfolio', { credentials: 'include' });
+            const portfolioData = await portfolioResponse.json();
+
+            if (portfolioData.success) {
+                updatePortfolioSummary(portfolioData.data);
+            }
+
+            // Load cash balances
+            const cashResponse = await fetch('/api/export/cash', { credentials: 'include' });
+            const cashData = await cashResponse.json();
+
+            if (cashData.success) {
+                updateCashBalances(cashData.data);
+            }
+
+        } catch (error) {
+            console.error('Error loading dashboard data:', error);
+            showError('Failed to load dashboard data');
+        }
+    }
+
+    function updateMetrics(performance) {
+        document.getElementById('totalValue').textContent = `$${performance.total_value.toLocaleString()}`;
+        document.getElementById('dailyPnL').textContent = `$${performance.unrealized_pnl.toLocaleString()}`;
+        document.getElementById('activePositions').textContent = performance.total_trades || 0;
+    }
+
+    function updatePerformanceChart(dailyData) {
+        if (!dailyData || dailyData.length === 0) {
+            document.getElementById('performanceChart').innerHTML = '<div class="text-center text-gray-500 py-8">No performance data available</div>';
+            return;
+        }
+
+        const dates = dailyData.map(d => d.date);
+        const values = dailyData.map(d => d.total_value);
+
+        const trace = {
+            x: dates,
+            y: values,
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: 'Portfolio Value',
+            line: { color: '#3B82F6' }
+        };
+
+        const layout = {
+            title: 'Portfolio Value Over Time',
+            xaxis: { title: 'Date' },
+            yaxis: { title: 'Value ($)' },
+            margin: { t: 40, r: 40, b: 40, l: 40 },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: {
+                color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+            }
+        };
+
+        Plotly.newPlot('performanceChart', [trace], layout, { responsive: true });
+    }
+
+    function updateRecentTrades(trades) {
+        const container = document.getElementById('recentTradesTable');
+
+        if (!trades || trades.length === 0) {
+            container.innerHTML = '<div class="text-center text-gray-500 py-8">No recent trades</div>';
+            return;
+        }
+
+        const table = document.createElement('table');
+        table.className = 'w-full border-collapse text-sm';
+
+        // Header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        headerRow.className = 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100';
+
+        ['Date', 'Ticker', 'Shares', 'Price', 'P&L', 'Reason'].forEach(header => {
+            const th = document.createElement('th');
+            th.className = 'border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold';
+            th.textContent = header;
+            headerRow.appendChild(th);
         });
 
-        function refreshData() {
-            loadDashboardData();
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Body
+        const tbody = document.createElement('tbody');
+        trades.forEach(trade => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-800 dark:text-gray-300';
+
+            const date = new Date(trade.date).toLocaleDateString();
+            const pnl = parseFloat(trade.pnl);
+            const pnlClass = pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+
+            tr.innerHTML = `
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${date}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2 font-mono">${trade.ticker}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${trade.shares}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2">$${parseFloat(trade.price).toFixed(2)}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2 ${pnlClass}">$${pnl.toFixed(2)}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${trade.reason}</td>
+            `;
+
+            tbody.appendChild(tr);
+        });
+
+        table.appendChild(tbody);
+        container.innerHTML = '';
+        container.appendChild(table);
+    }
+
+    function updatePortfolioSummary(portfolio) {
+        const container = document.getElementById('portfolioSummary');
+
+        if (!portfolio || portfolio.length === 0) {
+            container.innerHTML = '<div class="text-center text-gray-500 py-8">No portfolio data available</div>';
+            return;
         }
 
-        async function loadDashboardData() {
-            try {
-                // Load performance data
-                const performanceResponse = await fetch('/api/export/performance', { credentials: 'include' });
-                const performanceData = await performanceResponse.json();
-                
-                if (performanceData.success) {
-                    updateMetrics(performanceData.performance);
-                    updatePerformanceChart(performanceData.daily_data);
-                }
+        const table = document.createElement('table');
+        table.className = 'w-full border-collapse text-sm';
 
-                // Load recent trades
-                const tradesResponse = await fetch('/api/export/trades?limit=10', { credentials: 'include' });
-                const tradesData = await tradesResponse.json();
-                
-                if (tradesData.success) {
-                    updateRecentTrades(tradesData.data);
-                }
+        // Header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        headerRow.className = 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100';
 
-                // Load portfolio data
-                const portfolioResponse = await fetch('/api/export/portfolio', { credentials: 'include' });
-                const portfolioData = await portfolioResponse.json();
-                
-                if (portfolioData.success) {
-                    updatePortfolioSummary(portfolioData.data);
-                }
+        ['Ticker', 'Shares', 'Price', 'Value', 'P&L', 'Fund'].forEach(header => {
+            const th = document.createElement('th');
+            th.className = 'border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold';
+            th.textContent = header;
+            headerRow.appendChild(th);
+        });
 
-                // Load cash balances
-                const cashResponse = await fetch('/api/export/cash', { credentials: 'include' });
-                const cashData = await cashResponse.json();
-                
-                if (cashData.success) {
-                    updateCashBalances(cashData.data);
-                }
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
 
-            } catch (error) {
-                console.error('Error loading dashboard data:', error);
-                showError('Failed to load dashboard data');
-            }
+        // Body
+        const tbody = document.createElement('tbody');
+        portfolio.forEach(position => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-800 dark:text-gray-300';
+
+            const value = parseFloat(position.shares) * parseFloat(position.price);
+            const pnl = parseFloat(position.pnl);
+            const pnlClass = pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+
+            tr.innerHTML = `
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2 font-mono">${position.ticker}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${position.shares}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2">$${parseFloat(position.price).toFixed(2)}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2">$${value.toFixed(2)}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2 ${pnlClass}">$${pnl.toFixed(2)}</td>
+                <td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${position.fund}</td>
+            `;
+
+            tbody.appendChild(tr);
+        });
+
+        table.appendChild(tbody);
+        container.innerHTML = '';
+        container.appendChild(table);
+    }
+
+    function updateCashBalances(cash) {
+        const container = document.getElementById('cashBalances');
+
+        if (!cash || Object.keys(cash).length === 0) {
+            container.innerHTML = '<div class="text-center text-gray-500 py-8">No cash balance data available</div>';
+            return;
         }
 
-        function updateMetrics(performance) {
-            document.getElementById('totalValue').textContent = `$${performance.total_value.toLocaleString()}`;
-            document.getElementById('dailyPnL').textContent = `$${performance.unrealized_pnl.toLocaleString()}`;
-            document.getElementById('activePositions').textContent = performance.total_trades || 0;
-        }
-
-        function updatePerformanceChart(dailyData) {
-            if (!dailyData || dailyData.length === 0) {
-                document.getElementById('performanceChart').innerHTML = '<div class="text-center text-gray-500 py-8">No performance data available</div>';
-                return;
-            }
-
-            const dates = dailyData.map(d => d.date);
-            const values = dailyData.map(d => d.total_value);
-
-            const trace = {
-                x: dates,
-                y: values,
-                type: 'scatter',
-                mode: 'lines+markers',
-                name: 'Portfolio Value',
-                line: { color: '#3B82F6' }
-            };
-
-            const layout = {
-                title: 'Portfolio Value Over Time',
-                xaxis: { title: 'Date' },
-                yaxis: { title: 'Value ($)' },
-                margin: { t: 40, r: 40, b: 40, l: 40 }
-            };
-
-            Plotly.newPlot('performanceChart', [trace], layout, {responsive: true});
-        }
-
-        function updateRecentTrades(trades) {
-            const container = document.getElementById('recentTradesTable');
-            
-            if (!trades || trades.length === 0) {
-                container.innerHTML = '<div class="text-center text-gray-500 py-8">No recent trades</div>';
-                return;
-            }
-
-            const table = document.createElement('table');
-            table.className = 'w-full border-collapse';
-            
-            // Header
-            const thead = document.createElement('thead');
-            const headerRow = document.createElement('tr');
-            headerRow.className = 'bg-gray-100';
-            
-            ['Date', 'Ticker', 'Shares', 'Price', 'P&L', 'Reason'].forEach(header => {
-                const th = document.createElement('th');
-                th.className = 'border border-gray-300 px-4 py-2 text-left font-semibold text-sm';
-                th.textContent = header;
-                headerRow.appendChild(th);
-            });
-            
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-            
-            // Body
-            const tbody = document.createElement('tbody');
-            trades.forEach(trade => {
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-50';
-                
-                const date = new Date(trade.date).toLocaleDateString();
-                const pnl = parseFloat(trade.pnl);
-                const pnlClass = pnl >= 0 ? 'text-green-600' : 'text-red-600';
-                
-                tr.innerHTML = `
-                    <td class="border border-gray-300 px-4 py-2 text-sm">${date}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm font-mono">${trade.ticker}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm">${trade.shares}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm">$${parseFloat(trade.price).toFixed(2)}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm ${pnlClass}">$${pnl.toFixed(2)}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm">${trade.reason}</td>
-                `;
-                
-                tbody.appendChild(tr);
-            });
-            
-            table.appendChild(tbody);
-            container.innerHTML = '';
-            container.appendChild(table);
-        }
-
-        function updatePortfolioSummary(portfolio) {
-            const container = document.getElementById('portfolioSummary');
-            
-            if (!portfolio || portfolio.length === 0) {
-                container.innerHTML = '<div class="text-center text-gray-500 py-8">No portfolio data available</div>';
-                return;
-            }
-
-            const table = document.createElement('table');
-            table.className = 'w-full border-collapse';
-            
-            // Header
-            const thead = document.createElement('thead');
-            const headerRow = document.createElement('tr');
-            headerRow.className = 'bg-gray-100';
-            
-            ['Ticker', 'Shares', 'Price', 'Value', 'P&L', 'Fund'].forEach(header => {
-                const th = document.createElement('th');
-                th.className = 'border border-gray-300 px-4 py-2 text-left font-semibold text-sm';
-                th.textContent = header;
-                headerRow.appendChild(th);
-            });
-            
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-            
-            // Body
-            const tbody = document.createElement('tbody');
-            portfolio.forEach(position => {
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-50';
-                
-                const value = parseFloat(position.shares) * parseFloat(position.price);
-                const pnl = parseFloat(position.pnl);
-                const pnlClass = pnl >= 0 ? 'text-green-600' : 'text-red-600';
-                
-                tr.innerHTML = `
-                    <td class="border border-gray-300 px-4 py-2 text-sm font-mono">${position.ticker}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm">${position.shares}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm">$${parseFloat(position.price).toFixed(2)}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm">$${value.toFixed(2)}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm ${pnlClass}">$${pnl.toFixed(2)}</td>
-                    <td class="border border-gray-300 px-4 py-2 text-sm">${position.fund}</td>
-                `;
-                
-                tbody.appendChild(tr);
-            });
-            
-            table.appendChild(tbody);
-            container.innerHTML = '';
-            container.appendChild(table);
-        }
-
-        function updateCashBalances(cash) {
-            const container = document.getElementById('cashBalances');
-            
-            if (!cash || Object.keys(cash).length === 0) {
-                container.innerHTML = '<div class="text-center text-gray-500 py-8">No cash balance data available</div>';
-                return;
-            }
-
-            let html = '';
-            Object.entries(cash).forEach(([key, amount]) => {
-                const [fund, currency] = key.includes('_') ? key.split('_') : ['', key];
-                html += `
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-sm font-medium text-gray-600">${currency}</p>
-                                ${fund ? `<p class="text-xs text-gray-500">${fund}</p>` : ''}
-                            </div>
-                            <p class="text-lg font-bold text-gray-900">$${parseFloat(amount).toFixed(2)}</p>
+        let html = '';
+        Object.entries(cash).forEach(([key, amount]) => {
+            const [fund, currency] = key.includes('_') ? key.split('_') : ['', key];
+            html += `
+                <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-600 dark:text-gray-400">${currency}</p>
+                            ${fund ? `<p class="text-xs text-gray-500 dark:text-gray-500">${fund}</p>` : ''}
                         </div>
+                        <p class="text-lg font-bold text-gray-900 dark:text-gray-100">$${parseFloat(amount).toFixed(2)}</p>
                     </div>
-                `;
-            });
-            
-            container.innerHTML = html;
-        }
+                </div>
+            `;
+        });
 
-        function showError(message) {
-            // Simple error display
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
-            errorDiv.textContent = message;
-            document.body.appendChild(errorDiv);
-            
-            setTimeout(() => {
-                document.body.removeChild(errorDiv);
-            }, 5000);
-        }
+        container.innerHTML = html;
+    }
 
-        // Auto-refresh every 5 minutes
-        setInterval(loadDashboardData, 5 * 60 * 1000);
-    </script>
+    function showError(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+        errorDiv.textContent = message;
+        document.body.appendChild(errorDiv);
 
-    <!-- Footer -->
-    <footer class="bg-gray-800 text-white py-4 mt-auto">
-        <div class="container mx-auto px-4 text-center text-sm">
-            <p>Build: {{ build_timestamp|default('Development') }}</p>
-        </div>
-    </footer>
-</body>
-</html>
+        setTimeout(() => {
+            document.body.removeChild(errorDiv);
+        }, 5000);
+    }
+
+    // Auto-refresh every 5 minutes
+    setInterval(loadDashboardData, 5 * 60 * 1000);
+</script>
+{% endblock %}

@@ -1,200 +1,234 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQL Interface - Trading Bot Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
-</head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="w-full px-4 py-8">
-        <!-- Header -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-800">
-                        <i class="fas fa-terminal text-blue-600 mr-3"></i>
-                        SQL Interface
-                    </h1>
-                    <p class="text-gray-600 mt-2">Execute SQL queries on the trading bot database</p>
-                </div>
-                <div class="flex space-x-4">
-                    <a href="/dev" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition">
-                        <i class="fas fa-arrow-left mr-2"></i>Back to Dev Tools
-                    </a>
-                    <button onclick="clearQuery()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition">
-                        <i class="fas fa-eraser mr-2"></i>Clear
+{% extends "base.html" %}
+
+{% block title %}SQL Interface - Trading Bot Dashboard{% endblock %}
+
+{% block page_title %}
+<i class="fas fa-terminal text-blue-600 mr-3"></i>SQL Interface
+{% endblock %}
+
+{% block page_subtitle %}Execute SQL queries on the trading bot database{% endblock %}
+
+{% block header_extra %}
+<div class="flex space-x-4">
+    <a href="/dev" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition hover:no-underline">
+        <i class="fas fa-arrow-left mr-2"></i>Back to Dev Tools
+    </a>
+    <button onclick="clearQuery()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition">
+        <i class="fas fa-eraser mr-2"></i>Clear
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<!-- CodeMirror CSS -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <!-- Query Editor -->
+    <div class="lg:col-span-2">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                    <i class="fas fa-code mr-2"></i>Query Editor
+                </h2>
+                <div class="flex space-x-2">
+                    <button onclick="executeQuery()"
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+                        <i class="fas fa-play mr-2"></i>Execute
                     </button>
+                    <button onclick="formatQuery()"
+                        class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition">
+                        <i class="fas fa-magic mr-2"></i>Format
+                    </button>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <textarea id="sqlQuery"
+                    class="w-full h-64 p-4 border rounded-lg font-mono text-sm bg-gray-50 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                    placeholder="Enter your SQL query here...&#10;&#10;Example:&#10;SELECT * FROM portfolio_positions LIMIT 10;&#10;&#10;SELECT fund, COUNT(*) as positions&#10;FROM portfolio_positions&#10;WHERE shares > 0&#10;GROUP BY fund;"></textarea>
+            </div>
+
+            <div class="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+                <div>
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Only SELECT queries are allowed for safety
+                </div>
+                <div>
+                    <span id="queryLength">0</span> characters
                 </div>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- Query Editor -->
-            <div class="lg:col-span-2">
-                <div class="bg-white rounded-lg shadow-md p-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-xl font-bold text-gray-800">
-                            <i class="fas fa-code mr-2"></i>Query Editor
-                        </h2>
-                        <div class="flex space-x-2">
-                            <button onclick="executeQuery()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
-                                <i class="fas fa-play mr-2"></i>Execute
-                            </button>
-                            <button onclick="formatQuery()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition">
-                                <i class="fas fa-magic mr-2"></i>Format
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <textarea id="sqlQuery" class="w-full h-64 p-4 border rounded-lg font-mono text-sm" 
-                                  placeholder="Enter your SQL query here...&#10;&#10;Example:&#10;SELECT * FROM portfolio_positions LIMIT 10;&#10;&#10;SELECT fund, COUNT(*) as positions&#10;FROM portfolio_positions&#10;WHERE shares > 0&#10;GROUP BY fund;"></textarea>
-                    </div>
-                    
-                    <div class="flex items-center justify-between text-sm text-gray-600">
-                        <div>
-                            <i class="fas fa-info-circle mr-1"></i>
-                            Only SELECT queries are allowed for safety
-                        </div>
-                        <div>
-                            <span id="queryLength">0</span> characters
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Results -->
-                <div class="bg-white rounded-lg shadow-md p-6 mt-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-xl font-bold text-gray-800">
-                            <i class="fas fa-table mr-2"></i>Results
-                        </h2>
-                        <div class="flex space-x-2">
-                            <button onclick="exportResults()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition">
-                                <i class="fas fa-download mr-2"></i>Export
-                            </button>
-                            <button onclick="clearResults()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition">
-                                <i class="fas fa-trash mr-2"></i>Clear
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div id="resultsContainer" class="min-h-32">
-                        <div class="text-center text-gray-500 py-8">
-                            <i class="fas fa-database text-4xl mb-4"></i>
-                            <p>Execute a query to see results here</p>
-                        </div>
-                    </div>
+        <!-- Results -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mt-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                    <i class="fas fa-table mr-2"></i>Results
+                </h2>
+                <div class="flex space-x-2">
+                    <button onclick="exportResults()"
+                        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition">
+                        <i class="fas fa-download mr-2"></i>Export
+                    </button>
+                    <button onclick="clearResults()"
+                        class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition">
+                        <i class="fas fa-trash mr-2"></i>Clear
+                    </button>
                 </div>
             </div>
 
-            <!-- Sidebar -->
-            <div class="space-y-6">
-                <!-- Quick Queries -->
-                <div class="bg-white rounded-lg shadow-md p-6">
-                    <h3 class="text-lg font-bold text-gray-800 mb-4">
-                        <i class="fas fa-bolt mr-2"></i>Quick Queries
-                    </h3>
-                    <div class="space-y-2">
-                        <button onclick="loadQuickQuery('portfolio')" class="w-full text-left bg-blue-50 hover:bg-blue-100 p-3 rounded-lg transition">
-                            <div class="font-semibold text-blue-800">Portfolio Positions</div>
-                            <div class="text-sm text-blue-600">SELECT * FROM portfolio_positions LIMIT 10;</div>
-                        </button>
-                        
-                        <button onclick="loadQuickQuery('trades')" class="w-full text-left bg-green-50 hover:bg-green-100 p-3 rounded-lg transition">
-                            <div class="font-semibold text-green-800">Recent Trades</div>
-                            <div class="text-sm text-green-600">SELECT * FROM trade_log ORDER BY date DESC LIMIT 10;</div>
-                        </button>
-                        
-                        <button onclick="loadQuickQuery('cash')" class="w-full text-left bg-purple-50 hover:bg-purple-100 p-3 rounded-lg transition">
-                            <div class="font-semibold text-purple-800">Cash Balances</div>
-                            <div class="text-sm text-purple-600">SELECT * FROM cash_balances;</div>
-                        </button>
-                        
-                        <button onclick="loadQuickQuery('users')" class="w-full text-left bg-orange-50 hover:bg-orange-100 p-3 rounded-lg transition">
-                            <div class="font-semibold text-orange-800">User Assignments</div>
-                            <div class="text-sm text-orange-600">SELECT * FROM user_funds;</div>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Table Schema -->
-                <div class="bg-white rounded-lg shadow-md p-6">
-                    <h3 class="text-lg font-bold text-gray-800 mb-4">
-                        <i class="fas fa-database mr-2"></i>Table Schema
-                    </h3>
-                    <div class="space-y-3 text-sm">
-                        <div>
-                            <div class="font-semibold text-gray-800">portfolio_positions</div>
-                            <div class="text-gray-600">id, fund, ticker, shares, price, cost_basis, pnl, date</div>
-                        </div>
-                        <div>
-                            <div class="font-semibold text-gray-800">trade_log</div>
-                            <div class="text-gray-600">id, fund, date, ticker, shares, price, cost_basis, pnl, reason</div>
-                        </div>
-                        <div>
-                            <div class="font-semibold text-gray-800">cash_balances</div>
-                            <div class="text-gray-600">id, fund, currency, amount, updated_at</div>
-                        </div>
-                        <div>
-                            <div class="font-semibold text-gray-800">user_funds</div>
-                            <div class="text-gray-600">id, user_id, fund_name, created_at</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Query History -->
-                <div class="bg-white rounded-lg shadow-md p-6">
-                    <h3 class="text-lg font-bold text-gray-800 mb-4">
-                        <i class="fas fa-history mr-2"></i>Query History
-                    </h3>
-                    <div id="queryHistory" class="space-y-2 max-h-48 overflow-y-auto">
-                        <div class="text-gray-500 text-sm">No queries executed yet</div>
-                    </div>
+            <div id="resultsContainer" class="min-h-32 overflow-x-auto">
+                <div class="text-center text-gray-500 py-8">
+                    <i class="fas fa-database text-4xl mb-4"></i>
+                    <p>Execute a query to see results here</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        let queryHistory = [];
+    <!-- Sidebar -->
+    <div class="space-y-6">
+        <!-- Quick Queries -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
+                <i class="fas fa-bolt mr-2"></i>Quick Queries
+            </h3>
+            <div class="space-y-2">
+                <button onclick="loadQuickQuery('portfolio')"
+                    class="w-full text-left bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 p-3 rounded-lg transition">
+                    <div class="font-semibold text-blue-800 dark:text-blue-300">Portfolio Positions</div>
+                    <div class="text-sm text-blue-600 dark:text-blue-400">SELECT * FROM portfolio_positions LIMIT 10;
+                    </div>
+                </button>
 
-        // Update character count
-        document.getElementById('sqlQuery').addEventListener('input', function() {
-            document.getElementById('queryLength').textContent = this.value.length;
-        });
+                <button onclick="loadQuickQuery('trades')"
+                    class="w-full text-left bg-green-50 dark:bg-green-900/30 hover:bg-green-100 dark:hover:bg-green-900/50 p-3 rounded-lg transition">
+                    <div class="font-semibold text-green-800 dark:text-green-300">Recent Trades</div>
+                    <div class="text-sm text-green-600 dark:text-green-400">SELECT * FROM trade_log ORDER BY date DESC
+                        LIMIT 10;</div>
+                </button>
 
-        function executeQuery() {
-            const query = document.getElementById('sqlQuery').value.trim();
-            if (!query) {
-                alert('Please enter a SQL query');
-                return;
-            }
+                <button onclick="loadQuickQuery('cash')"
+                    class="w-full text-left bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 p-3 rounded-lg transition">
+                    <div class="font-semibold text-purple-800 dark:text-purple-300">Cash Balances</div>
+                    <div class="text-sm text-purple-600 dark:text-purple-400">SELECT * FROM cash_balances;</div>
+                </button>
 
-            // Add to history
-            queryHistory.unshift({
-                query: query,
-                timestamp: new Date().toLocaleTimeString()
+                <button onclick="loadQuickQuery('users')"
+                    class="w-full text-left bg-orange-50 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 p-3 rounded-lg transition">
+                    <div class="font-semibold text-orange-800 dark:text-orange-300">User Assignments</div>
+                    <div class="text-sm text-orange-600 dark:text-orange-400">SELECT * FROM user_funds;</div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Table Schema -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
+                <i class="fas fa-database mr-2"></i>Table Schema
+            </h3>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <div class="font-semibold text-gray-800 dark:text-gray-200">portfolio_positions</div>
+                    <div class="text-gray-600 dark:text-gray-400">id, fund, ticker, shares, price, cost_basis, pnl, date
+                    </div>
+                </div>
+                <div>
+                    <div class="font-semibold text-gray-800 dark:text-gray-200">trade_log</div>
+                    <div class="text-gray-600 dark:text-gray-400">id, fund, date, ticker, shares, price, cost_basis,
+                        pnl, reason</div>
+                </div>
+                <div>
+                    <div class="font-semibold text-gray-800 dark:text-gray-200">cash_balances</div>
+                    <div class="text-gray-600 dark:text-gray-400">id, fund, currency, amount, updated_at</div>
+                </div>
+                <div>
+                    <div class="font-semibold text-gray-800 dark:text-gray-200">user_funds</div>
+                    <div class="text-gray-600 dark:text-gray-400">id, user_id, fund_name, created_at</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Query History -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
+                <i class="fas fa-history mr-2"></i>Query History
+            </h3>
+            <div id="queryHistory" class="space-y-2 max-h-48 overflow-y-auto">
+                <div class="text-gray-500 text-sm">No queries executed yet</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- CodeMirror JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
+
+<script>
+    let queryHistory = [];
+
+    // Initialize CodeMirror after DOM load
+    document.addEventListener('DOMContentLoaded', function () {
+        const textarea = document.getElementById('sqlQuery');
+        // Simple initialization if needed, or rely on textarea
+        // Actually, let's use CodeMirror properly if we imported it
+        if (typeof CodeMirror !== 'undefined') {
+            window.editor = CodeMirror.fromTextArea(textarea, {
+                mode: 'text/x-sql',
+                theme: 'monokai',
+                lineNumbers: true,
+                lineWrapping: true,
+                extraKeys: { "Ctrl-Space": "autocomplete" }
             });
-            updateQueryHistory();
 
-            // Show loading
-            const resultsContainer = document.getElementById('resultsContainer');
-            resultsContainer.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl mb-4"></i><p>Executing query...</p></div>';
+            // Update character count
+            window.editor.on('change', function (cm) {
+                document.getElementById('queryLength').textContent = cm.getValue().length;
+                textarea.value = cm.getValue(); // Sync back to textarea
+            });
+        }
+    });
 
-            // Execute query
-            fetch('/api/dev/query', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ query: query })
-            })
+    function executeQuery() {
+        // Get value from editor if it exists, otherwise textarea
+        let query = '';
+        if (window.editor) {
+            query = window.editor.getValue().trim();
+        } else {
+            query = document.getElementById('sqlQuery').value.trim();
+        }
+
+        if (!query) {
+            alert('Please enter a SQL query');
+            return;
+        }
+
+        // Add to history
+        queryHistory.unshift({
+            query: query,
+            timestamp: new Date().toLocaleTimeString()
+        });
+        updateQueryHistory();
+
+        // Show loading
+        const resultsContainer = document.getElementById('resultsContainer');
+        resultsContainer.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl mb-4"></i><p>Executing query...</p></div>';
+
+        // Execute query
+        fetch('/api/dev/query', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query: query })
+        })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -206,166 +240,180 @@
             .catch(error => {
                 displayError('Query execution failed: ' + error);
             });
+    }
+
+    function displayResults(data, count) {
+        const resultsContainer = document.getElementById('resultsContainer');
+
+        if (!data || data.length === 0) {
+            resultsContainer.innerHTML = '<div class="text-center py-8 text-gray-500"><i class="fas fa-info-circle text-2xl mb-4"></i><p>Query executed successfully, but no results returned</p></div>';
+            return;
         }
 
-        function displayResults(data, count) {
-            const resultsContainer = document.getElementById('resultsContainer');
-            
-            if (!data || data.length === 0) {
-                resultsContainer.innerHTML = '<div class="text-center py-8 text-gray-500"><i class="fas fa-info-circle text-2xl mb-4"></i><p>Query executed successfully, but no results returned</p></div>';
-                return;
-            }
+        // Create table
+        const table = document.createElement('table');
+        table.className = 'w-full border-collapse border border-gray-300 dark:border-gray-700 text-sm';
 
-            // Create table
-            const table = document.createElement('table');
-            table.className = 'w-full border-collapse border border-gray-300';
-            
-            // Header
-            const thead = document.createElement('thead');
-            const headerRow = document.createElement('tr');
-            headerRow.className = 'bg-gray-100';
-            
-            Object.keys(data[0]).forEach(key => {
-                const th = document.createElement('th');
-                th.className = 'border border-gray-300 px-4 py-2 text-left font-semibold';
-                th.textContent = key;
-                headerRow.appendChild(th);
-            });
-            
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-            
-            // Body
-            const tbody = document.createElement('tbody');
-            data.forEach(row => {
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-50';
-                
-                Object.values(row).forEach(value => {
-                    const td = document.createElement('td');
-                    td.className = 'border border-gray-300 px-4 py-2';
-                    td.textContent = value !== null ? value : 'NULL';
-                    tr.appendChild(td);
-                });
-                
-                tbody.appendChild(tr);
-            });
-            
-            table.appendChild(tbody);
-            
-            // Results info
-            const info = document.createElement('div');
-            info.className = 'mb-4 p-3 bg-blue-50 rounded-lg';
-            info.innerHTML = `<i class="fas fa-info-circle mr-2"></i>Query executed successfully. ${count} rows returned.`;
-            
-            resultsContainer.innerHTML = '';
-            resultsContainer.appendChild(info);
-            resultsContainer.appendChild(table);
-        }
+        // Header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        headerRow.className = 'bg-gray-100 dark:bg-gray-700';
 
-        function displayError(error) {
-            const resultsContainer = document.getElementById('resultsContainer');
-            resultsContainer.innerHTML = `
-                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div class="flex items-center">
-                        <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
-                        <span class="font-semibold text-red-800">Query Error</span>
-                    </div>
-                    <p class="text-red-700 mt-2">${error}</p>
+        Object.keys(data[0]).forEach(key => {
+            const th = document.createElement('th');
+            th.className = 'border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100';
+            th.textContent = key;
+            headerRow.appendChild(th);
+        });
+
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Body
+        const tbody = document.createElement('tbody');
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-800 dark:text-gray-300';
+
+            Object.values(row).forEach(value => {
+                const td = document.createElement('td');
+                td.className = 'border border-gray-300 dark:border-gray-600 px-4 py-2';
+                td.textContent = value !== null ? value : 'NULL';
+                tr.appendChild(td);
+            });
+
+            tbody.appendChild(tr);
+        });
+
+        table.appendChild(tbody);
+
+        // Results info
+        const info = document.createElement('div');
+        info.className = 'mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-lg';
+        info.innerHTML = `<i class="fas fa-info-circle mr-2"></i>Query executed successfully. ${count} rows returned.`;
+
+        resultsContainer.innerHTML = '';
+        resultsContainer.appendChild(info);
+        resultsContainer.appendChild(table);
+    }
+
+    function displayError(error) {
+        const resultsContainer = document.getElementById('resultsContainer');
+        resultsContainer.innerHTML = `
+            <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-900 rounded-lg p-4">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-triangle text-red-600 dark:text-red-400 mr-2"></i>
+                    <span class="font-semibold text-red-800 dark:text-red-300">Query Error</span>
                 </div>
-            `;
-        }
+                <p class="text-red-700 dark:text-red-300 mt-2">${error}</p>
+            </div>
+        `;
+    }
 
-        function clearQuery() {
+    function clearQuery() {
+        if (window.editor) {
+            window.editor.setValue('');
+        } else {
             document.getElementById('sqlQuery').value = '';
-            document.getElementById('queryLength').textContent = '0';
+        }
+        document.getElementById('queryLength').textContent = '0';
+    }
+
+    function clearResults() {
+        document.getElementById('resultsContainer').innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-database text-4xl mb-4"></i><p>Execute a query to see results here</p></div>';
+    }
+
+    function formatQuery() {
+        // Simple query formatting
+        let query = '';
+        if (window.editor) {
+            query = window.editor.getValue();
+        } else {
+            query = document.getElementById('sqlQuery').value;
         }
 
-        function clearResults() {
-            document.getElementById('resultsContainer').innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-database text-4xl mb-4"></i><p>Execute a query to see results here</p></div>';
-        }
+        const formatted = query
+            .replace(/\\bSELECT\\b/gi, 'SELECT')
+            .replace(/\\bFROM\\b/gi, '\\nFROM')
+            .replace(/\\bWHERE\\b/gi, '\\nWHERE')
+            .replace(/\\bORDER BY\\b/gi, '\\nORDER BY')
+            .replace(/\\bGROUP BY\\b/gi, '\\nGROUP BY')
+            .replace(/\\bHAVING\\b/gi, '\\nHAVING')
+            .replace(/\\bLIMIT\\b/gi, '\\nLIMIT');
 
-        function formatQuery() {
-            // Simple query formatting
-            const query = document.getElementById('sqlQuery').value;
-            const formatted = query
-                .replace(/\bSELECT\b/gi, 'SELECT')
-                .replace(/\bFROM\b/gi, '\nFROM')
-                .replace(/\bWHERE\b/gi, '\nWHERE')
-                .replace(/\bORDER BY\b/gi, '\nORDER BY')
-                .replace(/\bGROUP BY\b/gi, '\nGROUP BY')
-                .replace(/\bHAVING\b/gi, '\nHAVING')
-                .replace(/\bLIMIT\b/gi, '\nLIMIT');
-            
+        if (window.editor) {
+            window.editor.setValue(formatted);
+        } else {
             document.getElementById('sqlQuery').value = formatted;
         }
+    }
 
-        function loadQuickQuery(type) {
-            const queries = {
-                'portfolio': 'SELECT * FROM portfolio_positions LIMIT 10;',
-                'trades': 'SELECT * FROM trade_log ORDER BY date DESC LIMIT 10;',
-                'cash': 'SELECT * FROM cash_balances;',
-                'users': 'SELECT * FROM user_funds;'
-            };
-            
+    function loadQuickQuery(type) {
+        const queries = {
+            'portfolio': 'SELECT * FROM portfolio_positions LIMIT 10;',
+            'trades': 'SELECT * FROM trade_log ORDER BY date DESC LIMIT 10;',
+            'cash': 'SELECT * FROM cash_balances;',
+            'users': 'SELECT * FROM user_funds;'
+        };
+
+        if (window.editor) {
+            window.editor.setValue(queries[type]);
+        } else {
             document.getElementById('sqlQuery').value = queries[type];
-            document.getElementById('queryLength').textContent = queries[type].length;
+        }
+        document.getElementById('queryLength').textContent = queries[type].length;
+    }
+
+    function updateQueryHistory() {
+        const historyContainer = document.getElementById('queryHistory');
+
+        if (queryHistory.length === 0) {
+            historyContainer.innerHTML = '<div class="text-gray-500 text-sm">No queries executed yet</div>';
+            return;
         }
 
-        function updateQueryHistory() {
-            const historyContainer = document.getElementById('queryHistory');
-            
-            if (queryHistory.length === 0) {
-                historyContainer.innerHTML = '<div class="text-gray-500 text-sm">No queries executed yet</div>';
-                return;
-            }
-            
-            historyContainer.innerHTML = queryHistory.slice(0, 10).map((item, index) => `
-                <div class="border rounded-lg p-2 cursor-pointer hover:bg-gray-50" onclick="loadHistoryQuery(${index})">
-                    <div class="text-sm font-mono text-gray-800 truncate">${item.query}</div>
-                    <div class="text-xs text-gray-500">${item.timestamp}</div>
-                </div>
-            `).join('');
-        }
+        historyContainer.innerHTML = queryHistory.slice(0, 10).map((item, index) => \`
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50" onclick="loadHistoryQuery(\${index})">
+                <div class="text-sm font-mono text-gray-800 dark:text-gray-300 truncate">\${item.query}</div>
+                <div class="text-xs text-gray-500">\${item.timestamp}</div>
+            </div>
+        \`).join('');
+    }
 
-        function loadHistoryQuery(index) {
-            const item = queryHistory[index];
+    function loadHistoryQuery(index) {
+        const item = queryHistory[index];
+        if (window.editor) {
+            window.editor.setValue(item.query);
+        } else {
             document.getElementById('sqlQuery').value = item.query;
-            document.getElementById('queryLength').textContent = item.query.length;
         }
+        document.getElementById('queryLength').textContent = item.query.length;
+    }
 
-        function exportResults() {
-            const resultsContainer = document.getElementById('resultsContainer');
-            const table = resultsContainer.querySelector('table');
-            
-            if (!table) {
-                alert('No results to export');
-                return;
-            }
-            
-            // Convert table to CSV
-            const rows = Array.from(table.querySelectorAll('tr'));
-            const csv = rows.map(row => 
-                Array.from(row.querySelectorAll('th, td')).map(cell => 
-                    `"${cell.textContent.replace(/"/g, '""')}"`
-                ).join(',')
-            ).join('\n');
-            
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'query_results.csv';
-            a.click();
-            window.URL.revokeObjectURL(url);
+    function exportResults() {
+        const resultsContainer = document.getElementById('resultsContainer');
+        const table = resultsContainer.querySelector('table');
+        
+        if (!table) {
+            alert('No results to export');
+            return;
         }
-    </script>
-
-    <!-- Footer -->
-    <footer class="bg-gray-800 text-white py-4 mt-auto">
-        <div class="container mx-auto px-4 text-center text-sm">
-            <p>Build: {{ build_timestamp|default('Development') }}</p>
-        </div>
-    </footer>
-</body>
-</html>
+        
+        // Convert table to CSV
+        const rows = Array.from(table.querySelectorAll('tr'));
+        const csv = rows.map(row => 
+            Array.from(row.querySelectorAll('th, td')).map(cell => 
+                \`"\${cell.textContent.replace(/"/g, '""')}"\`
+            ).join(',')
+        ).join('\\n');
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'query_results.csv';
+        a.click();
+        window.URL.revokeObjectURL(url);
+    }
+</script>
+{% endblock %}

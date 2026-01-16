@@ -1475,10 +1475,12 @@ def api_recent_trades():
 @app.route('/dev')
 @require_auth
 def dev_home():
-    """Developer tools home page"""
+    """Developer home page"""
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    return render_template('dev_home.html')
+    
+    nav_context = get_navigation_context(current_page='dev_home')
+    return render_template('dev_home.html', **nav_context)
 
 @app.route('/dev/sql')
 @require_auth
@@ -1486,7 +1488,9 @@ def sql_interface():
     """SQL query interface for debugging"""
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    return render_template('sql_interface.html')
+    
+    nav_context = get_navigation_context(current_page='sql_interface')
+    return render_template('sql_interface.html', **nav_context)
 
 @app.route('/dev/dashboard')
 @require_auth
@@ -1494,7 +1498,9 @@ def dev_dashboard():
     """Developer dashboard with key metrics"""
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    return render_template('dev_dashboard.html')
+    
+    nav_context = get_navigation_context(current_page='dev_dashboard')
+    return render_template('dev_dashboard.html', **nav_context)
 
 @app.route('/api/dev/query', methods=['POST'])
 @require_auth
