@@ -9,7 +9,7 @@ import json
 from auth import require_auth
 from flask_auth_utils import get_user_email_flask
 from user_preferences import get_user_theme, get_user_currency, get_user_selected_fund, get_user_preference
-from flask_data_utils import fetch_dividend_log_flask
+from flask_data_utils import fetch_dividend_log_flask, get_supabase_client_flask
 from chart_utils import create_currency_exposure_chart
 from streamlit_utils import (
     get_current_positions,
