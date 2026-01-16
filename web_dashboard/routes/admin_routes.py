@@ -2195,6 +2195,35 @@ def api_add_blacklist():
         return jsonify({"error": str(e)}), 500
 
 @admin_bp.route('/api/admin/ai/blacklist', methods=['DELETE'])
+@require_admin
+def api_delete_blacklist():
+    """Remove domain from blacklist"""
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot modify blacklist"}), 403
+            
+        domain = request.args.get('domain')
+        
+        if not domain:
+            return jsonify({"error": "Domain required"}), 400
+            
+        client = SupabaseClient(use_service_role=True)
+        # Using the correct table name 'research_domain_health' based on usage in admin_ai_settings.py
+        # Or 'research_blacklist' based on the GET/POST implementation in admin_routes.py?
+        # Let's check admin_routes.py lines 2165 (GET) and 2187 (POST) to be consistent.
+        # Line 2165: client.supabase.table("research_blacklist").select("*")
+        # Line 2187: client.supabase.table("research_blacklist").insert(...)
+        # So I should use "research_blacklist". 
+        # Wait, the streamlit page admin_ai_settings.py uses "research_domain_health" (Line 136).
+        # But admin_routes.py seems to use "research_blacklist" for the API.
+        # Let's double check admin_routes.py again to be sure which table it's using for GET/POST.
+        client.supabase.table("research_blacklist").delete().eq("domain", domain).execute()
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error deleting from blacklist: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 # Contributor Management Routes
 @admin_bp.route('/v2/admin/contributors')
