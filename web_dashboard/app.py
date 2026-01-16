@@ -867,19 +867,15 @@ def dashboard_fallback():
 def index():
     """Redirect to dashboard if authenticated, otherwise to auth page"""
     try:
-        from auth import is_authenticated
-        if is_authenticated():
+        from flask_auth_utils import is_authenticated_flask
+        if is_authenticated_flask():
             return redirect(url_for('dashboard.dashboard_page'))
         else:
             return redirect(url_for('auth_page'))
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
-        # On error, try dashboard as fallback
-        try:
-            return redirect(url_for('dashboard.dashboard_page'))
-        except Exception:
-            # Final fallback - redirect to auth
-            return redirect('/auth')
+        # On error, redirect to auth as safe fallback
+        return redirect('/auth')
 
 @app.route('/auth')
 def auth_page():

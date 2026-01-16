@@ -450,9 +450,9 @@ class SupabaseClient:
             return False
     
     def get_current_positions(self, fund: Optional[str] = None) -> List[Dict]:
-        """Get current portfolio positions, optionally filtered by fund"""
+        """Get current positions (wrapper for latest_positions table)"""
         try:
-            query = self.supabase.table("current_positions").select("*")
+            query = self.supabase.table("latest_positions").select("*")
             if fund:
                 query = query.eq("fund", fund)
             result = query.execute()
