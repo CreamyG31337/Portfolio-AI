@@ -2089,7 +2089,11 @@ def api_ai_status():
             logger.error(f"Error checking Ollama health: {e}", exc_info=True)
              
         # Postgres
-        pg_status = get_postgres_status_cached()
+        pg_connected, pg_stats = get_postgres_status_cached()
+        pg_status = {
+            "status": "healthy" if pg_connected else "error",
+            "message": f"Connected - {pg_stats.get('total', 0)} articles" if pg_connected and pg_stats else "Not connected"
+        }
         
         return jsonify({
             "ollama": {"status": ollama_ok, "message": ollama_msg},
