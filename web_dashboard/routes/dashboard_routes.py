@@ -1043,12 +1043,11 @@ def get_dividend_data():
     fund = request.args.get('fund')
     if not fund or fund.lower() == 'all':
         fund = None
-        
-    display_currency = get_user_currency() or 'CAD'
-    
-    logger.info(f"[Dividend API] Request received - fund={fund}, currency={display_currency}")
     
     try:
+        display_currency = get_user_currency() or 'CAD'
+        logger.info(f"[Dividend API] Request received - fund={fund}, currency={display_currency}")
+        
         # Fetch dividend data with company names (join with securities table like trade_log does)
         client = get_supabase_client_flask()
         if not client:
