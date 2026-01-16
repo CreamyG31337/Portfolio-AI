@@ -309,7 +309,11 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
                 base_domain = ".".join(parsed.netloc.split(".")[-2:])
                 domain = f".{base_domain}"
                 
-                logger.debug(f"Setting cookies with domain: {domain}")
+                logger.info(f"Setting cookies with domain: {domain}")
+                
+                # Log what cookies we're trying to set
+                cookie_names = [k for k in existing_cookies.keys() if not k.startswith("_")]
+                logger.info(f"Attempting to set cookies: {', '.join(cookie_names)}")
                 
                 # Add cookies to context (skip metadata fields)
                 cookie_list = []
@@ -318,11 +322,22 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
                     if name.startswith("_"):
                         continue
                     
-                    if name.startswith("__Secure-") or "PSID" in name:
+                    # Validate cookie value is not empty
+                    if not value or not value.strip():
+                        logger.warning(f"Skipping empty cookie: {name}")
+                        continue
+                    
+                    # Try both domain formats - sometimes cookies need exact domain match
+                    domains_to_try = [
+                        domain,  # .google.com
+                        parsed.netloc,  # gemini.google.com (exact match)
+                    ]
+                    
+                    for cookie_domain in domains_to_try:
                         cookie_list.append({
                             "name": name,
                             "value": value,
-                            "domain": domain,  # Now uses .google.com format
+                            "domain": cookie_domain,
                             "path": "/",
                             "secure": True,
                             "httpOnly": True,
@@ -330,8 +345,14 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
                         })
                 
                 if cookie_list:
-                    context.add_cookies(cookie_list)
-                    logger.info(f"Added {len(cookie_list)} existing cookies to browser context")
+                    try:
+                        context.add_cookies(cookie_list)
+                        logger.info(f"Added {len(cookie_list)} cookie entries to browser context")
+                    except Exception as e:
+                        logger.error(f"Failed to add cookies to context: {e}")
+                        # Continue anyway - might still work
+                else:
+                    logger.warning("No valid cookies to add to browser context")
             
             # Create page and navigate
             page = context.new_page()
@@ -387,14 +408,49 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
             all_cookies = context.cookies()
             logger.info(f"Extracted {len(all_cookies)} cookies from browser")
             
+            # Log what cookies we actually found (for debugging)
+            if all_cookies:
+                cookie_names = [c.get("name", "unknown") for c in all_cookies]
+                logger.info(f"Found cookies: {', '.join(cookie_names)}")
+            
+            # Also try to get cookies from the page URL specifically
+            # Sometimes cookies are domain-specific and need to be queried by URL
+            try:
+                page_cookies = page.context.cookies([service_url])
+                if page_cookies:
+                    logger.info(f"Found {len(page_cookies)} cookies for page URL")
+                    # Merge page cookies with context cookies
+                    for cookie in page_cookies:
+                        # Check if we already have this cookie
+                        existing = next((c for c in all_cookies if c.get("name") == cookie.get("name")), None)
+                        if not existing:
+                            all_cookies.append(cookie)
+            except Exception as e:
+                logger.debug(f"Could not get page-specific cookies: {e}")
+            
             # Convert to dictionary format
             cookies_dict = {}
             for cookie in all_cookies:
                 cookies_dict[cookie["name"]] = cookie["value"]
             
+            # Log all cookie names found (for debugging)
+            if cookies_dict:
+                logger.info(f"All cookie names: {list(cookies_dict.keys())}")
+            
             # Check if we got the required cookies
             if "__Secure-1PSID" not in cookies_dict:
                 logger.error("Failed to get __Secure-1PSID cookie")
+                logger.error(f"Available cookies: {list(cookies_dict.keys())}")
+                
+                # Check if existing cookies were loaded
+                if existing_cookies:
+                    existing_names = [k for k in existing_cookies.keys() if not k.startswith("_")]
+                    logger.error(f"Existing cookies that were loaded: {existing_names}")
+                    if "__Secure-1PSID" in existing_cookies:
+                        logger.error("⚠️  __Secure-1PSID was in existing cookies but not found after refresh")
+                        logger.error("   This suggests the cookies may be expired or invalid")
+                        logger.error("   You may need to manually extract fresh cookies")
+                
                 if detected_challenges:
                     logger.error("⚠️  This may be due to a security challenge (2FA/verification required)")
                     logger.error("   You may need to manually extract fresh cookies and update the Woodpecker secret")

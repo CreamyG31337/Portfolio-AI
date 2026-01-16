@@ -901,7 +901,7 @@ def login():
         response = requests.post(
             f"{os.getenv('SUPABASE_URL')}/auth/v1/token?grant_type=password",
             headers={
-                "apikey": os.getenv("SUPABASE_ANON_KEY"),
+                "apikey": os.getenv("SUPABASE_PUBLISHABLE_KEY"),
                 "Content-Type": "application/json"
             },
             json={
