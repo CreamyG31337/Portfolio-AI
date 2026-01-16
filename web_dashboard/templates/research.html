@@ -196,20 +196,20 @@
 
             <div class="mb-4 relative">
                 <div id="summary-{{ article.id }}"
-                    class="prose prose-sm max-w-none whitespace-pre-line overflow-hidden transition-all duration-300 ease-in-out"
+                    class="prose prose-sm dark:prose-invert max-w-none whitespace-pre-line overflow-hidden transition-all duration-300 ease-in-out"
                     style="max-height: 10rem;">
                     {{ full_text }}
                 </div>
 
                 {% if has_more %}
-                <!-- Gradient fade overlay (only visible when collapsed) -->
+                <!-- Gradient fade overlay (theme-aware) -->
                 <div id="fade-{{ article.id }}"
-                    class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent pointer-events-none transition-opacity duration-300">
+                    class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white dark:from-gray-800 to-transparent pointer-events-none transition-opacity duration-300">
                 </div>
 
                 <!-- Inline expand/collapse button -->
                 <button id="toggle-btn-{{ article.id }}" onclick="toggleSummary('{{ article.id }}')"
-                    class="text-blue-600 hover:text-blue-800 text-sm font-medium focus:outline-none mt-2 inline-flex items-center transition-colors">
+                    class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium focus:outline-none mt-2 inline-flex items-center transition-colors">
                     <span id="toggle-text-{{ article.id }}">Show more</span>
                     <i id="toggle-icon-{{ article.id }}"
                         class="fas fa-chevron-down ml-1 transition-transform duration-300"></i>
@@ -398,7 +398,8 @@
             if (index >= articleIds.length) {
                 // All done
                 progressBar.style.width = '100%';
-                statusText.textContent = 'Re-analysis complete!';
+                progressBar.classList.remove('animate-pulse');
+                statusText.textContent = `✅ Re-analysis complete! (${successCount} succeeded, ${errorCount} failed)`;
                 reanalyzeBtn.disabled = false;
 
                 // Show summary
@@ -417,9 +418,24 @@
             }
 
             const articleId = articleIds[index];
-            statusText.textContent = `Re-analyzing article ${index + 1}/${total}...`;
+            const articleNum = index + 1;
+
+            // Update overall progress bar (based on completed articles)
+            const overallProgress = (completed / total) * 100;
+            progressBar.style.width = `${overallProgress}%`;
+
+            // Start timer for this article
+            let startTime = Date.now();
+            let timerInterval = null;
+
+            const updateTimer = () => {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                return `${elapsed}s`;
+            };
 
             try {
+                statusText.textContent = `[${articleNum}/${total}] Preparing request...`;
+
                 // Use Server-Sent Events for streaming progress
                 const response = await fetch('/v2/research/reanalyze/stream', {
                     method: 'POST',
@@ -436,12 +452,18 @@
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
+                // Start timer update interval
+                timerInterval = setInterval(() => {
+                    // Timer will be cleared when status changes
+                }, 100);
+
                 // Read SSE stream
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
+                let lastStatus = '';
 
-                // Add pulse animation to progress bar
+                // Add pulse animation to progress bar during generation
                 progressBar.classList.add('animate-pulse');
 
                 while (true) {
@@ -460,27 +482,36 @@
                                 // Handle different event types
                                 if (eventData.error) {
                                     console.error('SSE Error:', eventData.error);
-                                    statusText.textContent = `Error: ${eventData.error}`;
+                                    statusText.textContent = `[${articleNum}/${total}] ❌ Error: ${eventData.error}`;
+                                    showMessage(`Article ${articleNum}: ${eventData.error}`, 'error');
                                     errorCount++;
                                     break;
-                                } else if (eventData.status === 'generating') {
-                                    // Update progress bar and status
-                                    const progress = eventData.progress || 0;
-                                    const baseProgress = (completed / total) * 100;
-                                    const articleProgress = progress / total;
-                                    progressBar.style.width = `${baseProgress + articleProgress}%`;
-
-                                    statusText.textContent = `${eventData.message} [${eventData.tokens || 0} tokens]`;
-                                } else if (eventData.status === 'complete') {
-                                    progressBar.classList.remove('animate-pulse');
-                                    successCount++;
                                 } else if (eventData.status) {
-                                    // Other status updates (fetching, initializing, processing, embedding, saving)
-                                    statusText.textContent = eventData.message || eventData.status;
-                                    if (eventData.progress !== undefined) {
-                                        const baseProgress = (completed / total) * 100;
-                                        const articleProgress = eventData.progress / total;
-                                        progressBar.style.width = `${baseProgress + articleProgress}%`;
+                                    lastStatus = eventData.status;
+                                    const elapsed = updateTimer();
+
+                                    // Map status to user-friendly messages with icons
+                                    const statusMessages = {
+                                        'fetching': `📄 Fetching article from database... (${elapsed})`,
+                                        'initializing': `🤖 Connecting to Ollama (${modelName})... (${elapsed})`,
+                                        'generating': `✨ Generating summary... (${elapsed})`,
+                                        'processing': `⚙️ Processing AI response... (${elapsed})`,
+                                        'embedding': `🔢 Generating embedding vector... (${elapsed})`,
+                                        'saving': `💾 Saving to database... (${elapsed})`,
+                                        'complete': `✅ Complete in ${elapsed}`
+                                    };
+
+                                    const statusMsg = statusMessages[eventData.status] || eventData.message || eventData.status;
+                                    statusText.textContent = `[${articleNum}/${total}] ${statusMsg}`;
+
+                                    // Show token count for generating status
+                                    if (eventData.status === 'generating' && eventData.tokens) {
+                                        statusText.textContent = `[${articleNum}/${total}] ✨ Generating summary... ${eventData.tokens} tokens (${elapsed})`;
+                                    }
+
+                                    if (eventData.status === 'complete') {
+                                        progressBar.classList.remove('animate-pulse');
+                                        successCount++;
                                     }
                                 }
                             } catch (e) {
@@ -496,12 +527,21 @@
                 errorCount++;
                 progressBar.classList.remove('animate-pulse');
                 console.error(`Error re-analyzing article ${articleId}:`, error);
-                statusText.textContent = `Error: ${error.message}`;
+                const elapsed = updateTimer();
+                statusText.textContent = `[${articleNum}/${total}] ❌ Error after ${elapsed}: ${error.message}`;
+                showMessage(`Article ${articleNum}: ${error.message}`, 'error');
+            } finally {
+                // Clear timer interval
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                }
             }
 
             completed++;
-            const progress = (completed / total) * 100;
-            progressBar.style.width = `${progress}%`;
+
+            // Update overall progress bar
+            const finalProgress = (completed / total) * 100;
+            progressBar.style.width = `${finalProgress}%`;
 
             // Process next article
             await processNext(index + 1);

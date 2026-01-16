@@ -252,7 +252,7 @@ else:
         st.subheader("📊 AI Service Status")
         st.caption("Check status of AI services")
         
-        col_status1, col_status2 = st.columns(2)
+        col_status1, col_status2, col_status3 = st.columns(3)
         
         with col_status1:
             st.markdown("#### Ollama Status")
@@ -283,6 +283,191 @@ else:
                     st.error("❌ Research database not connected")
             except Exception as e:
                 st.warning(f"Could not check research database: {e}")
+        
+        with col_status3:
+            st.markdown("#### WebAI Cookie Status")
+            try:
+                from webai_wrapper import check_cookie_config, _load_cookies
+                
+                # Check cookie configuration
+                config_status = check_cookie_config()
+                
+                # Determine overall status
+                has_cookies = False
+                cookie_source = None
+                
+                if config_status.get("env_var_exists"):
+                    has_cookies = config_status.get("has_secure_1psid", False)
+                    cookie_source = "Environment Variable"
+                elif config_status.get("cookie_files", {}).get("webai_cookies.json", {}).get("root_exists"):
+                    has_cookies = True
+                    cookie_source = "Cookie File (root)"
+                elif config_status.get("cookie_files", {}).get("webai_cookies.json", {}).get("web_exists"):
+                    has_cookies = True
+                    cookie_source = "Cookie File (web_dashboard)"
+                elif config_status.get("cookie_files", {}).get("ai_service_cookies.json", {}).get("root_exists"):
+                    has_cookies = True
+                    cookie_source = "Cookie File (ai_service_cookies.json)"
+                
+                # Check shared volume (Docker container)
+                shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+                if shared_cookie_path.exists():
+                    has_cookies = True
+                    cookie_source = "Shared Volume (/shared/cookies)"
+                
+                if has_cookies:
+                    st.success("✅ Cookies configured")
+                    if cookie_source:
+                        st.caption(f"Source: {cookie_source}")
+                    
+                    # Try to load cookies to verify they're valid
+                    try:
+                        secure_1psid, secure_1psidts = _load_cookies()
+                        if secure_1psid:
+                            st.info(f"✅ __Secure-1PSID: Found")
+                            if secure_1psidts:
+                                st.info(f"✅ __Secure-1PSIDTS: Found")
+                            else:
+                                st.warning("⚠️ __Secure-1PSIDTS: Missing (optional)")
+                        else:
+                            st.error("❌ Cookies found but invalid format")
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not load cookies: {str(e)[:50]}")
+                else:
+                    st.error("❌ No cookies found")
+                    st.caption("Configure cookies to use WebAI models")
+                    
+            except ImportError:
+                st.warning("⚠️ WebAI wrapper not available")
+            except Exception as e:
+                st.error(f"Error checking cookies: {e}")
+        
+        # WebAI Cookie Details and Testing
+        st.markdown("---")
+        with st.expander("🔍 WebAI Cookie Details & Testing", expanded=False):
+            try:
+                from webai_wrapper import check_cookie_config, _load_cookies, test_webai_connection
+                import json
+                
+                # Show detailed configuration
+                st.markdown("#### Cookie Configuration Details")
+                config_status = check_cookie_config()
+                
+                col_detail1, col_detail2 = st.columns(2)
+                
+                with col_detail1:
+                    st.markdown("**Environment Variables:**")
+                    if config_status.get("env_var_exists"):
+                        st.success("✅ WEBAI_COOKIES_JSON is set")
+                        st.caption(f"Length: {config_status.get('env_var_length', 0)} chars")
+                        if config_status.get("json_parse_success"):
+                            st.success("✅ JSON parsing: Valid")
+                            if config_status.get("has_secure_1psid"):
+                                st.success("✅ Has __Secure-1PSID")
+                            else:
+                                st.error("❌ Missing __Secure-1PSID")
+                            if config_status.get("has_secure_1psidts"):
+                                st.success("✅ Has __Secure-1PSIDTS")
+                            else:
+                                st.warning("⚠️ Missing __Secure-1PSIDTS (optional)")
+                        else:
+                            st.error("❌ JSON parsing: Failed")
+                            if config_status.get("json_parse_error"):
+                                st.caption(f"Error: {str(config_status.get('json_parse_error'))[:100]}")
+                    else:
+                        st.info("ℹ️ WEBAI_COOKIES_JSON not set")
+                    
+                    # Check individual env vars
+                    if config_status.get("individual_vars", {}).get("WEBAI_SECURE_1PSID"):
+                        st.success("✅ WEBAI_SECURE_1PSID is set")
+                    if config_status.get("individual_vars", {}).get("WEBAI_SECURE_1PSIDTS"):
+                        st.success("✅ WEBAI_SECURE_1PSIDTS is set")
+                
+                with col_detail2:
+                    st.markdown("**Cookie Files:**")
+                    cookie_files = config_status.get("cookie_files", {})
+                    for name, locations in cookie_files.items():
+                        if locations.get("root_exists") or locations.get("web_exists"):
+                            st.success(f"✅ {name} found")
+                            if locations.get("root_exists"):
+                                st.caption(f"  • Root: {Path('.').resolve() / name}")
+                            if locations.get("web_exists"):
+                                st.caption(f"  • Web: {Path('web_dashboard') / name}")
+                        else:
+                            st.info(f"ℹ️ {name} not found")
+                    
+                    # Check shared volume (Docker)
+                    shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+                    if shared_cookie_path.exists():
+                        st.success("✅ Shared volume cookie file exists")
+                        st.caption(f"  • {shared_cookie_path}")
+                        try:
+                            with open(shared_cookie_path, 'r') as f:
+                                shared_cookies = json.load(f)
+                            if "__Secure-1PSID" in shared_cookies:
+                                st.success("  ✅ Valid JSON with __Secure-1PSID")
+                            else:
+                                st.warning("  ⚠️ JSON missing __Secure-1PSID")
+                        except Exception as e:
+                            st.error(f"  ❌ Error reading file: {str(e)[:50]}")
+                    else:
+                        st.info("ℹ️ Shared volume cookie file not found")
+                        st.caption("  • /shared/cookies/webai_cookies.json")
+                
+                # Cookie Test Section
+                st.markdown("---")
+                st.markdown("#### Test Cookie Connection")
+                st.caption("⚠️ This will make a minimal API call to validate cookies. Use sparingly to avoid rate limiting.")
+                
+                if st.button("🧪 Test Cookie Connection", type="primary", key="test_webai_cookie"):
+                    with st.spinner("Testing cookie connection..."):
+                        try:
+                            # Find cookie file to test
+                            cookie_file = None
+                            shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+                            if shared_cookie_path.exists():
+                                cookie_file = str(shared_cookie_path)
+                            else:
+                                # Try other locations
+                                project_root = Path(__file__).parent.parent.parent
+                                for name in ["webai_cookies.json", "ai_service_cookies.json"]:
+                                    test_path = project_root / name
+                                    if test_path.exists():
+                                        cookie_file = str(test_path)
+                                        break
+                            
+                            # Run test
+                            test_result = test_webai_connection(cookies_file=cookie_file)
+                            
+                            if test_result.get("success"):
+                                st.success("✅ Cookie test successful!")
+                                st.info(f"Response received: {test_result.get('details', {}).get('response_length', 0)} chars")
+                                if test_result.get("details", {}).get("has_1psid"):
+                                    st.success("✅ __Secure-1PSID: Valid")
+                                if test_result.get("details", {}).get("has_1psidts"):
+                                    st.success("✅ __Secure-1PSIDTS: Valid")
+                            else:
+                                st.error(f"❌ Cookie test failed: {test_result.get('message', 'Unknown error')}")
+                                if test_result.get("details", {}).get("error_type") == "missing_cookies":
+                                    st.info("💡 No cookies found. Configure cookies first.")
+                                else:
+                                    error_details = test_result.get("details", {})
+                                    if error_details.get("error"):
+                                        with st.expander("Error Details"):
+                                            st.code(error_details.get("error"))
+                        except Exception as e:
+                            st.error(f"❌ Test error: {e}")
+                            import traceback
+                            with st.expander("Error Details"):
+                                st.code(traceback.format_exc())
+                
+            except ImportError as e:
+                st.warning(f"⚠️ WebAI wrapper not available: {e}")
+            except Exception as e:
+                st.error(f"Error loading cookie details: {e}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
                 
     except Exception as e:
         st.error(f"Error loading AI settings: {e}")
