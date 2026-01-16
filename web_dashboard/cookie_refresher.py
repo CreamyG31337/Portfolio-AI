@@ -64,6 +64,14 @@ try:
     log_path = Path(LOG_FILE)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     
+    # Create placeholder log file if it doesn't exist
+    if not log_path.exists():
+        try:
+            log_path.touch()
+            print(f"[INFO] Created log file: {log_path}")
+        except Exception as touch_error:
+            print(f"[WARNING] Could not create log file: {touch_error}")
+    
     file_handler = RotatingFileHandler(
         LOG_FILE,
         maxBytes=LOG_MAX_BYTES,
@@ -73,9 +81,12 @@ try:
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
+    print(f"[INFO] File logging configured: {LOG_FILE}")
 except Exception as e:
     # If file logging fails, continue with stdout only
     print(f"[WARNING] Could not setup file logging: {e}")
+    print(f"[WARNING] Log file location: {LOG_FILE}")
+    print(f"[WARNING] Continuing with stdout-only logging")
 
 # Console handler (stdout)
 console_handler = logging.StreamHandler(sys.stdout)
