@@ -187,7 +187,6 @@ def generate_supabase_seed(supabase_url, output_path):
                 'exchange_rates',
                 'system_settings',
                 'congress_trades',
-                'congress_trades_staging',
                 'politicians',
                 'committee_assignments',
                 'committees',
