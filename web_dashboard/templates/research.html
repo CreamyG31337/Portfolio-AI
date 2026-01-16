@@ -193,7 +193,7 @@
                 {% set continuation_text = '' %}
             {% endif %}
             
-            <div class="prose prose-sm max-w-none mb-4 whitespace-pre-wrap">
+            <div class="prose prose-sm max-w-none mb-4 whitespace-pre-line">
                 {{ preview_text }}
             </div>
 
@@ -213,7 +213,7 @@
             <!-- Expandable Content (Hidden by default) -->
             {% if has_more %}
             <div id="content-{{ article.id }}" class="hidden mt-4 pt-4 border-t border-gray-100">
-                <div class="prose prose-sm max-w-none whitespace-pre-wrap">
+                <div class="prose prose-sm max-w-none whitespace-pre-line">
                     {{ continuation_text }}
                 </div>
             </div>

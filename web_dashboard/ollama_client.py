@@ -767,6 +767,13 @@ If no tickers, sectors, themes, companies, or relationships are found, use empty
                 if not isinstance(summary_text, str):
                     summary_text = str(summary_text) if summary_text else ""
                 
+                # Normalize summary: strip leading whitespace from each line
+                # This removes extra tabs/spaces at the start of bullet points
+                if summary_text:
+                    lines = summary_text.split('\n')
+                    normalized_lines = [line.lstrip() for line in lines]
+                    summary_text = '\n'.join(normalized_lines).strip()
+                
                 # Extract Chain of Thought fields
                 claims = extract_strings(parsed.get("claims", []))
                 fact_check = parsed.get("fact_check", "")
