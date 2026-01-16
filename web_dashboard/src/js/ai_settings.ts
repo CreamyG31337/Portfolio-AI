@@ -20,13 +20,20 @@ interface SettingsResponse {
 
 interface BlacklistEntry {
     domain: string;
-    reason: string;
+    auto_blacklisted?: boolean;
+    auto_blacklisted_at?: string;
+    last_failure_reason?: string;
+    consecutive_failures?: number;
+    updated_at?: string;
+    // Legacy fields for compatibility
+    reason?: string;
     added_at?: string;
     added_by?: string;
 }
 
 interface BlacklistResponse {
-    blacklist: BlacklistEntry[];
+    blacklist?: BlacklistEntry[];
+    error?: string;
 }
 
 // DOM Elements
@@ -167,11 +174,30 @@ async function loadBlacklist() {
 
     try {
         const response = await fetch('/api/admin/ai/blacklist');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const data: BlacklistResponse = await response.json();
 
         blacklistTableBody.innerHTML = '';
 
-        if (data.blacklist.length === 0) {
+        // Handle error response
+        if (data.error) {
+            const row = document.createElement('tr');
+            row.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700';
+            const cell = document.createElement('td');
+            cell.colSpan = 3;
+            cell.className = 'px-6 py-4 text-center text-red-600';
+            cell.textContent = `Error: ${data.error}`;
+            row.appendChild(cell);
+            blacklistTableBody.appendChild(row);
+            return;
+        }
+
+        // Handle missing blacklist array
+        if (!data.blacklist || data.blacklist.length === 0) {
             const row = document.createElement('tr');
             row.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700';
             const cell = document.createElement('td');
@@ -183,9 +209,14 @@ async function loadBlacklist() {
             return;
         }
 
-        data.blacklist.forEach(entry => {
+        data.blacklist!.forEach(entry => {
             const row = document.createElement('tr');
             row.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
+            
+            // Use reason or last_failure_reason
+            const reason = entry.reason || entry.last_failure_reason || 'Manual addition';
+            // Use added_at or auto_blacklisted_at
+            const addedAt = entry.added_at || entry.auto_blacklisted_at || entry.updated_at || 'Unknown';
 
             // Domain Cell
             const domainCell = document.createElement('td');
@@ -196,7 +227,7 @@ async function loadBlacklist() {
             // Reason Cell
             const reasonCell = document.createElement('td');
             reasonCell.className = 'px-6 py-4';
-            reasonCell.textContent = entry.reason;
+            reasonCell.textContent = reason;
             row.appendChild(reasonCell);
 
             // Action Cell

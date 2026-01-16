@@ -2162,7 +2162,8 @@ def api_get_blacklist():
     """Get research blacklist"""
     try:
         client = SupabaseClient(use_service_role=True)
-        res = client.supabase.table("research_blacklist").select("*").order("added_at", desc=True).execute()
+        # Query research_domain_health table for blacklisted domains
+        res = client.supabase.table("research_domain_health").select("*").eq("auto_blacklisted", True).order("auto_blacklisted_at", desc=True).execute()
         return jsonify({"blacklist": res.data or []})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2184,10 +2185,18 @@ def api_add_blacklist():
             return jsonify({"error": "Domain required"}), 400
             
         client = SupabaseClient(use_service_role=True)
-        client.supabase.table("research_blacklist").insert({
+        from datetime import datetime
+        now = datetime.now().isoformat()
+        
+        # Upsert into research_domain_health table
+        client.supabase.table("research_domain_health").upsert({
             "domain": domain,
-            "reason": reason,
-            "added_by": "admin" # could track user email
+            "auto_blacklisted": True,
+            "consecutive_failures": 999,  # High count to ensure it's blacklisted
+            "auto_blacklisted_at": now,
+            "last_attempt_at": now,
+            "last_failure_reason": reason,
+            "updated_at": now
         }).execute()
         
         return jsonify({"success": True})
@@ -2209,16 +2218,15 @@ def api_delete_blacklist():
             return jsonify({"error": "Domain required"}), 400
             
         client = SupabaseClient(use_service_role=True)
-        # Using the correct table name 'research_domain_health' based on usage in admin_ai_settings.py
-        # Or 'research_blacklist' based on the GET/POST implementation in admin_routes.py?
-        # Let's check admin_routes.py lines 2165 (GET) and 2187 (POST) to be consistent.
-        # Line 2165: client.supabase.table("research_blacklist").select("*")
-        # Line 2187: client.supabase.table("research_blacklist").insert(...)
-        # So I should use "research_blacklist". 
-        # Wait, the streamlit page admin_ai_settings.py uses "research_domain_health" (Line 136).
-        # But admin_routes.py seems to use "research_blacklist" for the API.
-        # Let's double check admin_routes.py again to be sure which table it's using for GET/POST.
-        client.supabase.table("research_blacklist").delete().eq("domain", domain).execute()
+        from datetime import datetime
+        now = datetime.now().isoformat()
+        
+        # Update research_domain_health table to remove from blacklist
+        client.supabase.table("research_domain_health").update({
+            "auto_blacklisted": False,
+            "consecutive_failures": 0,
+            "updated_at": now
+        }).eq("domain", domain).execute()
         
         return jsonify({"success": True})
     except Exception as e:
@@ -2491,21 +2499,3 @@ def api_admin_update_contributor(contributor_id):
     except Exception as e:
         logger.error(f"Error updating contributor: {e}", exc_info=True)
         return jsonify({"error": f"Failed to update contributor: {str(e)}"}), 500
-@require_admin
-def api_remove_blacklist():
-    """Remove domain from blacklist"""
-    try:
-        from flask_auth_utils import can_modify_data_flask
-        if not can_modify_data_flask():
-            return jsonify({"error": "Read-only admin cannot modify blacklist"}), 403
-            
-        domain = request.args.get('domain')
-        if not domain:
-            return jsonify({"error": "Domain required"}), 400
-            
-        client = SupabaseClient(use_service_role=True)
-        client.supabase.table("research_blacklist").delete().eq("domain", domain).execute()
-        
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
