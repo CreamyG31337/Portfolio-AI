@@ -8,6 +8,13 @@
 <link href="/assets/css/ai_assistant.css" rel="stylesheet">
 {% endblock %}
 
+{% block extra_scripts %}
+<!-- Markdown rendering library -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- DOMPurify for XSS protection -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="flex flex-col h-[calc(100vh-200px)]">
     <!-- Header with Clear Chat button -->
@@ -301,12 +308,6 @@
         </div>
     </div>
 </aside>
-
-<!-- Markdown rendering library -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
-<!-- DOMPurify for XSS protection -->
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
 
 <!-- AI Assistant Configuration (passed to TypeScript) -->
 <script id="ai-assistant-config" type="application/json">

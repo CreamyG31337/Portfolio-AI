@@ -1,0 +1,57 @@
+<base href="/">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Portfolio Dashboard{% endblock %}</title>
+
+<!-- Tailwind CSS - Production build (optimized, tree-shaken) -->
+<link href="/assets/css/tailwind.css" rel="stylesheet">
+
+<!-- Font Awesome -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+<!-- Theme CSS -->
+<link href="/assets/css/theme.css" rel="stylesheet">
+
+<!-- Flowbite CSS (required for components) -->
+<link href="https://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.css" rel="stylesheet" />
+
+<style>
+    .gradient-bg {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    /* Sync color-scheme with data-theme for consistency with Streamlit */
+    {% if user_theme in ['dark', 'midnight-tokyo', 'abyss'] %}
+    :root {
+        color-scheme: dark;
+    }
+    {% elif user_theme == 'light' %}
+    :root {
+        color-scheme: light;
+    }
+    {% endif %}
+
+    /* Sidebar collapse transitions */
+    .sidebar-text {
+        transition: opacity 0.3s ease-in-out, max-width 0.3s ease-in-out;
+        display: inline-block;
+    }
+
+    .sidebar-content {
+        transition: opacity 0.3s ease-in-out, max-height 0.3s ease-in-out;
+    }
+
+    .sidebar-select {
+        transition: opacity 0.3s ease-in-out;
+    }
+
+    .sidebar-badge {
+        transition: opacity 0.3s ease-in-out;
+    }
+</style>
+
+<!-- Theme Management Scripts -->
+<script type="module" src="/assets/js/theme.js"></script>
+<script type="module" src="/assets/js/chart_theme_utils.js"></script>
+
+{% block extra_head %}{% endblock %}
