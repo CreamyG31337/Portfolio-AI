@@ -1242,6 +1242,24 @@ def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     # Safely access next_run_time (may not be available when scheduler is stopped)
     next_run_time = getattr(job, 'next_run_time', None)
     
+    # Check if scheduler is stopped
+    scheduler = get_scheduler(create=False)
+    scheduler_stopped = (scheduler is None or (hasattr(scheduler, 'running') and not scheduler.running))
+    
+    # If next_run_time is None and scheduler is stopped, try to calculate from trigger
+    # When scheduler is running, APScheduler handles paused jobs correctly, so don't override
+    if next_run_time is None and scheduler_stopped and job.trigger is not None:
+        try:
+            # Calculate next fire time from trigger even when scheduler is stopped
+            now = datetime.now(timezone.utc)
+            # Some triggers need timezone-aware datetime
+            if hasattr(job.trigger, 'timezone') and job.trigger.timezone:
+                now = now.astimezone(job.trigger.timezone)
+            next_run_time = job.trigger.get_next_fire_time(None, now)
+        except Exception as e:
+            logger.debug(f"Could not calculate next_run_time from trigger for job {job.id}: {e}")
+            next_run_time = None
+    
     return {
         'id': job.id,
         'name': job.name or job.id,
@@ -1487,13 +1505,24 @@ def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
         # Safely access next_run_time (may not be available when scheduler is stopped)
         next_run_time = getattr(job, 'next_run_time', None)
         
+        # If next_run_time is None and scheduler is stopped, try to calculate from trigger
+        # When scheduler is running, APScheduler handles paused jobs correctly, so don't override
+        if next_run_time is None and scheduler_stopped and job.trigger is not None:
+            try:
+                # Calculate next fire time from trigger even when scheduler is stopped
+                now = datetime.now(timezone.utc)
+                # Some triggers need timezone-aware datetime
+                if hasattr(job.trigger, 'timezone') and job.trigger.timezone:
+                    now = now.astimezone(job.trigger.timezone)
+                next_run_time = job.trigger.get_next_fire_time(None, now)
+            except Exception as e:
+                logger.debug(f"Could not calculate next_run_time from trigger for job {job.id}: {e}")
+                next_run_time = None
+        
         # Check if job is paused (next_run_time is None when paused)
-        if scheduler_stopped:
-            # When scheduler is stopped, jobs aren't "paused" - scheduler just isn't running
-            is_paused = False
-        else:
-            # When scheduler is running, check if job is actually paused
-            is_paused = next_run_time is None
+        # A job is paused if it has no next_run_time even after trying to calculate from trigger
+        # This is independent of whether the scheduler is running or stopped
+        is_paused = (next_run_time is None and job.trigger is not None)
         
         # Determine if job has a schedule (not manual-only)
         # A job has a schedule if it has a trigger that's not None

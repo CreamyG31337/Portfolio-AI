@@ -77,7 +77,10 @@ def benchmark_refresh_job() -> None:
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            try:
+                log_job_execution(job_id, False, message, duration_ms)
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
             return
         
@@ -154,14 +157,20 @@ def benchmark_refresh_job() -> None:
         
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Updated {benchmarks_updated} benchmarks ({total_rows_cached} rows), {benchmarks_failed} failed"
-        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+        try:
+            log_job_execution(job_id, True, message, duration_ms)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution: {log_error}")
         mark_job_completed('benchmark_refresh', target_date, None, [], duration_ms=duration_ms)
         logger.info(f"✅ {message}")
         
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Error: {str(e)}"
-        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        try:
+            log_job_execution(job_id, False, message, duration_ms)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution error: {log_error}")
         try:
             mark_job_failed('benchmark_refresh', target_date, None, message, duration_ms=duration_ms)
         except Exception:

@@ -506,7 +506,10 @@ def cleanup_log_files_job() -> None:
         if not log_dir.exists():
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Logs directory not found: {log_dir}"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            try:
+                log_job_execution(job_id, False, message, duration_ms)
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             logger.warning(f"⚠️ {message}")
             mark_job_failed('log_cleanup', target_date, None, message, duration_ms=duration_ms)
             return
@@ -565,14 +568,20 @@ def cleanup_log_files_job() -> None:
         duration_ms = int((time.time() - start_time) * 1000)
         size_mb = deleted_size / (1024 * 1024)
         message = f"Deleted {deleted_count} log files ({size_mb:.2f} MB), preserved {preserved_count} files"
-        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+        try:
+            log_job_execution(job_id, True, message, duration_ms)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution: {log_error}")
         mark_job_completed('log_cleanup', target_date, None, [], duration_ms=duration_ms)
         logger.info(f"✅ Log cleanup job completed: {message} in {duration_ms/1000:.2f}s")
         
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Error: {str(e)}"
-        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        try:
+            log_job_execution(job_id, False, message, duration_ms)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution error: {log_error}")
         mark_job_failed('log_cleanup', target_date, None, str(e), duration_ms=duration_ms)
         logger.error(f"❌ Log cleanup job failed: {e}", exc_info=True)
 

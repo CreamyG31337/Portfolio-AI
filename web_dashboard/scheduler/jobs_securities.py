@@ -136,12 +136,16 @@ def refresh_securities_metadata_job() -> None:
         
         if not tickers_to_refresh:
             logger.info(f"✅ No tickers need metadata refresh")
-            log_job_execution(
-                job_name=job_name,
-                status="success",
-                duration_ms=int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000),
-                message="No tickers needed refresh"
-            )
+            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+            try:
+                log_job_execution(
+                    job_name,
+                    True,
+                    "No tickers needed refresh",
+                    duration_ms
+                )
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             return
         
         logger.info(f"📊 Found {len(tickers_to_refresh)} tickers needing metadata refresh")
@@ -181,24 +185,31 @@ def refresh_securities_metadata_job() -> None:
         message = f"Processed {len(tickers_to_refresh)} tickers: {success_count} succeeded, {error_count} errors"
         logger.info(f"✅ {job_name} job completed: {message}")
         
-        log_job_execution(
-            job_name=job_name,
-            status="success" if error_count == 0 else "partial_success",
-            duration_ms=duration_ms,
-            message=message
-        )
+        # Consider it successful even if some tickers had errors (partial success)
+        try:
+            log_job_execution(
+                job_name,
+                True,
+                message,
+                duration_ms
+            )
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution: {log_error}")
         
     except Exception as e:
         duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         error_msg = f"Error in {job_name} job: {str(e)}"
         logger.error(f"❌ {error_msg}")
         
-        log_job_execution(
-            job_name=job_name,
-            status="error",
-            duration_ms=duration_ms,
-            error_message=error_msg
-        )
+        try:
+            log_job_execution(
+                job_name,
+                False,
+                error_msg,
+                duration_ms
+            )
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution error: {log_error}")
         raise
 
 

@@ -70,7 +70,10 @@ def fetch_social_sentiment_job() -> None:
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            try:
+                log_job_execution(job_id, False, message, duration_ms)
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
             return
         
@@ -260,7 +263,10 @@ def cleanup_social_metrics_job() -> None:
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            try:
+                log_job_execution(job_id, False, message, duration_ms)
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
             return
         
@@ -273,14 +279,20 @@ def cleanup_social_metrics_job() -> None:
         # Log completion
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Updated {results['rows_updated']} records, deleted {results['rows_deleted']} records"
-        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+        try:
+            log_job_execution(job_id, True, message, duration_ms)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution: {log_error}")
         mark_job_completed('social_metrics_cleanup', target_date, None, [], duration_ms=duration_ms)
         logger.info(f"✅ Social metrics cleanup job completed: {message} in {duration_ms/1000:.2f}s")
         
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Error: {str(e)}"
-        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        try:
+            log_job_execution(job_id, False, message, duration_ms)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution error: {log_error}")
         mark_job_failed('social_metrics_cleanup', target_date, None, str(e), duration_ms=duration_ms)
         logger.error(f"❌ Social metrics cleanup job failed: {e}", exc_info=True)
 
@@ -313,7 +325,10 @@ def social_sentiment_ai_job() -> None:
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            try:
+                log_job_execution(job_id, False, message, duration_ms)
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
             return
 

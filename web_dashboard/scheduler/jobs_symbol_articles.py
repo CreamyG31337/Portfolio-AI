@@ -80,7 +80,10 @@ def seeking_alpha_symbol_job() -> None:
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            try:
+                log_job_execution(job_id, False, message, duration_ms)
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
             return
         
@@ -100,7 +103,10 @@ def seeking_alpha_symbol_job() -> None:
         if not funds_result.data:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "No production funds found"
-            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            try:
+                log_job_execution(job_id, True, message, duration_ms)
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             logger.info(f"ℹ️ {message}")
             return
         
@@ -116,7 +122,10 @@ def seeking_alpha_symbol_job() -> None:
         if not positions_result.data:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "No active positions found in production funds"
-            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            try:
+                log_job_execution(job_id, True, message, duration_ms)
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             logger.info(f"ℹ️ {message}")
             return
         
@@ -332,7 +341,10 @@ def seeking_alpha_symbol_job() -> None:
             f"{articles_saved} saved, {articles_skipped} skipped, "
             f"{articles_paywalled} paywalled, {articles_failed} failed"
         )
-        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+        try:
+            log_job_execution(job_id, True, message, duration_ms)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution: {log_error}")
         try:
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
         except Exception:
@@ -343,8 +355,8 @@ def seeking_alpha_symbol_job() -> None:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Error: {str(e)}"
         try:
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
-        except:
-            pass
+            log_job_execution(job_id, False, message, duration_ms)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution error: {log_error}")
         logger.error(f"❌ Symbol article scraper job failed: {e}", exc_info=True)
 

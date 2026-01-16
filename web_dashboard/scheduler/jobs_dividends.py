@@ -504,7 +504,10 @@ def process_dividends_job(lookback_days: int = 7) -> None:
         holdings = get_unique_holdings(client)
         if not holdings:
             duration_ms = int((time.time()-start_time)*1000)
-            log_job_execution(job_id, True, "No active holdings", duration_ms)
+            try:
+                log_job_execution(job_id, True, "No active holdings", duration_ms)
+            except Exception as log_error:
+                logger.warning(f"Failed to log job execution: {log_error}")
             try:
                 mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
                 logger.debug(f"Marked job as completed in database (no holdings)")
@@ -570,7 +573,10 @@ def process_dividends_job(lookback_days: int = 7) -> None:
         duration = int((time.time() - start_time) * 1000)
         msg = f"Processed {stats['processed']}, Skipped {stats['skipped']}, Errors {stats['errors']}"
         print(f"[{__name__}] Job completed: {msg} (duration: {duration}ms)", file=sys.stderr, flush=True)
-        log_job_execution(job_id, True, msg, duration)
+        try:
+            log_job_execution(job_id, True, msg, duration)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution: {log_error}")
         try:
             print(f"[{__name__}] Marking job as completed in database...", file=sys.stderr, flush=True)
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration)
@@ -592,7 +598,10 @@ def process_dividends_job(lookback_days: int = 7) -> None:
         
     except Exception as e:
         duration = int((time.time() - start_time) * 1000)
-        log_job_execution(job_id, False, str(e), duration)
+        try:
+            log_job_execution(job_id, False, str(e), duration)
+        except Exception as log_error:
+            logger.warning(f"Failed to log job execution error: {log_error}")
         try:
             mark_job_failed(job_id, target_date, None, str(e), duration_ms=duration)
             logger.debug(f"Marked job as failed in database")
