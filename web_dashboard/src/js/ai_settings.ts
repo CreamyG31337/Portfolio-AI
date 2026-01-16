@@ -10,6 +10,13 @@ interface StatusResponse {
         status: string;
         message?: string;
     };
+    webai?: {
+        status: boolean;
+        message: string;
+        source?: string;
+        has_1psid?: boolean;
+        has_1psidts?: boolean;
+    };
 }
 
 interface SettingsResponse {
@@ -53,10 +60,23 @@ const addDomainInput = document.getElementById('add-domain-input') as HTMLInputE
 const addDomainBtn = document.getElementById('add-domain-btn');
 const blacklistTableBody = document.getElementById('blacklist-table-body');
 
+const webaiIndicator = document.getElementById('webai-indicator');
+const webaiMessage = document.getElementById('webai-message');
+const webaiSource = document.getElementById('webai-source');
+const testWebaiBtn = document.getElementById('test-webai-btn');
+
+const cookieJsonMethod = document.getElementById('cookie-json-method');
+const cookieIndividualMethod = document.getElementById('cookie-individual-method');
+const cookieJsonInput = document.getElementById('cookie-json-input') as HTMLTextAreaElement | null;
+const cookie1psidInput = document.getElementById('cookie-1psid-input') as HTMLInputElement | null;
+const cookie1psidtsInput = document.getElementById('cookie-1psidts-input') as HTMLInputElement | null;
+const saveCookiesBtn = document.getElementById('save-cookies-btn');
+
 // Status Check Function
 async function checkStatus() {
     if (ollamaMessage) ollamaMessage.textContent = 'Checking...';
     if (postgresMessage) postgresMessage.textContent = 'Checking...';
+    if (webaiMessage) webaiMessage.textContent = 'Checking...';
 
     try {
         const response = await fetch('/api/admin/ai/status');
@@ -96,10 +116,34 @@ async function checkStatus() {
             }
         }
 
+        // Update WebAI Cookie Status
+        if (webaiIndicator && webaiMessage && data.webai) {
+            if (data.webai.status) {
+                webaiIndicator.classList.remove('bg-gray-200', 'bg-red-500');
+                webaiIndicator.classList.add('bg-green-500');
+                webaiMessage.textContent = 'Configured';
+                webaiMessage.classList.remove('text-red-500');
+                webaiMessage.classList.add('text-green-500');
+                if (webaiSource && data.webai.source) {
+                    webaiSource.textContent = `Source: ${data.webai.source}`;
+                }
+            } else {
+                webaiIndicator.classList.remove('bg-gray-200', 'bg-green-500');
+                webaiIndicator.classList.add('bg-red-500');
+                webaiMessage.textContent = data.webai.message || 'Not configured';
+                webaiMessage.classList.remove('text-green-500');
+                webaiMessage.classList.add('text-red-500');
+                if (webaiSource) {
+                    webaiSource.textContent = '';
+                }
+            }
+        }
+
     } catch (error) {
         console.error('Error checking status:', error);
         if (ollamaMessage) ollamaMessage.textContent = 'Error checking status';
         if (postgresMessage) postgresMessage.textContent = 'Error checking status';
+        if (webaiMessage) webaiMessage.textContent = 'Error checking status';
     }
 }
 
@@ -328,6 +372,126 @@ async function removeDomain(domain: string) {
     }
 }
 
+// Test WebAI Cookies Function
+async function testWebaiCookies() {
+    if (!testWebaiBtn) return;
+
+    const originalText = testWebaiBtn.textContent;
+    testWebaiBtn.textContent = 'Testing...';
+    (testWebaiBtn as HTMLButtonElement).disabled = true;
+
+    try {
+        const response = await fetch('/api/admin/ai/cookies/test', {
+            method: 'POST'
+        });
+
+        const result: ApiResponse & { message?: string } = await response.json();
+
+        if (result.success) {
+            alert('✅ Cookie test successful!');
+        } else {
+            alert('❌ Cookie test failed: ' + (result.message || result.error || 'Unknown error'));
+        }
+
+    } catch (error) {
+        console.error('Error testing cookies:', error);
+        alert('Error testing cookies');
+    } finally {
+        testWebaiBtn.textContent = originalText;
+        (testWebaiBtn as HTMLButtonElement).disabled = false;
+    }
+}
+
+// Save Cookies Function
+async function saveCookies() {
+    if (!saveCookiesBtn) return;
+
+    const originalText = saveCookiesBtn.textContent;
+    saveCookiesBtn.textContent = 'Saving...';
+    (saveCookiesBtn as HTMLButtonElement).disabled = true;
+
+    try {
+        // Get selected method
+        const selectedMethod = (document.querySelector('input[name="cookie-method"]:checked') as HTMLInputElement)?.value || 'json';
+        let cookies: { [key: string]: string } = {};
+
+        if (selectedMethod === 'json') {
+            if (!cookieJsonInput || !cookieJsonInput.value.trim()) {
+                alert('Please enter cookie JSON');
+                return;
+            }
+
+            try {
+                cookies = JSON.parse(cookieJsonInput.value);
+                if (!cookies['__Secure-1PSID']) {
+                    alert('❌ Missing required cookie: __Secure-1PSID');
+                    return;
+                }
+            } catch (e) {
+                alert('❌ Invalid JSON: ' + (e as Error).message);
+                return;
+            }
+        } else {
+            if (!cookie1psidInput || !cookie1psidInput.value.trim()) {
+                alert('❌ __Secure-1PSID is required');
+                return;
+            }
+
+            cookies = {
+                '__Secure-1PSID': cookie1psidInput.value.trim()
+            };
+
+            if (cookie1psidtsInput && cookie1psidtsInput.value.trim()) {
+                cookies['__Secure-1PSIDTS'] = cookie1psidtsInput.value.trim();
+            }
+        }
+
+        const response = await fetch('/api/admin/ai/cookies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ cookies })
+        });
+
+        const result: ApiResponse & { message?: string } = await response.json();
+
+        if (result.success) {
+            alert('✅ Cookies saved successfully!');
+            // Clear inputs
+            if (cookieJsonInput) cookieJsonInput.value = '';
+            if (cookie1psidInput) cookie1psidInput.value = '';
+            if (cookie1psidtsInput) cookie1psidtsInput.value = '';
+            // Refresh status
+            checkStatus();
+        } else {
+            alert('❌ Error saving cookies: ' + (result.error || 'Unknown error'));
+        }
+
+    } catch (error) {
+        console.error('Error saving cookies:', error);
+        alert('Error saving cookies');
+    } finally {
+        saveCookiesBtn.textContent = originalText;
+        (saveCookiesBtn as HTMLButtonElement).disabled = false;
+    }
+}
+
+// Cookie Method Toggle
+function toggleCookieMethod() {
+    const selectedMethod = (document.querySelector('input[name="cookie-method"]:checked') as HTMLInputElement)?.value || 'json';
+
+    if (cookieJsonMethod && cookieIndividualMethod) {
+        if (selectedMethod === 'json') {
+            cookieJsonMethod.classList.remove('hidden');
+            cookieIndividualMethod.classList.add('hidden');
+        } else {
+            cookieJsonMethod.classList.add('hidden');
+            cookieIndividualMethod.classList.remove('hidden');
+        }
+    }
+}
+
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
     // Initial Load
@@ -340,6 +504,10 @@ document.addEventListener('DOMContentLoaded', () => {
         testOllamaBtn.addEventListener('click', checkStatus);
     }
 
+    if (testWebaiBtn) {
+        testWebaiBtn.addEventListener('click', testWebaiCookies);
+    }
+
     if (settingsForm) {
         settingsForm.addEventListener('submit', saveSettings);
     }
@@ -347,6 +515,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (addDomainBtn) {
         addDomainBtn.addEventListener('click', addDomain);
     }
+
+    if (saveCookiesBtn) {
+        saveCookiesBtn.addEventListener('click', saveCookies);
+    }
+
+    // Cookie method toggle
+    document.querySelectorAll('input[name="cookie-method"]').forEach(radio => {
+        radio.addEventListener('change', toggleCookieMethod);
+    });
 
     // Allow adding domain with Enter key
     if (addDomainInput) {

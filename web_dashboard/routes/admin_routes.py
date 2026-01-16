@@ -2095,9 +2095,61 @@ def api_ai_status():
             "message": f"Connected - {pg_stats.get('total', 0)} articles" if pg_connected and pg_stats else "Not connected"
         }
         
+        # WebAI Cookies
+        webai_status = {"status": False, "message": "Not configured", "source": None, "has_1psid": False, "has_1psidts": False}
+        try:
+            from webai_wrapper import check_cookie_config, _load_cookies
+            config_status = check_cookie_config()
+            
+            # Determine cookie source and status
+            has_cookies = False
+            cookie_source = None
+            
+            if config_status.get("env_var_exists") and config_status.get("has_secure_1psid"):
+                has_cookies = True
+                cookie_source = "Environment Variable"
+            elif config_status.get("cookie_files", {}).get("webai_cookies.json", {}).get("root_exists"):
+                has_cookies = True
+                cookie_source = "Cookie File (root)"
+            elif config_status.get("cookie_files", {}).get("webai_cookies.json", {}).get("web_exists"):
+                has_cookies = True
+                cookie_source = "Cookie File (web_dashboard)"
+            
+            # Check shared volume (Docker container)
+            from pathlib import Path
+            shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+            if shared_cookie_path.exists():
+                has_cookies = True
+                cookie_source = "Shared Volume (/shared/cookies)"
+            
+            if has_cookies:
+                try:
+                    secure_1psid, secure_1psidts = _load_cookies()
+                    webai_status = {
+                        "status": bool(secure_1psid),
+                        "message": "Configured" if secure_1psid else "Invalid format",
+                        "source": cookie_source,
+                        "has_1psid": bool(secure_1psid),
+                        "has_1psidts": bool(secure_1psidts)
+                    }
+                except Exception as e:
+                    webai_status = {
+                        "status": False,
+                        "message": f"Error loading: {str(e)[:50]}",
+                        "source": cookie_source,
+                        "has_1psid": False,
+                        "has_1psidts": False
+                    }
+        except ImportError:
+            webai_status = {"status": False, "message": "WebAI wrapper not available", "source": None, "has_1psid": False, "has_1psidts": False}
+        except Exception as e:
+            logger.error(f"Error checking WebAI cookies: {e}", exc_info=True)
+            webai_status = {"status": False, "message": f"Error: {str(e)[:50]}", "source": None, "has_1psid": False, "has_1psidts": False}
+        
         return jsonify({
             "ollama": {"status": ollama_ok, "message": ollama_msg},
-            "postgres": pg_status
+            "postgres": pg_status,
+            "webai": webai_status
         })
     except Exception as e:
         logger.error(f"Error in api_ai_status: {e}", exc_info=True)
@@ -2235,6 +2287,88 @@ def api_delete_blacklist():
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Error deleting from blacklist: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/admin/ai/cookies/test', methods=['POST'])
+@require_admin
+def api_test_webai_cookies():
+    """Test WebAI cookie connection"""
+    try:
+        from webai_wrapper import test_webai_connection
+        from pathlib import Path
+        
+        # Find cookie file
+        cookie_file = None
+        shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+        if shared_cookie_path.exists():
+            cookie_file = str(shared_cookie_path)
+        else:
+            # Try other locations
+            project_root = Path(__file__).parent.parent.parent
+            for name in ["webai_cookies.json", "ai_service_cookies.json"]:
+                test_path = project_root / name
+                if test_path.exists():
+                    cookie_file = str(test_path)
+                    break
+        
+        # Run test
+        test_result = test_webai_connection(cookies_file=cookie_file)
+        
+        return jsonify({
+            "success": test_result.get("success", False),
+            "message": test_result.get("message", "Unknown error"),
+            "details": test_result.get("details", {})
+        })
+    except Exception as e:
+        logger.error(f"Error testing WebAI cookies: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@admin_bp.route('/api/admin/ai/cookies', methods=['POST'])
+@require_admin
+def api_update_webai_cookies():
+    """Update WebAI cookies"""
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot modify cookies"}), 403
+        
+        data = request.get_json()
+        cookies = data.get("cookies")
+        
+        if not cookies or not isinstance(cookies, dict):
+            return jsonify({"error": "Invalid cookies format. Expected JSON object."}), 400
+        
+        if "__Secure-1PSID" not in cookies:
+            return jsonify({"error": "Missing required cookie: __Secure-1PSID"}), 400
+        
+        # Save to shared volume (Docker container location)
+        from pathlib import Path
+        import json
+        from datetime import datetime
+        
+        shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+        shared_cookie_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Prepare cookie data with metadata
+        cookie_data = {
+            "__Secure-1PSID": cookies.get("__Secure-1PSID", ""),
+            "__Secure-1PSIDTS": cookies.get("__Secure-1PSIDTS", ""),
+            "_updated_at": datetime.now().isoformat() + "Z",
+            "_updated_by": "admin_ui"
+        }
+        
+        # Remove empty values (but keep metadata)
+        cookie_data = {k: v for k, v in cookie_data.items() if v or k.startswith("_")}
+        
+        # Write to shared volume
+        with open(shared_cookie_path, 'w', encoding='utf-8') as f:
+            json.dump(cookie_data, f, indent=2)
+        
+        return jsonify({"success": True, "message": f"Cookies saved to {shared_cookie_path}"})
+    except PermissionError:
+        return jsonify({"error": "Permission denied. Cannot write to /shared/cookies/"}), 403
+    except Exception as e:
+        logger.error(f"Error updating WebAI cookies: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 # Contributor Management Routes
