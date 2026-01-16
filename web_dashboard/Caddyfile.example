@@ -49,8 +49,8 @@
 		rewrite * /streamlit/{re.streamlit_pages_assets.1}{re.streamlit_pages_assets.2}
 	}
 	
-	# Streamlit WebSocket support
-	handle /streamlit/_stcore/stream {
+	# Streamlit WebSocket support - MUST strip /streamlit prefix
+	handle_path /streamlit/_stcore/stream {
 		reverse_proxy localhost:8501 {
 			transport http {
 				versions 1.1 2
