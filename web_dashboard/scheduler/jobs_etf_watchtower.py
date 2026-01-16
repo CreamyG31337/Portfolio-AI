@@ -376,7 +376,6 @@ def upsert_securities_metadata(db: SupabaseClient, df: pd.DataFrame, provider: s
             record = {
                 'ticker': ticker,
                 'company_name': row['name'],
-                'first_detected_by': f"{provider} ETF",
                 'last_updated': datetime.now(timezone.utc).isoformat()
             }
             
@@ -385,10 +384,7 @@ def upsert_securities_metadata(db: SupabaseClient, df: pd.DataFrame, provider: s
                 record['sector'] = row['sector']
             if row.get('industry'):
                 record['industry'] = row['industry']
-            if row.get('asset_class'):
-                record['asset_class'] = row['asset_class']
-            if row.get('exchange'):
-                record['exchange'] = row['exchange']
+            # Note: asset_class, exchange, and first_detected_by don't exist in Supabase securities table
             if row.get('currency'):
                 record['currency'] = row['currency']
                 
@@ -412,11 +408,10 @@ def upsert_etf_metadata(db: SupabaseClient, etf_ticker: str, provider: str):
         
         record = {
             'ticker': etf_ticker,
-            'name': etf_name,
-            'asset_class': 'ETF',
-            'first_detected_by': f"{provider} ETF Watchtower",
+            'company_name': etf_name,
             'last_updated': datetime.now(timezone.utc).isoformat()
         }
+        # Note: asset_class and first_detected_by don't exist in Supabase securities table
         
         db.supabase.table('securities').upsert(record).execute()
         logger.info(f"ℹ️  Upserted ETF metadata for {etf_ticker}")
@@ -463,7 +458,6 @@ def log_significant_changes(repo: ResearchRepository, changes: List[Dict], etf_t
         summary=f"{etf_ticker} made {len(changes)} significant changes today",
         source="ETF Watchtower",
         article_type="ETF Change",
-        confidence_score=0.9,  # High confidence (raw data)
         tickers=[c['ticker'] for c in changes[:10]]  # Top 10 tickers
     )
     

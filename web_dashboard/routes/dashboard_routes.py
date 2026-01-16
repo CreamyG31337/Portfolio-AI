@@ -1046,15 +1046,22 @@ def get_dividend_data():
         
     display_currency = get_user_currency() or 'CAD'
     
+    logger.info(f"[Dividend API] Request received - fund={fund}, currency={display_currency}")
+    
     try:
         # Fetch dividend data with company names (join with securities table like trade_log does)
         client = get_supabase_client_flask()
         if not client:
+            logger.error("[Dividend API] Database client not available")
             return jsonify({"error": "Database client not available"}), 500
+        
+        logger.debug("[Dividend API] Database client obtained")
         
         # Calculate start date for LTM metrics
         from datetime import datetime, timedelta
         start_date_ltm = (datetime.now() - timedelta(days=365)).date().isoformat()
+        
+        logger.debug(f"[Dividend API] Querying dividends since {start_date_ltm}")
         
         # Build query to fetch dividend data
         query = client.supabase.table("dividend_log").select(
@@ -1064,13 +1071,17 @@ def get_dividend_data():
         # Apply fund filter if provided
         if fund:
             query = query.eq('fund', fund)
+            logger.debug(f"[Dividend API] Applied fund filter: {fund}")
         
         # Fetch all LTM dividend data
         dividend_response = query.order('pay_date', desc=True).execute()
         dividend_list = dividend_response.data or []
         
+        logger.info(f"[Dividend API] Fetched {len(dividend_list)} dividend records")
+        
         # Prepare Log (for table) - already sorted by pay_date desc from query
         # Extract company_name from nested securities object (same as get_trade_log does)
+        logger.debug("[Dividend API] Processing dividend records into log_data")
         log_data = []
         for row in dividend_list:
             pay_date = row.get('pay_date', '')
@@ -1096,12 +1107,17 @@ def get_dividend_data():
                 "drip_price": drip_price,
                 "type": "DRIP" if reinvested > 0 else "CASH"
             })
+        
+        logger.debug(f"[Dividend API] Processed {len(log_data)} records into log_data")
             
         # Calculate Metrics from collected log data
+        logger.debug("[Dividend API] Calculating metrics")
         total_dividends = sum(item['amount'] for item in log_data)
         total_us_tax = sum(item['tax'] for item in log_data)
         total_reinvested = sum(item['shares'] for item in log_data)
         payout_events = len(log_data)
+        
+        logger.debug(f"[Dividend API] Metrics calculated - total: {total_dividends}, tax: {total_us_tax}, events: {payout_events}")
         
         # Find largest dividend
         largest_dividend = 0.0
@@ -1110,6 +1126,9 @@ def get_dividend_data():
             largest_item = max(log_data, key=lambda x: x.get('amount', 0))
             largest_dividend = largest_item.get('amount', 0)
             largest_ticker = largest_item.get('ticker', '')
+        
+        logger.debug(f"[Dividend API] Largest dividend: {largest_dividend} ({largest_ticker})")
+        logger.info(f"[Dividend API] Successfully prepared response with {payout_events} events")
             
         return jsonify({
             "metrics": {

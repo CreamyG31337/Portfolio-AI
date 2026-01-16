@@ -41,6 +41,9 @@ def main():
     logger.info("Starting Trading Dashboard with Background Tasks")
     logger.info("=" * 50)
     
+    # Get process ID early so it can be used in nested functions
+    process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
+    
     # Start scheduler in a separate thread within this process
     # This keeps it independent of Streamlit's reloads but within the same container
     try:
@@ -52,8 +55,7 @@ def main():
         def _run_scheduler():
             thread_name = threading.current_thread().name
             thread_id = threading.current_thread().ident
-            process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
-            
+            # Use the process_id from outer scope
             try:
                 logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] 🚀 Starting scheduler from entrypoint...")
                 # Wait a bit for imports to settle
@@ -73,6 +75,7 @@ def main():
         def start_flask_app():
             import threading
             from app import app
+            # Use the process_id from outer scope
             logger.info(f"[PID:{process_id}] Starting Flask web server on port 5000...")
             try:
                 app.run(host='0.0.0.0', port=5000, threaded=True)
@@ -82,15 +85,13 @@ def main():
         flask_thread = threading.Thread(target=start_flask_app, daemon=True)
         flask_thread.start()
         logger.info(f"[PID:{process_id}] Flask web server thread started")
-
-        process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
         scheduler_thread = threading.Thread(
             target=_run_scheduler,
             name="SchedulerInitThread",
             daemon=True  # Daemon is correct - allows Streamlit to start without blocking
         )
         scheduler_thread.start()
-        logger.info(f"[PID:{process_id}] Flask web server thread started")
+        logger.info(f"[PID:{process_id}] Scheduler thread started")
 
         # Now start Streamlit (blocks until container stops)
         logger.info("Launching Streamlit application...")
