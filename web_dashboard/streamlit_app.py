@@ -55,7 +55,7 @@ def _start_scheduler_with_result(result_holder: dict):
 
 # Use @st.cache_resource to ensure scheduler starts exactly once per process
 # This is Streamlit's recommended pattern for singletons
-@st.cache_resource
+@st.cache_resource(show_spinner="⏳ Starting background scheduler...")
 def _get_scheduler_singleton():
     """Initialize scheduler once per Streamlit process with timeout protection."""
     import threading

@@ -9,6 +9,7 @@ Admin page for configuring AI services, Ollama settings, and AI-related system s
 import streamlit as st
 import sys
 import os
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -344,10 +345,49 @@ else:
         
         # WebAI Cookie Details and Testing
         st.markdown("---")
+        
+        # Helper function for saving cookies (defined outside try block for reliability)
+        def save_cookies_to_file(cookies_dict: dict) -> bool:
+            """Helper function to save cookies to shared volume."""
+            shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+            
+            # Ensure directory exists
+            shared_cookie_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            try:
+                # Prepare cookie data with metadata
+                cookie_data = {
+                    "__Secure-1PSID": cookies_dict.get("__Secure-1PSID", ""),
+                    "__Secure-1PSIDTS": cookies_dict.get("__Secure-1PSIDTS", ""),
+                    "_updated_at": datetime.now().isoformat() + "Z",
+                    "_updated_by": "admin_ui"
+                }
+                
+                # Remove empty values (but keep metadata)
+                cookie_data = {k: v for k, v in cookie_data.items() if v or k.startswith("_")}
+                
+                # Write to shared volume
+                with open(shared_cookie_path, 'w', encoding='utf-8') as f:
+                    json.dump(cookie_data, f, indent=2)
+                
+                st.success(f"✅ Cookies saved to {shared_cookie_path}")
+                st.info("💡 Cookies will be available immediately. You may want to test the connection above.")
+                return True
+                
+            except PermissionError:
+                st.error(f"❌ Permission denied. Cannot write to {shared_cookie_path}")
+                st.info("💡 Ensure the container has write access to /shared/cookies/")
+                return False
+            except Exception as e:
+                st.error(f"❌ Error saving cookies: {e}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
+                return False
+        
         with st.expander("🔍 WebAI Cookie Details & Testing", expanded=False):
             try:
                 from webai_wrapper import check_cookie_config, _load_cookies, test_webai_connection
-                import json
                 
                 # Show detailed configuration
                 st.markdown("#### Cookie Configuration Details")
@@ -472,44 +512,6 @@ else:
                     horizontal=True,
                     key="cookie_update_method"
                 )
-                
-                def save_cookies_to_file(cookies_dict: dict) -> bool:
-                    """Helper function to save cookies to shared volume."""
-                    shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
-                    
-                    # Ensure directory exists
-                    shared_cookie_path.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    try:
-                        # Prepare cookie data with metadata
-                        cookie_data = {
-                            "__Secure-1PSID": cookies_dict.get("__Secure-1PSID", ""),
-                            "__Secure-1PSIDTS": cookies_dict.get("__Secure-1PSIDTS", ""),
-                            "_updated_at": datetime.now().isoformat() + "Z",
-                            "_updated_by": "admin_ui"
-                        }
-                        
-                        # Remove empty values (but keep metadata)
-                        cookie_data = {k: v for k, v in cookie_data.items() if v or k.startswith("_")}
-                        
-                        # Write to shared volume
-                        with open(shared_cookie_path, 'w', encoding='utf-8') as f:
-                            json.dump(cookie_data, f, indent=2)
-                        
-                        st.success(f"✅ Cookies saved to {shared_cookie_path}")
-                        st.info("💡 Cookies will be available immediately. You may want to test the connection above.")
-                        return True
-                        
-                    except PermissionError:
-                        st.error(f"❌ Permission denied. Cannot write to {shared_cookie_path}")
-                        st.info("💡 Ensure the container has write access to /shared/cookies/")
-                        return False
-                    except Exception as e:
-                        st.error(f"❌ Error saving cookies: {e}")
-                        import traceback
-                        with st.expander("Error Details"):
-                            st.code(traceback.format_exc())
-                        return False
                 
                 if update_method == "Paste JSON":
                     cookie_json_text = st.text_area(

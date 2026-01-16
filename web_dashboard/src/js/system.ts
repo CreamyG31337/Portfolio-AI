@@ -36,21 +36,36 @@ async function fetchDeploymentInfo(): Promise<void> {
     try {
         const response = await fetch('/api/admin/system/deployment-info');
         const data = await response.json();
-        
-        if (data.build_info && data.build_info.commit) {
-            const deployInfo = document.getElementById('deployment-info');
-            if (deployInfo) {
+        const deployInfo = document.getElementById('deployment-info');
+
+        if (deployInfo) {
+            if (data.build_info && (data.build_info.commit || data.build_info.timestamp)) {
                 deployInfo.innerHTML = `
-                    <span class="text-xs text-gray-500">
-                        🚀 Deployed: ${data.build_info.build_date || 'Unknown'} 
-                        | Commit: <code class="bg-gray-100 px-1 rounded">${data.build_info.commit.substring(0, 8)}</code>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                        🚀 Deployed: ${data.build_info.build_date || data.build_info.timestamp || 'Unknown'} 
+                        | Commit: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">${(data.build_info.commit || 'unknown').substring(0, 8)}</code>
                         | Branch: ${data.build_info.branch || 'Unknown'}
+                    </span>
+                `;
+            } else {
+                // Handle case where build info is missing but API worked
+                deployInfo.innerHTML = `
+                    <span class="text-xs text-gray-400 dark:text-gray-500">
+                        Deployment info unavailable
                     </span>
                 `;
             }
         }
     } catch (error) {
         console.error("Error fetching deployment info:", error);
+        const deployInfo = document.getElementById('deployment-info');
+        if (deployInfo) {
+            deployInfo.innerHTML = `
+                <span class="text-xs text-red-400 dark:text-red-400" title="${error}">
+                    Failed to load deployment info
+                </span>
+            `;
+        }
     }
 }
 
