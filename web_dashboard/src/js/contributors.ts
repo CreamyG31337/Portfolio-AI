@@ -96,6 +96,7 @@ async function loadContributors(): Promise<void> {
         
         // Populate select dropdowns
         populateSelectDropdowns();
+        populateAccessDropdowns();
         
     } catch (error) {
         console.error('Error loading contributors:', error);
@@ -356,7 +357,7 @@ async function loadContributorForSplit(contributorId: string): Promise<void> {
         
     } catch (error) {
         console.error('Error loading contributor:', error);
-        alert(`Error: ${error instanceof Error ? error.message : 'Failed to load contributor'}`);
+        showContributorToast(`Error: ${error instanceof Error ? error.message : 'Failed to load contributor'}`, 'error');
     }
 }
 
@@ -369,7 +370,7 @@ async function splitContributor(): Promise<void> {
         .map(cb => (cb as HTMLInputElement).value);
     
     if (!contributorId || !newName || checked.length === 0) {
-        alert('Please fill in all required fields and select at least one contribution');
+        showContributorToast('Please fill in all required fields and select at least one contribution', 'warning');
         return;
     }
     
@@ -425,7 +426,7 @@ async function mergeContributors(): Promise<void> {
     const targetId = (document.getElementById('merge-target-select') as HTMLSelectElement)?.value;
     
     if (!sourceId || !targetId || sourceId === targetId) {
-        alert('Please select different source and target contributors');
+        showContributorToast('Please select different source and target contributors', 'warning');
         return;
     }
     
@@ -500,7 +501,7 @@ async function updateContributor(): Promise<void> {
     const email = (document.getElementById('edit-contributor-email') as HTMLInputElement)?.value;
     
     if (!contributorId || !name) {
-        alert('Please select a contributor and enter a name');
+        showContributorToast('Please select a contributor and enter a name', 'warning');
         return;
     }
     
@@ -563,6 +564,283 @@ function initSearch(): void {
     if (emailSearch) emailSearch.addEventListener('input', filterContributors);
 }
 
+// Toast Notification System
+function showContributorToast(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success'): void {
+    let container = document.getElementById('toast-container-contributors');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container-contributors';
+        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    const borderColor = type === 'error' ? 'border-red-500' : 
+                       type === 'warning' ? 'border-yellow-500' : 
+                       type === 'info' ? 'border-blue-500' : 
+                       'border-green-500';
+    
+    const icon = type === 'error' ? '❌' : 
+                 type === 'warning' ? '⚠️' : 
+                 type === 'info' ? 'ℹ️' : 
+                 '✅';
+
+    toast.className = `flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow-lg dark:text-gray-400 dark:bg-gray-800 border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.innerHTML = `
+        <div class="ms-3 text-sm font-normal flex items-center gap-2">
+            <span class="text-lg">${icon}</span>
+            <span>${escapeHtml(message)}</span>
+        </div>
+        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-white text-gray-400 hover:text-gray-900 rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-gray-100 inline-flex items-center justify-center h-8 w-8 dark:text-gray-500 dark:hover:text-white dark:bg-gray-800 dark:hover:bg-gray-700" aria-label="Close">
+            <span class="sr-only">Close</span>
+            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+            </svg>
+        </button>
+    `;
+
+    const closeBtn = toast.querySelector('button');
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        };
+    }
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+// User Access Management
+interface ContributorUser {
+    user_id: string;
+    email: string;
+    full_name?: string;
+}
+
+interface ContributorAccessRecord {
+    id: string;
+    contributor: string;
+    contributor_email: string;
+    user_email: string;
+    user_name?: string;
+    access_level: string;
+    granted?: string;
+}
+
+let contributorUsers: ContributorUser[] = [];
+let contributorAccessRecords: ContributorAccessRecord[] = [];
+
+// Load users for access management
+async function loadContributorUsers(): Promise<void> {
+    try {
+        const response = await fetch('/api/admin/users/list');
+        const data = await response.json();
+        if (response.ok && data.users) {
+            contributorUsers = data.users || [];
+            populateAccessDropdowns();
+        }
+    } catch (error) {
+        console.error('Error loading users:', error);
+    }
+}
+
+// Populate access dropdowns
+function populateAccessDropdowns(): void {
+    // Contributor select
+    const contribSelect = document.getElementById('access-contributor-select') as HTMLSelectElement;
+    if (contribSelect) {
+        const options = contributorManager.contributors.map(c => ({
+            value: c.email || '',
+            text: `${c.name} (${c.email || 'No email'})`
+        }));
+        contribSelect.innerHTML = '<option value="">-- Select Contributor --</option>' +
+            options.map(opt => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.text)}</option>`).join('');
+    }
+    
+    // User select
+    const userSelect = document.getElementById('access-user-select') as HTMLSelectElement;
+    if (userSelect) {
+        const options = contributorUsers.map(u => ({
+            value: u.email,
+            text: u.full_name ? `${u.full_name} (${u.email})` : u.email
+        }));
+        userSelect.innerHTML = '<option value="">-- Select User --</option>' +
+            options.map(opt => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.text)}</option>`).join('');
+    }
+}
+
+// Load access records
+async function loadContributorAccessRecords(): Promise<void> {
+    const loadingEl = document.getElementById('loading-access');
+    const tableContainer = document.getElementById('access-table-container');
+    const noAccessEl = document.getElementById('no-access');
+    const errorEl = document.getElementById('error-access');
+    
+    if (loadingEl) loadingEl.classList.remove('hidden');
+    if (tableContainer) tableContainer.classList.add('hidden');
+    if (noAccessEl) noAccessEl.classList.add('hidden');
+    if (errorEl) errorEl.classList.add('hidden');
+    
+    try {
+        const response = await fetch('/api/admin/contributor-access');
+        const data = await response.json();
+        
+        if (response.status === 404) {
+            if (loadingEl) loadingEl.classList.add('hidden');
+            if (errorEl) {
+                errorEl.classList.remove('hidden');
+                const errorText = document.getElementById('error-access-text');
+                if (errorText) {
+                    errorText.textContent = data.error || 'Contributor access table not found. Run migration DF_009 first.';
+                }
+            }
+            return;
+        }
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to load access records');
+        }
+        
+        contributorAccessRecords = data.access || [];
+        
+        if (loadingEl) loadingEl.classList.add('hidden');
+        
+        if (contributorAccessRecords.length === 0) {
+            if (noAccessEl) noAccessEl.classList.remove('hidden');
+        } else {
+            renderContributorAccessTable();
+            if (tableContainer) tableContainer.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error loading access records:', error);
+        if (loadingEl) loadingEl.classList.add('hidden');
+        if (errorEl) {
+            errorEl.classList.remove('hidden');
+            const errorText = document.getElementById('error-access-text');
+            if (errorText) {
+                errorText.textContent = error instanceof Error ? error.message : 'Failed to load access records';
+            }
+        }
+    }
+}
+
+// Render access table
+function renderContributorAccessTable(): void {
+    const tbody = document.getElementById('access-table-body');
+    if (!tbody) return;
+    
+    tbody.innerHTML = contributorAccessRecords.map(access => `
+        <tr>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${escapeHtml(access.contributor)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(access.contributor_email)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${escapeHtml(access.user_email)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(access.user_name || '')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">${escapeHtml(access.access_level)}</span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(access.granted || '')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <button class="revoke-access-btn text-red-600 hover:text-red-800" 
+                        data-contributor-email="${escapeHtml(access.contributor_email)}" 
+                        data-user-email="${escapeHtml(access.user_email)}">
+                    <i class="fas fa-ban mr-1"></i>Revoke
+                </button>
+            </td>
+        </tr>
+    `).join('');
+    
+    // Attach revoke handlers
+    document.querySelectorAll('.revoke-access-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const target = e.currentTarget as HTMLElement;
+            const contributorEmail = target.dataset.contributorEmail || '';
+            const userEmail = target.dataset.userEmail || '';
+            if (contributorEmail && userEmail) {
+                await revokeContributorAccess(contributorEmail, userEmail);
+            }
+        });
+    });
+}
+
+// Grant access
+async function grantContributorAccess(): Promise<void> {
+    const contributorEmail = (document.getElementById('access-contributor-select') as HTMLSelectElement)?.value;
+    const userEmail = (document.getElementById('access-user-select') as HTMLSelectElement)?.value;
+    const accessLevel = (document.getElementById('access-level-select') as HTMLSelectElement)?.value;
+    const resultDiv = document.getElementById('grant-access-result');
+    
+    if (!contributorEmail || !userEmail) {
+        showContributorToast('Please select both contributor and user', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/contributor-access/grant', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contributor_email: contributorEmail,
+                user_email: userEmail,
+                access_level: accessLevel
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            showContributorToast(data.message || 'Access granted', 'success');
+            if (resultDiv) {
+                resultDiv.classList.add('hidden');
+            }
+            
+            // Clear form
+            (document.getElementById('access-contributor-select') as HTMLSelectElement).value = '';
+            (document.getElementById('access-user-select') as HTMLSelectElement).value = '';
+            (document.getElementById('access-level-select') as HTMLSelectElement).value = 'viewer';
+            
+            // Reload access records
+            await loadContributorAccessRecords();
+        } else {
+            showContributorToast(data.error || data.message || 'Failed to grant access', 'error');
+        }
+    } catch (error) {
+        showContributorToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+}
+
+// Revoke access
+async function revokeContributorAccess(contributorEmail: string, userEmail: string): Promise<void> {
+    if (!confirm(`Revoke access for ${userEmail} to ${contributorEmail}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/contributor-access/revoke', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contributor_email: contributorEmail,
+                user_email: userEmail
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            showContributorToast(data.message || 'Access revoked', 'success');
+            await loadContributorAccessRecords();
+        } else {
+            showContributorToast(data.error || data.message || 'Failed to revoke access', 'error');
+        }
+    } catch (error) {
+        showContributorToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+}
+
 // Utility function
 function escapeHtml(text: string): string {
     const div = document.createElement('div');
@@ -575,6 +853,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initSearch();
     loadContributors();
+    loadContributorUsers();
     
     // Refresh button
     const refreshBtn = document.getElementById('refresh-contributors-btn');
@@ -598,5 +877,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveBtn = document.getElementById('save-contributor-btn');
     if (saveBtn) {
         saveBtn.addEventListener('click', () => updateContributor());
+    }
+    
+    // Access tab - load access records when tab is clicked
+    const accessTab = document.getElementById('tab-access');
+    if (accessTab) {
+        accessTab.addEventListener('click', () => {
+            loadContributorAccessRecords();
+        });
+    }
+    
+    // Grant access button
+    const grantAccessBtn = document.getElementById('grant-access-btn');
+    if (grantAccessBtn) {
+        grantAccessBtn.addEventListener('click', () => grantContributorAccess());
     }
 });

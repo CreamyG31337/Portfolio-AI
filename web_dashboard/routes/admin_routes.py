@@ -754,6 +754,45 @@ def api_admin_grant_contributor_access():
         logger.error(f"Error granting contributor access: {e}", exc_info=True)
         return jsonify({"error": f"Failed to grant access: {str(e)}"}), 500
 
+@admin_bp.route('/api/admin/contributor-access/revoke', methods=['POST'])
+@require_admin
+def api_admin_revoke_contributor_access():
+    """Revoke contributor access from a user"""
+    try:
+        data = request.get_json()
+        contributor_email = data.get('contributor_email')
+        user_email = data.get('user_email')
+        
+        if not contributor_email or not user_email:
+            return jsonify({"error": "Contributor email and user email required"}), 400
+        
+        from app import get_supabase_client
+        client = get_supabase_client()
+        if not client:
+            return jsonify({"error": "Failed to connect to database"}), 500
+        
+        result = client.supabase.rpc(
+            'revoke_contributor_access',
+            {
+                'contributor_email': contributor_email,
+                'user_email': user_email
+            }
+        ).execute()
+        
+        if result.data:
+            result_data = result.data[0] if isinstance(result.data, list) else result.data
+            if result_data.get('success'):
+                # Clear cache
+                _get_cached_contributors_flask.clear_all_cache()
+                return jsonify(result_data), 200
+            else:
+                return jsonify(result_data), 400
+        else:
+            return jsonify({"error": "Failed to revoke access"}), 500
+    except Exception as e:
+        logger.error(f"Error revoking contributor access: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to revoke access: {str(e)}"}), 500
+
 @admin_bp.route('/v2/admin/system')
 @require_admin
 def system_page():

@@ -535,24 +535,51 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
         const menu = document.createElement('div');
         menu.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center';
         menu.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                <h3 class="text-lg font-semibold mb-4">Actions for ${escapeHtmlForUsers(email)}</h3>
-                <div class="space-y-2">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border-2 border-gray-300 dark:border-gray-600 max-w-md w-full mx-4">
+                <div class="border-b border-gray-200 dark:border-gray-700 px-6 py-4 bg-gray-50 dark:bg-gray-900 rounded-t-lg">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100">Actions for User</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">${escapeHtmlForUsers(email)}</p>
+                </div>
+                <div class="p-6 space-y-2">
                     ${role !== 'admin' 
-                        ? `<button class="action-menu-btn w-full text-left px-4 py-2 hover:bg-gray-100 rounded" data-action="grant-admin">Grant Admin</button>`
-                        : `<button class="action-menu-btn w-full text-left px-4 py-2 hover:bg-gray-100 rounded ${isSelf ? 'opacity-50 cursor-not-allowed' : ''}" 
-                                 data-action="revoke-admin" ${isSelf ? 'disabled' : ''}>Revoke Admin</button>`}
-                    <button class="action-menu-btn w-full text-left px-4 py-2 hover:bg-gray-100 rounded" data-action="assign-fund">Assign Fund</button>
-                    <button class="action-menu-btn w-full text-left px-4 py-2 hover:bg-gray-100 rounded" data-action="remove-fund">Remove Fund</button>
-                    <button class="action-menu-btn w-full text-left px-4 py-2 hover:bg-gray-100 rounded" data-action="send-invite">Send Invite</button>
-                    <button class="action-menu-btn w-full text-left px-4 py-2 hover:bg-red-100 text-red-600 rounded" data-action="delete">Delete User</button>
-                    <button class="action-menu-btn w-full text-left px-4 py-2 hover:bg-gray-100 rounded" data-action="cancel">Cancel</button>
+                        ? `<button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-blue-200 dark:hover:border-gray-600 transition-colors" data-action="grant-admin">
+                            <i class="fas fa-shield-alt mr-2 text-blue-600"></i>Grant Admin
+                           </button>`
+                        : `<button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-orange-50 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-orange-200 dark:hover:border-gray-600 transition-colors ${isSelf ? 'opacity-50 cursor-not-allowed' : ''}" 
+                                 data-action="revoke-admin" ${isSelf ? 'disabled' : ''}>
+                            <i class="fas fa-shield-alt mr-2 text-orange-600"></i>Revoke Admin
+                           </button>`}
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-gray-300 dark:hover:border-gray-600 transition-colors" data-action="assign-fund">
+                        <i class="fas fa-plus-circle mr-2 text-green-600"></i>Assign Fund
+                    </button>
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-gray-300 dark:hover:border-gray-600 transition-colors" data-action="remove-fund">
+                        <i class="fas fa-minus-circle mr-2 text-yellow-600"></i>Remove Fund
+                    </button>
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-gray-300 dark:hover:border-gray-600 transition-colors" data-action="send-invite">
+                        <i class="fas fa-envelope mr-2 text-blue-600"></i>Send Invite
+                    </button>
+                    <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md border border-transparent hover:border-red-200 dark:hover:border-red-800 transition-colors text-red-600 dark:text-red-400 font-medium" data-action="delete">
+                        <i class="fas fa-trash-alt mr-2"></i>Delete User
+                    </button>
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-gray-300 dark:hover:border-gray-600 transition-colors mt-2" data-action="cancel">
+                        <i class="fas fa-times mr-2"></i>Cancel
+                    </button>
                 </div>
             </div>
         `;
         
+        // Close on backdrop click
+        menu.addEventListener('click', (e: Event) => {
+            if (e.target === menu) {
+                document.body.removeChild(menu);
+                resolve(null);
+            }
+        });
+        
         menu.querySelectorAll('.action-menu-btn').forEach(btn => {
             btn.addEventListener('click', (e: Event) => {
+                e.stopPropagation();
                 const action = (e.currentTarget as HTMLElement).dataset.action;
                 document.body.removeChild(menu);
                 if (action !== 'cancel') {
@@ -581,19 +608,19 @@ async function grantAdminRole(email: string): Promise<void> {
         const data: ApiResponse = await response.json();
         
         if (response.ok && data.success) {
-            alert(`✅ ${data.message || 'Admin role granted'}`);
+            showToast(data.message || 'Admin role granted', 'success');
             fetchUsers();
         } else {
-            alert(`❌ ${data.error || data.message || 'Failed to grant admin role'}`);
+            showToast(data.error || data.message || 'Failed to grant admin role', 'error');
         }
     } catch (error) {
-        alert(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
     }
 }
 
 async function revokeAdminRole(email: string, isSelf: boolean): Promise<void> {
     if (isSelf) {
-        alert('⚠️ Cannot remove your own admin role');
+        showToast('Cannot remove your own admin role', 'warning');
         return;
     }
     
@@ -609,19 +636,19 @@ async function revokeAdminRole(email: string, isSelf: boolean): Promise<void> {
         const data: ApiResponse = await response.json();
         
         if (response.ok && data.success) {
-            alert(`✅ ${data.message || 'Admin role revoked'}`);
+            showToast(data.message || 'Admin role revoked', 'success');
             fetchUsers();
         } else {
-            alert(`❌ ${data.error || data.message || 'Failed to revoke admin role'}`);
+            showToast(data.error || data.message || 'Failed to revoke admin role', 'error');
         }
     } catch (error) {
-        alert(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
     }
 }
 
 async function showAssignFundDialog(email: string): Promise<void> {
     if (funds.length === 0) {
-        alert('No funds available');
+        showToast('No funds available', 'warning');
         return;
     }
     
@@ -640,22 +667,22 @@ async function showAssignFundDialog(email: string): Promise<void> {
         const data: ApiResponse = await response.json();
         
         if (response.ok && data.success) {
-            alert(`✅ ${data.message || 'Fund assigned'}`);
+            showToast(data.message || 'Fund assigned', 'success');
             fetchUsers();
         } else if (data.already_assigned) {
-            alert(`⚠️ ${data.message || 'Fund already assigned'}`);
+            showToast(data.message || 'Fund already assigned', 'warning');
         } else {
-            alert(`❌ ${data.error || data.message || 'Failed to assign fund'}`);
+            showToast(data.error || data.message || 'Failed to assign fund', 'error');
         }
     } catch (error) {
-        alert(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
     }
 }
 
 async function showRemoveFundDialog(email: string): Promise<void> {
     const user = users.find(u => u.email === email);
     if (!user || !user.funds || user.funds.length === 0) {
-        alert('User has no funds assigned');
+        showToast('User has no funds assigned', 'warning');
         return;
     }
     
@@ -674,13 +701,13 @@ async function showRemoveFundDialog(email: string): Promise<void> {
         const data: ApiResponse = await response.json();
         
         if (response.ok) {
-            alert(`✅ ${data.message || 'Fund removed'}`);
+            showToast(data.message || 'Fund removed', 'success');
             fetchUsers();
         } else {
-            alert(`❌ ${data.error || 'Failed to remove fund'}`);
+            showToast(data.error || 'Failed to remove fund', 'error');
         }
     } catch (error) {
-        alert(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
     }
 }
 
@@ -695,12 +722,12 @@ async function sendInvite(email: string): Promise<void> {
         const data: ApiResponse = await response.json();
         
         if (response.ok && data.success) {
-            alert(`✅ ${data.message || 'Invite sent'}`);
+            showToast(data.message || 'Invite sent', 'success');
         } else {
-            alert(`❌ ${data.error || 'Failed to send invite'}`);
+            showToast(data.error || 'Failed to send invite', 'error');
         }
     } catch (error) {
-        alert(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
     }
 }
 
@@ -723,13 +750,13 @@ async function deleteUser(email: string): Promise<void> {
         const data: ApiResponse = await response.json();
         
         if (response.ok && data.success) {
-            alert(`✅ ${data.message || 'User deleted'}`);
+            showToast(data.message || 'User deleted', 'success');
             fetchUsers();
         } else {
-            alert(`🚫 ${data.error || data.message || 'Failed to delete user'}`);
+            showToast(data.error || data.message || 'Failed to delete user', 'error');
         }
     } catch (error) {
-        alert(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
     }
 }
 
@@ -790,7 +817,7 @@ async function handleUpdateEmail(): Promise<void> {
     const newEmail = elements.newEmailInput.value.trim();
     
     if (!selected || !newEmail) {
-        alert('Please select a contributor and enter a new email address');
+        showToast('Please select a contributor and enter a new email address', 'warning');
         return;
     }
     
@@ -928,7 +955,7 @@ async function handleGrantAccess(): Promise<void> {
     const accessLevel = elements.grantAccessLevelSelect.value;
     
     if (!contributorEmail || !userEmail) {
-        alert('Please select both contributor and user');
+        showToast('Please select both contributor and user', 'warning');
         return;
     }
     
@@ -998,7 +1025,7 @@ async function handleRevokeAccess(): Promise<void> {
     const userEmail = elements.revokeUserSelect.value;
     
     if (!contributorEmail || !userEmail) {
-        alert('Please select both contributor and user');
+        showToast('Please select both contributor and user', 'warning');
         return;
     }
     
@@ -1040,6 +1067,56 @@ async function handleRevokeAccess(): Promise<void> {
         elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-red-500 mr-2"></i><span class="text-red-700">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
         elements.revokeAccessResult.classList.remove('hidden');
     }
+}
+
+// Toast Notification System
+function showToast(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success'): void {
+    let container = document.getElementById('toast-container-users');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container-users';
+        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    const borderColor = type === 'error' ? 'border-red-500' : 
+                       type === 'warning' ? 'border-yellow-500' : 
+                       type === 'info' ? 'border-blue-500' : 
+                       'border-green-500';
+    
+    const icon = type === 'error' ? '❌' : 
+                 type === 'warning' ? '⚠️' : 
+                 type === 'info' ? 'ℹ️' : 
+                 '✅';
+
+    toast.className = `flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow-lg dark:text-gray-400 dark:bg-gray-800 border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.innerHTML = `
+        <div class="ms-3 text-sm font-normal flex items-center gap-2">
+            <span class="text-lg">${icon}</span>
+            <span>${escapeHtmlForUsers(message)}</span>
+        </div>
+        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-white text-gray-400 hover:text-gray-900 rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-gray-100 inline-flex items-center justify-center h-8 w-8 dark:text-gray-500 dark:hover:text-white dark:bg-gray-800 dark:hover:bg-gray-700" aria-label="Close">
+            <span class="sr-only">Close</span>
+            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+            </svg>
+        </button>
+    `;
+
+    const closeBtn = toast.querySelector('button');
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        };
+    }
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
 }
 
 // Helper Functions
