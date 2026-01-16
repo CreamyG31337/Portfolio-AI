@@ -340,5 +340,12 @@
             loadUsers();
         });
     </script>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-4 mt-auto">
+        <div class="container mx-auto px-4 text-center text-sm">
+            <p>Build: {{ build_timestamp|default('Development') }}</p>
+        </div>
+    </footer>
 </body>
 </html>

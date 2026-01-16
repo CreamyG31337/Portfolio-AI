@@ -419,27 +419,25 @@ The project maintains comprehensive, auto-generated database schema documentatio
 
 ## Test Database for Safe Development
 
-### Cloud Agent Usage
+### Cloud Agent Workflow (e.g. Google Jules)
 
-Before modifying production code, test changes locally:
+Cloud agents like Google Jules **do not have access to production**. They should operate exclusively in the sandbox environment:
 
-1. **Start Test Environment**:
+1. **Boot Sandbox**: 
    ```powershell
    docker-compose -f docker-compose.test.yml up -d
    ```
+   *The pre-generated seed files (`database/test_seed_*.sql`) are committed to the repo and will load automatically.*
 
-2. **Configure Application**:
+2. **Setup Local Config**: 
    ```powershell
    cp .env.test.template .env
    ```
+   *The `.env.test.template` file contains a complete working test configuration.*
+   *Avoid running `scripts/generate_test_seed.py` as it requires production credentials which agents do not possess.*
 
-3. **Run Tests**:
-   Application now uses test databases on localhost:5433 (Supabase) and localhost:5434 (Research)
-
-4. **Clean Up**:
-   ```powershell
-   docker-compose -f docker-compose.test.yml down -v
-   ```
+3. **Verify and Develop**:
+   All operations will now target the local Docker databases on ports 5433 (Supabase) and 5434 (Research).
 
 ### Test Data Characteristics
 

@@ -38,10 +38,7 @@ interface DashboardSummary {
     };
     investor_count?: number;
     holdings_count?: number;
-    exchange_rates?: {
-        USD_CAD: number;
-        CAD_USD: number;
-    };
+    first_trade_date?: string | null;
     from_cache: boolean;
     processing_time: number;
 }
@@ -878,7 +875,7 @@ async function fetchSummary(): Promise<void> {
             has_pillars: !!data.thesis?.pillars,
             investors: data.investor_count,
             holdings: data.holdings_count,
-            rates: data.exchange_rates,
+            first_trade_date: data.first_trade_date,
             processing_time: data.processing_time,
             from_cache: data.from_cache
         });
@@ -909,14 +906,25 @@ async function fetchSummary(): Promise<void> {
             }
         }
         if (data.holdings_count !== undefined) updateMetric('metric-holdings-count', data.holdings_count, '', false);
-        if (data.exchange_rates) {
-            updateMetric('metric-usd-cad', data.exchange_rates.USD_CAD, '', false); // Just number, no currency format
-            // Format rates with 4 decimals
-            const usdCadEl = document.getElementById('metric-usd-cad');
-            if (usdCadEl) usdCadEl.textContent = data.exchange_rates.USD_CAD.toFixed(4);
-
-            const cadUsdEl = document.getElementById('metric-cad-usd');
-            if (cadUsdEl) cadUsdEl.textContent = data.exchange_rates.CAD_USD.toFixed(4);
+        
+        // Update First Trade Date
+        if (data.first_trade_date) {
+            const firstTradeDateEl = document.getElementById('metric-first-trade-date');
+            if (firstTradeDateEl) {
+                // Format date as MM/DD/YYYY
+                const date = new Date(data.first_trade_date);
+                const formattedDate = date.toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit' 
+                });
+                firstTradeDateEl.textContent = formattedDate;
+            }
+        } else {
+            const firstTradeDateEl = document.getElementById('metric-first-trade-date');
+            if (firstTradeDateEl) {
+                firstTradeDateEl.textContent = '--';
+            }
         }
 
         // Update Thesis

@@ -60,25 +60,19 @@ psql postgresql://test_user:test_password@localhost:5433/portfolio_supabase_test
 
 ### What's Included
 
-**Real Data:**
+**Real Reference Data (Committed to Git):**
 - TEST and TFSA fund positions, trades, and performance
 - Real securities, benchmark data, exchange rates
 - Congress trades, politicians, committees
 - System settings and job execution logs
 
-**Scrubbed PII:**
-- All contributor names → "Test Contributor {N}"
-- All real emails → "test-contributor-{N}@example.com"
-- User names → "Test User {N}"
-- User emails → "test-user-{N}@example.com"
-- Phone numbers and addresses removed
+**Scrubbed PII & Synthetic Data:**
+- All contributor names/emails are masked: "Test Contributor {N}"
+- User names/emails are masked: "Test User {N}"
+- Includes 3,374 fake social posts and 817 fake research articles for AI testing.
 
-**Synthetic Data:**
-- 3374 fake social posts (matching production count)
-- 10122 fake social metrics
-- 2361 fake sentiment analysis records
-- 817 fake research articles
-- Fake market relationships and extracted tickers
+> [!TIP]
+> Cloud agents (like Google Jules) should **not** attempt to run generation scripts. They should use the pre-scrubbed seed files already present in the repository.
 
 **Mock Auth:**
 - 3 test users (admin@test.com, contributor@test.com, viewer@test.com)

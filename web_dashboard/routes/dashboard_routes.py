@@ -195,31 +195,18 @@ def get_dashboard_summary():
         investor_count = get_investor_count(fund)
         holdings_count = len(positions_df) if not positions_df.empty else 0
         
-        # Calculate Exchange Rates for Display
-        # fetch_latest_rates_bulk returns rate FROM key TO display_currency
-        # If display_currency is CAD:
-        # USD -> CAD rate is in rate_map['USD'] (e.g. 1.40)
-        # CAD -> USD rate is 1 / rate_map['USD'] (e.g. 0.71)
-        # If display_currency is USD:
-        # CAD -> USD rate is in rate_map['CAD'] (e.g. 0.71)
-        # USD -> CAD rate is 1 / rate_map['CAD'] (e.g. 1.40)
-        
-        usd_cad_rate = 1.0
-        cad_usd_rate = 1.0
-        
-        if display_currency == 'CAD':
-            usd_cad_rate = rate_map.get('USD', 1.0)
-            if usd_cad_rate > 0:
-                cad_usd_rate = 1.0 / usd_cad_rate
-        elif display_currency == 'USD':
-            cad_usd_rate = rate_map.get('CAD', 1.0)
-            if cad_usd_rate > 0:
-                usd_cad_rate = 1.0 / cad_usd_rate
-        
-        exchange_rates = {
-            "USD_CAD": usd_cad_rate,
-            "CAD_USD": cad_usd_rate
-        }
+        # Get First Trade Date
+        first_trade_date = None
+        try:
+            logger.debug(f"[Dashboard API] Fetching first trade date for fund={fund}")
+            trades_df = get_trade_log(fund=fund, limit=None)
+            if not trades_df.empty and 'date' in trades_df.columns:
+                first_trade_date = pd.to_datetime(trades_df['date']).min()
+                if pd.notna(first_trade_date):
+                    first_trade_date = first_trade_date.strftime('%Y-%m-%d')
+            logger.debug(f"[Dashboard API] First trade date: {first_trade_date}")
+        except Exception as e:
+            logger.warning(f"[Dashboard API] Could not get first trade date: {e}")
         
         processing_time = time.time() - start_time
         response = {
@@ -233,7 +220,7 @@ def get_dashboard_summary():
             "thesis": thesis,
             "investor_count": investor_count,
             "holdings_count": holdings_count,
-            "exchange_rates": exchange_rates,
+            "first_trade_date": first_trade_date,
             "from_cache": False,
             "processing_time": processing_time
         }
