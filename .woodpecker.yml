@@ -435,6 +435,7 @@ steps:
           -e COOKIE_REFRESH_INTERVAL=1800 \
           -e COOKIE_OUTPUT_FILE=/shared/cookies/webai_cookies.json \
           -e COOKIE_INPUT_FILE=/shared/cookies/webai_cookies.json \
+          -e AI_SERVICE_WEB_URL="$AI_SERVICE_WEB_URL" \
           cookie-refresher:latest
         echo "✅ Cookie refresher sidecar started with latest image"
       
