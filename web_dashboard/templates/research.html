@@ -420,7 +420,8 @@
             statusText.textContent = `Re-analyzing article ${index + 1}/${total}...`;
 
             try {
-                const response = await fetch('/v2/research/reanalyze', {
+                // Use Server-Sent Events for streaming progress
+                const response = await fetch('/v2/research/reanalyze/stream', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -431,17 +432,71 @@
                     })
                 });
 
-                const data = await response.json();
-
-                if (data.success) {
-                    successCount++;
-                } else {
-                    errorCount++;
-                    console.error(`Failed to re-analyze article ${articleId}:`, data.error);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
+
+                // Read SSE stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                // Add pulse animation to progress bar
+                progressBar.classList.add('animate-pulse');
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const eventData = JSON.parse(line.substring(6));
+
+                                // Handle different event types
+                                if (eventData.error) {
+                                    console.error('SSE Error:', eventData.error);
+                                    statusText.textContent = `Error: ${eventData.error}`;
+                                    errorCount++;
+                                    break;
+                                } else if (eventData.status === 'generating') {
+                                    // Update progress bar and status
+                                    const progress = eventData.progress || 0;
+                                    const baseProgress = (completed / total) * 100;
+                                    const articleProgress = progress / total;
+                                    progressBar.style.width = `${baseProgress + articleProgress}%`;
+
+                                    statusText.textContent = `${eventData.message} [${eventData.tokens || 0} tokens]`;
+                                } else if (eventData.status === 'complete') {
+                                    progressBar.classList.remove('animate-pulse');
+                                    successCount++;
+                                } else if (eventData.status) {
+                                    // Other status updates (fetching, initializing, processing, embedding, saving)
+                                    statusText.textContent = eventData.message || eventData.status;
+                                    if (eventData.progress !== undefined) {
+                                        const baseProgress = (completed / total) * 100;
+                                        const articleProgress = eventData.progress / total;
+                                        progressBar.style.width = `${baseProgress + articleProgress}%`;
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Failed to parse SSE data:', e, line);
+                            }
+                        }
+                    }
+                }
+
+                progressBar.classList.remove('animate-pulse');
+
             } catch (error) {
                 errorCount++;
+                progressBar.classList.remove('animate-pulse');
                 console.error(`Error re-analyzing article ${articleId}:`, error);
+                statusText.textContent = `Error: ${error.message}`;
             }
 
             completed++;

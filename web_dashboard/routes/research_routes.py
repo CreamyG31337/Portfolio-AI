@@ -447,3 +447,222 @@ def reanalyze_article_endpoint():
             "success": False,
             "error": str(e)
         }), 500
+
+
+@research_bp.route('/research/reanalyze/stream', methods=['POST'])
+@require_auth
+def reanalyze_article_stream():
+    """Re-analyze an article with Server-Sent Events streaming progress"""
+    from flask import Response, stream_with_context
+    import queue
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No JSON data provided"}), 400
+        
+        article_id = data.get('article_id')
+        model_name = data.get('model_name')
+        
+        if not article_id:
+            return jsonify({"success": False, "error": "article_id is required"}), 400
+        
+        if not model_name:
+            return jsonify({"success": False, "error": "model_name is required"}), 400
+        
+        def generate_sse_events():
+            """Generator that yields Server-Sent Events"""
+            import json
+            from ollama_client import get_ollama_client, check_ollama_health
+            from research_utils import validate_ticker_format, normalize_ticker
+            from scheduler.jobs import calculate_relevance_score
+            from supabase_client import SupabaseClient
+            
+            try:
+                # Check repository
+                repo = get_research_repository()
+                if repo is None:
+                    yield f"data: {json.dumps({'error': 'Research repository not available'})}\n\n"
+                    return
+                
+                # Check Ollama
+                if not check_ollama_health():
+                    yield f"data: {json.dumps({'error': 'Ollama is not available'})}\n\n"
+                    return
+                
+                # Send initial status
+                yield f"data: {json.dumps({'status': 'fetching', 'message': 'Fetching article...'})}\n\n"
+                
+                # Get article
+                query = """
+                    SELECT id, title, content, 
+                           COALESCE(tickers, ARRAY[ticker]) as tickers, 
+                           sector
+                    FROM research_articles
+                    WHERE id = %s
+                """
+                articles = repo.client.execute_query(query, (article_id,))
+                
+                if not articles:
+                    yield f"data: {json.dumps({'error': 'Article not found'})}\n\n"
+                    return
+                
+                article = articles[0]
+                if 'tickers' in article and article['tickers'] is not None:
+                    if not isinstance(article['tickers'], list):
+                        article['tickers'] = [article['tickers']] if article['tickers'] else []
+                else:
+                    article['tickers'] = []
+                
+                content = article.get('content', '')
+                if not content:
+                    yield f"data: {json.dumps({'error': 'Article has no content'})}\n\n"
+                    return
+                
+                # Initialize Ollama client
+                yield f"data: {json.dumps({'status': 'initializing', 'message': 'Initializing AI model...'})}\n\n"
+                
+                ollama_client = get_ollama_client()
+                if not ollama_client:
+                    yield f"data: {json.dumps({'error': 'Failed to initialize Ollama client'})}\n\n"
+                    return
+                
+                # Progress callback for streaming
+                def progress_callback(tokens, progress):
+                    """Called during summary generation with progress updates"""
+                    nonlocal progress_queue
+                    progress_queue.put({
+                        'status': 'generating',
+                        'message': f'Generating summary... {progress}%',
+                        'progress': progress,
+                        'tokens': tokens
+                    })
+                
+                # Create queue for progress updates from callback
+                progress_queue = queue.Queue()
+                
+                # Start generating summary with streaming
+                yield f"data: {json.dumps({'status': 'generating', 'message': 'Generating summary...', 'progress': 0})}\n\n"
+                
+                summary_data = ollama_client.generate_summary_streaming(
+                    content, 
+                    model=model_name,
+                    progress_callback=progress_callback
+                )
+                
+                # Drain progress queue and send all updates
+                while not progress_queue.empty():
+                    progress_update = progress_queue.get()
+                    yield f"data: {json.dumps(progress_update)}\n\n"
+                
+                if not summary_data:
+                    yield f"data: {json.dumps({'error': 'Failed to generate summary'})}\n\n"
+                    return
+                
+                # Extract data
+                yield f"data: {json.dumps({'status': 'processing', 'message': 'Processing summary data...', 'progress': 100})}\n\n"
+                
+                extracted_tickers = []
+                extracted_sector = None
+                if isinstance(summary_data, str):
+                    summary = summary_data
+                elif isinstance(summary_data, dict):
+                    summary = summary_data.get("summary", "")
+                    tickers = summary_data.get("tickers", [])
+                    sectors = summary_data.get("sectors", [])
+                    
+                    extracted_tickers = []
+                    if tickers:
+                        for ticker in tickers:
+                            if not validate_ticker_format(ticker):
+                                continue
+                            normalized = normalize_ticker(ticker)
+                            if normalized:
+                                extracted_tickers.append(normalized)
+                    
+                    extracted_sector = sectors[0] if sectors else None
+                else:
+                    yield f"data: {json.dumps({'error': 'Invalid summary format'})}\n\n"
+                    return
+                
+                if not summary:
+                    yield f"data: {json.dumps({'error': 'Generated summary is empty'})}\n\n"
+                    return
+                
+                # Get owned tickers for relevance
+                owned_tickers = []
+                try:
+                    user_token = get_auth_token()
+                    client = None
+                    if user_token:
+                        try:
+                            client = SupabaseClient(user_token=user_token)
+                        except Exception:
+                            pass
+                    
+                    if not client:
+                        client = SupabaseClient(use_service_role=True)
+                    
+                    if client:
+                        funds_result = client.supabase.table("funds").select("name").eq("is_production", True).execute()
+                        if funds_result.data:
+                            prod_funds = [f['name'] for f in funds_result.data]
+                            positions_result = client.supabase.table("latest_positions").select("ticker").in_("fund", prod_funds).execute()
+                            if positions_result.data:
+                                owned_tickers = [pos['ticker'] for pos in positions_result.data if pos.get('ticker')]
+                except Exception as e:
+                    logger.warning(f"Could not fetch owned tickers: {e}")
+                
+                # Calculate relevance
+                calculated_relevance = calculate_relevance_score(extracted_tickers, extracted_sector, owned_tickers=owned_tickers)
+                
+                # Generate embedding
+                yield f"data: {json.dumps({'status': 'embedding', 'message': 'Generating embedding...'})}\n\n"
+                
+                embedding = ollama_client.generate_embedding(content[:6000])
+                if not embedding:
+                    logger.warning(f"Failed to generate embedding for article {article_id}")
+                    embedding = None
+                
+                # Update database
+                yield f"data: {json.dumps({'status': 'saving', 'message': 'Saving to database...'})}\n\n"
+                
+                success = repo.update_article_analysis(
+                    article_id=article_id,
+                    summary=summary,
+                    tickers=extracted_tickers if extracted_tickers else None,
+                    sector=extracted_sector,
+                    embedding=embedding,
+                    relevance_score=calculated_relevance,
+                    claims=summary_data.get("claims") if isinstance(summary_data, dict) else None,
+                    fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
+                    conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
+                    sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
+                    sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None
+                )
+                
+                if success:
+                    yield f"data: {json.dumps({'status': 'complete', 'message': f'Successfully re-analyzed with {model_name}', 'success': True})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'error': 'Failed to update database'})}\n\n"
+                
+            except Exception as e:
+                logger.error(f"Error in SSE stream: {e}", exc_info=True)
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        
+        return Response(
+            stream_with_context(generate_sse_events()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in reanalyze stream endpoint: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
