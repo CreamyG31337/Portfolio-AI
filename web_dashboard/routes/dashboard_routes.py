@@ -1097,6 +1097,20 @@ def get_dividend_data():
                 "type": "DRIP" if reinvested > 0 else "CASH"
             })
             
+        # Calculate Metrics from collected log data
+        total_dividends = sum(item['amount'] for item in log_data)
+        total_us_tax = sum(item['tax'] for item in log_data)
+        total_reinvested = sum(item['shares'] for item in log_data)
+        payout_events = len(log_data)
+        
+        # Find largest dividend
+        largest_dividend = 0.0
+        largest_ticker = ''
+        if log_data:
+            largest_item = max(log_data, key=lambda x: x.get('amount', 0))
+            largest_dividend = largest_item.get('amount', 0)
+            largest_ticker = largest_item.get('ticker', '')
+            
         return jsonify({
             "metrics": {
                 "total_dividends": total_dividends,
