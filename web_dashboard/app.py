@@ -500,7 +500,11 @@ def _start_scheduler_background():
     logger.debug(f"[PID:{process_id}] Started scheduler initialization thread (non-daemon - keeps alive)")
 
 # Start scheduler immediately when module loads
-_start_scheduler_background()
+# Only start if not explicitly disabled (e.g. in Flask container where Streamlit runs the scheduler)
+if os.environ.get('DISABLE_SCHEDULER', '').lower() != 'true':
+    _start_scheduler_background()
+else:
+    logger.info("ℹ️ Scheduler auto-start disabled via DISABLE_SCHEDULER environment variable")
 
 def load_portfolio_data(fund_name=None) -> Dict:
     """Load and process portfolio data from Supabase (web app only - no CSV fallback)"""

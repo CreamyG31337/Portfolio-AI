@@ -330,6 +330,7 @@ steps:
         DOCKER_CMD="$DOCKER_CMD -e OLLAMA_ENABLED=\"${OLLAMA_ENABLED:-true}\""
         DOCKER_CMD="$DOCKER_CMD -e STREAMLIT_SERVER_HEADLESS=true"
         DOCKER_CMD="$DOCKER_CMD -e STREAMLIT_BROWSER_GATHER_USAGE_STATS=false"
+        DOCKER_CMD="$DOCKER_CMD -e DISABLE_SCHEDULER=true"
         DOCKER_CMD="$DOCKER_CMD trading-dashboard:latest"
         
         # Start Streamlit container in background (parallel with Flask deployment)

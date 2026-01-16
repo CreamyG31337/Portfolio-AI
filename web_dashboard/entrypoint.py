@@ -72,13 +72,19 @@ def main():
                 logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Thread exiting")
 
         logger.info(f"[PID:{process_id}] Scheduler thread started")
-        scheduler_thread = threading.Thread(
-            target=_run_scheduler,
-            name="SchedulerInitThread",
-            daemon=True  # Daemon is correct - allows Streamlit to start without blocking
-        )
-        scheduler_thread.start()
-        logger.info(f"[PID:{process_id}] Scheduler thread started")
+        
+        # Start scheduler initialization thread only if not disabled
+        # (Flask container runs scheduler, Streamlit is legacy)
+        if os.getenv('DISABLE_SCHEDULER', '').lower() != 'true':
+            scheduler_thread = threading.Thread(
+                target=_run_scheduler,
+                name="SchedulerInitThread",
+                daemon=True  # Daemon is correct - allows Streamlit to start without blocking
+            )
+            scheduler_thread.start()
+            logger.info(f"[PID:{process_id}] Scheduler thread started")
+        else:
+            logger.info(f"[PID:{process_id}] ℹ️ Scheduler disabled via DISABLE_SCHEDULER env var (Flask container runs scheduler)")
 
         # Now start Streamlit (blocks until container stops)
         logger.info("Launching Streamlit application...")
