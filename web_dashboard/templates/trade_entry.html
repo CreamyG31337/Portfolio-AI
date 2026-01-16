@@ -76,7 +76,7 @@
                         <div>
                             <label for="ticker"
                                 class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Ticker
-                                Symbol</label>
+                                Symbol <span class="text-red-500">*</span></label>
                             <div class="relative">
                                 <span
                                     class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-gray-500">🔍</span>
@@ -88,7 +88,7 @@
 
                         <div>
                             <label for="shares"
-                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Shares</label>
+                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Shares <span class="text-red-500">*</span></label>
                             <input type="number" id="shares" name="shares" step="any" min="0.000001"
                                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
                                 required>
@@ -99,7 +99,7 @@
                     <div class="space-y-4">
                         <div>
                             <label for="price"
-                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Price ($)</label>
+                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Price ($) <span class="text-red-500">*</span></label>
                             <div class="relative">
                                 <span
                                     class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-gray-500">$</span>
@@ -122,14 +122,14 @@
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label for="trade-date"
-                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Date</label>
+                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Date <span class="text-red-500">*</span></label>
                                 <input type="date" id="trade-date" name="date"
                                     class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                     required>
                             </div>
                             <div>
                                 <label for="trade-time"
-                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Time</label>
+                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Time <span class="text-red-500">*</span></label>
                                 <input type="time" id="trade-time" name="time"
                                     class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                     required>
