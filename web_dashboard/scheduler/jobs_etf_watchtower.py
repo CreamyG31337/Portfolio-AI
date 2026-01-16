@@ -375,7 +375,7 @@ def upsert_securities_metadata(db: SupabaseClient, df: pd.DataFrame, provider: s
                 
             record = {
                 'ticker': ticker,
-                'name': row['name'],
+                'company_name': row['name'],
                 'first_detected_by': f"{provider} ETF",
                 'last_updated': datetime.now(timezone.utc).isoformat()
             }

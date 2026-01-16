@@ -308,6 +308,13 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'cron_triggers': [
             {'hour': 20, 'minute': 0, 'timezone': 'America/New_York'}  # 20:00 EST - after ARK publishes
         ]
+    },
+    'refresh_securities_metadata': {
+        'name': 'Securities Metadata Refresh',
+        'description': 'Refresh company names and metadata for tickers with stale or missing data',
+        'default_interval_minutes': 1440,  # Once per day
+        'enabled_by_default': True,
+        'icon': '📋'
     }
 }
 
@@ -414,6 +421,9 @@ from scheduler.jobs_retry import process_retry_queue_job
 # Import subreddit scanner job
 from scheduler.jobs_reddit_discovery import subreddit_scanner_job
 
+# Import securities refresh job
+from scheduler.jobs_securities import refresh_securities_metadata_job
+
 # Import shared utilities
 from scheduler.jobs_common import calculate_relevance_score
 
@@ -453,6 +463,8 @@ __all__ = [
     'process_retry_queue_job',
     # Subreddit scanner
     'subreddit_scanner_job',
+    # Securities refresh
+    'refresh_securities_metadata_job',
     # Shared utilities
     'calculate_relevance_score',
     # Registry functions (defined in this file)
@@ -1033,3 +1045,20 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: etf_watchtower (daily at 8:00 PM EST)")
+    
+    # Securities Metadata Refresh - Daily at 1:00 AM EST (low priority, off-peak)
+    if AVAILABLE_JOBS.get('refresh_securities_metadata', {}).get('enabled_by_default', True):
+        scheduler.add_job(
+            refresh_securities_metadata_job,
+            trigger=CronTrigger(
+                hour=1,
+                minute=0,
+                timezone='America/New_York'
+            ),
+            id='refresh_securities_metadata',
+            name=f"{get_job_icon('refresh_securities_metadata')} Securities Metadata Refresh",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: refresh_securities_metadata (daily at 1:00 AM EST)")

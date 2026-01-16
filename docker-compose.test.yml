@@ -1,0 +1,135 @@
+# =====================================================
+# Docker Compose for Test Environment
+# =====================================================
+# Provides two separate PostgreSQL databases matching production structure:
+# 1. Supabase Test DB (port 5433)
+# 2. Research Test DB (port 5434)
+#
+# This setup prevents join/structure bugs that would occur
+# if both databases were merged into one.
+# =====================================================
+
+version: '3.8'
+
+services:
+  # =====================================================
+  # Supabase Test Database
+  # =====================================================
+  supabase-test-db:
+    image: postgres:15-alpine
+    container_name: portfolio-supabase-test
+    environment:
+      POSTGRES_DB: portfolio_supabase_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+    ports:
+      - "5433:5432"
+    volumes:
+      # Load in order: schema -> auth mock -> test data
+      - ./database/schema/supabase/_init_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/utilities/mock_auth_setup.sql:/docker-entrypoint-initdb.d/02_auth.sql
+      - ./database/test_seed_supabase.sql:/docker-entrypoint-initdb.d/03_seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d portfolio_supabase_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - test-network
+
+  # =====================================================
+  # Research Test Database
+  # =====================================================
+  research-test-db:
+    image: postgres:15-alpine
+    container_name: portfolio-research-test
+    environment:
+      POSTGRES_DB: portfolio_research_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+    ports:
+      - "5434:5432"
+    volumes:
+      # Load in order: schema -> test data
+      - ./database/schema/research/_init_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/test_seed_research.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d portfolio_research_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - test-network
+
+  # =====================================================
+  # pgAdmin for GUI Access (Optional)
+  # =====================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: portfolio-test-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@test.com
+      PGADMIN_DEFAULT_PASSWORD: test_password
+    ports:
+      - "5050:80"
+    depends_on:
+      - supabase-test-db
+      - research-test-db
+    networks:
+      - test-network
+    profiles:
+      - tools
+
+networks:
+  test-network:
+    driver: bridge
+
+# =====================================================
+# USAGE
+# =====================================================
+#
+# Start test environment:
+#   docker-compose -f docker-compose.test.yml up -d
+#
+# Start with pgAdmin:
+#   docker-compose -f docker-compose.test.yml --profile tools up -d
+#
+# Check status:
+#   docker-compose -f docker-compose.test.yml ps
+#
+# View logs:
+#   docker-compose -f docker-compose.test.yml logs -f
+#
+# Stop and clean up:
+#   docker-compose -f docker-compose.test.yml down -v
+#
+# Connect to Supabase test DB:
+#   psql postgresql://test_user:test_password@localhost:5433/portfolio_supabase_test
+#
+# Connect to Research test DB:
+#   psql postgresql://test_user:test_password@localhost:5434/portfolio_research_test
+#
+# =====================================================
+# TEST DATABASE CREDENTIALS
+# =====================================================
+# Supabase Test DB:
+#   Host: localhost
+#   Port: 5433
+#   Database: portfolio_supabase_test
+#   User: test_user
+#   Password: test_password
+#
+# Research Test DB:
+#   Host: localhost
+#   Port: 5434
+#   Database: portfolio_research_test
+#   User: test_user
+#   Password: test_password
+#
+# pgAdmin:
+#   URL: http://localhost:5050
+#   Email: admin@test.com
+#   Password: test_password
+# =====================================================

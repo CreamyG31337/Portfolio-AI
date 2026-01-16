@@ -277,12 +277,16 @@ class SupabaseClient:
                 # Consider metadata complete if:
                 # 1. Company name exists and is not just the ticker, not 'Unknown', and not empty
                 # 2. Has sector or industry (indicates yfinance data was fetched)
+                # Note: We also check if company_name is NULL/empty to ensure we fetch even if ticker exists
                 if (existing_company_name and 
                     existing_company_name != ticker and 
                     existing_company_name != 'Unknown' and
                     existing_company_name.strip() and
                     (existing_sector or existing_industry)):
                     has_complete_metadata = True
+                # If company_name is NULL or 'Unknown', we need to fetch (even if sector/industry exist)
+                elif not existing_company_name or existing_company_name == 'Unknown' or not existing_company_name.strip():
+                    has_complete_metadata = False
             
             # If ticker exists with complete metadata, no need to update
             if has_complete_metadata:

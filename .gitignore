@@ -327,3 +327,6 @@ web_dashboard/static/css/tailwind.css
 # Edit TypeScript files in src/js/ and run: npm run build:ts
 web_dashboard/static/js/*.js
 web_dashboard/static/js/*.js.map
+
+# Allow test environment template (safe for git)
+!.env.test.template

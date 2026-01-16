@@ -417,3 +417,104 @@ The project maintains comprehensive, auto-generated database schema documentatio
 3. Use the `_init_schema.sql` script for fresh environment setups.
 4. Always run `export_clean_schema.py` after making changes to the production database to keep the repository's modular schema synced.
 
+## Test Database for Safe Development
+
+### Cloud Agent Usage
+
+Before modifying production code, test changes locally:
+
+1. **Start Test Environment**:
+   ```powershell
+   docker-compose -f docker-compose.test.yml up -d
+   ```
+
+2. **Configure Application**:
+   ```powershell
+   cp .env.test.template .env
+   ```
+
+3. **Run Tests**:
+   Application now uses test databases on localhost:5433 (Supabase) and localhost:5434 (Research)
+
+4. **Clean Up**:
+   ```powershell
+   docker-compose -f docker-compose.test.yml down -v
+   ```
+
+### Test Data Characteristics
+
+**Only TEST and TFSA funds included:**
+- Real portfolio positions, trades, and performance metrics
+- Real fund configurations and cash balances
+- All other fund data excluded
+
+**All PII scrubbed:**
+- All real contributor names → "Test Contributor {N}"
+- All real emails → "test-contributor-{N}@example.com"
+- User names → "Test User {N}"
+- User emails → "test-user-{N}@example.com"
+- Phone numbers and addresses set to NULL
+
+**Synthetic data for AI features:**
+- Social posts, articles, and sentiment data are fake
+- Benchmark and market data is real (public information)
+- 3374 fake social posts, 817 fake research articles
+
+### RLS Testing
+
+The test database includes mock Supabase auth:
+
+**Test Users:**
+- `admin@test.com` - Full admin access
+- `contributor@test.com` - Contributor access to TEST/TFSA
+- `viewer@test.com` - Read-only access
+
+**Switch users in psql:**
+```sql
+-- Switch to admin
+SELECT set_current_test_user('admin@test.com');
+
+-- Switch to contributor
+SELECT set_current_test_user('contributor@test.com');
+
+-- Check current user
+SELECT * FROM show_current_user();
+```
+
+**Disable RLS (test mode only):**
+```sql
+\i database/utilities/disable_rls_test.sql
+```
+
+### Regenerating Test Data
+
+If production schema changes:
+
+```powershell
+# 1. Export clean schema from production
+.\web_dashboard\venv\Scripts\python.exe scripts\export_clean_schema.py
+
+# 2. Generate test seed (scrubs PII, creates synthetic data)
+.\venv\Scripts\python.exe scripts\generate_test_seed.py
+
+# 3. Restart test databases
+docker-compose -f docker-compose.test.yml down -v
+docker-compose -f docker-compose.test.yml up -d
+```
+
+### Database Connection Details
+
+**Supabase Test DB:**
+- Port: 5433
+- Database: portfolio_supabase_test
+- User: test_user
+- Password: test_password
+
+**Research Test DB:**
+- Port: 5434
+- Database: portfolio_research_test
+- User: test_user
+- Password: test_password
+
+Both databases run simultaneously, matching production structure exactly to prevent join/structure bugs.
+
