@@ -49,15 +49,6 @@
 		rewrite * /streamlit/{re.streamlit_pages_assets.1}{re.streamlit_pages_assets.2}
 	}
 	
-	# Streamlit WebSocket support - MUST strip /streamlit prefix
-	handle_path /streamlit/_stcore/stream {
-		reverse_proxy localhost:8501 {
-			transport http {
-				versions 1.1 2
-			}
-		}
-	}
-	
 	# Redirect /streamlit/pages/*.py to /streamlit/pages/* (strip .py extension)
 	route /streamlit/pages/*.py {
 		uri strip_suffix .py
@@ -65,8 +56,11 @@
 	}
 	
 	# Streamlit - all paths under /streamlit/*
+	# Use handle_path to strip the /streamlit prefix before proxying
 	handle_path /streamlit/* {
 		reverse_proxy localhost:8501 {
+			# flush_interval -1 is required for WebSocket/SSE streaming
+			flush_interval -1
 			transport http {
 				versions 1.1 2
 			}

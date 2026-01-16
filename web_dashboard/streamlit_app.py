@@ -1326,19 +1326,7 @@ def main():
             logout_user()
             st.rerun()
     
-    # Check V2 Preference and Redirect
-    try:
-        from user_preferences import get_user_preference
-        v2_enabled = get_user_preference('v2_enabled', default=False)
-        if v2_enabled:
-             st.info("Redirecting to New Dashboard (V2)...")
-             st.markdown('<meta http-equiv="refresh" content="0;url=/v2/dashboard">', unsafe_allow_html=True)
-             st.stop()
-    except Exception as e:
-        _logger.warning(f"V2 redirect check failed: {e}")
-
-    # Initialize scheduler (after V2 redirect check)
-    # This prevents blocking the redirect if scheduler takes time to start
+    # Initialize scheduler
     try:
         _logger.info("Initializing scheduler (post-redirect check)...")
         _init_scheduler()
