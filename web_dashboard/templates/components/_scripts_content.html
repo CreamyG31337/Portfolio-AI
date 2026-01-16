@@ -277,13 +277,27 @@
         }
     }
 
-    // Initial update and then poll every 5 seconds
+    // Initial update and then poll every 5 seconds (only when tab is visible)
     document.addEventListener('DOMContentLoaded', () => {
         // Only update if user is admin (badge exists)
         const badge = document.querySelector('a[href*="scheduler"] .sidebar-badge');
         if (badge) {
             updateSchedulerBadge();
-            setInterval(updateSchedulerBadge, 5000);
+
+            // ⚡ Bolt Optimization: Poll every 5s when visible, pause when hidden
+            // Quick updates for admin users while saving resources in background tabs
+            setInterval(() => {
+                if (!document.hidden) {
+                    updateSchedulerBadge();
+                }
+            }, 5000);
+
+            // Update immediately when tab becomes visible
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    updateSchedulerBadge();
+                }
+            });
         }
     });
 </script>
