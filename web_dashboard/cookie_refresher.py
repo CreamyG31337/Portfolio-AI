@@ -479,6 +479,10 @@ def main():
         logger.error("Playwright not available. Exiting.")
         sys.exit(1)
     
+    # Add startup delay to prevent rapid crash loops
+    logger.info("Waiting 60 seconds before initial refresh to ensure system stability...")
+    time.sleep(60)
+    
     # Initial refresh on startup
     logger.info("Performing initial cookie refresh...")
     refresh_cookies()
