@@ -86,6 +86,10 @@ let isSchedulerRunning = false;
 let jobs: Job[] = [];
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
 let autoRefresh = true;
+let consecutiveErrors = 0;
+let maxBackoffDelay = 10000; // Max 10 seconds between retries
+let currentBackoffDelay = 5000; // Start with 5 seconds
+let isRecovering = false;
 
 // DOM Elements - Note: These may be null if called before DOM is ready
 const elements: JobsDOMElements = {
@@ -149,7 +153,13 @@ document.addEventListener('DOMContentLoaded', (): void => {
         console.log('[Jobs] Start scheduler button listener attached');
     }
     if (elements.refreshBtn) {
-        elements.refreshBtn.addEventListener('click', fetchStatus);
+        elements.refreshBtn.addEventListener('click', (): void => {
+            // Manual refresh - reset error counter to get immediate retry
+            consecutiveErrors = 0;
+            currentBackoffDelay = 5000;
+            isRecovering = false;
+            fetchStatus();
+        });
         console.log('[Jobs] Refresh button listener attached');
     }
     if (elements.autoRefreshCheckbox) {
@@ -174,22 +184,43 @@ document.addEventListener('DOMContentLoaded', (): void => {
 });
 
 function startAutoRefresh(): void {
-    console.log('[Jobs] Starting auto-refresh (5 second interval)');
+    console.log('[Jobs] Starting auto-refresh with adaptive backoff');
     if (refreshInterval) {
         clearInterval(refreshInterval);
     }
-    refreshInterval = setInterval(() => {
-        if (autoRefresh) {
-            console.log('[Jobs] Auto-refresh triggered');
-            fetchStatus();
+    
+    // Use a function that adjusts delay based on errors
+    const scheduleNextRefresh = () => {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
         }
-    }, 5000);
+        
+        if (!autoRefresh) {
+            return;
+        }
+        
+        const delay = consecutiveErrors > 0 ? currentBackoffDelay : 5000;
+        console.log(`[Jobs] Scheduling next refresh in ${delay}ms (errors: ${consecutiveErrors})`);
+        
+        refreshInterval = setTimeout(() => {
+            if (autoRefresh) {
+                console.log('[Jobs] Auto-refresh triggered');
+                fetchStatus().finally(() => {
+                    // Schedule next refresh after this one completes
+                    scheduleNextRefresh();
+                });
+            }
+        }, delay);
+    };
+    
+    // Start the first refresh
+    scheduleNextRefresh();
 }
 
 function stopAutoRefresh(): void {
     console.log('[Jobs] Stopping auto-refresh');
     if (refreshInterval) {
-        clearInterval(refreshInterval);
+        clearTimeout(refreshInterval);
         refreshInterval = null;
     }
 }
@@ -247,16 +278,57 @@ async function fetchStatus(): Promise<void> {
         updateStatusUI(data.scheduler_running);
         renderJobs(data.jobs);
 
+        // Success - reset error tracking
+        if (consecutiveErrors > 0) {
+            console.log('[Jobs] Connection recovered after', consecutiveErrors, 'errors');
+            consecutiveErrors = 0;
+            currentBackoffDelay = 5000; // Reset to initial delay
+            isRecovering = false;
+            // Hide any recovery message
+            if (elements.infoText) {
+                elements.infoText.classList.remove('text-yellow-600');
+            }
+        }
+
         console.log('[Jobs] fetchStatus() completed successfully');
     } catch (error) {
         const duration = performance.now() - startTime;
+        consecutiveErrors++;
+        
+        // Simple backoff: 5s on first error, then 10s max
+        currentBackoffDelay = consecutiveErrors === 1 ? 5000 : maxBackoffDelay;
+        
         console.error('[Jobs] Error fetching status:', {
             error: error,
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,
-            duration: `${duration.toFixed(2)}ms`
+            duration: `${duration.toFixed(2)}ms`,
+            consecutiveErrors: consecutiveErrors,
+            nextRetryIn: `${currentBackoffDelay}ms`
         });
-        showJobsError('Failed to fetch scheduler status');
+        
+        // Show error with retry information
+        const errorMsg = consecutiveErrors === 1 
+            ? 'Failed to fetch scheduler status. Retrying...'
+            : `Connection lost (${consecutiveErrors} attempts). Retrying in ${Math.round(currentBackoffDelay/1000)}s...`;
+        
+        showJobsError(errorMsg);
+        
+        // Show recovery indicator
+        if (!isRecovering) {
+            isRecovering = true;
+            if (elements.infoText) {
+                elements.infoText.textContent = `⚠️ Reconnecting... (attempt ${consecutiveErrors})`;
+                elements.infoText.classList.add('text-yellow-600');
+            }
+        } else if (elements.infoText) {
+            elements.infoText.textContent = `⚠️ Reconnecting... (attempt ${consecutiveErrors}, retry in ${Math.round(currentBackoffDelay/1000)}s)`;
+        }
+        
+        // Restart auto-refresh with new backoff delay
+        if (autoRefresh) {
+            startAutoRefresh();
+        }
     }
 }
 
@@ -280,7 +352,9 @@ function updateStatusUI(running: boolean): void {
             elements.runningContainer.classList.remove('hidden');
         }
         if (elements.infoText) {
-            elements.infoText.textContent = `Running normally • Last updated: ${new Date().toLocaleString()}`;
+            const recoveryMsg = isRecovering ? ' • Connection recovered!' : '';
+            elements.infoText.textContent = `Running normally • Last updated: ${new Date().toLocaleString()}${recoveryMsg}`;
+            elements.infoText.classList.remove('text-yellow-600');
         }
         // Hide start button when running
         if (elements.startBtn) {
