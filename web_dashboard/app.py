@@ -55,8 +55,10 @@ app = Flask(__name__,
             static_url_path='/assets')
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "your-secret-key-change-this")
 
-# FORCE DEBUG MODE - Ensures errors are visible
-app.debug = True
+# Configure Debug Mode
+# WARNING: Setting app.debug = True enables the interactive debugger which allows arbitrary code execution.
+# NEVER set this to True in production environment unless strictly protected.
+app.debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
 app.config['PROPAGATE_EXCEPTIONS'] = True
 
 # CSRF Protection (optional - can be enabled if Flask-WTF is installed)
@@ -102,35 +104,55 @@ os.environ["JWT_SECRET"] = os.getenv("JWT_SECRET", "your-jwt-secret-change-this"
 @app.errorhandler(500)
 def internal_server_error(e):
     import traceback
-    tb = traceback.format_exc()
+    # Only expose traceback in debug mode
+    if app.debug:
+        tb = traceback.format_exc()
+        message = str(e)
+    else:
+        tb = "Traceback hidden (app.debug is False)"
+        message = "An internal server error occurred."
     
     # Return JSON for API requests
     if request.path.startswith('/api/') or request.is_json:
-        return jsonify({
+        response_data = {
             "error": "Internal Server Error",
-            "message": str(e),
-            "traceback": tb
-        }), 500
+            "message": message
+        }
+        if app.debug:
+            response_data["traceback"] = tb
+
+        return jsonify(response_data), 500
 
     # Return HTML for browser requests (visible on screen)
-    return f"""
-    <html>
-        <head>
-            <title>500 Internal Server Error</title>
-            <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; line-height: 1.5; }}
-                h1 {{ color: #dc2626; border-bottom: 2px solid #fee2e2; padding-bottom: 0.5rem; }}
-                pre {{ background: #f3f4f6; padding: 1.5rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.9em; border: 1px solid #e5e7eb; }}
-                .error-msg {{ font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937; }}
-            </style>
-        </head>
-        <body>
-            <h1>500 Internal Server Error</h1>
-            <div class="error-msg">{str(e)}</div>
-            <pre>{tb}</pre>
-        </body>
-    </html>
-    """, 500
+    if app.debug:
+        return f"""
+        <html>
+            <head>
+                <title>500 Internal Server Error</title>
+                <style>
+                    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; line-height: 1.5; }}
+                    h1 {{ color: #dc2626; border-bottom: 2px solid #fee2e2; padding-bottom: 0.5rem; }}
+                    pre {{ background: #f3f4f6; padding: 1.5rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.9em; border: 1px solid #e5e7eb; }}
+                    .error-msg {{ font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937; }}
+                </style>
+            </head>
+            <body>
+                <h1>500 Internal Server Error</h1>
+                <div class="error-msg">{str(e)}</div>
+                <pre>{tb}</pre>
+            </body>
+        </html>
+        """, 500
+    else:
+        return render_template("error.html", error=e) if os.path.exists(os.path.join(app.root_path, 'templates', 'error.html')) else f"""
+        <html>
+            <head><title>500 Internal Server Error</title></head>
+            <body style="font-family: sans-serif; padding: 2rem; text-align: center;">
+                <h1>500 Internal Server Error</h1>
+                <p>An unexpected error occurred. Please contact the administrator.</p>
+            </body>
+        </html>
+        """, 500
 
 @app.errorhandler(Exception)
 def handle_exception(e):
@@ -141,36 +163,57 @@ def handle_exception(e):
     
     # Handle non-HTTP exceptions (like 500s)
     import traceback
-    tb = traceback.format_exc()
     logger.error(f"Unhandled exception: {e}", exc_info=True)
     
+    # Only expose traceback in debug mode
+    if app.debug:
+        tb = traceback.format_exc()
+        message = str(e)
+    else:
+        tb = "Traceback hidden (app.debug is False)"
+        message = "An unexpected error occurred."
+
     # Return JSON for API requests
     if request.path.startswith('/api/') or request.is_json:
-        return jsonify({
+        response_data = {
             "error": "Unhandled Exception",
-            "message": str(e),
-            "traceback": tb
-        }), 500
+            "message": message
+        }
+        if app.debug:
+            response_data["traceback"] = tb
+
+        return jsonify(response_data), 500
         
     # Return HTML for browser requests (visible on screen)
-    return f"""
-    <html>
-        <head>
-            <title>Application Error</title>
-            <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; line-height: 1.5; }}
-                h1 {{ color: #dc2626; border-bottom: 2px solid #fee2e2; padding-bottom: 0.5rem; }}
-                pre {{ background: #f3f4f6; padding: 1.5rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.9em; border: 1px solid #e5e7eb; }}
-                .error-msg {{ font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937; }}
-            </style>
-        </head>
-        <body>
-            <h1>Unhandled Exception</h1>
-            <div class="error-msg">{str(e)}</div>
-            <pre>{tb}</pre>
-        </body>
-    </html>
-    """, 500
+    if app.debug:
+        return f"""
+        <html>
+            <head>
+                <title>Application Error</title>
+                <style>
+                    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; line-height: 1.5; }}
+                    h1 {{ color: #dc2626; border-bottom: 2px solid #fee2e2; padding-bottom: 0.5rem; }}
+                    pre {{ background: #f3f4f6; padding: 1.5rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.9em; border: 1px solid #e5e7eb; }}
+                    .error-msg {{ font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937; }}
+                </style>
+            </head>
+            <body>
+                <h1>Unhandled Exception</h1>
+                <div class="error-msg">{str(e)}</div>
+                <pre>{tb}</pre>
+            </body>
+        </html>
+        """, 500
+    else:
+        return render_template("error.html", error=e) if os.path.exists(os.path.join(app.root_path, 'templates', 'error.html')) else f"""
+        <html>
+            <head><title>Application Error</title></head>
+            <body style="font-family: sans-serif; padding: 2rem; text-align: center;">
+                <h1>Application Error</h1>
+                <p>An unexpected error occurred. Please contact the administrator.</p>
+            </body>
+        </html>
+        """, 500
 
 # Import Supabase client, auth, and repository system
 try:
