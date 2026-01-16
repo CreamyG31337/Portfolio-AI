@@ -199,43 +199,16 @@ def refresh_exchange_rates_job() -> None:
         mark_job_started('exchange_rates', target_date)
         
         # Import here to avoid circular imports
+        # Import here to avoid circular imports
         from exchange_rates_utils import reload_exchange_rate_for_date, reload_exchange_rates_for_range, get_supabase_client
         
-        # 1. Fetch today's rate
         today = datetime.now(timezone.utc)
-        rate = reload_exchange_rate_for_date(today, 'USD', 'CAD')
-        
-        # 2. Check for gaps in the last 30 days
         client = get_supabase_client()
         filled_count = 0
+        
+        # 1. Check for gaps in the last 30 days BEFORE fetching today's rate
+        # This ensures we don't count "today" as the latest rate when checking for gaps
         if client:
-            end_lookback = today
-            start_lookback = end_lookback - timedelta(days=30)
-            
-            # Get existing rates in range
-            existing_rates = client.get_exchange_rates(start_lookback, end_lookback, 'USD', 'CAD')
-            existing_dates = set()
-            for r in existing_rates:
-                try:
-                    dt = datetime.fromisoformat(r['timestamp'].replace('Z', '+00:00'))
-                    existing_dates.add(dt.date())
-                except:
-                    continue
-            
-            # Check for missing dates (excluding weekends where BoC might not have data)
-            missing_range_start = None
-            missing_range_end = None
-            
-            current = start_lookback
-            while current <= end_lookback:
-                # Is this date missing and not a weekend? (0=Mon, 5=Sat, 6=Sun)
-                # Actually BoC has data for weekdays. 
-                # If it's missing, let's just try to fetch the whole range from BoC
-                # since the range API is efficient and handles its own logic.
-                current += timedelta(days=1)
-            
-            # More efficient: just always refresh the last 30 days from BoC
-            # or detect the first missing date.
             # Let's find the most recent date in DB and fill from there to today.
             latest_db_rate = client.supabase.table("exchange_rates") \
                 .select("timestamp") \
@@ -247,13 +220,25 @@ def refresh_exchange_rates_job() -> None:
                 
             if latest_db_rate.data:
                 last_dt = datetime.fromisoformat(latest_db_rate.data[0]['timestamp'].replace('Z', '+00:00'))
-                if (today - last_dt).days > 1:
+                # We want to fill up to yesterday (today - 1 day), because today will be filled next
+                target_fill_date = today # reload_exchange_rates_for_range is inclusive of end_date
+                
+                # If the last rate was older than yesterday, we have a gap
+                # Example: last was Jan 1, today is Jan 3. Diff days = 2. Gap is Jan 2.
+                if (today.date() - last_dt.date()).days > 0: # Check if last entry is strictly before today
                     logger.info(f"Detected gap in exchange rates since {last_dt.date()}. Filling gaps...")
-                    filled_count = reload_exchange_rates_for_range(last_dt, today, 'USD', 'CAD')
+                    # We might re-fetch today here if we pass today as end date, which is fine (idempotent)
+                    # But reload_exchange_rate_for_date below does strictly "today".
+                    filled_count = reload_exchange_rates_for_range(last_dt + timedelta(days=1), today, 'USD', 'CAD')
             else:
                 # No data at all? Fetch last 90 days.
                 logger.info("No exchange rate data found. Backfilling last 90 days...")
                 filled_count = reload_exchange_rates_for_range(today - timedelta(days=90), today, 'USD', 'CAD')
+        
+        # 2. Fetch today's rate (explicitly, to ensure we have the very latest real-time if needed)
+        # Note: reload_exchange_rates_for_range might have already fetched today if we passed 'today' as end_date
+        # But doing it explicitly here ensures we try the live API fallback if BoC range failed for today
+        rate = reload_exchange_rate_for_date(today, 'USD', 'CAD')
         
         if rate is not None:
             duration_ms = int((time.time() - start_time) * 1000)
