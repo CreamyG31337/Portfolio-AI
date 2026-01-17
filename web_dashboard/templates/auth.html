@@ -326,12 +326,12 @@
                     // but they should still be sent with the next request
                     showMessage('Login successful! Redirecting...', 'success');
                     
-                    // Use a shorter delay to reduce chance of cookie timing issues
-                    // But ensure cookies are processed by browser
+                    // Wait longer to ensure cookies are fully processed by browser
+                    // Cookies need time to be set and available for the next request
                     setTimeout(() => { 
                         // Force a full page reload to ensure cookies are sent
                         window.location.href = '/';
-                    }, 500);
+                    }, 1500);
                 } else {
                     console.error('Login failed:', data);
                     showMessage(data.error || 'Login failed');
