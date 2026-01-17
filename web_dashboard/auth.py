@@ -165,19 +165,34 @@ def require_auth(f):
                 response.delete_cookie('refresh_token', path='/')
                 return response
         
-        # Now try to refresh token if needed
-        success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+        # Now try to refresh token if needed (only if we have a token)
+        success = True
+        new_token = None
+        new_refresh = None
+        expires_in = None
         
-        if not success:
-            # Token refresh failed or token is invalid - but check if we have a valid token anyway
-            # (refresh might fail but token could still be valid for a short time)
-            if not auth_token and not session_token:
-                # No token at all - redirect to login
+        if auth_token or session_token:
+            # We have a token - try to refresh if needed
+            success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+            
+            if not success:
+                # Token refresh failed - token is expired and can't be refreshed
+                # This means authentication failed
                 if request.path.startswith('/api/'):
                     return jsonify({"error": "Authentication required"}), 401
                 else:
-                    return redirect('/auth')
-            # If we have a token, continue - it might still be valid
+                    # Clear cookies and redirect to login
+                    response = redirect('/auth')
+                    response.delete_cookie('auth_token', path='/')
+                    response.delete_cookie('session_token', path='/')
+                    response.delete_cookie('refresh_token', path='/')
+                    return response
+        else:
+            # No token at all - redirect to login
+            if request.path.startswith('/api/'):
+                return jsonify({"error": "Authentication required"}), 401
+            else:
+                return redirect('/auth')
         
         # Store new tokens in request context if they were refreshed
         if new_token:
