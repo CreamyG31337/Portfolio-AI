@@ -158,11 +158,15 @@ def require_auth(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Invalid auth state, please login again"}), 401
             else:
-                response = redirect('/auth')
-                response.delete_cookie('auth_token')
-                response.delete_cookie('session_token')
-                response.delete_cookie('refresh_token')
-                return response
+                # DEBUG: Return info instead of redirect
+                return f"""
+                <h1>Auth Debug: Broken State</h1>
+                <p>Path: {request.path}</p>
+                <p>Session Token: {bool(session_token)}</p>
+                <p>Auth Token: {bool(auth_token)}</p>
+                <p>Refresh Token: {bool(refresh_token)}</p>
+                <p>Headers: {dict(request.headers)}</p>
+                """, 403
         
         # Now try to refresh token if needed
         success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
@@ -194,8 +198,16 @@ def require_auth(f):
                 return jsonify({"error": "Authentication required"}), 401
             else:
                 from flask import redirect
-                # Redirect to /auth instead of / to avoid redirect loop
-                return redirect('/auth')
+                # DEBUG: Return info instead of redirect
+                return f"""
+                <h1>Auth Debug: Missing Token</h1>
+                <p>Path: {request.path}</p>
+                <p>Session Token (cookie): {bool(request.cookies.get('session_token'))}</p>
+                <p>Auth Token (cookie): {bool(request.cookies.get('auth_token'))}</p>
+                <p>Auth Token (variable): {bool(auth_token)}</p>
+                <p>Refresh Token: {bool(refresh_token)}</p>
+                <p>Cookies keys: {list(request.cookies.keys())}</p>
+                """, 403
         
         # Try to verify with auth_manager (for session_token format)
         user_data = auth_manager.verify_session(token)
