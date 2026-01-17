@@ -987,7 +987,8 @@ def index():
                                 request.headers.get('X-Forwarded-Proto') == 'https' or
                                 request.is_secure
                             )
-                            samesite_value = 'None' if is_production else 'Lax'
+                            # Use SameSite=Lax for same-site requests
+                            samesite_value = 'Lax'
                             response = redirect(url_for('dashboard.dashboard_page'))
                             response.set_cookie('auth_token', new_token, max_age=expires_in or 3600, httponly=True, secure=is_production, samesite=samesite_value, path='/')
                             if new_refresh:
@@ -1150,9 +1151,10 @@ def login():
                 request.headers.get('X-Forwarded-Proto') == 'https' or
                 request.is_secure
             )
-            # For production HTTPS, use SameSite=None with Secure=True for cross-origin support
-            # For local dev, use SameSite=Lax
-            samesite_value = 'None' if is_production else 'Lax'
+            # Use SameSite=Lax for same-site requests (works for both production and dev)
+            # SameSite=None is only needed for cross-origin requests and requires Secure=True
+            # Since we're on the same domain, Lax is the correct choice
+            samesite_value = 'Lax'
             logger.info(f"[LOGIN] is_production={is_production}, APP_DOMAIN={os.getenv('APP_DOMAIN')}, X-Forwarded-Proto={request.headers.get('X-Forwarded-Proto')}, is_secure={request.is_secure}, samesite={samesite_value}")
             response.set_cookie(
                 'session_token', 
@@ -1464,7 +1466,7 @@ def logout():
         '', 
         expires=0,
         secure=is_production,
-        samesite='None' if is_production else 'Lax'
+        samesite='Lax'
     )
     
     # Clear auth_token (Streamlit login) to prevent auto-login loop
@@ -1473,7 +1475,7 @@ def logout():
         '', 
         expires=0,
         secure=is_production,
-        samesite='None' if is_production else 'Lax'
+        samesite='Lax'
     )
     
     # Clear refresh_token
@@ -1482,7 +1484,7 @@ def logout():
         '', 
         expires=0,
         secure=is_production,
-        samesite='None' if is_production else 'Lax'
+        samesite='Lax'
     )
     
     return response

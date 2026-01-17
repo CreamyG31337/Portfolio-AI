@@ -272,7 +272,8 @@ def require_auth(f):
                 request.headers.get('X-Forwarded-Proto') == 'https' or
                 request.is_secure
             )
-            samesite_value = 'None' if is_production else 'Lax'
+            # Use SameSite=Lax for same-site requests
+            samesite_value = 'Lax'
             response.set_cookie(
                 'auth_token',
                 new_token,
