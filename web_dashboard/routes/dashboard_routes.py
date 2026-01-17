@@ -36,11 +36,9 @@ def dashboard_page():
         # Lazy import to avoid circular dependency
         from app import get_navigation_context
         
-        # Check V2 Preference
-        v2_enabled = get_user_preference('v2_enabled', default=False)
-        if not v2_enabled:
-            # If V2 is disabled, redirect to Streamlit dashboard at /streamlit/
-            return redirect('/streamlit/')
+        # V2 preference check removed - Flask is now the primary UI
+        # Users who prefer Streamlit can access it directly at /streamlit/
+        # but Flask handles all authentication
             
         user_email = get_user_email_flask()
         user_theme = get_user_theme() or 'system'
