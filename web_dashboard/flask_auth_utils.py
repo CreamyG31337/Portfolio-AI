@@ -159,6 +159,14 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
                             if new_access_token:
                                 logger.info("[FLASK_AUTH] Token refreshed successfully")
                                 return (True, new_access_token, new_refresh_token, expires_in)
+                        
+                        # Refresh API returned non-200 - refresh token is invalid/expired
+                        logger.warning(f"[FLASK_AUTH] Token refresh API returned {response.status_code}: {response.text[:200]}")
+                        return (False, None, None, None)
+                    else:
+                        # Missing Supabase config
+                        logger.warning("[FLASK_AUTH] Token expired but missing Supabase URL/key for refresh")
+                        return (False, None, None, None)
                 except Exception as e:
                     logger.warning(f"[FLASK_AUTH] Token refresh failed: {e}")
                     return (False, None, None, None)
