@@ -291,18 +291,47 @@
                     body: JSON.stringify({ email, password })
                 });
 
-                const data = await response.json();
+                // Check if response has content before trying to parse JSON
+                const text = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.error('Failed to parse response as JSON:', text);
+                    showMessage('Server returned invalid response. Please try again.');
+                    return;
+                }
+
+                // Log response details for debugging
+                console.log('Login response:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    ok: response.ok,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    data: data
+                });
 
                 if (response.ok) {
                     // Backend already set auth_token, refresh_token, and session_token cookies via Set-Cookie headers
-                    // No need to manually set cookies here - that would overwrite them
+                    // Check if cookies were actually set
+                    const cookies = document.cookie;
+                    console.log('Cookies after login:', cookies);
+                    
+                    if (!cookies.includes('auth_token') && !cookies.includes('session_token')) {
+                        console.warn('WARNING: No auth cookies found after login!');
+                        showMessage('Login successful but cookies not set. Please check browser settings.', 'error');
+                        return;
+                    }
+                    
                     showMessage('Login successful! Redirecting...', 'success');
                     setTimeout(() => { window.location.href = '/'; }, 1000);
                 } else {
+                    console.error('Login failed:', data);
                     showMessage(data.error || 'Login failed');
                 }
             } catch (error) {
-                showMessage('Network error. Please try again.');
+                console.error('Login error:', error);
+                showMessage('Network error. Please try again. Error: ' + error.message);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
