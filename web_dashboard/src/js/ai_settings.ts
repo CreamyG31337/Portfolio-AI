@@ -39,6 +39,7 @@ interface BlacklistEntry {
 }
 
 interface BlacklistResponse {
+    success?: boolean;
     blacklist?: BlacklistEntry[];
     error?: string;
 }
@@ -149,17 +150,17 @@ async function checkStatus() {
             fetch('/api/admin/ai/webai/status').then(r => r.json())
         ]);
 
-        if (ollamaResp.success && ollamaMessage) {
+        if (ollamaResp.success && ollamaMessage && ollamaIndicator) {
             ollamaIndicator.className = ollamaResp.status ? 'bg-green-500' : 'bg-red-500';
             ollamaMessage.textContent = ollamaResp.message || (ollamaResp.status ? 'Connected' : 'Disconnected');
         }
 
-        if (postgresResp.success && postgresMessage) {
+        if (postgresResp.success && postgresMessage && postgresIndicator) {
             postgresIndicator.className = 'bg-green-500';
             postgresMessage.textContent = postgresResp.message;
         }
 
-        if (webaiResp.success && webaiMessage) {
+        if (webaiResp.success && webaiMessage && webaiIndicator && webaiSource) {
             webaiIndicator.className = webaiResp.status ? 'bg-green-500' : 'bg-red-500';
             webaiMessage.textContent = webaiResp.message;
             webaiSource.textContent = webaiResp.source || '';
@@ -332,6 +333,13 @@ async function saveCookies() {
 async function loadCurrentCookies() {
     console.log('[DEBUG] Loading current cookies...');
 
+    // Update current cookies display (above input fields)
+    const currentDisplay = document.getElementById('cookie-current-display');
+    if (!currentDisplay) {
+        console.error('[DEBUG] cookie-current-display element not found');
+        return;
+    }
+
     try {
         const response = await fetch('/api/admin/ai/cookies');
         console.log('[DEBUG] Received response:', response.status, response.statusText);
@@ -339,13 +347,6 @@ async function loadCurrentCookies() {
         const result: ApiResponse & { cookies?: { [key: string]: string }, has_cookies?: boolean } = await response.json();
 
         console.log('[DEBUG] Current cookies result:', result);
-
-        // Update current cookies display (above input fields)
-        const currentDisplay = document.getElementById('cookie-current-display');
-        if (!currentDisplay) {
-            console.error('[DEBUG] cookie-current-display element not found');
-            return;
-        }
 
         if (result.success) {
             const cookies = result.cookies || {};
@@ -461,16 +462,22 @@ async function loadCookieRefresherLogs() {
                 `<div class="text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all">${escapeHtml(line)}</div>`
             ).join('');
 
-            cookieRefresherLogs.innerHTML = logsHtml;
-            console.log('[DEBUG] Logs display updated');
+            if (cookieRefresherLogs) {
+                cookieRefresherLogs.innerHTML = logsHtml;
+                console.log('[DEBUG] Logs display updated');
+            }
         } else if (result.error) {
             console.log('[DEBUG] Error loading logs:', result.error);
             const errorMsg = result.message || result.error || 'Unknown error';
-            cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">${escapeHtml(errorMsg)}</div>`;
+            if (cookieRefresherLogs) {
+                cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">${escapeHtml(errorMsg)}</div>`;
+            }
         }
     } catch (error) {
         console.error('[DEBUG] Error loading logs:', error);
-        cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">Error loading logs</div>`;
+        if (cookieRefresherLogs) {
+            cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">Error loading logs</div>`;
+        }
     }
 }
 
@@ -519,12 +526,14 @@ async function loadCookieRefresherStatus() {
                 has_1psidts: result.has_1psidts
             });
 
-            if (hasCookies) {
-                statusDot.className = 'bg-green-500';
-            } else if (partialCookies) {
-                statusDot.className = 'bg-yellow-500';
-            } else {
-                statusDot.className = 'bg-red-500';
+            if (statusDot) {
+                if (hasCookies) {
+                    statusDot.className = 'bg-green-500';
+                } else if (partialCookies) {
+                    statusDot.className = 'bg-yellow-500';
+                } else {
+                    statusDot.className = 'bg-red-500';
+                }
             }
 
             // Build status text
@@ -551,7 +560,9 @@ async function loadCookieRefresherStatus() {
                 statusTextContent += ` | Refreshes: ${result.metadata.refresh_count}`;
             }
 
-            statusText.textContent = statusTextContent;
+            if (statusText) {
+                statusText.textContent = statusTextContent;
+            }
 
             // Log additional details
             if (result.metadata) {
@@ -563,17 +574,29 @@ async function loadCookieRefresherStatus() {
 
         } else if (result.error) {
             console.log('[DEBUG] Error loading status:', result.error);
-            statusDot.className = 'bg-red-500';
-            statusText.textContent = 'Error: ' + (result.message || result.error || 'Unknown');
+            if (statusDot) {
+                statusDot.className = 'bg-red-500';
+            }
+            if (statusText) {
+                statusText.textContent = 'Error: ' + (result.message || result.error || 'Unknown');
+            }
         } else {
             console.log('[DEBUG] No cookies configured');
-            statusDot.className = 'bg-red-500';
-            statusText.textContent = 'No cookies';
+            if (statusDot) {
+                statusDot.className = 'bg-red-500';
+            }
+            if (statusText) {
+                statusText.textContent = 'No cookies';
+            }
         }
     } catch (error) {
         console.error('[DEBUG] Error loading refresher status:', error);
-        statusDot.className = 'bg-red-500';
-        statusText.textContent = 'Error loading status';
+        if (statusDot) {
+            statusDot.className = 'bg-red-500';
+        }
+        if (statusText) {
+            statusText.textContent = 'Error loading status';
+        }
     }
 }
 
@@ -589,7 +612,7 @@ async function addDomain() {
 
     const originalText = addDomainBtn.textContent;
     addDomainBtn.textContent = 'Adding...';
-    addDomainBtn.disabled = true;
+    (addDomainBtn as HTMLButtonElement).disabled = true;
 
     try {
         const response = await fetch('/api/admin/ai/blacklist/add', {
@@ -613,7 +636,7 @@ async function addDomain() {
         showToastForAI('Error adding domain', 'error');
     } finally {
         addDomainBtn.textContent = originalText;
-        addDomainBtn.disabled = false;
+        (addDomainBtn as HTMLButtonElement).disabled = false;
     }
 }
 
@@ -667,7 +690,7 @@ async function loadBlacklist() {
         const response = await fetch('/api/admin/ai/blacklist');
         const result: BlacklistResponse = await response.json();
 
-        if (result.success && result.blacklist) {
+        if ((result.success || result.blacklist) && result.blacklist && blacklistTableBody) {
             blacklistTableBody.innerHTML = result.blacklist.map(entry => {
                 const lastFailure = entry.last_failure_reason ? `(${entry.last_failure_reason})` : '';
                 const consecutive = entry.consecutive_failures !== undefined ? `[${entry.consecutive_failures}]` : '';
@@ -696,22 +719,24 @@ async function loadBlacklist() {
                     </tr>
                 `;
             }).join('');
-        } else if (result.error) {
+        } else if (result.error && blacklistTableBody) {
             blacklistTableBody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-red-600 dark:text-red-400">Error: ${escapeHtml(result.error)}</td></tr>`;
         }
     } catch (error) {
         console.error('Error loading blacklist:', error);
-        blacklistTableBody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-red-600 dark:text-red-400">Error loading blacklist</td></tr>`;
+        if (blacklistTableBody) {
+            blacklistTableBody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-red-600 dark:text-red-400">Error loading blacklist</td></tr>`;
+        }
     }
 }
 
 // Settings Functions
 async function saveSettings() {
-    if (!settingsForm) return;
+    if (!settingsForm || !saveSettingsBtn) return;
 
     const originalText = saveSettingsBtn.textContent;
     saveSettingsBtn.textContent = 'Saving...';
-    saveSettingsBtn.disabled = true;
+    (saveSettingsBtn as HTMLButtonElement).disabled = true;
 
     try {
         const autoBlacklistThreshold = autoBlacklistInput?.value || '10';
@@ -739,8 +764,10 @@ async function saveSettings() {
         console.error('Error saving settings:', error);
         showToastForAI('Error saving settings', 'error');
     } finally {
-        saveSettingsBtn.textContent = originalText;
-        saveSettingsBtn.disabled = false;
+        if (saveSettingsBtn) {
+            saveSettingsBtn.textContent = originalText;
+            (saveSettingsBtn as HTMLButtonElement).disabled = false;
+        }
     }
 }
 

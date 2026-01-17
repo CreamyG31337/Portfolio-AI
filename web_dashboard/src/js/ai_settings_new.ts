@@ -39,6 +39,7 @@ interface BlacklistEntry {
 }
 
 interface BlacklistResponse {
+    success?: boolean;
     blacklist?: BlacklistEntry[];
     error?: string;
 }
@@ -99,7 +100,7 @@ function escapeHtml(text: string): string {
 }
 
 // Toast notification system for AI settings
-function showToastForAI(message: string, type: 'success' | 'error' = 'success'): void {
+function showToastForAI(message: string, type: 'success' | 'error' | 'info' = 'success'): void {
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
@@ -149,17 +150,17 @@ async function checkStatus() {
             fetch('/api/admin/ai/webai/status').then(r => r.json())
         ]);
 
-        if (ollamaResp.success && ollamaMessage) {
+        if (ollamaResp.success && ollamaMessage && ollamaIndicator) {
             ollamaIndicator.className = ollamaResp.status ? 'bg-green-500' : 'bg-red-500';
             ollamaMessage.textContent = ollamaResp.message || (ollamaResp.status ? 'Connected' : 'Disconnected');
         }
 
-        if (postgresResp.success && postgresMessage) {
+        if (postgresResp.success && postgresMessage && postgresIndicator) {
             postgresIndicator.className = 'bg-green-500';
             postgresMessage.textContent = postgresResp.message;
         }
 
-        if (webaiResp.success && webaiMessage) {
+        if (webaiResp.success && webaiMessage && webaiIndicator && webaiSource) {
             webaiIndicator.className = webaiResp.status ? 'bg-green-500' : 'bg-red-500';
             webaiMessage.textContent = webaiResp.message;
             webaiSource.textContent = webaiResp.source || '';
@@ -286,16 +287,16 @@ async function saveCookies() {
 
 // Load Current Cookies
 async function loadCurrentCookies() {
+    // Update current cookies display (above input fields)
+    const currentDisplay = document.getElementById('cookie-current-display');
+    if (!currentDisplay) {
+        console.error('cookie-current-display element not found');
+        return;
+    }
+
     try {
         const response = await fetch('/api/admin/ai/cookies');
         const result: ApiResponse & { cookies?: { [key: string]: string }, has_cookies?: boolean } = await response.json();
-
-        // Update current cookies display (above input fields)
-        const currentDisplay = document.getElementById('cookie-current-display');
-        if (!currentDisplay) {
-            console.error('cookie-current-display element not found');
-            return;
-        }
 
         if (result.success) {
             const cookies = result.cookies || {};
@@ -377,13 +378,19 @@ async function loadCookieRefresherLogs() {
                 `<div class="text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all">${escapeHtml(line)}</div>`
             ).join('');
 
-            cookieRefresherLogs.innerHTML = logsHtml;
+            if (cookieRefresherLogs) {
+                cookieRefresherLogs.innerHTML = logsHtml;
+            }
         } else if (result.error) {
-            cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">${escapeHtml(result.error)}</div>`;
+            if (cookieRefresherLogs) {
+                cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">${escapeHtml(result.error)}</div>`;
+            }
         }
     } catch (error) {
         console.error('Error loading logs:', error);
-        cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">Error loading logs</div>`;
+        if (cookieRefresherLogs) {
+            cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">Error loading logs</div>`;
+        }
     }
 }
 
@@ -397,36 +404,46 @@ async function loadCookieRefresherStatus() {
             const isRunning = result.container_name ? result.container_name.includes('cookie-refresher') : false;
             const hasStatus = !!result.status;
 
-            if (isRunning && hasStatus) {
-                statusDot.className = 'bg-green-500';
-                statusText.textContent = result.status || 'Running';
-            } else {
-                statusDot.className = 'bg-gray-500';
-                statusText.textContent = 'Stopped';
-            }
+            if (statusDot && statusText) {
+                if (isRunning && hasStatus) {
+                    statusDot.className = 'bg-green-500';
+                    statusText.textContent = result.status || 'Running';
+                } else {
+                    statusDot.className = 'bg-gray-500';
+                    statusText.textContent = 'Stopped';
+                }
 
-            // Show additional info
-            let info = '';
-            if (result.last_refreshed_at) {
-                const refreshTime = new Date(result.last_refreshed_at);
-                const now = new Date();
-                const hoursAgo = Math.floor((now.getTime() - refreshTime.getTime()) / (1000 * 60 * 60));
-                info += `Last refreshed: ${hoursAgo}h ago`;
-            }
-            if (result.refresh_count !== undefined) {
-                info += ` | Refreshes: ${result.refresh_count}`;
-            }
-            if (info) {
-                statusText.textContent = (result.status || 'Running') + ' | ' + info;
+                // Show additional info
+                let info = '';
+                if (result.last_refreshed_at) {
+                    const refreshTime = new Date(result.last_refreshed_at);
+                    const now = new Date();
+                    const hoursAgo = Math.floor((now.getTime() - refreshTime.getTime()) / (1000 * 60 * 60));
+                    info += `Last refreshed: ${hoursAgo}h ago`;
+                }
+                if (result.refresh_count !== undefined) {
+                    info += ` | Refreshes: ${result.refresh_count}`;
+                }
+                if (info) {
+                    statusText.textContent = (result.status || 'Running') + ' | ' + info;
+                }
             }
         } else if (result.error) {
-            statusDot.className = 'bg-red-500';
-            statusText.textContent = 'Error';
+            if (statusDot) {
+                statusDot.className = 'bg-red-500';
+            }
+            if (statusText) {
+                statusText.textContent = 'Error';
+            }
         }
     } catch (error) {
         console.error('Error loading refresher status:', error);
-        statusDot.className = 'bg-red-500';
-        statusText.textContent = 'Error';
+        if (statusDot) {
+            statusDot.className = 'bg-red-500';
+        }
+        if (statusText) {
+            statusText.textContent = 'Error';
+        }
     }
 }
 
@@ -442,7 +459,7 @@ async function addDomain() {
 
     const originalText = addDomainBtn.textContent;
     addDomainBtn.textContent = 'Adding...';
-    addDomainBtn.disabled = true;
+    (addDomainBtn as HTMLButtonElement).disabled = true;
 
     try {
         const response = await fetch('/api/admin/ai/blacklist/add', {
@@ -468,7 +485,7 @@ async function addDomain() {
         showToastForAI('Error adding domain', 'error');
     } finally {
         addDomainBtn.textContent = originalText;
-        addDomainBtn.disabled = false;
+        (addDomainBtn as HTMLButtonElement).disabled = false;
     }
 }
 
@@ -526,7 +543,7 @@ async function loadBlacklist() {
         const response = await fetch('/api/admin/ai/blacklist');
         const result: BlacklistResponse = await response.json();
 
-        if (result.success && result.blacklist) {
+        if ((result.success || result.blacklist) && result.blacklist && blacklistTableBody) {
             blacklistTableBody.innerHTML = result.blacklist.map(entry => {
                 const lastFailure = entry.last_failure_reason ? `(${entry.last_failure_reason})` : '';
                 const consecutive = entry.consecutive_failures !== undefined ? `[${entry.consecutive_failures}]` : '';
@@ -550,22 +567,24 @@ async function loadBlacklist() {
                     </tr>
                 `;
             }).join('');
-        } else if (result.error) {
+        } else if (result.error && blacklistTableBody) {
             blacklistTableBody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-red-600 dark:text-red-400">Error: ${escapeHtml(result.error)}</td></tr>`;
         }
     } catch (error) {
         console.error('Error loading blacklist:', error);
-        blacklistTableBody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-red-600 dark:text-red-400">Error loading blacklist</td></tr>`;
+        if (blacklistTableBody) {
+            blacklistTableBody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-red-600 dark:text-red-400">Error loading blacklist</td></tr>`;
+        }
     }
 }
 
 // Settings Functions
 async function saveSettings() {
-    if (!settingsForm) return;
+    if (!settingsForm || !saveSettingsBtn) return;
 
     const originalText = saveSettingsBtn.textContent;
     saveSettingsBtn.textContent = 'Saving...';
-    saveSettingsBtn.disabled = true;
+    (saveSettingsBtn as HTMLButtonElement).disabled = true;
 
     try {
         const autoBlacklistThreshold = autoBlacklistInput?.value || '10';
@@ -593,8 +612,10 @@ async function saveSettings() {
         console.error('Error saving settings:', error);
         showToastForAI('Error saving settings', 'error');
     } finally {
-        saveSettingsBtn.textContent = originalText;
-        saveSettingsBtn.disabled = false;
+        if (saveSettingsBtn) {
+            saveSettingsBtn.textContent = originalText;
+            (saveSettingsBtn as HTMLButtonElement).disabled = false;
+        }
     }
 }
 
