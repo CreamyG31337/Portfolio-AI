@@ -25,6 +25,7 @@ except ImportError:
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, date
 from pathlib import Path
 import yfinance as yf
@@ -2138,10 +2139,25 @@ def execute_sql():
         if not query:
             return jsonify({"error": "No query provided"}), 400
         
-        # Basic safety checks
-        dangerous_keywords = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE']
-        if any(keyword in query.upper() for keyword in dangerous_keywords):
-            return jsonify({"error": "Query contains dangerous keywords. Only SELECT queries allowed."}), 400
+        # Robust safety checks to prevent SQL injection and modification
+        # 1. Must start with SELECT (case-insensitive)
+        if not re.match(r'^\s*SELECT\b', query, re.IGNORECASE):
+            return jsonify({"error": "Only SELECT queries are allowed."}), 400
+
+        # 2. No semicolons to prevent query chaining
+        if ';' in query:
+            return jsonify({"error": "Multiple statements or semicolons are not allowed."}), 400
+
+        # 3. Check for dangerous keywords as WHOLE WORDS only (avoid false positives like 'update_date')
+        dangerous_keywords = [
+            'INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'CREATE', 'TRUNCATE',
+            'GRANT', 'REVOKE', 'EXECUTE', 'EXEC', 'WITH', 'MERGE', 'REPLACE'
+        ]
+
+        # Regex to find any of these keywords as a whole word, case insensitive
+        pattern = r'\b(' + '|'.join(dangerous_keywords) + r')\b'
+        if re.search(pattern, query, re.IGNORECASE):
+            return jsonify({"error": "Query contains dangerous keywords."}), 400
         
         # Execute query
         client = get_supabase_client()
