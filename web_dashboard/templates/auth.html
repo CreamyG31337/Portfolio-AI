@@ -313,18 +313,25 @@
 
                 if (response.ok) {
                     // Backend already set auth_token, refresh_token, and session_token cookies via Set-Cookie headers
-                    // Check if cookies were actually set
+                    // Note: HttpOnly cookies won't appear in document.cookie, but they're still set
+                    // Check Set-Cookie headers in response instead
+                    const setCookieHeaders = response.headers.get('set-cookie');
+                    console.log('Set-Cookie headers from login:', setCookieHeaders);
+                    
+                    // Check if we can see any cookies (non-HttpOnly ones)
                     const cookies = document.cookie;
-                    console.log('Cookies after login:', cookies);
+                    console.log('Visible cookies after login:', cookies);
                     
-                    if (!cookies.includes('auth_token') && !cookies.includes('session_token')) {
-                        console.warn('WARNING: No auth cookies found after login!');
-                        showMessage('Login successful but cookies not set. Please check browser settings.', 'error');
-                        return;
-                    }
-                    
+                    // HttpOnly cookies (auth_token, refresh_token, session_token) won't be in document.cookie
+                    // but they should still be sent with the next request
                     showMessage('Login successful! Redirecting...', 'success');
-                    setTimeout(() => { window.location.href = '/'; }, 1000);
+                    
+                    // Use a shorter delay to reduce chance of cookie timing issues
+                    // But ensure cookies are processed by browser
+                    setTimeout(() => { 
+                        // Force a full page reload to ensure cookies are sent
+                        window.location.href = '/';
+                    }, 500);
                 } else {
                     console.error('Login failed:', data);
                     showMessage(data.error || 'Login failed');

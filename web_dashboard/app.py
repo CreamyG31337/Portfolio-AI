@@ -1216,6 +1216,10 @@ def login():
                     )
                     logger.info(f"[LOGIN] Set refresh_token cookie with secure={use_secure}, samesite={samesite_value}")
             
+            # Log cookie details for debugging
+            logger.info(f"[LOGIN] Response cookies will be set. Response type: {type(response)}")
+            logger.info(f"[LOGIN] Response headers: {dict(response.headers)}")
+            
             return response
         else:
             error_data = response.json() if response.text else {}
