@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
             }
         });
     }
-    
+
     // Set up range selector
     const rangeSelector = document.getElementById('chart-range-selector') as HTMLSelectElement | null;
     if (rangeSelector) {
@@ -441,7 +441,10 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
         const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
         let theme: string = 'light'; // default
 
-        if (dataTheme === 'dark') {
+        // For specialized themes, pass them directly to the backend
+        if (dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
+            theme = dataTheme;
+        } else if (dataTheme === 'dark') {
             theme = 'dark';
         } else if (dataTheme === 'light') {
             theme = 'light';
@@ -531,7 +534,7 @@ async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Pr
             '5y': 1825
         };
         const days = rangeDays[range] || 90;
-        
+
         // Update metric label based on range
         const changeLabelEl = document.querySelector('#chart-metrics .metric-card:last-child .text-sm');
         if (changeLabelEl) {
@@ -544,7 +547,7 @@ async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Pr
             };
             changeLabelEl.textContent = rangeLabels[range] || 'Change (3M)';
         }
-        
+
         const response = await fetch(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&days=${days}`, {
             credentials: 'include'
         });

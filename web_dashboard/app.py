@@ -673,19 +673,6 @@ if os.environ.get('DISABLE_SCHEDULER', '').lower() != 'true':
         # Check if thread is already running to avoid duplicates
         _existing_threads = [t.name for t in threading.enumerate()]
         if "SchedulerInitThread" not in _existing_threads:
-            # Before starting, clear any stale heartbeat file from previous container runs
-            # This prevents false "already running" detection on fresh container start
-            try:
-                from scheduler.scheduler_core import _HEARTBEAT_FILE, _HEARTBEAT_TIMEOUT
-                import time as _time
-                if _HEARTBEAT_FILE.exists():
-                    heartbeat_age = _time.time() - float(_HEARTBEAT_FILE.read_text().strip())
-                    if heartbeat_age > _HEARTBEAT_TIMEOUT:
-                        logger.info(f"🧹 Clearing stale heartbeat file (age: {heartbeat_age:.1f}s > {_HEARTBEAT_TIMEOUT}s timeout)")
-                        _HEARTBEAT_FILE.unlink()
-            except Exception as e:
-                logger.debug(f"Could not check/clear heartbeat file: {e}")
-            
             _start_scheduler_background()
         else:
             logger.debug("ℹ️ SchedulerInitThread already running, skipping duplicate start")
@@ -2138,16 +2125,6 @@ def sql_interface():
     
     nav_context = get_navigation_context(current_page='sql_interface')
     return render_template('sql_interface.html', **nav_context)
-
-@app.route('/dev/dashboard')
-@require_auth
-def dev_dashboard():
-    """Developer dashboard with key metrics"""
-    if not is_admin():
-        return jsonify({"error": "Admin privileges required"}), 403
-    
-    nav_context = get_navigation_context(current_page='dev_dashboard')
-    return render_template('dev_dashboard.html', **nav_context)
 
 @app.route('/api/dev/query', methods=['POST'])
 @require_auth

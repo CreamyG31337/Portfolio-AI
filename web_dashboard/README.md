@@ -237,7 +237,6 @@ python migrate.py
 ### 🔒 Admin-Only Features
 - **SQL Interface** (`/dev/sql`) - Direct database query access
 - **Data Export APIs** (`/api/export/*`) - LLM data access
-- **Developer Dashboard** (`/dev/dashboard`) - Visual data overview
 - **User Management** - Assign funds to users
 
 ### 🛡️ Security Measures

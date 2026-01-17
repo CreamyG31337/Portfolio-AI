@@ -487,7 +487,7 @@ def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
             # Batch update DB
             if updates:
                 try:
-                    client = SupabaseClient()
+                    client = SupabaseClient(use_service_role=True)
                     client.batch_update_securities(updates)
                     logger.info(f"[fundamentals] Updated {len(updates)} tickers in DB")
                 except Exception as e:
