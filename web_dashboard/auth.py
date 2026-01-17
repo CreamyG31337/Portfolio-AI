@@ -127,6 +127,7 @@ def require_auth(f):
     """Decorator to require authentication for routes"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        from flask import redirect
         from flask_auth_utils import refresh_token_if_needed_flask, get_auth_token, get_refresh_token, is_authenticated_flask
         
         # Detect broken auth state first
@@ -166,7 +167,6 @@ def require_auth(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Authentication required"}), 401
             else:
-                from flask import redirect
                 # Redirect to /auth instead of / to avoid redirect loop
                 return redirect('/auth')
         
