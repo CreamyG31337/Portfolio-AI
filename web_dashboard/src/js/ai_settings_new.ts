@@ -442,7 +442,9 @@ async function addDomain() {
     try {
         const response = await fetch('/api/admin/ai/blacklist/add', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({ domain })
         });
 
@@ -469,7 +471,9 @@ async function removeDomain(domain: string) {
     try {
         const response = await fetch('/api/admin/ai/blacklist/remove', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({ domain })
         });
 
@@ -492,7 +496,9 @@ async function toggleAutoBlacklist(domain: string, currentEntry: BlacklistEntry)
         const isAuto = !currentEntry.auto_blacklisted;
         const response = await fetch('/api/admin/ai/blacklist/toggle', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({ domain, auto_blacklisted: isAuto })
         });
 
@@ -533,12 +539,7 @@ async function loadBlacklist() {
                                     Remove
                                 </button>
                             </div>
-                            <td class="px-4 py-2 text-sm text-center">
-                                <button onclick="toggleAutoBlacklist('${escapeHtml(entry.domain)}', ${JSON.stringify(entry)})" class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 px-2 py-1 rounded text-sm">
-                                    ${entry.auto_blacklisted ? 'Unban' : 'Ban'}
-                                </button>
                             </td>
-                        </td>
                         <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">${lastFailure}</td>
                         <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">${consecutive}</td>
                     </tr>

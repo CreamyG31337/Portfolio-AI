@@ -2392,24 +2392,41 @@ def api_test_webai_cookies():
     try:
         from webai_wrapper import test_webai_connection
         from pathlib import Path
-        
+
+        logger.info("Testing WebAI cookies...")
+
         # Find cookie file
         cookie_file = None
         shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+        logger.debug(f"Checking shared cookie path: {shared_cookie_path}")
+
         if shared_cookie_path.exists():
             cookie_file = str(shared_cookie_path)
+            logger.info(f"Using cookie file: {cookie_file}")
         else:
+            logger.warning(f"Shared cookie file not found: {shared_cookie_path}")
             # Try other locations
+            logger.debug("Searching for cookie file in project root...")
             project_root = Path(__file__).parent.parent.parent
             for name in ["webai_cookies.json", "ai_service_cookies.json"]:
                 test_path = project_root / name
+                logger.debug(f"  Checking: {test_path}")
                 if test_path.exists():
                     cookie_file = str(test_path)
+                    logger.info(f"Found cookie file: {cookie_file}")
                     break
-        
+
+        if not cookie_file:
+            logger.warning("No cookie file found - test may fail")
+
         # Run test
+        logger.debug("Running connection test...")
         test_result = test_webai_connection(cookies_file=cookie_file)
-        
+
+        logger.info(f"Test result: {test_result.get('success', False)}")
+        logger.debug(f"Test message: {test_result.get('message', 'Unknown error')}")
+        logger.debug(f"Test details: {test_result.get('details', {})}")
+
         return jsonify({
             "success": test_result.get("success", False),
             "message": test_result.get("message", "Unknown error"),
@@ -2417,6 +2434,7 @@ def api_test_webai_cookies():
         })
     except Exception as e:
         logger.error(f"Error testing WebAI cookies: {e}", exc_info=True)
+        logger.debug(f"Exception type: {type(e).__name__}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @admin_bp.route('/api/admin/ai/cookies', methods=['GET'])
@@ -2425,15 +2443,25 @@ def api_get_webai_cookies():
     """Get current WebAI cookies (for display/editing)"""
     try:
         from webai_wrapper import _load_cookies
-        
+
+        logger.debug("Getting current WebAI cookies...")
+
         secure_1psid, secure_1psidts = _load_cookies()
-        
+
+        logger.debug(f"Loaded cookies: __Secure-1PSID={bool(secure_1psid)}, __Secure-1PSIDTS={bool(secure_1psidts)}")
+        if secure_1psid:
+            logger.debug(f"  __Secure-1PSID length: {len(secure_1psid)}")
+        if secure_1psidts:
+            logger.debug(f"  __Secure-1PSIDTS length: {len(secure_1psidts)}")
+
         cookies = {}
         if secure_1psid:
             cookies["__Secure-1PSID"] = secure_1psid
         if secure_1psidts:
             cookies["__Secure-1PSIDTS"] = secure_1psidts
-        
+
+        logger.debug(f"Returning {len(cookies)} cookies to client")
+
         return jsonify({
             "success": True,
             "cookies": cookies,
@@ -2441,6 +2469,7 @@ def api_get_webai_cookies():
         })
     except Exception as e:
         logger.error(f"Error getting WebAI cookies: {e}", exc_info=True)
+        logger.debug(f"Exception type: {type(e).__name__}")
         return jsonify({"success": False, "error": str(e), "cookies": {}, "has_cookies": False}), 500
 
 @admin_bp.route('/api/admin/ai/cookies/logs', methods=['GET'])
@@ -2551,45 +2580,92 @@ def api_update_webai_cookies():
     try:
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
+            logger.warning("Read-only admin attempted to modify cookies - access denied")
             return jsonify({"error": "Read-only admin cannot modify cookies"}), 403
-        
+
+        logger.info("Admin updating WebAI cookies...")
+
         data = request.get_json()
         cookies = data.get("cookies")
-        
+
+        logger.debug(f"Received cookie data: {list(cookies.keys()) if cookies else 'None'}")
+
         if not cookies or not isinstance(cookies, dict):
+            logger.warning(f"Invalid cookies format: {type(cookies)}")
             return jsonify({"error": "Invalid cookies format. Expected JSON object."}), 400
-        
+
         if "__Secure-1PSID" not in cookies:
+            logger.warning("Missing required cookie: __Secure-1PSID")
             return jsonify({"error": "Missing required cookie: __Secure-1PSID"}), 400
-        
+
+        # Log cookie details
+        psid = cookies.get("__Secure-1PSID", "")
+        psidts = cookies.get("__Secure-1PSIDTS", "")
+        logger.debug(f"  __Secure-1PSID: Present (length: {len(psid)})")
+        logger.debug(f"  __Secure-1PSIDTS: {f'Present (length: {len(psidts)})' if psidts else 'Missing'}")
+
         # Save to shared volume (Docker container location)
         from pathlib import Path
         import json
         from datetime import datetime
-        
+
         shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+        logger.debug(f"Target path: {shared_cookie_path}")
+
+        # Create directory if needed
         shared_cookie_path.parent.mkdir(parents=True, exist_ok=True)
-        
+        logger.debug(f"Ensured directory exists: {shared_cookie_path.parent}")
+
         # Prepare cookie data with metadata
+        now = datetime.now()
         cookie_data = {
             "__Secure-1PSID": cookies.get("__Secure-1PSID", ""),
             "__Secure-1PSIDTS": cookies.get("__Secure-1PSIDTS", ""),
-            "_updated_at": datetime.now().isoformat() + "Z",
+            "_updated_at": now.isoformat() + "Z",
             "_updated_by": "admin_ui"
         }
-        
+
+        # Preserve existing metadata if it exists
+        if shared_cookie_path.exists():
+            logger.debug("Cookie file exists - checking for existing metadata to preserve")
+            try:
+                with open(shared_cookie_path, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
+                if "_refresh_count" in existing_data:
+                    cookie_data["_refresh_count"] = existing_data["_refresh_count"]
+                    logger.debug(f"Preserved _refresh_count: {existing_data['_refresh_count']}")
+            except Exception as e:
+                logger.warning(f"Could not read existing cookie metadata: {e}")
+
+        logger.debug(f"Cookie metadata: _updated_at={now.isoformat()}, _updated_by=admin_ui")
+
         # Remove empty values (but keep metadata)
+        before_filter = len(cookie_data)
         cookie_data = {k: v for k, v in cookie_data.items() if v or k.startswith("_")}
-        
+        after_filter = len(cookie_data)
+        if before_filter != after_filter:
+            logger.debug(f"Filtered {before_filter - after_filter} empty cookie values")
+
         # Write to shared volume
         with open(shared_cookie_path, 'w', encoding='utf-8') as f:
             json.dump(cookie_data, f, indent=2)
-        
+
+        logger.info(f"Cookies saved successfully to {shared_cookie_path}")
+        logger.info(f"  __Secure-1PSID: Present (length: {len(cookie_data['__Secure-1PSID'])})")
+        if cookie_data.get("__Secure-1PSIDTS"):
+            logger.info(f"  __Secure-1PSIDTS: Present (length: {len(cookie_data['__Secure-1PSIDTS'])})")
+        logger.info(f"  _updated_by: {cookie_data['_updated_by']}")
+        logger.info(f"  _updated_at: {cookie_data['_updated_at']}")
+        logger.info("Grace period activated - cookie refresher will skip for 2 hours")
+
         return jsonify({"success": True, "message": f"Cookies saved to {shared_cookie_path}"})
-    except PermissionError:
+    except PermissionError as e:
+        logger.error(f"Permission denied writing to {shared_cookie_path}: {e}")
+        logger.error("Check write permissions on /shared/cookies/")
         return jsonify({"error": "Permission denied. Cannot write to /shared/cookies/"}), 403
     except Exception as e:
         logger.error(f"Error updating WebAI cookies: {e}", exc_info=True)
+        logger.debug(f"Exception type: {type(e).__name__}")
         return jsonify({"error": str(e)}), 500
 
 # Contributor Management Routes
