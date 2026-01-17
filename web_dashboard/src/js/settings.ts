@@ -290,6 +290,60 @@ document.addEventListener('DOMContentLoaded', function (): void {
                 });
         });
     }
+
+    // Password Change Handler
+    const changePasswordForm = document.getElementById('change-password-form');
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const newPasswordInput = document.getElementById('new-password') as HTMLInputElement;
+            const confirmPasswordInput = document.getElementById('confirm-password') as HTMLInputElement;
+            const submitBtn = document.getElementById('change-password-btn') as HTMLButtonElement;
+
+            const newPassword = newPasswordInput.value;
+            const confirmPassword = confirmPasswordInput.value;
+
+            if (newPassword !== confirmPassword) {
+                showSettingsError('password-error', 'Passwords do not match');
+                return;
+            }
+
+            if (newPassword.length < 6) {
+                showSettingsError('password-error', 'Password must be at least 6 characters');
+                return;
+            }
+
+            const originalText = submitBtn.textContent || 'Update Password';
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Updating...';
+
+            try {
+                const response = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ password: newPassword }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showSuccess('password-success');
+                    newPasswordInput.value = '';
+                    confirmPasswordInput.value = '';
+                } else {
+                    showSettingsError('password-error', data.error || 'Failed to update password');
+                }
+            } catch (error) {
+                console.error('Password update error:', error);
+                showSettingsError('password-error', 'An unexpected error occurred');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+        });
+    }
 });
 
 function updateTimezonePreview(): void {

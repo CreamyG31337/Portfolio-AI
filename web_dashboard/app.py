@@ -1162,6 +1162,128 @@ def login():
         import traceback
         return jsonify({"error": "Login failed", "message": str(e), "traceback": traceback.format_exc()}), 500
 
+@app.route('/api/auth/magic-link', methods=['POST'])
+def magic_link():
+    """Handle magic link login request"""
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        
+        if not email:
+            return jsonify({"error": "Email required"}), 400
+            
+        app_domain = os.getenv("APP_DOMAIN")
+        if not app_domain:
+            return jsonify({"error": "Server configuration error: APP_DOMAIN missing"}), 500
+            
+        # Ensure redirect URL is absolute and correct for auth flow
+        redirect_url = f"https://{app_domain}/auth_callback.html"
+        
+        # Request magic link from Supabase
+        response = requests.post(
+            f"{os.getenv('SUPABASE_URL')}/auth/v1/otp",
+            headers={
+                "apikey": os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY"),
+                "Content-Type": "application/json"
+            },
+            json={
+                "email": email,
+                "create_user": False,
+                "data": {
+                    "redirect_to": redirect_url
+                }
+            }
+        )
+        
+        if response.status_code == 200:
+            return jsonify({"message": "Magic link sent to your email"})
+        else:
+            return jsonify({"error": "Failed to send magic link"}), response.status_code
+            
+    except Exception as e:
+        logger.error(f"Magic link error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/auth/reset-password-request', methods=['POST'])
+def reset_password_request():
+    """Handle password reset request"""
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        
+        if not email:
+            return jsonify({"error": "Email required"}), 400
+
+        app_domain = os.getenv("APP_DOMAIN")
+        if not app_domain:
+            return jsonify({"error": "Server configuration error: APP_DOMAIN missing"}), 500
+            
+        # Recovery redirect URL
+        redirect_url = f"https://{app_domain}/auth_callback.html?type=recovery"
+            
+        # Request recovery email from Supabase
+        response = requests.post(
+            f"{os.getenv('SUPABASE_URL')}/auth/v1/recover",
+            headers={
+                "apikey": os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY"),
+                "Content-Type": "application/json"
+            },
+            json={
+                "email": email,
+                "redirect_to": redirect_url
+            }
+        )
+        
+        # Supabase returns 200 even if user doesn't exist (security)
+        if response.status_code == 200:
+            return jsonify({"message": "If an account matches that email, a password reset link has been sent."})
+        else:
+            return jsonify({"error": "Failed to send reset email"}), response.status_code
+            
+    except Exception as e:
+        logger.error(f"Password reset request error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/auth/change-password', methods=['POST'])
+def change_password():
+    """Handle password change for authenticated user"""
+    try:
+        # Get token from cookie or header
+        token = (request.cookies.get('auth_token') or 
+                 request.cookies.get('session_token') or 
+                 request.headers.get('Authorization', '').replace('Bearer ', ''))
+                 
+        if not token:
+             return jsonify({"error": "Authentication required"}), 401
+             
+        data = request.get_json()
+        new_password = data.get('password')
+        
+        if not new_password or len(new_password) < 6:
+            return jsonify({"error": "Password must be at least 6 characters"}), 400
+            
+        # Update user in Supabase
+        response = requests.put(
+            f"{os.getenv('SUPABASE_URL')}/auth/v1/user",
+            headers={
+                "apikey": os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY"),
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "password": new_password
+            }
+        )
+        
+        if response.status_code == 200:
+            return jsonify({"message": "Password updated successfully"})
+        else:
+            return jsonify({"error": "Failed to update password"}), response.status_code
+            
+    except Exception as e:
+        logger.error(f"Password change error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     """Handle user registration"""

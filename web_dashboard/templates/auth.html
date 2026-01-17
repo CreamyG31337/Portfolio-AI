@@ -1,178 +1,310 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portfolio Dashboard - Authentication</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Tailwind 3 script -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+
+            // Apply theme IMMEDIATELY in head to prevent flash
+            (function () {
+                const savedTheme = localStorage.getItem('theme');
+                const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (savedTheme === 'dark' || (!savedTheme && systemDark)) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            })();
+    </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         }
+
+        .dark .gradient-bg {
+            background: linear-gradient(135deg, #312e81 0%, #4c1d95 100%);
+        }
+
         .card-hover:hover {
             transform: translateY(-2px);
             transition: transform 0.2s ease-in-out;
         }
+
+        /* Fallback styles in case Tailwind CDN fails */
+        .dark body {
+            background-color: #111827 !important;
+            color: #f3f4f6 !important;
+        }
+
+        .dark .bg-white {
+            background-color: #1f2937 !important;
+            color: #f3f4f6 !important;
+        }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+
+<body class="bg-gray-100 dark:bg-gray-900 min-h-screen transition-colors duration-200 flex flex-col">
     <!-- Header -->
-    <header class="gradient-bg text-white shadow-lg">
+    <header class="gradient-bg text-white shadow-lg relative">
         <div class="container mx-auto px-4 py-6">
             <div class="text-center">
                 <h1 class="text-3xl font-bold">📈 Portfolio Performance Dashboard</h1>
                 <p class="text-blue-100 mt-2">Secure access to your trading bot performance</p>
             </div>
         </div>
+
+        <!-- Theme Toggle Button - Using SVGs for reliability -->
+        <button id="theme-toggle"
+            class="absolute top-4 right-4 p-2 rounded-full bg-black/20 hover:bg-black/30 text-white transition-all focus:outline-none z-50 flex items-center justify-center border border-white/20"
+            style="width: 44px; height: 44px;" aria-label="Toggle Dark Mode">
+            <!-- Sun Icon (visible in dark mode) -->
+            <svg id="sun-icon" class="hidden dark:block w-6 h-6 text-yellow-300" fill="currentColor"
+                viewBox="0 0 20 20">
+                <path
+                    d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z">
+                </path>
+            </svg>
+            <!-- Moon Icon (visible in light mode) -->
+            <svg id="moon-icon" class="block dark:hidden w-6 h-6 text-indigo-100" fill="currentColor"
+                viewBox="0 0 20 20">
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+            </svg>
+        </button>
     </header>
 
     <!-- Main Content -->
-    <div class="w-full px-4 py-8">
+    <div class="w-full px-4 py-8 flex-grow">
         <div class="max-w-md mx-auto">
             <!-- Login Form -->
-            <div id="login-form" class="bg-white rounded-lg shadow-lg p-8 card-hover">
-                <h2 class="text-2xl font-bold text-gray-900 mb-6 text-center">Sign In</h2>
-                
+            <div id="login-form"
+                class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 card-hover transition-colors duration-200 border border-gray-200 dark:border-gray-700">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">Sign In</h2>
+
                 <form id="loginForm">
                     <div class="mb-4">
-                        <label for="login-email" class="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                        <input type="email" id="login-email" required
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <label for="login-email"
+                            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email</label>
+                        <input type="email" id="login-email" name="email" required
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     </div>
-                    
+
                     <div class="mb-6">
-                        <label for="login-password" class="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                        <input type="password" id="login-password" required
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <label for="login-password"
+                            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password</label>
+                        <input type="password" id="login-password" name="password" required
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     </div>
-                    
+
                     <button type="submit" id="login-btn"
-                            class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200">
+                        class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200 shadow-md">
                         <i class="fas fa-sign-in-alt mr-2"></i>Sign In
                     </button>
                 </form>
-                
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">Don't have an account? 
-                        <button id="show-register" class="text-blue-600 hover:text-blue-800 font-medium">Sign up</button>
-                    </p>
+
+                <div class="mt-6 text-center space-y-4">
+                    <button type="button" id="magic-link-btn"
+                        class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium block w-full text-center">
+                        <i class="fas fa-magic mr-1"></i> Email me a magic link instead
+                    </button>
+
+                    <div class="flex justify-between items-center text-sm">
+                        <button id="show-forgot-password"
+                            class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium">Forgot
+                            Password?</button>
+                        <button id="show-register"
+                            class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium">Create
+                            Account</button>
+                    </div>
                 </div>
             </div>
 
             <!-- Register Form -->
-            <div id="register-form" class="bg-white rounded-lg shadow-lg p-8 card-hover hidden">
-                <h2 class="text-2xl font-bold text-gray-900 mb-6 text-center">Create Account</h2>
-                
+            <div id="register-form"
+                class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 card-hover hidden transition-colors duration-200 border border-gray-200 dark:border-gray-700">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">Create Account</h2>
+
                 <form id="registerForm">
                     <div class="mb-4">
-                        <label for="register-email" class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                        <label for="register-email"
+                            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email</label>
                         <input type="email" id="register-email" required
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     </div>
-                    
+
                     <div class="mb-4">
-                        <label for="register-password" class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <label for="register-password"
+                            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password</label>
                         <input type="password" id="register-password" required minlength="6"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     </div>
-                    
+
                     <div class="mb-4">
-                        <label for="register-confirm" class="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
+                        <label for="register-confirm"
+                            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Confirm
+                            Password</label>
                         <input type="password" id="register-confirm" required minlength="6"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     </div>
-                    
+
                     <div class="mb-4">
-                        <label for="register-name" class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                        <label for="register-name"
+                            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Full
+                            Name</label>
                         <input type="text" id="register-name" required
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     </div>
-                    
+
                     <button type="submit" id="register-btn"
-                            class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-200">
+                        class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-200 shadow-md">
                         <i class="fas fa-user-plus mr-2"></i>Create Account
                     </button>
                 </form>
-                
+
                 <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">Already have an account? 
-                        <button id="show-login" class="text-blue-600 hover:text-blue-800 font-medium">Sign in</button>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Already have an account?
+                        <button id="show-login-2"
+                            class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium">Sign
+                            in</button>
                     </p>
+                </div>
+            </div>
+
+            <!-- Forgot Password Form -->
+            <div id="forgot-password-form"
+                class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 card-hover hidden transition-colors duration-200 border border-gray-200 dark:border-gray-700">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2 text-center">Reset Password</h2>
+                <p class="text-gray-600 dark:text-gray-400 text-center mb-6 text-sm">Enter your email to receive a reset
+                    link</p>
+
+                <form id="forgotPasswordForm">
+                    <div class="mb-6">
+                        <label for="forgot-email"
+                            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email</label>
+                        <input type="email" id="forgot-email" required
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    </div>
+
+                    <button type="submit" id="forgot-btn"
+                        class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200 shadow-md">
+                        <i class="fas fa-envelope mr-2"></i>Send Reset Link
+                    </button>
+                </form>
+
+                <div class="mt-4 text-center">
+                    <button id="back-to-login"
+                        class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium">
+                        <i class="fas fa-arrow-left mr-1"></i> Back to Login
+                    </button>
                 </div>
             </div>
 
             <!-- Error/Success Messages -->
             <div id="message" class="mt-4 hidden">
-                <div id="message-content" class="p-4 rounded-md"></div>
+                <div id="message-content" class="p-4 rounded-md shadow-lg"></div>
             </div>
         </div>
     </div>
 
     <!-- Footer -->
-    <footer class="bg-gray-800 text-white py-8 mt-12">
+    <footer
+        class="bg-gray-800 dark:bg-gray-950 text-white py-4 mt-auto transition-colors duration-200 border-t border-gray-700 dark:border-gray-800">
         <div class="container mx-auto px-4 text-center">
-            <p class="text-gray-400">Powered by LLM Micro-Cap Trading Bot</p>
-            <p class="text-sm text-gray-500 mt-2">Secure portfolio management system</p>
+            <p class="text-gray-400 text-sm">Powered by LLM Micro-Cap Trading Bot</p>
+            <p class="text-xs text-gray-500 mt-1">Build: {{ build_timestamp|default('Development') }}</p>
         </div>
     </footer>
 
     <script>
-        // Form switching
-        document.getElementById('show-register').addEventListener('click', function() {
-            document.getElementById('login-form').classList.add('hidden');
-            document.getElementById('register-form').classList.remove('hidden');
+        // Theme Toggle Logic
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggleBtn = document.getElementById('theme-toggle');
+            const html = document.documentElement;
+
+            // Toggle click handler
+            toggleBtn.addEventListener('click', () => {
+                if (html.classList.contains('dark')) {
+                    html.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
+                } else {
+                    html.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                }
+            });
         });
 
-        document.getElementById('show-login').addEventListener('click', function() {
-            document.getElementById('register-form').classList.add('hidden');
-            document.getElementById('login-form').classList.remove('hidden');
-        });
+        // Form switching
+        const forms = {
+            login: document.getElementById('login-form'),
+            register: document.getElementById('register-form'),
+            forgot: document.getElementById('forgot-password-form')
+        };
+
+        function showForm(name) {
+            Object.keys(forms).forEach(key => {
+                forms[key].classList.add('hidden');
+            });
+            forms[name].classList.remove('hidden');
+            document.getElementById('message').classList.add('hidden');
+        }
+
+        document.getElementById('show-register').addEventListener('click', () => showForm('register'));
+        document.getElementById('show-login-2').addEventListener('click', () => showForm('login'));
+        document.getElementById('show-forgot-password').addEventListener('click', () => showForm('forgot'));
+        document.getElementById('back-to-login').addEventListener('click', () => showForm('login'));
 
         // Show message
         function showMessage(message, type = 'error') {
             const messageDiv = document.getElementById('message');
             const contentDiv = document.getElementById('message-content');
-            
+
             contentDiv.textContent = message;
-            contentDiv.className = `p-4 rounded-md ${type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
+            contentDiv.className = `p-4 rounded-md shadow-md ${type === 'error'
+                    ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 border border-red-200 dark:border-red-800'
+                    : 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300 border border-green-200 dark:border-green-800'
+                }`;
             messageDiv.classList.remove('hidden');
-            
-            setTimeout(() => {
-                messageDiv.classList.add('hidden');
-            }, 5000);
+
+            if (type !== 'error') {
+                setTimeout(() => {
+                    messageDiv.classList.add('hidden');
+                }, 5000);
+            }
         }
 
         // Login form
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+        document.getElementById('loginForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
             const btn = document.getElementById('login-btn');
-            
+            const originalText = btn.innerHTML;
+
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Signing in...';
-            
+
             try {
                 const response = await fetch('/api/auth/login', {
                     method: 'POST',
                     credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (response.ok) {
-                    // Store session token
                     document.cookie = `session_token=${data.token}; path=/; max-age=86400`;
                     showMessage('Login successful! Redirecting...', 'success');
-                    setTimeout(() => {
-                        window.location.href = '/';
-                    }, 1000);
+                    setTimeout(() => { window.location.href = '/'; }, 1000);
                 } else {
                     showMessage(data.error || 'Login failed');
                 }
@@ -180,44 +312,77 @@
                 showMessage('Network error. Please try again.');
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i>Sign In';
+                btn.innerHTML = originalText;
+            }
+        });
+
+        // Magic Link Handler
+        document.getElementById('magic-link-btn').addEventListener('click', async function (e) {
+            const email = document.getElementById('login-email').value;
+            if (!email) {
+                showMessage('Please enter your email address first', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('magic-link-btn');
+            const originalText = btn.innerHTML;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
+
+            try {
+                const response = await fetch('/api/auth/magic-link', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage(data.message || 'Magic link sent! Check your email.', 'success');
+                } else {
+                    showMessage(data.error || 'Failed to send magic link', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
             }
         });
 
         // Register form
-        document.getElementById('registerForm').addEventListener('submit', async function(e) {
+        document.getElementById('registerForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const email = document.getElementById('register-email').value;
             const password = document.getElementById('register-password').value;
             const confirmPassword = document.getElementById('register-confirm').value;
             const name = document.getElementById('register-name').value;
             const btn = document.getElementById('register-btn');
-            
+
             if (password !== confirmPassword) {
                 showMessage('Passwords do not match');
                 return;
             }
-            
+
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating account...';
-            
+
             try {
                 const response = await fetch('/api/auth/register', {
                     method: 'POST',
                     credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password, name })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (response.ok) {
                     showMessage('Account created successfully! Please sign in.', 'success');
-                    document.getElementById('register-form').classList.add('hidden');
-                    document.getElementById('login-form').classList.remove('hidden');
+                    showForm('login');
                 } else {
                     showMessage(data.error || 'Registration failed');
                 }
@@ -228,14 +393,41 @@
                 btn.innerHTML = '<i class="fas fa-user-plus mr-2"></i>Create Account';
             }
         });
+
+        // Forgot Password form
+        document.getElementById('forgotPasswordForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const email = document.getElementById('forgot-email').value;
+            const btn = document.getElementById('forgot-btn');
+            const originalText = btn.innerHTML;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
+
+            try {
+                const response = await fetch('/api/auth/reset-password-request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage(data.message || 'Reset link sent! Check your email.', 'success');
+                    setTimeout(() => { showForm('login'); }, 3000);
+                } else {
+                    showMessage(data.error || 'Failed to request reset', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
     </script>
-
-    <!-- Footer -->
-    <footer class="bg-gray-800 text-white py-4 mt-auto">
-        <div class="container mx-auto px-4 text-center text-sm">
-            <p>Build: {{ build_timestamp|default('Development') }}</p>
-        </div>
-    </footer>
 </body>
-</html>
 
+</html>

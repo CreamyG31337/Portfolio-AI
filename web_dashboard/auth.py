@@ -127,8 +127,38 @@ def require_auth(f):
     """Decorator to require authentication for routes"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # First, try to refresh token if needed
-        from flask_auth_utils import refresh_token_if_needed_flask, get_auth_token, is_authenticated_flask
+        from flask_auth_utils import refresh_token_if_needed_flask, get_auth_token, get_refresh_token, is_authenticated_flask
+        
+        # Detect broken auth state first
+        auth_token = request.cookies.get('auth_token')
+        session_token = request.cookies.get('session_token')
+        refresh_token = get_refresh_token()
+        
+        is_broken_state = False
+        
+        # Check 1: Have session_token but no auth_token (incomplete login state)
+        if session_token and not auth_token:
+            logger.warning("[AUTH] require_auth: Broken state - session_token present but auth_token missing")
+            is_broken_state = True
+        
+        # Check 2: Refresh token is corrupted (too short - valid ones are 100+ chars)
+        if refresh_token and len(refresh_token) < 50:
+            logger.warning(f"[AUTH] require_auth: Broken state - refresh_token corrupted (length={len(refresh_token)})")
+            is_broken_state = True
+        
+        # If broken state, clear cookies and redirect to login
+        if is_broken_state:
+            logger.info("[AUTH] require_auth: Clearing broken auth state")
+            if request.path.startswith('/api/'):
+                return jsonify({"error": "Invalid auth state, please login again"}), 401
+            else:
+                response = redirect('/auth')
+                response.delete_cookie('auth_token')
+                response.delete_cookie('session_token')
+                response.delete_cookie('refresh_token')
+                return response
+        
+        # Now try to refresh token if needed
         success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
         
         if not success:
