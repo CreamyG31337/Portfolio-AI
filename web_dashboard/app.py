@@ -1203,6 +1203,16 @@ def login():
         import traceback
         return jsonify({"error": "Login failed", "message": str(e), "traceback": traceback.format_exc()}), 500
 
+@app.route('/api/debug/cookies')
+def debug_cookies():
+    """Debug endpoint to inspect cookies received by the server"""
+    return jsonify({
+        "cookies": request.cookies,
+        "headers": dict(request.headers),
+        "is_production": os.getenv("FLASK_ENV") == "production",
+        "app_domain": os.getenv("APP_DOMAIN")
+    })
+
 @app.route('/api/auth/magic-link', methods=['POST'])
 def magic_link():
     """Handle magic link login request"""
