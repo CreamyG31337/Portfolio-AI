@@ -952,15 +952,12 @@ def index():
         refresh_token = get_refresh_token()
         
         # Detect broken auth state and clear cookies
-        # Broken state: missing auth_token but have session_token, or corrupted refresh_token
+        # Broken state: corrupted refresh_token (but NOT missing auth_token - that's just not logged in)
         is_broken_state = False
         
-        # Check 1: Have session_token but no auth_token (incomplete login state)
-        if session_token and not auth_token:
-            logger.warning("[AUTH] Broken state detected: session_token present but auth_token missing")
-            is_broken_state = True
-        
-        # Check 2: Refresh token is corrupted (too short - valid ones are 100+ chars)
+        # Check: Refresh token is corrupted (too short - valid ones are 100+ chars)
+        # NOTE: Don't check for "session_token but no auth_token" - that's a valid legacy state
+        # and will be handled by the auth check below
         if refresh_token and len(refresh_token) < 50:
             logger.warning(f"[AUTH] Broken state detected: refresh_token corrupted (length={len(refresh_token)})")
             is_broken_state = True
