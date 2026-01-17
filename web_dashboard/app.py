@@ -1006,16 +1006,19 @@ def index():
         if is_broken_state:
             logger.info("[AUTH] Clearing broken auth state and redirecting to login")
             response = redirect('/auth')
-            response.delete_cookie('auth_token')
-            response.delete_cookie('session_token')
-            response.delete_cookie('refresh_token')
+            response.delete_cookie('auth_token', path='/')
+            response.delete_cookie('session_token', path='/')
+            response.delete_cookie('refresh_token', path='/')
             return response
         
         # Check if we have a valid auth_token (required for proper Supabase auth)
+        # Also accept session_token as fallback for legacy compatibility
         is_authenticated = False
-        if auth_token:
+        token_to_check = auth_token or session_token
+        
+        if token_to_check:
             try:
-                token_parts = auth_token.split('.')
+                token_parts = token_to_check.split('.')
                 if len(token_parts) >= 2:
                     payload = token_parts[1]
                     payload += '=' * (4 - len(payload) % 4)
@@ -1024,12 +1027,16 @@ def index():
                     exp = user_data.get('exp', 0)
                     # Token is valid if it exists and hasn't expired
                     is_authenticated = exp == 0 or exp > time.time()
-            except Exception:
+                    logger.debug(f"[AUTH] Root route: token valid={is_authenticated}, exp={exp}, now={time.time()}")
+            except Exception as e:
+                logger.warning(f"[AUTH] Error parsing token in root route: {e}")
                 pass
         
         if is_authenticated:
+            logger.info("[AUTH] Root route: User authenticated, redirecting to dashboard")
             return redirect(url_for('dashboard.dashboard_page'))
         else:
+            logger.info("[AUTH] Root route: User not authenticated, redirecting to auth")
             return redirect(url_for('auth_page'))
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
