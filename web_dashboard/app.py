@@ -954,7 +954,7 @@ def index():
                         if success and new_token:
                             # Refresh succeeded - redirect with new cookies
                             is_production = os.getenv("FLASK_ENV") == "production"
-                            response = redirect('/dashboard')
+                            response = redirect(url_for('dashboard.dashboard_page'))
                             response.set_cookie('auth_token', new_token, max_age=expires_in or 3600, httponly=True, secure=is_production, samesite='None' if is_production else 'Lax')
                             if new_refresh:
                                 response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite='None' if is_production else 'Lax')
@@ -993,9 +993,9 @@ def index():
                 pass
         
         if is_authenticated:
-            return redirect('/dashboard')
+            return redirect(url_for('dashboard.dashboard_page'))
         else:
-            return redirect('/auth')
+            return redirect(url_for('auth_page'))
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
         # On error, clear cookies and redirect to auth as safe fallback
@@ -4044,6 +4044,10 @@ def api_congress_trades_data():
     except Exception as e:
         logger.error(f"Error in congress trades API: {e}", exc_info=True)
         return jsonify({"error": "An error occurred while fetching congress trades data. Please check the logs."}), 500
+
+# Register blueprints
+from routes.dashboard_routes import dashboard_bp
+app.register_blueprint(dashboard_bp)
 
 if __name__ == '__main__':
     # Run the app
