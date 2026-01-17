@@ -9,7 +9,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-col h-[calc(100vh-200px)]">
+<div id="ai-assistant-content" class="flex flex-col h-[calc(100vh-200px)] md:pr-80">
     <!-- Header with Clear Chat button -->
     <div class="flex justify-between items-center mb-4">
         <h2 class="text-2xl font-bold text-text-primary">💬 Chat</h2>
@@ -87,7 +87,7 @@
                     <textarea id="initial-prompt" rows="6"
                         class="w-full p-2 border border-border rounded-lg mb-2 bg-dashboard-surface text-text-primary focus:ring-2 focus:ring-accent focus:border-accent"></textarea>
                     <button id="run-analysis-btn"
-                        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
+                        class="px-4 py-2 bg-green-600 dark:bg-green-700 text-white rounded-lg hover:bg-green-700 dark:hover:bg-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
                         ▶️ Run Analysis
                     </button>
                 </div>
@@ -185,7 +185,7 @@
 
 <!-- Sidebar: Model Selection, Fund Selector, Context Toggles -->
 <aside id="ai-sidebar"
-    class="hidden md:block fixed top-0 right-0 z-30 w-80 h-screen bg-dashboard-surface border-l border-border shadow-lg overflow-y-auto pt-24 px-4">
+    class="hidden md:block fixed top-0 right-0 z-40 w-80 h-screen bg-dashboard-surface border-l border-border shadow-lg overflow-y-auto pt-24 px-4">
     <div class="space-y-6">
         <!-- Model Selection -->
         <div>

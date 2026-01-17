@@ -6,6 +6,7 @@ module.exports = {
     // Include any Python files that might contain Tailwind classes in strings
     "./web_dashboard/**/*.py",
   ],
+  darkMode: ['selector', '[data-theme="dark"], [data-theme="midnight-tokyo"], [data-theme="abyss"]'],
   theme: {
     extend: {
       colors: {

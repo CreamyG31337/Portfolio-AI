@@ -164,3 +164,37 @@
         height: 60vh;
     }
 }
+
+/* Ensure content doesn't overlap with fixed AI sidebar on medium+ screens */
+@media (min-width: 768px) {
+    /* Target the AI assistant page content specifically */
+    #ai-assistant-content {
+        padding-right: 20rem; /* 80 * 0.25rem = 20rem for w-80 sidebar */
+    }
+}
+
+/* Button theming fixes for dark themes */
+[data-theme="dark"] button.bg-gray-200,
+[data-theme="midnight-tokyo"] button.bg-gray-200,
+[data-theme="abyss"] button.bg-gray-200 {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] button.bg-gray-200:hover,
+[data-theme="midnight-tokyo"] button.bg-gray-200:hover,
+[data-theme="abyss"] button.bg-gray-200:hover {
+    background-color: #4b5563;
+}
+
+[data-theme="dark"] button.bg-green-600,
+[data-theme="midnight-tokyo"] button.bg-green-600,
+[data-theme="abyss"] button.bg-green-600 {
+    background-color: #059669; /* green-700 for better contrast in dark */
+}
+
+[data-theme="dark"] button.bg-green-600:hover,
+[data-theme="midnight-tokyo"] button.bg-green-600:hover,
+[data-theme="abyss"] button.bg-green-600:hover {
+    background-color: #047857; /* green-800 */
+}
