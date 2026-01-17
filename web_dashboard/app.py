@@ -914,22 +914,73 @@ def dashboard_fallback():
 def index():
     """Redirect to dashboard if authenticated, otherwise to auth page"""
     try:
-        from flask_auth_utils import refresh_token_if_needed_flask, get_auth_token
+        from flask_auth_utils import get_auth_token, get_refresh_token
         import base64
         import json as json_lib
         import time
         
-        # Try to refresh token first if needed
-        success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+        auth_token = request.cookies.get('auth_token')
+        session_token = request.cookies.get('session_token')
+        refresh_token = get_refresh_token()
         
-        # Use new token if available, otherwise get from cookies
-        token = new_token or get_auth_token()
+        # Detect broken auth state and clear cookies
+        # Broken state: missing auth_token but have session_token, or corrupted refresh_token
+        is_broken_state = False
         
-        # Check if we have a valid token
-        is_authenticated = False
-        if token:
+        # Check 1: Have session_token but no auth_token (incomplete login state)
+        if session_token and not auth_token:
+            logger.warning("[AUTH] Broken state detected: session_token present but auth_token missing")
+            is_broken_state = True
+        
+        # Check 2: Refresh token is corrupted (too short - valid ones are 100+ chars)
+        if refresh_token and len(refresh_token) < 50:
+            logger.warning(f"[AUTH] Broken state detected: refresh_token corrupted (length={len(refresh_token)})")
+            is_broken_state = True
+        
+        # Check 3: auth_token exists but is expired, and refresh fails
+        if auth_token and not is_broken_state:
             try:
-                token_parts = token.split('.')
+                token_parts = auth_token.split('.')
+                if len(token_parts) >= 2:
+                    payload = token_parts[1]
+                    payload += '=' * (4 - len(payload) % 4)
+                    decoded = base64.urlsafe_b64decode(payload)
+                    user_data = json_lib.loads(decoded)
+                    exp = user_data.get('exp', 0)
+                    if exp > 0 and exp < time.time():
+                        # Token expired - try to refresh
+                        from flask_auth_utils import refresh_token_if_needed_flask
+                        success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+                        if success and new_token:
+                            # Refresh succeeded - redirect with new cookies
+                            is_production = os.getenv("FLASK_ENV") == "production"
+                            response = redirect(url_for('dashboard.dashboard_page'))
+                            response.set_cookie('auth_token', new_token, max_age=expires_in or 3600, httponly=True, secure=is_production, samesite='None' if is_production else 'Lax')
+                            if new_refresh:
+                                response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite='None' if is_production else 'Lax')
+                            return response
+                        else:
+                            # Refresh failed - broken state
+                            logger.warning("[AUTH] Broken state detected: auth_token expired and refresh failed")
+                            is_broken_state = True
+            except Exception as e:
+                logger.warning(f"[AUTH] Error checking auth_token: {e}")
+                is_broken_state = True
+        
+        # If broken state, clear all auth cookies and redirect to login
+        if is_broken_state:
+            logger.info("[AUTH] Clearing broken auth state and redirecting to login")
+            response = redirect('/auth')
+            response.delete_cookie('auth_token')
+            response.delete_cookie('session_token')
+            response.delete_cookie('refresh_token')
+            return response
+        
+        # Check if we have a valid auth_token (required for proper Supabase auth)
+        is_authenticated = False
+        if auth_token:
+            try:
+                token_parts = auth_token.split('.')
                 if len(token_parts) >= 2:
                     payload = token_parts[1]
                     payload += '=' * (4 - len(payload) % 4)
@@ -942,34 +993,17 @@ def index():
                 pass
         
         if is_authenticated:
-            response = redirect(url_for('dashboard.dashboard_page'))
-            # If token was refreshed, update cookies in the response
-            if new_token:
-                is_production = os.getenv("FLASK_ENV") == "production"
-                response.set_cookie(
-                    'auth_token',
-                    new_token,
-                    max_age=expires_in if expires_in else 3600,
-                    httponly=True,
-                    secure=is_production,
-                    samesite='None' if is_production else 'Lax'
-                )
-                if new_refresh:
-                    response.set_cookie(
-                        'refresh_token',
-                        new_refresh,
-                        max_age=86400 * 30,  # 30 days
-                        httponly=True,
-                        secure=is_production,
-                        samesite='None' if is_production else 'Lax'
-                    )
-            return response
+            return redirect(url_for('dashboard.dashboard_page'))
         else:
             return redirect(url_for('auth_page'))
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
-        # On error, redirect to auth as safe fallback
-        return redirect('/auth')
+        # On error, clear cookies and redirect to auth as safe fallback
+        response = redirect('/auth')
+        response.delete_cookie('auth_token')
+        response.delete_cookie('session_token')
+        response.delete_cookie('refresh_token')
+        return response
 
 @app.route('/auth')
 def auth_page():
