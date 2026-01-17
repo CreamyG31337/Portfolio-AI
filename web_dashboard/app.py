@@ -1295,14 +1295,57 @@ def debug_refresh_attempt():
             timeout=10
         )
         
-        return jsonify({
+        result = {
             "refresh_token_length": len(refresh_token),
             "refresh_token_preview": refresh_token[:50] + "..." if len(refresh_token) > 50 else refresh_token,
             "supabase_status_code": response.status_code,
             "supabase_response": response.text,
             "supabase_response_json": response.json() if response.text else None,
             "success": response.status_code == 200
-        })
+        }
+        
+        # If refresh succeeded, save the new tokens to cookies
+        if response.status_code == 200:
+            auth_data = response.json()
+            new_access_token = auth_data.get("access_token")
+            new_refresh_token = auth_data.get("refresh_token")
+            expires_in = auth_data.get("expires_in", 3600)
+            
+            if new_access_token:
+                # Use same cookie settings as login route
+                x_forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
+                is_https = x_forwarded_proto == 'https' or request.is_secure
+                has_app_domain = bool(os.getenv("APP_DOMAIN"))
+                is_production_env = os.getenv("FLASK_ENV") == "production"
+                is_production = is_production_env or has_app_domain or is_https
+                use_secure = is_https or is_production
+                samesite_value = 'Lax'
+                
+                flask_response = jsonify(result)
+                flask_response.set_cookie(
+                    'auth_token',
+                    new_access_token,
+                    max_age=expires_in,
+                    httponly=True,
+                    secure=use_secure,
+                    samesite=samesite_value,
+                    path='/'
+                )
+                if new_refresh_token:
+                    flask_response.set_cookie(
+                        'refresh_token',
+                        new_refresh_token,
+                        max_age=86400 * 30,  # 30 days
+                        httponly=True,
+                        secure=use_secure,
+                        samesite=samesite_value,
+                        path='/'
+                    )
+                    result["new_refresh_token_saved"] = True
+                    result["new_refresh_token_length"] = len(new_refresh_token)
+                return flask_response
+        
+        return jsonify(result)
     except Exception as e:
         return jsonify({
             "error": str(e),
