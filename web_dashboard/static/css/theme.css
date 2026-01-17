@@ -32,6 +32,24 @@
     --log-info: #3b82f6;
     --log-warning: #f59e0b;
     --log-error: #ef4444;
+
+    /* Semantic Status Colors (Light Mode) */
+    --color-success-bg: #dcfce7;
+    /* green-100 */
+    --color-success-text: #166534;
+    /* green-800 */
+    --color-error-bg: #fef2f2;
+    /* red-50 */
+    --color-error-text: #991b1b;
+    /* red-800 */
+    --color-warning-bg: #fef9c3;
+    /* yellow-100 */
+    --color-warning-text: #854d0e;
+    /* yellow-800 */
+    --color-info-bg: #dbeafe;
+    /* blue-100 */
+    --color-info-text: #1e40af;
+    /* blue-800 */
 }
 
 /* Explicit Light Mode */
@@ -64,6 +82,24 @@
     --log-info: #3b82f6;
     --log-warning: #f59e0b;
     --log-error: #ef4444;
+
+    /* Semantic Status Colors (Light Mode) */
+    --color-success-bg: #dcfce7;
+    /* green-100 */
+    --color-success-text: #166534;
+    /* green-800 */
+    --color-error-bg: #fef2f2;
+    /* red-50 */
+    --color-error-text: #991b1b;
+    /* red-800 */
+    --color-warning-bg: #fef9c3;
+    /* yellow-100 */
+    --color-warning-text: #854d0e;
+    /* yellow-800 */
+    --color-info-bg: #dbeafe;
+    /* blue-100 */
+    --color-info-text: #1e40af;
+    /* blue-800 */
 }
 
 
@@ -96,6 +132,24 @@
     --log-info: #60a5fa;
     --log-warning: #fbbf24;
     --log-error: #f87171;
+
+    /* Semantic Status Colors (Dark Mode) */
+    --color-success-bg: rgba(34, 197, 94, 0.2);
+    /* green-500 @ 20% */
+    --color-success-text: #86efac;
+    /* green-300 */
+    --color-error-bg: rgba(239, 68, 68, 0.2);
+    /* red-500 @ 20% */
+    --color-error-text: #fca5a5;
+    /* red-300 */
+    --color-warning-bg: rgba(234, 179, 8, 0.2);
+    /* yellow-500 @ 20% */
+    --color-warning-text: #fde047;
+    /* yellow-300 */
+    --color-info-bg: rgba(59, 130, 246, 0.2);
+    /* blue-500 @ 20% */
+    --color-info-text: #93c5fd;
+    /* blue-300 */
 }
 
 /* Midnight Tokyo Theme - Cyberpunk/Neon */
@@ -126,6 +180,20 @@
     --log-info: #7dcfff;
     --log-warning: #e0af68;
     --log-error: #f7768e;
+
+    /* Semantic Status Colors (Midnight Tokyo) */
+    --color-success-bg: rgba(115, 218, 202, 0.15);
+    /* Tokyo Green */
+    --color-success-text: #73daca;
+    --color-error-bg: rgba(247, 118, 142, 0.15);
+    /* Tokyo Red */
+    --color-error-text: #f7768e;
+    --color-warning-bg: rgba(224, 175, 104, 0.15);
+    /* Tokyo Yellow */
+    --color-warning-text: #e0af68;
+    --color-info-bg: rgba(125, 207, 255, 0.15);
+    /* Tokyo Blue */
+    --color-info-text: #7dcfff;
 }
 
 /* Abyss Theme - Deep Ocean/Void */
@@ -156,6 +224,20 @@
     --log-info: #64ffda;
     --log-warning: #ffb74d;
     --log-error: #e57373;
+
+    /* Semantic Status Colors (Abyss) */
+    --color-success-bg: rgba(100, 255, 218, 0.1);
+    /* Cyan/Green */
+    --color-success-text: #64ffda;
+    --color-error-bg: rgba(229, 115, 115, 0.1);
+    /* Soft Red */
+    --color-error-text: #e57373;
+    --color-warning-bg: rgba(255, 183, 77, 0.1);
+    /* Orange/Yellow */
+    --color-warning-text: #ffb74d;
+    --color-info-bg: rgba(121, 134, 203, 0.1);
+    /* Indigo/Blue */
+    --color-info-text: #7986cb;
 }
 
 
@@ -181,6 +263,16 @@
         --log-info: #3b82f6;
         --log-warning: #f59e0b;
         --log-error: #ef4444;
+
+        /* Semantic Status Colors (Light) */
+        --color-success-bg: #dcfce7;
+        --color-success-text: #166534;
+        --color-error-bg: #fef2f2;
+        --color-error-text: #991b1b;
+        --color-warning-bg: #fef9c3;
+        --color-warning-text: #854d0e;
+        --color-info-bg: #dbeafe;
+        --color-info-text: #1e40af;
     }
 }
 
@@ -205,6 +297,16 @@
         --log-info: #60a5fa;
         --log-warning: #fbbf24;
         --log-error: #f87171;
+
+        /* Semantic Status Colors (Dark) */
+        --color-success-bg: rgba(34, 197, 94, 0.2);
+        --color-success-text: #86efac;
+        --color-error-bg: rgba(239, 68, 68, 0.2);
+        --color-error-text: #fca5a5;
+        --color-warning-bg: rgba(234, 179, 8, 0.2);
+        --color-warning-text: #fde047;
+        --color-info-bg: rgba(59, 130, 246, 0.2);
+        --color-info-text: #93c5fd;
     }
 }
 
@@ -264,6 +366,98 @@ input:hover,
 select:hover,
 textarea:hover {
     border-color: var(--border-hover) !important;
+}
+
+/* --- OVERRIDES for Tailwind Color Classes --- */
+/* These make hardcoded colors adapt to theme */
+
+/* Success / Green */
+.bg-green-50,
+.bg-green-100 {
+    background-color: var(--color-success-bg) !important;
+}
+
+.text-green-800,
+.text-green-700,
+.text-green-600 {
+    color: var(--color-success-text) !important;
+}
+
+.border-green-400,
+.border-green-200 {
+    border-color: var(--color-success-text) !important;
+}
+
+/* Error / Red */
+.bg-red-50,
+.bg-red-100 {
+    background-color: var(--color-error-bg) !important;
+}
+
+.text-red-800,
+.text-red-700,
+.text-red-600,
+.text-red-500 {
+    color: var(--color-error-text) !important;
+}
+
+.border-red-400,
+.border-red-200 {
+    border-color: var(--color-error-text) !important;
+}
+
+/* Warning / Yellow */
+.bg-yellow-50,
+.bg-yellow-100 {
+    background-color: var(--color-warning-bg) !important;
+}
+
+.text-yellow-800,
+.text-yellow-700 {
+    color: var(--color-warning-text) !important;
+}
+
+.border-yellow-400,
+.border-yellow-200 {
+    border-color: var(--color-warning-text) !important;
+}
+
+/* Info / Blue */
+.bg-blue-50,
+.bg-blue-100 {
+    background-color: var(--color-info-bg) !important;
+}
+
+.text-blue-800,
+.text-blue-700,
+.text-blue-600 {
+    color: var(--color-info-text) !important;
+}
+
+.border-blue-400,
+.border-blue-200,
+.border-blue-500 {
+    border-color: var(--color-info-text) !important;
+}
+
+/* Indigo / Purple (often used for specialized tags) */
+.bg-indigo-100 {
+    background-color: var(--color-info-bg) !important;
+    /* Reuse info bg */
+}
+
+.text-indigo-800 {
+    color: var(--color-info-text) !important;
+}
+
+.bg-purple-100 {
+    background-color: var(--color-warning-bg) !important;
+    /* Reuse warning/accent bg */
+}
+
+.text-purple-600,
+.text-purple-800 {
+    color: var(--color-warning-text) !important;
 }
 
 /* Gradient backgrounds */
