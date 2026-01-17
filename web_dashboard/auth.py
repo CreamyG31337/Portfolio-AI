@@ -141,13 +141,9 @@ def require_auth(f):
         
         is_broken_state = False
         
-        # Check 1: Have session_token but no auth_token (incomplete login state)
-        if session_token and not auth_token:
-            logger.warning("[AUTH] Broken state detected: session_token present inside require_auth but auth_token missing")
-            # is_broken_state = True # TEMP: Disable to allow login with session_token only if auth_token is mysteriously missing
-            is_broken_state = False
-        
-        # Check 2: Refresh token is corrupted (too short - valid ones are 100+ chars)
+        # Check: Refresh token is corrupted (too short - valid ones are 100+ chars)
+        # NOTE: Don't check for "session_token but no auth_token" - that's a valid legacy state
+        # The auth check below will handle missing tokens properly
         if refresh_token and len(refresh_token) < 50:
             logger.warning(f"[AUTH] require_auth: Broken state - refresh_token corrupted (length={len(refresh_token)})")
             is_broken_state = True
