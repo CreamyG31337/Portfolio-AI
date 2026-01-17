@@ -56,6 +56,11 @@ app = Flask(__name__,
             static_url_path='/assets')
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "your-secret-key-change-this")
 
+# Apply ProxyFix middleware for proper HTTPS detection behind reverse proxy (Nginx/Docker)
+# This makes request.is_secure work correctly when behind a load balancer
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
 # Configure Debug Mode
 # WARNING: Setting app.debug = True enables the interactive debugger which allows arbitrary code execution.
 # NEVER set this to True in production environment unless strictly protected.
@@ -1131,8 +1136,14 @@ def login():
             
             # Set the session token as a cookie (Flask legacy)
             # Use secure cookies for production (HTTPS), allow non-secure for local dev (HTTP)
-            # Check FLASK_ENV first, then fall back to detecting HTTPS via request.is_secure
-            is_production = os.getenv("FLASK_ENV") == "production" or request.is_secure
+            # Behind a reverse proxy, request.is_secure is False even on HTTPS
+            # Check multiple indicators: FLASK_ENV, APP_DOMAIN (production has this set), or X-Forwarded-Proto header
+            is_production = (
+                os.getenv("FLASK_ENV") == "production" or 
+                os.getenv("APP_DOMAIN") is not None or  # Production deployments have APP_DOMAIN set
+                request.headers.get('X-Forwarded-Proto') == 'https' or
+                request.is_secure
+            )
             response.set_cookie(
                 'session_token', 
                 session_token, 
