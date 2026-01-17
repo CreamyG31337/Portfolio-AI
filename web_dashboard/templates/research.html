@@ -11,31 +11,31 @@
     <h2 class="text-2xl font-bold text-gray-900 mb-6">📊 Statistics</h2>
     
     <!-- Metrics Row -->
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <div class="text-sm text-gray-600 mb-1">Total Articles</div>
-            <div class="text-2xl font-bold text-gray-900">{{ total_articles|default(0) }}</div>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 mb-6">
+        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
+            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Total Articles</div>
+            <div class="text-lg font-bold text-gray-900 dark:text-white">{{ total_articles|default(0) }}</div>
         </div>
         
-        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <div class="text-sm text-gray-600 mb-1">Market News</div>
-            <div class="text-2xl font-bold text-gray-900">{% if stats.by_type and stats.by_type.market_news %}{{ stats.by_type.market_news }}{% else %}0{% endif %}</div>
+        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
+            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Market News</div>
+            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and stats.by_type.market_news %}{{ stats.by_type.market_news }}{% else %}0{% endif %}</div>
         </div>
         
-        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <div class="text-sm text-gray-600 mb-1">Ticker News</div>
-            <div class="text-2xl font-bold text-gray-900">{% if stats.by_type and stats.by_type.ticker_news %}{{ stats.by_type.ticker_news }}{% else %}0{% endif %}</div>
+        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
+            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Ticker News</div>
+            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and stats.by_type.ticker_news %}{{ stats.by_type.ticker_news }}{% else %}0{% endif %}</div>
         </div>
         
-        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <div class="text-sm text-gray-600 mb-1">Earnings</div>
-            <div class="text-2xl font-bold text-gray-900">{% if stats.by_type and stats.by_type.earnings %}{{ stats.by_type.earnings }}{% else %}0{% endif %}</div>
+        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
+            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Earnings</div>
+            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and stats.by_type.earnings %}{{ stats.by_type.earnings }}{% else %}0{% endif %}</div>
         </div>
         
-        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <div class="text-sm text-gray-600 mb-1">Embedded (RAG)</div>
-            <div class="text-2xl font-bold text-gray-900">{{ embedded_articles|default(0) }}</div>
-            <div class="text-xs text-gray-500 mt-1">{{ embedding_pct|round(0)|int }}%</div>
+        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
+            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Embedded (RAG)</div>
+            <div class="text-lg font-bold text-gray-900 dark:text-white">{{ embedded_articles|default(0) }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ embedding_pct|round(0)|int }}%</div>
         </div>
     </div>
     
