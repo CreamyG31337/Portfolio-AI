@@ -2397,6 +2397,57 @@ def api_get_cookie_refresher_logs():
         logger.error(f"Error getting cookie refresher logs: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e), "logs": []}), 500
 
+@admin_bp.route('/api/admin/ai/cookies/container-status', methods=['GET'])
+@require_admin
+def api_get_cookie_refresher_container_status():
+    """Get cookie refresher container status"""
+    try:
+        import docker
+        client = docker.from_env()
+        
+        # Look for cookie-refresher container
+        try:
+            container = client.containers.get("cookie-refresher")
+            container.reload()  # Refresh status
+            
+            return jsonify({
+                "success": True,
+                "container_found": True,
+                "status": container.status,
+                "name": container.name,
+                "id": container.id[:12],
+                "image": container.image.tags[0] if container.image.tags else "unknown",
+                "is_running": container.status == "running"
+            })
+        except docker.errors.NotFound:
+            return jsonify({
+                "success": True,
+                "container_found": False,
+                "status": "not_found",
+                "message": "Cookie refresher container not found"
+            })
+        except Exception as e:
+            logger.error(f"Error getting container status: {e}")
+            return jsonify({
+                "success": False,
+                "error": str(e),
+                "container_found": False
+            }), 500
+            
+    except ImportError:
+        return jsonify({
+            "success": False,
+            "error": "Docker python library not installed",
+            "container_found": False
+        }), 500
+    except Exception as e:
+        logger.error(f"Error checking cookie refresher container: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "container_found": False
+        }), 500
+
 @admin_bp.route('/api/admin/ai/cookies', methods=['POST'])
 @require_admin
 def api_update_webai_cookies():

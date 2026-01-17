@@ -120,7 +120,16 @@
     <!-- Cookie Refresher Logs -->
     <div class="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
         <div class="flex justify-between items-center mb-4">
-            <h2 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">📋 Cookie Refresher Logs</h2>
+            <div class="flex items-center gap-3">
+                <h2 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">📋 Cookie Refresher Logs</h2>
+                <!-- Container Status Indicator -->
+                <div id="cookie-refresher-status" class="flex items-center gap-2">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium">
+                        <span id="status-dot" class="w-2 h-2 rounded-full mr-1.5 bg-gray-400"></span>
+                        <span id="status-text" class="text-gray-600 dark:text-gray-400">Checking...</span>
+                    </span>
+                </div>
+            </div>
             <button id="refresh-cookie-logs-btn"
                 class="px-3 py-2 text-sm font-medium text-center text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
                 🔄 Refresh
@@ -145,6 +154,14 @@
     <!-- WebAI Cookie Management -->
     <div class="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
         <h2 class="mb-4 text-xl font-bold tracking-tight text-gray-900 dark:text-white">🍪 WebAI Cookie Management</h2>
+        
+        <!-- Current Cookies Display -->
+        <div class="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-900 dark:border-gray-700">
+            <h3 class="mb-2 text-sm font-semibold text-gray-900 dark:text-white">📋 Current Cookies (for comparison)</h3>
+            <div id="cookie-current-display" class="text-sm">
+                <p class="text-gray-600 dark:text-gray-400">Loading current cookies...</p>
+            </div>
+        </div>
         
         <div class="mb-4">
             <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Update Method</label>
@@ -171,7 +188,6 @@
 
         <!-- Individual Values Method -->
         <div id="cookie-individual-method" class="cookie-method hidden">
-            <p class="mb-4 text-sm text-gray-600 dark:text-gray-400" id="cookie-current-info">💡 Current cookies will be loaded below</p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label for="cookie-1psid-input" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">__Secure-1PSID (required)</label>

@@ -43,6 +43,18 @@ interface BlacklistResponse {
     error?: string;
 }
 
+interface ContainerStatus {
+    success: boolean;
+    container_found?: boolean;
+    status?: string;
+    name?: string;
+    id?: string;
+    image?: string;
+    is_running?: boolean;
+    error?: string;
+    message?: string;
+}
+
 // DOM Elements
 const ollamaIndicator = document.getElementById('ollama-indicator');
 const ollamaMessage = document.getElementById('ollama-message');
@@ -75,6 +87,9 @@ const cookieRefresherLogs = document.getElementById('cookie-refresher-logs');
 const refreshCookieLogsBtn = document.getElementById('refresh-cookie-logs-btn');
 const cookieLogLinesInput = document.getElementById('cookie-log-lines') as HTMLInputElement | null;
 const cookieLogLinesValue = document.getElementById('cookie-log-lines-value');
+const cookieRefresherStatus = document.getElementById('cookie-refresher-status');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
 
 // Status Check Function
 async function checkStatus() {
@@ -487,6 +502,9 @@ async function loadCurrentCookies() {
         const response = await fetch('/api/admin/ai/cookies');
         const result: ApiResponse & { cookies?: { [key: string]: string }, has_cookies?: boolean } = await response.json();
         
+        // Update current cookies display (above input fields)
+        const currentDisplay = document.getElementById('cookie-current-display');
+        
         if (result.success && result.cookies && result.has_cookies) {
             // Update JSON textarea
             if (cookieJsonInput) {
@@ -501,28 +519,106 @@ async function loadCurrentCookies() {
                 cookie1psidtsInput.value = result.cookies['__Secure-1PSIDTS'];
             }
             
-            // Update info message
-            const infoElement = document.getElementById('cookie-current-info');
-            if (infoElement) {
-                infoElement.textContent = '💡 Current cookies loaded below. Update if needed.';
-                infoElement.classList.remove('text-gray-600', 'dark:text-gray-400');
-                infoElement.classList.add('text-blue-600', 'dark:text-blue-400');
+            // Display current cookies in the comparison section
+            if (currentDisplay) {
+                const psid = result.cookies['__Secure-1PSID'] || 'Not set';
+                const psidts = result.cookies['__Secure-1PSIDTS'] || 'Not set';
+                
+                // Truncate long values for display (show first 50 chars)
+                const psidDisplay = psid.length > 50 ? psid.substring(0, 50) + '...' : psid;
+                const psidtsDisplay = psidts.length > 50 ? psidts.substring(0, 50) + '...' : psidts;
+                
+                currentDisplay.innerHTML = `
+                    <div class="space-y-2">
+                        <div>
+                            <span class="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">__Secure-1PSID:</span>
+                            <div class="mt-1 p-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded font-mono text-xs text-gray-900 dark:text-gray-100 break-all">
+                                ${psidDisplay}
+                            </div>
+                            ${psid.length > 50 ? `<span class="text-xs text-gray-500 dark:text-gray-400">(Full length: ${psid.length} chars)</span>` : ''}
+                        </div>
+                        <div>
+                            <span class="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">__Secure-1PSIDTS:</span>
+                            <div class="mt-1 p-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded font-mono text-xs text-gray-900 dark:text-gray-100 break-all">
+                                ${psidtsDisplay}
+                            </div>
+                            ${psidts.length > 50 ? `<span class="text-xs text-gray-500 dark:text-gray-400">(Full length: ${psidts.length} chars)</span>` : ''}
+                        </div>
+                    </div>
+                `;
             }
         } else {
             // No cookies found
-            const infoElement = document.getElementById('cookie-current-info');
-            if (infoElement) {
-                infoElement.textContent = 'ℹ️ No current cookies found. Enter new cookies below.';
+            if (currentDisplay) {
+                currentDisplay.innerHTML = '<p class="text-gray-600 dark:text-gray-400">ℹ️ No current cookies found. Enter new cookies below.</p>';
             }
         }
     } catch (error) {
         console.error('Error loading current cookies:', error);
+        const currentDisplay = document.getElementById('cookie-current-display');
+        if (currentDisplay) {
+            currentDisplay.innerHTML = '<p class="text-red-600 dark:text-red-400">❌ Error loading current cookies</p>';
+        }
+    }
+}
+
+// Load Cookie Refresher Container Status
+async function loadCookieRefresherContainerStatus() {
+    if (!statusDot || !statusText) return;
+    
+    try {
+        const response = await fetch('/api/admin/ai/cookies/container-status');
+        const result: ContainerStatus = await response.json();
+        
+        if (result.success && result.container_found) {
+            const isRunning = result.is_running === true;
+            const status = result.status || 'unknown';
+            
+            // Update status dot
+            statusDot.className = `w-2 h-2 rounded-full mr-1.5 ${
+                isRunning ? 'bg-green-500' : 
+                status === 'exited' ? 'bg-yellow-500' : 
+                'bg-red-500'
+            }`;
+            
+            // Update status text
+            if (isRunning) {
+                statusText.textContent = `Running (${result.id || 'N/A'})`;
+                statusText.className = 'text-green-600 dark:text-green-400';
+            } else if (status === 'exited') {
+                statusText.textContent = `Stopped (${status})`;
+                statusText.className = 'text-yellow-600 dark:text-yellow-400';
+            } else {
+                statusText.textContent = `${status.charAt(0).toUpperCase() + status.slice(1)}`;
+                statusText.className = 'text-red-600 dark:text-red-400';
+            }
+        } else if (result.success && !result.container_found) {
+            // Container not found
+            statusDot.className = 'w-2 h-2 rounded-full mr-1.5 bg-gray-400';
+            statusText.textContent = 'Not Found';
+            statusText.className = 'text-gray-600 dark:text-gray-400';
+        } else {
+            // Error or Docker not available
+            statusDot.className = 'w-2 h-2 rounded-full mr-1.5 bg-gray-400';
+            statusText.textContent = result.error || 'Unknown';
+            statusText.className = 'text-gray-600 dark:text-gray-400';
+        }
+    } catch (error) {
+        console.error('Error loading container status:', error);
+        if (statusDot && statusText) {
+            statusDot.className = 'w-2 h-2 rounded-full mr-1.5 bg-gray-400';
+            statusText.textContent = 'Error';
+            statusText.className = 'text-red-600 dark:text-red-400';
+        }
     }
 }
 
 // Load Cookie Refresher Logs
 async function loadCookieRefresherLogs() {
     if (!cookieRefresherLogs) return;
+    
+    // Load container status first
+    await loadCookieRefresherContainerStatus();
     
     const lines = cookieLogLinesInput ? parseInt(cookieLogLinesInput.value) : 100;
     
