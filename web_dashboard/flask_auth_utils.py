@@ -17,7 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 def get_auth_token() -> Optional[str]:
-    """Get auth_token or session_token from cookies"""
+    """Get auth_token or session_token from cookies, or from refreshed token if available"""
+    # Check for newly refreshed token first (set by @require_auth decorator)
+    if hasattr(request, '_new_auth_token') and request._new_auth_token:
+        return request._new_auth_token
+    # Fall back to cookies
     return request.cookies.get('auth_token') or request.cookies.get('session_token')
 
 
