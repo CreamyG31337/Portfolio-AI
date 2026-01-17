@@ -300,6 +300,7 @@ steps:
         DOCKER_CMD="$DOCKER_CMD -e SUPABASE_PUBLISHABLE_KEY=\"$SUPABASE_PUBLISHABLE_KEY\""
         DOCKER_CMD="$DOCKER_CMD -e SUPABASE_SECRET_KEY=\"$SUPABASE_SECRET_KEY\""
         DOCKER_CMD="$DOCKER_CMD -e BUILD_TIMESTAMP=\"$BUILD_TIMESTAMP\""
+        DOCKER_CMD="$DOCKER_CMD -e FLASK_DEBUG=true"
         
         # Add APP_DOMAIN (required for auth callbacks and cookie domain)
         [ -n "$APP_DOMAIN" ] && DOCKER_CMD="$DOCKER_CMD -e APP_DOMAIN=\"$APP_DOMAIN\""
@@ -352,6 +353,7 @@ steps:
         FLASK_CMD="$FLASK_CMD -e SUPABASE_PUBLISHABLE_KEY=\"$SUPABASE_PUBLISHABLE_KEY\""
         FLASK_CMD="$FLASK_CMD -e SUPABASE_SECRET_KEY=\"$SUPABASE_SECRET_KEY\""
         FLASK_CMD="$FLASK_CMD -e BUILD_TIMESTAMP=\"$BUILD_TIMESTAMP\""
+        FLASK_CMD="$FLASK_CMD -e FLASK_DEBUG=true"
         FLASK_CMD="$FLASK_CMD -e FLASK_PORT=5001"
         
         # Add APP_DOMAIN (required for auth callbacks and cookie domain)
