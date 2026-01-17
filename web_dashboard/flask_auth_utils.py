@@ -10,10 +10,16 @@ Shares the same cookie format as Streamlit auth system.
 import base64
 import json
 import logging
+import threading
 from typing import Optional, Dict
 from flask import request
 
 logger = logging.getLogger(__name__)
+
+# Lock dictionary to prevent concurrent refresh attempts with the same refresh_token
+# Key: refresh_token value, Value: threading.Lock
+_refresh_locks: Dict[str, threading.Lock] = {}
+_refresh_locks_lock = threading.Lock()  # Lock for the locks dict itself
 
 
 def get_auth_token() -> Optional[str]:
@@ -96,6 +102,63 @@ def get_user_email_flask() -> Optional[str]:
         return None
 
 
+def _get_refresh_lock(rt: str) -> threading.Lock:
+    """Get or create a lock for a specific refresh_token to prevent concurrent refreshes"""
+    with _refresh_locks_lock:
+        if rt not in _refresh_locks:
+            _refresh_locks[rt] = threading.Lock()
+        return _refresh_locks[rt]
+
+
+def _do_refresh(rt: str) -> tuple[bool, Optional[str], Optional[str], Optional[int]]:
+    """Internal function to perform the refresh API call"""
+    try:
+        import time
+        import os
+        import requests
+        
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        
+        if not supabase_url or not supabase_key:
+            logger.warning("[FLASK_AUTH] Missing Supabase URL/key for refresh")
+            return (False, None, None, None)
+        
+        response = requests.post(
+            f"{supabase_url}/auth/v1/token?grant_type=refresh_token",
+            headers={
+                "apikey": supabase_key,
+                "Content-Type": "application/json"
+            },
+            json={"refresh_token": rt},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            auth_data = response.json()
+            new_access_token = auth_data.get("access_token")
+            new_refresh_token = auth_data.get("refresh_token")
+            expires_in = auth_data.get("expires_in", 3600)
+            
+            if new_access_token:
+                # Clean up old lock since we got a new refresh_token
+                with _refresh_locks_lock:
+                    if rt in _refresh_locks:
+                        del _refresh_locks[rt]
+                return (True, new_access_token, new_refresh_token, expires_in)
+        
+        # Check if error indicates token was already used (race condition)
+        error_text = response.text.lower()
+        if "already been used" in error_text or ("invalid" in error_text and "jwt" in error_text):
+            logger.warning(f"[FLASK_AUTH] Refresh token already used (race condition): {response.status_code}: {response.text[:200]}")
+        else:
+            logger.warning(f"[FLASK_AUTH] Refresh failed: {response.status_code}: {response.text[:200]}")
+        return (False, None, None, None)
+    except Exception as e:
+        logger.warning(f"[FLASK_AUTH] Refresh exception: {e}")
+        return (False, None, None, None)
+
+
 def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str], Optional[int]]:
     """Check if token is expired or about to expire, and refresh it if needed (Flask context).
     
@@ -103,6 +166,10 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
     (within 5 minutes), keeping users logged in during active sessions.
     
     If auth_token is missing but refresh_token exists, attempts to refresh to get a new auth_token.
+    
+    IMPORTANT: Supabase refresh tokens are single-use and rotate. If multiple requests try to
+    refresh simultaneously, only the first succeeds. This function uses a lock per refresh_token
+    to prevent concurrent refresh attempts.
     
     Returns:
         Tuple of (success, new_access_token, new_refresh_token, expires_in)
@@ -117,45 +184,10 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
     # If no auth_token but we have refresh_token, try to refresh immediately
     if not token and refresh_token:
         # Missing auth_token - try to refresh using refresh_token
-        try:
-            import time
-            import os
-            import requests
-            
-            supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-            
-            if supabase_url and supabase_key:
-                response = requests.post(
-                    f"{supabase_url}/auth/v1/token?grant_type=refresh_token",
-                    headers={
-                        "apikey": supabase_key,
-                        "Content-Type": "application/json"
-                    },
-                    json={"refresh_token": refresh_token},
-                    timeout=10
-                )
-                
-                if response.status_code == 200:
-                    auth_data = response.json()
-                    new_access_token = auth_data.get("access_token")
-                    new_refresh_token = auth_data.get("refresh_token")
-                    expires_in = auth_data.get("expires_in", 3600)
-                    
-                    if new_access_token:
-                        logger.info("[FLASK_AUTH] Missing auth_token refreshed successfully")
-                        return (True, new_access_token, new_refresh_token, expires_in)
-                
-                # Refresh API returned non-200 - refresh token is invalid/expired
-                logger.warning(f"[FLASK_AUTH] Missing auth_token refresh failed: {response.status_code}: {response.text[:200]}")
-                return (False, None, None, None)
-            else:
-                # Missing Supabase config
-                logger.warning("[FLASK_AUTH] Missing auth_token but no Supabase URL/key for refresh")
-                return (False, None, None, None)
-        except Exception as e:
-            logger.warning(f"[FLASK_AUTH] Missing auth_token refresh failed: {e}")
-            return (False, None, None, None)
+        # Use lock to prevent concurrent refresh attempts
+        lock = _get_refresh_lock(refresh_token)
+        with lock:
+            return _do_refresh(refresh_token)
     
     # If no token at all, can't refresh
     if not token:
@@ -185,41 +217,10 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
         if exp > 0 and exp < current_time:
             # Token is expired - try to refresh
             if refresh_token:
-                try:
-                    supabase_url = os.getenv("SUPABASE_URL")
-                    supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-                    
-                    if supabase_url and supabase_key:
-                        response = requests.post(
-                            f"{supabase_url}/auth/v1/token?grant_type=refresh_token",
-                            headers={
-                                "apikey": supabase_key,
-                                "Content-Type": "application/json"
-                            },
-                            json={"refresh_token": refresh_token},
-                            timeout=10
-                        )
-                        
-                        if response.status_code == 200:
-                            auth_data = response.json()
-                            new_access_token = auth_data.get("access_token")
-                            new_refresh_token = auth_data.get("refresh_token")
-                            expires_in = auth_data.get("expires_in", 3600)
-                            
-                            if new_access_token:
-                                logger.info("[FLASK_AUTH] Token refreshed successfully")
-                                return (True, new_access_token, new_refresh_token, expires_in)
-                        
-                        # Refresh API returned non-200 - refresh token is invalid/expired
-                        logger.warning(f"[FLASK_AUTH] Token refresh API returned {response.status_code}: {response.text[:200]}")
-                        return (False, None, None, None)
-                    else:
-                        # Missing Supabase config
-                        logger.warning("[FLASK_AUTH] Token expired but missing Supabase URL/key for refresh")
-                        return (False, None, None, None)
-                except Exception as e:
-                    logger.warning(f"[FLASK_AUTH] Token refresh failed: {e}")
-                    return (False, None, None, None)
+                # Use lock to prevent concurrent refresh attempts
+                lock = _get_refresh_lock(refresh_token)
+                with lock:
+                    return _do_refresh(refresh_token)
             else:
                 # No refresh token available
                 logger.debug("[FLASK_AUTH] Token expired and no refresh token available")
@@ -228,33 +229,19 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
         # Token is valid - check if we should refresh it proactively
         # Only refresh if token is expiring soon (within 5 minutes)
         if time_until_expiry is not None and 0 < time_until_expiry <= 300 and refresh_token:
-            try:
-                supabase_url = os.getenv("SUPABASE_URL")
-                supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-                
-                if supabase_url and supabase_key:
-                    response = requests.post(
-                        f"{supabase_url}/auth/v1/token?grant_type=refresh_token",
-                        headers={
-                            "apikey": supabase_key,
-                            "Content-Type": "application/json"
-                        },
-                        json={"refresh_token": refresh_token},
-                        timeout=10
-                    )
-                    
-                    if response.status_code == 200:
-                        auth_data = response.json()
-                        new_access_token = auth_data.get("access_token")
-                        new_refresh_token = auth_data.get("refresh_token")
-                        expires_in = auth_data.get("expires_in", 3600)
-                        
-                        if new_access_token:
-                            logger.debug("[FLASK_AUTH] Token refreshed proactively")
-                            return (True, new_access_token, new_refresh_token, expires_in)
-            except Exception as e:
-                logger.debug(f"[FLASK_AUTH] Proactive token refresh failed: {e}")
-                # Continue with existing token if refresh fails
+            # Use lock to prevent concurrent refresh attempts
+            # Try to acquire lock non-blocking - if another request is refreshing, skip this one
+            lock = _get_refresh_lock(refresh_token)
+            if lock.acquire(blocking=False):
+                try:
+                    result = _do_refresh(refresh_token)
+                    if result[0]:  # Success
+                        return result
+                finally:
+                    lock.release()
+            else:
+                # Another request is already refreshing, skip proactive refresh
+                logger.debug("[FLASK_AUTH] Proactive refresh skipped - another request is refreshing")
         
         # Token is valid and doesn't need refresh
         return (True, None, None, None)
