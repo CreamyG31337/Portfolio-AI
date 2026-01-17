@@ -549,7 +549,9 @@ def _start_scheduler_background():
                     time.sleep(delay)
                     
                     # Check if scheduler is already running (cross-process check)
-                    if is_scheduler_running():
+                    # On first attempt, be more aggressive - we just cleared stale heartbeat files,
+                    # so only trust heartbeat on subsequent attempts where another process might have started it
+                    if attempt > 0 and is_scheduler_running():
                         log_both('info', "✅ Scheduler already running (detected via heartbeat), skipping auto-start")
                         break
                     
@@ -648,12 +650,45 @@ def _start_scheduler_background():
 # Only start if not explicitly disabled (e.g. in Flask container where Streamlit runs the scheduler)
 # AND check if we haven't already started the thread (improves safety during reloads/imports)
 if os.environ.get('DISABLE_SCHEDULER', '').lower() != 'true':
-    # Check if thread is already running to avoid duplicates
-    _existing_threads = [t.name for t in threading.enumerate()]
-    if "SchedulerInitThread" not in _existing_threads:
-        _start_scheduler_background()
-    else:
-        logger.debug("ℹ️ SchedulerInitThread already running, skipping duplicate start")
+    # IMPORTANT: In Flask debug mode with reloader, there are TWO processes:
+    # - Parent process (PID 1): Monitors for file changes, restarts child
+    # - Child/reloader process: Actually runs the Flask app (WERKZEUG_RUN_MAIN=true)
+    # We should ONLY start the scheduler in ONE of them to avoid conflicts.
+    #
+    # When debug mode is enabled (FLASK_DEBUG=true), only start in the child process.
+    # When debug mode is disabled, start normally.
+    flask_debug = os.environ.get('FLASK_DEBUG', '').lower() == 'true'
+    is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
+    
+    should_start = True
+    reason = ""
+    
+    if flask_debug and not is_reloader_process:
+        # This is the parent/monitor process in debug mode - don't start scheduler here
+        should_start = False
+        reason = "Flask debug mode: deferring scheduler to reloader child process"
+        logger.info(f"ℹ️ {reason}")
+    
+    if should_start:
+        # Check if thread is already running to avoid duplicates
+        _existing_threads = [t.name for t in threading.enumerate()]
+        if "SchedulerInitThread" not in _existing_threads:
+            # Before starting, clear any stale heartbeat file from previous container runs
+            # This prevents false "already running" detection on fresh container start
+            try:
+                from scheduler.scheduler_core import _HEARTBEAT_FILE, _HEARTBEAT_TIMEOUT
+                import time as _time
+                if _HEARTBEAT_FILE.exists():
+                    heartbeat_age = _time.time() - float(_HEARTBEAT_FILE.read_text().strip())
+                    if heartbeat_age > _HEARTBEAT_TIMEOUT:
+                        logger.info(f"🧹 Clearing stale heartbeat file (age: {heartbeat_age:.1f}s > {_HEARTBEAT_TIMEOUT}s timeout)")
+                        _HEARTBEAT_FILE.unlink()
+            except Exception as e:
+                logger.debug(f"Could not check/clear heartbeat file: {e}")
+            
+            _start_scheduler_background()
+        else:
+            logger.debug("ℹ️ SchedulerInitThread already running, skipping duplicate start")
 else:
     logger.info("ℹ️ Scheduler auto-start disabled via DISABLE_SCHEDULER environment variable")
 
