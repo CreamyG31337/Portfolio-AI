@@ -976,6 +976,58 @@ def auth_page():
     """Authentication page"""
     return render_template('auth.html')
 
+@app.route('/auth/debug')
+def auth_debug():
+    """Unauthenticated debug endpoint to check token state"""
+    import base64
+    import json as json_lib
+    import time
+    
+    auth_token = request.cookies.get('auth_token')
+    session_token = request.cookies.get('session_token')
+    refresh_token = request.cookies.get('refresh_token')
+    
+    def decode_token(token):
+        if not token:
+            return None
+        try:
+            parts = token.split('.')
+            if len(parts) < 2:
+                return {"error": "Invalid JWT format"}
+            payload = parts[1]
+            payload += '=' * (4 - len(payload) % 4)
+            decoded = base64.urlsafe_b64decode(payload)
+            data = json_lib.loads(decoded)
+            # Add human-readable expiry info
+            exp = data.get('exp', 0)
+            if exp:
+                now = int(time.time())
+                data['_exp_human'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(exp))
+                data['_expired'] = exp < now
+                data['_seconds_until_expiry'] = exp - now
+            return data
+        except Exception as e:
+            return {"error": str(e)}
+    
+    return jsonify({
+        "auth_token": {
+            "present": bool(auth_token),
+            "length": len(auth_token) if auth_token else 0,
+            "decoded": decode_token(auth_token)
+        },
+        "session_token": {
+            "present": bool(session_token),
+            "length": len(session_token) if session_token else 0,
+            "decoded": decode_token(session_token)
+        },
+        "refresh_token": {
+            "present": bool(refresh_token),
+            "length": len(refresh_token) if refresh_token else 0
+        },
+        "server_time": int(time.time()),
+        "server_time_human": time.strftime('%Y-%m-%d %H:%M:%S')
+    })
+
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     """Handle user login"""
