@@ -157,6 +157,32 @@
     </div>
 </div>
 
+<!-- Auth Debugging -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mt-8">
+    <div class="flex items-center mb-4">
+        <i class="fas fa-key text-red-600 dark:text-red-400 text-2xl mr-3"></i>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Authentication Debug</h2>
+    </div>
+    <p class="text-gray-600 dark:text-gray-400 mb-4">Debug authentication tokens and cookie issues.</p>
+    
+    <div id="auth-debug-content" class="space-y-4">
+        <div class="flex items-center space-x-4">
+            <button onclick="loadAuthDebug()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+                <i class="fas fa-sync mr-2"></i>Refresh Debug Info
+            </button>
+            <button onclick="testRefreshToken()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
+                <i class="fas fa-redo mr-2"></i>Test Token Refresh
+            </button>
+            <button onclick="testLoginResponse()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg">
+                <i class="fas fa-sign-in-alt mr-2"></i>Test Login Response
+            </button>
+        </div>
+        <div id="auth-debug-output" class="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm overflow-auto max-h-96">
+            <p class="text-gray-500">Click "Refresh Debug Info" to load token information...</p>
+        </div>
+    </div>
+</div>
+
 <!-- Quick Actions -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mt-8">
     <div class="flex items-center mb-4">
@@ -221,6 +247,39 @@
 
     function viewLogs() {
         alert('Logs feature coming soon! (Check /admin/logs)');
+    }
+
+    function loadAuthDebug() {
+        const output = document.getElementById('auth-debug-output');
+        output.innerHTML = '<p class="text-gray-500">Loading...</p>';
+        
+        fetch('/auth/debug')
+            .then(response => response.json())
+            .then(data => {
+                output.innerHTML = '<pre class="text-xs">' + JSON.stringify(data, null, 2) + '</pre>';
+            })
+            .catch(error => {
+                output.innerHTML = '<p class="text-red-600">Error: ' + error + '</p>';
+            });
+    }
+
+    function testRefreshToken() {
+        const output = document.getElementById('auth-debug-output');
+        output.innerHTML = '<p class="text-gray-500">Testing token refresh...</p>';
+        
+        fetch('/api/debug/refresh-attempt')
+            .then(response => response.json())
+            .then(data => {
+                output.innerHTML = '<pre class="text-xs">' + JSON.stringify(data, null, 2) + '</pre>';
+            })
+            .catch(error => {
+                output.innerHTML = '<p class="text-red-600">Error: ' + error + '</p>';
+            });
+    }
+
+    function testLoginResponse() {
+        const output = document.getElementById('auth-debug-output');
+        output.innerHTML = '<p class="text-gray-500">This would require test credentials. Check server logs during actual login.</p>';
     }
 </script>
 {% endblock %}

@@ -1134,6 +1134,14 @@ def login():
         
         if response.status_code == 200:
             auth_data = response.json()
+            # DEBUG: Log what Supabase actually returns (for debugging refresh_token issues)
+            logger.info(f"[LOGIN DEBUG] Supabase response keys: {list(auth_data.keys())}")
+            if 'refresh_token' in auth_data:
+                logger.info(f"[LOGIN DEBUG] refresh_token length from Supabase: {len(auth_data['refresh_token'])}")
+                logger.info(f"[LOGIN DEBUG] refresh_token preview: {auth_data['refresh_token'][:50]}...")
+            else:
+                logger.warning("[LOGIN DEBUG] refresh_token NOT in Supabase response!")
+            
             user_id = auth_data["user"]["id"]
             
             # Create session token
@@ -1248,6 +1256,58 @@ def debug_cookies():
         "is_secure": request.is_secure,
         "host": request.host
     })
+
+@app.route('/api/debug/refresh-attempt')
+@require_auth
+def debug_refresh_attempt():
+    """Debug endpoint to attempt refresh and show Supabase error response"""
+    from flask_auth_utils import get_refresh_token
+    import os
+    import requests
+    
+    refresh_token = get_refresh_token()
+    
+    if not refresh_token:
+        return jsonify({
+            "error": "No refresh_token found",
+            "refresh_token_present": False
+        })
+    
+    # Attempt the refresh and capture the full response
+    try:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({
+                "error": "Missing Supabase config",
+                "supabase_url": bool(supabase_url),
+                "supabase_key": bool(supabase_key)
+            })
+        
+        response = requests.post(
+            f"{supabase_url}/auth/v1/token?grant_type=refresh_token",
+            headers={
+                "apikey": supabase_key,
+                "Content-Type": "application/json"
+            },
+            json={"refresh_token": refresh_token},
+            timeout=10
+        )
+        
+        return jsonify({
+            "refresh_token_length": len(refresh_token),
+            "refresh_token_preview": refresh_token[:50] + "..." if len(refresh_token) > 50 else refresh_token,
+            "supabase_status_code": response.status_code,
+            "supabase_response": response.text,
+            "supabase_response_json": response.json() if response.text else None,
+            "success": response.status_code == 200
+        })
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "error_type": type(e).__name__
+        })
 
 @app.route('/api/debug/auth')
 def debug_auth():
