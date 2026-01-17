@@ -1004,7 +1004,6 @@ def index():
                     exp = user_data.get('exp', 0)
                     # Token is valid if it exists and hasn't expired
                     is_authenticated = exp == 0 or exp > time.time()
-                    logger.debug(f"[AUTH] Root route: token valid={is_authenticated}, exp={exp}, now={time.time()}")
             except Exception as e:
                 logger.warning(f"[AUTH] Error parsing token in root route: {e}")
                 pass
@@ -1144,8 +1143,6 @@ def login():
             # Since we're on the same domain, Lax is the correct choice
             samesite_value = 'Lax'
             
-            logger.info(f"[LOGIN] Cookie settings: is_https={is_https}, has_app_domain={has_app_domain}, is_production_env={is_production_env}, is_production={is_production}, use_secure={use_secure}, X-Forwarded-Proto={x_forwarded_proto}, is_secure={request.is_secure}")
-            logger.info(f"[LOGIN] is_production={is_production}, APP_DOMAIN={os.getenv('APP_DOMAIN')}, X-Forwarded-Proto={request.headers.get('X-Forwarded-Proto')}, is_secure={request.is_secure}, samesite={samesite_value}")
             response.set_cookie(
                 'session_token', 
                 session_token, 
@@ -1155,15 +1152,12 @@ def login():
                 samesite=samesite_value,
                 path='/'
             )
-            logger.info(f"[LOGIN] Set session_token cookie with secure={use_secure}, samesite={samesite_value}")
 
             # Set the auth token as a cookie (Streamlit/Supabase compatible)
             # This is the REAL Supabase access token required for RLS and auth.uid()
             if "access_token" in auth_data:
                 # Default Supabase expiry is 3600s (1 hour)
                 expires_in = auth_data.get("expires_in", 3600)
-                # Log token size for debugging
-                logger.info(f"[LOGIN] auth_token length: {len(auth_data['access_token'])}")
                 
                 response.set_cookie(
                     'auth_token', 
@@ -1174,11 +1168,9 @@ def login():
                     samesite=samesite_value,
                     path='/'
                 )
-                logger.info(f"[LOGIN] Set auth_token cookie with secure={use_secure}, samesite={samesite_value}")
                 
                 # Also set refresh token if available so client can refresh if needed
                 if "refresh_token" in auth_data:
-                    logger.info(f"[LOGIN] refresh_token length: {len(auth_data['refresh_token'])}")
                     response.set_cookie(
                         'refresh_token', 
                         auth_data["refresh_token"], 
@@ -1188,11 +1180,6 @@ def login():
                         samesite=samesite_value,
                         path='/'
                     )
-                    logger.info(f"[LOGIN] Set refresh_token cookie with secure={use_secure}, samesite={samesite_value}")
-            
-            # Log cookie details for debugging
-            logger.info(f"[LOGIN] Response cookies will be set. Response type: {type(response)}")
-            logger.info(f"[LOGIN] Response headers: {dict(response.headers)}")
             
             return response
         else:

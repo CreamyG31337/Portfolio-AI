@@ -302,28 +302,8 @@
                     return;
                 }
 
-                // Log response details for debugging
-                console.log('Login response:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    ok: response.ok,
-                    headers: Object.fromEntries(response.headers.entries()),
-                    data: data
-                });
-
                 if (response.ok) {
                     // Backend already set auth_token, refresh_token, and session_token cookies via Set-Cookie headers
-                    // Note: HttpOnly cookies won't appear in document.cookie, but they're still set
-                    // Check Set-Cookie headers in response instead
-                    const setCookieHeaders = response.headers.get('set-cookie');
-                    console.log('Set-Cookie headers from login:', setCookieHeaders);
-                    
-                    // Check if we can see any cookies (non-HttpOnly ones)
-                    const cookies = document.cookie;
-                    console.log('Visible cookies after login:', cookies);
-                    
-                    // HttpOnly cookies (auth_token, refresh_token, session_token) won't be in document.cookie
-                    // but they should still be sent with the next request
                     showMessage('Login successful! Redirecting...', 'success');
                     
                     // Wait longer to ensure cookies are fully processed by browser

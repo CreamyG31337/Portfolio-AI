@@ -135,10 +135,6 @@ def require_auth(f):
         session_token = request.cookies.get('session_token')
         refresh_token = get_refresh_token()
         
-        logger.info(f"[AUTH] require_auth: Path={request.path}, session_token={bool(session_token)}, auth_token={bool(auth_token)}, len_auth={len(auth_token) if auth_token else 0}")
-        if auth_token:
-            logger.info(f"[AUTH] auth_token preview: {auth_token[:20]}...")
-        
         # Don't delete cookies in require_auth - let the route handle authentication
         # Only check for obviously corrupted refresh tokens, but don't delete cookies
         if refresh_token and len(refresh_token) < 50:
