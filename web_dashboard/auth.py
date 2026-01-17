@@ -198,7 +198,8 @@ def require_auth(f):
                 return jsonify({"error": "Invalid or expired session"}), 401
             else:
                 from flask import redirect
-                return redirect('/')
+                # Redirect to /auth instead of / to avoid redirect loop
+                return redirect('/auth')
         
         # Add user data to request context
         request.user_id = user_data.get("user_id") or user_data.get("sub")
@@ -267,8 +268,9 @@ def require_admin(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Authentication required"}), 401
             else:
-                from flask import redirect, url_for
-                return redirect('/')
+                from flask import redirect
+                # Redirect to /auth instead of / to avoid redirect loop
+                return redirect('/auth')
         
         # Try to verify with auth_manager (for session_token format)
         user_data = auth_manager.verify_session(token)
@@ -381,7 +383,8 @@ def require_admin(f):
                 return jsonify({"error": "Admin privileges required", "details": admin_check_error}), 403
             else:
                 from flask import redirect
-                return redirect('/')
+                # Redirect to /auth instead of / to avoid redirect loop
+                return redirect('/auth')
         
         return f(*args, **kwargs)
     return decorated_function
