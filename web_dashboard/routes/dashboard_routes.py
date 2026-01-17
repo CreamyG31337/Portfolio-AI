@@ -39,11 +39,8 @@ def dashboard_page():
         # Check V2 Preference
         v2_enabled = get_user_preference('v2_enabled', default=False)
         if not v2_enabled:
-            # If V2 is disabled, redirect to Streamlit dashboard page
-            # Use an external URL or a specific non-Flask route to avoid loops
-            import os
-            streamlit_url = os.getenv('STREAMLIT_URL', 'http://localhost:8501')
-            return redirect(streamlit_url)
+            # If V2 is disabled, redirect to Streamlit dashboard at /streamlit/
+            return redirect('/streamlit/')
             
         user_email = get_user_email_flask()
         user_theme = get_user_theme() or 'system'
