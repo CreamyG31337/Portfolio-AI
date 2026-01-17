@@ -319,7 +319,7 @@
 
         // Update URL when fund selector changes (without page reload)
         selector.addEventListener('change', function (e) {
-            const selectedFund = (e.target as HTMLSelectElement).value;
+            const selectedFund = e.target.value;
             const url = new URL(window.location.href);
             
             if (selectedFund && selectedFund.toLowerCase() !== 'all') {
