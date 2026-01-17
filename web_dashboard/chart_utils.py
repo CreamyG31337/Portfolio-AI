@@ -20,7 +20,7 @@ if str(parent_dir) not in sys.path:
 
 import pandas as pd
 import plotly.graph_objs as go
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Any
 from datetime import datetime, timedelta
 import yfinance as yf
 from utils.market_holidays import MarketHolidays
@@ -1317,7 +1317,8 @@ def create_ticker_price_chart(
     show_weekend_shading: bool = True,
     use_solid_lines: bool = False,
     theme: str = 'system',
-    market: str = 'us'
+    market: str = 'us',
+    congress_trades: Optional[List[Dict[str, Any]]] = None
 ) -> go.Figure:
     """Create a price history chart for an individual ticker with benchmark comparisons.
     
@@ -1329,6 +1330,7 @@ def create_ticker_price_chart(
         use_solid_lines: If True, uses solid lines for benchmarks instead of dashed
         theme: User theme preference ('dark', 'light', or 'system'). Defaults to 'system'.
               Use 'dark' for dark mode, 'light' for light mode, or 'system' to default to light.
+        congress_trades: Optional list of congress trade dictionaries to display as markers
         
     Returns:
         Plotly Figure object
@@ -1439,6 +1441,76 @@ def create_ticker_price_chart(
         
         benchmark_total_time = time.time() - benchmark_start
         logger.info(f"⏱️ create_ticker_price_chart - All benchmarks: {benchmark_total_time:.2f}s")
+    
+    # Add congress trades markers if provided
+    if congress_trades and len(df) > 0:
+        # Create date lookup for price values
+        date_to_price = dict(zip(df['date'], df['normalized']))
+        
+        for trade in congress_trades:
+            trade_date_str = trade.get('transaction_date')
+            if not trade_date_str:
+                continue
+            
+            try:
+                # Parse and align trade date
+                trade_date = pd.to_datetime(trade_date_str).normalize()
+                
+                # Find closest price date (in case trade date doesn't match exactly)
+                # Convert df dates to normalized for comparison
+                def date_diff(date_val):
+                    date_normalized = pd.to_datetime(date_val).normalize()
+                    return abs((date_normalized - trade_date).total_seconds())
+                
+                closest_date = min(df['date'], key=date_diff)
+                closest_date_normalized = pd.to_datetime(closest_date).normalize()
+                days_diff = abs((closest_date_normalized - trade_date).days)
+                if days_diff > 7:  # Skip if more than 7 days away
+                    continue
+                
+                # Get price at that date
+                y_value = date_to_price.get(closest_date, df['normalized'].iloc[-1])
+                
+                trade_type = trade.get('type', 'Unknown')
+                politician = trade.get('politician', 'Unknown')
+                amount = trade.get('amount', 'N/A')
+                chamber = trade.get('chamber', '')
+                
+                # Color based on trade type
+                if trade_type == 'Purchase':
+                    color = '#2ca02c'  # Green
+                    symbol = 'triangle-up'
+                elif trade_type == 'Sale':
+                    color = '#d62728'  # Red
+                    symbol = 'triangle-down'
+                else:
+                    color = '#9467bd'  # Purple
+                    symbol = 'diamond'
+                
+                # Add scatter marker
+                fig.add_trace(go.Scatter(
+                    x=[closest_date],
+                    y=[y_value],
+                    mode='markers',
+                    name=f"Congress {trade_type}",
+                    marker=dict(
+                        size=12,
+                        color=color,
+                        symbol=symbol,
+                        line=dict(width=2, color='white')
+                    ),
+                    hovertemplate=f'<b>Congress Trade</b><br>' +
+                                f'Date: {trade_date_str}<br>' +
+                                f'Type: {trade_type}<br>' +
+                                f'Politician: {politician}<br>' +
+                                f'Chamber: {chamber}<br>' +
+                                f'Amount: {amount}<extra></extra>',
+                    showlegend=False,  # Don't clutter legend, just show on hover
+                    legendgroup='congress_trades'
+                ))
+            except Exception as e:
+                # Skip trades with invalid dates
+                continue
     
     # Get theme configuration (ensure theme is never None)
     theme = theme or 'system'

@@ -2688,6 +2688,29 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
     if price_df.empty:
         raise ValueError("No price data available")
     
+    # Fetch congress trades for this ticker within the chart date range
+    congress_trades = []
+    try:
+        from cache_version import get_cache_version
+        refresh_key = get_cache_version()
+        
+        # Calculate date range for congress trades (match chart range - 90 days)
+        start_date = (date.today() - timedelta(days=90)).isoformat()
+        end_date = date.today().isoformat()
+        
+        # Fetch congress trades
+        congress_trades = get_congress_trades_cached(
+            supabase_client,
+            refresh_key,
+            ticker_filter=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            _postgres_client=None  # Not needed for basic trade data
+        )
+    except Exception as e:
+        logger.warning(f"Error fetching congress trades for chart: {e}")
+        # Continue without congress trades if there's an error
+    
     # Create chart WITHOUT template - theme applied post-cache
     # Using theme=None tells create_ticker_price_chart to skip template embedding
     from chart_utils import create_ticker_price_chart
@@ -2698,7 +2721,8 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
         show_benchmarks=all_benchmarks,
         show_weekend_shading=True,
         use_solid_lines=use_solid,
-        theme='light'  # Base theme, will be overridden
+        theme='light',  # Base theme, will be overridden
+        congress_trades=congress_trades  # NEW parameter
     )
     
     # Serialize with numpy array conversion for proper JSON encoding

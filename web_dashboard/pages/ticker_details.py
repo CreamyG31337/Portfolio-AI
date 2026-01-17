@@ -427,13 +427,30 @@ try:
         # All benchmarks available (S&P 500 visible, others in legend)
         all_benchmarks = ['sp500', 'qqq', 'russell2000', 'vti']
         
+        # Get congress trades for the chart (from ticker_data, filtered to match chart date range)
+        congress_trades_for_chart = []
+        if 'congress_trades' in ticker_data and ticker_data['congress_trades']:
+            # Filter congress trades to match the chart's 90-day range
+            from datetime import date, timedelta
+            chart_start_date = date.today() - timedelta(days=90)
+            for trade in ticker_data['congress_trades']:
+                trade_date_str = trade.get('transaction_date')
+                if trade_date_str:
+                    try:
+                        trade_date = pd.to_datetime(trade_date_str).date()
+                        if trade_date >= chart_start_date:
+                            congress_trades_for_chart.append(trade)
+                    except Exception:
+                        continue
+        
         # Create chart
         fig = create_ticker_price_chart(
             price_history_df,
             current_ticker,
             show_benchmarks=all_benchmarks,
             show_weekend_shading=True,
-            use_solid_lines=use_solid
+            use_solid_lines=use_solid,
+            congress_trades=congress_trades_for_chart if congress_trades_for_chart else None
         )
         
         st.plotly_chart(fig, use_container_width=True, key=f"ticker_price_chart_{current_ticker}")
