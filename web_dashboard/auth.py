@@ -153,13 +153,22 @@ def require_auth(f):
             if not auth_token and refresh_token:
                 # Missing auth_token - try to refresh using refresh_token
                 success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
-                # If refresh succeeds, use new tokens; if it fails, continue with session_token
+                # If refresh fails, refresh_token is expired/invalid - redirect to login
+                if not success:
+                    logger.warning("[AUTH] require_auth: Refresh failed - refresh_token expired/invalid, redirecting to login")
+                    if request.path.startswith('/api/'):
+                        return jsonify({"error": "Session expired, please log in again"}), 401
+                    else:
+                        return redirect('/auth')
             elif auth_token:
-                # Have auth_token - try to refresh proactively if needed
+                # Have auth_token - try to refresh proactively if needed (within 5 minutes of expiry)
+                # This keeps tokens fresh during active sessions
                 success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
-                # If refresh succeeds, use new tokens; if it fails, continue with existing token
+                # If proactive refresh fails, continue with existing auth_token (it's still valid)
+                # Only redirect if auth_token is also expired (checked later in token validation)
             else:
                 # Only have session_token - don't try to refresh, just use it
+                # This is OK for basic auth, but Supabase features won't work
                 success = True
                 new_token = None
                 new_refresh = None
@@ -185,15 +194,17 @@ def require_auth(f):
                               request.cookies.get('session_token') or 
                               request.headers.get('Authorization', '').replace('Bearer ', ''))
         
-        # If we tried to refresh but failed, and we don't have session_token, redirect to login
+        # If we don't have a token, check fallback options
         if not token:
-            # Check if we have session_token as fallback
-            if session_token:
-                # Have session_token - allow access but log warning
-                logger.warning(f"[AUTH] require_auth: Using session_token as fallback (auth_token missing/expired)")
+            # Only use session_token as fallback if we never tried to refresh
+            # (i.e., we only have session_token and no refresh_token was available)
+            if session_token and not refresh_token:
+                # Have session_token but no refresh_token - allow access but log warning
+                # Supabase features won't work, but basic auth will
+                logger.warning(f"[AUTH] require_auth: Using session_token as fallback (no refresh_token available)")
                 token = session_token
             else:
-                # No token at all - redirect to login
+                # No token at all, or refresh was attempted and failed - redirect to login
                 if request.path.startswith('/api/'):
                     return jsonify({"error": "Authentication required"}), 401
                 else:
