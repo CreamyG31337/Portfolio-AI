@@ -1145,27 +1145,36 @@ def login():
             # Use secure cookies for production (HTTPS), allow non-secure for local dev (HTTP)
             # Behind a reverse proxy, request.is_secure is False even on HTTPS
             # Check multiple indicators: FLASK_ENV, APP_DOMAIN (production has this set), or X-Forwarded-Proto header
-            is_production = (
-                os.getenv("FLASK_ENV") == "production" or 
-                os.getenv("APP_DOMAIN") is not None or  # Production deployments have APP_DOMAIN set
-                request.headers.get('X-Forwarded-Proto') == 'https' or
-                request.is_secure
-            )
+            # Determine if we're in production/HTTPS environment
+            # CRITICAL: If X-Forwarded-Proto is https, we MUST use secure cookies
+            x_forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
+            is_https = x_forwarded_proto == 'https' or request.is_secure
+            has_app_domain = bool(os.getenv("APP_DOMAIN"))
+            is_production_env = os.getenv("FLASK_ENV") == "production"
+            
+            is_production = is_production_env or has_app_domain or is_https
+            
+            # CRITICAL: Always use secure=True if we detect HTTPS (even if is_production is False)
+            # Browsers will reject cookies with secure=False on HTTPS sites
+            use_secure = is_https or is_production
+            
             # Use SameSite=Lax for same-site requests (works for both production and dev)
             # SameSite=None is only needed for cross-origin requests and requires Secure=True
             # Since we're on the same domain, Lax is the correct choice
             samesite_value = 'Lax'
+            
+            logger.info(f"[LOGIN] Cookie settings: is_https={is_https}, has_app_domain={has_app_domain}, is_production_env={is_production_env}, is_production={is_production}, use_secure={use_secure}, X-Forwarded-Proto={x_forwarded_proto}, is_secure={request.is_secure}")
             logger.info(f"[LOGIN] is_production={is_production}, APP_DOMAIN={os.getenv('APP_DOMAIN')}, X-Forwarded-Proto={request.headers.get('X-Forwarded-Proto')}, is_secure={request.is_secure}, samesite={samesite_value}")
             response.set_cookie(
                 'session_token', 
                 session_token, 
                 max_age=86400, 
                 httponly=True,
-                secure=is_production,  # True for HTTPS, False for localhost
+                secure=use_secure,  # True for HTTPS, False for localhost HTTP
                 samesite=samesite_value,
                 path='/'
             )
-            logger.info(f"[LOGIN] Set session_token cookie with secure={is_production}, samesite={samesite_value}")
+            logger.info(f"[LOGIN] Set session_token cookie with secure={use_secure}, samesite={samesite_value}")
 
             # Set the auth token as a cookie (Streamlit/Supabase compatible)
             # This is the REAL Supabase access token required for RLS and auth.uid()
@@ -1180,11 +1189,11 @@ def login():
                     auth_data["access_token"], 
                     max_age=expires_in, 
                     httponly=True, 
-                    secure=is_production,
+                    secure=use_secure,
                     samesite=samesite_value,
                     path='/'
                 )
-                logger.info(f"[LOGIN] Set auth_token cookie with secure={is_production}, samesite={samesite_value}")
+                logger.info(f"[LOGIN] Set auth_token cookie with secure={use_secure}, samesite={samesite_value}")
                 
                 # Also set refresh token if available so client can refresh if needed
                 if "refresh_token" in auth_data:
@@ -1194,11 +1203,11 @@ def login():
                         auth_data["refresh_token"], 
                         max_age=86400 * 30, # 30 days usually
                         httponly=True,
-                        secure=is_production,
+                        secure=use_secure,
                         samesite=samesite_value,
                         path='/'
                     )
-                    logger.info(f"[LOGIN] Set refresh_token cookie with secure={is_production}, samesite={samesite_value}")
+                    logger.info(f"[LOGIN] Set refresh_token cookie with secure={use_secure}, samesite={samesite_value}")
             
             return response
         else:
