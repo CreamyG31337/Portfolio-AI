@@ -981,11 +981,17 @@ def index():
                         success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
                         if success and new_token:
                             # Refresh succeeded - redirect with new cookies
-                            is_production = os.getenv("FLASK_ENV") == "production"
+                            is_production = (
+                                os.getenv("FLASK_ENV") == "production" or 
+                                os.getenv("APP_DOMAIN") is not None or
+                                request.headers.get('X-Forwarded-Proto') == 'https' or
+                                request.is_secure
+                            )
+                            samesite_value = 'None' if is_production else 'Lax'
                             response = redirect(url_for('dashboard.dashboard_page'))
-                            response.set_cookie('auth_token', new_token, max_age=expires_in or 3600, httponly=True, secure=is_production, samesite='None' if is_production else 'Lax')
+                            response.set_cookie('auth_token', new_token, max_age=expires_in or 3600, httponly=True, secure=is_production, samesite=samesite_value, path='/')
                             if new_refresh:
-                                response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite='None' if is_production else 'Lax')
+                                response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite=samesite_value, path='/')
                             return response
                         else:
                             # Refresh failed - broken state
@@ -1144,17 +1150,20 @@ def login():
                 request.headers.get('X-Forwarded-Proto') == 'https' or
                 request.is_secure
             )
-            logger.info(f"[LOGIN] is_production={is_production}, APP_DOMAIN={os.getenv('APP_DOMAIN')}, X-Forwarded-Proto={request.headers.get('X-Forwarded-Proto')}, is_secure={request.is_secure}")
+            # For production HTTPS, use SameSite=None with Secure=True for cross-origin support
+            # For local dev, use SameSite=Lax
+            samesite_value = 'None' if is_production else 'Lax'
+            logger.info(f"[LOGIN] is_production={is_production}, APP_DOMAIN={os.getenv('APP_DOMAIN')}, X-Forwarded-Proto={request.headers.get('X-Forwarded-Proto')}, is_secure={request.is_secure}, samesite={samesite_value}")
             response.set_cookie(
                 'session_token', 
                 session_token, 
                 max_age=86400, 
                 httponly=True,
                 secure=is_production,  # True for HTTPS, False for localhost
-                samesite='Lax',
+                samesite=samesite_value,
                 path='/'
             )
-            logger.info(f"[LOGIN] Set session_token cookie with secure={is_production}, samesite=Lax")
+            logger.info(f"[LOGIN] Set session_token cookie with secure={is_production}, samesite={samesite_value}")
 
             # Set the auth token as a cookie (Streamlit/Supabase compatible)
             # This is the REAL Supabase access token required for RLS and auth.uid()
@@ -1170,9 +1179,10 @@ def login():
                     max_age=expires_in, 
                     httponly=True, 
                     secure=is_production,
-                    samesite='Lax',
+                    samesite=samesite_value,
                     path='/'
                 )
+                logger.info(f"[LOGIN] Set auth_token cookie with secure={is_production}, samesite={samesite_value}")
                 
                 # Also set refresh token if available so client can refresh if needed
                 if "refresh_token" in auth_data:
@@ -1183,9 +1193,10 @@ def login():
                         max_age=86400 * 30, # 30 days usually
                         httponly=True,
                         secure=is_production,
-                        samesite='Lax',
+                        samesite=samesite_value,
                         path='/'
                     )
+                    logger.info(f"[LOGIN] Set refresh_token cookie with secure={is_production}, samesite={samesite_value}")
             
             return response
         else:
@@ -1209,11 +1220,23 @@ def login():
 @app.route('/api/debug/cookies')
 def debug_cookies():
     """Debug endpoint to inspect cookies received by the server"""
+    # Use same is_production logic as login route
+    is_production = (
+        os.getenv("FLASK_ENV") == "production" or 
+        os.getenv("APP_DOMAIN") is not None or
+        request.headers.get('X-Forwarded-Proto') == 'https' or
+        request.is_secure
+    )
     return jsonify({
-        "cookies": request.cookies,
+        "cookies": dict(request.cookies),
+        "cookie_count": len(request.cookies),
         "headers": dict(request.headers),
-        "is_production": os.getenv("FLASK_ENV") == "production",
-        "app_domain": os.getenv("APP_DOMAIN")
+        "is_production": is_production,
+        "flask_env": os.getenv("FLASK_ENV"),
+        "app_domain": os.getenv("APP_DOMAIN"),
+        "x_forwarded_proto": request.headers.get('X-Forwarded-Proto'),
+        "is_secure": request.is_secure,
+        "host": request.host
     })
 
 @app.route('/api/debug/auth')

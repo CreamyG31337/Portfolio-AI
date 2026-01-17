@@ -266,14 +266,21 @@ def require_auth(f):
         # If token was refreshed, update cookies in the response
         if new_token:
             import os
-            is_production = os.getenv("FLASK_ENV") == "production"
+            is_production = (
+                os.getenv("FLASK_ENV") == "production" or 
+                os.getenv("APP_DOMAIN") is not None or
+                request.headers.get('X-Forwarded-Proto') == 'https' or
+                request.is_secure
+            )
+            samesite_value = 'None' if is_production else 'Lax'
             response.set_cookie(
                 'auth_token',
                 new_token,
                 max_age=expires_in if expires_in else 3600,
                 httponly=True,
                 secure=is_production,
-                samesite='None' if is_production else 'Lax'
+                samesite=samesite_value,
+                path='/'
             )
             if new_refresh:
                 response.set_cookie(
@@ -282,7 +289,8 @@ def require_auth(f):
                     max_age=86400 * 30,  # 30 days
                     httponly=True,
                     secure=is_production,
-                    samesite='None' if is_production else 'Lax'
+                    samesite=samesite_value,
+                    path='/'
                 )
         
         return response
