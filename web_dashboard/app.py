@@ -515,24 +515,110 @@ def _start_scheduler_background():
         thread_id = threading.current_thread().ident
         process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
         
+        import sys
+        import time
+        
+        # Log to both logger and stderr for maximum visibility
+        def log_both(level, msg):
+            """Log to both logger and stderr for visibility even if logging system fails"""
+            print(f"[SCHEDULER-INIT] {msg}", file=sys.stderr, flush=True)
+            try:
+                if level == 'info':
+                    logger.info(f"[PID:{process_id} TID:{thread_id}] {msg}")
+                elif level == 'error':
+                    logger.error(f"[PID:{process_id} TID:{thread_id}] {msg}")
+                elif level == 'warning':
+                    logger.warning(f"[PID:{process_id} TID:{thread_id}] {msg}")
+                elif level == 'debug':
+                    logger.debug(f"[PID:{process_id} TID:{thread_id}] {msg}")
+            except:
+                pass  # If logger fails, at least stderr worked
+        
         try:
-            logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Starting scheduler initialization...")
+            log_both('info', f"[{thread_name}] Starting scheduler initialization...")
             
-            # Small delay to ensure Flask app is fully initialized
-            import time
-            time.sleep(0.5)
+            # Retry configuration
+            MAX_RETRIES = 3
+            RETRY_DELAYS = [0.5, 2.0, 5.0]  # Exponential backoff
             
-            if not is_scheduler_running():
-                logger.info(f"[PID:{process_id} TID:{thread_id}] 🚀 Auto-starting scheduler on Flask initialization...")
-                result = start_scheduler()
-                if result:
-                    logger.info(f"[PID:{process_id} TID:{thread_id}] ✅ Scheduler started successfully on Flask initialization")
-                else:
-                    logger.info(f"[PID:{process_id} TID:{thread_id}] ℹ️ Scheduler was already running or failed to start")
-            else:
-                logger.debug(f"[PID:{process_id} TID:{thread_id}] ℹ️ Scheduler already running, skipping auto-start")
+            for attempt in range(MAX_RETRIES):
+                try:
+                    # Wait before attempting (increases with each retry)
+                    delay = RETRY_DELAYS[attempt]
+                    log_both('info', f"Attempt {attempt + 1}/{MAX_RETRIES}: Waiting {delay}s for Flask initialization...")
+                    time.sleep(delay)
+                    
+                    # Check if scheduler is already running (cross-process check)
+                    if is_scheduler_running():
+                        log_both('info', "✅ Scheduler already running (detected via heartbeat), skipping auto-start")
+                        break
+                    
+                    # Attempt to start scheduler
+                    log_both('info', f"🚀 Attempting to start scheduler (attempt {attempt + 1}/{MAX_RETRIES})...")
+                    result = start_scheduler()
+                    
+                    if result:
+                        log_both('info', "✅ start_scheduler() returned True")
+                        
+                        # HEALTH CHECK: Verify scheduler is actually running
+                        log_both('info', "Verifying scheduler health...")
+                        time.sleep(2)  # Wait for scheduler to initialize jobs
+                        
+                        # Check 1: Verify scheduler reports running
+                        if not is_scheduler_running():
+                            log_both('error', "❌ Health check failed: is_scheduler_running() returned False after startup")
+                            if attempt < MAX_RETRIES - 1:
+                                log_both('warning', f"Will retry in {RETRY_DELAYS[attempt + 1]}s...")
+                                continue
+                            else:
+                                log_both('error', "❌ All retries exhausted - scheduler failed health check")
+                                break
+                        
+                        # Check 2: Verify heartbeat file is being updated
+                        from scheduler.scheduler_core import _HEARTBEAT_FILE, _check_heartbeat
+                        if _HEARTBEAT_FILE.exists():
+                            heartbeat_age = time.time() - float(_HEARTBEAT_FILE.read_text().strip())
+                            if heartbeat_age > 30:
+                                log_both('warning', f"⚠️ Heartbeat file is stale ({heartbeat_age:.1f}s old)")
+                            else:
+                                log_both('info', f"✅ Heartbeat file is fresh ({heartbeat_age:.1f}s old)")
+                        else:
+                            log_both('warning', "⚠️ Heartbeat file does not exist yet (may update soon)")
+                        
+                        # Success!
+                        log_both('info', "=" * 60)
+                        log_both('info', "✅ SCHEDULER STARTED SUCCESSFULLY ON FLASK INITIALIZATION")
+                        log_both('info', "=" * 60)
+                        break
+                    else:
+                        # start_scheduler() returned False (already running or failed)
+                        log_both('warning', f"⚠️ start_scheduler() returned False on attempt {attempt + 1}")
+                        
+                        # Check if it's because another process has it running
+                        if is_scheduler_running():
+                            log_both('info', "✅ Another process has scheduler running (detected via heartbeat)")
+                            break
+                        
+                        # Otherwise, it failed - retry if we have attempts left
+                        if attempt < MAX_RETRIES - 1:
+                            log_both('warning', f"Will retry in {RETRY_DELAYS[attempt + 1]}s...")
+                        else:
+                            log_both('error', "❌ All retries exhausted - scheduler failed to start")
+                            log_both('error', "Check logs above for errors. You can start manually via Jobs page.")
+                
+                except Exception as e:
+                    log_both('error', f"❌ Exception during scheduler start attempt {attempt + 1}: {e}")
+                    import traceback
+                    traceback.print_exc(file=sys.stderr)
+                    
+                    if attempt < MAX_RETRIES - 1:
+                        log_both('warning', f"Will retry in {RETRY_DELAYS[attempt + 1]}s...")
+                    else:
+                        log_both('error', "❌ All retries exhausted due to exceptions")
+                        log_both('error', "⚠️ Flask will continue without scheduler - start manually via Jobs page")
             
-            logger.info(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Scheduler initialization complete")
+            log_both('info', f"[{thread_name}] Scheduler initialization complete")
+            
             # CRITICAL: Thread stays alive to execute scheduler jobs
             # Sleep forever to keep thread alive and log heartbeat
             sleep_count = 0
@@ -540,10 +626,13 @@ def _start_scheduler_background():
                 sleep_count += 1
                 logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Keeping scheduler thread alive (cycle {sleep_count})")
                 time.sleep(60)
+                
         except Exception as e:
-            # Don't crash Flask if scheduler fails to start
-            logger.error(f"[PID:{process_id} TID:{thread_id}] ❌ Failed to auto-start scheduler: {e}", exc_info=True)
-            logger.warning(f"[PID:{process_id} TID:{thread_id}] ⚠️ Flask will continue without scheduler - start manually via jobs page")
+            # Catch-all for any unexpected errors
+            log_both('error', f"❌ CRITICAL: Unexpected error in scheduler init thread: {e}")
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            log_both('error', "⚠️ Flask will continue without scheduler - start manually via jobs page")
     
     # Start scheduler in NON-daemon thread (keeps it alive for job execution)
     process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'

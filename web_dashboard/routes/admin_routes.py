@@ -1381,11 +1381,106 @@ def api_scheduler_status():
         logger.error(f"[Scheduler API] Error getting scheduler status: {e}", exc_info=True)
         return jsonify({"error": str(e), "scheduler_running": False, "jobs": []}), 500
 
+@admin_bp.route('/api/admin/scheduler/startup-diagnostics')
+@require_admin
+def api_scheduler_startup_diagnostics():
+    """Get detailed scheduler startup diagnostics for troubleshooting"""
+    try:
+        import threading
+        from scheduler.scheduler_core import get_scheduler_status, _HEARTBEAT_FILE, _LOCK_FILE
+        import os
+        
+        diagnostics = {
+            "timestamp": datetime.now().isoformat(),
+            "scheduler_status": {},
+            "thread_info": {},
+            "heartbeat_info": {},
+            "lock_info": {},
+            "environment": {}
+        }
+        
+        # Get scheduler status from scheduler_core
+        try:
+            diagnostics["scheduler_status"] = get_scheduler_status()
+        except Exception as e:
+            diagnostics["scheduler_status"] = {"error": str(e)}
+        
+        # Check if SchedulerInitThread is alive
+        scheduler_thread = None
+        for thread in threading.enumerate():
+            if thread.name == "SchedulerInitThread":
+                scheduler_thread = thread
+                break
+        
+        diagnostics["thread_info"] = {
+            "exists": scheduler_thread is not None,
+            "is_alive": scheduler_thread.is_alive() if scheduler_thread else False,
+            "is_daemon": scheduler_thread.daemon if scheduler_thread else None,
+            "thread_id": scheduler_thread.ident if scheduler_thread else None,
+            "all_threads": [{"name": t.name, "daemon": t.daemon, "alive": t.is_alive()} for t in threading.enumerate()]
+        }
+        
+        # Heartbeat file info
+        try:
+            if _HEARTBEAT_FILE.exists():
+                heartbeat_timestamp = float(_HEARTBEAT_FILE.read_text().strip())
+                heartbeat_age = time.time() - heartbeat_timestamp
+                diagnostics["heartbeat_info"] = {
+                    "exists": True,
+                    "path": str(_HEARTBEAT_FILE),
+                    "timestamp": heartbeat_timestamp,
+                    "age_seconds": heartbeat_age,
+                    "is_stale": heartbeat_age > 60,
+                    "last_update": datetime.fromtimestamp(heartbeat_timestamp).isoformat()
+                }
+            else:
+                diagnostics["heartbeat_info"] = {
+                    "exists": False,
+                    "path": str(_HEARTBEAT_FILE)
+                }
+        except Exception as e:
+            diagnostics["heartbeat_info"] = {"error": str(e)}
+        
+        # Lock file info
+        try:
+            if _LOCK_FILE.exists():
+                lock_content = _LOCK_FILE.read_text().strip().split('\n')
+                lock_timestamp = float(lock_content[0])
+                lock_pid = int(lock_content[1]) if len(lock_content) > 1 else None
+                lock_age = time.time() - lock_timestamp
+                diagnostics["lock_info"] = {
+                    "exists": True,
+                    "path": str(_LOCK_FILE),
+                    "timestamp": lock_timestamp,
+                    "pid": lock_pid,
+                    "age_seconds": lock_age,
+                    "is_stale": lock_age > 10
+                }
+            else:
+                diagnostics["lock_info"] = {
+                    "exists": False,
+                    "path": str(_LOCK_FILE)
+                }
+        except Exception as e:
+            diagnostics["lock_info"] = {"error": str(e)}
+        
+        # Environment info
+        diagnostics["environment"] = {
+            "disable_scheduler": os.environ.get('DISABLE_SCHEDULER', 'not set'),
+            "process_id": os.getpid() if hasattr(os, 'getpid') else 'N/A',
+            "flask_debug": os.environ.get('FLASK_DEBUG', 'not set')
+        }
+        
+        return jsonify(diagnostics)
+    except Exception as e:
+        logger.error(f"Error getting scheduler diagnostics: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @admin_bp.route('/api/admin/scheduler/start', methods=['POST'])
 @require_admin
 def api_scheduler_start():
     """Start the scheduler"""
-    try:
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot control scheduler"}), 403
