@@ -489,7 +489,7 @@
     }
 
     function loadAvailableModels() {
-        fetch('/research/models')
+        fetch('/api/research/models')
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.models) {
@@ -627,7 +627,7 @@
                 statusText.textContent = `[${articleNum}/${total}] Preparing request...`;
 
                 // Use Server-Sent Events for streaming progress
-                const response = await fetch('/research/reanalyze/stream', {
+                const response = await fetch('/api/research/reanalyze/stream', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

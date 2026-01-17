@@ -412,7 +412,7 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
         return False, f"Error: {str(e)}"
 
 
-@research_bp.route('/research/models', methods=['GET'])
+@research_bp.route('/api/research/models', methods=['GET'])
 @require_auth
 def get_available_models():
     """Get list of available Ollama models for re-analysis"""
@@ -446,7 +446,7 @@ def get_available_models():
         }), 500
 
 
-@research_bp.route('/research/reanalyze', methods=['POST'])
+@research_bp.route('/api/research/reanalyze', methods=['POST'])
 @require_auth
 def reanalyze_article_endpoint():
     """Re-analyze an article with a specified AI model"""
@@ -485,7 +485,7 @@ def reanalyze_article_endpoint():
         }), 500
 
 
-@research_bp.route('/research/reanalyze/stream', methods=['POST'])
+@research_bp.route('/api/research/reanalyze/stream', methods=['POST'])
 @require_auth
 def reanalyze_article_stream():
     """Re-analyze an article with Server-Sent Events streaming progress"""
