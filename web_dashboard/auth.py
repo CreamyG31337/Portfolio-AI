@@ -158,34 +158,26 @@ def require_auth(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Invalid auth state, please login again"}), 401
             else:
-                # DEBUG: Return info instead of redirect
-                return f"""
-                <h1>Auth Debug: Broken State</h1>
-                <p>Path: {request.path}</p>
-                <p>Session Token: {bool(session_token)}</p>
-                <p>Auth Token: {bool(auth_token)}</p>
-                <p>Refresh Token: {bool(refresh_token)}</p>
-                <p>Headers: {dict(request.headers)}</p>
-                """, 403
+                # Clear cookies and redirect to login
+                response = redirect('/auth')
+                response.delete_cookie('auth_token', path='/')
+                response.delete_cookie('session_token', path='/')
+                response.delete_cookie('refresh_token', path='/')
+                return response
         
         # Now try to refresh token if needed
         success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
         
         if not success:
-            # Token refresh failed or token is invalid
-            if request.path.startswith('/api/'):
-                return jsonify({"error": "Authentication required"}), 401
-            else:
-                # DEBUG: Return info instead of redirect
-                return f"""
-                <h1>Auth Debug: Refresh Failed</h1>
-                <p>Path: {request.path}</p>
-                <p>Session Token: {bool(session_token)}</p>
-                <p>Auth Token (cookie): {bool(auth_token)}</p>
-                <p>Auth Token (refresh logic): {bool(new_token)}</p>
-                <p>Refresh Token: {bool(refresh_token)}</p>
-                <p>Cookies keys: {list(request.cookies.keys())}</p>
-                """, 403
+            # Token refresh failed or token is invalid - but check if we have a valid token anyway
+            # (refresh might fail but token could still be valid for a short time)
+            if not auth_token and not session_token:
+                # No token at all - redirect to login
+                if request.path.startswith('/api/'):
+                    return jsonify({"error": "Authentication required"}), 401
+                else:
+                    return redirect('/auth')
+            # If we have a token, continue - it might still be valid
         
         # Store new tokens in request context if they were refreshed
         if new_token:
