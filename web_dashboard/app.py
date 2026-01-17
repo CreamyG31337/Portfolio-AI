@@ -1037,12 +1037,9 @@ def index():
             return redirect(url_for('auth_page'))
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
-        # On error, clear cookies and redirect to auth as safe fallback
-        response = redirect('/auth')
-        response.delete_cookie('auth_token')
-        response.delete_cookie('session_token')
-        response.delete_cookie('refresh_token')
-        return response
+        # On error, just redirect to auth - don't delete cookies
+        # Cookies might be valid, error might be unrelated to auth
+        return redirect('/auth')
 
 @app.route('/auth')
 def auth_page():
