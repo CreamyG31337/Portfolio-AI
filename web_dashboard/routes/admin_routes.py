@@ -2427,10 +2427,17 @@ def api_test_webai_cookies():
         logger.debug(f"Test message: {test_result.get('message', 'Unknown error')}")
         logger.debug(f"Test details: {test_result.get('details', {})}")
 
+        # Add cookie file location to details for verbose output
+        details = test_result.get("details", {})
+        if cookie_file:
+            details["cookie_file"] = cookie_file
+        elif not cookie_file:
+            details["cookie_file"] = "Not found (using default location)"
+
         return jsonify({
             "success": test_result.get("success", False),
             "message": test_result.get("message", "Unknown error"),
-            "details": test_result.get("details", {})
+            "details": details
         })
     except Exception as e:
         logger.error(f"Error testing WebAI cookies: {e}", exc_info=True)

@@ -328,6 +328,26 @@ async function testWebaiCookies() {
     testWebaiBtn.textContent = 'Testing...';
     (testWebaiBtn as HTMLButtonElement).disabled = true;
 
+    // Create or get verbose output container
+    let verboseOutput = document.getElementById('cookie-test-verbose-output');
+    if (!verboseOutput) {
+        // Create container if it doesn't exist
+        const webaiStatusCard = document.querySelector('[data-status-card="webai"]');
+        if (webaiStatusCard) {
+            verboseOutput = document.createElement('div');
+            verboseOutput.id = 'cookie-test-verbose-output';
+            verboseOutput.className = 'mt-4 p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm';
+            verboseOutput.style.display = 'none';
+            webaiStatusCard.appendChild(verboseOutput);
+        }
+    }
+
+    // Show verbose output container
+    if (verboseOutput) {
+        verboseOutput.style.display = 'block';
+        verboseOutput.innerHTML = '<div class="text-gray-600 dark:text-gray-400">🔄 Running cookie connection test...</div>';
+    }
+
     try {
         console.log('[DEBUG] Sending POST request to /api/admin/ai/cookies/test');
         const response = await fetch('/api/admin/ai/cookies/test', {
@@ -336,21 +356,105 @@ async function testWebaiCookies() {
 
         console.log('[DEBUG] Received response:', response.status, response.statusText);
 
-        const result: ApiResponse & { message?: string } = await response.json();
+        const result: ApiResponse & { 
+            message?: string;
+            details?: {
+                has_1psid?: boolean;
+                has_1psidts?: boolean;
+                client_init?: string;
+                response_received?: boolean;
+                response_length?: number;
+                error?: string;
+                error_type?: string;
+                cookie_file?: string;
+            };
+        } = await response.json();
 
         console.log('[DEBUG] Test result:', result);
 
+        // Build verbose output
+        let verboseHtml = '<div class="space-y-2">';
+        
         if (result.success) {
-            console.log('[DEBUG] Cookie test successful');
+            verboseHtml += '<div class="text-green-600 dark:text-green-400 font-semibold">✅ Connection Test Successful</div>';
+            verboseHtml += '<div class="text-gray-700 dark:text-gray-300">' + (result.message || 'Connection established successfully') + '</div>';
+        } else {
+            verboseHtml += '<div class="text-red-600 dark:text-red-400 font-semibold">❌ Connection Test Failed</div>';
+            verboseHtml += '<div class="text-gray-700 dark:text-gray-300">' + (result.message || result.error || 'Unknown error') + '</div>';
+        }
+
+        // Add detailed information
+        if (result.details) {
+            verboseHtml += '<div class="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">';
+            verboseHtml += '<div class="font-semibold text-gray-900 dark:text-white mb-2">Test Details:</div>';
+            verboseHtml += '<div class="space-y-1 text-gray-700 dark:text-gray-300">';
+
+            // Cookie presence
+            if (result.details.has_1psid !== undefined) {
+                verboseHtml += `<div>${result.details.has_1psid ? '✅' : '❌'} __Secure-1PSID: ${result.details.has_1psid ? 'Present' : 'Missing'}</div>`;
+            }
+            if (result.details.has_1psidts !== undefined) {
+                verboseHtml += `<div>${result.details.has_1psidts ? '✅' : '⚠️'} __Secure-1PSIDTS: ${result.details.has_1psidts ? 'Present' : 'Missing (optional)'}</div>`;
+            }
+
+            // Client initialization
+            if (result.details.client_init) {
+                verboseHtml += `<div>${result.details.client_init === 'success' ? '✅' : '❌'} Client Initialization: ${result.details.client_init}</div>`;
+            }
+
+            // Response status
+            if (result.details.response_received !== undefined) {
+                verboseHtml += `<div>${result.details.response_received ? '✅' : '❌'} Response Received: ${result.details.response_received ? 'Yes' : 'No'}</div>`;
+            }
+            if (result.details.response_length !== undefined) {
+                verboseHtml += `<div>📏 Response Length: ${result.details.response_length} characters</div>`;
+            }
+
+            // Error details
+            if (result.details.error) {
+                verboseHtml += `<div class="text-red-600 dark:text-red-400">❌ Error: ${escapeHtml(result.details.error)}</div>`;
+            }
+            if (result.details.error_type) {
+                verboseHtml += `<div class="text-red-600 dark:text-red-400">🔍 Error Type: ${escapeHtml(result.details.error_type)}</div>`;
+            }
+
+            // Cookie file location
+            if (result.details.cookie_file) {
+                verboseHtml += `<div class="text-gray-600 dark:text-gray-400">📁 Cookie File: ${escapeHtml(result.details.cookie_file)}</div>`;
+            }
+
+            verboseHtml += '</div></div>';
+        }
+
+        verboseHtml += '</div>';
+
+        // Update verbose output
+        if (verboseOutput) {
+            verboseOutput.innerHTML = verboseHtml;
+        }
+
+        // Show toast notification
+        if (result.success) {
             showToastForAI('Cookie test successful!', 'success');
         } else {
-            console.log('[DEBUG] Cookie test failed:', result.message, result.error);
             showToastForAI('Cookie test failed: ' + (result.message || result.error || 'Unknown error'), 'error');
         }
 
     } catch (error) {
         console.error('[DEBUG] Error testing cookies:', error);
-        showToastForAI('Error testing cookies', 'error');
+        
+        // Show error in verbose output
+        if (verboseOutput) {
+            verboseOutput.innerHTML = `
+                <div class="space-y-2">
+                    <div class="text-red-600 dark:text-red-400 font-semibold">❌ Test Error</div>
+                    <div class="text-gray-700 dark:text-gray-300">Failed to execute test: ${escapeHtml(String(error))}</div>
+                    <div class="text-gray-600 dark:text-gray-400 text-xs mt-2">Check browser console for more details.</div>
+                </div>
+            `;
+        }
+        
+        showToastForAI('Error testing cookies: ' + String(error), 'error');
     } finally {
         testWebaiBtn.textContent = originalText;
         (testWebaiBtn as HTMLButtonElement).disabled = false;
