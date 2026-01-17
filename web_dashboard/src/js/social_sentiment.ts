@@ -153,7 +153,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 e.stopPropagation();
                 const ticker = params.value;
                 if (ticker && ticker !== 'N/A') {
-                    window.location.href = `/v2/ticker?ticker=${encodeURIComponent(ticker)}`;
+                    window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
                 }
             });
         } else {
@@ -534,7 +534,7 @@ async function loadAlertsData(refreshKey: number): Promise<void> {
                                     class="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
                                 View Source Posts
                             </button>
-                            <button onclick="window.location.href='/v2/ticker?ticker=${encodeURIComponent(alert.ticker)}'" 
+                            <button onclick="window.location.href='/ticker?ticker=${encodeURIComponent(alert.ticker)}'" 
                                     class="text-sm px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700">
                                 View Ticker Details
                             </button>

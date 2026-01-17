@@ -94,7 +94,7 @@ def get_cached_articles(
 @require_auth
 def research_dashboard():
     """Research Repository Dashboard"""
-    logger.debug("[RESEARCH] Route /v2/research accessed")
+    logger.debug("[RESEARCH] Route /research accessed")
     try:
         # Get cached repository instance
         logger.debug("[RESEARCH] Getting ResearchRepository (cached)")

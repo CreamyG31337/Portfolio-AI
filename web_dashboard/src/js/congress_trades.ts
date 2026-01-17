@@ -154,7 +154,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 e.stopPropagation();
                 const ticker = params.value;
                 if (ticker && ticker !== 'N/A') {
-                    window.location.href = `/v2/ticker?ticker=${encodeURIComponent(ticker)}`;
+                    window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
                 }
             });
         } else {
@@ -176,7 +176,7 @@ function onCellClicked(params: AgGridParams): void {
             action = 'navigate';
             // Navigate immediately for ticker clicks
             const ticker = params.value;
-            window.location.href = `/v2/ticker?ticker=${encodeURIComponent(ticker)}`;
+            window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
             return;
         }
 

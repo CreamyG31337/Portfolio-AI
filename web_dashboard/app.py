@@ -387,11 +387,18 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             except Exception:
                 pass
         
-        # Get currently selected fund
+        # Get currently selected fund - check URL parameter first, then user preference
         selected_fund = None
         try:
-            from user_preferences import get_user_selected_fund
-            selected_fund = get_user_selected_fund()
+            # Check URL parameter first (for persistence across refreshes)
+            from flask import request
+            url_fund = request.args.get('fund')
+            if url_fund:
+                selected_fund = url_fund
+            else:
+                # Fall back to user preference
+                from user_preferences import get_user_selected_fund
+                selected_fund = get_user_selected_fund()
         except Exception:
             pass
             
@@ -452,22 +459,22 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
 # Register Blueprints
 try:
     from routes.research_routes import research_bp
-    app.register_blueprint(research_bp, url_prefix='/v2')
-    logger.debug("Registered Research Blueprint at /v2")
+    app.register_blueprint(research_bp)
+    logger.debug("Registered Research Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Research Blueprint: {e}", exc_info=True)
 
 try:
     from routes.etf_routes import etf_bp
-    app.register_blueprint(etf_bp, url_prefix='/v2')
-    logger.debug("Registered ETF Blueprint at /v2")
+    app.register_blueprint(etf_bp)
+    logger.debug("Registered ETF Blueprint")
 except Exception as e:
     logger.error(f"Failed to register ETF Blueprint: {e}", exc_info=True)
 
 try:
     from routes.social_sentiment_routes import social_sentiment_bp
-    app.register_blueprint(social_sentiment_bp, url_prefix='/v2')
-    logger.debug("Registered Social Sentiment Blueprint at /v2")
+    app.register_blueprint(social_sentiment_bp)
+    logger.debug("Registered Social Sentiment Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Social Sentiment Blueprint: {e}", exc_info=True)
 

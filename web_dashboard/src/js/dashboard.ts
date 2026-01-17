@@ -299,8 +299,17 @@ async function initFundSelector(): Promise<void> {
         return;
     }
 
-    // Set initial state from selector if not already set
-    if (!state.currentFund) {
+    // Read fund from URL parameter first (for persistence across refreshes)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlFund = urlParams.get('fund');
+    
+    if (urlFund) {
+        // URL parameter takes precedence
+        state.currentFund = urlFund;
+        selector.value = urlFund;
+        console.log('[Dashboard] Initial state set from URL parameter:', state.currentFund);
+    } else if (!state.currentFund) {
+        // Fall back to selector value if no URL param and no state
         state.currentFund = selector.value;
         console.log('[Dashboard] Initial state set from selector value:', state.currentFund);
     } else {
@@ -316,6 +325,17 @@ async function initFundSelector(): Promise<void> {
         const target = e.target as HTMLSelectElement;
         state.currentFund = target.value;
         console.log('[Dashboard] Global fund changed to:', state.currentFund);
+        
+        // Update URL to persist selection across page refreshes
+        const url = new URL(window.location.href);
+        if (state.currentFund && state.currentFund.toLowerCase() !== 'all') {
+            url.searchParams.set('fund', state.currentFund);
+        } else {
+            url.searchParams.delete('fund');
+        }
+        // Use pushState to update URL without page reload
+        window.history.pushState({ fund: state.currentFund }, '', url.toString());
+        
         refreshDashboard();
     });
 }
@@ -483,7 +503,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 e.stopPropagation();
                 const ticker = params.value;
                 if (ticker && ticker !== 'N/A') {
-                    window.location.href = `/v2/ticker?ticker=${encodeURIComponent(ticker)}`;
+                    window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
                 }
             });
         } else {
@@ -1284,7 +1304,7 @@ async function fetchActivity(): Promise<void> {
                 tr.innerHTML = `
                      <td class="px-6 py-4 whitespace-nowrap">${row.date}</td>
                      <td class="px-6 py-4 font-bold text-blue-600 dark:text-blue-400">
-                         <a href="/v2/ticker?ticker=${row.ticker}" class="hover:underline">${row.ticker}</a>
+                         <a href="/ticker?ticker=${row.ticker}" class="hover:underline">${row.ticker}</a>
                      </td>
                      <td class="px-6 py-4 text-gray-700 dark:text-gray-300">${companyName}</td>
                      <td class="px-6 py-4">${actionBadge}</td>
@@ -1462,7 +1482,7 @@ function renderDividends(data: DividendData): void {
                 tickerCell.addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (row.ticker && row.ticker !== 'N/A') {
-                        window.location.href = `/v2/ticker?ticker=${encodeURIComponent(row.ticker)}`;
+                        window.location.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
                     }
                 });
                 tr.appendChild(tickerCell);
@@ -1701,7 +1721,7 @@ function renderMovers(data: MoversData): void {
             // Use font-mono for numerical columns to ensure alignment
             tr.innerHTML = `
                 <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">
-                    <a href="/v2/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
+                    <a href="/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
                 </td>
                 <td class="px-4 py-3 truncate max-w-[150px]" title="${item.company_name || item.ticker}">${item.company_name || item.ticker}</td>
                 <td class="px-4 py-3 text-right font-mono ${dayColor}">${formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency)}</td>

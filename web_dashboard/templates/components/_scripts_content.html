@@ -301,3 +301,58 @@
         }
     });
 </script>
+
+<!-- Global Fund Selector URL Persistence -->
+<script>
+    // Initialize fund selector to persist selection in URL across all pages
+    (function () {
+        const selector = document.getElementById('global-fund-select');
+        if (!selector) return;
+
+        // Read fund from URL parameter on page load
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlFund = urlParams.get('fund');
+        
+        if (urlFund && selector.querySelector(`option[value="${urlFund}"]`)) {
+            selector.value = urlFund;
+        }
+
+        // Update URL when fund selector changes (without page reload)
+        selector.addEventListener('change', function (e) {
+            const selectedFund = (e.target as HTMLSelectElement).value;
+            const url = new URL(window.location.href);
+            
+            if (selectedFund && selectedFund.toLowerCase() !== 'all') {
+                url.searchParams.set('fund', selectedFund);
+            } else {
+                url.searchParams.delete('fund');
+            }
+            
+            // Update URL without page reload
+            window.history.pushState({ fund: selectedFund }, '', url.toString());
+            
+            // Dispatch custom event for pages that need to react to fund changes
+            window.dispatchEvent(new CustomEvent('fundChanged', { detail: { fund: selectedFund } }));
+        });
+
+        // Handle browser back/forward buttons
+        window.addEventListener('popstate', function (e) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlFund = urlParams.get('fund');
+            
+            if (urlFund && selector.querySelector(`option[value="${urlFund}"]`)) {
+                selector.value = urlFund;
+                window.dispatchEvent(new CustomEvent('fundChanged', { detail: { fund: urlFund } }));
+            } else if (!urlFund) {
+                // If no fund in URL, set to "all" or first option
+                const allOption = selector.querySelector('option[value="all"]');
+                if (allOption) {
+                    selector.value = 'all';
+                } else if (selector.options.length > 0) {
+                    selector.value = selector.options[0].value;
+                }
+                window.dispatchEvent(new CustomEvent('fundChanged', { detail: { fund: selector.value } }));
+            }
+        });
+    })();
+</script>
