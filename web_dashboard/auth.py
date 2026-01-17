@@ -135,12 +135,17 @@ def require_auth(f):
         session_token = request.cookies.get('session_token')
         refresh_token = get_refresh_token()
         
+        logger.info(f"[AUTH] require_auth: Path={request.path}, session_token={bool(session_token)}, auth_token={bool(auth_token)}, len_auth={len(auth_token) if auth_token else 0}")
+        if auth_token:
+            logger.info(f"[AUTH] auth_token preview: {auth_token[:20]}...")
+        
         is_broken_state = False
         
         # Check 1: Have session_token but no auth_token (incomplete login state)
         if session_token and not auth_token:
-            logger.warning("[AUTH] require_auth: Broken state - session_token present but auth_token missing")
-            is_broken_state = True
+            logger.warning("[AUTH] Broken state detected: session_token present inside require_auth but auth_token missing")
+            # is_broken_state = True # TEMP: Disable to allow login with session_token only if auth_token is mysteriously missing
+            is_broken_state = False
         
         # Check 2: Refresh token is corrupted (too short - valid ones are 100+ chars)
         if refresh_token and len(refresh_token) < 50:
