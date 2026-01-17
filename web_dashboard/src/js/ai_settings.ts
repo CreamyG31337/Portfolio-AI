@@ -17,38 +17,43 @@ interface StatusResponse {
         has_1psid?: boolean;
         has_1psidts?: boolean;
     };
-    interface SettingsResponse {
-        auto_blacklist_threshold: string;
-        max_research_batch_size: string;
-        [key: string]: string;
-    }
-    interface BlacklistEntry {
-        domain: string;
-        auto_blacklisted?: boolean;
-        auto_blacklisted_at?: string;
-        last_failure_reason?: string;
-        consecutive_failures?: number;
-        updated_at?: string;
-        // Legacy fields for compatibility
-        reason?: string;
-        added_at?: string;
-        added_by?: string;
-    }
-    interface BlacklistResponse {
-        blacklist?: BlacklistEntry[];
-        error?: string;
-    }
-    interface ContainerStatus {
-        success: boolean;
-        container_found?: boolean;
-        status?: string;
-        name?: string;
-        id?: string;
-        image?: string;
-        is_running?: boolean;
-        error?: string;
-        message?: string;
-    }
+}
+
+interface SettingsResponse {
+    auto_blacklist_threshold: string;
+    max_research_batch_size: string;
+    [key: string]: string;
+}
+
+interface BlacklistEntry {
+    domain: string;
+    auto_blacklisted?: boolean;
+    auto_blacklisted_at?: string;
+    last_failure_reason?: string;
+    consecutive_failures?: number;
+    updated_at?: string;
+    // Legacy fields for compatibility
+    reason?: string;
+    added_at?: string;
+    added_by?: string;
+}
+
+interface BlacklistResponse {
+    blacklist?: BlacklistEntry[];
+    error?: string;
+}
+
+interface ContainerStatus {
+    success: boolean;
+    container_found?: boolean;
+    status?: string;
+    name?: string;
+    id?: string;
+    image?: string;
+    is_running?: boolean;
+    error?: string;
+    message?: string;
+}
 
 // DOM Elements
 const ollamaIndicator = document.getElementById('ollama-indicator');
@@ -139,10 +144,10 @@ async function checkStatus() {
 
     try {
         const [ollamaResp, postgresResp, webaiResp] = await Promise.all([
-            fetch('/api/admin/ai/ollama/status'),
-            fetch('/api/admin/ai/postgres/status'),
-            fetch('/api/admin/ai/webai/status')
-        ].map(url => fetch(url).then(r => r.json()));
+            fetch('/api/admin/ai/ollama/status').then(r => r.json()),
+            fetch('/api/admin/ai/postgres/status').then(r => r.json()),
+            fetch('/api/admin/ai/webai/status').then(r => r.json())
+        ]);
 
         if (ollamaResp.success && ollamaMessage) {
             ollamaIndicator.className = ollamaResp.status ? 'bg-green-500' : 'bg-red-500';
