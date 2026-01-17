@@ -1149,9 +1149,10 @@ def login():
                 'session_token', 
                 session_token, 
                 max_age=86400, 
-                httponly=False,  # TEMP: disabled for debugging
+                httponly=True,
                 secure=is_production,  # True for HTTPS, False for localhost
-                samesite='Lax'  # Lax is correct for same-origin login (None is for cross-origin only)
+                samesite='Lax',
+                path='/'
             )
             logger.info(f"[LOGIN] Set session_token cookie with secure={is_production}, samesite=Lax")
 
@@ -1163,25 +1164,25 @@ def login():
                 # Log token size for debugging
                 logger.info(f"[LOGIN] auth_token length: {len(auth_data['access_token'])}")
                 
-                response.set_cookie(
                     'auth_token', 
                     auth_data["access_token"], 
                     max_age=expires_in, 
-                    httponly=False, # TEMP: debug
+                    httponly=True, 
                     secure=is_production,
-                    samesite='Lax'
+                    samesite='Lax',
+                    path='/'
                 )
                 
                 # Also set refresh token if available so client can refresh if needed
                 if "refresh_token" in auth_data:
                     logger.info(f"[LOGIN] refresh_token length: {len(auth_data['refresh_token'])}")
-                    response.set_cookie(
                         'refresh_token', 
                         auth_data["refresh_token"], 
                         max_age=86400 * 30, # 30 days usually
-                        httponly=False,
+                        httponly=True,
                         secure=is_production,
-                        samesite='None' if is_production else 'Lax'
+                        samesite='Lax',
+                        path='/'
                     )
             
             return response
