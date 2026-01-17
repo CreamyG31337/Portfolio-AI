@@ -1561,6 +1561,45 @@ def create_ticker_price_chart(
     return fig
 
 
+def downsample_price_data(df: pd.DataFrame, days: int) -> pd.DataFrame:
+    """Downsample price data to maintain ~90 data points regardless of time range.
+    
+    Args:
+        df: DataFrame with columns: date, price, normalized
+        days: Number of days in the time range
+        
+    Returns:
+        Downsampled DataFrame with approximately 90 data points
+    """
+    if df.empty or len(df) <= 90:
+        return df
+    
+    # Calculate interval to get ~90 points
+    if days <= 90:
+        interval = 1  # Daily for 3 months
+    elif days <= 180:
+        interval = 2  # Every 2 days for 6 months
+    elif days <= 365:
+        interval = 4  # Every 4 days for 1 year
+    elif days <= 730:
+        interval = 8  # Every 8 days for 2 years
+    else:
+        interval = 20  # Every 20 days for 5 years
+    
+    # Sort by date and take every Nth row
+    df_sorted = df.sort_values('date').reset_index(drop=True)
+    downsampled = df_sorted.iloc[::interval].copy()
+    
+    # Always include the last row to show current price
+    if len(downsampled) > 0 and len(df_sorted) > 0:
+        last_original_date = df_sorted.iloc[-1]['date']
+        last_downsampled_date = downsampled.iloc[-1]['date']
+        if last_downsampled_date != last_original_date:
+            downsampled = pd.concat([downsampled, df_sorted.iloc[[-1]]], ignore_index=True)
+    
+    return downsampled.sort_values('date').reset_index(drop=True)
+
+
 def get_available_benchmarks() -> Dict[str, str]:
     """Return available benchmark options for UI."""
     return {key: config['name'] for key, config in BENCHMARK_CONFIG.items()}

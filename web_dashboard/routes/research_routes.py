@@ -39,6 +39,33 @@ def get_cached_unique_tickers(repo: ResearchRepository):
         logger.error(f"Error fetching unique tickers: {e}", exc_info=True)
         return []
 
+@cache_data(ttl=60)
+def get_cached_statistics(repo: ResearchRepository):
+    """Get article statistics with caching (60s TTL)"""
+    try:
+        return repo.get_article_statistics(days=90)
+    except Exception as e:
+        logger.error(f"Error fetching statistics: {e}", exc_info=True)
+        return {
+            'total_count': 0,
+            'by_type': {},
+            'by_source': {},
+            'by_day': {}
+        }
+
+@cache_data(ttl=60)
+def get_cached_embedding_stats(repo: ResearchRepository):
+    """Get embedding statistics with caching (60s TTL)"""
+    try:
+        embedding_stats_query = "SELECT COUNT(*) as total, COUNT(embedding) as embedded FROM research_articles"
+        result = repo.client.execute_query(embedding_stats_query)
+        if result:
+            return result[0]['total'], result[0]['embedded']
+        return 0, 0
+    except Exception as e:
+        logger.error(f"Error fetching embedding stats: {e}", exc_info=True)
+        return 0, 0
+
 @cache_data(ttl=30)
 def get_cached_articles(
     repo: ResearchRepository,
@@ -151,6 +178,11 @@ def research_dashboard():
         
         # Fetch tickers for dropdown (cached)
         unique_tickers = get_cached_unique_tickers(repo)
+        
+        # Fetch statistics (cached)
+        stats = get_cached_statistics(repo)
+        total_articles, embedded_articles = get_cached_embedding_stats(repo)
+        embedding_pct = (embedded_articles / total_articles * 100) if total_articles > 0 else 0
             
         # Fetch Articles (cached)
         articles = get_cached_articles(
@@ -178,6 +210,10 @@ def research_dashboard():
             'research.html',
             articles=articles,
             unique_tickers=unique_tickers,
+            stats=stats,
+            total_articles=total_articles,
+            embedded_articles=embedded_articles,
+            embedding_pct=embedding_pct,
             filters={
                 'date_range': date_range_option,
                 'start_date': start_date_str,

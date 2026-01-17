@@ -5,6 +5,57 @@
 {% block page_subtitle %}AI-curated market research and insights{% endblock %}
 
 {% block content %}
+<!-- Statistics Dashboard -->
+{% if stats %}
+<div class="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
+    <h2 class="text-2xl font-bold text-gray-900 mb-6">📊 Statistics</h2>
+    
+    <!-- Metrics Row -->
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <div class="text-sm text-gray-600 mb-1">Total Articles</div>
+            <div class="text-2xl font-bold text-gray-900">{{ total_articles|default(0) }}</div>
+        </div>
+        
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <div class="text-sm text-gray-600 mb-1">Market News</div>
+            <div class="text-2xl font-bold text-gray-900">{% if stats.by_type and stats.by_type.market_news %}{{ stats.by_type.market_news }}{% else %}0{% endif %}</div>
+        </div>
+        
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <div class="text-sm text-gray-600 mb-1">Ticker News</div>
+            <div class="text-2xl font-bold text-gray-900">{% if stats.by_type and stats.by_type.ticker_news %}{{ stats.by_type.ticker_news }}{% else %}0{% endif %}</div>
+        </div>
+        
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <div class="text-sm text-gray-600 mb-1">Earnings</div>
+            <div class="text-2xl font-bold text-gray-900">{% if stats.by_type and stats.by_type.earnings %}{{ stats.by_type.earnings }}{% else %}0{% endif %}</div>
+        </div>
+        
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <div class="text-sm text-gray-600 mb-1">Embedded (RAG)</div>
+            <div class="text-2xl font-bold text-gray-900">{{ embedded_articles|default(0) }}</div>
+            <div class="text-xs text-gray-500 mt-1">{{ embedding_pct|round(0)|int }}%</div>
+        </div>
+    </div>
+    
+    <!-- Charts Row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Top 10 Sources Chart -->
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Top 10 Sources</h3>
+            <canvas id="sources-chart" height="300"></canvas>
+        </div>
+        
+        <!-- Articles by Day Chart -->
+        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Articles by Day (Last 90 days)</h3>
+            <canvas id="days-chart" height="300"></canvas>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Filters Section -->
 <div class="bg-white rounded-lg shadow-sm p-4 mb-6 border border-gray-200">
     <form action="/research" method="GET" class="space-y-4">
@@ -260,7 +311,117 @@
 
 {% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
 {% block extra_scripts %}
+{% if stats %}
+<script>
+    // Chart data from template
+    const sourcesData = {{ (stats.by_source|default({}))|tojson }};
+    const daysData = {{ (stats.by_day|default({}))|tojson }};
+    
+    // Initialize charts when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        // Top 10 Sources Bar Chart
+        const sourcesCtx = document.getElementById('sources-chart');
+        if (sourcesCtx && sourcesData && Object.keys(sourcesData).length > 0) {
+            // Sort by count and take top 10
+            const sortedSources = Object.entries(sourcesData)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            const sourcesLabels = sortedSources.map(([source]) => source);
+            const sourcesCounts = sortedSources.map(([, count]) => count);
+            
+            new Chart(sourcesCtx, {
+                type: 'bar',
+                data: {
+                    labels: sourcesLabels,
+                    datasets: [{
+                        label: 'Articles',
+                        data: sourcesCounts,
+                        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        } else if (sourcesCtx) {
+            sourcesCtx.parentElement.innerHTML = '<p class="text-gray-500 text-center py-8">No source data available</p>';
+        }
+        
+        // Articles by Day Line Chart
+        const daysCtx = document.getElementById('days-chart');
+        if (daysCtx && daysData && Object.keys(daysData).length > 0) {
+            // Sort by date
+            const sortedDays = Object.entries(daysData)
+                .sort((a, b) => new Date(a[0]) - new Date(b[0]));
+            
+            const daysLabels = sortedDays.map(([day]) => {
+                // Format date as MM/DD
+                const date = new Date(day);
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+            });
+            const daysCounts = sortedDays.map(([, count]) => count);
+            
+            new Chart(daysCtx, {
+                type: 'line',
+                data: {
+                    labels: daysLabels,
+                    datasets: [{
+                        label: 'Articles',
+                        data: daysCounts,
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        } else if (daysCtx) {
+            daysCtx.parentElement.innerHTML = '<p class="text-gray-500 text-center py-8">No daily data available</p>';
+        }
+    });
+</script>
+{% endif %}
+
 <script>
     let availableModels = [];
     let defaultModel = '';

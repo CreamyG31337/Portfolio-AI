@@ -409,20 +409,46 @@ st.markdown("---")
 # Price History Chart Section
 st.header("📈 Price History")
 try:
-    # Fetch price history data (last 3 months)
+    # Chart controls (moved before data fetch so we can use selected range)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        time_range = st.selectbox(
+            "Time Range",
+            options=['3m', '6m', '1y', '2y', '5y'],
+            format_func=lambda x: {
+                '3m': '3 Months',
+                '6m': '6 Months', 
+                '1y': '1 Year',
+                '2y': '2 Years',
+                '5y': '5 Years'
+            }[x],
+            index=0
+        )
+        
+        # Convert range to days
+        range_days = {
+            '3m': 90,
+            '6m': 180,
+            '1y': 365,
+            '2y': 730,
+            '5y': 1825
+        }[time_range]
+        
+        use_solid = st.checkbox("📱 Solid Lines Only (for mobile)", value=False, 
+                               help="Use solid lines instead of dashed for better mobile readability")
+    
+    # Fetch price history data with selected range
     with st.spinner(f"Loading price history for {current_ticker}..."):
         price_history_df = get_ticker_price_history(
             current_ticker,
             supabase_client,
-            days=90  # 3 months
+            days=range_days
         )
     
     if not price_history_df.empty:
-        # Chart controls
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            use_solid = st.checkbox("📱 Solid Lines Only (for mobile)", value=False, 
-                                   help="Use solid lines instead of dashed for better mobile readability")
+        # Downsample if needed
+        from chart_utils import downsample_price_data
+        price_history_df = downsample_price_data(price_history_df, range_days)
         
         # All benchmarks available (S&P 500 visible, others in legend)
         all_benchmarks = ['sp500', 'qqq', 'russell2000', 'vti']
@@ -430,9 +456,9 @@ try:
         # Get congress trades for the chart (from ticker_data, filtered to match chart date range)
         congress_trades_for_chart = []
         if 'congress_trades' in ticker_data and ticker_data['congress_trades']:
-            # Filter congress trades to match the chart's 90-day range
+            # Filter congress trades to match the chart's selected range
             from datetime import date, timedelta
-            chart_start_date = date.today() - timedelta(days=90)
+            chart_start_date = date.today() - timedelta(days=range_days)
             for trade in ticker_data['congress_trades']:
                 trade_date_str = trade.get('transaction_date')
                 if trade_date_str:
@@ -462,13 +488,23 @@ try:
             price_change = last_price - first_price
             price_change_pct = (price_change / first_price * 100) if first_price > 0 else 0
             
+            # Dynamic label based on range
+            range_labels = {
+                '3m': 'Change (3M)',
+                '6m': 'Change (6M)',
+                '1y': 'Change (1Y)',
+                '2y': 'Change (2Y)',
+                '5y': 'Change (5Y)'
+            }
+            change_label = range_labels.get(time_range, 'Change (3M)')
+            
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("First Price", f"${first_price:.2f}")
             with col2:
                 st.metric("Last Price", f"${last_price:.2f}")
             with col3:
-                st.metric("Change (3M)", f"{price_change_pct:+.2f}%")
+                st.metric(change_label, f"{price_change_pct:+.2f}%")
     else:
         st.info(f"⚠️ No price history data available for {current_ticker}. This may be because:")
         st.markdown("""

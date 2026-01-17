@@ -182,10 +182,19 @@
 <div id="chart-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6">
     <div class="flex justify-between items-center mb-4">
         <h2 class="text-xl font-bold">📈 Price History</h2>
-        <label class="flex items-center">
-            <input type="checkbox" id="solid-lines-checkbox" class="mr-2">
-            <span class="text-sm">📱 Solid Lines Only (for mobile)</span>
-        </label>
+        <div class="flex items-center gap-4">
+            <select id="chart-range-selector" class="px-3 py-1 border rounded text-sm">
+                <option value="3m">3 Months</option>
+                <option value="6m">6 Months</option>
+                <option value="1y">1 Year</option>
+                <option value="2y">2 Years</option>
+                <option value="5y">5 Years</option>
+            </select>
+            <label class="flex items-center">
+                <input type="checkbox" id="solid-lines-checkbox" class="mr-2">
+                <span class="text-sm">📱 Solid Lines Only (for mobile)</span>
+            </label>
+        </div>
     </div>
     <div class="mb-2 text-sm text-gray-500 md:hidden">
         💡 Tip: Rotate your device for better viewing

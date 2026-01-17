@@ -2670,7 +2670,7 @@ def api_ticker_price_history():
         }), 500
 
 @cache_data(ttl=300)
-def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: bool, auth_token: Optional[str]):
+def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: bool, auth_token: Optional[str], range: str = '3m'):
     """Get ticker chart data with caching (300s TTL) - theme applied separately"""
     from supabase_client import SupabaseClient
     
@@ -2682,11 +2682,24 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
     if not supabase_client:
         raise ValueError("Unable to connect to database")
     
+    # Convert range to days
+    range_days = {
+        '3m': 90,
+        '6m': 180,
+        '1y': 365,
+        '2y': 730,
+        '5y': 1825
+    }.get(range, 90)
+    
     from ticker_utils import get_ticker_price_history
-    price_df = get_ticker_price_history(ticker, supabase_client, days=90)
+    price_df = get_ticker_price_history(ticker, supabase_client, days=range_days)
     
     if price_df.empty:
         raise ValueError("No price data available")
+    
+    # Downsample to maintain ~90 data points
+    from chart_utils import downsample_price_data
+    price_df = downsample_price_data(price_df, range_days)
     
     # Fetch congress trades for this ticker within the chart date range
     congress_trades = []
@@ -2694,8 +2707,8 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
         from cache_version import get_cache_version
         refresh_key = get_cache_version()
         
-        # Calculate date range for congress trades (match chart range - 90 days)
-        start_date = (date.today() - timedelta(days=90)).isoformat()
+        # Calculate date range for congress trades (match chart range)
+        start_date = (date.today() - timedelta(days=range_days)).isoformat()
         end_date = date.today().isoformat()
         
         # Fetch congress trades
@@ -2730,12 +2743,12 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
     return serialize_plotly_figure(fig)
 
 
-def _get_ticker_chart_cached(ticker: str, use_solid: bool, user_is_admin: bool, auth_token: Optional[str], theme: Optional[str] = None):
+def _get_ticker_chart_cached(ticker: str, use_solid: bool, user_is_admin: bool, auth_token: Optional[str], theme: Optional[str] = None, range: str = '3m'):
     """Get ticker chart with theme applied dynamically (not cached per theme)"""
     import json
     
     # Get cached chart data (without theme)
-    chart_json_str = _get_ticker_chart_data_cached(ticker, use_solid, user_is_admin, auth_token)
+    chart_json_str = _get_ticker_chart_data_cached(ticker, use_solid, user_is_admin, auth_token, range)
     
     # Parse the JSON
     chart_data = json.loads(chart_json_str)
@@ -2809,11 +2822,17 @@ def api_ticker_chart():
         use_solid = request.args.get('use_solid', 'false').lower() == 'true'
         # Get theme from request (client detects actual page theme)
         client_theme = request.args.get('theme', '').strip().lower()
+        # Get range from request (default: 3m)
+        chart_range = request.args.get('range', '3m').strip().lower()
+        # Validate range
+        if chart_range not in ['3m', '6m', '1y', '2y', '5y']:
+            chart_range = '3m'
+        
         user_is_admin = is_admin()
         auth_token = request.cookies.get('auth_token')
         
         # Get chart (cached) - use client theme if valid, otherwise fall back to user preference
-        chart_json = _get_ticker_chart_cached(ticker, use_solid, user_is_admin, auth_token, theme=client_theme if client_theme in ['dark', 'light'] else None)
+        chart_json = _get_ticker_chart_cached(ticker, use_solid, user_is_admin, auth_token, theme=client_theme if client_theme in ['dark', 'light'] else None, range=chart_range)
         return Response(chart_json, mimetype='application/json')
     except Exception as e:
         logger.error(f"Error generating chart for {ticker}: {e}", exc_info=True)

@@ -142,7 +142,21 @@ document.addEventListener('DOMContentLoaded', function (): void {
     if (checkbox) {
         checkbox.addEventListener('change', function (this: HTMLInputElement): void {
             if (currentTicker) {
-                loadAndRenderChart(currentTicker, this.checked);
+                const rangeSelector = document.getElementById('chart-range-selector') as HTMLSelectElement | null;
+                const range = rangeSelector ? rangeSelector.value : '3m';
+                loadAndRenderChart(currentTicker, this.checked, range);
+            }
+        });
+    }
+    
+    // Set up range selector
+    const rangeSelector = document.getElementById('chart-range-selector') as HTMLSelectElement | null;
+    if (rangeSelector) {
+        rangeSelector.addEventListener('change', function (this: HTMLSelectElement): void {
+            if (currentTicker) {
+                const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
+                const useSolid = checkbox ? checkbox.checked : false;
+                loadAndRenderChart(currentTicker, useSolid, this.value);
             }
         });
     }
@@ -250,7 +264,9 @@ async function loadTickerData(ticker: string): Promise<void> {
         // Load and render chart
         const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
         const useSolid = checkbox ? checkbox.checked : false;
-        loadAndRenderChart(ticker, useSolid);
+        const rangeSelector = document.getElementById('chart-range-selector') as HTMLSelectElement | null;
+        const range = rangeSelector ? rangeSelector.value : '3m';
+        loadAndRenderChart(ticker, useSolid, range);
 
         hideLoading();
     } catch (error) {
@@ -404,7 +420,7 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
 }
 
 // Load and render chart
-async function loadAndRenderChart(ticker: string, useSolid: boolean): Promise<void> {
+async function loadAndRenderChart(ticker: string, useSolid: boolean, range: string = '3m'): Promise<void> {
     // Show loading indicator
     const chartLoading = document.getElementById('chart-loading');
     const chartContainer = document.getElementById('chart-container');
@@ -443,7 +459,7 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean): Promise<vo
 
         console.log('Detected theme:', theme, 'from data-theme:', dataTheme);
 
-        const response = await fetch(`/api/v2/ticker/chart?ticker=${encodeURIComponent(ticker)}&use_solid=${useSolid}&theme=${encodeURIComponent(theme)}`, {
+        const response = await fetch(`/api/v2/ticker/chart?ticker=${encodeURIComponent(ticker)}&use_solid=${useSolid}&theme=${encodeURIComponent(theme)}&range=${encodeURIComponent(range)}`, {
             credentials: 'include'
         });
 
@@ -489,7 +505,7 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean): Promise<vo
         chartLoading.style.display = 'none';
 
         // Load price history for metrics
-        loadPriceHistoryMetrics(ticker);
+        loadPriceHistoryMetrics(ticker, range);
     } catch (error) {
         console.error('Error loading chart:', error);
         // Hide loading indicator
@@ -504,9 +520,32 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean): Promise<vo
 }
 
 // Load price history for metrics
-async function loadPriceHistoryMetrics(ticker: string): Promise<void> {
+async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Promise<void> {
     try {
-        const response = await fetch(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&days=90`, {
+        // Convert range to days
+        const rangeDays: { [key: string]: number } = {
+            '3m': 90,
+            '6m': 180,
+            '1y': 365,
+            '2y': 730,
+            '5y': 1825
+        };
+        const days = rangeDays[range] || 90;
+        
+        // Update metric label based on range
+        const changeLabelEl = document.querySelector('#chart-metrics .metric-card:last-child .text-sm');
+        if (changeLabelEl) {
+            const rangeLabels: { [key: string]: string } = {
+                '3m': 'Change (3M)',
+                '6m': 'Change (6M)',
+                '1y': 'Change (1Y)',
+                '2y': 'Change (2Y)',
+                '5y': 'Change (5Y)'
+            };
+            changeLabelEl.textContent = rangeLabels[range] || 'Change (3M)';
+        }
+        
+        const response = await fetch(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&days=${days}`, {
             credentials: 'include'
         });
 
