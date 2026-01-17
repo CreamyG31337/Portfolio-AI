@@ -233,41 +233,63 @@ async function checkStatus() {
     if (webaiMessage) webaiMessage.textContent = 'Checking...';
 
     try {
-        const [ollamaResp, postgresResp, webaiResp] = await Promise.all([
-            fetch('/api/admin/ai/ollama/status').then(r => r.json()),
-            fetch('/api/admin/ai/postgres/status').then(r => r.json()),
-            fetch('/api/admin/ai/webai/status').then(r => r.json())
-        ]);
+        const response = await fetch('/api/admin/ai/status');
+        const data: StatusResponse = await response.json();
 
-        if (ollamaResp.success && ollamaMessage && ollamaIndicator) {
-            ollamaIndicator.className = ollamaResp.status ? 'bg-green-500' : 'bg-red-500';
-            ollamaMessage.textContent = ollamaResp.message || (ollamaResp.status ? 'Connected' : 'Disconnected');
+        // Update Ollama Status
+        if (ollamaIndicator && ollamaMessage) {
+            if (data.ollama.status) {
+                ollamaIndicator.classList.remove('bg-gray-200', 'bg-red-500');
+                ollamaIndicator.classList.add('bg-green-500');
+                ollamaMessage.textContent = 'Online';
+                ollamaMessage.classList.remove('text-red-500');
+                ollamaMessage.classList.add('text-green-500');
+            } else {
+                ollamaIndicator.classList.remove('bg-gray-200', 'bg-green-500');
+                ollamaIndicator.classList.add('bg-red-500');
+                ollamaMessage.textContent = data.ollama.message || 'Offline';
+                ollamaMessage.classList.remove('text-green-500');
+                ollamaMessage.classList.add('text-red-500');
+            }
         }
 
-        if (postgresResp.success && postgresMessage && postgresIndicator) {
-            postgresIndicator.className = 'bg-green-500';
-            postgresMessage.textContent = postgresResp.message;
+        // Update Postgres Status
+        if (postgresIndicator && postgresMessage) {
+            if (data.postgres.status === 'healthy') {
+                postgresIndicator.classList.remove('bg-gray-200', 'bg-red-500');
+                postgresIndicator.classList.add('bg-green-500');
+                postgresMessage.textContent = 'Connected';
+                postgresMessage.classList.remove('text-red-500');
+                postgresMessage.classList.add('text-green-500');
+            } else {
+                postgresIndicator.classList.remove('bg-gray-200', 'bg-green-500');
+                postgresIndicator.classList.add('bg-red-500');
+                postgresMessage.textContent = data.postgres.message || 'Error';
+                postgresMessage.classList.remove('text-green-500');
+                postgresMessage.classList.add('text-red-500');
+            }
         }
 
-        if (webaiResp.success && webaiMessage && webaiIndicator && webaiSource) {
-            webaiIndicator.className = webaiResp.status ? 'bg-green-500' : 'bg-red-500';
-            webaiMessage.textContent = webaiResp.message;
-            webaiSource.textContent = webaiResp.source || '';
-
-            // Update cookie status display
-            const has1psid = webaiResp.has_1psid === true;
-            const has1psidts = webaiResp.has_1psidts === true;
-
-            if (webaiSource) {
-                let status = '';
-                if (has1psid && has1psidts) {
-                    status = 'Configured';
-                } else if (has1psid) {
-                    status = 'Partial';
-                } else {
-                    status = 'Missing';
+        // Update WebAI Cookie Status
+        if (webaiIndicator && webaiMessage && data.webai) {
+            if (data.webai.status) {
+                webaiIndicator.classList.remove('bg-gray-200', 'bg-red-500');
+                webaiIndicator.classList.add('bg-green-500');
+                webaiMessage.textContent = 'Configured';
+                webaiMessage.classList.remove('text-red-500');
+                webaiMessage.classList.add('text-green-500');
+                if (webaiSource && data.webai.source) {
+                    webaiSource.textContent = `Source: ${data.webai.source}`;
                 }
-                webaiSource.textContent = status;
+            } else {
+                webaiIndicator.classList.remove('bg-gray-200', 'bg-green-500');
+                webaiIndicator.classList.add('bg-red-500');
+                webaiMessage.textContent = data.webai.message || 'Not configured';
+                webaiMessage.classList.remove('text-green-500');
+                webaiMessage.classList.add('text-red-500');
+                if (webaiSource) {
+                    webaiSource.textContent = '';
+                }
             }
         }
     } catch (error) {
@@ -275,6 +297,24 @@ async function checkStatus() {
         if (ollamaMessage) ollamaMessage.textContent = 'Error checking status';
         if (postgresMessage) postgresMessage.textContent = 'Error checking status';
         if (webaiMessage) webaiMessage.textContent = 'Error checking status';
+    }
+}
+
+// Toggle Cookie Method
+function toggleCookieMethod() {
+    const selectedMethod = (document.querySelector('input[name="cookie-method"]:checked') as HTMLInputElement)?.value || 'json';
+    
+    const cookieJsonContainer = document.getElementById('cookie-json-method');
+    const cookieIndividualContainer = document.getElementById('cookie-individual-method');
+    
+    if (cookieJsonContainer && cookieIndividualContainer) {
+        if (selectedMethod === 'json') {
+            cookieJsonContainer.classList.remove('hidden');
+            cookieIndividualContainer.classList.add('hidden');
+        } else {
+            cookieJsonContainer.classList.add('hidden');
+            cookieIndividualContainer.classList.remove('hidden');
+        }
     }
 }
 
@@ -825,6 +865,24 @@ async function loadBlacklist() {
 }
 
 // Settings Functions
+async function loadSettings() {
+    try {
+        const response = await fetch('/api/admin/ai/settings');
+        const data: SettingsResponse = await response.json();
+
+        if (data.auto_blacklist_threshold && autoBlacklistInput) {
+            autoBlacklistInput.value = data.auto_blacklist_threshold;
+        }
+
+        if (data.max_research_batch_size && maxBatchSizeInput) {
+            maxBatchSizeInput.value = data.max_research_batch_size;
+        }
+
+    } catch (error) {
+        console.error('Error loading settings:', error);
+    }
+}
+
 async function saveSettings() {
     if (!settingsForm || !saveSettingsBtn) return;
 
@@ -899,6 +957,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('[DEBUG] Checking initial status...');
     await checkStatus();
 
+    // Load settings
+    console.log('[DEBUG] Loading settings...');
+    await loadSettings();
+
     // Load current cookies
     console.log('[DEBUG] Loading current cookies...');
     await loadCurrentCookies();
@@ -971,6 +1033,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         saveSettingsBtn.addEventListener('click', saveSettings);
         console.log('[DEBUG] saveSettingsBtn listener added');
     }
+
+    // Cookie method toggle
+    document.querySelectorAll('input[name="cookie-method"]').forEach(radio => {
+        radio.addEventListener('change', toggleCookieMethod);
+    });
 
     console.log('[DEBUG] AI Settings initialization complete');
 });
