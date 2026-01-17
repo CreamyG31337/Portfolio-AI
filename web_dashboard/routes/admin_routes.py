@@ -2573,6 +2573,148 @@ def api_get_cookie_refresher_container_status():
             "container_found": False
         }), 500
 
+@admin_bp.route('/api/admin/ai/cookies/refresher/status', methods=['GET'])
+@require_admin
+def api_get_cookie_refresher_status():
+    """Get comprehensive cookie refresher status from cookie file and metadata"""
+    try:
+        from pathlib import Path
+        import json
+        from datetime import datetime
+
+        logger.debug("Getting cookie refresher status...")
+
+        cookie_path = Path("/shared/cookies/webai_cookies.json")
+
+        if not cookie_path.exists():
+            logger.warning(f"Cookie file not found: {cookie_path}")
+            return jsonify({
+                "success": False,
+                "status": "no_cookies",
+                "message": "Cookie file not found",
+                "cookie_file_exists": False,
+                "path": str(cookie_path)
+            })
+
+        logger.debug(f"Reading cookie file: {cookie_path}")
+
+        try:
+            with open(cookie_path, 'r', encoding='utf-8') as f:
+                cookies = json.load(f)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in cookie file: {e}")
+            return jsonify({
+                "success": False,
+                "status": "invalid_json",
+                "error": str(e),
+                "cookie_file_exists": True
+            })
+
+        # Extract cookie values
+        psid = cookies.get("__Secure-1PSID", "")
+        psidts = cookies.get("__Secure-1PSIDTS", "")
+
+        # Extract metadata
+        updated_at = cookies.get("_updated_at")
+        updated_by = cookies.get("_updated_by")
+        refreshed_at = cookies.get("_refreshed_at")
+        refresh_count = cookies.get("_refresh_count", 0)
+
+        logger.debug(f"Cookie status: __Secure-1PSID={bool(psid)}, __Secure-1PSIDTS={bool(psidts)}")
+
+        # Determine overall status
+        status = "missing"
+        if psid:
+            status = "configured"
+            if psidts:
+                status = "full"
+
+        # Calculate age of cookies
+        age_info = {}
+        if updated_at:
+            try:
+                updated_time = datetime.fromisoformat(updated_at.rstrip('Z'))
+                now = datetime.utcnow()
+                age_seconds = (now - updated_time).total_seconds()
+                age_hours = age_seconds / 3600
+                age_info = {
+                    "updated_at": updated_at,
+                    "age_seconds": age_seconds,
+                    "age_hours": round(age_hours, 1),
+                    "age_formatted": f"{age_hours:.1f} hours ago"
+                }
+                logger.debug(f"Cookie age: {age_hours:.1f} hours")
+            except Exception as e:
+                logger.debug(f"Could not parse updated_at: {e}")
+
+        if refreshed_at:
+            try:
+                refreshed_time = datetime.fromisoformat(refreshed_at.rstrip('Z'))
+                now = datetime.utcnow()
+                refresh_age_seconds = (now - refreshed_time).total_seconds()
+                refresh_age_hours = refresh_age_seconds / 3600
+                age_info["refreshed_at"] = refreshed_at
+                age_info["refresh_age_seconds"] = refresh_age_seconds
+                age_info["refresh_age_hours"] = round(refresh_age_hours, 1)
+                age_info["refresh_age_formatted"] = f"{refresh_age_hours:.1f} hours ago"
+                logger.debug(f"Refresh age: {refresh_age_hours:.1f} hours")
+            except Exception as e:
+                logger.debug(f"Could not parse refreshed_at: {e}")
+
+        # Build response with comprehensive debug info
+        response = {
+            "success": True,
+            "status": status,
+            "cookie_file_exists": True,
+            "has_1psid": bool(psid),
+            "has_1psidts": bool(psidts),
+            "1psid_length": len(psid) if psid else 0,
+            "1psidts_length": len(psidts) if psidts else 0,
+            "metadata": {
+                "updated_by": updated_by,
+                "updated_at": updated_at,
+                "refreshed_at": refreshed_at,
+                "refresh_count": refresh_count
+            },
+            "age_info": age_info,
+            "grace_period_hours": 2,
+            "is_in_grace_period": False
+        }
+
+        # Check if in grace period
+        if updated_by == "admin_ui" and "age_hours" in age_info:
+            response["is_in_grace_period"] = age_info["age_hours"] < 2
+            logger.debug(f"In grace period: {response['is_in_grace_period']}")
+
+        # Add helpful messages
+        if not psid:
+            response["message"] = "No cookies configured"
+        elif not psidts:
+            response["message"] = "Partial configuration (missing __Secure-1PSIDTS)"
+        elif response["is_in_grace_period"]:
+            remaining_hours = max(0, 2 - age_info["age_hours"])
+            response["message"] = f"In grace period (refresh skipped, {remaining_hours:.1f}h remaining)"
+        else:
+            response["message"] = "Cookies configured and ready for refresh"
+
+        logger.info(f"Cookie refresher status: {status}")
+        logger.info(f"  __Secure-1PSID: {bool(psid)} ({len(psid)} chars)")
+        logger.info(f"  __Secure-1PSIDTS: {bool(psidts)} ({len(psidts)} chars)")
+        logger.info(f"  Updated by: {updated_by}")
+        logger.info(f"  Updated at: {updated_at}")
+        logger.info(f"  Refresh count: {refresh_count}")
+
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Error getting cookie refresher status: {e}", exc_info=True)
+        logger.debug(f"Exception type: {type(e).__name__}")
+        return jsonify({
+            "success": False,
+            "status": "error",
+            "error": str(e)
+        }), 500
+
 @admin_bp.route('/api/admin/ai/cookies', methods=['POST'])
 @require_admin
 def api_update_webai_cookies():
