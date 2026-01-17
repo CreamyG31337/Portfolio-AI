@@ -149,10 +149,13 @@ def require_auth(f):
         
         if auth_token or session_token:
             # We have a token - try to refresh if needed, but NEVER delete cookies here
-            # Only refresh if we have an auth_token (JWT format)
-            # session_token might be a different format, so don't try to refresh it
-            if auth_token:
-                # Try to refresh proactively if needed
+            # If auth_token is missing but refresh_token exists, try to refresh
+            if not auth_token and refresh_token:
+                # Missing auth_token - try to refresh using refresh_token
+                success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+                # If refresh succeeds, use new tokens; if it fails, continue with session_token
+            elif auth_token:
+                # Have auth_token - try to refresh proactively if needed
                 success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
                 # If refresh succeeds, use new tokens; if it fails, continue with existing token
             else:
@@ -177,16 +180,24 @@ def require_auth(f):
                 request._token_expires_in = expires_in
         
         # Check for auth_token (use new token if available, otherwise from cookies)
+        # If we successfully refreshed, we should have a token now
         token = new_token or (request.cookies.get('auth_token') or 
                               request.cookies.get('session_token') or 
                               request.headers.get('Authorization', '').replace('Bearer ', ''))
         
+        # If we tried to refresh but failed, and we don't have session_token, redirect to login
         if not token:
-            # For HTML pages, redirect to login; for API, return JSON error
-            if request.path.startswith('/api/'):
-                return jsonify({"error": "Authentication required"}), 401
+            # Check if we have session_token as fallback
+            if session_token:
+                # Have session_token - allow access but log warning
+                logger.warning(f"[AUTH] require_auth: Using session_token as fallback (auth_token missing/expired)")
+                token = session_token
             else:
-                return redirect('/auth')
+                # No token at all - redirect to login
+                if request.path.startswith('/api/'):
+                    return jsonify({"error": "Authentication required"}), 401
+                else:
+                    return redirect('/auth')
         
         # Try to verify with auth_manager (for session_token format)
         user_data = auth_manager.verify_session(token)

@@ -959,6 +959,26 @@ def index():
         refresh_token = get_refresh_token()
         
         # Don't delete cookies in root route - just check authentication
+        # Check if auth_token is missing or expired, try to refresh if we have refresh_token
+        if not auth_token and refresh_token:
+            # Missing auth_token but have refresh_token - try to refresh
+            from flask_auth_utils import refresh_token_if_needed_flask
+            success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+            if success and new_token:
+                # Refresh succeeded - redirect with new cookies
+                is_production = (
+                    os.getenv("FLASK_ENV") == "production" or 
+                    os.getenv("APP_DOMAIN") is not None or
+                    request.headers.get('X-Forwarded-Proto') == 'https' or
+                    request.is_secure
+                )
+                samesite_value = 'Lax'
+                response = redirect(url_for('dashboard.dashboard_page'))
+                response.set_cookie('auth_token', new_token, max_age=expires_in or 3600, httponly=True, secure=is_production, samesite=samesite_value, path='/')
+                if new_refresh:
+                    response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite=samesite_value, path='/')
+                return response
+        
         # Check if auth_token exists and is expired, try to refresh
         if auth_token:
             try:

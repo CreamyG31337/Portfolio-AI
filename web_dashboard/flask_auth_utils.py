@@ -98,6 +98,8 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
     This function automatically refreshes the access token when it's about to expire
     (within 5 minutes), keeping users logged in during active sessions.
     
+    If auth_token is missing but refresh_token exists, attempts to refresh to get a new auth_token.
+    
     Returns:
         Tuple of (success, new_access_token, new_refresh_token, expires_in)
         - success: True if token is valid or was refreshed, False if expired/invalid
@@ -106,10 +108,54 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
         - expires_in: Expiration time in seconds if refreshed, None otherwise
     """
     token = get_auth_token()
+    refresh_token = get_refresh_token()
+    
+    # If no auth_token but we have refresh_token, try to refresh immediately
+    if not token and refresh_token:
+        # Missing auth_token - try to refresh using refresh_token
+        try:
+            import time
+            import os
+            import requests
+            
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+            
+            if supabase_url and supabase_key:
+                response = requests.post(
+                    f"{supabase_url}/auth/v1/token?grant_type=refresh_token",
+                    headers={
+                        "apikey": supabase_key,
+                        "Content-Type": "application/json"
+                    },
+                    json={"refresh_token": refresh_token},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    auth_data = response.json()
+                    new_access_token = auth_data.get("access_token")
+                    new_refresh_token = auth_data.get("refresh_token")
+                    expires_in = auth_data.get("expires_in", 3600)
+                    
+                    if new_access_token:
+                        logger.info("[FLASK_AUTH] Missing auth_token refreshed successfully")
+                        return (True, new_access_token, new_refresh_token, expires_in)
+                
+                # Refresh API returned non-200 - refresh token is invalid/expired
+                logger.warning(f"[FLASK_AUTH] Missing auth_token refresh failed: {response.status_code}: {response.text[:200]}")
+                return (False, None, None, None)
+            else:
+                # Missing Supabase config
+                logger.warning("[FLASK_AUTH] Missing auth_token but no Supabase URL/key for refresh")
+                return (False, None, None, None)
+        except Exception as e:
+            logger.warning(f"[FLASK_AUTH] Missing auth_token refresh failed: {e}")
+            return (False, None, None, None)
+    
+    # If no token at all, can't refresh
     if not token:
         return (False, None, None, None)
-    
-    refresh_token = get_refresh_token()
     
     try:
         import time
