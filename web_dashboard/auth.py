@@ -164,8 +164,31 @@ def require_auth(f):
                 # Have auth_token - try to refresh proactively if needed (within 5 minutes of expiry)
                 # This keeps tokens fresh during active sessions
                 success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
-                # If proactive refresh fails, continue with existing auth_token (it's still valid)
-                # Only redirect if auth_token is also expired (checked later in token validation)
+                
+                # Check if token is expired and refresh failed - if so, redirect to login
+                if not success and not new_token:
+                    # Refresh failed - check if token is expired
+                    try:
+                        import base64
+                        import json as json_lib
+                        import time
+                        token_parts = auth_token.split('.')
+                        if len(token_parts) >= 2:
+                            payload = token_parts[1]
+                            payload += '=' * (4 - len(payload) % 4)
+                            decoded = base64.urlsafe_b64decode(payload)
+                            token_data = json_lib.loads(decoded)
+                            exp = token_data.get('exp', 0)
+                            if exp > 0 and exp < time.time():
+                                # Token is expired and refresh failed - redirect to login
+                                logger.warning("[AUTH] require_auth: Token expired and refresh failed, redirecting to login")
+                                if request.path.startswith('/api/'):
+                                    return jsonify({"error": "Session expired, please log in again"}), 401
+                                else:
+                                    return redirect('/auth')
+                    except Exception as e:
+                        logger.debug(f"[AUTH] Error checking token expiration: {e}")
+                        # If we can't parse the token, continue to validation below
             else:
                 # Only have session_token - don't try to refresh, just use it
                 # This is OK for basic auth, but Supabase features won't work
