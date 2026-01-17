@@ -168,32 +168,19 @@ def require_auth(f):
         expires_in = None
         
         if auth_token or session_token:
-            # We have a token - check if it's valid first
-            from flask_auth_utils import is_authenticated_flask
-            is_valid = is_authenticated_flask()
-            
-            # Only try to refresh if token is expired or about to expire
-            # Don't delete cookies just because refresh fails - token might still be valid
-            if not is_valid:
-                # Token is invalid - try to refresh it
+            # We have a token - try to refresh if needed, but NEVER delete cookies here
+            # Only refresh if we have an auth_token (JWT format)
+            # session_token might be a different format, so don't try to refresh it
+            if auth_token:
+                # Try to refresh proactively if needed
                 success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
-                
-                if not success:
-                    # Token is invalid AND refresh failed - authentication failed
-                    logger.warning(f"[AUTH] require_auth: Token invalid and refresh failed for path {request.path}")
-                    if request.path.startswith('/api/'):
-                        return jsonify({"error": "Authentication required"}), 401
-                    else:
-                        # Clear cookies and redirect to login
-                        response = redirect('/auth')
-                        response.delete_cookie('auth_token', path='/')
-                        response.delete_cookie('session_token', path='/')
-                        response.delete_cookie('refresh_token', path='/')
-                        return response
+                # If refresh succeeds, use new tokens; if it fails, continue with existing token
             else:
-                # Token is valid - try to refresh proactively if needed, but don't fail if refresh fails
-                success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
-                # If refresh succeeds, use new tokens; if it fails, token is still valid so continue
+                # Only have session_token - don't try to refresh, just use it
+                success = True
+                new_token = None
+                new_refresh = None
+                expires_in = None
         else:
             # No token at all - redirect to login
             if request.path.startswith('/api/'):
