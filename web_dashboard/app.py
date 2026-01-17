@@ -914,9 +914,34 @@ def dashboard_fallback():
 def index():
     """Redirect to dashboard if authenticated, otherwise to auth page"""
     try:
-        from flask_auth_utils import is_authenticated_flask
+        from flask_auth_utils import is_authenticated_flask, refresh_token_if_needed_flask
+        # Try to refresh token first if needed
+        success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+        
+        # Then check authentication
         if is_authenticated_flask():
-            return redirect(url_for('dashboard.dashboard_page'))
+            response = redirect(url_for('dashboard.dashboard_page'))
+            # If token was refreshed, update cookies in the response
+            if new_token:
+                is_production = os.getenv("FLASK_ENV") == "production"
+                response.set_cookie(
+                    'auth_token',
+                    new_token,
+                    max_age=expires_in if expires_in else 3600,
+                    httponly=True,
+                    secure=is_production,
+                    samesite='None' if is_production else 'Lax'
+                )
+                if new_refresh:
+                    response.set_cookie(
+                        'refresh_token',
+                        new_refresh,
+                        max_age=86400 * 30,  # 30 days
+                        httponly=True,
+                        secure=is_production,
+                        samesite='None' if is_production else 'Lax'
+                    )
+            return response
         else:
             return redirect(url_for('auth_page'))
     except Exception as e:

@@ -127,17 +127,37 @@ def require_auth(f):
     """Decorator to require authentication for routes"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Check for auth_token (Streamlit) or session_token (Flask legacy) in cookies or headers
-        token = (request.cookies.get('auth_token') or 
-                 request.cookies.get('session_token') or 
-                 request.headers.get('Authorization', '').replace('Bearer ', ''))
+        # First, try to refresh token if needed
+        from flask_auth_utils import refresh_token_if_needed_flask, get_auth_token, is_authenticated_flask
+        success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+        
+        if not success:
+            # Token refresh failed or token is invalid
+            if request.path.startswith('/api/'):
+                return jsonify({"error": "Authentication required"}), 401
+            else:
+                from flask import redirect
+                return redirect('/')
+        
+        # Store new tokens in request context if they were refreshed
+        if new_token:
+            request._new_auth_token = new_token
+            if new_refresh:
+                request._new_refresh_token = new_refresh
+            if expires_in:
+                request._token_expires_in = expires_in
+        
+        # Check for auth_token (use new token if available, otherwise from cookies)
+        token = new_token or (request.cookies.get('auth_token') or 
+                              request.cookies.get('session_token') or 
+                              request.headers.get('Authorization', '').replace('Bearer ', ''))
         
         if not token:
             # For HTML pages, redirect to login; for API, return JSON error
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Authentication required"}), 401
             else:
-                from flask import redirect, url_for
+                from flask import redirect
                 return redirect('/')
         
         # Try to verify with auth_manager (for session_token format)
@@ -146,7 +166,6 @@ def require_auth(f):
         # If that fails, try parsing as JWT (for auth_token format from Streamlit)
         if not user_data:
             try:
-                from flask_auth_utils import get_user_id_flask, get_user_email_flask, is_authenticated_flask
                 if is_authenticated_flask():
                     # Extract user data from token
                     import base64
@@ -170,14 +189,39 @@ def require_auth(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Invalid or expired session"}), 401
             else:
-                from flask import redirect, url_for
+                from flask import redirect
                 return redirect('/')
         
         # Add user data to request context
         request.user_id = user_data.get("user_id") or user_data.get("sub")
         request.user_email = user_data.get("email")
         
-        return f(*args, **kwargs)
+        # Execute the route function
+        response = f(*args, **kwargs)
+        
+        # If token was refreshed, update cookies in the response
+        if new_token:
+            import os
+            is_production = os.getenv("FLASK_ENV") == "production"
+            response.set_cookie(
+                'auth_token',
+                new_token,
+                max_age=expires_in if expires_in else 3600,
+                httponly=True,
+                secure=is_production,
+                samesite='None' if is_production else 'Lax'
+            )
+            if new_refresh:
+                response.set_cookie(
+                    'refresh_token',
+                    new_refresh,
+                    max_age=86400 * 30,  # 30 days
+                    httponly=True,
+                    secure=is_production,
+                    samesite='None' if is_production else 'Lax'
+                )
+        
+        return response
     return decorated_function
 
 def require_fund_access(fund_name: str):
