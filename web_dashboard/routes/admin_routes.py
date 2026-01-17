@@ -1481,13 +1481,14 @@ def api_scheduler_startup_diagnostics():
 @require_admin
 def api_scheduler_start():
     """Start the scheduler"""
+    try:
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot control scheduler"}), 403
             
         if is_scheduler_running():
             return jsonify({"success": True, "message": "Scheduler is already running"})
-            
+        
         success = start_scheduler()
         if success:
             return jsonify({"success": True, "message": "Scheduler started successfully"})
