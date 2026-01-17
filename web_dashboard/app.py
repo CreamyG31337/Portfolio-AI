@@ -1149,8 +1149,8 @@ def login():
                 session_token, 
                 max_age=86400, 
                 httponly=True, 
-                secure=is_production,  # True for HTTPS (Vercel), False for localhost
-                samesite='None' if is_production else 'Lax'  # None required for cross-origin cookies
+                secure=is_production,  # True for HTTPS, False for localhost
+                samesite='Lax'  # Lax is correct for same-origin login (None is for cross-origin only)
             )
 
             # Set the auth token as a cookie (Streamlit/Supabase compatible)
@@ -1164,7 +1164,7 @@ def login():
                     max_age=expires_in, 
                     httponly=True, 
                     secure=is_production,
-                    samesite='None' if is_production else 'Lax'
+                    samesite='Lax'
                 )
                 
                 # Also set refresh token if available so client can refresh if needed
