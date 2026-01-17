@@ -85,7 +85,7 @@
             </div>
         </div>
         <a href="/dev/sql"
-            class="mt-4 inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition">
+            class="mt-4 inline-block bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition font-medium">
             <i class="fas fa-play mr-2"></i>Open SQL Interface
         </a>
     </div>
@@ -112,7 +112,7 @@
             </div>
         </div>
         <a href="/dev/dashboard"
-            class="mt-4 inline-block bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition">
+            class="mt-4 inline-block bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-600 text-white px-6 py-3 rounded-lg transition font-medium">
             <i class="fas fa-chart-line mr-2"></i>Open Dashboard
         </a>
     </div>
@@ -167,18 +167,18 @@
     
     <div id="auth-debug-content" class="space-y-4">
         <div class="flex items-center space-x-4">
-            <button onclick="loadAuthDebug()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+            <button onclick="loadAuthDebug()" class="bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition font-medium">
                 <i class="fas fa-sync mr-2"></i>Refresh Debug Info
             </button>
-            <button onclick="testRefreshToken()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
+            <button onclick="testRefreshToken()" class="bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-600 text-white px-4 py-2 rounded-lg transition font-medium">
                 <i class="fas fa-redo mr-2"></i>Test Token Refresh
             </button>
-            <button onclick="testLoginResponse()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg">
+            <button onclick="testLoginResponse()" class="bg-purple-600 dark:bg-purple-700 hover:bg-purple-700 dark:hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition font-medium">
                 <i class="fas fa-sign-in-alt mr-2"></i>Test Login Response
             </button>
         </div>
-        <div id="auth-debug-output" class="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm overflow-auto max-h-96">
-            <p class="text-gray-500">Click "Refresh Debug Info" to load token information...</p>
+        <div id="auth-debug-output" class="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm overflow-auto max-h-96 text-gray-800 dark:text-gray-200">
+            <p class="text-gray-500 dark:text-gray-400">Click "Refresh Debug Info" to load token information...</p>
         </div>
     </div>
 </div>
@@ -192,19 +192,19 @@
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button onclick="testConnection()"
-            class="bg-blue-100 dark:bg-blue-900/40 hover:bg-blue-200 dark:hover:bg-blue-900/60 text-blue-800 dark:text-blue-300 px-4 py-3 rounded-lg transition text-left">
+            class="bg-blue-100 dark:bg-blue-900/80 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 px-4 py-3 rounded-lg transition text-left font-medium">
             <i class="fas fa-plug mr-2"></i>
             Test Database Connection
         </button>
 
         <button onclick="exportData()"
-            class="bg-green-100 dark:bg-green-900/40 hover:bg-green-200 dark:hover:bg-green-900/60 text-green-800 dark:text-green-300 px-4 py-3 rounded-lg transition text-left">
+            class="bg-green-100 dark:bg-green-900/80 hover:bg-green-200 dark:hover:bg-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg transition text-left font-medium">
             <i class="fas fa-download mr-2"></i>
             Export All Data
         </button>
 
         <button onclick="viewLogs()"
-            class="bg-purple-100 dark:bg-purple-900/40 hover:bg-purple-200 dark:hover:bg-purple-900/60 text-purple-800 dark:text-purple-300 px-4 py-3 rounded-lg transition text-left">
+            class="bg-purple-100 dark:bg-purple-900/80 hover:bg-purple-200 dark:hover:bg-purple-800 text-purple-800 dark:text-purple-200 px-4 py-3 rounded-lg transition text-left font-medium">
             <i class="fas fa-file-alt mr-2"></i>
             View System Logs
         </button>
