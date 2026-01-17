@@ -59,8 +59,9 @@ RUN test -f web_dashboard/static/css/tailwind.css || (echo "ERROR: Tailwind CSS 
 EXPOSE 8501
 
 # Health check - handles connection errors gracefully
+# (healthcheck.py is already copied via COPY . /app above)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; import sys; try: r = requests.get('http://localhost:8501/_stcore/health', timeout=5); sys.exit(0 if r.status_code == 200 else 1); except: sys.exit(1)"
+    CMD python /app/web_dashboard/healthcheck.py
 
 # Run via entrypoint (starts scheduler + Streamlit)
 CMD ["python", "web_dashboard/entrypoint.py"]
