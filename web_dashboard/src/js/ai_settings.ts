@@ -505,24 +505,22 @@ async function loadCurrentCookies() {
         // Update current cookies display (above input fields)
         const currentDisplay = document.getElementById('cookie-current-display');
         
-        if (result.success && result.cookies && result.has_cookies) {
-            // Update JSON textarea
-            if (cookieJsonInput) {
-                cookieJsonInput.value = JSON.stringify(result.cookies, null, 2);
-            }
+        if (!currentDisplay) {
+            console.error('cookie-current-display element not found');
+            return;
+        }
+        
+        if (result.success) {
+            const cookies = result.cookies || {};
+            const hasCookies = result.has_cookies === true;
             
-            // Update individual inputs
-            if (cookie1psidInput && result.cookies['__Secure-1PSID']) {
-                cookie1psidInput.value = result.cookies['__Secure-1PSID'];
-            }
-            if (cookie1psidtsInput && result.cookies['__Secure-1PSIDTS']) {
-                cookie1psidtsInput.value = result.cookies['__Secure-1PSIDTS'];
-            }
+            // Don't auto-populate input fields - user wants to paste new cookies to compare
+            // Just display current cookies above for comparison
             
             // Display current cookies in the comparison section
-            if (currentDisplay) {
-                const psid = result.cookies['__Secure-1PSID'] || 'Not set';
-                const psidts = result.cookies['__Secure-1PSIDTS'] || 'Not set';
+            if (hasCookies && cookies['__Secure-1PSID']) {
+                const psid = cookies['__Secure-1PSID'] || 'Not set';
+                const psidts = cookies['__Secure-1PSIDTS'] || 'Not set';
                 
                 // Truncate long values for display (show first 50 chars)
                 const psidDisplay = psid.length > 50 ? psid.substring(0, 50) + '...' : psid;
@@ -546,18 +544,20 @@ async function loadCurrentCookies() {
                         </div>
                     </div>
                 `;
-            }
-        } else {
-            // No cookies found
-            if (currentDisplay) {
+            } else {
+                // No cookies found
                 currentDisplay.innerHTML = '<p class="text-gray-600 dark:text-gray-400">ℹ️ No current cookies found. Enter new cookies below.</p>';
             }
+        } else {
+            // API error
+            currentDisplay.innerHTML = `<p class="text-red-600 dark:text-red-400">❌ Error loading cookies: ${result.error || 'Unknown error'}</p>`;
         }
     } catch (error) {
         console.error('Error loading current cookies:', error);
         const currentDisplay = document.getElementById('cookie-current-display');
         if (currentDisplay) {
-            currentDisplay.innerHTML = '<p class="text-red-600 dark:text-red-400">❌ Error loading current cookies</p>';
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            currentDisplay.innerHTML = `<p class="text-red-600 dark:text-red-400">❌ Error loading cookies: ${errorMessage}</p>`;
         }
     }
 }
