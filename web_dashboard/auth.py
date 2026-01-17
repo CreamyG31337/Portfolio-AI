@@ -197,17 +197,7 @@ def require_auth(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Authentication required"}), 401
             else:
-                from flask import redirect
-                # DEBUG: Return info instead of redirect
-                return f"""
-                <h1>Auth Debug: Missing Token</h1>
-                <p>Path: {request.path}</p>
-                <p>Session Token (cookie): {bool(request.cookies.get('session_token'))}</p>
-                <p>Auth Token (cookie): {bool(request.cookies.get('auth_token'))}</p>
-                <p>Auth Token (variable): {bool(auth_token)}</p>
-                <p>Refresh Token: {bool(refresh_token)}</p>
-                <p>Cookies keys: {list(request.cookies.keys())}</p>
-                """, 403
+                return redirect('/auth')
         
         # Try to verify with auth_manager (for session_token format)
         user_data = auth_manager.verify_session(token)
