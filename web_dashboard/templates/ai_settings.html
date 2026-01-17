@@ -3,200 +3,215 @@
 {% block title %}AI & System Settings - Admin Dashboard{% endblock %}
 
 {% block content %}
-<!-- Toast Container -->
-<div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
-
-<!-- Header -->
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-        <span class="text-3xl">🤖</span> AI & System Settings
-    </h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage LLM configurations, research settings, and
+<div class="px-4 py-6">
+    <!-- Header -->
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <span class="text-3xl">🤖</span> AI & System Settings
+        </h1>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage LLM configurations, research settings, and
             system health.</p>
-</div>
-
-<!-- System Status Grid -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-    <!-- Ollama Status Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <div class="flex items-center justify-between mb-2">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">🦙 Ollama</h3>
-            <div id="ollama-indicator" class="w-3 h-3 rounded-full bg-gray-400"></div>
-        </div>
-        <p id="ollama-message" class="text-sm text-gray-600 dark:text-gray-400">Checking...</p>
-        <button id="test-ollama-btn" class="mt-2 px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-800">
-            Test Connection
-        </button>
     </div>
 
-    <!-- Postgres Status Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <div class="flex items-center justify-between mb-2">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">🗄️ Postgres</h3>
-            <div id="postgres-indicator" class="w-3 h-3 rounded-full bg-gray-400"></div>
+    <!-- System Status Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <!-- Ollama Card -->
+        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <h5 class="text-lg font-bold text-gray-900 dark:text-white">Ollama Status</h5>
+                <span class="flex w-3 h-3 bg-gray-200 rounded-full" id="ollama-indicator"></span>
+            </div>
+            <p class="mb-3 font-normal text-gray-700 dark:text-gray-400 text-sm" id="ollama-message">Checking...</p>
+            <button id="test-ollama-btn"
+                class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                Test Connection
+            </button>
         </div>
-        <p id="postgres-message" class="text-sm text-gray-600 dark:text-gray-400">Checking...</p>
+
+        <!-- Postgres Card -->
+        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <h5 class="text-lg font-bold text-gray-900 dark:text-white">Postgres Status</h5>
+                <span class="flex w-3 h-3 bg-gray-200 rounded-full" id="postgres-indicator"></span>
+            </div>
+            <p class="mb-3 font-normal text-gray-700 dark:text-gray-400 text-sm" id="postgres-message">Checking...</p>
+        </div>
+
+        <!-- WebAI Cookie Status Card -->
+        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <h5 class="text-lg font-bold text-gray-900 dark:text-white">WebAI Cookie Status</h5>
+                <span class="flex w-3 h-3 bg-gray-200 rounded-full" id="webai-indicator"></span>
+            </div>
+            <p class="mb-3 font-normal text-gray-700 dark:text-gray-400 text-sm" id="webai-message">Checking...</p>
+            <p class="mb-2 text-xs text-gray-500 dark:text-gray-400" id="webai-source"></p>
+            <button id="test-webai-btn"
+                class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                Test Connection
+            </button>
+        </div>
     </div>
 
-    <!-- WebAI Status Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <div class="flex items-center justify-between mb-2">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">🌐 WebAI</h3>
-            <div id="webai-indicator" class="w-3 h-3 rounded-full bg-gray-400"></div>
-        </div>
-        <p id="webai-message" class="text-sm text-gray-600 dark:text-gray-400">Checking...</p>
-        <p id="webai-source" class="text-xs text-gray-500 dark:text-gray-500 mt-1"></p>
-        <button id="test-webai-btn" class="mt-2 px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-800">
-            Test Connection
-        </button>
-    </div>
-</div>
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <!-- Settings Form -->
+        <div class="p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <h2 class="mb-4 text-xl font-bold tracking-tight text-gray-900 dark:text-white">⚙️ System Configuration</h2>
+            <form id="settings-form" class="space-y-4">
+                <div>
+                    <label for="auto_blacklist_threshold"
+                        class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Auto-Blacklist Threshold
+                        (0.0 - 1.0)</label>
+                    <input type="number" id="auto_blacklist_threshold" name="auto_blacklist_threshold" min="0" max="1"
+                        step="0.01"
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
+                        required>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Domains with < 10% useful content ratio
+                            will be auto-blacklisted below this threshold.</p>
+                </div>
 
-<!-- Settings Form -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8">
-    <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">⚙️ System Settings</h2>
-    <form id="settings-form">
+                <div>
+                    <label for="max_research_batch_size"
+                        class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Max Research Batch
+                        Size</label>
+                    <input type="number" id="max_research_batch_size" name="max_research_batch_size" min="1" max="500"
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
+                        required>
+                </div>
+
+                <button type="submit" id="save-settings-btn"
+                    class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">
+                    💾 Save Configuration
+                </button>
+            </form>
+        </div>
+
+        <!-- Blacklist Management -->
+        <div class="p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">🚫 Research Blacklist</h2>
+                <div class="flex gap-2">
+                    <input type="text" id="add-domain-input" placeholder="example.com"
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white">
+                    <button id="add-domain-btn"
+                        class="px-3 py-2 text-sm font-medium text-center text-white bg-red-600 rounded-lg hover:bg-red-700 focus:ring-4 focus:outline-none focus:ring-red-300 dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-red-900">
+                        Add
+                    </button>
+                </div>
+            </div>
+
+            <div class="relative overflow-x-auto" style="max-height: 400px">
+                <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+                    <thead
+                        class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
+                        <tr>
+                            <th scope="col" class="px-6 py-3">Domain</th>
+                            <th scope="col" class="px-6 py-3">Reason</th>
+                            <th scope="col" class="px-6 py-3 text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blacklist-table-body">
+                        <!-- JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cookie Refresher Logs -->
+    <div class="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+        <div class="flex justify-between items-center mb-4">
+            <div class="flex items-center gap-3">
+                <h2 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">📋 Cookie Refresher Logs</h2>
+                <!-- Container Status Indicator -->
+                <div id="cookie-refresher-status" class="flex items-center gap-2">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium">
+                        <span id="status-dot" class="w-2 h-2 rounded-full mr-1.5 bg-gray-400"></span>
+                        <span id="status-text" class="text-gray-600 dark:text-gray-400">Checking...</span>
+                    </span>
+                </div>
+            </div>
+            <button id="refresh-cookie-logs-btn"
+                class="px-3 py-2 text-sm font-medium text-center text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                🔄 Refresh
+            </button>
+        </div>
+        <p class="mb-4 text-sm text-gray-600 dark:text-gray-400">View recent activity from the cookie refresher service</p>
         <div class="mb-4">
-            <label for="auto_blacklist_threshold" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Auto-Blacklist Threshold
-            </label>
-            <input type="number" id="auto_blacklist_threshold" name="auto_blacklist_threshold" 
-                   min="1" max="10" value="4"
-                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            <label for="cookie-log-lines" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Lines to show</label>
+            <input type="range" id="cookie-log-lines" min="50" max="500" value="100" step="50"
+                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700">
+            <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>50</span>
+                <span id="cookie-log-lines-value">100</span>
+                <span>500</span>
+            </div>
         </div>
+        <div class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-xs overflow-x-auto" style="max-height: 400px; overflow-y: auto;">
+            <pre id="cookie-refresher-logs">Loading logs...</pre>
+        </div>
+    </div>
+
+    <!-- WebAI Cookie Management -->
+    <div class="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
+        <h2 class="mb-4 text-xl font-bold tracking-tight text-gray-900 dark:text-white">🍪 WebAI Cookie Management</h2>
+        
+        <!-- Current Cookies Display -->
+        <div class="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-900 dark:border-gray-700">
+            <h3 class="mb-2 text-sm font-semibold text-gray-900 dark:text-white">📋 Current Cookies (for comparison)</h3>
+            <div id="cookie-current-display" class="text-sm">
+                <p class="text-gray-600 dark:text-gray-400">Loading current cookies...</p>
+            </div>
+        </div>
+        
         <div class="mb-4">
-            <label for="max_research_batch_size" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Max Research Batch Size
-            </label>
-            <input type="number" id="max_research_batch_size" name="max_research_batch_size" 
-                   min="1" max="100" value="50"
-                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Update Method</label>
+            <div class="flex gap-4 mb-4">
+                <label class="inline-flex items-center">
+                    <input type="radio" name="cookie-method" value="json" class="mr-2" checked>
+                    <span class="text-sm text-gray-700 dark:text-gray-300">Paste JSON</span>
+                </label>
+                <label class="inline-flex items-center">
+                    <input type="radio" name="cookie-method" value="individual" class="mr-2">
+                    <span class="text-sm text-gray-700 dark:text-gray-300">Individual Values</span>
+                </label>
+            </div>
         </div>
-        <button type="button" id="save-settings-btn" 
-                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
-            💾 Save Settings
-        </button>
-    </form>
-</div>
 
-<!-- WebAI Cookie Configuration -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8">
-    <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">🍪 WebAI Cookie Configuration</h2>
-    
-    <!-- Cookie Method Selection -->
-    <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Cookie Input Method</label>
-        <div class="flex gap-4">
-            <label class="flex items-center">
-                <input type="radio" name="cookie-method" value="json" id="cookie-json-method" checked class="mr-2">
-                <span class="text-sm text-gray-700 dark:text-gray-300">JSON</span>
-            </label>
-            <label class="flex items-center">
-                <input type="radio" name="cookie-method" value="individual" id="cookie-individual-method" class="mr-2">
-                <span class="text-sm text-gray-700 dark:text-gray-300">Individual</span>
-            </label>
+        <!-- JSON Method -->
+        <div id="cookie-json-method" class="cookie-method">
+            <label for="cookie-json-input" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Cookie JSON</label>
+            <textarea id="cookie-json-input" rows="6"
+                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
+                placeholder='{"__Secure-1PSID": "...", "__Secure-1PSIDTS": "..."}'></textarea>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Paste the cookie JSON here</p>
         </div>
-    </div>
 
-    <!-- JSON Method -->
-    <div id="cookie-json-container" class="mb-4">
-        <label for="cookie-json-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Cookie JSON
-        </label>
-        <textarea id="cookie-json-input" rows="4" 
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs"
-                  placeholder='{"__Secure-1PSID": "...", "__Secure-1PSIDTS": "..."}'></textarea>
-    </div>
-
-    <!-- Individual Method -->
-    <div id="cookie-individual-container" class="mb-4 hidden">
-        <div class="mb-2">
-            <label for="cookie-1psid-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                __Secure-1PSID
-            </label>
-            <input type="text" id="cookie-1psid-input" 
-                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+        <!-- Individual Values Method -->
+        <div id="cookie-individual-method" class="cookie-method hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="cookie-1psid-input" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">__Secure-1PSID (required)</label>
+                    <input type="text" id="cookie-1psid-input"
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white font-mono text-xs"
+                        placeholder="Cookie value">
+                </div>
+                <div>
+                    <label for="cookie-1psidts-input" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">__Secure-1PSIDTS (optional)</label>
+                    <input type="text" id="cookie-1psidts-input"
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white font-mono text-xs"
+                        placeholder="Cookie value">
+                </div>
+            </div>
         </div>
-        <div class="mb-2">
-            <label for="cookie-1psidts-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                __Secure-1PSIDTS
-            </label>
-            <input type="text" id="cookie-1psidts-input" 
-                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+
+        <div class="mt-4 flex gap-2">
+            <button id="save-cookies-btn"
+                class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">
+                💾 Save Cookies
+            </button>
         </div>
-    </div>
-
-    <button type="button" id="save-cookies-btn" 
-            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600">
-        💾 Save Cookies
-    </button>
-
-    <!-- Current Cookie Display -->
-    <div id="cookie-current-display" class="mt-4 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
-</div>
-
-<!-- Cookie Refresher Status -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8">
-    <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">🔄 Cookie Refresher Status</h2>
-    <div id="cookie-refresher-status" class="mb-4">
-        <div class="flex items-center gap-2">
-            <div id="status-dot" class="w-3 h-3 rounded-full bg-gray-400"></div>
-            <span id="status-text" class="text-sm text-gray-600 dark:text-gray-400">Loading...</span>
-        </div>
-    </div>
-    
-    <div class="mb-4">
-        <label for="cookie-log-lines" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Log Lines: <span id="cookie-log-lines-value">50</span>
-        </label>
-        <input type="range" id="cookie-log-lines" min="10" max="200" value="50" step="10"
-               class="w-full">
-    </div>
-    
-    <button type="button" id="refresh-cookie-logs-btn" 
-            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 mb-4">
-        🔄 Refresh Logs
-    </button>
-    
-    <div id="cookie-refresher-logs" class="p-4 bg-gray-100 dark:bg-gray-700 rounded-lg font-mono text-xs max-h-96 overflow-y-auto">
-        Loading logs...
     </div>
 </div>
-
-<!-- Domain Blacklist -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-    <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">🚫 Domain Blacklist</h2>
-    
-    <div class="mb-4 flex gap-2">
-        <input type="text" id="add-domain-input" 
-               placeholder="example.com"
-               class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-        <button type="button" id="add-domain-btn" 
-                class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600">
-            ➕ Add Domain
-        </button>
-    </div>
-    
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-            <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-                <tr>
-                    <th class="px-4 py-3">Domain</th>
-                    <th class="px-4 py-3">Status</th>
-                    <th class="px-4 py-3">Failures</th>
-                    <th class="px-4 py-3">Last Failure</th>
-                    <th class="px-4 py-3">Updated</th>
-                </tr>
-            </thead>
-            <tbody id="blacklist-table-body">
-                <tr>
-                    <td colspan="5" class="px-4 py-4 text-center text-gray-500 dark:text-gray-400">Loading...</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block extra_scripts %}

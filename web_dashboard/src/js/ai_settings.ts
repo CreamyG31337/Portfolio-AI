@@ -126,15 +126,104 @@ function showToastForAI(message: string, type: 'success' | 'error' | 'info' = 's
 
     container.appendChild(toast);
 
+    // Add close button functionality
+    const closeBtn = toast.querySelector('button');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                toast.remove();
+                const allToasts = container.querySelectorAll('div');
+                if (allToasts.length === 0) {
+                    container.remove();
+                }
+            }, 300);
+        });
+    }
+
     toast.style.opacity = '0';
     setTimeout(() => {
-        toast.remove();
-        // Remove container if empty
-        const allToasts = container.querySelectorAll('div[id^="toast-"]');
-        if (allToasts.length === 0) {
-            container.remove();
-        }
+        toast.style.opacity = '1';
+    }, 10);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => {
+            toast.remove();
+            // Remove container if empty
+            const allToasts = container.querySelectorAll('div');
+            if (allToasts.length === 0) {
+                container.remove();
+            }
+        }, 300);
     }, 4000);
+}
+
+// Confirmation toast with action buttons
+function showConfirmationToast(message: string, onConfirm: () => void, onCancel?: () => void): void {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'flex flex-col w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800 border-l-4 border-yellow-500 transition-opacity duration-300 opacity-100';
+
+    const toastId = `toast-${Date.now()}`;
+    toast.id = toastId;
+
+    toast.innerHTML = `
+        <div class="mb-3 text-sm font-normal">${escapeHtml(message)}</div>
+        <div class="flex gap-2 justify-end">
+            <button type="button" class="confirm-btn px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 focus:ring-2 focus:ring-red-300 dark:bg-red-500 dark:hover:bg-red-600">
+                Confirm
+            </button>
+            <button type="button" class="cancel-btn px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 focus:ring-2 focus:ring-gray-300 dark:text-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">
+                Cancel
+            </button>
+        </div>
+    `;
+
+    container.appendChild(toast);
+
+    // Add event listeners
+    const confirmBtn = toast.querySelector('.confirm-btn');
+    const cancelBtn = toast.querySelector('.cancel-btn');
+
+    const removeToast = () => {
+        toast.style.opacity = '0';
+        setTimeout(() => {
+            toast.remove();
+            const allToasts = container.querySelectorAll('div');
+            if (allToasts.length === 0) {
+                container.remove();
+            }
+        }, 300);
+    };
+
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', () => {
+            removeToast();
+            onConfirm();
+        });
+    }
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            removeToast();
+            if (onCancel) {
+                onCancel();
+            }
+        });
+    }
+
+    toast.style.opacity = '0';
+    setTimeout(() => {
+        toast.style.opacity = '1';
+    }, 10);
 }
 
 // Status Check Function
@@ -641,25 +730,30 @@ async function addDomain() {
 }
 
 async function removeDomain(domain: string) {
-    try {
-        const response = await fetch('/api/admin/ai/blacklist/remove', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ domain })
-        });
+    showConfirmationToast(
+        `Are you sure you want to remove "${domain}" from the blacklist?`,
+        async () => {
+            try {
+                const response = await fetch('/api/admin/ai/blacklist/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ domain })
+                });
 
-        const result: ApiResponse = await response.json();
+                const result: ApiResponse = await response.json();
 
-        if (result.success) {
-            await loadBlacklist();
-            showToastForAI('Domain removed from blacklist', 'success');
-        } else {
-            showToastForAI('Error removing domain: ' + (result.error || 'Unknown error'), 'error');
+                if (result.success) {
+                    await loadBlacklist();
+                    showToastForAI('Domain removed from blacklist', 'success');
+                } else {
+                    showToastForAI('Error removing domain: ' + (result.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error removing domain:', error);
+                showToastForAI('Error removing domain', 'error');
+            }
         }
-    } catch (error) {
-        console.error('Error removing domain:', error);
-        showToastForAI('Error removing domain', 'error');
-    }
+    );
 }
 
 async function toggleAutoBlacklist(domain: string, currentEntry: BlacklistEntry) {
