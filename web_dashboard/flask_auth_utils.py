@@ -208,23 +208,11 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
 def is_authenticated_flask() -> bool:
     """Check if user is authenticated (Flask context)
     
-    This function first attempts to refresh the token if needed, then checks authentication.
+    This function checks if we have a valid token. It does NOT refresh the token
+    (refresh should be done separately before calling this).
     """
-    # Try to refresh token first if needed
-    success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
-    if not success:
-        return False
-    
-    # Store new tokens in request context if they were refreshed
-    if new_token:
-        request._new_auth_token = new_token
-        if new_refresh:
-            request._new_refresh_token = new_refresh
-        if expires_in:
-            request._token_expires_in = expires_in
-    
-    # Now check if we have a valid token (use new token if available)
-    token = new_token or get_auth_token()
+    # Check if we have a new token from a previous refresh attempt
+    token = getattr(request, '_new_auth_token', None) or get_auth_token()
     if not token:
         return False
     

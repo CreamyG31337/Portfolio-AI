@@ -914,12 +914,34 @@ def dashboard_fallback():
 def index():
     """Redirect to dashboard if authenticated, otherwise to auth page"""
     try:
-        from flask_auth_utils import is_authenticated_flask, refresh_token_if_needed_flask
+        from flask_auth_utils import refresh_token_if_needed_flask, get_auth_token
+        import base64
+        import json as json_lib
+        import time
+        
         # Try to refresh token first if needed
         success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
         
-        # Then check authentication
-        if is_authenticated_flask():
+        # Use new token if available, otherwise get from cookies
+        token = new_token or get_auth_token()
+        
+        # Check if we have a valid token
+        is_authenticated = False
+        if token:
+            try:
+                token_parts = token.split('.')
+                if len(token_parts) >= 2:
+                    payload = token_parts[1]
+                    payload += '=' * (4 - len(payload) % 4)
+                    decoded = base64.urlsafe_b64decode(payload)
+                    user_data = json_lib.loads(decoded)
+                    exp = user_data.get('exp', 0)
+                    # Token is valid if it exists and hasn't expired
+                    is_authenticated = exp == 0 or exp > time.time()
+            except Exception:
+                pass
+        
+        if is_authenticated:
             response = redirect(url_for('dashboard.dashboard_page'))
             # If token was refreshed, update cookies in the response
             if new_token:

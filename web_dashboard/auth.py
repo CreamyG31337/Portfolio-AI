@@ -137,7 +137,8 @@ def require_auth(f):
                 return jsonify({"error": "Authentication required"}), 401
             else:
                 from flask import redirect
-                return redirect('/')
+                # Redirect to /auth instead of / to avoid redirect loop
+                return redirect('/auth')
         
         # Store new tokens in request context if they were refreshed
         if new_token:
@@ -158,7 +159,8 @@ def require_auth(f):
                 return jsonify({"error": "Authentication required"}), 401
             else:
                 from flask import redirect
-                return redirect('/')
+                # Redirect to /auth instead of / to avoid redirect loop
+                return redirect('/auth')
         
         # Try to verify with auth_manager (for session_token format)
         user_data = auth_manager.verify_session(token)
@@ -166,16 +168,22 @@ def require_auth(f):
         # If that fails, try parsing as JWT (for auth_token format from Streamlit)
         if not user_data:
             try:
-                if is_authenticated_flask():
-                    # Extract user data from token
-                    import base64
-                    import json as json_lib
-                    token_parts = token.split('.')
-                    if len(token_parts) >= 2:
-                        payload = token_parts[1]
-                        payload += '=' * (4 - len(payload) % 4)
-                        decoded = base64.urlsafe_b64decode(payload)
-                        user_data = json_lib.loads(decoded)
+                # Check if token is valid by parsing it
+                import base64
+                import json as json_lib
+                token_parts = token.split('.')
+                if len(token_parts) >= 2:
+                    payload = token_parts[1]
+                    payload += '=' * (4 - len(payload) % 4)
+                    decoded = base64.urlsafe_b64decode(payload)
+                    user_data = json_lib.loads(decoded)
+                    # Check expiration
+                    import time
+                    exp = user_data.get('exp', 0)
+                    if exp > 0 and exp < time.time():
+                        # Token expired, don't use it
+                        user_data = None
+                    else:
                         # Convert to format expected by request context
                         user_data = {
                             "user_id": user_data.get("sub"),
@@ -292,8 +300,9 @@ def require_admin(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Invalid or expired session"}), 401
             else:
-                from flask import redirect, url_for
-                return redirect('/')
+                from flask import redirect
+                # Redirect to /auth instead of / to avoid redirect loop
+                return redirect('/auth')
         
         # Add user data to request context
         request.user_id = user_data.get("user_id") or user_data.get("sub")
