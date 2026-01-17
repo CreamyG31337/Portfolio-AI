@@ -1144,14 +1144,16 @@ def login():
                 request.headers.get('X-Forwarded-Proto') == 'https' or
                 request.is_secure
             )
+            logger.info(f"[LOGIN] is_production={is_production}, APP_DOMAIN={os.getenv('APP_DOMAIN')}, X-Forwarded-Proto={request.headers.get('X-Forwarded-Proto')}, is_secure={request.is_secure}")
             response.set_cookie(
                 'session_token', 
                 session_token, 
                 max_age=86400, 
-                httponly=True, 
+                httponly=False,  # TEMP: disabled for debugging
                 secure=is_production,  # True for HTTPS, False for localhost
                 samesite='Lax'  # Lax is correct for same-origin login (None is for cross-origin only)
             )
+            logger.info(f"[LOGIN] Set session_token cookie with secure={is_production}, samesite=Lax")
 
             # Set the auth token as a cookie (Streamlit/Supabase compatible)
             # This is the REAL Supabase access token required for RLS and auth.uid()
