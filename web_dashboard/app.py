@@ -954,7 +954,7 @@ def index():
                         if success and new_token:
                             # Refresh succeeded - redirect with new cookies
                             is_production = os.getenv("FLASK_ENV") == "production"
-                            response = redirect(url_for('dashboard.dashboard_page'))
+                            response = redirect('/dashboard')
                             response.set_cookie('auth_token', new_token, max_age=expires_in or 3600, httponly=True, secure=is_production, samesite='None' if is_production else 'Lax')
                             if new_refresh:
                                 response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite='None' if is_production else 'Lax')
@@ -993,9 +993,9 @@ def index():
                 pass
         
         if is_authenticated:
-            return redirect(url_for('dashboard.dashboard_page'))
+            return redirect('/dashboard')
         else:
-            return redirect(url_for('auth_page'))
+            return redirect('/auth')
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
         # On error, clear cookies and redirect to auth as safe fallback
