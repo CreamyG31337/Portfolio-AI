@@ -96,6 +96,8 @@ logger.addHandler(console_handler)
 
 # Configuration
 REFRESH_INTERVAL = int(os.getenv("COOKIE_REFRESH_INTERVAL", "1800"))  # 30 minutes default (__Secure-1PSIDTS expires frequently)
+COOKIE_GRACE_PERIOD_HOURS = int(os.getenv("COOKIE_GRACE_PERIOD_HOURS", "2"))  # 2 hours default (2x refresh cycles)
+COOKIE_GRACE_PERIOD = COOKIE_GRACE_PERIOD_HOURS * 3600  # Convert to seconds
 COOKIE_OUTPUT_FILE = os.getenv("COOKIE_OUTPUT_FILE", "/shared/cookies/webai_cookies.json")
 COOKIE_INPUT_FILE = os.getenv("COOKIE_INPUT_FILE", "/shared/cookies/webai_cookies.json")  # Read existing cookies
 MAX_RETRIES = 3
@@ -189,6 +191,45 @@ def load_existing_cookies() -> Optional[Dict[str, str]]:
         return None
 
 
+def should_skip_refresh(cookies: Optional[Dict[str, str]]) -> tuple[bool, Optional[str]]:
+    """
+    Check if refresh should be skipped due to recent manual update.
+    
+    Returns:
+        Tuple of (should_skip, reason_message)
+    """
+    if not cookies:
+        return (False, None)
+    
+    # Check if cookies were manually set by admin UI
+    if cookies.get("_updated_by") != "admin_ui":
+        return (False, None)
+    
+    # Check when they were last updated
+    updated_at_str = cookies.get("_updated_at")
+    if not updated_at_str:
+        return (False, None)
+    
+    try:
+        # Parse timestamp (handle both with and without Z suffix)
+        updated_at_str = updated_at_str.rstrip("Z")
+        updated_at = datetime.fromisoformat(updated_at_str)
+        
+        # Calculate age
+        age_seconds = (datetime.utcnow() - updated_at).total_seconds()
+        age_hours = age_seconds / 3600
+        
+        # Skip if within grace period
+        if age_seconds < COOKIE_GRACE_PERIOD:
+            grace_hours = COOKIE_GRACE_PERIOD / 3600
+            return (True, f"Cookies manually updated {age_hours:.1f} hours ago (grace period: {grace_hours:.1f} hours)")
+        
+        return (False, None)
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Could not parse _updated_at timestamp: {updated_at_str}, error: {e}")
+        return (False, None)
+
+
 def save_cookies(cookies: Dict[str, str]) -> bool:
     """Save cookies to the shared volume with timestamp metadata."""
     cookie_path = Path(COOKIE_OUTPUT_FILE)
@@ -204,6 +245,12 @@ def save_cookies(cookies: Dict[str, str]) -> bool:
             "_refreshed_at": datetime.utcnow().isoformat() + "Z",
             "_refresh_count": cookies.get("_refresh_count", 0) + 1
         }
+        
+        # Preserve admin metadata if it exists (from manual updates)
+        if "_updated_by" in cookies:
+            output["_updated_by"] = cookies["_updated_by"]
+        if "_updated_at" in cookies:
+            output["_updated_at"] = cookies["_updated_at"]
         
         # Remove empty cookie values (keep metadata)
         output = {k: v for k, v in output.items() if v or k.startswith("_")}
@@ -463,8 +510,14 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
                 # Continue anyway, as __Secure-1PSID might be enough
             
             # Preserve metadata from existing cookies if present
-            if existing_cookies and "_refresh_count" in existing_cookies:
-                cookies_dict["_refresh_count"] = existing_cookies["_refresh_count"]
+            if existing_cookies:
+                if "_refresh_count" in existing_cookies:
+                    cookies_dict["_refresh_count"] = existing_cookies["_refresh_count"]
+                # Preserve admin metadata
+                if "_updated_by" in existing_cookies:
+                    cookies_dict["_updated_by"] = existing_cookies["_updated_by"]
+                if "_updated_at" in existing_cookies:
+                    cookies_dict["_updated_at"] = existing_cookies["_updated_at"]
             
             return cookies_dict
             
@@ -487,9 +540,24 @@ def refresh_cookies() -> bool:
     Main function to refresh cookies with retry logic.
     
     Returns:
-        True if successful, False otherwise
+        True if successful or skipped, False otherwise
     """
     logger.info("Starting cookie refresh...")
+    
+    # Load existing cookies first
+    existing_cookies = load_existing_cookies()
+    
+    if not existing_cookies:
+        logger.error("No existing cookies found. Cannot refresh without initial cookies.")
+        logger.error("Please set initial cookies manually or via Woodpecker secret.")
+        return False
+    
+    # Check if refresh should be skipped due to recent manual update
+    should_skip, skip_reason = should_skip_refresh(existing_cookies)
+    if should_skip:
+        logger.info(f"⏭️  Skipping refresh: {skip_reason}")
+        logger.info("   Cookies will be refreshed after grace period expires")
+        return True  # Return success so main loop continues normally
     
     # Try to refresh with browser (reload cookies on each attempt)
     for attempt in range(MAX_RETRIES):
@@ -502,6 +570,12 @@ def refresh_cookies() -> bool:
             logger.error("No existing cookies found. Cannot refresh without initial cookies.")
             logger.error("Please set initial cookies manually or via Woodpecker secret.")
             return False
+        
+        # Check again (in case cookies were updated between attempts)
+        should_skip, skip_reason = should_skip_refresh(existing_cookies)
+        if should_skip:
+            logger.info(f"⏭️  Skipping refresh: {skip_reason}")
+            return True
         
         refreshed_cookies = refresh_cookies_with_browser(existing_cookies)
         
