@@ -139,27 +139,11 @@ def require_auth(f):
         if auth_token:
             logger.info(f"[AUTH] auth_token preview: {auth_token[:20]}...")
         
-        is_broken_state = False
-        
-        # Check: Refresh token is corrupted (too short - valid ones are 100+ chars)
-        # NOTE: Don't check for "session_token but no auth_token" - that's a valid legacy state
-        # The auth check below will handle missing tokens properly
+        # Don't delete cookies in require_auth - let the route handle authentication
+        # Only check for obviously corrupted refresh tokens, but don't delete cookies
         if refresh_token and len(refresh_token) < 50:
-            logger.warning(f"[AUTH] require_auth: Broken state - refresh_token corrupted (length={len(refresh_token)})")
-            is_broken_state = True
-        
-        # If broken state, clear cookies and redirect to login
-        if is_broken_state:
-            logger.info("[AUTH] require_auth: Clearing broken auth state")
-            if request.path.startswith('/api/'):
-                return jsonify({"error": "Invalid auth state, please login again"}), 401
-            else:
-                # Clear cookies and redirect to login
-                response = redirect('/auth')
-                response.delete_cookie('auth_token', path='/')
-                response.delete_cookie('session_token', path='/')
-                response.delete_cookie('refresh_token', path='/')
-                return response
+            logger.warning(f"[AUTH] require_auth: Refresh token appears corrupted (length={len(refresh_token)}), but continuing anyway")
+            # Don't delete cookies - just log the warning
         
         # Now try to refresh token if needed (only if we have a token)
         success = True

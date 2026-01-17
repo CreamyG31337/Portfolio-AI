@@ -951,19 +951,9 @@ def index():
         session_token = request.cookies.get('session_token')
         refresh_token = get_refresh_token()
         
-        # Detect broken auth state and clear cookies
-        # Broken state: corrupted refresh_token (but NOT missing auth_token - that's just not logged in)
-        is_broken_state = False
-        
-        # Check: Refresh token is corrupted (too short - valid ones are 100+ chars)
-        # NOTE: Don't check for "session_token but no auth_token" - that's a valid legacy state
-        # and will be handled by the auth check below
-        if refresh_token and len(refresh_token) < 50:
-            logger.warning(f"[AUTH] Broken state detected: refresh_token corrupted (length={len(refresh_token)})")
-            is_broken_state = True
-        
-        # Check 3: auth_token exists but is expired, and refresh fails
-        if auth_token and not is_broken_state:
+        # Don't delete cookies in root route - just check authentication
+        # Check if auth_token exists and is expired, try to refresh
+        if auth_token:
             try:
                 token_parts = auth_token.split('.')
                 if len(token_parts) >= 2:
@@ -992,21 +982,11 @@ def index():
                                 response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite=samesite_value, path='/')
                             return response
                         else:
-                            # Refresh failed - broken state
-                            logger.warning("[AUTH] Broken state detected: auth_token expired and refresh failed")
-                            is_broken_state = True
+                            # Refresh failed - token expired and can't refresh
+                            # Don't delete cookies - just continue to auth check below
+                            logger.warning("[AUTH] Token expired and refresh failed, will redirect to auth")
             except Exception as e:
-                logger.warning(f"[AUTH] Error checking auth_token: {e}")
-                is_broken_state = True
-        
-        # If broken state, clear all auth cookies and redirect to login
-        if is_broken_state:
-            logger.info("[AUTH] Clearing broken auth state and redirecting to login")
-            response = redirect('/auth')
-            response.delete_cookie('auth_token', path='/')
-            response.delete_cookie('session_token', path='/')
-            response.delete_cookie('refresh_token', path='/')
-            return response
+                logger.warning(f"[AUTH] Error checking auth_token: {e}, will continue to auth check")
         
         # Check if we have a valid auth_token (required for proper Supabase auth)
         # Also accept session_token as fallback for legacy compatibility
