@@ -578,7 +578,7 @@ async function loadAlertPosts(metricId: number, sessionId: number | null, alertI
         const result = await response.json();
         if (result.success && result.data) {
             const posts = result.data;
-            postsDiv.innerHTML = '<h4 class="font-semibold mb-2">Source Posts:</h4>';
+            postsDiv.innerHTML = '<h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Source Posts:</h4>';
 
             if (posts.length > 0) {
                 posts.forEach((post: any) => {
@@ -749,7 +749,7 @@ async function loadAIDetails(analysisId: number, sessionId: number): Promise<voi
         }
     } catch (error) {
         console.error('Error loading AI details:', error);
-        detailsDiv.innerHTML = '<p class="text-sm text-red-600">Error loading details.</p>';
+        detailsDiv.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Error loading details.</p>';
         detailsDiv.classList.remove('hidden');
     }
 }

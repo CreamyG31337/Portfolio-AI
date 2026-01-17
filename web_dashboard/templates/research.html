@@ -430,10 +430,35 @@
     let availableModels = [];
     let defaultModel = '';
 
+    // Check if summary actually needs truncation and hide button if not needed
+    function checkSummaryOverflow() {
+        document.querySelectorAll('[id^="summary-"]').forEach(summaryEl => {
+            const id = summaryEl.id.replace('summary-', '');
+            const toggleBtn = document.getElementById(`toggle-btn-${id}`);
+            const fadeEl = document.getElementById(`fade-${id}`);
+            
+            if (!toggleBtn) return; // No button means it wasn't flagged as needing truncation
+            
+            // Check if content actually overflows the 10rem (160px) limit
+            const maxHeight = 160; // 10rem = 160px
+            const scrollHeight = summaryEl.scrollHeight;
+            
+            if (scrollHeight <= maxHeight) {
+                // Content fits, hide the button and fade
+                toggleBtn.style.display = 'none';
+                if (fadeEl) fadeEl.style.display = 'none';
+                // Remove max-height restriction so full content shows
+                summaryEl.style.maxHeight = 'none';
+            }
+        });
+    }
+
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function () {
         loadAvailableModels();
         setupReanalyzeButton();
+        // Small delay to ensure content is fully rendered before checking overflow
+        setTimeout(checkSummaryOverflow, 100);
     });
 
     function toggleSummary(id) {
@@ -442,7 +467,7 @@
         const toggleText = document.getElementById(`toggle-text-${id}`);
         const toggleIcon = document.getElementById(`toggle-icon-${id}`);
 
-        if (summaryEl.style.maxHeight === '10rem') {
+        if (summaryEl.style.maxHeight === '10rem' || summaryEl.style.maxHeight === '160px') {
             // Expand
             summaryEl.style.maxHeight = summaryEl.scrollHeight + 'px';
             if (fadeEl) fadeEl.style.opacity = '0';
