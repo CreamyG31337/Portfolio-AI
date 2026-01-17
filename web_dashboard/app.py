@@ -1160,22 +1160,26 @@ def login():
             if "access_token" in auth_data:
                 # Default Supabase expiry is 3600s (1 hour)
                 expires_in = auth_data.get("expires_in", 3600)
+                # Log token size for debugging
+                logger.info(f"[LOGIN] auth_token length: {len(auth_data['access_token'])}")
+                
                 response.set_cookie(
                     'auth_token', 
                     auth_data["access_token"], 
                     max_age=expires_in, 
-                    httponly=True, 
+                    httponly=False, # TEMP: debug
                     secure=is_production,
                     samesite='Lax'
                 )
                 
                 # Also set refresh token if available so client can refresh if needed
                 if "refresh_token" in auth_data:
+                    logger.info(f"[LOGIN] refresh_token length: {len(auth_data['refresh_token'])}")
                     response.set_cookie(
                         'refresh_token', 
                         auth_data["refresh_token"], 
                         max_age=86400 * 30, # 30 days usually
-                        httponly=True, 
+                        httponly=False,
                         secure=is_production,
                         samesite='None' if is_production else 'Lax'
                     )
