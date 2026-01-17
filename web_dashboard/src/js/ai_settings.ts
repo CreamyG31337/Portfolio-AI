@@ -99,7 +99,7 @@ function escapeHtml(text: string): string {
 }
 
 // Toast notification system for AI settings
-function showToastForAI(message: string, type: 'success' | 'error' = 'success'): void {
+function showToastForAI(message: string, type: 'success' | 'error' | 'info' = 'success'): void {
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
