@@ -1462,7 +1462,7 @@ def register():
         import traceback
         return jsonify({"error": "Registration failed", "message": str(e), "traceback": traceback.format_exc()}), 500
 
-@app.route('/api/auth/logout', methods=['POST'])
+@app.route('/api/auth/logout', methods=['GET', 'POST'])
 def logout():
     """Handle user logout"""
     response = jsonify({"message": "Logged out successfully"})
