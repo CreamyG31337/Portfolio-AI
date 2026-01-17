@@ -1213,6 +1213,43 @@ def debug_cookies():
         "app_domain": os.getenv("APP_DOMAIN")
     })
 
+@app.route('/api/debug/auth')
+def debug_auth():
+    """Debug endpoint to test auth validation logic"""
+    from flask_auth_utils import refresh_token_if_needed_flask, get_auth_token, get_refresh_token
+    import time
+    import json
+    import base64
+    
+    token = get_auth_token()
+    refresh = get_refresh_token()
+    
+    token_details = {}
+    if token:
+        try:
+            parts = token.split('.')
+            if len(parts) >= 2:
+                payload = parts[1]
+                payload += '=' * (4 - len(payload) % 4)
+                decoded = base64.urlsafe_b64decode(payload)
+                token_details = json.loads(decoded)
+        except Exception as e:
+            token_details = {"error": str(e)}
+            
+    success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+    
+    return jsonify({
+        "success": success,
+        "token_present": bool(token),
+        "token_preview": token[:20] if token else None,
+        "refresh_present": bool(refresh),
+        "refresh_preview": refresh[:20] if refresh else None,
+        "token_exp": token_details.get("exp"),
+        "server_time": int(time.time()),
+        "is_expired": token_details.get("exp", 0) < int(time.time()) if "exp" in token_details else None,
+        "details": token_details
+    })
+
 @app.route('/api/auth/magic-link', methods=['POST'])
 def magic_link():
     """Handle magic link login request"""
