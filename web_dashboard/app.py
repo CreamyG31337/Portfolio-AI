@@ -532,7 +532,7 @@ def _start_scheduler_background():
             logger.error(f"[PID:{process_id} TID:{thread_id}] ❌ Failed to auto-start scheduler: {e}", exc_info=True)
             logger.warning(f"[PID:{process_id} TID:{thread_id}] ⚠️ Flask will continue without scheduler - start manually via jobs page")
     
-    # Start scheduler in NON-daemon thread (keeps it alive)
+    # Start scheduler in NON-daemon thread (keeps it alive for job execution)
     process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
     _scheduler_thread = threading.Thread(
         target=_scheduler_init_thread,
@@ -544,10 +544,32 @@ def _start_scheduler_background():
 
 # Start scheduler immediately when module loads
 # Only start if not explicitly disabled (e.g. in Flask container where Streamlit runs the scheduler)
+# AND check if we haven't already started the thread (improves safety during reloads/imports)
 if os.environ.get('DISABLE_SCHEDULER', '').lower() != 'true':
-    _start_scheduler_background()
+    # Check if thread is already running to avoid duplicates
+    _existing_threads = [t.name for t in threading.enumerate()]
+    if "SchedulerInitThread" not in _existing_threads:
+        _start_scheduler_background()
+    else:
+        logger.debug("ℹ️ SchedulerInitThread already running, skipping duplicate start")
 else:
     logger.info("ℹ️ Scheduler auto-start disabled via DISABLE_SCHEDULER environment variable")
+
+# Register shutdown handler to gracefully stop scheduler on Flask exit
+# This prevents RuntimeError during Flask restarts/reloads
+import atexit
+def _shutdown_scheduler_on_exit():
+    """Gracefully shutdown scheduler when Flask exits"""
+    try:
+        from scheduler.scheduler_core import shutdown_scheduler, is_scheduler_running
+        if is_scheduler_running():
+            logger.info("🛑 Flask shutting down - stopping scheduler gracefully...")
+            shutdown_scheduler()
+            logger.info("✅ Scheduler stopped successfully")
+    except Exception as e:
+        logger.warning(f"Error during scheduler shutdown: {e}")
+
+atexit.register(_shutdown_scheduler_on_exit)
 
 def load_portfolio_data(fund_name=None) -> Dict:
     """Load and process portfolio data from Supabase (web app only - no CSV fallback)"""
@@ -1107,8 +1129,9 @@ def login():
             })
             
             # Set the session token as a cookie (Flask legacy)
-            # Use secure cookies for production (Vercel), allow non-secure for local dev
-            is_production = request.host != 'localhost:5000' and not request.host.startswith('127.0.0.1')
+            # Use secure cookies for production (HTTPS), allow non-secure for local dev (HTTP)
+            # Check FLASK_ENV first, then fall back to detecting HTTPS via request.is_secure
+            is_production = os.getenv("FLASK_ENV") == "production" or request.is_secure
             response.set_cookie(
                 'session_token', 
                 session_token, 
@@ -4044,10 +4067,6 @@ def api_congress_trades_data():
     except Exception as e:
         logger.error(f"Error in congress trades API: {e}", exc_info=True)
         return jsonify({"error": "An error occurred while fetching congress trades data. Please check the logs."}), 500
-
-# Register blueprints
-from routes.dashboard_routes import dashboard_bp
-app.register_blueprint(dashboard_bp)
 
 if __name__ == '__main__':
     # Run the app
