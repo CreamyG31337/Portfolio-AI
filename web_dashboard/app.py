@@ -1164,6 +1164,7 @@ def login():
                 # Log token size for debugging
                 logger.info(f"[LOGIN] auth_token length: {len(auth_data['access_token'])}")
                 
+                response.set_cookie(
                     'auth_token', 
                     auth_data["access_token"], 
                     max_age=expires_in, 
@@ -1176,6 +1177,7 @@ def login():
                 # Also set refresh token if available so client can refresh if needed
                 if "refresh_token" in auth_data:
                     logger.info(f"[LOGIN] refresh_token length: {len(auth_data['refresh_token'])}")
+                    response.set_cookie(
                         'refresh_token', 
                         auth_data["refresh_token"], 
                         max_age=86400 * 30, # 30 days usually
