@@ -123,26 +123,34 @@ const tabs: TabConfig[] = [
 // Initialize tabs
 function initTabs(): void {
     const tabsElement = document.getElementById('trade-tabs');
-    if (!tabsElement) return;
+    if (!tabsElement) {
+        console.warn('[Trade Entry] Tabs container not found');
+        return;
+    }
 
     tabs.forEach(tab => {
         const btn = document.getElementById(tab.id);
-        if (!btn) return;
+        if (!btn) {
+            console.warn(`[Trade Entry] Tab button ${tab.id} not found`);
+            return;
+        }
 
         btn.addEventListener('click', () => {
             const activeClasses = ['text-blue-600', 'border-blue-600', 'dark:text-blue-500', 'dark:border-blue-500'];
-            const inactiveClasses = ['hover:text-gray-600', 'hover:border-gray-300', 'dark:hover:text-gray-300', 'border-transparent'];
+            const inactiveClasses = ['text-gray-500', 'border-transparent', 'hover:text-gray-600', 'hover:border-gray-300', 'dark:text-gray-400', 'dark:hover:text-gray-300'];
 
             tabs.forEach(t => {
                 const b = document.getElementById(t.id);
                 const c = document.getElementById(t.target);
 
                 if (t.id === tab.id) {
-                    b?.classList.add(...activeClasses);
+                    // Activate this tab
                     b?.classList.remove(...inactiveClasses);
+                    b?.classList.add(...activeClasses);
                     b?.setAttribute('aria-selected', 'true');
                     c?.classList.remove('hidden');
                 } else {
+                    // Deactivate other tabs
                     b?.classList.remove(...activeClasses);
                     b?.classList.add(...inactiveClasses);
                     b?.setAttribute('aria-selected', 'false');
@@ -157,10 +165,13 @@ function initTabs(): void {
         });
     });
 
-    // Activate first tab
+    // Ensure first tab is active (it should already be visible from template)
     const firstTab = document.getElementById('manual-tab');
-    if (firstTab) {
-        firstTab.click();
+    const firstContent = document.getElementById('manual-content');
+    if (firstTab && firstContent) {
+        // Make sure it's visible and styled correctly
+        firstContent.classList.remove('hidden');
+        firstTab.setAttribute('aria-selected', 'true');
     }
 }
 

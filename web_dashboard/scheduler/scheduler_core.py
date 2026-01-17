@@ -87,7 +87,7 @@ def _update_heartbeat():
         
         # Log the path on first update for debugging
         if not hasattr(_update_heartbeat, '_path_logged'):
-            heartbeat_logger.debug(f"💓 Heartbeat file path: {_HEARTBEAT_FILE}")
+            heartbeat_logger.info(f"💓 Heartbeat file path: {_HEARTBEAT_FILE}")
             _update_heartbeat._path_logged = True
         
         # Log at INFO level periodically so we can see it's working (every 10th update = ~200 seconds)
@@ -97,10 +97,30 @@ def _update_heartbeat():
         _update_heartbeat._counter += 1
         if _update_heartbeat._counter % 10 == 0:
             heartbeat_logger.info(f"💓 Heartbeat updated (check #{_update_heartbeat._counter})")
+        
+        # Reset error counter on success
+        if hasattr(_update_heartbeat, '_error_count'):
+            _update_heartbeat._error_count = 0
+            
     except Exception as e:
-        # Log the error so we can see what's failing
-        heartbeat_logger.error(f"❌ Failed to update heartbeat file at {_HEARTBEAT_FILE}: {e}", exc_info=True)
-        # Still pass - non-fatal but we want to know about it
+        # Track consecutive errors
+        if not hasattr(_update_heartbeat, '_error_count'):
+            _update_heartbeat._error_count = 0
+        _update_heartbeat._error_count += 1
+        
+        # Log at ERROR level immediately (not just first time) so it's visible
+        heartbeat_logger.error(
+            f"❌ Failed to update heartbeat file at {_HEARTBEAT_FILE} "
+            f"(error #{_update_heartbeat._error_count}): {e}", 
+            exc_info=True
+        )
+        
+        # After 3 consecutive failures, this is critical
+        if _update_heartbeat._error_count >= 3:
+            logger.critical(
+                f"🚨 CRITICAL: Heartbeat has failed {_update_heartbeat._error_count} times consecutively! "
+                f"Scheduler status detection will not work. Check filesystem permissions and disk space."
+            )
 
 
 def _check_heartbeat() -> bool:
@@ -900,21 +920,32 @@ def start_scheduler() -> bool:
 def is_scheduler_running() -> bool:
     """Check if the scheduler is running (cross-process safe).
     
-    Uses heartbeat file to detect scheduler status, which works across
-    Streamlit workers that don't share memory.
+    Uses multiple detection methods for reliability:
+    1. In-process scheduler state (most reliable within same process)
+    2. Heartbeat file (for cross-process detection)
+    3. Job count check (scheduler with jobs is likely running)
     
     Returns:
-        True if scheduler is running (heartbeat is recent), False otherwise.
+        True if scheduler is running, False otherwise.
     """
-    # First check in-process scheduler (if we're in the same process that started it)
-    if _scheduler is not None and _scheduler.running:
-        return True
+    # Method 1: Check in-process scheduler (if we're in the same process that started it)
+    if _scheduler is not None:
+        if _scheduler.running:
+            return True
+        # If scheduler exists but not running, check if it has jobs (might be initializing)
+        try:
+            jobs = _scheduler.get_jobs()
+            if len(jobs) > 0:
+                # Has jobs but not running - this is unusual, log it
+                logger.warning(f"Scheduler has {len(jobs)} jobs but running=False. State: {getattr(_scheduler, 'state', 'unknown')}")
+        except Exception as e:
+            logger.debug(f"Error checking jobs on stopped scheduler: {e}")
     
-    # Cross-process check: use heartbeat file
+    # Method 2: Cross-process check using heartbeat file
     heartbeat_status = _check_heartbeat()
     
-    # Add diagnostic logging if heartbeat check fails
-    if not heartbeat_status:
+    # Add diagnostic logging if heartbeat check fails but we have no in-process scheduler
+    if not heartbeat_status and _scheduler is None:
         try:
             if _HEARTBEAT_FILE.exists():
                 last_beat = float(_HEARTBEAT_FILE.read_text().strip())
