@@ -178,11 +178,16 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
         - new_refresh_token: New refresh token if refreshed, None otherwise
         - expires_in: Expiration time in seconds if refreshed, None otherwise
     """
-    token = get_auth_token()
+    # Check specifically for auth_token (not session_token) to determine if we need to refresh
+    auth_token = request.cookies.get('auth_token')  # Check auth_token specifically
+    session_token = request.cookies.get('session_token')
     refresh_token = get_refresh_token()
     
+    # Use session_token as fallback for token validation, but check auth_token for refresh logic
+    token = auth_token or session_token  # For validation purposes
+    
     # If no auth_token but we have refresh_token, try to refresh immediately
-    if not token and refresh_token:
+    if not auth_token and refresh_token:
         # Missing auth_token - try to refresh using refresh_token
         # Use lock to prevent concurrent refresh attempts
         lock = _get_refresh_lock(refresh_token)
