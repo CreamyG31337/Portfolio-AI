@@ -587,7 +587,7 @@ st.markdown("---")
 congress_trades = ticker_data.get('congress_trades', [])
 if congress_trades:
     st.header("🏛️ Congress Trades")
-    st.caption(f"Found {len(congress_trades)} recent trades by politicians (last 30 days)")
+    st.caption(f"Found {len(congress_trades)} trades by politicians")
 
     trades_df = pd.DataFrame([
         {
@@ -598,11 +598,11 @@ if congress_trades:
             'Amount': trade.get('amount', 'N/A'),
             'Party': trade.get('party', 'N/A')
         }
-        for trade in congress_trades[:20]  # Show last 20
+        for trade in congress_trades[:50]  # Show first 50 (most recent)
     ])
     st.dataframe(trades_df, use_container_width=True, hide_index=True)
 else:
-    st.info(f"No congress trades found for {current_ticker} (last 30 days).")
+    st.info(f"No congress trades found for {current_ticker}.")
 
 st.markdown("---")
 

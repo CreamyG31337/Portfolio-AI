@@ -394,16 +394,13 @@ def get_ticker_info(
         except Exception as e:
             logger.warning(f"Error fetching social sentiment for {ticker_upper}: {e}")
     
-    # 5. Get congress trades (last 30 days)
+    # 5. Get congress trades (all trades for this ticker)
     if supabase_client:
         try:
-            thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).date()
             congress_result = supabase_client.supabase.table("congress_trades_enriched")\
                 .select("*")\
                 .eq("ticker", ticker_upper)\
-                .gte("transaction_date", thirty_days_ago.isoformat())\
                 .order("transaction_date", desc=True)\
-                .limit(50)\
                 .execute()
             
             if congress_result.data:

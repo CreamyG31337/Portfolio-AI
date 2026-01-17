@@ -13,6 +13,21 @@ interface GridParams {
 let gridApi: any = null;
 let gridColumnApi: any = null;
 
+// Helper function to detect dark mode
+function isDarkMode(): boolean {
+    const htmlElement = document.documentElement;
+    const theme = htmlElement.getAttribute('data-theme') || 'system';
+    
+    if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+        return true;
+    } else if (theme === 'system') {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Ticker cell renderer - makes ticker clickable
 class TickerCellRenderer {
     eGui!: HTMLElement;
@@ -21,7 +36,8 @@ class TickerCellRenderer {
         this.eGui = document.createElement('span');
         if (params.value && params.value !== 'N/A') {
             this.eGui.innerText = params.value;
-            this.eGui.style.color = '#1f77b4';
+            // Theme-aware color: blue for light mode, lighter blue for dark mode
+            this.eGui.style.color = isDarkMode() ? '#60a5fa' : '#1f77b4';
             this.eGui.style.fontWeight = 'bold';
             this.eGui.style.textDecoration = 'underline';
             this.eGui.style.cursor = 'pointer';
@@ -58,21 +74,7 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
     }
 
     // Detect theme and apply appropriate AgGrid theme
-    const htmlElement = document.documentElement;
-    const theme = htmlElement.getAttribute('data-theme') || 'system';
-    let isDark = false;
-
-    if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
-        isDark = true;
-    } else if (theme === 'system') {
-        // Check system preference
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            isDark = true;
-        }
-    }
-
-    // Update grid container class based on theme
-    if (isDark) {
+    if (isDarkMode()) {
         gridDiv.classList.remove('ag-theme-alpine');
         gridDiv.classList.add('ag-theme-alpine-dark');
     } else {
@@ -162,7 +164,14 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 maxWidth: 100,
                 sortable: true,
                 valueFormatter: (params: any) => params.value > 0 ? "✓" : "—",
-                cellStyle: (params: any) => params.value > 0 ? { color: '#2d5a3d', fontWeight: 'bold' } : null
+                cellStyle: (params: any) => {
+                    if (params.value > 0) {
+                        return isDarkMode() 
+                            ? { color: '#86efac', fontWeight: 'bold' }
+                            : { color: '#2d5a3d', fontWeight: 'bold' };
+                    }
+                    return null;
+                }
             },
             {
                 field: 'user_shares',
@@ -182,8 +191,16 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 sortable: true,
                 filter: true,
                 cellStyle: (params: any) => {
-                    if (params.value === 'BUY') return { backgroundColor: '#d4edda', color: '#155724', fontWeight: 'bold', textAlign: 'center' };
-                    if (params.value === 'SELL') return { backgroundColor: '#f8d7da', color: '#721c24', fontWeight: 'bold', textAlign: 'center' };
+                    if (params.value === 'BUY') {
+                        return isDarkMode() 
+                            ? { backgroundColor: '#1a4d2e', color: '#86efac', fontWeight: 'bold', textAlign: 'center' }
+                            : { backgroundColor: '#d4edda', color: '#155724', fontWeight: 'bold', textAlign: 'center' };
+                    }
+                    if (params.value === 'SELL') {
+                        return isDarkMode()
+                            ? { backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 'bold', textAlign: 'center' }
+                            : { backgroundColor: '#f8d7da', color: '#721c24', fontWeight: 'bold', textAlign: 'center' };
+                    }
                     return { textAlign: 'center' };
                 }
             },
@@ -248,7 +265,22 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         // Optional: Highlight rows we hold
         getRowStyle: (params: any) => {
             if (params.data.user_shares > 0) {
-                return { backgroundColor: '#f0fff4' }; // Light green background for owned stocks
+                const htmlElement = document.documentElement;
+                const theme = htmlElement.getAttribute('data-theme') || 'system';
+                let isDark = false;
+                
+                if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+                    isDark = true;
+                } else if (theme === 'system') {
+                    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                        isDark = true;
+                    }
+                }
+                
+                // Dark green background for owned stocks in dark mode, light green in light mode
+                return isDark 
+                    ? { backgroundColor: '#1a4d2e' } 
+                    : { backgroundColor: '#f0fff4' };
             }
             return null;
         }
@@ -299,27 +331,19 @@ function updateEtfGridTheme(): void {
         return;
     }
 
-    // Detect theme and apply appropriate AgGrid theme
-    const htmlElement = document.documentElement;
-    const theme = htmlElement.getAttribute('data-theme') || 'system';
-    let isDark = false;
-
-    if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
-        isDark = true;
-    } else if (theme === 'system') {
-        // Check system preference
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            isDark = true;
-        }
-    }
-
     // Update grid container class based on theme
-    if (isDark) {
+    if (isDarkMode()) {
         gridDiv.classList.remove('ag-theme-alpine');
         gridDiv.classList.add('ag-theme-alpine-dark');
     } else {
         gridDiv.classList.remove('ag-theme-alpine-dark');
         gridDiv.classList.add('ag-theme-alpine');
+    }
+    
+    // Refresh grid to update cell and row styles
+    if (gridApi) {
+        gridApi.refreshCells();
+        gridApi.refreshHeader();
     }
 }
 

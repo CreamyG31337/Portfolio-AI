@@ -723,22 +723,23 @@ function renderCongressTickerTrades(trades: CongressTickerTrade[]): void {
     section.classList.remove('section-hidden');
 
     const countEl = document.getElementById('congress-count');
-    if (countEl) countEl.textContent = `Found ${trades.length} recent trades by politicians (last 30 days)`;
+    if (countEl) countEl.textContent = `Found ${trades.length} trades by politicians`;
 
     const tbody = document.getElementById('congress-tbody');
     if (!tbody) return;
 
     tbody.innerHTML = '';
 
-    trades.slice(0, 20).forEach(trade => {
+    // Show all trades (no limit since we're fetching all historical trades)
+    trades.forEach(trade => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatDate(trade.transaction_date)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.politician || 'N/A'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.chamber || 'N/A'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.type || 'N/A'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.amount || 'N/A'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.party || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${formatDate(trade.transaction_date)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.politician || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.chamber || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.type || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.amount || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.party || 'N/A'}</td>
         `;
         tbody.appendChild(row);
     });
