@@ -294,37 +294,28 @@ def calculate_context_size(
     total_chars = len(system_prompt) + len(context_string) + len(history_text) + len(current_prompt)
 
     
-    # Get model context window (depends on model type)
+    # Get model context window from config (depends on model type)
     context_window = 4096  # Default for unknown models
     
-    # Check for web-based AI models
+    # Try to load from model_config.json
     try:
-        from webai_wrapper import is_webai_model
-        is_webai = is_webai_model(selected_model)
-    except (ImportError, NameError):
-        is_webai = False
-    
-    # Check for GLM models
-    is_glm = selected_model.startswith("glm-") if selected_model else False
-    
-    if is_webai:
-        # WebAI models have large context windows
-        if "flash" in selected_model:
-            context_window = 1048576  # 1M tokens for Flash
-        else:  # Pro models (2.5-pro, 3.0-pro)
-            context_window = 2097152  # 2M tokens for Pro
-    elif is_glm:
-        # GLM models have 128K context
-        context_window = 128000
-    else:
-        # For Ollama models, get from model settings
-        try:
-            client = get_ollama_client()
-            if client:
-                model_settings = client.get_model_settings(selected_model)
-                context_window = model_settings.get('num_ctx', 4096)
-        except:
-            context_window = 4096  # Fallback
+        import json
+        from pathlib import Path
+        config_path = Path(__file__).parent / "model_config.json"
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # Check if model exists in config
+            if selected_model in config.get('models', {}):
+                model_config = config['models'][selected_model]
+                context_window = model_config.get('num_ctx', context_window)
+            else:
+                # If not in config, use default from default_config
+                context_window = config.get('default_config', {}).get('num_ctx', 4096)
+    except Exception:
+        # If config loading fails, fall back to defaults
+        context_window = 4096
 
     usage_percent = (total_tokens / context_window * 100) if context_window > 0 else 0
 
