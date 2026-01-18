@@ -523,10 +523,10 @@ class SupabaseClient:
             # Get current positions
             positions = self.get_current_positions()
             
-            # Calculate metrics
-            total_value = sum(pos["total_market_value"] for pos in positions)
-            total_cost_basis = sum(pos["total_cost_basis"] for pos in positions)
-            unrealized_pnl = sum(pos["total_pnl"] for pos in positions)
+            # Calculate metrics - use correct column names from latest_positions view
+            total_value = sum(float(pos.get("market_value", 0) or 0) for pos in positions)
+            total_cost_basis = sum(float(pos.get("cost_basis", 0) or 0) for pos in positions)
+            unrealized_pnl = sum(float(pos.get("unrealized_pnl", 0) or 0) for pos in positions)
             performance_pct = (unrealized_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0
             
             # Get trade statistics
