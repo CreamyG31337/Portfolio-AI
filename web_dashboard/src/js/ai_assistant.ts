@@ -174,6 +174,16 @@ class AIAssistant {
         }
     }
 
+    /**
+     * Check if a model is a web-based AI model (uses webaiModels from config)
+     */
+    isWebAIModel(model: string): boolean {
+        if (!model) return false;
+        // Check against configured webai models list
+        const webaiModels = this.config.webaiModels || [];
+        return webaiModels.includes(model);
+    }
+
     setupEventListeners(): void {
         // Send button
         const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
@@ -605,7 +615,7 @@ class AIAssistant {
         const desc = document.getElementById('model-description');
         if (!desc) return;
 
-        if (model.startsWith('gemini-')) {
+        if (this.isWebAIModel(model)) {
             desc.textContent = 'Web-based AI model with persistent conversations';
         } else {
             desc.textContent = 'Local Ollama model';
@@ -719,7 +729,7 @@ class AIAssistant {
         };
 
         // Check if streaming (Ollama) or non-streaming (WebAI)
-        if (this.selectedModel.startsWith('gemini-')) {
+        if (this.isWebAIModel(this.selectedModel)) {
             // WebAI - non-streaming
             this.sendWebAIMessage(requestData, loadingId);
         } else {

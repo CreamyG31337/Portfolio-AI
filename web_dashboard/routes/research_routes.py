@@ -259,7 +259,7 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
         Tuple of (success: bool, message: str)
     """
     try:
-        from ollama_client import get_ollama_client, check_ollama_health
+        from ollama_client import get_ollama_client, check_ollama_health, generate_summary
         from research_utils import validate_ticker_format, normalize_ticker
         from scheduler.jobs import calculate_relevance_score
         from supabase_client import SupabaseClient
@@ -269,9 +269,32 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
         if repo is None:
             return False, "Research repository is not available"
         
-        # Check Ollama availability
-        if not check_ollama_health():
-            return False, "Ollama is not available. Please check the connection."
+        # Check backend: Web-based AI uses cookie service; GLM uses Z.AI (requires key); others use Ollama
+        try:
+            from webai_wrapper import is_webai_model
+            is_webai = is_webai_model(model_name)
+        except ImportError:
+            is_webai = False
+        is_glm = model_name and str(model_name).startswith("glm-")
+        if is_webai:
+            try:
+                from webai_wrapper import check_cookie_config
+                config_status = check_cookie_config()
+                if not config_status.get("status", False):
+                    return False, "Web-based AI cookies not configured. Configure cookies via AI Settings."
+            except ImportError:
+                return False, "Web-based AI support not available"
+        elif is_glm:
+            try:
+                from glm_config import get_zhipu_api_key
+                if not get_zhipu_api_key():
+                    return False, "GLM API key not set. Add ZHIPU_API_KEY or save via AI Settings."
+            except ImportError:
+                return False, "GLM support not available"
+        else:
+            # Ollama models require Ollama to be available
+            if not check_ollama_health():
+                return False, "Ollama is not available. Please check the connection."
         
         # Get article from repository
         # Query handles both old (ticker) and new (tickers) schema
@@ -300,13 +323,8 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
         if not content:
             return False, "Article has no content to analyze"
         
-        # Initialize Ollama client
-        ollama_client = get_ollama_client()
-        if not ollama_client:
-            return False, "Failed to initialize Ollama client"
-        
-        # Generate summary with specified model
-        summary_data = ollama_client.generate_summary(content, model=model_name)
+        # Generate summary with specified model (routes to appropriate backend automatically)
+        summary_data = generate_summary(content, model=model_name)
         
         if not summary_data:
             return False, "Failed to generate summary"
@@ -381,11 +399,14 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
         # Calculate relevance_score based on what was extracted
         calculated_relevance = calculate_relevance_score(extracted_tickers, extracted_sector, owned_tickers=owned_tickers)
         
-        # Generate embedding
-        embedding = ollama_client.generate_embedding(content[:6000])
-        if not embedding:
-            logger.warning(f"Failed to generate embedding for article {article_id}, continuing without embedding")
-            embedding = None
+        # Generate embedding (Ollama only; skip if unavailable, e.g. when using WebAI/GLM without Ollama)
+        embedding = None
+        ollama_client = get_ollama_client()
+        if ollama_client:
+            embedding = ollama_client.generate_embedding(content[:6000])
+            if not embedding:
+                logger.warning(f"Failed to generate embedding for article {article_id}, continuing without embedding")
+                embedding = None
         
         # Update article in database (including Chain of Thought fields)
         success = repo.update_article_analysis(
@@ -415,17 +436,12 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
 @research_bp.route('/api/research/models', methods=['GET'])
 @require_auth
 def get_available_models():
-    """Get list of available Ollama models for re-analysis"""
+    """Get list of available AI models for re-analysis (Ollama, WebAI, GLM)"""
     try:
-        from ollama_client import get_ollama_client, check_ollama_health, list_available_models
+        from ollama_client import list_available_models
         
-        if not check_ollama_health():
-            return jsonify({
-                "success": False,
-                "error": "Ollama is not available",
-                "models": []
-            }), 503
-        
+        # Get all available models (includes Ollama, WebAI, and GLM if configured)
+        # Note: WebAI and GLM models don't require Ollama to be available
         models = list_available_models(include_hidden=False)
         
         # Get default model
@@ -521,9 +537,24 @@ def reanalyze_article_stream():
                     yield f"data: {json.dumps({'error': 'Research repository not available'})}\n\n"
                     return
                 
-                # Check backend: GLM uses Z.AI (requires key); others use Ollama
+                # Check backend: Web-based AI uses cookie service; GLM uses Z.AI (requires key); others use Ollama
+                try:
+                    from webai_wrapper import is_webai_model
+                    is_webai = is_webai_model(model_name)
+                except ImportError:
+                    is_webai = False
                 is_glm = model_name and str(model_name).startswith("glm-")
-                if is_glm:
+                if is_webai:
+                    try:
+                        from webai_wrapper import check_cookie_config
+                        config_status = check_cookie_config()
+                        if not config_status.get("status", False):
+                            yield f"data: {json.dumps({'error': 'Web-based AI cookies not configured. Configure cookies via AI Settings.'})}\n\n"
+                            return
+                    except ImportError:
+                        yield f"data: {json.dumps({'error': 'Web-based AI support not available'})}\n\n"
+                        return
+                elif is_glm:
                     try:
                         from glm_config import get_zhipu_api_key
                         if not get_zhipu_api_key():

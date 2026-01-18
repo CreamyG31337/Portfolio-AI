@@ -59,13 +59,18 @@ except (ImportError, FileNotFoundError, KeyError, ValueError) as e:
     # Fallback functions if keys file not available
     def get_model_display_name(model_id: str) -> str:
         # Fallback: use generic names if keys not available
-        # Never expose service name in code
-        generic_names = {
-            "gemini-2.5-flash": "AI 2.5 Flash",
-            "gemini-2.5-pro": "AI 2.5 Pro",
-            "gemini-3.0-pro": "AI 3.0 Pro",
-        }
-        return generic_names.get(model_id, "AI Model")
+        # Never expose service name in code - use webai_wrapper for model list
+        try:
+            from webai_wrapper import get_webai_models
+            webai_models = get_webai_models()
+            # Generate generic names based on model suffix
+            for wm in webai_models:
+                if model_id == wm:
+                    suffix = wm.split("-", 1)[-1] if "-" in wm else wm
+                    return f"AI {suffix.replace('-', ' ').title()}"
+        except ImportError:
+            pass
+        return "AI Model"
     def get_model_display_name_short() -> str:
         # Fallback: use generic name if keys not available
         return "AI Pro"
@@ -290,7 +295,13 @@ def calculate_context_size(
     # Get model context window (depends on model type)
     context_window = 4096  # Default for unknown models
     
-    if selected_model.startswith("gemini-"):
+    # Check for web-based AI models
+    try:
+        from webai_wrapper import is_webai_model
+        is_webai = is_webai_model(selected_model)
+    except ImportError:
+        is_webai = False
+    if is_webai:
         # WebAI models have large context windows
         if "flash" in selected_model:
             context_window = 1048576  # 1M tokens for Flash
@@ -439,7 +450,12 @@ with st.sidebar:
     # Format model names for display (show friendly names instead of technical identifiers)
     def format_model_name(model: str) -> str:
         """Format model name using keys file."""
-        if HAS_MODEL_KEYS and model.startswith("gemini-"):
+        try:
+            from webai_wrapper import is_webai_model
+            is_webai = is_webai_model(model)
+        except ImportError:
+            is_webai = False
+        if HAS_MODEL_KEYS and is_webai:
             try:
                 return get_model_display_name(model)
             except (KeyError, FileNotFoundError):
@@ -449,13 +465,17 @@ with st.sidebar:
     def get_model_value(display_name: str) -> str:
         """Get model identifier from display name (reverse lookup)."""
         if HAS_MODEL_KEYS:
-            # Try to find matching model by checking all known models
-            for model_id in ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.0-pro"]:
-                try:
-                    if get_model_display_name(model_id) == display_name:
-                        return model_id
-                except (KeyError, FileNotFoundError):
-                    continue
+            # Try to find matching model by checking all known webai models
+            try:
+                from webai_wrapper import get_webai_models
+                for model_id in get_webai_models():
+                    try:
+                        if get_model_display_name(model_id) == display_name:
+                            return model_id
+                    except (KeyError, FileNotFoundError):
+                        continue
+            except ImportError:
+                pass
         return display_name
     
     # Create display names for dropdown
@@ -483,24 +503,29 @@ with st.sidebar:
     selected_model = get_model_value(selected_display)
 
     # Check model-specific requirements
-    if selected_model.startswith("gemini-"):
+    try:
+        from webai_wrapper import is_webai_model, get_webai_models
+        is_selected_webai = is_webai_model(selected_model)
+        webai_model_list = get_webai_models()
+    except ImportError:
+        is_selected_webai = False
+        webai_model_list = []
+    if is_selected_webai:
         # WebAI models use web-based API
         if HAS_MODEL_KEYS:
             try:
                 display_name = get_model_display_name(selected_model)
                 # Build description with display name from keys
-                emoji_map = {
-                    "gemini-2.5-flash": "⚡",
-                    "gemini-2.5-pro": "🧠",
-                    "gemini-3.0-pro": "✨"
-                }
-                emoji = emoji_map.get(selected_model, "🤖")
-                context_map = {
-                    "gemini-2.5-flash": "Fast responses with 1M token context",
-                    "gemini-2.5-pro": "Advanced reasoning with 2M token context",
-                    "gemini-3.0-pro": "Latest model with 2M token context"
-                }
-                context = context_map.get(selected_model, "Web-based AI model")
+                # Map by model suffix (position in model list)
+                emoji_list = ["⚡", "🧠", "✨"]
+                context_list = [
+                    "Fast responses with 1M token context",
+                    "Advanced reasoning with 2M token context",
+                    "Latest model with 2M token context"
+                ]
+                idx = webai_model_list.index(selected_model) if selected_model in webai_model_list else -1
+                emoji = emoji_list[idx] if 0 <= idx < len(emoji_list) else "🤖"
+                context = context_list[idx] if 0 <= idx < len(context_list) else "Web-based AI model"
                 st.caption(f"ℹ️ {emoji} {display_name} - {context}")
             except (KeyError, FileNotFoundError):
                 st.caption(f"ℹ️ Web-based AI model with persistent conversations")
@@ -508,7 +533,7 @@ with st.sidebar:
             st.caption(f"ℹ️ Web-based AI model with persistent conversations")
         # WebAI doesn't need Ollama
         if not HAS_WEBAI:
-            st.error("❌ WebAI package not installed. Install with: pip install gemini-webapi")
+            st.error("❌ WebAI package not installed. Install with: pip install the required webapi package")
             st.stop()
     else:
         # Ollama models require Ollama to be running
@@ -721,7 +746,7 @@ with st.sidebar:
 
     # Check if Ollama is available (needed for embeddings) AND not using WebAI
     # WebAI users might not have Ollama running
-    if ollama_available and not selected_model.startswith("gemini-"):
+    if ollama_available and not is_selected_webai:
         include_repository = st.checkbox(
             "Use Research Repository",
             value=True,
@@ -749,7 +774,7 @@ with st.sidebar:
                     help="Lower = more diverse results, higher = only very similar articles",
                     key="repository_min_similarity"
                 )
-    elif selected_model.startswith("gemini-"):
+    elif is_selected_webai:
         st.info("ℹ️ Repository search requires Ollama for embeddings. Not available with WebAI models.")
         include_repository = False
         repository_max_results = 3
@@ -1524,7 +1549,7 @@ if user_query:
 
         try:
             # Check if using WebAI or Ollama
-            if selected_model.startswith("gemini-"):
+            if is_selected_webai:
                 # Use webai service with persistent conversation
                 # NOTE: WebAI via web UI has limitations:
                 # - No system prompts (must include instructions in user message)
@@ -1533,7 +1558,7 @@ if user_query:
                 try:
                     if not HAS_WEBAI:
                         status_placeholder.empty()
-                        st.error("WebAI package not available. Install with: pip install gemini-webapi")
+                        st.error("WebAI package not available. Install with: pip install the required webapi package")
                         st.stop()
                     
                     # Get user ID for session

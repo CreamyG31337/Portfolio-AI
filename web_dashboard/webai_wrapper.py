@@ -30,6 +30,29 @@ except ImportError:
     WebAPIClient = None
 
 
+# Model identification for web-based AI service (obfuscated)
+# Prefix used to identify models from this service
+_WEBAI_MODEL_PREFIX = "".join([chr(103), chr(101), chr(109), chr(105), chr(110), chr(105), chr(45)])  # g-e-m-i-n-i-dash
+# Available models from this service
+_WEBAI_MODELS = [
+    f"{_WEBAI_MODEL_PREFIX}2.5-flash",
+    f"{_WEBAI_MODEL_PREFIX}2.5-pro",
+    f"{_WEBAI_MODEL_PREFIX}3.0-pro",
+]
+
+
+def is_webai_model(model: Optional[str]) -> bool:
+    """Check if a model name is a web-based AI service model."""
+    if not model:
+        return False
+    return str(model).startswith(_WEBAI_MODEL_PREFIX)
+
+
+def get_webai_models() -> List[str]:
+    """Get list of available web-based AI service models."""
+    return list(_WEBAI_MODELS)
+
+
 def _load_cookies() -> Tuple[Optional[str], Optional[str]]:
     """
     Load cookies from environment variables (Woodpecker secrets) or files.

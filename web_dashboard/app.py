@@ -3328,8 +3328,8 @@ def ai_assistant_page():
         
         # Check for WebAI models
         try:
-            from ai_service_keys import get_model_display_name
-            webai_models = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.0-pro"]
+            from webai_wrapper import get_webai_models
+            webai_models = get_webai_models()
             has_webai = True
         except (ImportError, FileNotFoundError):
             webai_models = []
@@ -3389,14 +3389,19 @@ def _get_formatted_ai_models():
             display_name = "GLM " + model[4:].replace("-", " ") if len(model) > 4 else model
             formatted_models.append({"id": model, "name": display_name, "type": "glm"})
             continue
-        is_webai = model.startswith('gemini-')
+        # Check for web-based AI models
+        try:
+            from webai_wrapper import is_webai_model
+            is_webai = is_webai_model(model)
+        except ImportError:
+            is_webai = False
         display_name = model
 
         if is_webai:
             try:
                 display_name = get_model_display_name(model)
                 # Add sparkle to webai models if not already there
-                if 'AI' in display_name or 'Gemini' in display_name:
+                if 'AI' in display_name:
                      display_name = f"✨ {display_name}"
             except:
                 pass
@@ -3867,7 +3872,12 @@ def api_ai_chat():
         system_prompt = get_system_prompt()
         
         # Check if using WebAI or Ollama
-        if model and model.startswith("gemini-"):
+        try:
+            from webai_wrapper import is_webai_model
+            is_webai = is_webai_model(model)
+        except ImportError:
+            is_webai = False
+        if model and is_webai:
             # WebAI (non-streaming)
             try:
                 from webai_wrapper import PersistentConversationSession

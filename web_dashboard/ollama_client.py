@@ -585,6 +585,13 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
                 model = "granite3.3:8b"
 
+        # Web-based AI service: use cookie-based service, not Ollama
+        try:
+            from webai_wrapper import is_webai_model
+            if is_webai_model(model):
+                return _generate_summary_via_webai(text, model, stream=False)
+        except ImportError:
+            pass
         # GLM: use Z.AI, not Ollama (Ollama would 404 for glm-*)
         if model and str(model).startswith("glm-"):
             return _generate_summary_via_zhipu(text, model, stream=False)
@@ -670,6 +677,13 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
                 model = "granite3.3:8b"
 
+        # Web-based AI service: use cookie-based service, not Ollama (note: doesn't support streaming)
+        try:
+            from webai_wrapper import is_webai_model
+            if is_webai_model(model):
+                return _generate_summary_via_webai(text, model, progress_callback=progress_callback, stream=False)
+        except ImportError:
+            pass
         # GLM: use Z.AI, not Ollama
         if model and str(model).startswith("glm-"):
             return _generate_summary_via_zhipu(text, model, progress_callback=progress_callback, stream=True)
@@ -915,6 +929,86 @@ def check_ollama_health() -> bool:
     return client.check_health() if client else False
 
 
+def _generate_summary_via_webai(
+    text: str, model: str, *, progress_callback=None, stream: bool = False
+) -> Dict[str, Any]:
+    """Run article summarization via web-based AI service (cookie-based). Used for WebAI models."""
+    try:
+        from webai_wrapper import PersistentConversationSession
+        from summary_common import get_summary_system_prompt, parse_summary_response
+    except ImportError:
+        logger.warning("webai_wrapper or summary_common not available for web-based AI summary")
+        return {}
+
+    max_chars = 6000
+    original_len = len(text)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "..."
+        logger.debug(f"Truncated text from {original_len} to {max_chars} characters for web-based AI summarization")
+
+    system_prompt = get_summary_system_prompt()
+    total_chars = len(system_prompt) + len(text)
+    logger.debug(f"Web-based AI prompt length: {total_chars} chars (system: {len(system_prompt)}, user: {len(text)})")
+
+    # Note: Web-based AI service doesn't support streaming, so stream parameter is ignored
+    if stream and progress_callback:
+        progress_callback(0, 10)  # Indicate start
+
+    timeout_sec = 120
+    start_time = time.time()
+    logger.info(
+        f"🤖 Web-based AI summary query starting: model={model}, "
+        f"stream=False (not supported), timeout={timeout_sec}s"
+    )
+
+    try:
+        # Create a temporary session for this summarization task
+        # Use a unique session ID based on timestamp to avoid conversation history
+        session_id = f"summary_{int(time.time())}"
+        session = PersistentConversationSession(
+            session_id=session_id,
+            model=model,
+            system_prompt=system_prompt,
+            auto_refresh=False,
+        )
+
+        # Combine system prompt and article text (web-based service needs instructions in message)
+        full_message = f"{system_prompt}\n\nArticle to analyze:\n\n{text}"
+
+        if progress_callback:
+            progress_callback(len(full_message), 30)  # Indicate sending
+
+        conn_start = time.time()
+        raw = session.send_sync(full_message)
+        connection_time = time.time() - conn_start
+        elapsed = time.time() - start_time
+
+        # Clean up session
+        try:
+            session.reset_sync()
+            session.close_sync()
+        except Exception:
+            pass  # Ignore cleanup errors
+
+        logger.info(f"✅ Web-based AI summary completed in {elapsed:.2f}s (connection: {connection_time:.2f}s)")
+
+        if progress_callback:
+            progress_callback(len(raw), 100)
+
+        if not raw or not raw.strip():
+            logger.warning("Empty response from web-based AI service")
+            return {}
+        return parse_summary_response(raw.strip())
+
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(
+            f"❌ Web-based AI summary request failed after {elapsed:.2f}s: {e}",
+            exc_info=True,
+        )
+        return {}
+
+
 def _generate_summary_via_zhipu(
     text: str, model: str, *, progress_callback=None, stream: bool = False
 ) -> Dict[str, Any]:
@@ -1072,16 +1166,50 @@ def _generate_summary_via_zhipu(
     return parse_summary_response(raw.strip())
 
 
-def generate_summary_streaming(
-    text: str, model: Optional[str] = None, progress_callback=None
+def generate_summary(
+    text: str, model: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Module-level entry: routes to Z.AI for glm-* or OllamaClient.generate_summary_streaming."""
+    """Module-level entry: routes to web-based AI, Z.AI for glm-*, or OllamaClient.generate_summary."""
     if model is None:
         try:
             from settings import get_summarizing_model
             model = get_summarizing_model()
         except Exception:
             model = "granite3.3:8b"
+    # Web-based AI service: use cookie-based service
+    try:
+        from webai_wrapper import is_webai_model
+        if is_webai_model(model):
+            return _generate_summary_via_webai(text, model, stream=False)
+    except ImportError:
+        pass
+    # GLM: use Z.AI
+    if model and str(model).startswith("glm-"):
+        return _generate_summary_via_zhipu(text, model, stream=False)
+    client = get_ollama_client()
+    if not client:
+        return {}
+    return client.generate_summary(text, model=model)
+
+
+def generate_summary_streaming(
+    text: str, model: Optional[str] = None, progress_callback=None
+) -> Dict[str, Any]:
+    """Module-level entry: routes to web-based AI, Z.AI for glm-*, or OllamaClient.generate_summary_streaming."""
+    if model is None:
+        try:
+            from settings import get_summarizing_model
+            model = get_summarizing_model()
+        except Exception:
+            model = "granite3.3:8b"
+    # Web-based AI service: use cookie-based service (note: doesn't support streaming)
+    try:
+        from webai_wrapper import is_webai_model
+        if is_webai_model(model):
+            return _generate_summary_via_webai(text, model, progress_callback=progress_callback, stream=False)
+    except ImportError:
+        pass
+    # GLM: use Z.AI
     if model and str(model).startswith("glm-"):
         return _generate_summary_via_zhipu(text, model, progress_callback=progress_callback, stream=True)
     client = get_ollama_client()
@@ -1109,11 +1237,14 @@ def list_available_models(include_hidden: bool = False) -> List[str]:
     if client:
         models = client.get_filtered_models(include_hidden=include_hidden)
     
-    # Add web-based WebAI model options
-    webai_models = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.0-pro"]
-    for webai_model in webai_models:
-        if webai_model not in models:
-            models.append(webai_model)
+    # Add web-based AI model options
+    try:
+        from webai_wrapper import get_webai_models
+        for webai_model in get_webai_models():
+            if webai_model not in models:
+                models.append(webai_model)
+    except ImportError:
+        pass
 
     # Add GLM models only when Zhipu API key is set (optional)
     try:
