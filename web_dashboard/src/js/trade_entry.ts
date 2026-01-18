@@ -246,14 +246,14 @@ async function handleManualSubmit(e: Event): Promise<void> {
 
         showToastForTradeEntry('✅ Trade Submitted Successfully');
         form.reset();
-        
+
         // Reset date/time
         const now = new Date();
         const dateInput = document.getElementById('trade-date') as HTMLInputElement | null;
         const timeInput = document.getElementById('trade-time') as HTMLInputElement | null;
         if (dateInput) dateInput.valueAsDate = now;
         if (timeInput) timeInput.value = now.toTimeString().slice(0, 5);
-        
+
         updateManualTotal();
 
         if (result.rebuild_job_id) {
@@ -313,11 +313,11 @@ async function handleEmailParse(): Promise<void> {
         const parsedResult = document.getElementById('parsed-result');
 
         if (previewTicker) previewTicker.textContent = result.trade.ticker;
-        
+
         if (previewAction) {
             const action = result.trade.action || (result.trade.reason && result.trade.reason.toLowerCase().includes('sell') ? 'SELL' : 'BUY');
             previewAction.textContent = action;
-            
+
             // Color action
             if (action === 'SELL') {
                 previewAction.className = 'font-bold text-lg text-red-600';
@@ -384,7 +384,7 @@ async function handleEmailConfirm(): Promise<void> {
         });
 
         const result: TradeSubmitResponse = await response.json();
-        
+
         if (!response.ok || !result.success) {
             throw new Error(result.error || 'Failed to save trade');
         }
@@ -392,7 +392,7 @@ async function handleEmailConfirm(): Promise<void> {
         showToastForTradeEntry('✅ Trade Saved');
         const parsedResult = document.getElementById('parsed-result');
         const emailText = document.getElementById('email-text') as HTMLTextAreaElement | null;
-        
+
         if (parsedResult) parsedResult.classList.add('hidden');
         if (emailText) emailText.value = '';
         parsedTradeData = null;
@@ -449,12 +449,12 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                     ? '<span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-300">SELL</span>'
                     : '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-300">BUY</span>';
 
-                const dateStr = new Date(trade.date).toLocaleString([], { 
-                    year: 'numeric', 
-                    month: '2-digit', 
-                    day: '2-digit', 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
+                const dateStr = new Date(trade.date).toLocaleString([], {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
                 });
                 const total = trade.shares * trade.price;
 
@@ -474,7 +474,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
         const pageStart = document.getElementById('page-start');
         const pageEnd = document.getElementById('page-end');
         const totalCount = document.getElementById('total-count');
-        
+
         if (pageStart) pageStart.textContent = ((page * limit) + 1).toString();
         if (pageEnd) pageEnd.textContent = Math.min((page + 1) * limit, data.total).toString();
         if (totalCount) totalCount.textContent = data.total.toString();
@@ -540,7 +540,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Live calc for manual form
     const sharesInput = document.getElementById('shares');
     const priceInput = document.getElementById('price');
-    
+
     if (sharesInput) {
         sharesInput.addEventListener('input', updateManualTotal);
     }
@@ -548,11 +548,20 @@ document.addEventListener('DOMContentLoaded', () => {
         priceInput.addEventListener('input', updateManualTotal);
     }
 
-    // Ticker auto-uppercase
+    // Ticker auto-uppercase with visual feedback
     const tickerInput = document.getElementById('ticker') as HTMLInputElement | null;
     if (tickerInput) {
         tickerInput.addEventListener('change', () => {
+            const originalValue = tickerInput.value;
             tickerInput.value = tickerInput.value.toUpperCase();
+
+            // Visual feedback if value changed
+            if (originalValue !== tickerInput.value) {
+                tickerInput.classList.add('border-green-500', 'dark:border-green-400');
+                setTimeout(() => {
+                    tickerInput.classList.remove('border-green-500', 'dark:border-green-400');
+                }, 300);
+            }
         });
     }
 
@@ -598,7 +607,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const now = new Date();
     const dateInput = document.getElementById('trade-date') as HTMLInputElement | null;
     const timeInput = document.getElementById('trade-time') as HTMLInputElement | null;
-    
+
     if (dateInput) dateInput.valueAsDate = now;
     if (timeInput) timeInput.value = now.toTimeString().slice(0, 5);
 });

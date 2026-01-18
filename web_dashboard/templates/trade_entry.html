@@ -9,7 +9,8 @@
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <span class="text-3xl">📈</span> Trade Entry
         </h1>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Record manual trades or parse from emails. Use the fund selector in the sidebar menu.</p>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Record manual trades or parse from emails. Use the fund
+            selector in the sidebar menu.</p>
     </div>
 
     <!-- Tabs -->
@@ -18,24 +19,21 @@
             <li class="me-2" role="presentation">
                 <button
                     class="inline-block p-4 border-b-2 text-blue-600 border-blue-600 dark:text-blue-500 dark:border-blue-500 rounded-t-lg focus:outline-none"
-                    id="manual-tab" type="button" role="tab"
-                    aria-controls="manual-content" aria-selected="true">
+                    id="manual-tab" type="button" role="tab" aria-controls="manual-content" aria-selected="true">
                     ✍️ Manual Entry
                 </button>
             </li>
             <li class="me-2" role="presentation">
                 <button
                     class="inline-block p-4 border-b-2 border-transparent text-gray-500 hover:text-gray-600 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 rounded-t-lg focus:outline-none"
-                    id="email-tab" type="button" role="tab"
-                    aria-controls="email-content" aria-selected="false">
+                    id="email-tab" type="button" role="tab" aria-controls="email-content" aria-selected="false">
                     📧 Email Parse
                 </button>
             </li>
             <li class="me-2" role="presentation">
                 <button
                     class="inline-block p-4 border-b-2 border-transparent text-gray-500 hover:text-gray-600 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 rounded-t-lg focus:outline-none"
-                    id="history-tab" type="button" role="tab"
-                    aria-controls="history-content" aria-selected="false">
+                    id="history-tab" type="button" role="tab" aria-controls="history-content" aria-selected="false">
                     📜 Recent Trades
                 </button>
             </li>
@@ -81,17 +79,18 @@
                                 <span
                                     class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-gray-500">🔍</span>
                                 <input type="text" id="ticker" name="ticker"
-                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white uppercase"
+                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white uppercase transition-colors duration-300"
                                     placeholder="AAPL" autocomplete="off" aria-required="true" required>
                             </div>
                         </div>
 
                         <div>
                             <label for="shares"
-                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Shares <span class="text-red-500">*</span></label>
+                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Shares <span
+                                    class="text-red-500">*</span></label>
                             <input type="number" id="shares" name="shares" step="any" min="0.000001"
                                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
-                                inputmode="decimal" aria-required="true" required>
+                                inputmode="decimal" aria-required="true" autocomplete="off" required>
                         </div>
                     </div>
 
@@ -99,13 +98,14 @@
                     <div class="space-y-4">
                         <div>
                             <label for="price"
-                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Price ($) <span class="text-red-500">*</span></label>
+                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Price ($) <span
+                                    class="text-red-500">*</span></label>
                             <div class="relative">
                                 <span
                                     class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-gray-500">$</span>
                                 <input type="number" id="price" name="price" step="0.01" min="0.01"
                                     class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-8 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
-                                    inputmode="decimal" aria-required="true" required>
+                                    inputmode="decimal" aria-required="true" autocomplete="off" required>
                             </div>
                         </div>
 
@@ -122,14 +122,16 @@
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label for="trade-date"
-                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Date <span class="text-red-500">*</span></label>
+                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Date <span
+                                        class="text-red-500">*</span></label>
                                 <input type="date" id="trade-date" name="date"
                                     class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                     aria-required="true" required>
                             </div>
                             <div>
                                 <label for="trade-time"
-                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Time <span class="text-red-500">*</span></label>
+                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Time <span
+                                        class="text-red-500">*</span></label>
                                 <input type="time" id="trade-time" name="time"
                                     class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                     aria-required="true" required>

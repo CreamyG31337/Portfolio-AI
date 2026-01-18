@@ -8,7 +8,7 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import request, jsonify, session, redirect, url_for
+from flask import request, jsonify, session, redirect, url_for, make_response
 import requests
 from typing import Optional, List
 import logging
@@ -282,6 +282,9 @@ def require_auth(f):
         # If token was refreshed, update cookies in the response
         if new_token:
             import os
+            # Ensure we have a Response object: view may return str (render_template),
+            # tuple (jsonify(...), 401), or Response. make_response normalizes all of these.
+            response = make_response(response)
             # Use same HTTPS detection logic as login route
             x_forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
             is_https = x_forwarded_proto == 'https' or request.is_secure
