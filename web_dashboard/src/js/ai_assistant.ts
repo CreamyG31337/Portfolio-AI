@@ -129,18 +129,19 @@ class AIAssistant {
             this.setSendEnabled(false);
 
             this.setupEventListeners();
-            console.log('[AIAssistant] Event listeners set up');
+            console.log('[AIAssistant] Event listeners attached');
             this.loadModels();
-            console.log('[AIAssistant] loadModels() called');
             this.loadFunds();
-            console.log('[AIAssistant] loadFunds() called');
+            this.loadPortfolioTickers();
             this.loadContextItems();
             this.updateUI();
 
             // Eagerly load context - this enables the send button when done
             this.loadContext();
 
-            console.log('[AIAssistant] init() complete');
+            // Initialize display
+            this.updateModelDisplay();
+            console.log('[AIAssistant] Initialized successfully');
         } catch (err) {
             console.error('[AIAssistant] init() error:', err);
         }
@@ -224,6 +225,10 @@ class AIAssistant {
                 const target = e.target as HTMLSelectElement;
                 this.selectedModel = target.value;
                 this.saveModelPreference();
+                // Update current model display in footer
+                this.updateModelDisplay();
+                // Recalculate token usage with new model limits
+                this.calculateContextUsage();
             });
         }
 
@@ -660,7 +665,7 @@ class AIAssistant {
 
     updateContextUI(): void {
         const summary = document.getElementById('context-summary');
-        const contextItems = document.getElementById('context-items');
+        const contextItemsElement = document.getElementById('context-items');
         if (summary) {
             if (this.contextItems.length === 0) {
                 summary.textContent = 'No context items selected';
@@ -668,12 +673,19 @@ class AIAssistant {
                 summary.textContent = `✅ ${this.contextItems.length} data source(s) selected`;
             }
         }
-        if (contextItems) {
-            contextItems.textContent = `Context Items: ${this.contextItems.length}`;
+        if (contextItemsElement) {
+            contextItemsElement.textContent = `Context Items: ${this.contextItems.length}`;
         }
 
         // Update token usage
         this.calculateContextUsage();
+    }
+
+    updateModelDisplay(): void {
+        const currentModelElement = document.getElementById('current-model');
+        if (currentModelElement) {
+            currentModelElement.textContent = this.selectedModel || '-';
+        }
     }
 
     updateModelDescription(): void {
@@ -1436,19 +1448,19 @@ class AIAssistant {
         if (!chatMessages) return;
 
         const resultsDiv = document.createElement('div');
-        resultsDiv.className = 'mb-4 border border-blue-300 dark:border-blue-700 rounded-lg bg-blue-50 dark:bg-blue-900/20';
+        resultsDiv.className = 'mb-4 border rounded-lg border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-950/50';
 
         const header = document.createElement('div');
-        header.className = 'p-3 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors';
-        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-blue-800 dark:text-blue-200">🔍 Search Results (${searchData.results.length} found)</span><span class="text-blue-600 dark:text-blue-400 text-sm">Click to expand ▼</span></div>`;
+        header.className = 'p-3 cursor-pointer rounded-t-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors';
+        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-blue-800 dark:text-blue-300">🔍 Search Results (${searchData.results.length} found)</span><span class="text-blue-600 dark:text-blue-400 text-sm">Click to expand ▼</span></div>`;
 
         const content = document.createElement('div');
-        content.className = 'hidden p-3 border-t border-blue-300 dark:border-blue-700 space-y-2';
+        content.className = 'hidden p-3 border-t border-blue-300 dark:border-blue-600 space-y-2';
 
         const maxResults = Math.min(5, searchData.results.length);
         searchData.results.slice(0, maxResults).forEach((result: any, idx: number) => {
             const resultItem = document.createElement('div');
-            resultItem.className = 'p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700';
+            resultItem.className = 'p-2 rounded border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700';
             const title = result.title || 'Untitled';
             const url = result.url || '#';
             const snippet = result.content || result.snippet || '';
@@ -1475,22 +1487,33 @@ class AIAssistant {
         if (!chatMessages) return;
 
         const articlesDiv = document.createElement('div');
-        articlesDiv.className = 'mb-4 border border-purple-300 dark:border-purple-700 rounded-lg bg-purple-50 dark:bg-purple-900/20';
+        articlesDiv.className = 'mb-4 border rounded-lg border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-950/50';
 
         const header = document.createElement('div');
-        header.className = 'p-3 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors';
-        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-purple-800 dark:text-purple-200">🧠 Research Articles (${articles.length} found)</span><span class="text-purple-600 dark:text-purple-400 text-sm">Click to expand ▼</span></div>`;
+        header.className = 'p-3 cursor-pointer rounded-t-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors';
+        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-purple-800 dark:text-purple-300">🧠 Research Articles (${articles.length} found)</span><span class="text-purple-600 dark:text-purple-400 text-sm">Click to expand ▼</span></div>`;
 
         const content = document.createElement('div');
-        content.className = 'hidden p-3 border-t border-purple-300 dark:border-purple-700 space-y-2';
+        content.className = 'hidden p-3 border-t border-purple-300 dark:border-purple-600 space-y-2';
 
         articles.forEach((article: any, idx: number) => {
             const articleItem = document.createElement('div');
-            articleItem.className = 'p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700';
+            articleItem.className = 'p-2 rounded border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700';
             const title = article.title || 'Untitled';
             const summary = article.summary || '';
             const similarity = article.similarity || 0;
-            articleItem.innerHTML = `<div class="font-semibold text-sm mb-1 text-purple-700 dark:text-purple-300">${idx + 1}. ${title} <span class="text-xs text-gray-500">(${(similarity * 100).toFixed(0)}% match)</span></div>${summary ? `<div class="text-xs text-gray-600 dark:text-gray-400">${summary.substring(0, 200)}...</div>` : ''}`;
+            const articleId = article.id || article.article_id;
+            const sourceUrl = article.url || article.source_url;
+
+            // Create clickable link - prefer local research page, fallback to source URL
+            let titleHtml = title;
+            if (articleId) {
+                titleHtml = `<a href="/research?highlight=${articleId}" class="text-purple-700 dark:text-purple-300 hover:underline">${title}</a>`;
+            } else if (sourceUrl) {
+                titleHtml = `<a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" class="text-purple-700 dark:text-purple-300 hover:underline">${title}</a>`;
+            }
+
+            articleItem.innerHTML = `<div class="font-semibold text-sm mb-1">${idx + 1}. ${titleHtml} <span class="text-xs text-gray-500 dark:text-gray-400">(${(similarity * 100).toFixed(0)}% match)</span></div>${summary ? `<div class="text-xs text-gray-600 dark:text-gray-400">${summary.substring(0, 200)}...</div>` : ''}`;
             content.appendChild(articleItem);
         });
 
