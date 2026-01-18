@@ -9,36 +9,39 @@
 {% if stats %}
 <div class="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
     <h2 class="text-2xl font-bold text-gray-900 mb-6">📊 Statistics</h2>
-    
+
     <!-- Metrics Row -->
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 mb-6">
         <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
             <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Total Articles</div>
             <div class="text-lg font-bold text-gray-900 dark:text-white">{{ total_articles|default(0) }}</div>
         </div>
-        
+
         <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
             <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Market News</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and stats.by_type.market_news %}{{ stats.by_type.market_news }}{% else %}0{% endif %}</div>
+            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and
+                stats.by_type.market_news %}{{ stats.by_type.market_news }}{% else %}0{% endif %}</div>
         </div>
-        
+
         <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
             <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Ticker News</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and stats.by_type.ticker_news %}{{ stats.by_type.ticker_news }}{% else %}0{% endif %}</div>
+            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and
+                stats.by_type.ticker_news %}{{ stats.by_type.ticker_news }}{% else %}0{% endif %}</div>
         </div>
-        
+
         <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
             <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Earnings</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and stats.by_type.earnings %}{{ stats.by_type.earnings }}{% else %}0{% endif %}</div>
+            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and stats.by_type.earnings
+                %}{{ stats.by_type.earnings }}{% else %}0{% endif %}</div>
         </div>
-        
+
         <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
             <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Embedded (RAG)</div>
             <div class="text-lg font-bold text-gray-900 dark:text-white">{{ embedded_articles|default(0) }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ embedding_pct|round(0)|int }}%</div>
         </div>
     </div>
-    
+
     <!-- Charts Row -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Top 10 Sources Chart -->
@@ -48,7 +51,7 @@
                 <canvas id="sources-chart"></canvas>
             </div>
         </div>
-        
+
         <!-- Articles by Day Chart -->
         <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
             <h3 class="text-lg font-semibold text-gray-900 mb-4">Articles by Day (Last 90 days)</h3>
@@ -323,11 +326,11 @@
 {% if stats %}
 <script>
     // Chart data from template
-    const sourcesData = {{ (stats.by_source|default({}))|tojson }};
-    const daysData = {{ (stats.by_day|default({}))|tojson }};
-    
+    const sourcesData = {{ (stats.by_source |default ({}))| tojson }};
+    const daysData = {{ (stats.by_day |default ({}))| tojson }};
+
     // Initialize charts when page loads
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         // Top 10 Sources Bar Chart
         const sourcesCtx = document.getElementById('sources-chart');
         if (sourcesCtx && sourcesData && Object.keys(sourcesData).length > 0) {
@@ -335,10 +338,10 @@
             const sortedSources = Object.entries(sourcesData)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 10);
-            
+
             const sourcesLabels = sortedSources.map(([source]) => source);
             const sourcesCounts = sortedSources.map(([, count]) => count);
-            
+
             new Chart(sourcesCtx, {
                 type: 'bar',
                 data: {
@@ -372,21 +375,21 @@
         } else if (sourcesCtx) {
             sourcesCtx.parentElement.innerHTML = '<p class="text-gray-500 text-center py-8">No source data available</p>';
         }
-        
+
         // Articles by Day Line Chart
         const daysCtx = document.getElementById('days-chart');
         if (daysCtx && daysData && Object.keys(daysData).length > 0) {
             // Sort by date
             const sortedDays = Object.entries(daysData)
                 .sort((a, b) => new Date(a[0]) - new Date(b[0]));
-            
+
             const daysLabels = sortedDays.map(([day]) => {
                 // Format date as MM/DD
                 const date = new Date(day);
                 return `${date.getMonth() + 1}/${date.getDate()}`;
             });
             const daysCounts = sortedDays.map(([, count]) => count);
-            
+
             new Chart(daysCtx, {
                 type: 'line',
                 data: {
@@ -436,13 +439,13 @@
             const id = summaryEl.id.replace('summary-', '');
             const toggleBtn = document.getElementById(`toggle-btn-${id}`);
             const fadeEl = document.getElementById(`fade-${id}`);
-            
+
             if (!toggleBtn) return; // No button means it wasn't flagged as needing truncation
-            
+
             // Check if content actually overflows the 10rem (160px) limit
             const maxHeight = 160; // 10rem = 160px
             const scrollHeight = summaryEl.scrollHeight;
-            
+
             if (scrollHeight <= maxHeight) {
                 // Content fits, hide the button and fade
                 toggleBtn.style.display = 'none';
@@ -595,15 +598,14 @@
                 // Show summary
                 if (successCount > 0) {
                     showMessage(`✅ Successfully re-analyzed ${successCount} article${successCount !== 1 ? 's' : ''}`, 'success');
+                    // Reload page after a short delay ONLY if there were successes
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
                 }
                 if (errorCount > 0) {
                     showMessage(`❌ Failed to re-analyze ${errorCount} article${errorCount !== 1 ? 's' : ''}`, 'error');
                 }
-
-                // Reload page after a short delay to show updated data
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
                 return;
             }
 
@@ -742,19 +744,77 @@
     }
 
     function showMessage(message, type) {
-        const messagesDiv = document.getElementById('reanalyze-messages');
-        const messageEl = document.createElement('div');
-        messageEl.className = `p-3 rounded-lg mb-2 ${type === 'success' ? 'bg-green-100 text-green-800 border border-green-400' :
-            type === 'error' ? 'bg-red-100 text-red-800 border border-red-400' :
-                'bg-yellow-100 text-yellow-800 border border-yellow-400'
-            }`;
-        messageEl.textContent = message;
-        messagesDiv.appendChild(messageEl);
+        // Ensure toast container exists
+        let toastContainer = document.getElementById('toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'toast-container';
+            toastContainer.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
+            document.body.appendChild(toastContainer);
+        }
 
-        // Auto-remove after 5 seconds
+        const toastEl = document.createElement('div');
+
+        // Define colors based on type
+        let bgClass, borderClass, textClass, icon;
+        if (type === 'success') {
+            bgClass = 'bg-green-50';
+            borderClass = 'border-green-400';
+            textClass = 'text-green-800';
+            icon = 'fa-check-circle';
+        } else if (type === 'error') {
+            bgClass = 'bg-red-50';
+            borderClass = 'border-red-400';
+            textClass = 'text-red-800';
+            icon = 'fa-exclamation-circle';
+        } else {
+            bgClass = 'bg-yellow-50';
+            borderClass = 'border-yellow-400';
+            textClass = 'text-yellow-800';
+            icon = 'fa-info-circle';
+        }
+
+        toastEl.className = `${bgClass} ${textClass} border ${borderClass} px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-500 transform translate-x-full opacity-0 max-w-md`;
+        toastEl.innerHTML = `
+            <i class="fas ${icon} text-lg"></i>
+            <span class="font-medium text-sm">${message}</span>
+            <button onclick="this.parentElement.remove()" class="ml-auto text-gray-400 hover:text-gray-600 focus:outline-none">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+
+        toastContainer.appendChild(toastEl);
+
+        // Animate in
+        requestAnimationFrame(() => {
+            toastEl.classList.remove('translate-x-full', 'opacity-0');
+        });
+
+        // Auto-remove after delay
+        const duration = type === 'error' ? 8000 : 5000; // Longer for errors
         setTimeout(() => {
-            messageEl.remove();
-        }, 5000);
+            if (toastEl.parentElement) {
+                toastEl.classList.add('translate-x-full', 'opacity-0');
+                setTimeout(() => {
+                    if (toastEl.parentElement) toastEl.remove();
+                }, 500);
+            }
+        }, duration);
+
+        // Also log to the inline messages div if it exists (for legacy support/static view)
+        const messagesDiv = document.getElementById('reanalyze-messages');
+        if (messagesDiv) {
+            const staticMsg = document.createElement('div');
+            staticMsg.className = `p-3 rounded-lg mb-2 ${bgClass} ${textClass} border ${borderClass}`;
+            staticMsg.textContent = message;
+            messagesDiv.appendChild(staticMsg);
+
+            // Legacy remove
+            setTimeout(() => {
+                staticMsg.remove();
+            }, duration);
+        }
     }
+
 </script>
 {% endblock %}

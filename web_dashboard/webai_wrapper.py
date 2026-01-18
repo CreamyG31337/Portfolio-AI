@@ -261,6 +261,24 @@ def check_cookie_config() -> dict:
             status["json_parse_success"] = False
             status["json_parse_error"] = str(e)
     
+    # Determine overall status
+    # We consider it configured if we have at least the primary cookie
+    has_env_cookies = status["json_parse_success"] and status["has_secure_1psid"]
+    has_individual_vars = status["individual_vars"]["WEBAI_SECURE_1PSID"]
+    
+    # Check if any cookie file has valid cookies
+    has_file_cookies = False
+    for name, file_status in status["cookie_files"].items():
+        if file_status["root_exists"] or file_status["web_exists"]:
+            # We assume if the file exists, it might be valid (simplification for status check)
+            # For a more robust check, we could try to read it, but that duplicates logic
+            has_file_cookies = True
+            break
+            
+    # Try to actually load them to be sure
+    loaded_1psid, _ = _load_cookies()
+    status["status"] = bool(loaded_1psid)
+    
     return status
 
 
