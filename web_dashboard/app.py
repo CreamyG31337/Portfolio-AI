@@ -697,65 +697,44 @@ def _shutdown_scheduler_on_exit():
 atexit.register(_shutdown_scheduler_on_exit)
 
 def load_portfolio_data(fund_name=None) -> Dict:
-    """Load and process portfolio data from Supabase (web app only - no CSV fallback)"""
-    if not REPOSITORY_AVAILABLE:
-        logger.error("Repository system not available - cannot load portfolio data")
-        return {
-            "portfolio": pd.DataFrame(),
-            "trades": pd.DataFrame(),
-            "cash_balances": {"CAD": 0.0, "USD": 0.0},
-            "available_funds": [],
-            "current_fund": None,
-            "error": "Repository system not available. Please check data.repositories module."
-        }
-    
+    """Load and process portfolio data from Supabase (using flask_data_utils)"""
     try:
-        # Use repository system to load from Supabase
-        repository = RepositoryFactory.create_repository(
-            'supabase',
-            url=os.getenv("SUPABASE_URL"),
-            key=os.getenv("SUPABASE_ANON_KEY"),
-            fund=fund_name
+        from flask_data_utils import (
+            get_current_positions_flask, 
+            get_trade_log_flask, 
+            get_cash_balances_flask,
+            get_available_funds_flask
         )
-
-        # Get available funds
-        available_funds = repository.get_available_funds()
-        if fund_name and fund_name not in available_funds:
-            logger.warning(f"Fund '{fund_name}' not found in Supabase")
-            return {
-                "portfolio": pd.DataFrame(),
-                "trades": pd.DataFrame(),
-                "cash_balances": {"CAD": 0.0, "USD": 0.0},
-                "available_funds": available_funds,
-                "current_fund": None,
-                "error": f"Fund '{fund_name}' not found"
-            }
-
-        # Get data from Supabase using repository (filtered by fund if specified)
-        positions = repository.get_current_positions(fund=fund_name)
-        trades = repository.get_trade_log(limit=1000, fund=fund_name)
-        cash_balances = repository.get_cash_balances()
-
-        # Convert to DataFrames for compatibility with existing code
-        portfolio_df = pd.DataFrame(positions) if positions else pd.DataFrame()
-        trades_df = pd.DataFrame(trades) if trades else pd.DataFrame()
-
+        
+        # Get available funds first
+        available_funds = get_available_funds_flask()
+        
+        # Default to first fund if not specified
+        if not fund_name and available_funds:
+            fund_name = available_funds[0]
+            
+        # Load data components using modern utils
+        portfolio_df = get_current_positions_flask(fund=fund_name)
+        trades_df = get_trade_log_flask(limit=500, fund=fund_name)
+        cash_balances = get_cash_balances_flask(fund=fund_name)
+        
         return {
             "portfolio": portfolio_df,
             "trades": trades_df,
             "cash_balances": cash_balances,
             "available_funds": available_funds,
-            "current_fund": fund_name
+            "current_fund": fund_name,
+            "error": None
         }
     except Exception as e:
-        logger.error(f"Error loading portfolio data from Supabase: {e}", exc_info=True)
+        logger.error(f"Error loading portfolio data: {e}", exc_info=True)
         return {
             "portfolio": pd.DataFrame(),
             "trades": pd.DataFrame(),
             "cash_balances": {"CAD": 0.0, "USD": 0.0},
             "available_funds": [],
             "current_fund": None,
-            "error": f"Failed to load data from Supabase: {str(e)}"
+            "error": str(e)
         }
 
 def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataFrame, fund_name=None) -> Dict:

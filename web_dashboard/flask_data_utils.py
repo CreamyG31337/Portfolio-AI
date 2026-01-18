@@ -260,22 +260,90 @@ def get_fund_thesis_data_flask(fund_name: str) -> Optional[Dict[str, Any]]:
 
 
 def calculate_performance_metrics_flask(fund: Optional[str] = None) -> Dict[str, Any]:
-    """Calculate key performance metrics (Flask version - simplified)
+    """Calculate key performance metrics (Flask version)
     
-    Returns dict with basic performance metrics.
-    Note: This is a simplified version that doesn't do full portfolio value calculation.
+    Returns dict with performance metrics calculated from portfolio data.
     """
-    # For now, return empty metrics. Full implementation would require porting
-    # calculate_portfolio_value_over_time which is complex.
-    return {
-        'peak_date': None,
-        'peak_gain_pct': 0.0,
-        'max_drawdown_pct': 0.0,
-        'max_drawdown_date': None,
-        'total_return_pct': 0.0,
-        'current_value': 0.0,
-        'total_invested': 0.0
-    }
+    try:
+        # Get current positions to calculate current value
+        positions_df = get_current_positions_flask(fund)
+        
+        if positions_df.empty:
+            logger.warning(f"No positions found for fund: {fund}")
+            return {
+                'peak_date': None,
+                'peak_gain_pct': 0.0,
+                'max_drawdown_pct': 0.0,
+                'max_drawdown_date': None,
+                'total_return_pct': 0.0,
+                'current_value': 0.0,
+                'total_invested': 0.0
+            }
+        
+        # Calculate current value and total invested from positions
+        current_value = 0.0
+        total_cost = 0.0
+        
+        for _, row in positions_df.iterrows():
+            shares = float(row.get('shares', 0))
+            price = float(row.get('price', 0))
+            avg_price = float(row.get('avg_price', 0))
+            
+            # Current value
+            position_value = shares * price
+            current_value += position_value
+            
+            # Cost basis
+            cost_basis = shares * avg_price
+            total_cost += cost_basis
+        
+        # Calculate total return percentage
+        total_return_pct = ((current_value - total_cost) / total_cost * 100) if total_cost > 0 else 0.0
+        
+        # Get portfolio value over time for peak/drawdown calculation
+        portfolio_df = calculate_portfolio_value_over_time_flask(fund, days=365)
+        
+        peak_date = None
+        peak_gain_pct = 0.0
+        max_drawdown_pct = 0.0
+        max_drawdown_date = None
+        
+        if not portfolio_df.empty and 'performance_pct' in portfolio_df.columns:
+            # Find peak gain
+            max_idx = portfolio_df['performance_pct'].idxmax()
+            peak_gain_pct = float(portfolio_df.loc[max_idx, 'performance_pct'])
+            peak_date = portfolio_df.loc[max_idx, 'date'].strftime('%Y-%m-%d')
+            
+            # Calculate running maximum for drawdown
+            portfolio_df['cummax'] = portfolio_df['performance_pct'].cummax()
+            portfolio_df['drawdown'] = portfolio_df['performance_pct'] - portfolio_df['cummax']
+            
+            # Find max drawdown
+            min_idx = portfolio_df['drawdown'].idxmin()
+            max_drawdown_pct = float(portfolio_df.loc[min_idx, 'drawdown'])
+            max_drawdown_date = portfolio_df.loc[min_idx, 'date'].strftime('%Y-%m-%d')
+        
+        return {
+            'peak_date': peak_date,
+            'peak_gain_pct': peak_gain_pct,
+            'max_drawdown_pct': max_drawdown_pct,
+            'max_drawdown_date': max_drawdown_date,
+            'total_return_pct': total_return_pct,
+            'current_value': current_value,
+            'total_invested': total_cost
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating performance metrics: {e}", exc_info=True)
+        return {
+            'peak_date': None,
+            'peak_gain_pct': 0.0,
+            'max_drawdown_pct': 0.0,
+            'max_drawdown_date': None,
+            'total_return_pct': 0.0,
+            'current_value': 0.0,
+            'total_invested': 0.0
+        }
 
 
 @cache_data(ttl=300)
