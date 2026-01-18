@@ -8,6 +8,10 @@ System prompts and prompt templates for different investigation types.
 
 from typing import Optional
 
+# Version for portfolio assistant Gem
+# Bump this version when the system prompt changes to create a new Gem
+PORTFOLIO_ASSISTANT_VERSION = "v1"
+
 # Base system prompt for financial analysis
 BASE_SYSTEM_PROMPT = """You are an expert financial analyst AI assistant helping users investigate their trading portfolio. 
 You have access to their portfolio data including positions, trades, performance metrics, and cash balances.
@@ -26,6 +30,20 @@ Use professional financial terminology but explain complex concepts when helpful
 Focus on actionable insights and avoid generic advice.
 
 When search results are provided, integrate them naturally into your response and cite sources when relevant."""
+
+# System prompt for WebAI (no SearXNG access)
+WEBAI_SYSTEM_PROMPT = """You are an expert financial analyst AI assistant helping users investigate their trading portfolio. 
+You have access to their portfolio data including positions, trades, performance metrics, and cash balances.
+
+Provide clear, actionable insights based on the data provided. Be specific and reference the data when making points.
+Use professional financial terminology but explain complex concepts when helpful.
+Focus on actionable insights and avoid generic advice.
+
+When analyzing the portfolio, consider:
+- Current market conditions and trends
+- Risk management and diversification
+- Performance relative to investment goals
+- Opportunities for optimization"""
 
 # Prompt templates for different analysis types
 PROMPT_TEMPLATES = {
@@ -77,12 +95,18 @@ Provide insights on:
 }
 
 
-def get_system_prompt() -> str:
-    """Get the base system prompt.
+def get_system_prompt(model: str = None) -> str:
+    """Get the appropriate system prompt based on the model.
     
+    Args:
+        model: Model name (e.g., 'gemini-2.0-flash-exp', 'llama3.2:3b')
+        
     Returns:
         System prompt string
     """
+    # Check if it's a WebAI model (Gemini models)
+    if model and ('gemini' in model.lower() or 'glm' in model.lower()):
+        return WEBAI_SYSTEM_PROMPT
     return BASE_SYSTEM_PROMPT
 
 

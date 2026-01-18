@@ -730,12 +730,15 @@ class PersistentConversationSession:
             # Create custom Gem if system prompt provided
             if self.system_prompt and not self._custom_gem:
                 try:
+                    # Import version from ai_prompts to ensure versioned Gem names
+                    from ai_prompts import PORTFOLIO_ASSISTANT_VERSION
                     # Create a custom gem with the system prompt
-                    gem_name = f"Portfolio Assistant {self.session_id[:8]}"
+                    # Use versioned name so prompt changes create new Gems
+                    gem_name = f"Portfolio Assistant {PORTFOLIO_ASSISTANT_VERSION}"
                     self._custom_gem = await self._client._client.create_gem(
                         name=gem_name,
                         prompt=self.system_prompt,
-                        description="System prompt for portfolio AI assistant"
+                        description=f"System prompt for portfolio AI assistant ({PORTFOLIO_ASSISTANT_VERSION})"
                     )
                 except Exception as e:
                     # If gem creation fails, continue without it
