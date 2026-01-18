@@ -293,6 +293,7 @@ def calculate_context_size(
     total_tokens = system_tokens + context_tokens + history_tokens + prompt_tokens
     total_chars = len(system_prompt) + len(context_string) + len(history_text) + len(current_prompt)
 
+    
     # Get model context window (depends on model type)
     context_window = 4096  # Default for unknown models
     
@@ -300,20 +301,30 @@ def calculate_context_size(
     try:
         from webai_wrapper import is_webai_model
         is_webai = is_webai_model(selected_model)
-    except ImportError:
+    except (ImportError, NameError):
         is_webai = False
+    
+    # Check for GLM models
+    is_glm = selected_model.startswith("glm-") if selected_model else False
+    
     if is_webai:
         # WebAI models have large context windows
         if "flash" in selected_model:
             context_window = 1048576  # 1M tokens for Flash
         else:  # Pro models (2.5-pro, 3.0-pro)
             context_window = 2097152  # 2M tokens for Pro
+    elif is_glm:
+        # GLM models have 128K context
+        context_window = 128000
     else:
         # For Ollama models, get from model settings
-        client = get_ollama_client()
-        if client:
-            model_settings = client.get_model_settings(selected_model)
-            context_window = model_settings.get('num_ctx', 4096)
+        try:
+            client = get_ollama_client()
+            if client:
+                model_settings = client.get_model_settings(selected_model)
+                context_window = model_settings.get('num_ctx', 4096)
+        except:
+            context_window = 4096  # Fallback
 
     usage_percent = (total_tokens / context_window * 100) if context_window > 0 else 0
 
@@ -919,6 +930,9 @@ with st.sidebar:
         )
         
         st.session_state.context_items_fingerprint = current_fingerprint
+        
+        # Trigger rerun to update footer with new context size
+        st.rerun()
 
     # Show count
     if updated_items:
@@ -1714,10 +1728,11 @@ if user_query:
             st.error(f"Error getting AI response: {e}")
             full_response = f"Sorry, I encountered an error: {str(e)}"
 
-        # Add assistant message to history
+        # Add assistant message to history with model metadata
         st.session_state.chat_messages.append({
             "role": "assistant",
-            "content": full_response
+            "content": full_response,
+            "model": selected_model  # Store which model was actually used
         })
 
         # Enforce conversation history limit (trim oldest messages)
@@ -1766,7 +1781,15 @@ try:
         st.caption(f"**History:** {len(st.session_state.chat_messages)} messages | **Context Items:** {len(chat_context.get_items())}")
     with col3:
         search_status = "✅" if searxng_available else "❌"
-        st.caption(f"**Model:** {selected_model} | **Search:** {search_status}")
+        # Show model from last assistant message, or "Not started" if no messages yet
+        last_model = "Not started"
+        if st.session_state.chat_messages:
+            # Find the last assistant message with model info
+            for msg in reversed(st.session_state.chat_messages):
+                if msg.get('role') == 'assistant' and msg.get('model'):
+                    last_model = msg['model']
+                    break
+        st.caption(f"**Model:** {last_model} | **Search:** {search_status}")
 
     if usage_warning:
         st.warning(usage_warning)
