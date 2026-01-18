@@ -3752,6 +3752,23 @@ def api_ai_chat():
         # Use pre-built context string if provided (from caching), otherwise build it
         context_string = data.get('context_string', '')
         
+        # Backend protection: If this is the first message and context is empty,
+        # wait briefly for context to be built (in case frontend was bypassed)
+        is_first_message = len(conversation_history) <= 1
+        if is_first_message and not context_string and not context_items:
+            logger.warning("First message with empty context, waiting for context to be available...")
+            import time
+            # Wait up to 5 seconds for context items to be added to session
+            for attempt in range(50):  # 50 * 100ms = 5 seconds
+                if 'ai_context_items' in session and session['ai_context_items']:
+                    context_items = session['ai_context_items']
+                    logger.info(f"Backend found {len(context_items)} context items after waiting")
+                    break
+                time.sleep(0.1)
+            
+            if not context_items:
+                logger.warning("No context available after waiting, proceeding without context")
+        
         if not context_string:
             # Build context string from items
             context_parts = []
@@ -3890,16 +3907,10 @@ def api_ai_chat():
                     system_prompt=system_prompt
                 )
                 
-                # For WebAI, include instructions in message
-                webai_instructions = (
-                    "You are an AI portfolio assistant. Analyze the provided portfolio data, "
-                    "news, and research articles to provide insights. Be concise and actionable.\n\n"
-                )
-                webai_message = webai_instructions + full_prompt
-                
                 # Send message (non-streaming)
+                # System prompt is already set in the session initialization
                 logger.info("Sending message to WebAI...")
-                full_response = webai_session.send_sync(webai_message)
+                full_response = webai_session.send_sync(full_prompt)
                 logger.info(f"WebAI response received, length: {len(full_response) if full_response else 0}")
                 
                 return jsonify({

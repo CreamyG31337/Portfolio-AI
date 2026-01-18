@@ -125,8 +125,9 @@ class AIAssistant {
         console.log('[AIAssistant] init() starting...');
         console.log('[AIAssistant] Config:', this.config);
         try {
-            // Disable send button until context is ready
+            // Disable send button and quick actions until context is ready
             this.setSendEnabled(false);
+            this.setQuickActionsEnabled(false);
 
             this.setupEventListeners();
             console.log('[AIAssistant] Event listeners attached');
@@ -176,6 +177,32 @@ class AIAssistant {
                 sendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             }
         }
+    }
+
+    setQuickActionsEnabled(enabled: boolean): void {
+        // Disable/enable all quick action buttons
+        const buttonIds = [
+            'research-ticker-btn',
+            'analyze-ticker-btn',
+            'compare-tickers-btn',
+            'earnings-ticker-btn',
+            'portfolio-analysis-btn',
+            'market-news-btn',
+            'sector-news-btn',
+            'run-analysis-btn'
+        ];
+
+        buttonIds.forEach(id => {
+            const btn = document.getElementById(id) as HTMLButtonElement | null;
+            if (btn) {
+                btn.disabled = !enabled;
+                if (!enabled) {
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        });
     }
 
     /**
@@ -485,8 +512,9 @@ class AIAssistant {
                     charBadge.textContent = `(${data.char_count.toLocaleString()} chars)`;
                 }
 
-                // Enable send button
+                // Enable send button and quick actions
                 this.setSendEnabled(true);
+                this.setQuickActionsEnabled(true);
             } else {
                 this.contextString = null;
                 this.contextReady = false;
@@ -497,7 +525,7 @@ class AIAssistant {
             console.error('[AIAssistant] Error loading context:', err);
             this.contextString = null;
             this.contextReady = false;
-            
+
             // Handle timeout specifically
             if (err instanceof Error && err.name === 'AbortError') {
                 if (contentArea) contentArea.textContent = 'Context loading timed out. Please try again.';
@@ -819,6 +847,26 @@ class AIAssistant {
         // Get pre-loaded context (synchronous - no API call)
         // Only send context with the FIRST message of a conversation
         const isFirstMessage = this.conversationHistory.length === 1; // After adding user message
+
+        // If it's the first message, ensure context is ready
+        if (isFirstMessage && !this.contextReady && this.contextLoading) {
+            // Wait for context to load (poll every 100ms for up to 10 seconds)
+            this.updateMessage(loadingId, 'assistant', '<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Waiting for portfolio data...</span></div>', true);
+
+            let attempts = 0;
+            while (!this.contextReady && attempts < 100) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+
+            if (!this.contextReady) {
+                console.warn('[AIAssistant] Context load timed out, sending partial/empty context');
+            } else {
+                // Update loading message
+                this.updateMessage(loadingId, 'assistant', '<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Generating response...</span></div>', true);
+            }
+        }
+
         const contextString = isFirstMessage ? this.getCachedContext() : null;
 
         // Debug logging
@@ -1172,7 +1220,7 @@ class AIAssistant {
         return messageId;
     }
 
-    updateMessage(messageId: string, role: 'user' | 'assistant', content: string): void {
+    updateMessage(messageId: string, role: 'user' | 'assistant', content: string, isHtml: boolean = false): void {
         const messageDiv = document.getElementById(messageId);
         if (!messageDiv) return;
 
@@ -1191,7 +1239,12 @@ class AIAssistant {
                 }
                 messageDiv.classList.add('error-message');
             }
-            contentDiv.innerHTML = this.renderMarkdown(content);
+
+            if (isHtml) {
+                contentDiv.innerHTML = content;
+            } else {
+                contentDiv.innerHTML = this.renderMarkdown(content);
+            }
         }
 
         this.scrollToBottom();
