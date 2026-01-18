@@ -266,7 +266,8 @@ def calculate_context_size(
     system_prompt: str,
     context_string: str,
     conversation_history: list[dict[str, str]],
-    current_prompt: str
+    current_prompt: str,
+    selected_model: Optional[str] = None
 ) -> dict[str, Any]:
     """Calculate total context size and token estimates.
     
@@ -1679,13 +1680,30 @@ if user_query:
                     message_placeholder.markdown(error_msg)
                     full_response = error_msg
                     logger.error(f"WebAI config error: {e}")
+                except json.JSONDecodeError as e:
+                    # JSON parsing error - likely received HTML instead of JSON
+                    status_placeholder.empty()
+                    model_name = get_model_display_name_short() if HAS_MODEL_KEYS else "AI Pro"
+                    error_msg = f"❌ **WebAI Response Error**\n\nReceived invalid response (likely HTML error page instead of JSON).\n\n🔄 This usually means:\n- Session cookies expired\n- Authentication failed\n- Service returned an error page\n\n💡 Try refreshing cookies in AI Settings."
+                    message_placeholder.markdown(error_msg)
+                    full_response = error_msg
+                    # Log detailed error for debugging
+                    logger.error(f"WebAI JSON decode error: {e}")
+                    logger.error(f"Error position: {e.pos if hasattr(e, 'pos') else 'unknown'}")
+                    logger.error(f"Error message: {e.msg if hasattr(e, 'msg') else str(e)}")
+                    # Try to log the response snippet that caused the error
+                    if hasattr(e, 'doc'):
+                        logger.error(f"Response snippet (first 500 chars): {e.doc[:500]}")
                 except Exception as e:
                     status_placeholder.empty()
                     model_name = get_model_display_name_short() if HAS_MODEL_KEYS else "AI Pro"
-                    error_msg = f"❌ **Error using {model_name}**\n\n{str(e)}\n\n🔄 Try the retry button or check your connection."
+                    error_type = type(e).__name__
+                    error_msg = f"❌ **Error using {model_name}**\n\n{error_type}: {str(e)}\n\n🔄 Try the retry button or check your connection."
                     message_placeholder.markdown(error_msg)
                     full_response = error_msg
-                    logger.exception("WebAI error")
+                    # Detailed logging for debugging
+                    logger.error(f"WebAI error ({error_type}): {e}")
+                    logger.exception("Full WebAI error traceback:")
             else:
                 # Use Ollama (proper API with system prompts and streaming)
                 client = get_ollama_client()

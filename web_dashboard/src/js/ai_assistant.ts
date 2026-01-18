@@ -811,7 +811,17 @@ class AIAssistant {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)
         })
-            .then((res: Response) => res.json())
+            .then((res: Response) => {
+                if (!res.ok) {
+                    const contentType = res.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        return res.json();
+                    } else {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
+                }
+                return res.json();
+            })
             .then((data: ChatResponse) => {
                 const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
                 const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
@@ -847,9 +857,16 @@ class AIAssistant {
         })
             .then((res: Response) => {
                 if (!res.ok) {
-                    return res.json().then((data: ChatResponse) => {
-                        throw new Error(data.error || `HTTP error! status: ${res.status}`);
-                    });
+                    // Check if response is JSON before parsing
+                    const contentType = res.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        return res.json().then((data: ChatResponse) => {
+                            throw new Error(data.error || `HTTP error! status: ${res.status}`);
+                        });
+                    } else {
+                        // Response is HTML or other non-JSON
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
                 }
 
                 // Check if response is SSE (text/event-stream) or JSON

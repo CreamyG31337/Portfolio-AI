@@ -263,7 +263,7 @@ def check_cookie_config() -> dict:
     
     # Determine overall status
     # We consider it configured if we have at least the primary cookie
-    has_env_cookies = status["json_parse_success"] and status["has_secure_1psid"]
+    has_env_cookies = status.get("json_parse_success", False) and status.get("has_secure_1psid", False)
     has_individual_vars = status["individual_vars"]["WEBAI_SECURE_1PSID"]
     
     # Check if any cookie file has valid cookies
@@ -773,16 +773,34 @@ class PersistentConversationSession:
             Response text
         """
         await self._ensure_chat()
-        response = await self._chat_session.send_message(prompt)
         
-        # Auto-save conversation metadata after each message
         try:
-            if hasattr(self._chat_session, 'metadata'):
-                self._save_metadata(self._chat_session.metadata)
-        except Exception:
-            pass  # Continue even if save fails
-        
-        return response.text
+            response = await self._chat_session.send_message(prompt)
+            
+            # Auto-save conversation metadata after each message
+            try:
+                if hasattr(self._chat_session, 'metadata'):
+                    self._save_metadata(self._chat_session.metadata)
+            except Exception:
+                pass  # Continue even if save fails
+            
+            return response.text
+        except Exception as e:
+            # Log detailed error information for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"WebAI send() error: {type(e).__name__}: {e}")
+            
+            # Try to get response details if available
+            if hasattr(e, 'response'):
+                try:
+                    response_text = str(e.response)[:500]
+                    logger.error(f"Response content (first 500 chars): {response_text}")
+                except:
+                    pass
+            
+            # Re-raise the exception for caller to handle
+            raise
     
     def send_sync(self, prompt: str) -> str:
         """Synchronous version of send()."""
