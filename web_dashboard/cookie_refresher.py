@@ -462,7 +462,9 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
                 logger.info(f"Setting cookies with domain: {domain}")
                 
                 # Log what cookies we're trying to set
-                cookie_names = [k for k in existing_cookies.keys() if not k.startswith("_")]
+                # Note: skip metadata fields that start with single underscore but NOT __Secure- cookies
+                cookie_names = [k for k in existing_cookies.keys() 
+                               if not k.startswith("_") or k.startswith("__Secure-")]
                 logger.info(f"Attempting to set cookies: {', '.join(cookie_names)}")
                 
                 for name in cookie_names:
@@ -472,8 +474,8 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
                 # Add cookies to context (skip metadata fields)
                 cookie_list = []
                 for name, value in existing_cookies.items():
-                    # Skip metadata fields
-                    if name.startswith("_"):
+                    # Skip metadata fields (single underscore) but NOT __Secure- cookies
+                    if name.startswith("_") and not name.startswith("__Secure-"):
                         continue
                     
                     # Validate cookie value is not empty
