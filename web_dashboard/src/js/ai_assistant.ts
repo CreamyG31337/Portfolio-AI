@@ -432,6 +432,10 @@ class AIAssistant {
             return;
         }
 
+        // Set up timeout with AbortController (30 seconds)
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+
         try {
             if (contentArea) contentArea.textContent = 'Loading context...';
 
@@ -457,7 +461,8 @@ class AIAssistant {
                     include_trades: includeTrades,
                     include_price_volume: includePriceVolume,
                     include_fundamentals: includeFundamentals
-                })
+                }),
+                signal: controller.signal
             });
 
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -492,10 +497,18 @@ class AIAssistant {
             console.error('[AIAssistant] Error loading context:', err);
             this.contextString = null;
             this.contextReady = false;
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-            if (contentArea) contentArea.textContent = `Failed to load context: ${errorMessage}`;
-            if (charBadge) charBadge.textContent = '(error)';
+            
+            // Handle timeout specifically
+            if (err instanceof Error && err.name === 'AbortError') {
+                if (contentArea) contentArea.textContent = 'Context loading timed out. Please try again.';
+                if (charBadge) charBadge.textContent = '(timeout)';
+            } else {
+                const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+                if (contentArea) contentArea.textContent = `Failed to load context: ${errorMessage}`;
+                if (charBadge) charBadge.textContent = '(error)';
+            }
         } finally {
+            clearTimeout(timeout);
             this.contextLoading = false;
         }
     }
@@ -517,9 +530,9 @@ class AIAssistant {
                 const select = document.getElementById('model-select') as HTMLSelectElement | null;
                 if (!select) return;
 
-                select.innerHTML = '';
-
-                if (data.models && Array.isArray(data.models)) {
+                // Only clear and repopulate if we have valid data
+                if (data.models && Array.isArray(data.models) && data.models.length > 0) {
+                    select.innerHTML = '';
                     data.models.forEach(model => {
                         const option = document.createElement('option');
                         option.value = model.id;
@@ -529,21 +542,25 @@ class AIAssistant {
                         }
                         select.appendChild(option);
                     });
+                    this.updateModelDescription();
                 } else {
                     console.error('Invalid models format received:', data);
-                    this.showError('Failed to load models: Invalid data format');
+                    this.showError('No AI models available. Check Ollama connection.');
                 }
-                this.updateModelDescription();
             })
             .catch((err: Error) => {
                 console.error('Error loading models:', err);
-                this.showError('Failed to load AI models. Please check connection.');
+                // Don't clear existing options on error - keep fallback
+                this.showError('Failed to load AI models. Using cached models if available.');
             });
     }
 
     loadFunds(): void {
         const select = document.getElementById('fund-select') as HTMLSelectElement | null;
         if (!select || !this.config.availableFunds) return;
+
+        // Skip if already populated by template
+        if (select.options.length > 0) return;
 
         this.config.availableFunds.forEach(fund => {
             const option = document.createElement('option');
@@ -621,7 +638,7 @@ class AIAssistant {
         const systemPromptEst = 1000;
 
         // Get current input if available
-        const inputElement = document.getElementById('user-input') as HTMLTextAreaElement;
+        const inputElement = document.getElementById('chat-input') as HTMLInputElement;
         const inputLen = inputElement ? inputElement.value.length : 0;
 
         const totalChars = contextLen + historyLen + systemPromptEst + inputLen;
@@ -1104,7 +1121,7 @@ class AIAssistant {
             bubbleContainer.className = 'flex flex-col max-w-[80%]';
 
             const bubble = document.createElement('div');
-            bubble.className = 'bg-accent text-white rounded-lg rounded-br-sm px-4 py-3 shadow-sm';
+            bubble.className = 'message-bubble bg-accent text-white rounded-lg rounded-br-sm px-4 py-3 shadow-sm';
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content text-white';
@@ -1133,7 +1150,7 @@ class AIAssistant {
             bubbleContainer.className = 'flex-1';
 
             const bubble = document.createElement('div');
-            bubble.className = 'bg-gray-100 dark:bg-dashboard-surface-alt text-text-primary rounded-lg rounded-bl-sm px-4 py-3 shadow-sm';
+            bubble.className = 'message-bubble bg-gray-100 dark:bg-dashboard-surface-alt text-text-primary rounded-lg rounded-bl-sm px-4 py-3 shadow-sm';
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
@@ -1160,7 +1177,7 @@ class AIAssistant {
         if (!messageDiv) return;
 
         const contentDiv = messageDiv.querySelector('.message-content');
-        const bubble = messageDiv.querySelector('.bg-blue-600, .bg-accent, .bg-gray-100, .dark\\:bg-dashboard-surface-alt') as HTMLElement | null;
+        const bubble = messageDiv.querySelector('.message-bubble') as HTMLElement | null;
 
         if (contentDiv && bubble) {
             // Check if this is an error message
@@ -1338,10 +1355,14 @@ class AIAssistant {
                 const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
                 if (select) {
                     select.innerHTML = '';
-                    [...new Set(tickers)].sort().forEach(ticker => {
+                    // Filter out empty/falsy tickers and deduplicate
+                    const validTickers = [...new Set(tickers)]
+                        .filter((t): t is string => Boolean(t && t.trim()))
+                        .sort();
+                    validTickers.forEach(ticker => {
                         const option = document.createElement('option');
-                        option.value = ticker || '';
-                        option.textContent = ticker || '';
+                        option.value = ticker;
+                        option.textContent = ticker;
                         select.appendChild(option);
                     });
                 }
@@ -1360,17 +1381,25 @@ class AIAssistant {
             return;
         }
 
+        const messagesDiv = document.getElementById('chat-messages');
+
         // Remove last assistant message if it exists
         if (this.conversationHistory.length > 0 &&
             this.conversationHistory[this.conversationHistory.length - 1].role === 'assistant') {
             this.conversationHistory.pop();
-            // Remove last message from UI
-            const messagesDiv = document.getElementById('chat-messages');
-            if (messagesDiv) {
-                const lastMessage = messagesDiv.lastElementChild;
-                if (lastMessage) {
-                    lastMessage.remove();
-                }
+            // Remove from UI
+            if (messagesDiv?.lastElementChild) {
+                messagesDiv.lastElementChild.remove();
+            }
+        }
+
+        // Also remove the last user message from history (sendMessage will re-add it)
+        if (this.conversationHistory.length > 0 &&
+            this.conversationHistory[this.conversationHistory.length - 1].role === 'user') {
+            this.conversationHistory.pop();
+            // Remove from UI
+            if (messagesDiv?.lastElementChild) {
+                messagesDiv.lastElementChild.remove();
             }
         }
 
@@ -1378,7 +1407,7 @@ class AIAssistant {
         const retryButtonContainer = document.getElementById('retry-button-container');
         if (retryButtonContainer) retryButtonContainer.classList.add('hidden');
 
-        // Re-send the last user message
+        // Re-send the last user message (this will re-add it to history and UI)
         this.sendMessage(lastUserMsg.content);
     }
 

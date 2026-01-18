@@ -1918,8 +1918,8 @@ def api_portfolio():
         if 'ticker' in data['portfolio'].columns:
             # Supabase format - using latest_positions view with P&L calculations
             for _, row in data['portfolio'].iterrows():
-                # Calculate market value and total P&L
-                market_value = float(row['shares']) * float(row['price'])
+                # Calculate market value using correct column name
+                market_value = float(row['shares']) * float(row.get('current_price', row.get('price', 0)))
                 total_pnl = market_value - float(row['cost_basis'])
                 
                 current_positions.append({

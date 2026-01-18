@@ -286,15 +286,16 @@ def calculate_performance_metrics_flask(fund: Optional[str] = None) -> Dict[str,
         
         for _, row in positions_df.iterrows():
             shares = float(row.get('shares', 0))
-            price = float(row.get('price', 0))
-            avg_price = float(row.get('avg_price', 0))
+            # Use correct column names from latest_positions view
+            current_price = float(row.get('current_price', row.get('price', 0)))
+            average_price = float(row.get('average_price', row.get('avg_price', 0)))
             
             # Current value
-            position_value = shares * price
+            position_value = shares * current_price
             current_value += position_value
             
             # Cost basis
-            cost_basis = shares * avg_price
+            cost_basis = shares * average_price
             total_cost += cost_basis
         
         # Calculate total return percentage

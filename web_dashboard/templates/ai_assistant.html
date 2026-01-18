@@ -44,7 +44,7 @@
             <!-- Chat Messages Container -->
             <div id="chat-container"
                 class="flex-1 overflow-y-auto max-h-[calc(100vh-400px)] min-h-[300px] border border-border rounded-lg p-4 mb-4 bg-gray-50 dark:bg-dashboard-surface">
-                <div id="chat-messages" class="space-y-4">
+                <div id="chat-messages" class="space-y-4" role="log" aria-live="polite" aria-label="Chat messages">
                     <!-- Messages will be inserted here -->
                 </div>
                 <!-- Retry Button (shown when last message is from assistant) -->
@@ -95,7 +95,8 @@
 
             <!-- Chat Input -->
             <div class="flex gap-2">
-                <input type="text" id="chat-input" placeholder="Ask about your portfolio..."
+                <input type="text" id="chat-input" placeholder="Ask about your portfolio... (Enter to send)"
+                    aria-label="Chat message input, press Enter to send"
                     class="flex-1 px-4 py-3 border border-border rounded-lg bg-dashboard-surface text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-colors">
                 <button id="send-btn"
                     class="px-6 py-3 bg-accent text-white rounded-lg hover:bg-accent-hover font-medium focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
@@ -128,14 +129,16 @@
 
                 <!-- Ticker Selection -->
                 <div class="mb-4">
-                    <label class="block text-sm font-medium mb-2 text-text-primary">Select
-                        Tickers:</label>
+                    <label class="block text-sm font-medium mb-2 text-text-primary">Select Tickers:
+                        <span class="text-xs text-text-tertiary font-normal">(Ctrl+click for multiple)</span>
+                    </label>
                     <select id="ticker-select" multiple
                         class="w-full p-2 border border-border rounded-lg mb-2 bg-dashboard-surface text-text-primary focus:ring-2 focus:ring-accent"
                         size="5">
                         <!-- Populated by JavaScript -->
                     </select>
                     <input type="text" id="custom-ticker" placeholder="Custom ticker (e.g., NVDA)"
+                        aria-label="Enter custom ticker symbol"
                         class="w-full p-2 border border-border rounded-lg bg-dashboard-surface text-text-primary placeholder-text-tertiary focus:ring-2 focus:ring-accent">
                 </div>
 
