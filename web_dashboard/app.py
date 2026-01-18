@@ -3868,12 +3868,23 @@ def api_ai_chat():
             try:
                 from webai_wrapper import PersistentConversationSession
                 from ai_service_keys import get_model_display_name_short
+                import os
+                
+                # Use same cookie file path as the test does
+                cookie_file = "/shared/cookies/webai_cookies.json"
+                if not os.path.exists(cookie_file):
+                    # Fallback to default location
+                    cookie_file = None
+                    logger.warning("Cookie file not found at /shared/cookies/webai_cookies.json, using default")
+                else:
+                    logger.info(f"Using cookie file: {cookie_file}")
                 
                 # Create new session each time to ensure fresh cookies are loaded
-                # (cookies are refreshed on disk by cookie-refresher sidecar)
-                # Don't cache the session object as it won't reload updated cookies
+                # Explicitly pass cookies_file like the test does
+                logger.info(f"Creating WebAI session for model: {model}")
                 webai_session = PersistentConversationSession(
                     session_id=user_id,
+                    cookies_file=cookie_file,  # Explicit cookie file path like test
                     auto_refresh=False,
                     model=model,
                     system_prompt=system_prompt
@@ -3887,7 +3898,9 @@ def api_ai_chat():
                 webai_message = webai_instructions + full_prompt
                 
                 # Send message (non-streaming)
+                logger.info("Sending message to WebAI...")
                 full_response = webai_session.send_sync(webai_message)
+                logger.info(f"WebAI response received, length: {len(full_response) if full_response else 0}")
                 
                 return jsonify({
                     "response": full_response,

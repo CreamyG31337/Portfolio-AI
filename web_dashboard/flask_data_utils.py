@@ -288,14 +288,15 @@ def calculate_performance_metrics_flask(fund: Optional[str] = None) -> Dict[str,
             shares = float(row.get('shares', 0))
             # Use correct column names from latest_positions view
             current_price = float(row.get('current_price', row.get('price', 0)))
-            average_price = float(row.get('average_price', row.get('avg_price', 0)))
             
-            # Current value
-            position_value = shares * current_price
+            # Current value (shares * current_price, or use market_value directly)
+            position_value = float(row.get('market_value', 0) or 0)
+            if position_value == 0:
+                position_value = shares * current_price
             current_value += position_value
             
-            # Cost basis
-            cost_basis = shares * average_price
+            # Cost basis - use cost_basis directly from the view (it's already the total, not per-share)
+            cost_basis = float(row.get('cost_basis', 0) or 0)
             total_cost += cost_basis
         
         # Calculate total return percentage
