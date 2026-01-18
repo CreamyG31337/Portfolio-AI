@@ -1745,11 +1745,14 @@ try:
         if last_user_msg:
             current_prompt = last_user_msg[-1].get('content', '')
 
+    # IMPORTANT: Pass selected_model (from dropdown at line 506) to calculate_context_size
+    # This ensures footer updates when model changes
     current_context_info = calculate_context_size(
         system_prompt=system_prompt,
         context_string=current_context_string,
         conversation_history=st.session_state.chat_messages,
-        current_prompt=current_prompt
+        current_prompt=current_prompt,
+        selected_model=selected_model  # Use current dropdown selection
     )
 
     # Determine color/warning based on usage
