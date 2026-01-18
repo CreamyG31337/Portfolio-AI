@@ -371,6 +371,24 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
             if file_size > buffer_size:
                 lines = lines[1:]  # Skip first partial line
             
+        # Pre-process exclude_modules to set for faster lookup
+        exclude_modules_set = set()
+        if exclude_modules:
+            if isinstance(exclude_modules, str):
+                exclude_modules_set.add(exclude_modules)
+            else:
+                exclude_modules_set.update(exclude_modules)
+
+        # Pre-process level to set/list
+        level_set = None
+        if level:
+            if isinstance(level, list):
+                level_set = set(level)
+            else:
+                level_set = {level}
+
+        search_lower = search.lower() if search else None
+
         # Parse lines
         for line in lines:
             if not line.strip():
@@ -380,46 +398,48 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
                 # Expected format: YYYY-MM-DD HH:MM:SS | LEVEL    | module | message
                 parts = line.split(' | ', 3)
                 if len(parts) == 4:
-                    timestamp_str, level_str, module, message = parts
+                    timestamp_str, level_str, module_str, message_str = parts
                     
-                    # Store
+                    # Clean strings
+                    level_clean = level_str.strip()
+                    module_clean = module_str.strip()
+                    message_clean = message_str.strip()
+
+                    # Apply filters EARLY (before expensive datetime parsing/dict creation)
+
+                    # 1. Level filter
+                    if level_set and level_clean not in level_set:
+                        continue
+
+                    # 2. Module filter
+                    if exclude_modules_set and module_clean in exclude_modules_set:
+                        continue
+
+                    # 3. Search filter
+                    if search_lower:
+                        if (search_lower not in message_clean.lower() and
+                            search_lower not in module_clean.lower() and
+                            search_lower not in level_clean.lower() and
+                            search_lower not in line.lower()):
+                            continue
+
+                    # 4. Timestamp parsing (most expensive operation)
+                    timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+
+                    # 5. Deployment cutoff filter
+                    if deployment_cutoff and timestamp < deployment_cutoff:
+                        continue
+
+                    # Store (only if passed all filters)
                     logs.append({
-                        'timestamp': datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S'),
-                        'level': level_str.strip(),
-                        'module': module.strip(),
-                        'message': message.strip(),
+                        'timestamp': timestamp,
+                        'level': level_clean,
+                        'module': module_clean,
+                        'message': message_clean,
                         'formatted': line.strip()
                     })
             except Exception:
                 continue # Skip malformed lines
-                
-        # Apply filters
-        if level:
-            if isinstance(level, list):
-                # Support multiple levels
-                logs = [log for log in logs if log['level'] in level]
-            else:
-                # Single level filter
-                logs = [log for log in logs if log['level'] == level]
-        
-        if exclude_modules:
-            # Exclude logs from specified modules/loggers
-            if isinstance(exclude_modules, str):
-                exclude_modules = [exclude_modules]
-            logs = [log for log in logs if log['module'] not in exclude_modules]
-        
-        if search:
-            search_lower = search.lower()
-            logs = [log for log in logs if (
-                search_lower in log['message'].lower() or
-                search_lower in log['module'].lower() or
-                search_lower in log['level'].lower() or
-                search_lower in log['formatted'].lower()
-            )]
-        
-        if deployment_cutoff:
-            # Filter logs since last deployment
-            logs = [log for log in logs if log['timestamp'] >= deployment_cutoff]
             
         # Return last n (unless return_all is True)
         if not return_all and n:
