@@ -12,18 +12,11 @@ import threading
 from datetime import datetime
 from typing import List, Dict
 
-# High-frequency endpoints that create log noise when polled (e.g. every 5s).
-# Werkzeug HTTP access logs for these paths are suppressed.
-_QUIET_HTTP_PATHS = (
-    'scheduler/status',  # Polled by Jobs page and sidebar badge
-)
-
-
-class QuietEndpointFilter(logging.Filter):
-    """Filter out werkzeug HTTP access logs for high-frequency poll/health endpoints.
+class WerkzeugAccessLogFilter(logging.Filter):
+    """Filter out werkzeug HTTP access logs while preserving startup/debug messages.
     
-    Only filters HTTP access logs (format: "IP - - [timestamp] \"METHOD /path HTTP/1.1\" STATUS").
-    Preserves important werkzeug messages like debugger startup, warnings, etc.
+    Suppresses: "IP - - [timestamp] \"METHOD /path HTTP/1.1\" STATUS"
+    Preserves: "* Debugger is active!", "* Restarting with watchdog", warnings, etc.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -32,21 +25,15 @@ class QuietEndpointFilter(logging.Filter):
         
         msg = record.getMessage()
         
-        # Only filter HTTP access logs, not startup/debug messages
-        # HTTP access logs have: IP address, HTTP method (GET/POST/etc), status code
+        # Detect HTTP access logs by their distinctive format
         # Pattern: "IP - - [timestamp] \"METHOD /path HTTP/1.1\" STATUS"
         is_http_access_log = (
-            ' - - [' in msg and  # Access log format
-            ('"GET ' in msg or '"POST ' in msg or '"PUT ' in msg or 
-             '"DELETE ' in msg or '"PATCH ' in msg or '"HEAD ' in msg or '"OPTIONS ' in msg) and
-            ('HTTP/1.' in msg or 'HTTP/2.' in msg)  # HTTP version
+            ' - - [' in msg and  # Access log format (IP - - [timestamp])
+            ('HTTP/1.' in msg or 'HTTP/2' in msg)  # HTTP version in request line
         )
         
-        # Only filter if it's an HTTP access log AND contains a quiet path
-        if is_http_access_log and any(path in msg for path in _QUIET_HTTP_PATHS):
-            return False  # Suppress this log
-        
-        return True  # Keep all other logs (startup messages, warnings, etc.)
+        # Suppress all HTTP access logs, keep everything else (startup, debug, warnings)
+        return not is_http_access_log
 
 
 # Add custom PERF logging level (between DEBUG=10 and INFO=20)
@@ -287,13 +274,13 @@ def setup_logging(level=logging.INFO):
         # Disable propagation to prevent Streamlit interference
         logger.propagate = False
         
-    # Suppress werkzeug access logs for high-frequency poll endpoints (e.g. /api/admin/scheduler/status)
+    # Suppress werkzeug HTTP access logs (keep startup/debug messages)
     werkzeug_logger = logging.getLogger('werkzeug')
     for f in werkzeug_logger.filters[:]:
-        if isinstance(f, QuietEndpointFilter):
+        if isinstance(f, WerkzeugAccessLogFilter):
             break
     else:
-        werkzeug_logger.addFilter(QuietEndpointFilter())
+        werkzeug_logger.addFilter(WerkzeugAccessLogFilter())
         
     # Also initialize the global InMemoryLogHandler for backward compatibility
     # (some code might still use log_handler.log_records directly)

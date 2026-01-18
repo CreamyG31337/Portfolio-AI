@@ -5,13 +5,16 @@
 
 // Configuration interfaces
 interface AIAssistantConfig {
-    defaultModel?: string;
+    userEmail: string;
+    userTheme: string;
+    defaultModel: string;
     availableFunds?: string[];
-    ollamaModels?: Array<{ id: string; name: string }>;
-    ollamaAvailable?: boolean;
-    searxngAvailable?: boolean;
-    webaiModels?: string[];
-    hasWebai?: boolean;
+    ollamaModels: string[];
+    ollamaAvailable: boolean;
+    searxngAvailable: boolean;
+    webaiModels: string[];
+    hasWebai: boolean;
+    modelConfig: any;
 }
 
 interface ContextItem {
@@ -193,13 +196,20 @@ class AIAssistant {
             sendBtn.addEventListener('click', () => this.sendMessage());
         }
         if (chatInput) {
-            chatInput.addEventListener('keypress', (e: KeyboardEvent) => {
+            chatInput.addEventListener('keydown', (e: KeyboardEvent) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     this.sendMessage();
                 }
             });
+            // Update token usage as user types
+            chatInput.addEventListener('input', () => {
+                this.calculateContextUsage();
+            });
         }
+
+        // Initial calculation
+        this.calculateContextUsage();
 
         // Clear chat
         const clearBtn = document.getElementById('clear-chat-btn');
@@ -595,6 +605,59 @@ class AIAssistant {
             .catch((err: Error) => console.error('Error clearing context:', err));
     }
 
+    calculateContextUsage(): void {
+        const usageElement = document.getElementById('context-usage');
+        if (!usageElement) return;
+
+        // Estimate tokens (roughly 4 chars per token)
+        // Includes: Context items, Conversation history, System prompt, and Current user input
+        const contextLen = this.contextString ? this.contextString.length : 0;
+        const historyLen = JSON.stringify(this.conversationHistory || []).length;
+        const systemPromptEst = 1000;
+
+        // Get current input if available
+        const inputElement = document.getElementById('user-input') as HTMLTextAreaElement;
+        const inputLen = inputElement ? inputElement.value.length : 0;
+
+        const totalChars = contextLen + historyLen + systemPromptEst + inputLen;
+        const usedTokens = Math.round(totalChars / 4);
+
+        // Get model limit
+        const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
+        const currentModel = modelSelect ? modelSelect.value : (this.selectedModel || this.config.defaultModel);
+
+        let maxTokens = 4096; // Default safe fallback
+
+        // Check WebAI limits first
+        if (this.config.hasWebai && this.config.webaiModels && this.config.webaiModels.includes(currentModel)) {
+            if (currentModel.toLowerCase().includes('flash')) {
+                maxTokens = 1000000; // ~1M for Flash models
+            } else if (currentModel.toLowerCase().includes('pro')) {
+                maxTokens = 2000000; // ~2M for Pro models
+            } else {
+                maxTokens = 128000; // Conservative default for other WebAI
+            }
+        }
+        // Check Ollama config
+        else if (this.config.modelConfig && this.config.modelConfig.models) {
+            const modelSettings = this.config.modelConfig.models[currentModel];
+            if (modelSettings && modelSettings.num_ctx) {
+                maxTokens = modelSettings.num_ctx;
+            } else if (this.config.modelConfig.default_config && this.config.modelConfig.default_config.num_ctx) {
+                maxTokens = this.config.modelConfig.default_config.num_ctx;
+            }
+        }
+
+        const percentage = Math.min(100, Math.round((usedTokens / maxTokens) * 100));
+
+        // Color coding
+        let colorClass = 'text-green-600 dark:text-green-400';
+        if (percentage > 80) colorClass = 'text-red-600 dark:text-red-400';
+        else if (percentage > 50) colorClass = 'text-yellow-600 dark:text-yellow-400';
+
+        usageElement.innerHTML = `Context: <span class="${colorClass}">${usedTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${percentage}%)</span>`;
+    }
+
     updateContextUI(): void {
         const summary = document.getElementById('context-summary');
         const contextItems = document.getElementById('context-items');
@@ -608,6 +671,9 @@ class AIAssistant {
         if (contextItems) {
             contextItems.textContent = `Context Items: ${this.contextItems.length}`;
         }
+
+        // Update token usage
+        this.calculateContextUsage();
     }
 
     updateModelDescription(): void {
@@ -1203,6 +1269,9 @@ class AIAssistant {
         }
 
         if (prompt) {
+            // Start a new conversation for quick actions
+            this.clearChat();
+
             // Turbo Mode: Send immediately
             this.sendMessage(prompt);
 

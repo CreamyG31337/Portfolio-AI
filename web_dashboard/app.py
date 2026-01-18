@@ -3313,6 +3313,7 @@ def ai_assistant_page():
         from flask_auth_utils import get_user_email_flask
         from user_preferences import get_user_theme, get_user_ai_model
         from flask_data_utils import get_available_funds_flask
+        from ollama_client import load_model_config
         
         user_email = get_user_email_flask()
         user_theme = get_user_theme() or 'system'
@@ -3325,6 +3326,9 @@ def ai_assistant_page():
         ollama_models = _get_cached_ollama_models()
         ollama_available = _get_cached_ollama_health()
         searxng_available = _get_cached_searxng_health()
+        
+        # Get model configuration for context limits
+        model_config = load_model_config()
         
         # Check for WebAI models
         try:
@@ -3347,6 +3351,7 @@ def ai_assistant_page():
                              searxng_available=searxng_available,
                              webai_models=webai_models,
                              has_webai=has_webai,
+                             model_config=model_config,
                              **nav_context)
     except Exception as e:
         import traceback

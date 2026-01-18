@@ -317,7 +317,8 @@
     "ollamaAvailable": {{ ollama_available|tojson|safe }},
     "searxngAvailable": {{ searxng_available|tojson|safe }},
     "webaiModels": {{ webai_models|tojson|safe }},
-    "hasWebai": {{ has_webai|tojson|safe }}
+    "hasWebai": {{ has_webai|tojson|safe }},
+    "modelConfig": {{ model_config|tojson|safe if model_config else '{}' }}
 }
 </script>
 

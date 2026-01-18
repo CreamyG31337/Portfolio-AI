@@ -34,6 +34,27 @@ OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 
 
+def load_model_config() -> Dict[str, Any]:
+    """Load model configuration from JSON file.
+    
+    Returns:
+        Dict containing model settings
+    """
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), 'model_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                logger.info(f"Loaded configuration for {len(config.get('models', {}))} models")
+                return config
+        else:
+            logger.warning(f"Model config file not found at {config_path}")
+            return {}
+    except Exception as e:
+        logger.error(f"Error loading model config: {e}")
+        return {}
+
+
 class OllamaClient:
     """Client for interacting with Ollama API."""
     
@@ -76,27 +97,11 @@ class OllamaClient:
         self.session.mount("https://", adapter)
         
         # Load model configuration
-        self.model_config = self._load_model_config()
+        self.model_config = load_model_config()
 
     def _load_model_config(self) -> Dict[str, Any]:
-        """Load model configuration from JSON file.
-        
-        Returns:
-            Dict containing model settings
-        """
-        try:
-            config_path = os.path.join(os.path.dirname(__file__), 'model_config.json')
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    logger.info(f"Loaded configuration for {len(config.get('models', {}))} models")
-                    return config
-            else:
-                logger.warning(f"Model config file not found at {config_path}")
-                return {}
-        except Exception as e:
-            logger.error(f"Error loading model config: {e}")
-            return {}
+        """Deprecated: Use global load_model_config() instead."""
+        return load_model_config()
 
     def get_model_settings(self, model_name: str) -> Dict[str, Any]:
         """Get settings for specific model.
