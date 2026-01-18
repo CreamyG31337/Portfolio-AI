@@ -666,15 +666,28 @@ class AIAssistant {
     updateContextUI(): void {
         const summary = document.getElementById('context-summary');
         const contextItemsElement = document.getElementById('context-items');
+
+        // Count actual enabled toggles
+        const toggleThesis = document.getElementById('toggle-thesis') as HTMLInputElement | null;
+        const toggleTrades = document.getElementById('toggle-trades') as HTMLInputElement | null;
+        const togglePriceVolume = document.getElementById('toggle-price-volume') as HTMLInputElement | null;
+        const toggleFundamentals = document.getElementById('toggle-fundamentals') as HTMLInputElement | null;
+
+        let enabledCount = 0;
+        if (toggleThesis?.checked) enabledCount++;
+        if (toggleTrades?.checked) enabledCount++;
+        if (togglePriceVolume?.checked) enabledCount++;
+        if (toggleFundamentals?.checked) enabledCount++;
+
         if (summary) {
-            if (this.contextItems.length === 0) {
+            if (enabledCount === 0) {
                 summary.textContent = 'No context items selected';
             } else {
-                summary.textContent = `✅ ${this.contextItems.length} data source(s) selected`;
+                summary.textContent = `✅ ${enabledCount} data source(s) selected`;
             }
         }
         if (contextItemsElement) {
-            contextItemsElement.textContent = `Context Items: ${this.contextItems.length}`;
+            contextItemsElement.textContent = `Context Items: ${enabledCount}`;
         }
 
         // Update token usage
@@ -1460,7 +1473,7 @@ class AIAssistant {
         const maxResults = Math.min(5, searchData.results.length);
         searchData.results.slice(0, maxResults).forEach((result: any, idx: number) => {
             const resultItem = document.createElement('div');
-            resultItem.className = 'p-2 rounded border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700';
+            resultItem.className = 'p-2 rounded border bg-dashboard-surface border-border';
             const title = result.title || 'Untitled';
             const url = result.url || '#';
             const snippet = result.content || result.snippet || '';
@@ -1498,7 +1511,7 @@ class AIAssistant {
 
         articles.forEach((article: any, idx: number) => {
             const articleItem = document.createElement('div');
-            articleItem.className = 'p-2 rounded border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700';
+            articleItem.className = 'p-2 rounded border bg-dashboard-surface border-border';
             const title = article.title || 'Untitled';
             const summary = article.summary || '';
             const similarity = article.similarity || 0;
@@ -1513,7 +1526,7 @@ class AIAssistant {
                 titleHtml = `<a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" class="text-purple-700 dark:text-purple-300 hover:underline">${title}</a>`;
             }
 
-            articleItem.innerHTML = `<div class="font-semibold text-sm mb-1">${idx + 1}. ${titleHtml} <span class="text-xs text-gray-500 dark:text-gray-400">(${(similarity * 100).toFixed(0)}% match)</span></div>${summary ? `<div class="text-xs text-gray-600 dark:text-gray-400">${summary.substring(0, 200)}...</div>` : ''}`;
+            articleItem.innerHTML = `<div class="font-semibold text-sm mb-1">${idx + 1}. ${titleHtml} <span class="text-xs text-text-tertiary">(${(similarity * 100).toFixed(0)}% match)</span></div>${summary ? `<div class="text-xs text-text-secondary">${summary.substring(0, 200)}...</div>` : ''}`;
             content.appendChild(articleItem);
         });
 

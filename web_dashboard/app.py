@@ -3567,7 +3567,14 @@ def api_ai_context():
         elif request.method == 'POST':
             # Add or remove context item
             data = request.get_json()
-            action = data.get('action')  # 'add' or 'remove'
+            action = data.get('action')  # 'add', 'remove', or 'clear'
+            
+            # Handle clear action first (doesn't require item_type)
+            if action == 'clear':
+                session['ai_context_items'] = []
+                return jsonify({"success": True, "message": "All items cleared"})
+            
+            # For add/remove actions, validate item_type
             item_type_str = data.get('item_type')
             fund = data.get('fund')
             metadata = data.get('metadata', {})
@@ -3602,10 +3609,6 @@ def api_ai_context():
                     return jsonify({"success": True, "message": "Item removed"})
                 else:
                     return jsonify({"success": False, "message": "Item not found"})
-            
-            elif action == 'clear':
-                session['ai_context_items'] = []
-                return jsonify({"success": True, "message": "All items cleared"})
             
             else:
                 return jsonify({"error": f"Invalid action: {action}"}), 400
