@@ -548,6 +548,14 @@ document.addEventListener('DOMContentLoaded', () => {
         priceInput.addEventListener('input', updateManualTotal);
     }
 
+    // Ticker auto-uppercase
+    const tickerInput = document.getElementById('ticker') as HTMLInputElement | null;
+    if (tickerInput) {
+        tickerInput.addEventListener('change', () => {
+            tickerInput.value = tickerInput.value.toUpperCase();
+        });
+    }
+
     // Event Listeners
     const manualForm = document.getElementById('manual-trade-form');
     if (manualForm) {
