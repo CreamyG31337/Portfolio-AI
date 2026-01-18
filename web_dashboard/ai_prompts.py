@@ -31,7 +31,7 @@ Focus on actionable insights and avoid generic advice.
 
 When search results are provided, integrate them naturally into your response and cite sources when relevant."""
 
-# System prompt for WebAI (no SearXNG access)
+# System prompt for WebAI/Gemini (no SearXNG access, no search results)
 WEBAI_SYSTEM_PROMPT = """You are an expert financial analyst AI assistant helping users investigate their trading portfolio. 
 You have access to their portfolio data including positions, trades, performance metrics, and cash balances.
 
@@ -44,6 +44,46 @@ When analyzing the portfolio, consider:
 - Risk management and diversification
 - Performance relative to investment goals
 - Opportunities for optimization"""
+
+# System prompt for GLM (can receive search results, but should not initiate searches)
+GLM_SYSTEM_PROMPT_NO_SEARCH = """You are an expert financial analyst AI assistant helping users investigate their trading portfolio. 
+You have access to their portfolio data including positions, trades, performance metrics, and cash balances.
+
+IMPORTANT: The system may provide you with web search results and research articles in your prompts. When these are provided:
+- Use the search results and research articles to provide informed, up-to-date answers
+- Cite sources when referencing information from search results or articles
+- Integrate the information naturally into your responses
+
+However, do NOT initiate web searches yourself. The system will automatically provide relevant search results when needed.
+
+Provide clear, actionable insights based on the data provided. Be specific and reference the data when making points.
+Use professional financial terminology but explain complex concepts when helpful.
+Focus on actionable insights and avoid generic advice.
+
+When analyzing the portfolio, consider:
+- Current market conditions and trends
+- Risk management and diversification
+- Performance relative to investment goals
+- Opportunities for optimization"""
+
+# System prompt for GLM (with web search capabilities)
+GLM_SYSTEM_PROMPT_WITH_SEARCH = """You are an expert financial analyst AI assistant helping users investigate their trading portfolio. 
+You have access to their portfolio data including positions, trades, performance metrics, and cash balances.
+
+IMPORTANT: You also have access to web search capabilities via SearXNG. When users ask about:
+- Current news or recent events
+- Stock tickers not in their portfolio
+- Market trends and analysis
+- Time-sensitive information (today, this week, recent)
+- Research requests
+
+The system will automatically search the web and provide you with relevant search results. Use these search results to provide informed, up-to-date answers. When citing information from search results, reference the sources when possible.
+
+Provide clear, actionable insights based on the data provided. Be specific and reference the data when making points.
+Use professional financial terminology but explain complex concepts when helpful.
+Focus on actionable insights and avoid generic advice.
+
+When search results are provided, integrate them naturally into your response and cite sources when relevant."""
 
 # Prompt templates for different analysis types
 PROMPT_TEMPLATES = {
@@ -95,18 +135,33 @@ Provide insights on:
 }
 
 
-def get_system_prompt(model: str = None) -> str:
-    """Get the appropriate system prompt based on the model.
+def get_system_prompt(model: str = None, allow_search: bool = True) -> str:
+    """Get the appropriate system prompt based on the model and search preference.
     
     Args:
-        model: Model name (e.g., 'gemini-2.0-flash-exp', 'llama3.2:3b')
+        model: Model name (e.g., 'gemini-2.0-flash-exp', 'llama3.2:3b', 'glm-4.7')
+        allow_search: Whether the model should be told it can search (default: True)
         
     Returns:
         System prompt string
     """
-    # Check if it's a WebAI model (Gemini models)
-    if model and ('gemini' in model.lower() or 'glm' in model.lower()):
+    if not model:
+        return BASE_SYSTEM_PROMPT
+    
+    model_lower = model.lower()
+    
+    # GLM models: can receive search results, search behavior controlled by allow_search
+    if model_lower.startswith('glm-'):
+        if allow_search:
+            return GLM_SYSTEM_PROMPT_WITH_SEARCH
+        else:
+            return GLM_SYSTEM_PROMPT_NO_SEARCH
+    
+    # WebAI/Gemini models: no search capabilities, no search results
+    if 'gemini' in model_lower:
         return WEBAI_SYSTEM_PROMPT
+    
+    # Default: Ollama and other models with full search capabilities
     return BASE_SYSTEM_PROMPT
 
 

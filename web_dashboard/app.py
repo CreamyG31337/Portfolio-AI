@@ -2666,6 +2666,48 @@ def update_ai_model():
         logger.error(f"Error updating AI model: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
 
+@app.route('/api/settings/preferences', methods=['GET'])
+@require_auth
+def get_preferences():
+    """Get all user preferences"""
+    try:
+        from user_preferences import get_all_user_preferences
+        
+        preferences = get_all_user_preferences()
+        return jsonify({"success": True, "preferences": preferences})
+    except Exception as e:
+        logger.error(f"Error getting preferences: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/settings/ai_include_search', methods=['POST'])
+@require_auth
+def update_ai_include_search():
+    """Update user AI include search preference"""
+    try:
+        from user_preferences import set_user_preference
+        from flask_auth_utils import get_user_id_flask
+        
+        data = request.get_json()
+        include_search = data.get('include_search')
+        
+        if include_search is None:
+            return jsonify({"success": False, "error": "include_search is required"}), 400
+        
+        user_id = get_user_id_flask()
+        logger.debug(f"Updating AI include_search for user {user_id} to {include_search}")
+        
+        result = set_user_preference('ai_include_search', include_search)
+        if result:
+            logger.info(f"Successfully updated AI include_search to {include_search}")
+            return jsonify({"success": True})
+        else:
+            logger.error(f"Failed to update AI include_search - set_user_preference returned False")
+            return jsonify({"success": False, "error": "Failed to save preference"}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating AI include_search: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
 @app.route('/api/settings/debug', methods=['GET'])
 @require_auth
 def settings_debug():

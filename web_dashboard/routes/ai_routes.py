@@ -633,6 +633,9 @@ def api_ai_chat():
             }
             context_string = handler.build_context(context_items, options)
         
+        # Extract include_search preference (defaults to True for backward compatibility)
+        include_search = data.get('include_search', True)
+        
         # Use ChatHandler to route to appropriate backend
         handler = ChatHandler(user_id=user_id, model=model, fund=fund)
         return handler.handle_chat(
@@ -640,7 +643,8 @@ def api_ai_chat():
             context_string=context_string,
             conversation_history=conversation_history,
             search_results=search_results,
-            repository_articles=repository_articles
+            repository_articles=repository_articles,
+            include_search=include_search
         )
     
     except Exception as e:

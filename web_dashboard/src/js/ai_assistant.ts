@@ -121,7 +121,7 @@ class AIAssistant {
         this.includeFundamentals = true;
     }
 
-    init(): void {
+    async init(): Promise<void> {
         console.log('[AIAssistant] init() starting...');
         console.log('[AIAssistant] Config:', this.config);
         try {
@@ -135,6 +135,7 @@ class AIAssistant {
             this.loadFunds();
             this.loadPortfolioTickers();
             this.loadContextItems();
+            this.loadUserPreferences(); // Load user preferences (including includeSearch)
             this.updateUI();
 
             // Eagerly load context - this enables the send button when done
@@ -337,6 +338,8 @@ class AIAssistant {
             toggleSearch.addEventListener('change', (e: Event) => {
                 const target = e.target as HTMLInputElement;
                 this.includeSearch = target.checked;
+                // Save preference when toggle changes
+                this.saveIncludeSearchPreference(target.checked);
             });
         }
         if (toggleRepository) {
@@ -1623,6 +1626,56 @@ class AIAssistant {
         chatMessages.appendChild(articlesDiv);
         this.scrollToBottom();
         header.click();
+    }
+
+    /**
+     * Load user preferences (including includeSearch)
+     */
+    async loadUserPreferences(): Promise<void> {
+        try {
+            // Load includeSearch preference (defaults to true)
+            const response = await fetch('/api/settings/preferences');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.preferences && typeof data.preferences.ai_include_search === 'boolean') {
+                    this.includeSearch = data.preferences.ai_include_search;
+                    // Update toggle checkbox to match loaded preference
+                    const toggleSearch = document.getElementById('toggle-search') as HTMLInputElement | null;
+                    if (toggleSearch) {
+                        toggleSearch.checked = this.includeSearch;
+                    }
+                    console.log('[AIAssistant] Loaded includeSearch preference:', this.includeSearch);
+                }
+            }
+        } catch (err) {
+            console.warn('[AIAssistant] Could not load user preferences, using defaults:', err);
+        }
+    }
+
+    /**
+     * Save includeSearch preference to backend
+     */
+    async saveIncludeSearchPreference(includeSearch: boolean): Promise<void> {
+        try {
+            const response = await fetch('/api/settings/ai_include_search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ include_search: includeSearch })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    console.log('[AIAssistant] Saved includeSearch preference:', includeSearch);
+                } else {
+                    console.warn('[AIAssistant] Failed to save preference:', result.error);
+                }
+            } else {
+                console.warn('[AIAssistant] Failed to save preference, status:', response.status);
+            }
+        } catch (err) {
+            console.error('[AIAssistant] Error saving includeSearch preference:', err);
+        }
     }
 }
 

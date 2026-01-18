@@ -136,7 +136,8 @@ class ChatHandler:
         context_string: str,
         conversation_history: List[Dict[str, str]],
         search_results: Optional[Dict[str, Any]] = None,
-        repository_articles: Optional[List[Dict[str, Any]]] = None
+        repository_articles: Optional[List[Dict[str, Any]]] = None,
+        include_search: bool = True
     ) -> Response:
         """
         Route chat request to appropriate backend and return response.
@@ -147,6 +148,7 @@ class ChatHandler:
             conversation_history: List of previous messages
             search_results: Optional search results to include
             repository_articles: Optional repository articles to include
+            include_search: Whether search is enabled (affects GLM prompt)
             
         Returns:
             Flask Response (streaming or JSON)
@@ -191,8 +193,8 @@ class ChatHandler:
             else:
                 full_prompt = f"{articles_text}\n\n{query}"
         
-        # Get model-specific system prompt
-        system_prompt = get_system_prompt(self.model)
+        # Get model-specific system prompt (pass include_search for GLM models)
+        system_prompt = get_system_prompt(self.model, allow_search=include_search)
         
         # Route to appropriate backend
         if self.backend == 'webai':
