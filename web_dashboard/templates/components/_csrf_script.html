@@ -1,0 +1,72 @@
+<script>
+    (function() {
+        // Read CSRF token from meta tag
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (!meta) return;
+        const csrfToken = meta.getAttribute('content');
+        if (!csrfToken) return;
+
+        // Intercept fetch requests to add X-CSRFToken header
+        const originalFetch = window.fetch;
+        window.fetch = function(input, init) {
+            // Determine method
+            let method = 'GET';
+            if (init && init.method) {
+                method = init.method.toUpperCase();
+            } else if (input instanceof Request) {
+                method = input.method.toUpperCase();
+            }
+
+            // Only add header for non-safe methods
+            if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+                init = init || {};
+                init.headers = init.headers || {};
+
+                // Add header if not already present
+                if (init.headers instanceof Headers) {
+                    if (!init.headers.has('X-CSRFToken')) {
+                        init.headers.append('X-CSRFToken', csrfToken);
+                    }
+                } else if (Array.isArray(init.headers)) {
+                    // Check if exists in array of pairs
+                    let exists = false;
+                    for (let i = 0; i < init.headers.length; i++) {
+                        if (init.headers[i][0].toLowerCase() === 'x-csrftoken') {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) {
+                        init.headers.push(['X-CSRFToken', csrfToken]);
+                    }
+                } else {
+                    // Plain object
+                    // Check for case-insensitive existence
+                    const keys = Object.keys(init.headers);
+                    const exists = keys.some(k => k.toLowerCase() === 'x-csrftoken');
+                    if (!exists) {
+                        init.headers['X-CSRFToken'] = csrfToken;
+                    }
+                }
+            }
+
+            return originalFetch(input, init);
+        };
+
+        // Also support XMLHttpRequest for older libraries
+        const originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+            this._method = method ? method.toUpperCase() : 'GET';
+            return originalOpen.apply(this, arguments);
+        };
+
+        const originalSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function(data) {
+            if (this._method !== 'GET' && this._method !== 'HEAD' && this._method !== 'OPTIONS') {
+                // Just set the header, don't worry about checking if it exists (XHR doesn't let us read request headers back easily)
+                this.setRequestHeader('X-CSRFToken', csrfToken);
+            }
+            return originalSend.apply(this, arguments);
+        };
+    })();
+</script>

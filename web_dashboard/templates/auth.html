@@ -4,7 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- CSRF Token for API requests -->
+    <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
     <title>Portfolio Dashboard - Authentication</title>
+
+    <!-- CSRF Protection Script -->
+    {% include "components/_csrf_script.html" %}
 
     <!-- Theme CSS - Uses CSS variables -->
     <link rel="stylesheet" href="/assets/css/theme.css">

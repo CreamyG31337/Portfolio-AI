@@ -27,5 +27,6 @@ flask>=3.0.0
 flask-cors>=4.0.0
 Flask-Caching>=2.1.0
 sqlalchemy>=2.0.0
+Flask-WTF>=1.2.1
 # Note: Flowbite UI framework is loaded via CDN in templates/base.html
 # No Python package required - see FLOWBITE_GUIDE.md for usage

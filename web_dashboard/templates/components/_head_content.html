@@ -1,6 +1,8 @@
 <base href="/">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- CSRF Token for API requests -->
+<meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
 
 <!-- Tailwind CSS - Production build (optimized, tree-shaken) -->
 <link href="/assets/css/tailwind.css?v=2" rel="stylesheet">
@@ -64,3 +66,6 @@
 <!-- Theme Management Scripts -->
 <script type="module" src="/assets/js/theme.js"></script>
 <script type="module" src="/assets/js/chart_theme_utils.js"></script>
+
+<!-- CSRF Protection Script -->
+{% include "components/_csrf_script.html" %}
