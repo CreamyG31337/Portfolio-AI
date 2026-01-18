@@ -14,6 +14,7 @@ from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import pandas as pd
+import time
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -510,6 +511,10 @@ with st.sidebar:
     except ImportError:
         is_selected_webai = False
         webai_model_list = []
+    
+    # Check if GLM model
+    is_glm_model = selected_model.startswith("glm-")
+    
     if is_selected_webai:
         # WebAI models use web-based API
         if HAS_MODEL_KEYS:
@@ -535,6 +540,25 @@ with st.sidebar:
         if not HAS_WEBAI:
             st.error("❌ WebAI package not installed. Install with: pip install the required webapi package")
             st.stop()
+    elif is_glm_model:
+        # GLM models (Zhipu AI)
+        try:
+            from glm_config import get_zhipu_api_key
+            has_glm_key = bool(get_zhipu_api_key())
+        except ImportError:
+            has_glm_key = False
+        
+        if not has_glm_key:
+            st.error("❌ GLM API key not configured. Please configure in AI Settings.")
+            st.stop()
+        
+        # Display GLM model details
+        if selected_model == "glm-4.7":
+            st.caption("ℹ️ 🧠 GLM-4.7 - Advanced reasoning with 128K context")
+        elif selected_model == "glm-4.5-air":
+            st.caption("ℹ️ ⚡ GLM-4.5 Air - Fast responses with 128K context")
+        else:
+            st.caption(f"ℹ️ 🤖 {selected_model} - Zhipu AI model with large context")
     else:
         # Ollama models require Ollama to be running
         if not ollama_available:
@@ -872,7 +896,28 @@ with st.sidebar:
 
     # Rebuild context string only if context items changed
     if st.session_state.context_items_fingerprint != current_fingerprint:
+        start_time = time.time()
+        logger.info(f"[PERFORMANCE] Starting context build for ai_assistant")
+        
         st.session_state.cached_context_string = build_context_string_internal()
+        
+        duration = time.time() - start_time
+        logger.info(f"[PERFORMANCE] Context build took {duration:.2f} seconds")
+        
+        # Log to browser console using a small script
+        # Use st.components.v1.html for a hidden script element as it's cleaner than st.markdown with unsafe_allow_html
+        import streamlit.components.v1 as components
+        components.html(
+            f"""
+            <script>
+                console.log("[AI Assistant] Context build took {duration:.2f} seconds");
+                console.log("[AI Assistant] Fingerprint updated: {current_fingerprint}");
+            </script>
+            """,
+            height=0,
+            width=0
+        )
+        
         st.session_state.context_items_fingerprint = current_fingerprint
 
     # Show count
@@ -1076,8 +1121,9 @@ with main_col:
                 if st.session_state.chat_messages and st.session_state.chat_messages[-1]['role'] == 'user':
                     last_user_msg = st.session_state.chat_messages[-1]
                     user_query = last_user_msg['content']
-                    # Pop the user message too, since the logic below will append it again
-                    st.session_state.chat_messages.pop()
+                    # DON'T pop the user message - it's already in history
+                    # Set a flag to indicate this is a retry (don't re-append user message)
+                    st.session_state.is_retry = True
                     # Don't call st.rerun() here - let the query be processed below
 
     # If no messages yet and no suggested prompt active, show the "Start Analysis" workflow
@@ -1111,11 +1157,14 @@ if chat_input_query:
     user_query = chat_input_query
 
 if user_query:
-    # Add user message to history
-    st.session_state.chat_messages.append({
-        "role": "user",
-        "content": user_query
-    })
+    # Add user message to history (unless this is a retry)
+    if not st.session_state.get('is_retry', False):
+        st.session_state.chat_messages.append({
+            "role": "user",
+            "content": user_query
+        })
+    # Clear retry flag
+    st.session_state.is_retry = False
 
     # Reuse cached context string (PERFORMANCE OPTIMIZATION)
     context_string = st.session_state.get('cached_context_string', '')
@@ -1620,16 +1669,18 @@ if user_query:
                 except ValueError as e:
                     # Missing cookies error
                     status_placeholder.empty()
-                    st.error(f"WebAI configuration error: {e}")
                     model_name = get_model_display_name_short() if HAS_MODEL_KEYS else "AI Pro"
-                    st.info(f"💡 Please configure cookies for {model_name}. See setup documentation.")
-                    st.stop()
+                    error_msg = f"❌ **WebAI Configuration Error**\n\n{str(e)}\n\n💡 Please configure cookies for {model_name} in AI Settings."
+                    message_placeholder.markdown(error_msg)
+                    full_response = error_msg
+                    logger.error(f"WebAI config error: {e}")
                 except Exception as e:
                     status_placeholder.empty()
                     model_name = get_model_display_name_short() if HAS_MODEL_KEYS else "AI Pro"
-                    st.error(f"Error using {model_name}: {e}")
+                    error_msg = f"❌ **Error using {model_name}**\n\n{str(e)}\n\n🔄 Try the retry button or check your connection."
+                    message_placeholder.markdown(error_msg)
+                    full_response = error_msg
                     logger.exception("WebAI error")
-                    st.stop()
             else:
                 # Use Ollama (proper API with system prompts and streaming)
                 client = get_ollama_client()

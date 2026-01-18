@@ -74,6 +74,61 @@ ETF_NAMES = {
 MIN_SHARE_CHANGE = 1000  # Minimum absolute share change to log
 MIN_PERCENT_CHANGE = 0.5  # Minimum % change relative to previous holdings
 
+# Tickers to exclude from change detection (cash, futures, derivatives, etc.)
+# These are valid holdings but not actionable stock signals
+EXCLUDED_TICKERS = {
+    # Cash and cash equivalents
+    'USD', 'CASH', 'CASHCOLLATERAL', 'MARGIN_CASH', 'MONEY_MARKET',
+    # Futures and derivatives
+    'XTSLA', 'MSFUT', 'SGAFT', 'ESH6', 'ESH5', 'ESM6', 'ESU6', 'ESZ6',
+    'NQH6', 'NQM6', 'NQU6', 'NQZ6', 'RTY', 'RTYM6', 'SPY_FUT',
+    'ETD_USD', 'FUT', 'SWAP', 'FWD',
+    # Treasury/bonds (often in ETFs but not stock signals)
+    'TBILL', 'USINTR', 'BIL',
+}
+
+# Patterns that indicate non-stock holdings
+EXCLUDED_TICKER_PATTERNS = [
+    'FUT',   # Futures
+    '_USD',  # USD-denominated derivatives
+    'SWAP',  # Swaps
+    'FWD',   # Forwards
+]
+
+
+def is_stock_ticker(ticker: str) -> bool:
+    """Check if a ticker represents a tradeable stock (not cash/futures/derivatives).
+    
+    Args:
+        ticker: Ticker symbol
+        
+    Returns:
+        True if it's a stock ticker, False if it should be excluded
+    """
+    if not ticker or not isinstance(ticker, str):
+        return False
+    
+    ticker_upper = ticker.upper().strip()
+    
+    # Check explicit exclusions
+    if ticker_upper in EXCLUDED_TICKERS:
+        return False
+    
+    # Check patterns
+    for pattern in EXCLUDED_TICKER_PATTERNS:
+        if pattern in ticker_upper:
+            return False
+    
+    # Exclude tickers that are just numbers (often futures contracts)
+    if ticker_upper.isdigit():
+        return False
+    
+    # Exclude very long tickers (usually derivatives or internal codes)
+    if len(ticker_upper) > 10:
+        return False
+    
+    return True
+
 
 
 def fetch_ishares_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFrame]:
@@ -285,7 +340,7 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
         etf_ticker: ETF ticker for logging
         
     Returns:
-        List of dicts with significant changes
+        List of dicts with significant changes (filtered to stocks only)
     """
     # Merge on ticker
     merged = today.merge(
@@ -309,11 +364,19 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
         (merged['percent_change'].abs() >= MIN_PERCENT_CHANGE)
     ].copy()
     
+    # Filter out non-stock tickers (cash, futures, derivatives)
+    before_filter = len(significant)
+    significant = significant[significant['ticker'].apply(is_stock_ticker)]
+    filtered_out = before_filter - len(significant)
+    
+    if filtered_out > 0:
+        logger.info(f"🔍 {etf_ticker}: Filtered out {filtered_out} non-stock changes (cash/futures/derivatives)")
+    
     # Add context
     significant['etf'] = etf_ticker
     significant['action'] = significant['share_diff'].apply(lambda x: 'BUY' if x > 0 else 'SELL')
     
-    logger.info(f"📊 {etf_ticker}: Found {len(significant)} significant changes out of {len(merged)} holdings")
+    logger.info(f"📊 {etf_ticker}: Found {len(significant)} significant stock changes out of {len(merged)} holdings")
     
     return significant.to_dict('records')
 
@@ -560,15 +623,23 @@ def etf_watchtower_job():
                 # 2. Get yesterday's holdings
                 yesterday_holdings = get_previous_holdings(db, etf_ticker, today)
                 
-                # 3. Calculate diff (only if we have previous data)
+                # 3. Calculate diff and generate article (only if we have previous data)
                 if not yesterday_holdings.empty:
                     changes = calculate_diff(today_holdings, yesterday_holdings, etf_ticker)
                     
                     if changes:
-                        log_significant_changes(repo, changes, etf_ticker)
-                        total_changes += len(changes)
+                        num_changes = len(changes)
+                        num_holdings = len(today_holdings)
+                        change_ratio = num_changes / num_holdings if num_holdings > 0 else 1
+                        
+                        if change_ratio > 0.9:
+                            # More than 90% of holdings changed = likely bad comparison data
+                            logger.warning(f"⚠️ {etf_ticker}: Skipping article - {num_changes}/{num_holdings} holdings changed ({change_ratio:.1%}), likely incomplete historical data")
+                        else:
+                            log_significant_changes(repo, changes, etf_ticker)
+                            total_changes += num_changes
                 else:
-                    logger.info(f"ℹ️  No previous data for {etf_ticker} - this is the first snapshot")
+                    logger.info(f"ℹ️ {etf_ticker}: First snapshot - saving holdings but skipping article generation (no historical data to compare)")
                 
                 # 4. Upsert ETF metadata (the ETF itself)
                 upsert_etf_metadata(db, etf_ticker, config['provider'])
