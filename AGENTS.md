@@ -218,9 +218,13 @@ web_dashboard/
   - Any other root-level Python files
 - Test files: `tests/test_*.py` (excluding `test_flask_*.py`)
 
-**Streamlit Code**:
+**Streamlit Code** (PROTOTYPE ONLY):
+- **🚨 IMPORTANT: Streamlit is a PROTOTYPE, Flask is PRODUCTION**
 - Files in `web_dashboard/pages/*.py` - Streamlit pages
-- **No tests** - Streamlit is prototype, no test suite
+- **Maintenance only** - keep it functional but don't add every new feature
+- **No tests** - Streamlit has no test suite
+- **Flask gets priority** - all new production features go to Flask first
+- Use Streamlit for rapid prototyping, then port successful features to Flask
 
 #### Running Tests
 

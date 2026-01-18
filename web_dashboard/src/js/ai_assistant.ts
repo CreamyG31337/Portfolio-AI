@@ -687,6 +687,10 @@ class AIAssistant {
         if (this.includeSearch && this.config.searxngAvailable) {
             try {
                 searchResults = await this.performSearch(query);
+                // Display search results if any
+                if (searchResults && searchResults.results && searchResults.results.length > 0) {
+                    this.displaySearchResults(searchResults);
+                }
             } catch (err) {
                 console.error('Search error:', err);
             }
@@ -695,6 +699,10 @@ class AIAssistant {
         if (this.includeRepository && this.config.ollamaAvailable) {
             try {
                 repositoryArticles = await this.performRepositorySearch(query);
+                // Display repository articles if any
+                if (repositoryArticles && repositoryArticles.length > 0) {
+                    this.displayRepositoryArticles(repositoryArticles);
+                }
             } catch (err) {
                 console.error('Repository search error:', err);
             }
@@ -1351,6 +1359,83 @@ class AIAssistant {
                 retryContainer.classList.add('hidden');
             }
         }
+    }
+
+    displaySearchResults(searchData: any): void {
+        if (!searchData || !searchData.results || searchData.results.length === 0) return;
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+
+        const resultsDiv = document.createElement('div');
+        resultsDiv.className = 'mb-4 border border-blue-300 dark:border-blue-700 rounded-lg bg-blue-50 dark:bg-blue-900/20';
+
+        const header = document.createElement('div');
+        header.className = 'p-3 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors';
+        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-blue-800 dark:text-blue-200">🔍 Search Results (${searchData.results.length} found)</span><span class="text-blue-600 dark:text-blue-400 text-sm">Click to expand ▼</span></div>`;
+
+        const content = document.createElement('div');
+        content.className = 'hidden p-3 border-t border-blue-300 dark:border-blue-700 space-y-2';
+
+        const maxResults = Math.min(5, searchData.results.length);
+        searchData.results.slice(0, maxResults).forEach((result: any, idx: number) => {
+            const resultItem = document.createElement('div');
+            resultItem.className = 'p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700';
+            const title = result.title || 'Untitled';
+            const url = result.url || '#';
+            const snippet = result.content || result.snippet || '';
+            resultItem.innerHTML = `<div class="font-semibold text-sm mb-1"><a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">${idx + 1}. ${title}</a></div>${snippet ? `<div class="text-xs text-gray-600 dark:text-gray-400">${snippet.substring(0, 200)}...</div>` : ''}`;
+            content.appendChild(resultItem);
+        });
+
+        header.addEventListener('click', () => {
+            content.classList.toggle('hidden');
+            const arrow = header.querySelector('span:last-child');
+            if (arrow) arrow.textContent = content.classList.contains('hidden') ? 'Click to expand ▼' : 'Click to collapse ▲';
+        });
+
+        resultsDiv.appendChild(header);
+        resultsDiv.appendChild(content);
+        chatMessages.appendChild(resultsDiv);
+        this.scrollToBottom();
+        header.click();
+    }
+
+    displayRepositoryArticles(articles: any[]): void {
+        if (!articles || articles.length === 0) return;
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+
+        const articlesDiv = document.createElement('div');
+        articlesDiv.className = 'mb-4 border border-purple-300 dark:border-purple-700 rounded-lg bg-purple-50 dark:bg-purple-900/20';
+
+        const header = document.createElement('div');
+        header.className = 'p-3 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors';
+        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-purple-800 dark:text-purple-200">🧠 Research Articles (${articles.length} found)</span><span class="text-purple-600 dark:text-purple-400 text-sm">Click to expand ▼</span></div>`;
+
+        const content = document.createElement('div');
+        content.className = 'hidden p-3 border-t border-purple-300 dark:border-purple-700 space-y-2';
+
+        articles.forEach((article: any, idx: number) => {
+            const articleItem = document.createElement('div');
+            articleItem.className = 'p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700';
+            const title = article.title || 'Untitled';
+            const summary = article.summary || '';
+            const similarity = article.similarity || 0;
+            articleItem.innerHTML = `<div class="font-semibold text-sm mb-1 text-purple-700 dark:text-purple-300">${idx + 1}. ${title} <span class="text-xs text-gray-500">(${(similarity * 100).toFixed(0)}% match)</span></div>${summary ? `<div class="text-xs text-gray-600 dark:text-gray-400">${summary.substring(0, 200)}...</div>` : ''}`;
+            content.appendChild(articleItem);
+        });
+
+        header.addEventListener('click', () => {
+            content.classList.toggle('hidden');
+            const arrow = header.querySelector('span:last-child');
+            if (arrow) arrow.textContent = content.classList.contains('hidden') ? 'Click to expand ▼' : 'Click to collapse ▲';
+        });
+
+        articlesDiv.appendChild(header);
+        articlesDiv.appendChild(content);
+        chatMessages.appendChild(articlesDiv);
+        this.scrollToBottom();
+        header.click();
     }
 }
 
