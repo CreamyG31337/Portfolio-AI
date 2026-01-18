@@ -2497,7 +2497,7 @@ def api_get_webai_cookies():
         logger.debug(f"Exception type: {type(e).__name__}")
         return jsonify({"success": False, "error": str(e), "cookies": {}, "has_cookies": False}), 500
 
-@admin_bp.route('/api/admin/ai/cookies/logs', methods=['GET'])
+@admin_bp.route('/api/admin/ai/cookies/refresher/logs', methods=['GET'])
 @require_admin
 def api_get_cookie_refresher_logs():
     """Get cookie refresher logs"""
