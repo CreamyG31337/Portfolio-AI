@@ -1925,18 +1925,16 @@ def api_portfolio():
                 current_positions.append({
                     'ticker': row['ticker'],
                     'shares': round(float(row['shares']), 4),
-                    'price': round(float(row['price']), 2),
+                    'price': round(float(row.get('current_price', row.get('price', 0))), 2),
                     'cost_basis': round(float(row['cost_basis']), 2),
                     'market_value': round(market_value, 2),
-                    'pnl': round(total_pnl, 2),
-                    'pnl_pct': round((total_pnl / float(row['cost_basis']) * 100), 2) if float(row['cost_basis']) > 0 else 0.0,
-                    # Add SQL-calculated P&L metrics
-                    'daily_pnl_dollar': round(float(row.get('daily_pnl_dollar', 0)), 2),
+                    'total_pnl': round(total_pnl, 2),
+                    'total_pnl_pct': round((total_pnl / float(row['cost_basis']) * 100) if float(row['cost_basis']) > 0 else 0, 2),
+                    'daily_pnl': round(float(row.get('daily_pnl', 0)), 2),
                     'daily_pnl_pct': round(float(row.get('daily_pnl_pct', 0)), 2),
-                    'weekly_pnl_dollar': round(float(row.get('weekly_pnl_dollar', 0)), 2),
-                    'weekly_pnl_pct': round(float(row.get('weekly_pnl_pct', 0)), 2),
-                    'monthly_pnl_dollar': round(float(row.get('monthly_pnl_dollar', 0)), 2),
-                    'monthly_pnl_pct': round(float(row.get('monthly_pnl_pct', 0)), 2)
+                    'five_day_pnl': round(float(row.get('five_day_pnl', 0)), 2),
+                    'five_day_pnl_pct': round(float(row.get('five_day_pnl_pct', 0)), 2),
+                    'currency': row.get('currency', 'USD')
                 })
         else:
             # CSV format fallback
