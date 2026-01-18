@@ -23,6 +23,7 @@ import sys
 import json
 import os
 import time
+import random
 import logging
 from pathlib import Path
 from typing import Optional, Dict
@@ -94,9 +95,16 @@ console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-# Configuration
-REFRESH_INTERVAL = int(os.getenv("COOKIE_REFRESH_INTERVAL", "1800"))  # 30 minutes default (__Secure-1PSIDTS expires frequently)
-COOKIE_GRACE_PERIOD_HOURS = int(os.getenv("COOKIE_GRACE_PERIOD_HOURS", "2"))  # 2 hours default (2x refresh cycles)
+# Configuration - designed to mimic natural user behavior
+# Base refresh interval: 3 hours (real users don't constantly refresh)
+REFRESH_INTERVAL_BASE = int(os.getenv("COOKIE_REFRESH_INTERVAL", "10800"))  # 3 hours default
+# Jitter: ±30 minutes randomization to avoid fixed-interval bot detection
+REFRESH_JITTER_SECONDS = int(os.getenv("COOKIE_REFRESH_JITTER", "1800"))  # ±30 min jitter
+# Cookie max age before forced refresh (regardless of schedule)
+COOKIE_MAX_AGE_HOURS = float(os.getenv("COOKIE_MAX_AGE_HOURS", "4"))  # Force refresh if older than 4 hours
+COOKIE_MAX_AGE_SECONDS = int(COOKIE_MAX_AGE_HOURS * 3600)
+# Grace period after manual update (don't refresh recently updated cookies)
+COOKIE_GRACE_PERIOD_HOURS = int(os.getenv("COOKIE_GRACE_PERIOD_HOURS", "2"))  # 2 hours default
 COOKIE_GRACE_PERIOD = COOKIE_GRACE_PERIOD_HOURS * 3600  # Convert to seconds
 COOKIE_OUTPUT_FILE = os.getenv("COOKIE_OUTPUT_FILE", "/shared/cookies/webai_cookies.json")
 COOKIE_INPUT_FILE = os.getenv("COOKIE_INPUT_FILE", "/shared/cookies/webai_cookies.json")  # Read existing cookies
@@ -113,7 +121,7 @@ def get_service_url() -> str:
             with open(config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 url = config.get("AI_SERVICE_WEB_URL")
-                if url and not url.startswith("https://example") and "webai.google.com" not in url:
+                if url and not url.startswith("https://example") and not _is_placeholder_url(url):
                     logger.info(f"✅ Using service URL from shared config file: {url}")
                     return url
                 elif url:
@@ -127,7 +135,7 @@ def get_service_url() -> str:
     if env_url:
         logger.info(f"AI_SERVICE_WEB_URL value: {env_url}")
         # Reject placeholders (both old and new)
-        if "webai.google.com" in env_url or env_url.startswith("https://example"):
+        if _is_placeholder_url(env_url) or env_url.startswith("https://example"):
             logger.error(f"AI_SERVICE_WEB_URL is set to placeholder URL: {env_url}")
             logger.error("  → Update Woodpecker secret 'ai_service_web_url' to the actual service URL")
         elif env_url and not env_url.startswith("https://example"):  # Ignore placeholder
@@ -155,6 +163,16 @@ def get_service_url() -> str:
     raise ValueError(error_msg)
 
 
+def _is_placeholder_url(url: str) -> bool:
+    """Check if URL is a placeholder that shouldn't be used."""
+    if not url:
+        return True
+    url_lower = url.lower()
+    # Check for common placeholder patterns
+    placeholder_patterns = ["example.com", "webai.", "placeholder", "changeme"]
+    return any(pattern in url_lower for pattern in placeholder_patterns)
+
+
 def validate_service_url(url: str) -> None:
     """Validate that the service URL is properly formatted and secure."""
     if not url:
@@ -164,7 +182,7 @@ def validate_service_url(url: str) -> None:
         raise ValueError(f"Service URL must use HTTPS: {url}")
     
     # Check for placeholder URLs
-    if "example.com" in url.lower() or "webai.google.com" in url:
+    if _is_placeholder_url(url):
         raise ValueError(f"Service URL appears to be a placeholder: {url}")
 
 
@@ -286,6 +304,75 @@ def should_skip_refresh(cookies: Optional[Dict[str, str]]) -> tuple[bool, Option
         logger.warning(f"Could not parse _updated_at timestamp: {updated_at_str}, error: {e}")
         logger.warning("  → Will proceed with refresh")
         return (False, None)
+
+
+def get_cookie_age_seconds(cookies: Optional[Dict[str, str]]) -> Optional[float]:
+    """
+    Get the age of cookies in seconds based on _refreshed_at or _updated_at timestamp.
+    
+    Returns:
+        Age in seconds, or None if age cannot be determined.
+    """
+    if not cookies:
+        return None
+    
+    # Try _refreshed_at first (set by this service), then _updated_at (set by admin UI)
+    timestamp_str = cookies.get("_refreshed_at") or cookies.get("_updated_at")
+    
+    if not timestamp_str:
+        return None
+    
+    try:
+        timestamp_str = timestamp_str.rstrip("Z")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        age_seconds = (datetime.utcnow() - timestamp).total_seconds()
+        return max(0, age_seconds)  # Ensure non-negative
+    except (ValueError, TypeError):
+        return None
+
+
+def needs_refresh(cookies: Optional[Dict[str, str]]) -> tuple[bool, str]:
+    """
+    Determine if cookies need to be refreshed based on age.
+    
+    Returns:
+        Tuple of (needs_refresh, reason)
+    """
+    if not cookies:
+        return (True, "No cookies available")
+    
+    # Check if required cookies are present
+    if not cookies.get("__Secure-1PSID"):
+        return (True, "Missing __Secure-1PSID cookie")
+    
+    age_seconds = get_cookie_age_seconds(cookies)
+    
+    if age_seconds is None:
+        return (True, "Cannot determine cookie age (no timestamp)")
+    
+    age_hours = age_seconds / 3600
+    
+    # Force refresh if cookies are too old
+    if age_seconds >= COOKIE_MAX_AGE_SECONDS:
+        return (True, f"Cookies are {age_hours:.1f} hours old (max age: {COOKIE_MAX_AGE_HOURS} hours)")
+    
+    # Otherwise, cookies are fresh enough
+    remaining_seconds = COOKIE_MAX_AGE_SECONDS - age_seconds
+    remaining_hours = remaining_seconds / 3600
+    return (False, f"Cookies are {age_hours:.1f} hours old ({remaining_hours:.1f} hours until max age)")
+
+
+def get_next_sleep_interval() -> int:
+    """
+    Calculate the next sleep interval with random jitter.
+    
+    Returns a random interval between (base - jitter) and (base + jitter).
+    This mimics natural user behavior and avoids bot detection.
+    """
+    min_interval = max(60, REFRESH_INTERVAL_BASE - REFRESH_JITTER_SECONDS)  # At least 1 minute
+    max_interval = REFRESH_INTERVAL_BASE + REFRESH_JITTER_SECONDS
+    interval = random.randint(min_interval, max_interval)
+    return interval
 
 
 def save_cookies(cookies: Dict[str, str]) -> bool:
@@ -455,7 +542,7 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
                 parsed = urlparse(service_url)
                 
                 # Use leading dot for domain to ensure cookies work across subdomains
-                # e.g., ".google.com" instead of "gemini.google.com"
+                # e.g., ".example.com" instead of "sub.example.com"
                 base_domain = ".".join(parsed.netloc.split(".")[-2:])
                 domain = f".{base_domain}"
                 
@@ -485,8 +572,8 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
                     
                     # Try both domain formats - sometimes cookies need exact domain match
                     domains_to_try = [
-                        domain,  # .google.com
-                        parsed.netloc,  # gemini.google.com (exact match)
+                        domain,  # .example.com (wildcard subdomain)
+                        parsed.netloc,  # sub.example.com (exact match)
                     ]
                     
                     for cookie_domain in domains_to_try:
@@ -654,8 +741,8 @@ def refresh_cookies() -> bool:
     logger.info("=" * 60)
     logger.info("COOKIE REFRESH INITIATED")
     logger.info("=" * 60)
-    logger.info(f"Refresh interval: {REFRESH_INTERVAL} seconds")
-    logger.info(f"Grace period: {COOKIE_GRACE_PERIOD_HOURS} hours ({COOKIE_GRACE_PERIOD} seconds)")
+    logger.info(f"Max cookie age: {COOKIE_MAX_AGE_HOURS} hours")
+    logger.info(f"Grace period: {COOKIE_GRACE_PERIOD_HOURS} hours")
     logger.info(f"Max retries: {MAX_RETRIES}")
     logger.info(f"Retry delay: {RETRY_DELAY} seconds")
 
@@ -739,9 +826,12 @@ def refresh_cookies() -> bool:
 
 
 def main():
-    """Main loop - runs continuously, refreshing cookies periodically."""
+    """Main loop - runs continuously, refreshing cookies when needed."""
     logger.info("Cookie Refresher Service starting...")
-    logger.info(f"  Refresh interval: {REFRESH_INTERVAL} seconds")
+    logger.info(f"  Base refresh interval: {REFRESH_INTERVAL_BASE} seconds ({REFRESH_INTERVAL_BASE/3600:.1f} hours)")
+    logger.info(f"  Refresh jitter: ±{REFRESH_JITTER_SECONDS} seconds (±{REFRESH_JITTER_SECONDS/60:.0f} min)")
+    logger.info(f"  Max cookie age: {COOKIE_MAX_AGE_HOURS} hours")
+    logger.info(f"  Grace period: {COOKIE_GRACE_PERIOD_HOURS} hours")
     logger.info(f"  Cookie output: {COOKIE_OUTPUT_FILE}")
     logger.info(f"  Cookie input: {COOKIE_INPUT_FILE}")
     
@@ -750,21 +840,49 @@ def main():
         sys.exit(1)
     
     # Add startup delay to prevent rapid crash loops
-    logger.info("Waiting 60 seconds before initial refresh to ensure system stability...")
-    time.sleep(60)
+    startup_delay = random.randint(30, 90)  # Random 30-90 second startup delay
+    logger.info(f"Waiting {startup_delay} seconds before initial check...")
+    time.sleep(startup_delay)
     
-    # Initial refresh on startup
-    logger.info("Performing initial cookie refresh...")
-    refresh_cookies()
+    # Check if initial refresh is needed
+    logger.info("Checking if initial refresh is needed...")
+    existing_cookies = load_existing_cookies()
+    should_refresh, reason = needs_refresh(existing_cookies)
     
-    # Main loop
+    if should_refresh:
+        logger.info(f"Initial refresh needed: {reason}")
+        refresh_cookies()
+    else:
+        logger.info(f"Skipping initial refresh: {reason}")
+    
+    # Main loop - smart refresh based on cookie age
     while True:
         try:
-            logger.info(f"Sleeping for {REFRESH_INTERVAL} seconds until next refresh...")
-            time.sleep(REFRESH_INTERVAL)
+            # Calculate next check interval with jitter
+            sleep_interval = get_next_sleep_interval()
+            sleep_hours = sleep_interval / 3600
+            sleep_minutes = sleep_interval / 60
+            logger.info(f"Sleeping for {sleep_minutes:.0f} minutes ({sleep_hours:.1f} hours) until next check...")
+            time.sleep(sleep_interval)
             
-            logger.info("Starting scheduled cookie refresh...")
-            refresh_cookies()
+            # Load cookies and check if refresh is needed
+            logger.info("Checking cookie status...")
+            existing_cookies = load_existing_cookies()
+            
+            # First check grace period (recently manually updated)
+            should_skip, skip_reason = should_skip_refresh(existing_cookies)
+            if should_skip:
+                logger.info(f"⏭️  Skipping: {skip_reason}")
+                continue
+            
+            # Then check if refresh is actually needed based on age
+            should_refresh, refresh_reason = needs_refresh(existing_cookies)
+            
+            if should_refresh:
+                logger.info(f"Refresh needed: {refresh_reason}")
+                refresh_cookies()
+            else:
+                logger.info(f"No refresh needed: {refresh_reason}")
             
         except KeyboardInterrupt:
             logger.info("Received shutdown signal, exiting...")
@@ -773,8 +891,10 @@ def main():
             logger.error(f"Unexpected error in main loop: {e}")
             import traceback
             traceback.print_exc()
-            # Continue running despite errors
-            time.sleep(60)  # Wait a bit before retrying
+            # Continue running despite errors - wait with jitter
+            error_wait = random.randint(60, 180)
+            logger.info(f"Waiting {error_wait} seconds before retrying...")
+            time.sleep(error_wait)
 
 
 if __name__ == "__main__":
