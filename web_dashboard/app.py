@@ -3378,9 +3378,20 @@ def _get_formatted_ai_models():
     all_models = list_available_models()
     formatted_models = []
     for model in all_models:
+        if model.startswith("glm-"):
+            # Only expose GLM in the selectable list when the API key is set
+            try:
+                from glm_config import get_zhipu_api_key
+                if not get_zhipu_api_key():
+                    continue
+            except ImportError:
+                continue
+            display_name = "GLM " + model[4:].replace("-", " ") if len(model) > 4 else model
+            formatted_models.append({"id": model, "name": display_name, "type": "glm"})
+            continue
         is_webai = model.startswith('gemini-')
         display_name = model
-        
+
         if is_webai:
             try:
                 display_name = get_model_display_name(model)
@@ -3893,7 +3904,94 @@ def api_ai_chat():
             except Exception as e:
                 logger.error(f"WebAI error: {e}", exc_info=True)
                 return jsonify({"error": f"WebAI error: {str(e)}"}), 500
-        
+
+        elif model and model.startswith("glm-"):
+            # GLM via Z.AI (OpenAI-compatible /chat/completions, streaming)
+            try:
+                from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
+
+                key = get_zhipu_api_key()
+                if not key:
+                    return jsonify({"error": "GLM API key not set. Add ZHIPU_API_KEY or save via AI Settings."}), 503
+
+                # Model config for max_tokens / temperature
+                cfg_path = Path(__file__).resolve().parent / "model_config.json"
+                me = {}
+                if cfg_path.exists():
+                    try:
+                        with open(cfg_path, "r", encoding="utf-8") as f:
+                            mc = json_lib.load(f)
+                        me = (mc.get("models") or {}).get(model, mc.get("default_config") or {})
+                    except Exception:
+                        pass
+                max_tokens = me.get("max_tokens") or me.get("num_predict") or 4096
+                temperature = float(me.get("temperature", 0.1))
+
+                # Build messages: system, then conversation_history, then user
+                messages = [{"role": "system", "content": system_prompt}]
+                for h in (conversation_history or []):
+                    role = (h.get("role") or "user").lower()
+                    if role == "assistant":
+                        role = "assistant"
+                    elif role != "system":
+                        role = "user"
+                    content = h.get("content") or h.get("text") or ""
+                    if content:
+                        messages.append({"role": role, "content": content})
+                messages.append({"role": "user", "content": full_prompt})
+
+                url = f"{ZHIPU_BASE_URL.rstrip('/')}/chat/completions"
+                headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": model,
+                    "messages": messages,
+                    "stream": True,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                }
+
+                def generate_glm():
+                    try:
+                        r = requests.post(url, json=payload, headers=headers, stream=True, timeout=90)
+                        r.raise_for_status()
+                        for line in r.iter_lines(decode_unicode=True):
+                            if not line or not line.strip():
+                                continue
+                            s = line.strip()
+                            if s.startswith("data: "):
+                                data = s[6:].strip()
+                                if data == "[DONE]":
+                                    yield f"data: {json_lib.dumps({'chunk': '', 'done': True})}\n\n"
+                                    return
+                                try:
+                                    obj = json_lib.loads(data)
+                                    for c in (obj.get("choices") or [])[:1]:
+                                        delta = c.get("delta") or {}
+                                        part = delta.get("content") or ""
+                                        if part:
+                                            yield f"data: {json_lib.dumps({'chunk': part, 'done': False})}\n\n"
+                                        if c.get("finish_reason") == "stop":
+                                            yield f"data: {json_lib.dumps({'chunk': '', 'done': True})}\n\n"
+                                            return
+                                except json_lib.JSONDecodeError:
+                                    continue
+                        yield f"data: {json_lib.dumps({'chunk': '', 'done': True})}\n\n"
+                    except Exception as e:
+                        logger.error(f"GLM streaming error: {e}", exc_info=True)
+                        yield f"data: {json_lib.dumps({'error': str(e), 'done': True})}\n\n"
+
+                return Response(
+                    stream_with_context(generate_glm()),
+                    mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
+            except ImportError as e:
+                logger.error(f"GLM import error: {e}", exc_info=True)
+                return jsonify({"error": "glm_config not available"}), 500
+            except Exception as e:
+                logger.error(f"GLM error: {e}", exc_info=True)
+                return jsonify({"error": str(e)}), 500
+
         else:
             # Ollama (streaming)
             from ollama_client import get_ollama_client

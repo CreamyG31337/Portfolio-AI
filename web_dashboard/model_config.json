@@ -109,6 +109,18 @@
             "temperature": 0.1,
             "desc": "Embedding model for text similarity and RAG",
             "hidden": true
+        },
+        "glm-4.7": {
+            "provider": "zhipu",
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "desc": "Zhipu GLM-4.7 via Z.AI. Best quality."
+        },
+        "glm-4.5-air": {
+            "provider": "zhipu",
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "desc": "Zhipu GLM-4.5 Air via Z.AI. Faster, lighter."
         }
     }
 }

@@ -1392,5 +1392,16 @@ def list_available_models(include_hidden: bool = False) -> List[str]:
     for webai_model in webai_models:
         if webai_model not in models:
             models.append(webai_model)
-    
+
+    # Add GLM models only when Zhipu API key is set (optional)
+    try:
+        from glm_config import get_zhipu_api_key, get_glm_models
+
+        if get_zhipu_api_key():
+            for m in get_glm_models():
+                if m not in models:
+                    models.append(m)
+    except ImportError:
+        pass
+
     return models

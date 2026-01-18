@@ -29,6 +29,9 @@
 # - fmp_api_key: (optional) Financial Modeling Prep API key for congress trading module
 #                Get from: https://site.financialmodelingprep.com/developer/docs/
 #                Required for congress_trades scheduled job
+# - zhipu_api_key: (optional) Z.AI / Zhipu API key for GLM-4.7 (e.g. in AI Settings test, future chat)
+#                  Get from: https://open.bigmodel.cn/ or Z.AI Coding Plan. Lowercase secret name.
+#                  Default API: https://api.z.ai/api/coding/paas/v4 (OpenAI-compatible). Override with ZHIPU_BASE_URL if needed.
 # - webai_cookies_json: (optional) JSON string of cookies for WebAI Pro web-based AI
 #                       Format: {"__Secure-1PSID":"value","__Secure-1PSIDTS":"value"}
 #                       Extract using: python web_dashboard/extract_ai_cookies.py --browser manual
@@ -68,6 +71,8 @@ steps:
         from_secret: supabase_database_url
       FMP_API_KEY:
         from_secret: fmp_api_key
+      ZHIPU_API_KEY:
+        from_secret: zhipu_api_key
       WEBAI_COOKIES_JSON:
         from_secret: webai_cookies_json
       AI_SERVICE_WEB_URL:
@@ -309,6 +314,7 @@ steps:
         [ -n "$RESEARCH_DATABASE_URL" ] && DOCKER_CMD="$DOCKER_CMD -e RESEARCH_DATABASE_URL=\"$RESEARCH_DATABASE_URL\""
         [ -n "$SUPABASE_DATABASE_URL" ] && DOCKER_CMD="$DOCKER_CMD -e SUPABASE_DATABASE_URL=\"$SUPABASE_DATABASE_URL\""
         [ -n "$FMP_API_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e FMP_API_KEY=\"$FMP_API_KEY\""
+        [ -n "$ZHIPU_API_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e ZHIPU_API_KEY=\"$ZHIPU_API_KEY\""
         
         # Add WebAI cookies as environment variable (fallback if shared volume file not available)
         # The cookie refresher sidecar writes to /shared/cookies/webai_cookies.json
@@ -363,6 +369,7 @@ steps:
         [ -n "$RESEARCH_DATABASE_URL" ] && FLASK_CMD="$FLASK_CMD -e RESEARCH_DATABASE_URL=\"$RESEARCH_DATABASE_URL\""
         [ -n "$SUPABASE_DATABASE_URL" ] && FLASK_CMD="$FLASK_CMD -e SUPABASE_DATABASE_URL=\"$SUPABASE_DATABASE_URL\""
         [ -n "$FMP_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e FMP_API_KEY=\"$FMP_API_KEY\""
+        [ -n "$ZHIPU_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e ZHIPU_API_KEY=\"$ZHIPU_API_KEY\""
         
         # Add WebAI cookies (same as Streamlit container)
         if [ -n "$WEBAI_COOKIES_JSON" ]; then
