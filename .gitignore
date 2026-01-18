@@ -333,3 +333,6 @@ web_dashboard/static/js/*.js.map
 
 # Allow test environment template (safe for git)
 !.env.test.template
+
+# Research folders (downloaded code for analysis)
+.research_*/

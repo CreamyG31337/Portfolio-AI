@@ -3870,17 +3870,22 @@ def api_ai_chat():
                 from webai_wrapper import PersistentConversationSession
                 from ai_service_keys import get_model_display_name_short
                 
-                # Get or create session
+                # Use module-level cache instead of Flask session (not JSON-serializable)
+                # Initialize cache if not exists
+                if not hasattr(app, '_webai_session_cache'):
+                    app._webai_session_cache = {}
+                
+                # Get or create session from cache
                 session_key = f'webai_session_{user_id}'
-                if session_key not in session:
-                    session[session_key] = PersistentConversationSession(
+                if session_key not in app._webai_session_cache:
+                    app._webai_session_cache[session_key] = PersistentConversationSession(
                         session_id=user_id,
                         auto_refresh=False,
                         model=model,
                         system_prompt=system_prompt
                     )
                 
-                webai_session = session[session_key]
+                webai_session = app._webai_session_cache[session_key]
                 
                 # For WebAI, include instructions in message
                 webai_instructions = (
