@@ -2,7 +2,10 @@
 # Used by ollama_client.generate_summary, generate_summary_streaming, and _generate_summary_via_zhipu.
 
 import json
+import logging
 from typing import Any, Dict
+
+logger = logging.getLogger(__name__)
 
 
 def get_summary_system_prompt() -> str:
@@ -97,7 +100,25 @@ def parse_summary_response(raw_response: str) -> Dict[str, Any]:
             "companies": extract_strings(parsed.get("companies"), []),
             "relationships": relationships,
         }
-    except Exception:
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse JSON from summary response, falling back to text-only: {e}")
+        logger.debug(f"Raw response (first 500 chars): {raw_response[:500]}")
+        return {
+            "summary": raw_response,
+            "claims": [],
+            "fact_check": "",
+            "conclusion": "",
+            "sentiment": "NEUTRAL",
+            "sentiment_score": 0.0,
+            "logic_check": "NEUTRAL",
+            "tickers": [],
+            "sectors": [],
+            "key_themes": [],
+            "companies": [],
+            "relationships": [],
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error parsing summary response: {e}", exc_info=True)
         return {
             "summary": raw_response,
             "claims": [],

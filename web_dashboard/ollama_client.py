@@ -928,14 +928,19 @@ def _generate_summary_via_zhipu(
 
     key = get_zhipu_api_key()
     if not key or not key.strip():
+        logger.warning("Z.AI API key not set - cannot generate summary with GLM model")
         return {}
 
     max_chars = 6000
+    original_len = len(text)
     if len(text) > max_chars:
         text = text[:max_chars] + "..."
+        logger.debug(f"Truncated text from {original_len} to {max_chars} characters for Z.AI summarization")
 
     system_prompt = get_summary_system_prompt()
     messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
+    total_chars = len(system_prompt) + len(text)
+    logger.debug(f"Z.AI prompt length: {total_chars} chars (system: {len(system_prompt)}, user: {len(text)})")
 
     # Model config: max_tokens, temperature
     cfg_path = os.path.join(os.path.dirname(__file__), "model_config.json")
@@ -960,43 +965,109 @@ def _generate_summary_via_zhipu(
         "temperature": temperature,
     }
 
+    timeout_sec = 120
+    start_time = time.time()
+    logger.info(
+        f"🤖 Z.AI summary query starting: model={model}, temp={temperature}, max_tokens={max_tokens}, "
+        f"stream={stream}, timeout={timeout_sec}s, url={url}"
+    )
+
     try:
-        logger.info(f"Generating summary with model {model} via Z.AI")
-        r = requests.post(url, json=payload, headers=headers, stream=stream, timeout=120)
+        conn_start = time.time()
+        r = requests.post(url, json=payload, headers=headers, stream=stream, timeout=timeout_sec)
+        connection_time = time.time() - conn_start
+        if stream:
+            logger.debug(f"⏱️  Z.AI connection established in {connection_time:.2f}s, streaming...")
         r.raise_for_status()
+    except requests.exceptions.Timeout as e:
+        elapsed = time.time() - start_time
+        logger.error(
+            f"❌ Z.AI summary request timed out after {elapsed:.2f}s (timeout setting: {timeout_sec}s): {e}",
+            exc_info=True,
+        )
+        return {}
+    except requests.exceptions.ConnectionError as e:
+        elapsed = time.time() - start_time
+        logger.error(
+            f"❌ Cannot connect to Z.AI API at {url} after {elapsed:.2f}s: {e}",
+            exc_info=True,
+        )
+        return {}
+    except requests.exceptions.HTTPError as e:
+        elapsed = time.time() - start_time
+        status_code = getattr(e.response, "status_code", None) if hasattr(e, "response") else None
+        error_detail = ""
+        if hasattr(e, "response") and e.response is not None:
+            try:
+                error_body = e.response.text[:500]
+                error_detail = f" Response: {error_body}"
+            except Exception:
+                pass
+        logger.error(
+            f"❌ Z.AI API HTTP error after {elapsed:.2f}s: {e} (status={status_code}){error_detail}",
+            exc_info=True,
+        )
+        return {}
     except Exception as e:
-        logger.error(f"Z.AI summary request failed: {e}", exc_info=True)
+        elapsed = time.time() - start_time
+        logger.error(
+            f"❌ Unexpected error querying Z.AI after {elapsed:.2f}s: {e}",
+            exc_info=True,
+        )
         return {}
 
     raw = ""
+    tokens_received = 0
     if stream:
-        for line in r.iter_lines(decode_unicode=True):
-            if not line or not line.strip():
-                continue
-            s = line.strip()
-            if s.startswith("data: "):
-                data = s[6:].strip()
-                if data == "[DONE]":
-                    break
-                try:
-                    obj = json.loads(data)
-                    for c in (obj.get("choices") or [])[:1]:
-                        part = (c.get("delta") or {}).get("content") or ""
-                        if part:
-                            raw += part
-                            if progress_callback:
-                                progress_callback(len(raw), min(95, len(raw) // 10))
-                        if c.get("finish_reason") == "stop":
-                            break
-                except json.JSONDecodeError:
+        try:
+            for line in r.iter_lines(decode_unicode=True):
+                if not line or not line.strip():
                     continue
-        if progress_callback:
-            progress_callback(len(raw), 100)
+                s = line.strip()
+                if s.startswith("data: "):
+                    data = s[6:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(data)
+                        for c in (obj.get("choices") or [])[:1]:
+                            part = (c.get("delta") or {}).get("content") or ""
+                            if part:
+                                raw += part
+                                tokens_received += len(part.split())  # Rough token count
+                                if progress_callback:
+                                    progress_callback(len(raw), min(95, len(raw) // 10))
+                            if c.get("finish_reason") == "stop":
+                                break
+                    except json.JSONDecodeError:
+                        continue
+            if progress_callback:
+                progress_callback(len(raw), 100)
+            elapsed = time.time() - start_time
+            logger.info(f"✅ Z.AI streaming summary completed in {elapsed:.2f}s ({tokens_received} tokens)")
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(
+                f"❌ Z.AI streaming error after {elapsed:.2f}s: {e}",
+                exc_info=True,
+            )
+            return {}
     else:
-        data = r.json()
-        raw = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+        try:
+            data = r.json()
+            raw = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+            elapsed = time.time() - start_time
+            logger.info(f"✅ Z.AI summary request completed in {elapsed:.2f}s")
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(
+                f"❌ Z.AI response parsing error after {elapsed:.2f}s: {e}",
+                exc_info=True,
+            )
+            return {}
 
     if not raw or not raw.strip():
+        logger.warning("Empty response from Z.AI")
         return {}
     return parse_summary_response(raw.strip())
 
