@@ -613,28 +613,20 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
             if existing_cookies:
                 logger.info("Existing cookies found, adding to browser context")
                 
-                # Extract domain from URL and format with leading dot
-                from urllib.parse import urlparse
-                parsed = urlparse(service_url)
-                
-                # Use leading dot for domain to ensure cookies work across subdomains
-                # e.g., ".example.com" instead of "sub.example.com"
-                base_domain = ".".join(parsed.netloc.split(".")[-2:])
-                domain = f".{base_domain}"
-                
-                logger.info(f"Setting cookies with domain: {domain}")
-                
                 # Log what cookies we're trying to set
                 # Note: skip metadata fields that start with single underscore but NOT __Secure- cookies
                 cookie_names = [k for k in existing_cookies.keys() 
                                if not k.startswith("_") or k.startswith("__Secure-")]
                 logger.info(f"Attempting to set cookies: {', '.join(cookie_names)}")
                 
-                for name in cookie_names:
-                    value = existing_cookies.get(name, "")
-                    logger.debug(f"  - {name}: {value[:30]}... (length: {len(value)})")
-                
                 # Add cookies to context (skip metadata fields)
+                # Extract base domain from service URL for cookie domain
+                from urllib.parse import urlparse
+                parsed_url = urlparse(service_url)
+                # Get base domain (e.g., "example.com" from "sub.example.com")
+                host_parts = parsed_url.netloc.split(".")
+                base_domain = "." + ".".join(host_parts[-2:]) if len(host_parts) >= 2 else parsed_url.netloc
+                
                 cookie_list = []
                 for name, value in existing_cookies.items():
                     # Skip metadata fields (single underscore) but NOT __Secure- cookies
@@ -646,27 +638,22 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
                         logger.warning(f"Skipping empty cookie: {name}")
                         continue
                     
-                    # Try both domain formats - sometimes cookies need exact domain match
-                    domains_to_try = [
-                        domain,  # .example.com (wildcard subdomain)
-                        parsed.netloc,  # sub.example.com (exact match)
-                    ]
-                    
-                    for cookie_domain in domains_to_try:
-                        cookie_list.append({
-                            "name": name,
-                            "value": value,
-                            "domain": cookie_domain,
-                            "path": "/",
-                            "secure": True,
-                            "httpOnly": True,
-                            "sameSite": "Lax"
-                        })
+                    # __Secure- cookies require sameSite=None for cross-origin usage
+                    cookie_list.append({
+                        "name": name,
+                        "value": value,
+                        "domain": base_domain,
+                        "path": "/",
+                        "secure": True,
+                        "httpOnly": True,
+                        "sameSite": "None"
+                    })
+                    logger.debug(f"  Cookie: {name} -> {base_domain} (sameSite=None)")
                 
                 if cookie_list:
                     try:
                         context.add_cookies(cookie_list)
-                        logger.info(f"Added {len(cookie_list)} cookie entries to browser context")
+                        logger.info(f"Added {len(cookie_list)} cookies to browser context")
                     except Exception as e:
                         logger.error(f"Failed to add cookies to context: {e}")
                         # Continue anyway - might still work
