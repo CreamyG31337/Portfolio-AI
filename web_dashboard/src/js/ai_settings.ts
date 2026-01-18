@@ -17,6 +17,11 @@ interface StatusResponse {
         has_1psid?: boolean;
         has_1psidts?: boolean;
     };
+    glm?: {
+        status: boolean;
+        message: string;
+        source?: string | null;
+    };
 }
 
 interface SettingsResponse {
@@ -77,6 +82,13 @@ const webaiIndicator = document.getElementById('webai-indicator');
 const webaiMessage = document.getElementById('webai-message');
 const webaiSource = document.getElementById('webai-source');
 const testWebaiBtn = document.getElementById('test-webai-btn');
+
+const glmIndicator = document.getElementById('glm-indicator');
+const glmMessage = document.getElementById('glm-message');
+const glmSource = document.getElementById('glm-source');
+const testGlmBtn = document.getElementById('test-glm-btn');
+const glmApiKeyInput = document.getElementById('glm-api-key-input') as HTMLInputElement | null;
+const saveGlmKeyBtn = document.getElementById('save-glm-key-btn');
 
 const cookieJsonMethod = document.getElementById('cookie-json-method');
 const cookieIndividualMethod = document.getElementById('cookie-individual-method');
@@ -231,6 +243,7 @@ async function checkStatus() {
     if (ollamaMessage) ollamaMessage.textContent = 'Checking...';
     if (postgresMessage) postgresMessage.textContent = 'Checking...';
     if (webaiMessage) webaiMessage.textContent = 'Checking...';
+    if (glmMessage) glmMessage.textContent = 'Checking...';
 
     try {
         const response = await fetch('/api/admin/ai/status');
@@ -292,11 +305,35 @@ async function checkStatus() {
                 }
             }
         }
+
+        // Update GLM 4.7 (Zhipu) API Key Status
+        if (glmIndicator && glmMessage && data.glm) {
+            if (data.glm.status) {
+                glmIndicator.classList.remove('bg-gray-200', 'bg-red-500');
+                glmIndicator.classList.add('bg-green-500');
+                glmMessage.textContent = data.glm.message || 'Set';
+                glmMessage.classList.remove('text-red-500');
+                glmMessage.classList.add('text-green-500');
+                if (glmSource && data.glm.source) {
+                    glmSource.textContent = `Source: ${data.glm.source}`;
+                }
+            } else {
+                glmIndicator.classList.remove('bg-gray-200', 'bg-green-500');
+                glmIndicator.classList.add('bg-red-500');
+                glmMessage.textContent = data.glm.message || 'Not set';
+                glmMessage.classList.remove('text-green-500');
+                glmMessage.classList.add('text-red-500');
+                if (glmSource) {
+                    glmSource.textContent = '';
+                }
+            }
+        }
     } catch (error) {
         console.error('Error checking status:', error);
         if (ollamaMessage) ollamaMessage.textContent = 'Error checking status';
         if (postgresMessage) postgresMessage.textContent = 'Error checking status';
         if (webaiMessage) webaiMessage.textContent = 'Error checking status';
+        if (glmMessage) glmMessage.textContent = 'Error checking status';
     }
 }
 
@@ -559,6 +596,62 @@ async function saveCookies() {
         saveCookiesBtn.textContent = originalText;
         (saveCookiesBtn as HTMLButtonElement).disabled = false;
         console.log('[DEBUG] Save button reset');
+    }
+}
+
+// Test GLM 4.7 (Zhipu) API Key
+async function testGlmApiKey() {
+    if (!testGlmBtn) return;
+    const originalText = testGlmBtn.textContent;
+    testGlmBtn.textContent = 'Testing...';
+    (testGlmBtn as HTMLButtonElement).disabled = true;
+    try {
+        const response = await fetch('/api/admin/ai/glm-api-key/test', { method: 'POST' });
+        const result: ApiResponse & { error?: string; message?: string } = await response.json();
+        if (result.success) {
+            showToastForAI(result.message || 'GLM API key test successful', 'success');
+            await checkStatus();
+        } else {
+            showToastForAI(result.error || 'GLM API key test failed', 'error');
+        }
+    } catch (e) {
+        showToastForAI('Error testing GLM API key: ' + String(e), 'error');
+    } finally {
+        testGlmBtn.textContent = originalText;
+        (testGlmBtn as HTMLButtonElement).disabled = false;
+    }
+}
+
+// Save GLM 4.7 (Zhipu) API Key
+async function saveGlmApiKey() {
+    if (!saveGlmKeyBtn || !glmApiKeyInput) return;
+    const val = glmApiKeyInput.value.trim();
+    if (!val) {
+        showToastForAI('Enter your Zhipu API key', 'error');
+        return;
+    }
+    const originalText = saveGlmKeyBtn.textContent;
+    saveGlmKeyBtn.textContent = 'Saving...';
+    (saveGlmKeyBtn as HTMLButtonElement).disabled = true;
+    try {
+        const response = await fetch('/api/admin/ai/glm-api-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: val })
+        });
+        const result: ApiResponse & { error?: string; message?: string } = await response.json();
+        if (result.success) {
+            showToastForAI(result.message || 'GLM API key saved', 'success');
+            glmApiKeyInput.value = '';
+            await checkStatus();
+        } else {
+            showToastForAI(result.error || 'Failed to save GLM API key', 'error');
+        }
+    } catch (e) {
+        showToastForAI('Error saving GLM API key: ' + String(e), 'error');
+    } finally {
+        saveGlmKeyBtn.textContent = originalText;
+        (saveGlmKeyBtn as HTMLButtonElement).disabled = false;
     }
 }
 
@@ -1094,6 +1187,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (testWebaiBtn) {
         testWebaiBtn.addEventListener('click', testWebaiCookies);
         console.log('[DEBUG] testWebaiBtn listener added');
+    }
+
+    if (testGlmBtn) {
+        testGlmBtn.addEventListener('click', testGlmApiKey);
+    }
+    if (saveGlmKeyBtn) {
+        saveGlmKeyBtn.addEventListener('click', saveGlmApiKey);
     }
 
     if (saveCookiesBtn) {

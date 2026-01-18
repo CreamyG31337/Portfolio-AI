@@ -2242,10 +2242,28 @@ def api_ai_status():
             logger.error(f"Error checking WebAI cookies: {e}", exc_info=True)
             webai_status = {"status": False, "message": f"Error: {str(e)[:50]}", "source": None, "has_1psid": False, "has_1psidts": False}
         
+        # GLM 4.7 (Zhipu) API Key
+        glm_status = {"status": False, "message": "Not set", "source": None}
+        try:
+            from glm_config import get_zhipu_api_key, get_zhipu_api_key_source
+            key = get_zhipu_api_key()
+            src = get_zhipu_api_key_source()
+            glm_status = {
+                "status": bool(key),
+                "message": "Set" if key else "Not set",
+                "source": src
+            }
+        except ImportError:
+            glm_status = {"status": False, "message": "glm_config not available", "source": None}
+        except Exception as e:
+            logger.error(f"Error checking GLM API key: {e}", exc_info=True)
+            glm_status = {"status": False, "message": f"Error: {str(e)[:50]}", "source": None}
+        
         return jsonify({
             "ollama": {"status": ollama_ok, "message": ollama_msg},
             "postgres": pg_status,
-            "webai": webai_status
+            "webai": webai_status,
+            "glm": glm_status
         })
     except Exception as e:
         logger.error(f"Error in api_ai_status: {e}", exc_info=True)
@@ -2816,6 +2834,71 @@ def api_update_webai_cookies():
         logger.error(f"Error updating WebAI cookies: {e}", exc_info=True)
         logger.debug(f"Exception type: {type(e).__name__}")
         return jsonify({"error": str(e)}), 500
+
+
+@admin_bp.route('/api/admin/ai/glm-api-key', methods=['POST'])
+@require_admin
+def api_save_glm_api_key():
+    """Save GLM 4.7 (Zhipu) API key to .secrets file."""
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot modify API keys"}), 403
+
+        data = request.get_json()
+        api_key = data.get("api_key") if data else None
+        if not api_key or not isinstance(api_key, str) or not api_key.strip():
+            return jsonify({"error": "api_key is required and must be a non-empty string"}), 400
+
+        from glm_config import save_zhipu_api_key
+        if save_zhipu_api_key(api_key):
+            logger.info("GLM 4.7 (Zhipu) API key saved to .secrets")
+            return jsonify({"success": True, "message": "API key saved. Restart may be needed for some features to use it."})
+        return jsonify({"error": "Failed to save API key (check permissions on web_dashboard/.secrets/)"}), 500
+    except ImportError as e:
+        return jsonify({"error": "glm_config not available"}), 500
+    except Exception as e:
+        logger.error(f"Error saving GLM API key: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@admin_bp.route('/api/admin/ai/glm-api-key/test', methods=['POST'])
+@require_admin
+def api_test_glm_api_key():
+    """Test GLM 4.7 (Zhipu) API key with a minimal chat/completions request."""
+    try:
+        from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL, GLM_4_7_MODEL
+        import requests
+
+        key = get_zhipu_api_key()
+        if not key:
+            return jsonify({"success": False, "error": "GLM API key not set. Add ZHIPU_API_KEY to .env or save via the form below."})
+
+        url = f"{ZHIPU_BASE_URL}/chat/completions"
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        payload = {
+            "model": GLM_4_7_MODEL,
+            "messages": [{"role": "user", "content": "Say OK in one word."}],
+            "max_tokens": 10,
+            "stream": False,
+        }
+        r = requests.post(url, json=payload, headers=headers, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+            return jsonify({"success": True, "message": "Connection successful.", "details": {"response_preview": (content or "")[:80]}})
+        err = r.text
+        try:
+            err = r.json().get("error", {}).get("message", err)
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": f"API error ({r.status_code}): {str(err)[:200]}"})
+    except ImportError:
+        return jsonify({"success": False, "error": "glm_config or requests not available"})
+    except Exception as e:
+        logger.error(f"Error testing GLM API key: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)})
+
 
 # Contributor Management Routes
 @admin_bp.route('/admin/contributors')

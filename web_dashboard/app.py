@@ -25,6 +25,7 @@ except ImportError:
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, date
 from pathlib import Path
 import yfinance as yf
@@ -2129,19 +2130,53 @@ def sql_interface():
 @app.route('/api/dev/query', methods=['POST'])
 @require_auth
 def execute_sql():
-    """Execute SQL query safely"""
+    """
+    Execute SQL query with admin privileges.
+    
+    SECURITY NOTES:
+    - This endpoint is protected by @require_auth and is_admin() checks
+    - Admins have full SQL access (SELECT, INSERT, UPDATE, DELETE, etc.)
+    - All queries are logged with user info for audit trail
+    - Use with caution - this provides direct database access
+    
+    BEST PRACTICES:
+    - Test queries on non-production data first
+    - Use transactions for multi-step operations
+    - Backup data before running destructive queries
+    - Review query logs regularly for suspicious activity
+    """
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
     
     try:
+        from flask_auth_utils import get_user_email_flask
+        
         query = request.json.get('query', '').strip()
         if not query:
             return jsonify({"error": "No query provided"}), 400
         
-        # Basic safety checks
+        # Get user info for audit logging
+        user_email = get_user_email_flask() or "unknown_admin"
+        
+        # Improved safety validation (whole-word matching to avoid false positives like 'update_date')
+        # Note: This is a warning system, not a blocker - admins need full SQL access
         dangerous_keywords = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE']
-        if any(keyword in query.upper() for keyword in dangerous_keywords):
-            return jsonify({"error": "Query contains dangerous keywords. Only SELECT queries allowed."}), 400
+        pattern = r'\b(' + '|'.join(dangerous_keywords) + r')\b'
+        
+        is_modification_query = bool(re.search(pattern, query, re.IGNORECASE))
+        
+        # Comprehensive audit logging
+        if is_modification_query:
+            logger.warning(
+                f"ADMIN SQL MODIFICATION - User: {user_email} | "
+                f"Query: {query[:200]}{'...' if len(query) > 200 else ''} | "
+                f"IP: {request.remote_addr}"
+            )
+        else:
+            logger.info(
+                f"ADMIN SQL QUERY - User: {user_email} | "
+                f"Query: {query[:100]}{'...' if len(query) > 100 else ''}"
+            )
         
         # Execute query
         client = get_supabase_client()
@@ -2151,14 +2186,24 @@ def execute_sql():
         # Use raw SQL execution
         result = client.supabase.rpc('execute_sql', {'query': query}).execute()
         
+        # Log successful execution
+        row_count = len(result.data) if result.data else 0
+        logger.info(f"ADMIN SQL SUCCESS - User: {user_email} | Rows affected/returned: {row_count}")
+        
         return jsonify({
             "success": True,
             "data": result.data,
-            "count": len(result.data) if result.data else 0
+            "count": row_count,
+            "warning": "Modification query executed" if is_modification_query else None
         })
         
     except Exception as e:
-        logger.error(f"SQL execution error: {e}")
+        logger.error(
+            f"ADMIN SQL ERROR - User: {user_email if 'user_email' in locals() else 'unknown'} | "
+            f"Query: {query[:100] if 'query' in locals() else 'N/A'} | "
+            f"Error: {e}",
+            exc_info=True
+        )
         return jsonify({"error": f"Query execution failed: {str(e)}"}), 500
 
 # =====================================================

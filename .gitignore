@@ -322,6 +322,9 @@ node_modules/
 package-lock.json
 web_dashboard/static/css/tailwind.css
 
+# AI/LLM secrets (e.g. Zhipu API key saved from AI Settings UI)
+web_dashboard/.secrets/
+
 # Compiled TypeScript output (auto-generated from src/js/*.ts)
 # ⚠️ DO NOT EDIT: These files are compiled from TypeScript source in src/js/
 # Edit TypeScript files in src/js/ and run: npm run build:ts
