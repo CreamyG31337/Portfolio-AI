@@ -111,6 +111,11 @@ COOKIE_INPUT_FILE = os.getenv("COOKIE_INPUT_FILE", "/shared/cookies/webai_cookie
 MAX_RETRIES = 3
 RETRY_DELAY = 60  # seconds
 
+# Browser fingerprint settings - should match your real browser/location
+# Set these to match where your residential IP is located
+BROWSER_TIMEZONE = os.getenv("BROWSER_TIMEZONE", "America/Vancouver")  # Pacific Time (Canada)
+BROWSER_LOCALE = os.getenv("BROWSER_LOCALE", "en-CA")  # Your locale
+
 
 def get_service_url() -> str:
     """Get the web AI service URL from shared config file, environment variable, or keys file."""
@@ -476,61 +481,132 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
 
     logger.info(f"Refreshing cookies by visiting {service_url}")
     
+    # Select a realistic, recent Chrome version (rotate occasionally)
+    chrome_versions = ["131.0.0.0", "130.0.0.0", "129.0.0.0"]
+    chrome_version = random.choice(chrome_versions)
+    
+    # Common screen resolutions (weighted toward popular ones)
+    resolutions = [
+        (1920, 1080),  # Most common
+        (1920, 1080),
+        (1920, 1080),
+        (2560, 1440),
+        (1366, 768),
+        (1536, 864),
+    ]
+    viewport = random.choice(resolutions)
+    
     with sync_playwright() as p:
         browser = None
         try:
             # Launch browser in headless mode with stealth options
-            # Use more realistic browser fingerprinting to avoid detection
             browser = p.chromium.launch(
                 headless=True,
                 args=[
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
-                    '--disable-blink-features=AutomationControlled',  # Hide automation
+                    '--disable-blink-features=AutomationControlled',
                     '--disable-dev-shm-usage',
-                    '--disable-web-security',
-                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-infobars',
+                    '--window-size={},{}'.format(viewport[0], viewport[1]),
                 ]
             )
             
+            # Build realistic user agent
+            user_agent = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version} Safari/537.36"
+            
             # Create context with realistic browser fingerprinting
-            # This makes the browser look more like a real user session
+            # Uses configurable timezone/locale to match your residential IP location
             context_options = {
-                "viewport": {"width": 1920, "height": 1080},
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "locale": "en-US",
-                "timezone_id": "America/Los_Angeles",
-                "permissions": ["geolocation"],
-                "geolocation": {"latitude": 37.7749, "longitude": -122.4194},  # San Francisco
-                "color_scheme": "light",
+                "viewport": {"width": viewport[0], "height": viewport[1]},
+                "user_agent": user_agent,
+                "locale": BROWSER_LOCALE,
+                "timezone_id": BROWSER_TIMEZONE,
+                "color_scheme": "dark" if random.random() > 0.5 else "light",
                 "extra_http_headers": {
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Accept-Encoding": "gzip, deflate, br",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                    "Connection": "keep-alive",
+                    "Accept-Language": f"{BROWSER_LOCALE},{BROWSER_LOCALE.split('-')[0]};q=0.9,en;q=0.8",
+                    "Accept-Encoding": "gzip, deflate, br, zstd",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
                     "Upgrade-Insecure-Requests": "1",
                     "Sec-Fetch-Dest": "document",
                     "Sec-Fetch-Mode": "navigate",
                     "Sec-Fetch-Site": "none",
                     "Sec-Fetch-User": "?1",
+                    # Modern Chrome Client Hints
+                    "Sec-CH-UA": f'"Google Chrome";v="{chrome_version.split(".")[0]}", "Chromium";v="{chrome_version.split(".")[0]}", "Not_A Brand";v="24"',
+                    "Sec-CH-UA-Mobile": "?0",
+                    "Sec-CH-UA-Platform": '"Windows"',
                 }
             }
             
             context = browser.new_context(**context_options)
             
-            # Add script to hide webdriver property (common bot detection)
+            # Add stealth scripts to hide automation indicators
             context.add_init_script("""
+                // Hide webdriver property
                 Object.defineProperty(navigator, 'webdriver', {
                     get: () => undefined
                 });
-                // Override plugins to look more realistic
+                
+                // Realistic plugins array (Chrome on Windows typically has these)
+                const mockPlugins = [
+                    { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                    { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: '' },
+                    { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: '' },
+                    { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer', description: '' },
+                    { name: 'WebKit built-in PDF', filename: 'internal-pdf-viewer', description: '' },
+                ];
                 Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5]
+                    get: () => {
+                        const plugins = [];
+                        mockPlugins.forEach(p => {
+                            const plugin = Object.create(Plugin.prototype);
+                            Object.defineProperties(plugin, {
+                                name: { value: p.name },
+                                filename: { value: p.filename },
+                                description: { value: p.description },
+                                length: { value: 0 }
+                            });
+                            plugins.push(plugin);
+                        });
+                        plugins.item = i => plugins[i];
+                        plugins.namedItem = n => plugins.find(p => p.name === n);
+                        plugins.refresh = () => {};
+                        return plugins;
+                    }
                 });
-                // Override languages
+                
+                // Realistic languages (injected from Python config)
                 Object.defineProperty(navigator, 'languages', {
-                    get: () => ['en-US', 'en']
+                    get: () => ['""" + BROWSER_LOCALE + """', '""" + BROWSER_LOCALE.split('-')[0] + """', 'en']
                 });
+                
+                // Hide automation-related properties
+                Object.defineProperty(navigator, 'maxTouchPoints', {
+                    get: () => 0
+                });
+                
+                // Realistic hardware concurrency (CPU cores)
+                Object.defineProperty(navigator, 'hardwareConcurrency', {
+                    get: () => 8
+                });
+                
+                // Realistic device memory
+                Object.defineProperty(navigator, 'deviceMemory', {
+                    get: () => 8
+                });
+                
+                // Override permissions query to avoid detection
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+                
+                // Remove Playwright/automation traces from window
+                delete window.__playwright;
+                delete window.__pw_manual;
             """)
             
             # Add existing cookies if we have them

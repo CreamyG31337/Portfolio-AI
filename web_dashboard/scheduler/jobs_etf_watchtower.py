@@ -327,29 +327,78 @@ def save_holdings_snapshot(db: SupabaseClient, etf_ticker: str, holdings: pd.Dat
         holdings: Holdings DataFrame
         date: Snapshot date
     """
+    import math
+    
     date_str = date.strftime('%Y-%m-%d')
     
-    # Prepare batch insert
+    # First, clean the data and aggregate duplicates
+    # Some ETFs have duplicate tickers (e.g., CVRs, different share classes)
+    clean_holdings = holdings.copy()
+    
+    # Remove rows with empty/invalid tickers
+    clean_holdings = clean_holdings[clean_holdings['ticker'].notna()]
+    clean_holdings = clean_holdings[clean_holdings['ticker'] != '']
+    clean_holdings = clean_holdings[clean_holdings['ticker'].apply(lambda x: not (isinstance(x, float) and math.isnan(x)))]
+    clean_holdings['ticker'] = clean_holdings['ticker'].astype(str).str.strip()
+    
+    # Replace NaN/inf with 0 for numeric columns before aggregation
+    if 'shares' in clean_holdings.columns:
+        clean_holdings['shares'] = pd.to_numeric(clean_holdings['shares'], errors='coerce').fillna(0)
+    if 'weight_percent' in clean_holdings.columns:
+        clean_holdings['weight_percent'] = pd.to_numeric(clean_holdings['weight_percent'], errors='coerce').fillna(0)
+    
+    # Aggregate duplicates: sum shares and weights, keep first name
+    duplicates_before = len(clean_holdings)
+    aggregated = clean_holdings.groupby('ticker', as_index=False).agg({
+        'name': 'first',
+        'shares': 'sum',
+        'weight_percent': 'sum'
+    })
+    duplicates_removed = duplicates_before - len(aggregated)
+    
+    if duplicates_removed > 0:
+        logger.info(f"📊 {etf_ticker}: Aggregated {duplicates_removed} duplicate ticker entries")
+    
+    # Prepare records
     records = []
-    for _, row in holdings.iterrows():
+    for _, row in aggregated.iterrows():
         record = {
             'date': date_str,
             'etf_ticker': etf_ticker,
-            'holding_ticker': row.get('ticker', ''),
-            'holding_name': row.get('name', ''),
+            'holding_ticker': row['ticker'],
+            'holding_name': str(row.get('name', '')) if pd.notna(row.get('name')) else '',
         }
         
-        # Add optional numeric fields
-        if pd.notna(row.get('shares')):
-            record['shares_held'] = float(row.get('shares', 0))
-        if pd.notna(row.get('weight_percent')):
-            record['weight_percent'] = float(row.get('weight_percent', 0))
+        # Add numeric fields (already cleaned of NaN)
+        if row.get('shares', 0) > 0:
+            record['shares_held'] = float(row['shares'])
+        if row.get('weight_percent', 0) > 0:
+            record['weight_percent'] = float(row['weight_percent'])
             
         records.append(record)
     
-    # Batch upsert
-    db.supabase.table('etf_holdings_log').upsert(records).execute()
-    logger.info(f"💾 Saved {len(records)} holdings for {etf_ticker} on {date_str}")
+    skipped_count = len(holdings) - duplicates_before
+    if skipped_count > 0:
+        logger.warning(f"⚠️ Skipped {skipped_count} rows with invalid/empty tickers for {etf_ticker}")
+    
+    if not records:
+        logger.error(f"❌ No valid records to save for {etf_ticker}")
+        return
+    
+    # Batch upsert with error handling
+    try:
+        # Supabase has a limit on batch size, split into chunks of 1000
+        batch_size = 1000
+        for i in range(0, len(records), batch_size):
+            batch = records[i:i + batch_size]
+            db.supabase.table('etf_holdings_log').upsert(batch).execute()
+            if len(records) > batch_size:
+                logger.debug(f"  Saved batch {i//batch_size + 1} ({len(batch)} records)")
+        
+        logger.info(f"💾 Saved {len(records)} holdings for {etf_ticker} on {date_str}")
+    except Exception as e:
+        logger.error(f"❌ Failed to save holdings for {etf_ticker}: {type(e).__name__}: {e}")
+        raise
 
 
 def upsert_securities_metadata(db: SupabaseClient, df: pd.DataFrame, provider: str):
@@ -485,6 +534,8 @@ def etf_watchtower_job():
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     
     total_changes = 0
+    successful_etfs = []
+    failed_etfs = []
     
     try:
         for etf_ticker, config in ETF_CONFIGS.items():
@@ -526,18 +577,33 @@ def etf_watchtower_job():
                 upsert_securities_metadata(db, today_holdings, config['provider'])
                 save_holdings_snapshot(db, etf_ticker, today_holdings, today)
                 
+                successful_etfs.append(etf_ticker)
+                logger.info(f"✅ {etf_ticker} processed successfully")
+                
             except Exception as e:
+                failed_etfs.append(etf_ticker)
                 logger.error(f"❌ Error processing {etf_ticker}: {e}", exc_info=True)
                 continue
         
         duration_ms = int((__import__('time').time() - start_time) * 1000)
-        message = f"ETF Watchtower completed: {total_changes} total changes detected"
-        logger.info(f"\n✅ {message}")
+        
+        # Build summary message
+        if failed_etfs:
+            message = f"ETF Watchtower completed with errors: {len(successful_etfs)} succeeded, {len(failed_etfs)} failed ({', '.join(failed_etfs)}). {total_changes} changes detected."
+            logger.warning(f"\n⚠️ {message}")
+        else:
+            message = f"ETF Watchtower completed: {len(successful_etfs)} ETFs processed, {total_changes} changes detected"
+            logger.info(f"\n✅ {message}")
         
         try:
             from scheduler.scheduler_core import log_job_execution
-            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
+            # Mark as failed if any ETFs failed
+            success = len(failed_etfs) == 0
+            log_job_execution(job_id, success=success, message=message, duration_ms=duration_ms)
+            if success:
+                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
+            else:
+                mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
         except:
             pass
             
