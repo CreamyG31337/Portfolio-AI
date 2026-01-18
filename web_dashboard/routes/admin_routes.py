@@ -1203,23 +1203,40 @@ def api_read_log_file():
         if not filename:
             return jsonify({"error": "Filename required"}), 400
             
-        # Security check - ensure no path traversal
-        if '..' in filename or filename.startswith('/'):
+        # Security check - ensure no path traversal using robust path resolution
+        try:
+            # Resolve log directory to absolute path
+            log_dir = (Path(__file__).parent.parent / 'logs').resolve()
+
+            # Join and resolve target path
+            # Note: If filename is absolute, Path / filename returns filename (on that drive/root)
+            # We must verify the final resolved path is within log_dir
+            target_path = (log_dir / filename).resolve()
+
+            # Check if target_path is within log_dir
+            # Using parents check for compatibility with Python < 3.9
+            if log_dir != target_path and log_dir not in target_path.parents:
+                 logger.warning(f"Blocked path traversal attempt: {filename} -> {target_path}")
+                 return jsonify({"error": "Access denied"}), 403
+
+        except Exception as e:
+             logger.warning(f"Path resolution error: {e}")
              return jsonify({"error": "Invalid filename"}), 400
-             
-        log_dir = Path(__file__).parent.parent / 'logs'
-        file_path = log_dir / filename
         
-        if not file_path.exists():
+        if not target_path.exists():
             return jsonify({"error": "File not found"}), 404
             
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+        if not target_path.is_file():
+            return jsonify({"error": "Not a file"}), 400
+
+        with open(target_path, 'r', encoding='utf-8', errors='replace') as f:
             # Read last 2000 lines approx
              lines = f.readlines()
              content = "".join(reversed(lines[-2000:]))
              
         return jsonify({"content": content})
     except Exception as e:
+        logger.error(f"Error reading log file: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

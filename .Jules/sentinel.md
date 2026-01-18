@@ -14,3 +14,8 @@
 - Detailed security documentation in the endpoint docstring
 - Best practices guidance for admins using the tool
 This provides defense-in-depth through visibility and accountability rather than restriction.
+
+## 2026-01-18 - Path Traversal (LFI) in Log Viewer
+**Vulnerability:** The `/api/admin/system/files/content` endpoint in `web_dashboard/routes/admin_routes.py` allowed path traversal on Windows systems. It relied on `filename.startswith('/')` to block absolute paths, which fails to block drive-letter paths like `C:/Windows/win.ini`.
+**Learning:** Checking for `..` or leading slashes is insufficient for preventing path traversal across different operating systems. `pathlib`'s `/` operator can replace the root path if the right-hand side is absolute, bypassing simple checks.
+**Prevention:** Use `pathlib.Path.resolve()` to canonicalize the path, and then explicitly verify that the resolved target path starts with the resolved allowed directory path (using `path.parents` or `startswith`).
