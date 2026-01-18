@@ -18,6 +18,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 
+from summary_common import get_summary_system_prompt, parse_summary_response
+
 # Load environment variables from .env file (if it exists)
 # This allows local development with .env file, but Docker/CI can override with actual env vars
 load_dotenv()
@@ -582,114 +584,19 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
                 model = "granite3.3:8b"
-        
+
+        # GLM: use Z.AI, not Ollama (Ollama would 404 for glm-*)
+        if model and str(model).startswith("glm-"):
+            return _generate_summary_via_zhipu(text, model, stream=False)
+
         # Truncate text to ~6000 characters
         max_chars = 6000
         if len(text) > max_chars:
             text = text[:max_chars] + "..."
             logger.debug(f"Truncated text to {max_chars} characters for summarization")
-        
-        # Enhanced system prompt with Chain of Thought reasoning, sentiment categorization, and relationship extraction
-        system_prompt = """You are a skeptical financial analyst. Analyze the following article using a 3-step Chain of Thought process, then provide a comprehensive analysis in JSON format.
 
-ANALYSIS PROCESS (Chain of Thought):
-Step 1 - Identify Claims: Extract specific numbers, dates, percentages, and causal claims made in the article. List all factual assertions with concrete data points.
+        system_prompt = get_summary_system_prompt()
 
-Step 2 - Fact Check: Perform simple fact-checking to filter out garbage and clickbait. Ask yourself:
-- Are the claims plausible? (e.g., "stock up 1000%" is likely clickbait)
-- Are there obvious contradictions within the article?
-- Does the headline match the content?
-- Are there red flags (e.g., "guaranteed returns", "secret method")?
-Keep this simple - you're a fact checker, not a PhD economist. Focus on filtering obvious noise.
-
-Step 3 - Conclusion: Summarize the net impact on the stock ticker(s). What does this article actually mean for the stock? Be specific about potential price impact or business implications.
-
-SENTIMENT CATEGORIZATION:
-Categorize the article's sentiment into exactly ONE of these buckets:
-- "VERY_BULLISH" - Game-changing positive news (e.g., massive earnings beat, breakthrough product, major acquisition)
-- "BULLISH" - Good news (e.g., price target upgrade, partnership announcement, positive guidance)
-- "NEUTRAL" - Noise, standard reporting, mixed results, routine updates
-- "BEARISH" - Bad news (e.g., missed earnings, minor lawsuit, downgrade)
-- "VERY_BEARISH" - Catastrophic news (e.g., fraud investigation, CEO fired, bankruptcy filing)
-
-Most articles should be "NEUTRAL" - only categorize as BULLISH/BEARISH if there's significant news.
-
-LOGIC CHECK CATEGORIZATION:
-Categorize the article's quality/reliability into exactly ONE of these buckets:
-- "DATA_BACKED" - Article is PRIMARILY a data report: official earnings announcements, revenue releases, SEC filings, company financial statements, economic data releases (GDP, unemployment, inflation numbers). The article's main purpose is to report specific numbers/metrics. Examples: "Apple reports Q3 earnings of $2.50 per share", "GDP grew 3.2% in Q4", "Unemployment rate falls to 3.5%". Articles that are analysis, commentary, opinions, recommendations, or general news that happen to mention numbers should be NEUTRAL.
-- "HYPE_DETECTED" - Clickbait, rumors, speculation, unverified claims, sensationalized headlines, articles promising unrealistic returns, heavy use of "might", "could", "potential" without evidence, "this stock will double" type claims
-- "NEUTRAL" - DEFAULT category for most articles: analysis pieces, market commentary, opinion articles, recommendations, general news coverage, sector overviews, stock picks, investment advice, market summaries. Even if these articles mention stock prices, percentages, or other numbers, they are NOT primarily data reports - they are analysis/commentary. This should be 70-80% of articles.
-
-CRITICAL CLASSIFICATION RULES:
-1. If the article is analysis, commentary, opinion, or recommendation → "NEUTRAL" (even if it mentions numbers)
-2. If the article is primarily reporting official data/metrics → "DATA_BACKED"
-3. If the article is clickbait/rumors → "HYPE_DETECTED"
-4. When in doubt, choose "NEUTRAL" - it's the default for most financial news articles.
-
-EXTRACTION REQUIREMENTS:
-1. Generate a comprehensive summary with 5-7+ bullet points covering all key information
-2. Extract all stock ticker symbols mentioned (e.g., HOOD, NVDA, AAPL, XMA.TO)
-   - Tickers are SHORT symbols (1-10 characters), typically 1-5 uppercase letters
-   - May include exchange suffixes like .TO, .V, .CN, .TSX
-   - Do NOT extract company names (e.g., "Apple Inc" is NOT a ticker, "AAPL" is)
-   - Do NOT extract long phrases or descriptions
-   - First, look for explicit ticker symbols mentioned in the article
-   - If no explicit tickers found BUT the article is clearly about specific companies, infer the likely ticker(s)
-   - For well-known companies, provide your best guess of the ticker symbol
-   - If you're uncertain about a ticker, add a '?' suffix (e.g., "RKLB?" for Rocket Lab)
-   - Examples: "Apple" → "AAPL", "Microsoft" → "MSFT", "Tesla" → "TSLA", "NVIDIA" → "NVDA"
-3. Identify all sectors/industries discussed (e.g., "Financial Services", "Technology", "Healthcare")
-4. List key themes and topics (e.g., "crypto revenue", "subscription growth", "market expansion")
-5. Extract company names mentioned (e.g., "Robinhood", "NVIDIA") - these go in "companies" field, NOT "tickers"
-
-RELATIONSHIP EXTRACTION:
-Extract corporate relationships mentioned in the text. Return a list of JSON objects in the 'relationships' field.
-
-**CRITICAL: Use stock tickers (e.g., AAPL) for source/target if known. If the ticker is unknown, use the capitalized company name.**
-
-Format: { "source": "TICKER", "target": "TICKER", "type": "TYPE" }
-
-Allowed relationship types:
-- SUPPLIER: Source supplies Target (e.g., "TSMC supplies Apple" → source: "TSM", target: "AAPL", type: "SUPPLIER")
-- CUSTOMER: Source is a customer of Target (e.g., "Apple buys from TSMC" → source: "TSM", target: "AAPL", type: "SUPPLIER" - note: CUSTOMER relationships should be converted to SUPPLIER with supplier as source)
-- COMPETITOR: Direct rivalry between companies
-- PARTNER: Joint venture, collaboration, strategic partnership
-- PARENT: Source owns/is parent of Target
-- SUBSIDIARY: Source is subsidiary of Target
-- LITIGATION: Lawsuits or legal disputes between companies
-
-Examples:
-- "Nvidia's supply constraints at TSMC are limiting H100 production" → [{ "source": "NVDA", "target": "TSM", "type": "SUPPLIER" }]
-- "Apple buys chips from TSMC" → [{ "source": "TSM", "target": "AAPL", "type": "SUPPLIER" }]
-- "Google competes with Microsoft in cloud services" → [{ "source": "GOOG", "target": "MSFT", "type": "COMPETITOR" }]
-
-If no relationships are found, use empty array [].
-
-CRITICAL: Return ONLY valid, parseable JSON. Do NOT include:
-- Explanatory text before or after the JSON
-- Comments (// or /* */)
-- Markdown formatting
-- Any text outside the JSON object
-
-The "summary" field must be a single STRING with bullet points separated by newlines (\\n), NOT an array.
-
-Return your response as a valid JSON object with these exact fields:
-{
-  "summary": "• First key point...\\n• Second key point...\\n• Third key point...\\n• Fourth key point...\\n• Fifth key point...",
-  "claims": ["Claim 1 with specific numbers/dates", "Claim 2 with percentages", "Claim 3..."],
-  "fact_check": "Simple fact-checking analysis: Are claims plausible? Any obvious contradictions? Filter garbage/clickbait.",
-  "conclusion": "Net impact on ticker(s): What does this article mean for the stock? Specific price impact or business implications.",
-  "sentiment": "VERY_BULLISH" | "BULLISH" | "NEUTRAL" | "BEARISH" | "VERY_BEARISH",
-  "logic_check": "DATA_BACKED" | "HYPE_DETECTED" | "NEUTRAL",
-  "tickers": ["TICKER1", "TICKER2", "INFERRED?"],
-  "sectors": ["Sector1", "Sector2"],
-  "key_themes": ["theme1", "theme2"],
-  "companies": ["Company1", "Company2"],
-  "relationships": [{"source": "TICKER1", "target": "TICKER2", "type": "SUPPLIER"}, ...]
-}
-
-If no tickers, sectors, themes, companies, or relationships are found, use empty arrays []. The sentiment and logic_check fields are REQUIRED and must be exactly one of the values listed above. Return ONLY the JSON object, nothing else."""
-        
         # Get model settings
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get('temperature', 0.3)
@@ -728,150 +635,9 @@ If no tickers, sectors, themes, companies, or relationships are found, use empty
             if not raw_response:
                 logger.warning("Empty response from Ollama")
                 return {}
-            
-            # Try to parse JSON response
-            try:
-                # Try to extract JSON from response (might have markdown code blocks)
-                json_str = raw_response
-                if "```json" in json_str:
-                    # Extract JSON from markdown code block
-                    start = json_str.find("```json") + 7
-                    end = json_str.find("```", start)
-                    if end > start:
-                        json_str = json_str[start:end].strip()
-                elif "```" in json_str:
-                    # Extract JSON from generic code block
-                    start = json_str.find("```") + 3
-                    end = json_str.find("```", start)
-                    if end > start:
-                        json_str = json_str[start:end].strip()
-                
-                parsed = json.loads(json_str)
-                
-                # Helper function to safely extract string values from lists
-                def extract_strings(value, default=[]):
-                    """Extract string values from a list, handling mixed types."""
-                    if not isinstance(value, list):
-                        return default
-                    result = []
-                    for item in value:
-                        if isinstance(item, str) and item.strip():
-                            result.append(item.strip())
-                        elif isinstance(item, (int, float)):
-                            # Convert numbers to strings
-                            result.append(str(item).strip())
-                    return result
-                
-                # Validate and normalize structure
-                summary_text = parsed.get("summary", "")
-                if not isinstance(summary_text, str):
-                    summary_text = str(summary_text) if summary_text else ""
-                
-                # Normalize summary: strip leading whitespace from each line
-                # This removes extra tabs/spaces at the start of bullet points
-                if summary_text:
-                    lines = summary_text.split('\n')
-                    normalized_lines = [line.lstrip() for line in lines]
-                    summary_text = '\n'.join(normalized_lines).strip()
-                
-                # Extract Chain of Thought fields
-                claims = extract_strings(parsed.get("claims", []))
-                fact_check = parsed.get("fact_check", "")
-                if not isinstance(fact_check, str):
-                    fact_check = str(fact_check) if fact_check else ""
-                
-                conclusion = parsed.get("conclusion", "")
-                if not isinstance(conclusion, str):
-                    conclusion = str(conclusion) if conclusion else ""
-                
-                # Extract sentiment (validate it's one of the allowed values)
-                sentiment = parsed.get("sentiment", "NEUTRAL")
-                if not isinstance(sentiment, str):
-                    sentiment = str(sentiment) if sentiment else "NEUTRAL"
-                sentiment = sentiment.strip().upper()
-                valid_sentiments = ["VERY_BULLISH", "BULLISH", "NEUTRAL", "BEARISH", "VERY_BEARISH"]
-                if sentiment not in valid_sentiments:
-                    logger.warning(f"Invalid sentiment '{sentiment}', defaulting to NEUTRAL")
-                    sentiment = "NEUTRAL"
-                
-                # Calculate sentiment_score for database calculations (avoids CASE WHEN in queries)
-                # Mapping: VERY_BULLISH=2.0, BULLISH=1.0, NEUTRAL=0.0, BEARISH=-1.0, VERY_BEARISH=-2.0
-                sentiment_score_map = {
-                    "VERY_BULLISH": 2.0,
-                    "BULLISH": 1.0,
-                    "NEUTRAL": 0.0,
-                    "BEARISH": -1.0,
-                    "VERY_BEARISH": -2.0
-                }
-                sentiment_score = sentiment_score_map.get(sentiment, 0.0)
-                
-                # Extract logic_check (validate it's one of the allowed values)
-                logic_check = parsed.get("logic_check", "NEUTRAL")
-                if not isinstance(logic_check, str):
-                    logic_check = str(logic_check) if logic_check else "NEUTRAL"
-                logic_check = logic_check.strip().upper()
-                valid_logic_checks = ["DATA_BACKED", "HYPE_DETECTED", "NEUTRAL"]
-                if logic_check not in valid_logic_checks:
-                    logger.warning(f"Invalid logic_check '{logic_check}', defaulting to NEUTRAL")
-                    logic_check = "NEUTRAL"
-                
-                # Extract relationships (list of dicts with source, target, type)
-                relationships = []
-                relationships_raw = parsed.get("relationships", [])
-                if isinstance(relationships_raw, list):
-                    for rel in relationships_raw:
-                        if isinstance(rel, dict):
-                            source = rel.get("source", "").strip().upper()
-                            target = rel.get("target", "").strip().upper()
-                            rel_type = rel.get("type", "").strip().upper()
-                            if source and target and rel_type:
-                                relationships.append({
-                                    "source": source,
-                                    "target": target,
-                                    "type": rel_type
-                                })
-                
-                result = {
-                    "summary": summary_text.strip(),
-                    "claims": claims,
-                    "fact_check": fact_check.strip(),
-                    "conclusion": conclusion.strip(),
-                    "sentiment": sentiment,
-                    "sentiment_score": sentiment_score,
-                    "logic_check": logic_check,
-                    "tickers": [t.upper() for t in extract_strings(parsed.get("tickers", []))],
-                    "sectors": extract_strings(parsed.get("sectors", [])),
-                    "key_themes": extract_strings(parsed.get("key_themes", [])),
-                    "companies": extract_strings(parsed.get("companies", [])),
-                    "relationships": relationships
-                }
-                
-                logger.debug(f"Generated summary: {len(result['summary'])} chars, {len(result['tickers'])} tickers, {len(result['sectors'])} sectors, sentiment: {result['sentiment']}, logic_check: {result['logic_check']}")
-                logger.debug(f"Extracted tickers: {result['tickers']}, sectors: {result['sectors']}")
-                logger.debug(f"Claims: {len(result['claims'])} items, Fact check: {len(result['fact_check'])} chars, Conclusion: {len(result['conclusion'])} chars")
-                logger.debug(f"Relationships: {len(result['relationships'])} relationships extracted")
-                
-                return result
-                
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse JSON response, falling back to text-only summary: {e}")
-                logger.debug(f"Raw response: {raw_response[:500]}")
-                # Fallback: return text summary only with default values for new fields
-                return {
-                    "summary": raw_response,
-                    "claims": [],
-                    "fact_check": "",
-                    "conclusion": "",
-                    "sentiment": "NEUTRAL",
-                    "sentiment_score": 0.0,
-                    "logic_check": "NEUTRAL",
-                    "tickers": [],
-                    "sectors": [],
-                    "key_themes": [],
-                    "companies": [],
-                    "relationships": []
-                }
-            
+
+            return parse_summary_response(raw_response)
+
         except requests.exceptions.Timeout:
             logger.error(f"❌ Ollama summary request timed out after {self.timeout}s")
             return {}
@@ -884,23 +650,18 @@ If no tickers, sectors, themes, companies, or relationships are found, use empty
     
     def generate_summary_streaming(self, text: str, model: Optional[str] = None, progress_callback=None) -> Dict[str, Any]:
         """Generate a comprehensive summary with streaming progress updates.
-        
+
         Same as generate_summary but yields progress updates during generation.
         Use this for Server-Sent Events (SSE) to show real-time progress in the UI.
-        
+
         Args:
             text: Text to summarize (will be truncated to ~6000 chars)
             model: Model name to use. If None, uses get_summarizing_model() from settings.
             progress_callback: Optional callback function(tokens_received, estimated_progress) called with progress updates
-            
+
         Returns:
             Same dictionary as generate_summary
         """
-        if not self.enabled:
-            logger.warning("Ollama summary generation rejected: AI assistant disabled")
-            return {}
-        
-        # Get model from settings if not provided
         if model is None:
             try:
                 from settings import get_summarizing_model
@@ -908,119 +669,28 @@ If no tickers, sectors, themes, companies, or relationships are found, use empty
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
                 model = "granite3.3:8b"
-        
+
+        # GLM: use Z.AI, not Ollama
+        if model and str(model).startswith("glm-"):
+            return _generate_summary_via_zhipu(text, model, progress_callback=progress_callback, stream=True)
+
+        if not self.enabled:
+            logger.warning("Ollama summary generation rejected: AI assistant disabled")
+            return {}
+
         # Truncate text to ~6000 characters
         max_chars = 6000
         if len(text) > max_chars:
             text = text[:max_chars] + "..."
             logger.debug(f"Truncated text to {max_chars} characters for summarization")
         
-        # Use same system prompt as generate_summary (reuse the logic)
-        system_prompt = """You are a skeptical financial analyst. Analyze the following article using a 3-step Chain of Thought process, then provide a comprehensive analysis in JSON format.
+        system_prompt = get_summary_system_prompt()
 
-ANALYSIS PROCESS (Chain of Thought):
-Step 1 - Identify Claims: Extract specific numbers, dates, percentages, and causal claims made in the article. List all factual assertions with concrete data points.
-
-Step 2 - Fact Check: Perform simple fact-checking to filter out garbage and clickbait. Ask yourself:
-- Are the claims plausible? (e.g., "stock up 1000%" is likely clickbait)
-- Are there obvious contradictions within the article?
-- Does the headline match the content?
-- Are there red flags (e.g., "guaranteed returns", "secret method")?
-Keep this simple - you're a fact checker, not a PhD economist. Focus on filtering obvious noise.
-
-Step 3 - Conclusion: Summarize the net impact on the stock ticker(s). What does this article actually mean for the stock? Be specific about potential price impact or business implications.
-
-SENTIMENT CATEGORIZATION:
-Categorize the article's sentiment into exactly ONE of these buckets:
-- "VERY_BULLISH" - Game-changing positive news (e.g., massive earnings beat, breakthrough product, major acquisition)
-- "BULLISH" - Good news (e.g., price target upgrade, partnership announcement, positive guidance)
-- "NEUTRAL" - Noise, standard reporting, mixed results, routine updates
-- "BEARISH" - Bad news (e.g., missed earnings, minor lawsuit, downgrade)
-- "VERY_BEARISH" - Catastrophic news (e.g., fraud investigation, CEO fired, bankruptcy filing)
-
-Most articles should be "NEUTRAL" - only categorize as BULLISH/BEARISH if there's significant news.
-
-LOGIC CHECK CATEGORIZATION:
-Categorize the article's quality/reliability into exactly ONE of these buckets:
-- "DATA_BACKED" - Article is PRIMARILY a data report: official earnings announcements, revenue releases, SEC filings, company financial statements, economic data releases (GDP, unemployment, inflation numbers). The article's main purpose is to report specific numbers/metrics. Examples: "Apple reports Q3 earnings of $2.50 per share", "GDP grew 3.2% in Q4", "Unemployment rate falls to 3.5%". Articles that are analysis, commentary, opinions, recommendations, or general news that happen to mention numbers should be NEUTRAL.
-- "HYPE_DETECTED" - Clickbait, rumors, speculation, unverified claims, sensationalized headlines, articles promising unrealistic returns, heavy use of "might", "could", "potential" without evidence, "this stock will double" type claims
-- "NEUTRAL" - DEFAULT category for most articles: analysis pieces, market commentary, opinion articles, recommendations, general news coverage, sector overviews, stock picks, investment advice, market summaries. Even if these articles mention stock prices, percentages, or other numbers, they are NOT primarily data reports - they are analysis/commentary. This should be 70-80% of articles.
-
-CRITICAL CLASSIFICATION RULES:
-1. If the article is analysis, commentary, opinion, or recommendation → "NEUTRAL" (even if it mentions numbers)
-2. If the article is primarily reporting official data/metrics → "DATA_BACKED"
-3. If the article is clickbait/rumors → "HYPE_DETECTED"
-4. When in doubt, choose "NEUTRAL" - it's the default for most financial news articles.
-
-EXTRACTION REQUIREMENTS:
-1. Generate a comprehensive summary with 5-7+ bullet points covering all key information
-2. Extract all stock ticker symbols mentioned (e.g., HOOD, NVDA, AAPL, XMA.TO)
-   - Tickers are SHORT symbols (1-10 characters), typically 1-5 uppercase letters
-   - May include exchange suffixes like .TO, .V, .CN, .TSX
-   - Do NOT extract company names (e.g., "Apple Inc" is NOT a ticker, "AAPL" is)
-   - Do NOT extract long phrases or descriptions
-   - First, look for explicit ticker symbols mentioned in the article
-   - If no explicit tickers found BUT the article is clearly about specific companies, infer the likely ticker(s)
-   - For well-known companies, provide your best guess of the ticker symbol
-   - If you're uncertain about a ticker, add a '?' suffix (e.g., "RKLB?" for Rocket Lab)
-   - Examples: "Apple" → "AAPL", "Microsoft" → "MSFT", "Tesla" → "TSLA", "NVIDIA" → "NVDA"
-3. Identify all sectors/industries discussed (e.g., "Financial Services", "Technology", "Healthcare")
-4. List key themes and topics (e.g., "crypto revenue", "subscription growth", "market expansion")
-5. Extract company names mentioned (e.g., "Robinhood", "NVIDIA") - these go in "companies" field, NOT "tickers"
-
-RELATIONSHIP EXTRACTION:
-Extract corporate relationships mentioned in the text. Return a list of JSON objects in the 'relationships' field.
-
-**CRITICAL: Use stock tickers (e.g., AAPL) for source/target if known. If the ticker is unknown, use the capitalized company name.**
-
-Format: { "source": "TICKER", "target": "TICKER", "type": "TYPE" }
-
-Allowed relationship types:
-- SUPPLIER: Source supplies Target (e.g., "TSMC supplies Apple" → source: "TSM", target: "AAPL", type: "SUPPLIER")
-- CUSTOMER: Source is a customer of Target (e.g., "Apple buys from TSMC" → source: "TSM", target: "AAPL", type: "SUPPLIER" - note: CUSTOMER relationships should be converted to SUPPLIER with supplier as source)
-- COMPETITOR: Direct rivalry between companies
-- PARTNER: Joint venture, collaboration, strategic partnership
-- PARENT: Source owns/is parent of Target
-- SUBSIDIARY: Source is subsidiary of Target
-- LITIGATION: Lawsuits or legal disputes between companies
-
-Examples:
-- "Nvidia's supply constraints at TSMC are limiting H100 production" → [{ "source": "NVDA", "target": "TSM", "type": "SUPPLIER" }]
-- "Apple buys chips from TSMC" → [{ "source": "TSM", "target": "AAPL", "type": "SUPPLIER" }]
-- "Google competes with Microsoft in cloud services" → [{ "source": "GOOG", "target": "MSFT", "type": "COMPETITOR" }]
-
-If no relationships are found, use empty array [].
-
-CRITICAL: Return ONLY valid, parseable JSON. Do NOT include:
-- Explanatory text before or after the JSON
-- Comments (// or /* */)
-- Markdown formatting
-- Any text outside the JSON object
-
-The "summary" field must be a single STRING with bullet points separated by newlines (\\n), NOT an array.
-
-Return your response as a valid JSON object with these exact fields:
-{
-  "summary": "• First key point...\\n• Second key point...\\n• Third key point...\\n• Fourth key point...\\n• Fifth key point...",
-  "claims": ["Claim 1 with specific numbers/dates", "Claim 2 with percentages", "Claim 3..."],
-  "fact_check": "Simple fact-checking analysis: Are claims plausible? Any obvious contradictions? Filter garbage/clickbait.",
-  "conclusion": "Net impact on ticker(s): What does this article mean for the stock? Specific price impact or business implications.",
-  "sentiment": "VERY_BULLISH" | "BULLISH" | "NEUTRAL" | "BEARISH" | "VERY_BEARISH",
-  "logic_check": "DATA_BACKED" | "HYPE_DETECTED" | "NEUTRAL",
-  "tickers": ["TICKER1", "TICKER2", "INFERRED?"],
-  "sectors": ["Sector1", "Sector2"],
-  "key_themes": ["theme1", "theme2"],
-  "companies": ["Company1", "Company2"],
-  "relationships": [{"source": "TICKER1", "target": "TICKER2", "type": "SUPPLIER"}, ...]
-}
-
-If no tickers, sectors, themes, companies, or relationships are found, use empty arrays []. The sentiment and logic_check fields are REQUIRED and must be exactly one of the values listed above. Return ONLY the JSON object, nothing else."""
-        
         # Get model settings
         model_settings = self.get_model_settings(model)
-        effective_temp = model_settings.get('temperature', 0.3)
-        effective_ctx = model_settings.get('num_ctx', 4096)
-        effective_max_tokens = model_settings.get('num_predict', 1024)
+        effective_temp = model_settings.get("temperature", 0.3)
+        effective_ctx = model_settings.get("num_ctx", 4096)
+        effective_max_tokens = model_settings.get("num_predict", 1024)
         
         # Prepare streaming request payload
         payload = {
@@ -1083,131 +753,8 @@ If no tickers, sectors, themes, companies, or relationships are found, use empty
                 logger.warning("Empty response from Ollama")
                 return {}
             
-            # Try to parse JSON response (reuse logic from generate_summary)
-            try:
-                json_str = raw_response
-                if "```json" in json_str:
-                    start = json_str.find("```json") + 7
-                    end = json_str.find("```", start)
-                    if end > start:
-                        json_str = json_str[start:end].strip()
-                elif "```" in json_str:
-                    start = json_str.find("```") + 3
-                    end = json_str.find("```", start)
-                    if end > start:
-                        json_str = json_str[start:end].strip()
-                
-                parsed = json.loads(json_str)
-                
-                # Helper function (reuse from generate_summary)
-                def extract_strings(value, default=[]):
-                    if not isinstance(value, list):
-                        return default
-                    result = []
-                    for item in value:
-                        if isinstance(item, str) and item.strip():
-                            result.append(item.strip())
-                        elif isinstance(item, (int, float)):
-                            result.append(str(item).strip())
-                    return result
-                
-                # Process and validate (same as generate_summary)
-                summary_text = parsed.get("summary", "")
-                if not isinstance(summary_text, str):
-                    summary_text = str(summary_text) if summary_text else ""
-                
-                if summary_text:
-                    lines = summary_text.split('\n')
-                    normalized_lines = [line.lstrip() for line in lines]
-                    summary_text = '\n'.join(normalized_lines).strip()
-                
-                claims = extract_strings(parsed.get("claims", []))
-                fact_check = parsed.get("fact_check", "")
-                if not isinstance(fact_check, str):
-                    fact_check = str(fact_check) if fact_check else ""
-                
-                conclusion = parsed.get("conclusion", "")
-                if not isinstance(conclusion, str):
-                    conclusion = str(conclusion) if conclusion else ""
-                
-                sentiment = parsed.get("sentiment", "NEUTRAL")
-                if not isinstance(sentiment, str):
-                    sentiment = str(sentiment) if sentiment else "NEUTRAL"
-                sentiment = sentiment.strip().upper()
-                valid_sentiments = ["VERY_BULLISH", "BULLISH", "NEUTRAL", "BEARISH", "VERY_BEARISH"]
-                if sentiment not in valid_sentiments:
-                    logger.warning(f"Invalid sentiment '{sentiment}', defaulting to NEUTRAL")
-                    sentiment = "NEUTRAL"
-                
-                sentiment_score_map = {
-                    "VERY_BULLISH": 2.0,
-                    "BULLISH": 1.0,
-                    "NEUTRAL": 0.0,
-                    "BEARISH": -1.0,
-                    "VERY_BEARISH": -2.0
-                }
-                sentiment_score = sentiment_score_map.get(sentiment, 0.0)
-                
-                logic_check = parsed.get("logic_check", "NEUTRAL")
-                if not isinstance(logic_check, str):
-                    logic_check = str(logic_check) if logic_check else "NEUTRAL"
-                logic_check = logic_check.strip().upper()
-                valid_logic_checks = ["DATA_BACKED", "HYPE_DETECTED", "NEUTRAL"]
-                if logic_check not in valid_logic_checks:
-                    logger.warning(f"Invalid logic_check '{logic_check}', defaulting to NEUTRAL")
-                    logic_check = "NEUTRAL"
-                
-                relationships = []
-                relationships_raw = parsed.get("relationships", [])
-                if isinstance(relationships_raw, list):
-                    for rel in relationships_raw:
-                        if isinstance(rel, dict):
-                            source = rel.get("source", "").strip().upper()
-                            target = rel.get("target", "").strip().upper()
-                            rel_type = rel.get("type", "").strip().upper()
-                            if source and target and rel_type:
-                                relationships.append({
-                                    "source": source,
-                                    "target": target,
-                                    "type": rel_type
-                                })
-                
-                result = {
-                    "summary": summary_text.strip(),
-                    "claims": claims,
-                    "fact_check": fact_check.strip(),
-                    "conclusion": conclusion.strip(),
-                    "sentiment": sentiment,
-                    "sentiment_score": sentiment_score,
-                    "logic_check": logic_check,
-                    "tickers": [t.upper() for t in extract_strings(parsed.get("tickers", []))],
-                    "sectors": extract_strings(parsed.get("sectors", [])),
-                    "key_themes": extract_strings(parsed.get("key_themes", [])),
-                    "companies": extract_strings(parsed.get("companies", [])),
-                    "relationships": relationships
-                }
-                
-                logger.debug(f"Generated streaming summary: {len(result['summary'])} chars, {len(result['tickers'])} tickers, sentiment: {result['sentiment']}")
-                return result
-                
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse JSON response: {e}")
-                logger.debug(f"Raw response: {raw_response[:500]}")
-                return {
-                    "summary": raw_response,
-                    "claims": [],
-                    "fact_check": "",
-                    "conclusion": "",
-                    "sentiment": "NEUTRAL",
-                    "sentiment_score": 0.0,
-                    "logic_check": "NEUTRAL",
-                    "tickers": [],
-                    "sectors": [],
-                    "key_themes": [],
-                    "companies": [],
-                    "relationships": []
-                }
-            
+            return parse_summary_response(raw_response)
+
         except requests.exceptions.Timeout:
             logger.error(f"❌ Ollama streaming summary timed out after {self.timeout}s")
             return {}
@@ -1360,12 +907,116 @@ def get_ollama_client() -> Optional[OllamaClient]:
 
 def check_ollama_health() -> bool:
     """Check if Ollama is available.
-    
+
     Returns:
         True if Ollama is reachable
     """
     client = get_ollama_client()
     return client.check_health() if client else False
+
+
+def _generate_summary_via_zhipu(
+    text: str, model: str, *, progress_callback=None, stream: bool = False
+) -> Dict[str, Any]:
+    """Run article summarization via Z.AI /chat/completions. Used when model.startswith('glm-')."""
+    try:
+        from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
+        from summary_common import get_summary_system_prompt, parse_summary_response
+    except ImportError:
+        logger.warning("glm_config or summary_common not available for GLM summary")
+        return {}
+
+    key = get_zhipu_api_key()
+    if not key or not key.strip():
+        return {}
+
+    max_chars = 6000
+    if len(text) > max_chars:
+        text = text[:max_chars] + "..."
+
+    system_prompt = get_summary_system_prompt()
+    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
+
+    # Model config: max_tokens, temperature
+    cfg_path = os.path.join(os.path.dirname(__file__), "model_config.json")
+    me = {}
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                mc = json.load(f)
+            me = (mc.get("models") or {}).get(model, mc.get("default_config") or {})
+        except Exception:
+            pass
+    max_tokens = me.get("max_tokens") or me.get("num_predict") or 1024
+    temperature = float(me.get("temperature", 0.3))
+
+    url = f"{ZHIPU_BASE_URL.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": stream,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+
+    try:
+        logger.info(f"Generating summary with model {model} via Z.AI")
+        r = requests.post(url, json=payload, headers=headers, stream=stream, timeout=120)
+        r.raise_for_status()
+    except Exception as e:
+        logger.error(f"Z.AI summary request failed: {e}", exc_info=True)
+        return {}
+
+    raw = ""
+    if stream:
+        for line in r.iter_lines(decode_unicode=True):
+            if not line or not line.strip():
+                continue
+            s = line.strip()
+            if s.startswith("data: "):
+                data = s[6:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(data)
+                    for c in (obj.get("choices") or [])[:1]:
+                        part = (c.get("delta") or {}).get("content") or ""
+                        if part:
+                            raw += part
+                            if progress_callback:
+                                progress_callback(len(raw), min(95, len(raw) // 10))
+                        if c.get("finish_reason") == "stop":
+                            break
+                except json.JSONDecodeError:
+                    continue
+        if progress_callback:
+            progress_callback(len(raw), 100)
+    else:
+        data = r.json()
+        raw = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+
+    if not raw or not raw.strip():
+        return {}
+    return parse_summary_response(raw.strip())
+
+
+def generate_summary_streaming(
+    text: str, model: Optional[str] = None, progress_callback=None
+) -> Dict[str, Any]:
+    """Module-level entry: routes to Z.AI for glm-* or OllamaClient.generate_summary_streaming."""
+    if model is None:
+        try:
+            from settings import get_summarizing_model
+            model = get_summarizing_model()
+        except Exception:
+            model = "granite3.3:8b"
+    if model and str(model).startswith("glm-"):
+        return _generate_summary_via_zhipu(text, model, progress_callback=progress_callback, stream=True)
+    client = get_ollama_client()
+    if not client:
+        return {}
+    return client.generate_summary_streaming(text, model=model, progress_callback=progress_callback)
 
 
 def list_available_models(include_hidden: bool = False) -> List[str]:

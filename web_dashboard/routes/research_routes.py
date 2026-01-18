@@ -509,7 +509,7 @@ def reanalyze_article_stream():
         def generate_sse_events():
             """Generator that yields Server-Sent Events"""
             import json
-            from ollama_client import get_ollama_client, check_ollama_health
+            from ollama_client import check_ollama_health, generate_summary_streaming, get_ollama_client
             from research_utils import validate_ticker_format, normalize_ticker
             from scheduler.jobs import calculate_relevance_score
             from supabase_client import SupabaseClient
@@ -521,11 +521,22 @@ def reanalyze_article_stream():
                     yield f"data: {json.dumps({'error': 'Research repository not available'})}\n\n"
                     return
                 
-                # Check Ollama
-                if not check_ollama_health():
-                    yield f"data: {json.dumps({'error': 'Ollama is not available'})}\n\n"
-                    return
-                
+                # Check backend: GLM uses Z.AI (requires key); others use Ollama
+                is_glm = model_name and str(model_name).startswith("glm-")
+                if is_glm:
+                    try:
+                        from glm_config import get_zhipu_api_key
+                        if not get_zhipu_api_key():
+                            yield f"data: {json.dumps({'error': 'GLM API key not set. Add ZHIPU_API_KEY or save via AI Settings.'})}\n\n"
+                            return
+                    except ImportError:
+                        yield f"data: {json.dumps({'error': 'GLM support not available'})}\n\n"
+                        return
+                else:
+                    if not check_ollama_health():
+                        yield f"data: {json.dumps({'error': 'Ollama is not available'})}\n\n"
+                        return
+
                 # Send initial status
                 yield f"data: {json.dumps({'status': 'fetching', 'message': 'Fetching article...'})}\n\n"
                 
@@ -555,35 +566,24 @@ def reanalyze_article_stream():
                     yield f"data: {json.dumps({'error': 'Article has no content'})}\n\n"
                     return
                 
-                # Initialize Ollama client
+                # Initialize AI model (Ollama or Z.AI for glm-*)
                 yield f"data: {json.dumps({'status': 'initializing', 'message': 'Initializing AI model...'})}\n\n"
-                
-                ollama_client = get_ollama_client()
-                if not ollama_client:
-                    yield f"data: {json.dumps({'error': 'Failed to initialize Ollama client'})}\n\n"
-                    return
-                
-                # Progress callback for streaming
+
                 def progress_callback(tokens, progress):
-                    """Called during summary generation with progress updates"""
                     nonlocal progress_queue
                     progress_queue.put({
-                        'status': 'generating',
-                        'message': f'Generating summary... {progress}%',
-                        'progress': progress,
-                        'tokens': tokens
+                        "status": "generating",
+                        "message": f"Generating summary... {progress}%",
+                        "progress": progress,
+                        "tokens": tokens,
                     })
-                
-                # Create queue for progress updates from callback
+
                 progress_queue = queue.Queue()
-                
-                # Start generating summary with streaming
+
                 yield f"data: {json.dumps({'status': 'generating', 'message': 'Generating summary...', 'progress': 0})}\n\n"
-                
-                summary_data = ollama_client.generate_summary_streaming(
-                    content, 
-                    model=model_name,
-                    progress_callback=progress_callback
+
+                summary_data = generate_summary_streaming(
+                    content, model=model_name, progress_callback=progress_callback
                 )
                 
                 # Drain progress queue and send all updates
@@ -652,10 +652,10 @@ def reanalyze_article_stream():
                 # Calculate relevance
                 calculated_relevance = calculate_relevance_score(extracted_tickers, extracted_sector, owned_tickers=owned_tickers)
                 
-                # Generate embedding
+                # Generate embedding (Ollama only; skip if unavailable, e.g. when using GLM without Ollama)
                 yield f"data: {json.dumps({'status': 'embedding', 'message': 'Generating embedding...'})}\n\n"
-                
-                embedding = ollama_client.generate_embedding(content[:6000])
+                _ollama = get_ollama_client()
+                embedding = _ollama.generate_embedding(content[:6000]) if _ollama else None
                 if not embedding:
                     logger.warning(f"Failed to generate embedding for article {article_id}")
                     embedding = None
