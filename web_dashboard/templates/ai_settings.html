@@ -1,18 +1,12 @@
 {% extends "base.html" %}
 
 {% block title %}AI & System Settings - Admin Dashboard{% endblock %}
+{% block page_title %}🤖 AI & System Settings{% endblock %}
+{% block page_subtitle %}Manage LLM configurations, research settings, and system health{% endblock %}
 
 {% block content %}
+<!-- PAGE: ai_settings.html | ID: admin_ai_settings -->
 <div class="px-4 py-6">
-    <!-- Header -->
-    <div class="mb-6">
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <span class="text-3xl">🤖</span> AI & System Settings
-        </h1>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage LLM configurations, research settings, and
-            system health.</p>
-    </div>
-
     <!-- System Status Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <!-- Ollama Card -->

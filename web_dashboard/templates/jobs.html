@@ -1,18 +1,14 @@
 {% extends "base.html" %}
 
 {% block title %}Jobs - Admin Dashboard{% endblock %}
+{% block page_title %}🔨 Jobs Scheduler{% endblock %}
+{% block page_subtitle %}Manage background tasks and scheduled jobs{% endblock %}
 
 {% block content %}
+<!-- PAGE: jobs.html | ID: admin_scheduler -->
 <div class="px-4 py-6">
-    <!-- Header -->
+    <!-- Header with Status Card -->
     <div class="mb-6 flex justify-between items-center">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <span class="text-3xl">🔨</span> Jobs Scheduler
-            </h1>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage background tasks and scheduled jobs</p>
-        </div>
-
         <!-- Global Status Card -->
         <div class="flex items-center gap-4">
             <div id="scheduler-status-card"

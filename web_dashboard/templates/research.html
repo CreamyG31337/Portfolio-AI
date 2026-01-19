@@ -173,7 +173,7 @@
 <!-- Articles Grid -->
 <div class="grid grid-cols-1 gap-6">
     {% for article in articles %}
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200">
+    <div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm border border-gray-200 dark:border-border hover:shadow-md transition-shadow duration-200">
         <div class="p-6">
             <div class="flex items-start gap-3 mb-4">
                 <input type="checkbox"
@@ -262,7 +262,7 @@
                 {% if has_more %}
                 <!-- Gradient fade overlay (theme-aware) -->
                 <div id="fade-{{ article.id }}"
-                    class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white dark:from-gray-800 to-transparent pointer-events-none transition-opacity duration-300">
+                    class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white dark:from-dashboard-surface to-transparent pointer-events-none transition-opacity duration-300">
                 </div>
 
                 <!-- Inline expand/collapse button -->

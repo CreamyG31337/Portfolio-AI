@@ -464,14 +464,16 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             'available_funds': available_funds,
             'selected_fund': selected_fund,
             'allow_all_funds': allow_all_funds,
-            'scheduler_status': scheduler_status
+            'scheduler_status': scheduler_status,
+            'current_page': current_page
         }
     except Exception as e:
         logger.warning(f"Error building navigation context: {e}")
         return {
             'navigation_links': [],
             'is_admin': False,
-            'available_funds': []
+            'available_funds': [],
+            'current_page': None
         }
 
 
