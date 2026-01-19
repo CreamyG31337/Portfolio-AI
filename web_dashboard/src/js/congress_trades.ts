@@ -283,14 +283,13 @@ class TypeCellRenderer implements AgGridCellRenderer {
     }
 }
 
-// Amount cell renderer - shows emoji based on amount range
-// Option 1: Full text (current)
-// Option 2: Emoji + range (💰 $1-15k, 💵 $15-50k, 💸 $50k+)
-// Option 3: Just emoji (💰, 💵, 💸)
+// Amount cell renderer - shows moneybag emojis based on amount range
+// 💰 = $1k-$15k (1 moneybag)
+// 💰💰 = $15k-$50k (2 moneybags)
+// 💰💰💰 = $50k-$250k (3 moneybags)
+// 💎 = $250k+ (diamond for very large amounts)
 class AmountCellRenderer implements AgGridCellRenderer {
     private eGui!: HTMLElement;
-    private useEmoji: boolean = true; // Set to false for full text
-    private emojiOnly: boolean = false; // Set to true for emoji only
 
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('span');
@@ -301,26 +300,35 @@ class AmountCellRenderer implements AgGridCellRenderer {
             return;
         }
         
-        // Parse amount range
+        // Parse amount range to determine number of moneybags
         const amountStr = value.toLowerCase();
-        let displayText = '';
+        let emojiCount = 1; // Default to 1 moneybag
         
-        if (this.useEmoji || this.emojiOnly) {
-            // Determine emoji based on amount
-            if (amountStr.includes('1,001') || amountStr.includes('1,000') || amountStr.includes('15,000')) {
-                displayText = this.emojiOnly ? '💰' : '💰 ' + value;
-            } else if (amountStr.includes('15,001') || amountStr.includes('50,000')) {
-                displayText = this.emojiOnly ? '💵' : '💵 ' + value;
-            } else if (amountStr.includes('50,001') || amountStr.includes('100,000') || amountStr.includes('250,000') || amountStr.includes('500,000') || amountStr.includes('1,000,000')) {
-                displayText = this.emojiOnly ? '💸' : '💸 ' + value;
-            } else {
-                displayText = this.emojiOnly ? '💰' : '💰 ' + value;
+        // Extract numeric values from amount string
+        // Format is usually "$1,001 - $15,000" or "$15,001 - $50,000" etc.
+        const maxMatch = amountStr.match(/\$?([\d,]+)/g);
+        if (maxMatch && maxMatch.length > 0) {
+            // Get the last (highest) number
+            const maxValueStr = maxMatch[maxMatch.length - 1].replace(/[$,]/g, '');
+            const maxValue = parseInt(maxValueStr, 10);
+            
+            if (!isNaN(maxValue)) {
+                if (maxValue <= 15000) {
+                    emojiCount = 1; // 💰
+                } else if (maxValue <= 50000) {
+                    emojiCount = 2; // 💰💰
+                } else if (maxValue <= 250000) {
+                    emojiCount = 3; // 💰💰💰
+                } else {
+                    // Use diamond for very large amounts
+                    this.eGui.innerText = '💎';
+                    return;
+                }
             }
-        } else {
-            displayText = value;
         }
         
-        this.eGui.innerText = displayText;
+        // Display moneybags based on count
+        this.eGui.innerText = '💰'.repeat(emojiCount);
     }
 
     getGui(): HTMLElement {
@@ -328,43 +336,59 @@ class AmountCellRenderer implements AgGridCellRenderer {
     }
 }
 
-// Chamber cell renderer - shows emoji
-// Option 1: Full text (current)
-// Option 2: Emoji + text (🏛️ House, 🏛️ Senate)
-// Option 3: Just emoji (🏛️, 🏛️) - but both are same, so maybe use different
+// Chamber cell renderer - just shows text (emoji is in header)
 class ChamberCellRenderer implements AgGridCellRenderer {
     private eGui!: HTMLElement;
-    private useEmoji: boolean = false; // Set to true for emoji
-    private emojiOnly: boolean = false; // Set to true for emoji only
 
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('span');
         const value = params.value || '';
-        const chamberLower = value.toLowerCase();
+        this.eGui.innerText = value || 'N/A';
+    }
+
+    getGui(): HTMLElement {
+        return this.eGui;
+    }
+}
+
+// State cell renderer - converts 2-letter abbreviations to full state names
+class StateCellRenderer implements AgGridCellRenderer {
+    private eGui!: HTMLElement;
+    
+    // US State abbreviations to full names mapping
+    private stateMap: Record<string, string> = {
+        'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
+        'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware',
+        'FL': 'Florida', 'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho',
+        'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa', 'KS': 'Kansas',
+        'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+        'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi',
+        'MO': 'Missouri', 'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada',
+        'NH': 'New Hampshire', 'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York',
+        'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio', 'OK': 'Oklahoma',
+        'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+        'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah',
+        'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia',
+        'WI': 'Wisconsin', 'WY': 'Wyoming', 'DC': 'District of Columbia'
+    };
+
+    init(params: AgGridCellRendererParams): void {
+        this.eGui = document.createElement('span');
+        const value = params.value || '';
         
-        let displayText = '';
-        
-        if (chamberLower === 'house') {
-            if (this.emojiOnly) {
-                displayText = '🏛️';
-            } else if (this.useEmoji) {
-                displayText = '🏛️ H';
-            } else {
-                displayText = value || 'N/A';
-            }
-        } else if (chamberLower === 'senate') {
-            if (this.emojiOnly) {
-                displayText = '🏛️';
-            } else if (this.useEmoji) {
-                displayText = '🏛️ S';
-            } else {
-                displayText = value || 'N/A';
-            }
-        } else {
-            displayText = value || 'N/A';
+        if (!value || value === 'N/A') {
+            this.eGui.innerText = 'N/A';
+            return;
         }
         
-        this.eGui.innerText = displayText;
+        // Convert abbreviation to full name if it's a 2-letter code
+        const valueUpper = value.toUpperCase().trim();
+        if (valueUpper.length === 2 && this.stateMap[valueUpper]) {
+            this.eGui.innerText = this.stateMap[valueUpper];
+        } else {
+            // Already a full name or unknown, use as-is
+            this.eGui.innerText = value;
+        }
     }
 
     getGui(): HTMLElement {
@@ -624,7 +648,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         },
         {
             field: 'Chamber',
-            headerName: 'Chamber',
+            headerName: '🏛️ Chamber',
             minWidth: 60,
             flex: 0.6,
             sortable: true,
@@ -634,8 +658,8 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Party',
             headerName: 'Party',
-            minWidth: 80,
-            flex: 0.8,
+            minWidth: 50,
+            flex: 0.5,
             sortable: true,
             filter: true,
             cellRenderer: PartyCellRenderer
@@ -643,16 +667,17 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'State',
             headerName: 'State',
-            minWidth: 70,
-            flex: 0.7,
+            minWidth: 100,
+            flex: 1.2,
             sortable: true,
-            filter: true
+            filter: true,
+            cellRenderer: StateCellRenderer
         },
         {
             field: 'Date',
             headerName: 'Date',
-            minWidth: 110,
-            flex: 1.1,
+            minWidth: 90,
+            flex: 0.9,
             sortable: true,
             filter: true
         },
@@ -667,11 +692,16 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         },
         {
             field: 'Amount',
-            headerName: 'Amount',
-            minWidth: 120,
-            flex: 1.2,
+            headerName: '💰 Amount',
+            minWidth: 60,
+            flex: 0.6,
             sortable: true,
-            filter: true
+            filter: true,
+            cellRenderer: AmountCellRenderer,
+            tooltipValueGetter: function (params: AgGridParams): string {
+                // Show full amount text in tooltip
+                return params.value || '';
+            }
         },
         {
             field: 'Score',
@@ -693,7 +723,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             field: 'AI Reasoning',
             headerName: 'AI Reasoning',
             minWidth: 200,
-            flex: 3,
+            flex: 4, // Increased from 3 to give more space
             sortable: true,
             filter: true,
             tooltipValueGetter: function (params: AgGridParams): string {
