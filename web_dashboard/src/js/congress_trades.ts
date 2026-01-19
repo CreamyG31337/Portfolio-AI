@@ -1071,9 +1071,94 @@ async function fetchTradeData(): Promise<void> {
     }
 }
 
+// Re-analyze all visible trades
+async function reanalyzeAllTrades(): Promise<void> {
+    if (!gridApi) {
+        alert('Grid not initialized');
+        return;
+    }
+    
+    // Get all visible trades (all rows in the grid)
+    const allRows: CongressTrade[] = [];
+    const nodes = (gridApi as any).getRenderedNodes();
+    if (nodes) {
+        nodes.forEach((node: any) => {
+            if (node.data) {
+                allRows.push(node.data);
+            }
+        });
+    }
+    
+    if (allRows.length === 0) {
+        alert('No trades to analyze');
+        return;
+    }
+    
+    // Confirm action
+    const confirmed = confirm(`Re-analyze ${allRows.length} visible trade(s)? This will update their conflict scores and reasoning.`);
+    if (!confirmed) {
+        return;
+    }
+    
+    // Extract trade IDs
+    const tradeIds = allRows
+        .map(trade => trade._trade_id)
+        .filter((id): id is number => id !== undefined && id !== null);
+    
+    if (tradeIds.length === 0) {
+        alert('No valid trade IDs found');
+        return;
+    }
+    
+    try {
+        // Show loading state
+        const button = document.querySelector('button[onclick="reanalyzeAllTrades()"]') as HTMLButtonElement;
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Re-Analyzing...';
+        }
+        
+        // Call the analysis API
+        const response = await fetch('/api/congress_trades/analyze', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ trade_ids: tradeIds })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        
+        alert(`Successfully re-analyzed ${result.analyzed_count || tradeIds.length} trade(s). Refreshing...`);
+        
+        // Refresh the page to show updated data
+        (window as any).refreshData();
+        
+    } catch (error) {
+        console.error('Failed to re-analyze trades:', error);
+        alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        
+        // Restore button
+        const button = document.querySelector('button[onclick="reanalyzeAllTrades()"]') as HTMLButtonElement;
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-redo mr-2"></i>Re-Analyze All Visible';
+        }
+    }
+}
+
 // Make function available globally for template usage
 (window as any).initializeCongressTradesGrid = initializeCongressTradesGrid;
 (window as any).analyzeSelectedTrades = analyzeSelectedTrades;
+(window as any).reanalyzeAllTrades = reanalyzeAllTrades;
 (window as any).refreshData = function () {
     const currentUrl = new URL(window.location.href);
     const currentRefreshKey = parseInt(currentUrl.searchParams.get('refresh_key') || '0');

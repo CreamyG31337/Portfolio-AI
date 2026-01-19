@@ -95,11 +95,11 @@
             <div>
                 <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">🤖 AI Analysis</label>
                 <div class="space-y-2">
-                    <label class="flex items-center">
-                        <input type="checkbox" name="analyzed_only" value="true" {% if current_analyzed_only %}checked{%
-                            endif %} class="mr-2">
-                        <span class="text-sm">Only analyzed trades</span>
-                    </label>
+                    <select name="analysis_status" class="w-full text-sm border border-gray-300 rounded-lg p-2">
+                        <option value="all" {% if current_analysis_status=='all' or not current_analysis_status %}selected{% endif %}>All Trades</option>
+                        <option value="analyzed" {% if current_analysis_status=='analyzed' %}selected{% endif %}>Analyzed Only</option>
+                        <option value="unanalyzed" {% if current_analysis_status=='unanalyzed' %}selected{% endif %}>Unanalyzed Only</option>
+                    </select>
                     <select name="score_filter" class="w-full text-sm border border-gray-300 rounded-lg p-2">
                         <option value="All Scores" {% if current_score_filter=='All Scores' %}selected{% endif %}>All
                             Scores</option>
@@ -160,10 +160,16 @@
                 class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5">
                 <i class="fas fa-sync-alt mr-2"></i>Refresh Data
             </button>
-            <button type="submit"
-                class="text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5">
-                <i class="fas fa-filter mr-2"></i>Apply Filters
-            </button>
+            <div class="flex gap-2">
+                <button type="button" onclick="reanalyzeAllTrades()"
+                    class="text-white bg-orange-700 hover:bg-orange-800 focus:ring-4 focus:ring-orange-300 font-medium rounded-lg text-sm px-5 py-2.5">
+                    <i class="fas fa-redo mr-2"></i>Re-Analyze All Visible
+                </button>
+                <button type="submit"
+                    class="text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5">
+                    <i class="fas fa-filter mr-2"></i>Apply Filters
+                </button>
+            </div>
         </div>
     </form>
 </div>

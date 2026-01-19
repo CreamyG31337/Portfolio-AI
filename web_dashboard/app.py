@@ -3328,6 +3328,7 @@ def get_congress_trades_cached(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     analyzed_only: bool = False,
+    unanalyzed_only: bool = False,
     min_score: Optional[float] = None,
     max_score: Optional[float] = None,
     _postgres_client = None
@@ -3386,12 +3387,15 @@ def get_congress_trades_cached(
         logger.info(f"[CongressTrades] Fetched {len(all_trades)} total rows from Supabase")
         
         # Post-process: filter by analysis status and score
-        if analyzed_only or min_score is not None or max_score is not None:
+        if analyzed_only or unanalyzed_only or min_score is not None or max_score is not None:
             filtered_trades = []
             for trade in all_trades:
                 trade_id = trade.get('id')
                 
+                # Filter by analysis status
                 if analyzed_only and trade_id not in analysis_map:
+                    continue
+                if unanalyzed_only and trade_id in analysis_map:
                     continue
                 
                 # Check score filters
@@ -3512,7 +3516,9 @@ def congress_trades_page():
         # Get filter values from query params
         chamber_filter = request.args.get('chamber', 'All')
         type_filter = request.args.get('type', 'All')
-        analyzed_only = request.args.get('analyzed_only') == 'true'
+        analysis_status = request.args.get('analysis_status', 'all')  # 'all', 'analyzed', 'unanalyzed'
+        analyzed_only = (analysis_status == 'analyzed')  # For backward compatibility
+        unanalyzed_only = (analysis_status == 'unanalyzed')
         score_filter = request.args.get('score_filter', 'All Scores')
         ticker_filter = request.args.get('ticker', 'All')
         politician_filter = request.args.get('politician', 'All')
@@ -3577,7 +3583,8 @@ def congress_trades_page():
                              # Current filter values
                              current_chamber=request.args.get('chamber', 'All'),
                              current_type=request.args.get('type', 'All'),
-                             current_analyzed_only=analyzed_only,
+                             current_analysis_status=analysis_status,
+                             current_analyzed_only=analyzed_only,  # Keep for backward compatibility
                              current_score_filter=score_filter,
                              current_ticker=request.args.get('ticker', 'All'),
                              current_politician=request.args.get('politician', 'All'),
@@ -3629,7 +3636,9 @@ def api_congress_trades_data():
         type_filter = request.args.get('type')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        analyzed_only = request.args.get('analyzed_only') == 'true'
+        analysis_status = request.args.get('analysis_status', 'all')  # 'all', 'analyzed', 'unanalyzed'
+        analyzed_only = (analysis_status == 'analyzed')
+        unanalyzed_only = (analysis_status == 'unanalyzed')
         min_score = request.args.get('min_score')
         max_score = request.args.get('max_score')
         min_score = float(min_score) if min_score else None
@@ -3646,6 +3655,7 @@ def api_congress_trades_data():
             start_date=start_date,
             end_date=end_date,
             analyzed_only=analyzed_only,
+            unanalyzed_only=unanalyzed_only,
             min_score=min_score,
             max_score=max_score,
             _postgres_client=postgres_client
