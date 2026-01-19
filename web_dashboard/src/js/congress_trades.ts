@@ -30,7 +30,9 @@ interface AgGridApi {
 }
 
 interface AgGridColumnApi {
-    // Column API methods if needed
+    getAllColumns(): any[];
+    getAllDisplayedColumns(): any[];
+    autoSizeColumns(colIds: string[], skipHeader?: boolean): void;
 }
 
 interface AgGridGrid {
@@ -110,6 +112,7 @@ interface CongressTrade {
     _click_action?: string;
     _full_reasoning?: string;
     _trade_id?: number;
+    _logo_url?: string;
 }
 
 interface CongressTradeStats {
@@ -142,25 +145,58 @@ declare global {
 let gridApi: AgGridApi | null = null;
 let gridColumnApi: AgGridColumnApi | null = null;
 
-// Ticker cell renderer - makes ticker clickable
+// Ticker cell renderer - makes ticker clickable with logo
 class TickerCellRenderer implements AgGridCellRenderer {
     private eGui!: HTMLElement; // Definitely assigned in init()
 
     init(params: AgGridCellRendererParams): void {
-        this.eGui = document.createElement('span');
+        this.eGui = document.createElement('div');
+        this.eGui.style.display = 'flex';
+        this.eGui.style.alignItems = 'center';
+        this.eGui.style.gap = '6px';
+        
         if (params.value && params.value !== 'N/A') {
-            this.eGui.innerText = params.value;
-            this.eGui.style.color = '#1f77b4';
-            this.eGui.style.fontWeight = 'bold';
-            this.eGui.style.textDecoration = 'underline';
-            this.eGui.style.cursor = 'pointer';
-            this.eGui.addEventListener('click', function (e: Event) {
+            const ticker = params.value;
+            const logoUrl = params.data?._logo_url;
+            
+            // Add logo image if available
+            if (logoUrl) {
+                const img = document.createElement('img');
+                img.src = logoUrl;
+                img.alt = ticker;
+                img.style.width = '24px';
+                img.style.height = '24px';
+                img.style.objectFit = 'contain';
+                img.style.borderRadius = '4px';
+                img.style.flexShrink = '0';
+                // Handle image load errors gracefully - try fallback
+                img.onerror = function() {
+                    // Try Yahoo Finance as fallback if Parqet fails
+                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+                    if (img.src !== yahooUrl) {
+                        img.src = yahooUrl;
+                    } else {
+                        // Both failed, hide the image
+                        img.style.display = 'none';
+                    }
+                };
+                this.eGui.appendChild(img);
+            }
+            
+            // Add ticker text
+            const tickerSpan = document.createElement('span');
+            tickerSpan.innerText = ticker;
+            tickerSpan.style.color = '#1f77b4';
+            tickerSpan.style.fontWeight = 'bold';
+            tickerSpan.style.textDecoration = 'underline';
+            tickerSpan.style.cursor = 'pointer';
+            tickerSpan.addEventListener('click', function (e: Event) {
                 e.stopPropagation();
-                const ticker = params.value;
                 if (ticker && ticker !== 'N/A') {
                     window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
                 }
             });
+            this.eGui.appendChild(tickerSpan);
         } else {
             this.eGui.innerText = params.value || 'N/A';
         }
@@ -283,11 +319,16 @@ class TypeCellRenderer implements AgGridCellRenderer {
     }
 }
 
-// Amount cell renderer - shows moneybag emojis based on amount range
-// 💰 = $1k-$15k (1 moneybag)
-// 💰💰 = $15k-$50k (2 moneybags)
-// 💰💰💰 = $50k-$250k (3 moneybags)
-// 💎 = $250k+ (diamond for very large amounts)
+// Amount cell renderer - shows moneybag/diamond emojis based on amount range
+// Based on actual data analysis:
+// 💰 = $1k-$15k (1 moneybag) - 74.4% of trades
+// 💰💰 = $15k-$50k (2 moneybags) - 16.9% of trades
+// 💰💰💰 = $50k-$100k (3 moneybags) - 4.9% of trades
+// 💎 = $100k-$250k (1 diamond) - 2.6% of trades
+// 💎💎 = $250k-$500k (2 diamonds) - 0.6% of trades
+// 💎💎💎 = $500k-$1M (3 diamonds) - 0.5% of trades
+// 💎💎💎💎 = $1M-$5M (4 diamonds) - rare
+// 💎💎💎💎💎 = $5M+ (5 diamonds) - very rare (max seen: $25M)
 class AmountCellRenderer implements AgGridCellRenderer {
     private eGui!: HTMLElement;
 
@@ -300,35 +341,53 @@ class AmountCellRenderer implements AgGridCellRenderer {
             return;
         }
         
-        // Parse amount range to determine number of moneybags
+        // Parse amount range to determine emoji
         const amountStr = value.toLowerCase();
-        let emojiCount = 1; // Default to 1 moneybag
         
         // Extract numeric values from amount string
         // Format is usually "$1,001 - $15,000" or "$15,001 - $50,000" etc.
-        const maxMatch = amountStr.match(/\$?([\d,]+)/g);
-        if (maxMatch && maxMatch.length > 0) {
-            // Get the last (highest) number
-            const maxValueStr = maxMatch[maxMatch.length - 1].replace(/[$,]/g, '');
-            const maxValue = parseInt(maxValueStr, 10);
-            
-            if (!isNaN(maxValue)) {
-                if (maxValue <= 15000) {
-                    emojiCount = 1; // 💰
-                } else if (maxValue <= 50000) {
-                    emojiCount = 2; // 💰💰
-                } else if (maxValue <= 250000) {
-                    emojiCount = 3; // 💰💰💰
-                } else {
-                    // Use diamond for very large amounts
-                    this.eGui.innerText = '💎';
-                    return;
-                }
+        // Also handle "Over $1,000,000" format
+        let maxValue: number | null = null;
+        
+        if (amountStr.includes('over') || amountStr.includes('>')) {
+            // Handle "Over $1,000,000" format - extract the number
+            const overMatch = amountStr.match(/\$?([\d,]+)/);
+            if (overMatch) {
+                maxValue = parseInt(overMatch[1].replace(/,/g, ''), 10);
+                // For "Over X", use X as the threshold
+            }
+        } else {
+            // Regular range format "$1,001 - $15,000"
+            const maxMatch = amountStr.match(/\$?([\d,]+)/g);
+            if (maxMatch && maxMatch.length > 0) {
+                // Get the last (highest) number
+                const maxValueStr = maxMatch[maxMatch.length - 1].replace(/[$,]/g, '');
+                maxValue = parseInt(maxValueStr, 10);
             }
         }
         
-        // Display moneybags based on count
-        this.eGui.innerText = '💰'.repeat(emojiCount);
+        if (maxValue !== null && !isNaN(maxValue)) {
+            if (maxValue <= 15000) {
+                this.eGui.innerText = '💰'; // 1 moneybag
+            } else if (maxValue <= 50000) {
+                this.eGui.innerText = '💰💰'; // 2 moneybags
+            } else if (maxValue <= 100000) {
+                this.eGui.innerText = '💰💰💰'; // 3 moneybags
+            } else if (maxValue <= 250000) {
+                this.eGui.innerText = '💎'; // 1 diamond
+            } else if (maxValue <= 500000) {
+                this.eGui.innerText = '💎💎'; // 2 diamonds
+            } else if (maxValue <= 1000000) {
+                this.eGui.innerText = '💎💎💎'; // 3 diamonds
+            } else if (maxValue <= 5000000) {
+                this.eGui.innerText = '💎💎💎💎'; // 4 diamonds
+            } else {
+                this.eGui.innerText = '💎💎💎💎💎'; // 5 diamonds for $5M+
+            }
+        } else {
+            // Fallback if parsing fails
+            this.eGui.innerText = '💰';
+        }
     }
 
     getGui(): HTMLElement {
@@ -387,6 +446,41 @@ class StateCellRenderer implements AgGridCellRenderer {
             this.eGui.innerText = this.stateMap[valueUpper];
         } else {
             // Already a full name or unknown, use as-is
+            this.eGui.innerText = value;
+        }
+    }
+
+    getGui(): HTMLElement {
+        return this.eGui;
+    }
+}
+
+// Score cell renderer - adds spy icon for high conflict scores (>= 0.9)
+class ScoreCellRenderer implements AgGridCellRenderer {
+    private eGui!: HTMLElement;
+
+    init(params: AgGridCellRendererParams): void {
+        this.eGui = document.createElement('span');
+        const value = params.value || '';
+        
+        if (!value || value === 'N/A' || value.includes('⚪')) {
+            this.eGui.innerText = value || 'N/A';
+            return;
+        }
+        
+        // Parse the score from the display string (format: "🔴 0.90" or "🟡 0.50" etc.)
+        const scoreMatch = value.match(/([\d.]+)/);
+        if (scoreMatch) {
+            const score = parseFloat(scoreMatch[1]);
+            if (!isNaN(score) && score >= 0.9) {
+                // Add spy icon for high conflict scores (>= 0.9)
+                this.eGui.innerText = '🕵️ ' + value;
+            } else {
+                // Keep original display
+                this.eGui.innerText = value;
+            }
+        } else {
+            // No score found, use as-is
             this.eGui.innerText = value;
         }
     }
@@ -709,7 +803,8 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             minWidth: 100,
             flex: 1,
             sortable: true,
-            filter: true
+            filter: true,
+            cellRenderer: ScoreCellRenderer
         },
         {
             field: 'Owner',
@@ -783,19 +878,29 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     gridColumnApi = gridInstance.columnApi;
     gridDiv.setAttribute('data-initialized', 'true');
 
-    // Auto-size columns to fit container
-    if (gridApi) {
-        // Function to resize columns
-        const resizeColumns = () => {
-            if (gridApi) {
-                // Fit all columns to available width
-                gridApi.sizeColumnsToFit();
+    // Auto-size columns based on content
+    if (gridApi && gridColumnApi) {
+        // Function to auto-size columns based on their content
+        const autoSizeColumns = () => {
+            if (gridColumnApi) {
+                // Auto-size all displayed columns based on content
+                // Get all displayed column IDs from the grid
+                const allColumns = gridColumnApi.getAllDisplayedColumns();
+                if (allColumns && allColumns.length > 0) {
+                    const columnIds = allColumns.map((col: any) => col.getColId()).filter(Boolean);
+                    if (columnIds.length > 0) {
+                        gridColumnApi.autoSizeColumns(columnIds, false); // false = skipHeader (include header in sizing)
+                    }
+                }
             }
         };
 
         // Wait for grid to be ready before auto-sizing
         gridApi.addEventListener('firstDataRendered', () => {
-            resizeColumns();
+            // Small delay to ensure all content is rendered (especially logos)
+            setTimeout(() => {
+                autoSizeColumns();
+            }, 300);
         });
 
         // Also auto-size on window resize (with debounce for performance)
@@ -805,14 +910,9 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
                 clearTimeout(resizeTimeout);
             }
             resizeTimeout = window.setTimeout(() => {
-                resizeColumns();
+                autoSizeColumns();
             }, 150);
         });
-
-        // Initial resize after a short delay to ensure grid is fully rendered
-        setTimeout(() => {
-            resizeColumns();
-        }, 100);
     }
 }
 
@@ -939,6 +1039,21 @@ async function fetchTradeData(): Promise<void> {
 
         // Initialize grid with ALL data
         initializeCongressTradesGrid(newTrades);
+
+        // Auto-size columns after data is loaded (with delay for logos/images to load)
+        if (gridColumnApi) {
+            setTimeout(() => {
+                if (gridColumnApi) {
+                    const allColumns = gridColumnApi.getAllDisplayedColumns();
+                    if (allColumns && allColumns.length > 0) {
+                        const columnIds = allColumns.map((col: any) => col.getColId()).filter(Boolean);
+                        if (columnIds.length > 0) {
+                            gridColumnApi.autoSizeColumns(columnIds, false);
+                        }
+                    }
+                }
+            }, 500); // Wait for images/logos to load
+        }
 
         // Calculate stats from full dataset
         calculateAndRenderStats(newTrades);

@@ -226,12 +226,60 @@
 <!-- Data Table -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
     <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white">📋 Congress Trades</h2>
+        <div class="flex items-center gap-4">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white">📋 Congress Trades</h2>
+            <!-- Amount Legend Toggle -->
+            <button onclick="toggleAmountLegend()" 
+                class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white flex items-center gap-1">
+                <i class="fas fa-info-circle"></i>
+                <span>Amount Legend</span>
+            </button>
+        </div>
         <button id="analyze-selected-btn" onclick="analyzeSelectedTrades()" 
             class="hidden text-white bg-purple-700 hover:bg-purple-800 focus:ring-4 focus:ring-purple-300 font-medium rounded-lg text-sm px-5 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed">
             <i class="fas fa-brain mr-2"></i>Analyze Selected (<span id="selected-count">0</span>)
         </button>
     </div>
+    
+    <!-- Amount Legend (collapsible) -->
+    <div id="amount-legend" class="hidden mb-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">💰 Amount Legend</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div class="flex items-center gap-2">
+                <span class="text-lg">💰</span>
+                <span class="text-gray-700 dark:text-gray-300">Up to $15,000</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-lg">💰💰</span>
+                <span class="text-gray-700 dark:text-gray-300">$15,001 - $50,000</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-lg">💰💰💰</span>
+                <span class="text-gray-700 dark:text-gray-300">$50,001 - $100,000</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-lg">💎</span>
+                <span class="text-gray-700 dark:text-gray-300">$100,001 - $250,000</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-lg">💎💎</span>
+                <span class="text-gray-700 dark:text-gray-300">$250,001 - $500,000</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-lg">💎💎💎</span>
+                <span class="text-gray-700 dark:text-gray-300">$500,001 - $1,000,000</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-lg">💎💎💎💎</span>
+                <span class="text-gray-700 dark:text-gray-300">$1,000,001 - $5,000,000</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-lg">💎💎💎💎💎</span>
+                <span class="text-gray-700 dark:text-gray-300">$5,000,000+</span>
+            </div>
+        </div>
+    </div>
+    
     <div id="congress-trades-grid" class="ag-theme-alpine" style="height: 600px; width: 100%;"></div>
 </div>
 
@@ -287,6 +335,16 @@
 <script id="congress-trades-config" type="application/json">
 {
     "lazyLoad": true
+}
+</script>
+
+<script>
+// Toggle amount legend visibility
+function toggleAmountLegend() {
+    const legend = document.getElementById('amount-legend');
+    if (legend) {
+        legend.classList.toggle('hidden');
+    }
 }
 </script>
 

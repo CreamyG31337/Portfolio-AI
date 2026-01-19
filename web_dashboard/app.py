@@ -3606,6 +3606,7 @@ def api_congress_trades_data():
         from flask_data_utils import get_supabase_client_flask
         from cache_version import get_cache_version
         from auth import is_admin
+        from web_dashboard.utils.logo_utils import get_ticker_logo_url
         
         refresh_key = int(request.args.get('refresh_key', 0))
         
@@ -3684,6 +3685,9 @@ def api_congress_trades_data():
             
             reasoning_short = reasoning[:80] + '...' if reasoning and len(reasoning) > 80 else (reasoning or '')
             
+            # Get logo URL for ticker
+            logo_url = get_ticker_logo_url(ticker) if ticker != 'N/A' else None
+            
             formatted_trades.append({
                 'Ticker': ticker,
                 'Company': company_name,
@@ -3699,7 +3703,8 @@ def api_congress_trades_data():
                 'Owner': trade.get('owner', 'N/A'),
                 '_tooltip': reasoning if reasoning else reasoning_short,
                 '_full_reasoning': reasoning if reasoning else '',
-                '_trade_id': trade_id  # Include trade ID for analysis
+                '_trade_id': trade_id,  # Include trade ID for analysis
+                '_logo_url': logo_url  # Include logo URL for display
             })
 
         return jsonify({
