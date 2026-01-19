@@ -197,7 +197,7 @@ class SentimentCellRenderer implements AgGridCellRenderer {
 // Initialize watchlist grid
 function initializeWatchlistGrid(data: WatchlistTicker[]): void {
     const gridDiv = document.querySelector('#watchlist-grid') as HTMLElement;
-    
+
     // Detect theme and apply appropriate AgGrid theme
     const htmlElement = document.documentElement;
     const theme = htmlElement.getAttribute('data-theme') || 'system';
@@ -457,7 +457,7 @@ function initializeSentimentGrid(data: SentimentRow[]): void {
 // Load watchlist data
 async function loadWatchlistData(refreshKey: number): Promise<void> {
     try {
-        const response = await fetch(`/api/v2/social_sentiment/watchlist?refresh_key=${refreshKey}`);
+        const response = await fetch(`/api/social_sentiment/watchlist?refresh_key=${refreshKey}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const result = await response.json();
@@ -496,7 +496,7 @@ async function loadWatchlistData(refreshKey: number): Promise<void> {
 // Load alerts data
 async function loadAlertsData(refreshKey: number): Promise<void> {
     try {
-        const response = await fetch(`/api/v2/social_sentiment/alerts?refresh_key=${refreshKey}`);
+        const response = await fetch(`/api/social_sentiment/alerts?refresh_key=${refreshKey}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const result = await response.json();
@@ -568,9 +568,9 @@ async function loadAlertPosts(metricId: number, sessionId: number | null, alertI
     try {
         let response;
         if (sessionId) {
-            response = await fetch(`/api/v2/social_sentiment/posts/session/${sessionId}`);
+            response = await fetch(`/api/social_sentiment/posts/session/${sessionId}`);
         } else {
-            response = await fetch(`/api/v2/social_sentiment/posts/${metricId}`);
+            response = await fetch(`/api/social_sentiment/posts/${metricId}`);
         }
 
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -613,7 +613,7 @@ async function loadAlertPosts(metricId: number, sessionId: number | null, alertI
 // Load AI analyses data
 async function loadAIAnalysesData(refreshKey: number): Promise<void> {
     try {
-        const response = await fetch(`/api/v2/social_sentiment/ai_analyses?refresh_key=${refreshKey}`);
+        const response = await fetch(`/api/social_sentiment/ai_analyses?refresh_key=${refreshKey}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const result = await response.json();
@@ -689,7 +689,7 @@ async function loadAIDetails(analysisId: number, sessionId: number): Promise<voi
     }
 
     try {
-        const response = await fetch(`/api/v2/social_sentiment/ai_details/${analysisId}`);
+        const response = await fetch(`/api/social_sentiment/ai_details/${analysisId}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const result = await response.json();
@@ -758,7 +758,7 @@ async function loadAIDetails(analysisId: number, sessionId: number): Promise<voi
 export async function loadSentimentData(refreshKey: number, showOnlyWatchlist: boolean = true): Promise<void> {
     try {
         const response = await fetch(
-            `/api/v2/social_sentiment/latest_sentiment?refresh_key=${refreshKey}&show_only_watchlist=${showOnlyWatchlist}`
+            `/api/social_sentiment/latest_sentiment?refresh_key=${refreshKey}&show_only_watchlist=${showOnlyWatchlist}`
         );
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
