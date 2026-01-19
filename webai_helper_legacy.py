@@ -11,9 +11,25 @@ from pathlib import Path
 
 # Add web_dashboard to path
 project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root / 'web_dashboard'))
+web_dashboard_path = project_root / 'web_dashboard'
 
-from webai_cookie_client_legacy import WebAICookieClientLegacy
+if not web_dashboard_path.exists():
+    raise ImportError(
+        f"web_dashboard directory not found at {web_dashboard_path}. "
+        f"Ensure this script is run from the project root directory."
+    )
+
+sys.path.insert(0, str(web_dashboard_path))
+
+# Validate that the required module can be imported
+try:
+    from webai_cookie_client_legacy import WebAICookieClientLegacy
+except ImportError as e:
+    raise ImportError(
+        f"Failed to import WebAICookieClientLegacy from web_dashboard. "
+        f"Path added: {web_dashboard_path}. "
+        f"Original error: {e}"
+    )
 
 
 def get_gemini_client() -> WebAICookieClientLegacy:
