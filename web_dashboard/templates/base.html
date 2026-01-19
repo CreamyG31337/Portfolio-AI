@@ -19,9 +19,9 @@
         <div class="container mx-auto px-4 py-4">
             <div class="flex items-center justify-between">
                 <!-- Hamburger menu (mobile only) -->
-                <button id="sidebar-toggle" data-drawer-target="sidebar" data-drawer-toggle="sidebar"
+                <button id="sidebar-toggle" data-drawer-target="sidebar" data-drawer-toggle="sidebar" aria-controls="sidebar" aria-expanded="false" aria-label="Toggle navigation menu"
                     class="md:hidden p-2 rounded-lg hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50">
-                    <i class="fas fa-bars text-xl"></i>
+                    <i class="fas fa-bars text-xl" aria-hidden="true"></i>
                 </button>
 
                 <!-- Page title (hidden on mobile when sidebar is open) -->
@@ -44,9 +44,9 @@
 
                     <!-- User dropdown menu -->
                     <div class="relative">
-                        <button id="user-menu-button" data-dropdown-toggle="user-menu"
+                        <button id="user-menu-button" data-dropdown-toggle="user-menu" aria-controls="user-menu" aria-haspopup="true" aria-expanded="false" aria-label="User menu"
                             class="flex items-center p-2 rounded-lg hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50">
-                            <i class="fas fa-user-circle text-2xl"></i>
+                            <i class="fas fa-user-circle text-2xl" aria-hidden="true"></i>
                         </button>
                         <div id="user-menu"
                             class="hidden z-50 absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 border border-gray-200">
