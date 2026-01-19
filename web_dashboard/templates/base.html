@@ -14,7 +14,58 @@
         Skip to main content
     </a>
 
-    {% include "components/_header_content.html" %}
+    <!-- Header with hamburger menu and user dropdown -->
+    <header id="main-header" class="gradient-bg text-white shadow-lg sticky top-0 z-50 transition-transform duration-300" data-page-id="{{ current_page|default('unknown') }}">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <!-- Hamburger menu (mobile only) -->
+                <button id="sidebar-toggle" data-drawer-target="sidebar" data-drawer-toggle="sidebar"
+                    class="md:hidden p-2 rounded-lg hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+
+                <!-- Page title (hidden on mobile when sidebar is open) -->
+                <div class="flex-1 md:flex-none">
+                    <h1 class="text-xl md:text-2xl font-bold">{% block page_title %}Dashboard{% endblock %}</h1>
+                    <p class="text-blue-100 text-sm hidden md:block mt-1">{% block page_subtitle %}{% endblock %}</p>
+                </div>
+
+                <!-- Custom header content (e.g., fund selector, last updated) -->
+                {% block header_extra %}{% endblock %}
+
+                <!-- User menu (top-right) -->
+                <div class="flex items-center space-x-3">
+                    <!-- User email (hidden on mobile) -->
+                    {% if user_email %}
+                    <div class="hidden md:block text-sm text-blue-100">
+                        <span class="font-semibold">{{ user_email }}</span>
+                    </div>
+                    {% endif %}
+
+                    <!-- User dropdown menu -->
+                    <div class="relative">
+                        <button id="user-menu-button" data-dropdown-toggle="user-menu"
+                            class="flex items-center p-2 rounded-lg hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50">
+                            <i class="fas fa-user-circle text-2xl"></i>
+                        </button>
+                        <div id="user-menu"
+                            class="hidden z-50 absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 border border-gray-200">
+                            <a href="/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fas fa-cog mr-2"></i>Settings
+                            </a>
+                            <a href="/" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fas fa-home mr-2"></i>Dashboard
+                            </a>
+                            <hr class="my-1">
+                            <a href="/api/auth/logout" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                                <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
 
     <div class="flex">
         {% include "components/_sidebar_content.html" %}

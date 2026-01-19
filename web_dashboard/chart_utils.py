@@ -1211,7 +1211,7 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
         # Healthcare & Biotech (Reds/Pinks - health-related)
         'healthcare': {
             'base': '#ef4444',  # Red
-            'sectors': ['Healthcare', 'healthcare', 'health'],
+            'sectors': ['Healthcare', 'healthcare', 'Health Care', 'health care', 'health'],
             'variations': {
                 'Biotechnology': '#f43f5e',  # Rose (biotech)
                 'Pharmaceuticals': '#dc2626',  # Darker red
