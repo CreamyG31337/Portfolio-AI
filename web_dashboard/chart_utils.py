@@ -1183,13 +1183,54 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
     # Aggregate by sector
     sector_df = pd.DataFrame(sector_data)
     
+    # Normalize sector names to merge variations (e.g., "Health Care" -> "Healthcare")
+    def normalize_sector_name(sector: str) -> str:
+        """Normalize sector names to handle variations like 'Health Care' vs 'Healthcare'"""
+        if pd.isna(sector) or not sector:
+            return sector
+        
+        sector_str = str(sector).strip()
+        
+        # Normalize common variations
+        # "Health Care" -> "Healthcare"
+        if sector_str.lower() in ['health care', 'healthcare']:
+            return 'Healthcare'
+        
+        # "Financial Services" variations
+        if sector_str.lower() in ['financial services', 'financial']:
+            return 'Financial Services'
+        
+        # "Consumer Cyclical" variations
+        if sector_str.lower() in ['consumer cyclical', 'consumer discretionary']:
+            return 'Consumer Cyclical'
+        
+        # "Consumer Defensive" variations
+        if sector_str.lower() in ['consumer defensive', 'consumer staples']:
+            return 'Consumer Defensive'
+        
+        # "Communication Services" variations
+        if sector_str.lower() in ['communication services', 'communications', 'telecommunication services']:
+            return 'Communication Services'
+        
+        # "Basic Materials" variations
+        if sector_str.lower() in ['basic materials', 'materials']:
+            return 'Basic Materials'
+        
+        # Return original if no normalization needed
+        return sector_str
+    
+    # Apply normalization
+    sector_df['sector_normalized'] = sector_df['sector'].apply(normalize_sector_name)
+    
     # Log before aggregation to see raw data
     logger.info(f"[Sector Chart] Total positions processed: {len(sector_df)}")
     logger.info(f"[Sector Chart] Sample sector_data (first 5): {sector_data[:5]}")
     logger.info(f"[Sector Chart] Market value sum before aggregation: {sector_df['market_value'].sum()}")
     logger.info(f"[Sector Chart] Market value stats: min={sector_df['market_value'].min()}, max={sector_df['market_value'].max()}, mean={sector_df['market_value'].mean()}")
     
-    sector_totals = sector_df.groupby('sector')['market_value'].sum().reset_index()
+    # Aggregate by normalized sector name
+    sector_totals = sector_df.groupby('sector_normalized')['market_value'].sum().reset_index()
+    sector_totals = sector_totals.rename(columns={'sector_normalized': 'sector'})
     sector_totals = sector_totals.sort_values('market_value', ascending=False)
     
     logger.info(f"[Sector Chart] Aggregated {len(sector_totals)} sectors: {sector_totals.to_dict('records')}")
@@ -1303,11 +1344,12 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
         '#86efac',  # Light green
     ]
     
-    # Get industry data for color variations within same sector
+    # Get industry data for color variations within same sector (using normalized sectors)
     sector_industry_map = {}
     if 'industry' in sector_df.columns:
         for _, row in sector_df.iterrows():
-            sector_key = (row['sector'] or '').lower()
+            # Use normalized sector name
+            sector_key = (row.get('sector_normalized') or row.get('sector') or '').lower()
             industry = row.get('industry')
             if sector_key and industry and pd.notna(industry):
                 if sector_key not in sector_industry_map:

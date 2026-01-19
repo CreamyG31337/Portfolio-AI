@@ -299,6 +299,45 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             }
         }
     },
+    'scrape_congress_trades': {
+        'name': 'Scrape Congress Trades (Manual)',
+        'description': 'Scrape historical congressional trades from Capitol Trades website (uses FlareSolverr if available)',
+        'default_interval_minutes': 0,  # Manual only, no schedule
+        'enabled_by_default': False,  # Manual execution only
+        'icon': '🕷️',
+        'parameters': {
+            'months_back': {
+                'type': 'number',
+                'default': None,
+                'optional': True,
+                'description': 'Number of months back to scrape (None = all available trades)'
+            },
+            'page_size': {
+                'type': 'number',
+                'default': 100,
+                'optional': True,
+                'description': 'Number of trades per page (default: 100, max recommended: 200)'
+            },
+            'max_pages': {
+                'type': 'number',
+                'default': None,
+                'optional': True,
+                'description': 'Maximum number of pages to process (None = unlimited, useful for testing)'
+            },
+            'start_page': {
+                'type': 'number',
+                'default': 1,
+                'optional': True,
+                'description': 'Page number to start from (default: 1)'
+            },
+            'skip_recent': {
+                'type': 'boolean',
+                'default': False,
+                'optional': True,
+                'description': 'Skip trades on or after the most recent trade date (useful for continuing historical import)'
+            }
+        }
+    },
     'etf_watchtower': {
         'name': 'ETF Watchtower',
         'description': 'Track daily ETF holdings changes (ARK, iShares) to detect institutional accumulation/distribution',
@@ -400,7 +439,8 @@ from scheduler.jobs_social import (
 from scheduler.jobs_congress import (
     fetch_congress_trades_job,
     analyze_congress_trades_job,
-    rescore_congress_sessions_job
+    rescore_congress_sessions_job,
+    scrape_congress_trades_job
 )
 
 # Import opportunity discovery job
@@ -451,6 +491,7 @@ __all__ = [
     'fetch_congress_trades_job',
     'analyze_congress_trades_job',
     'rescore_congress_sessions_job',
+    'scrape_congress_trades_job',
     # Opportunity discovery
     'opportunity_discovery_job',
     # Seeking Alpha scraper
@@ -936,6 +977,20 @@ def register_default_jobs(scheduler) -> None:
     )
     scheduler.pause_job('rescore_congress_sessions') # Ensure it's paused/manual only
     logger.info("Registered job: rescore_congress_sessions (Manual only)")
+    
+    # Scrape Congress Trades (Manual Only)
+    # Always register this so it appears in UI, but it has no schedule
+    # We use a dummy date trigger far in the future
+    scheduler.add_job(
+        scrape_congress_trades_job,
+        trigger='date', 
+        run_date=datetime(9999, 12, 31, tzinfo=timezone.utc), # Effectively never
+        id='scrape_congress_trades',
+        name=f"{get_job_icon('scrape_congress_trades')} Scrape Congress Trades (Manual)",
+        replace_existing=True
+    )
+    scheduler.pause_job('scrape_congress_trades') # Ensure it's paused/manual only
+    logger.info("Registered job: scrape_congress_trades (Manual only)")
     
     # Congress trades job - every 12 minutes (120 runs/day × 2 API calls = 240 total, stays under 250 limit)
     if AVAILABLE_JOBS['congress_trades']['enabled_by_default']:

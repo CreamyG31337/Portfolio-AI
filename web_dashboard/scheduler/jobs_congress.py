@@ -909,3 +909,162 @@ def rescore_congress_sessions_job(limit: int = 1000, batch_size: int = 10, model
             pass
         logger.error(f"❌ Congress sessions rescore job failed: {e}", exc_info=True)
 
+
+def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int = 100, max_pages: Optional[int] = None, start_page: int = 1, skip_recent: bool = False) -> None:
+    """Manual job: Scrape congressional trades from Capitol Trades website.
+    
+    This job scrapes historical congressional trading data from capitoltrades.com
+    using BeautifulSoup and FlareSolverr (if available) to bypass Cloudflare.
+    
+    Args:
+        months_back: Number of months back to scrape (None = all available)
+        page_size: Number of trades per page (default: 100)
+        max_pages: Maximum number of pages to process (None = unlimited)
+        start_page: Page number to start from (default: 1)
+        skip_recent: Skip trades on or after most recent trade date (default: False)
+    """
+    job_id = 'scrape_congress_trades'
+    start_time = time.time()
+    
+    try:
+        # Ensure path is set up correctly before importing
+        import sys
+        from pathlib import Path
+        
+        # Re-ensure project root is first in path
+        current_dir = Path(__file__).resolve().parent
+        if current_dir.name == "scheduler":
+            project_root = current_dir.parent.parent
+        else:
+            project_root = current_dir.parent.parent
+        
+        project_root_str = str(project_root)
+        if project_root_str in sys.path:
+            sys.path.remove(project_root_str)
+        sys.path.insert(0, project_root_str)
+        
+        # Import job tracking
+        from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
+        
+        logger.info(f"Starting congress trades scraping job (months_back={months_back}, page_size={page_size}, max_pages={max_pages}, start_page={start_page}, skip_recent={skip_recent})...")
+        
+        # Mark job as started
+        target_date = datetime.now(timezone.utc).date()
+        mark_job_started('scrape_congress_trades', target_date)
+        
+        # Import dependencies
+        try:
+            import subprocess
+            from pathlib import Path
+        except ImportError as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            message = f"Missing dependency: {e}"
+            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            logger.error(f"❌ {message}")
+            mark_job_failed('scrape_congress_trades', target_date, None, message, duration_ms=duration_ms)
+            return
+        
+        # Build script path
+        project_root = Path(__file__).parent.parent.parent
+        script_path = project_root / 'web_dashboard' / 'scripts' / 'seed_congress_trades.py'
+        
+        if not script_path.exists():
+            duration_ms = int((time.time() - start_time) * 1000)
+            message = f"Scraping script not found: {script_path}"
+            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            logger.error(f"❌ {message}")
+            mark_job_failed('scrape_congress_trades', target_date, None, message, duration_ms=duration_ms)
+            return
+        
+        # Build command with parameters
+        cmd = ['python', '-u', str(script_path)]
+        
+        if months_back is not None:
+            cmd.extend(['--months-back', str(int(months_back))])
+        if page_size != 100:
+            cmd.extend(['--page-size', str(int(page_size))])
+        if max_pages is not None:
+            cmd.extend(['--max-pages', str(int(max_pages))])
+        if start_page != 1:
+            cmd.extend(['--start-page', str(int(start_page))])
+        if skip_recent:
+            cmd.append('--skip-recent')
+        
+        logger.info(f"Executing command: {' '.join(cmd)}")
+        logger.info(f"Working Directory: {str(project_root)}")
+        
+        # Use Popen to stream output line-by-line
+        process = subprocess.Popen(
+            cmd,
+            cwd=str(project_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Merge stderr into stdout
+            text=True,
+            bufsize=1,  # Line buffered
+            encoding='utf-8'
+        )
+        
+        # Stream output
+        full_output = []
+        last_log_time = time.time()
+        
+        # Read stdout line by line
+        for line in iter(process.stdout.readline, ''):
+            clean_line = line.strip()
+            full_output.append(clean_line)
+            
+            # Log significant lines to main logger immediately
+            if clean_line:
+                if any(x in clean_line for x in ["✅", "❌", "⚠️", "Total added", "Total skipped", "Total errors", "Completed", "Traceback", "Error"]):
+                    logger.info(f"   [Script] {clean_line}")
+                # Log progress every 60 seconds regardless of content
+                elif time.time() - last_log_time > 60:
+                    logger.info(f"   [Script] {clean_line}")
+                    last_log_time = time.time()
+        
+        process.stdout.close()
+        return_code = process.wait()
+        
+        if return_code == 0:
+            duration_ms = int((time.time() - start_time) * 1000)
+            # Find completion message
+            completed_lines = [line for line in full_output if 'Total added' in line or 'Total skipped' in line]
+            
+            if completed_lines:
+                # Get the summary line
+                summary = completed_lines[-1] if completed_lines else "Scraping completed"
+                message = summary
+            else:
+                message = "Congress trades scraping completed"
+            
+            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            mark_job_completed('scrape_congress_trades', target_date, None, [], duration_ms=duration_ms)
+            logger.info(f"✅ {message}")
+        else:
+            duration_ms = int((time.time() - start_time) * 1000)
+            # Use last 10 lines as error snippet
+            error_snippet = "\n".join(full_output[-10:])
+            message = f"Script failed with exit code {return_code}. Last output:\n{error_snippet}"
+            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            mark_job_failed('scrape_congress_trades', target_date, None, message, duration_ms=duration_ms)
+            logger.error(f"❌ Script failed: {message}")
+        
+    except subprocess.TimeoutExpired:
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = "Job timed out"
+        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        try:
+            mark_job_failed('scrape_congress_trades', target_date, None, message, duration_ms=duration_ms)
+        except Exception:
+            pass
+        logger.error(f"❌ {message}")
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = f"Error: {str(e)}"
+        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        try:
+            mark_job_failed('scrape_congress_trades', target_date, None, message, duration_ms=duration_ms)
+        except Exception:
+            pass
+        logger.error(f"❌ Congress trades scraping job failed: {e}", exc_info=True)
+
