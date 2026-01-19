@@ -3698,7 +3698,8 @@ def api_congress_trades_data():
                 'AI Reasoning': reasoning_short,
                 'Owner': trade.get('owner', 'N/A'),
                 '_tooltip': reasoning if reasoning else reasoning_short,
-                '_full_reasoning': reasoning if reasoning else ''
+                '_full_reasoning': reasoning if reasoning else '',
+                '_trade_id': trade_id  # Include trade ID for analysis
             })
 
         return jsonify({
@@ -3712,6 +3713,148 @@ def api_congress_trades_data():
     except Exception as e:
         logger.error(f"Error in congress trades API: {e}", exc_info=True)
         return jsonify({"error": "An error occurred while fetching congress trades data. Please check the logs."}), 500
+
+
+@app.route('/api/congress_trades/analyze', methods=['POST'])
+@require_auth
+def api_analyze_congress_trades():
+    """API endpoint to analyze selected congress trades"""
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        from auth import is_admin
+        
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only users cannot analyze trades"}), 403
+        
+        data = request.get_json()
+        if not data or 'trade_ids' not in data:
+            return jsonify({"error": "Missing trade_ids in request"}), 400
+        
+        trade_ids = data.get('trade_ids', [])
+        if not isinstance(trade_ids, list) or len(trade_ids) == 0:
+            return jsonify({"error": "trade_ids must be a non-empty list"}), 400
+        
+        # Limit batch size to prevent overwhelming the system
+        if len(trade_ids) > 50:
+            return jsonify({"error": "Maximum 50 trades can be analyzed at once"}), 400
+        
+        # Get clients
+        if is_admin():
+            from supabase_client import SupabaseClient
+            supabase_client = SupabaseClient(use_service_role=True)
+        else:
+            supabase_client = get_supabase_client_flask()
+        
+        if supabase_client is None:
+            return jsonify({"error": "Supabase client unavailable"}), 500
+        
+        postgres_client = get_postgres_client_congress()
+        if postgres_client is None:
+            return jsonify({"error": "PostgreSQL client unavailable"}), 500
+        
+        # Import analysis functions
+        import sys
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent
+        sys.path.insert(0, str(project_root))
+        sys.path.insert(0, str(project_root / 'web_dashboard'))
+        
+        from scripts.analyze_congress_trades_batch import (
+            get_trade_context,
+            analyze_trade,
+            is_low_risk_asset
+        )
+        from ollama_client import OllamaClient
+        from settings import get_summarizing_model
+        
+        # Check Ollama
+        ollama = OllamaClient()
+        if not ollama or not ollama.check_health():
+            return jsonify({"error": "Ollama is not accessible. Please ensure Ollama is running."}), 503
+        
+        model_name = get_summarizing_model()
+        
+        # Fetch trades from Supabase
+        result = supabase_client.supabase.table("congress_trades_enriched")\
+            .select("*")\
+            .in_("id", trade_ids)\
+            .execute()
+        
+        if not result.data:
+            return jsonify({"error": "No trades found with the provided IDs"}), 404
+        
+        trades = result.data
+        processed = 0
+        errors = 0
+        skipped = 0
+        
+        # Process each trade
+        for trade in trades:
+            try:
+                # Get trade context
+                context = get_trade_context(supabase_client, trade)
+                
+                # Check if low-risk (skip AI analysis)
+                is_low_risk, filter_reason = is_low_risk_asset(context)
+                
+                if is_low_risk:
+                    # Auto-assign low conflict score
+                    analysis = {
+                        'conflict_score': 0.0,
+                        'confidence_score': 1.0,
+                        'reasoning': f"Auto-filtered: {filter_reason}"
+                    }
+                    skipped += 1
+                else:
+                    # Analyze with AI
+                    analysis = analyze_trade(ollama, context, model=model_name)
+                
+                if analysis and 'conflict_score' in analysis:
+                    score = float(analysis['conflict_score'])
+                    confidence = float(analysis.get('confidence_score', 0.75))
+                    reasoning = analysis.get('reasoning', 'No reasoning provided')
+                    
+                    # Save to PostgreSQL
+                    postgres_client.execute_update(
+                        """
+                        INSERT INTO congress_trades_analysis 
+                            (trade_id, conflict_score, confidence_score, reasoning, model_used, analysis_version)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (trade_id, model_used, analysis_version) 
+                        DO UPDATE SET 
+                            conflict_score = EXCLUDED.conflict_score,
+                            confidence_score = EXCLUDED.confidence_score,
+                            reasoning = EXCLUDED.reasoning,
+                            analyzed_at = NOW()
+                        """,
+                        (trade['id'], score, confidence, reasoning, model_name, 1)
+                    )
+                    
+                    processed += 1
+                else:
+                    errors += 1
+                    
+            except Exception as e:
+                logger.error(f"Error processing trade {trade.get('id', 'unknown')}: {e}", exc_info=True)
+                errors += 1
+        
+        message = f"Processed {processed} trade(s)"
+        if skipped > 0:
+            message += f", skipped {skipped} low-risk trade(s)"
+        if errors > 0:
+            message += f", {errors} error(s)"
+        
+        return jsonify({
+            "success": True,
+            "processed": processed,
+            "skipped": skipped,
+            "errors": errors,
+            "message": message
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in analyze congress trades API: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 if __name__ == '__main__':
     # Run the app

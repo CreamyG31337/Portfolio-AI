@@ -106,6 +106,7 @@ interface CongressTrade {
     _tooltip?: string;
     _click_action?: string;
     _full_reasoning?: string;
+    _trade_id?: number;
 }
 
 interface CongressTradeStats {
@@ -196,43 +197,67 @@ function onCellClicked(params: AgGridParams): void {
     }
 }
 
-// Handle row selection - show AI reasoning
+// Handle row selection - show AI reasoning and update analyze button
 function onSelectionChanged(): void {
     if (!gridApi) return;
 
     const selectedRows = gridApi.getSelectedRows();
+    const analyzeButton = document.getElementById('analyze-selected-btn') as HTMLButtonElement | null;
+    const selectedCountEl = document.getElementById('selected-count');
+    
+    // Update analyze button visibility and count
+    if (analyzeButton && selectedCountEl) {
+        if (selectedRows && selectedRows.length > 0) {
+            analyzeButton.classList.remove('hidden');
+            selectedCountEl.textContent = selectedRows.length.toString();
+            analyzeButton.disabled = false;
+        } else {
+            analyzeButton.classList.add('hidden');
+            selectedCountEl.textContent = '0';
+        }
+    }
+    
     if (selectedRows && selectedRows.length > 0) {
-        const selectedRow = selectedRows[0];
-        // Get full reasoning - check both _full_reasoning and _tooltip fields
-        const fullReasoning = (selectedRow._full_reasoning && selectedRow._full_reasoning.trim()) ||
-            (selectedRow._tooltip && selectedRow._tooltip.trim()) ||
-            '';
+        // Show reasoning for first selected row (single row view)
+        if (selectedRows.length === 1) {
+            const selectedRow = selectedRows[0];
+            // Get full reasoning - check both _full_reasoning and _tooltip fields
+            const fullReasoning = (selectedRow._full_reasoning && selectedRow._full_reasoning.trim()) ||
+                (selectedRow._tooltip && selectedRow._tooltip.trim()) ||
+                '';
 
-        if (fullReasoning) {
-            // Show reasoning section
+            if (fullReasoning) {
+                // Show reasoning section
+                const reasoningSection = document.getElementById('ai-reasoning-section');
+                if (reasoningSection) {
+                    reasoningSection.classList.remove('hidden');
+
+                    // Populate fields
+                    const tickerEl = document.getElementById('reasoning-ticker');
+                    const companyEl = document.getElementById('reasoning-company');
+                    const politicianEl = document.getElementById('reasoning-politician');
+                    const dateEl = document.getElementById('reasoning-date');
+                    const typeEl = document.getElementById('reasoning-type');
+                    const scoreEl = document.getElementById('reasoning-score');
+                    const textEl = document.getElementById('reasoning-text');
+
+                    if (tickerEl) tickerEl.textContent = selectedRow.Ticker || '-';
+                    if (companyEl) companyEl.textContent = selectedRow.Company || '-';
+                    if (politicianEl) politicianEl.textContent = selectedRow.Politician || '-';
+                    if (dateEl) dateEl.textContent = selectedRow.Date || '-';
+                    if (typeEl) typeEl.textContent = selectedRow.Type || '-';
+                    if (scoreEl) scoreEl.textContent = selectedRow.Score || '-';
+                    if (textEl) textEl.textContent = fullReasoning;
+
+                    // Scroll to reasoning section
+                    reasoningSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+        } else {
+            // Multiple rows selected - hide single row reasoning
             const reasoningSection = document.getElementById('ai-reasoning-section');
             if (reasoningSection) {
-                reasoningSection.classList.remove('hidden');
-
-                // Populate fields
-                const tickerEl = document.getElementById('reasoning-ticker');
-                const companyEl = document.getElementById('reasoning-company');
-                const politicianEl = document.getElementById('reasoning-politician');
-                const dateEl = document.getElementById('reasoning-date');
-                const typeEl = document.getElementById('reasoning-type');
-                const scoreEl = document.getElementById('reasoning-score');
-                const textEl = document.getElementById('reasoning-text');
-
-                if (tickerEl) tickerEl.textContent = selectedRow.Ticker || '-';
-                if (companyEl) companyEl.textContent = selectedRow.Company || '-';
-                if (politicianEl) politicianEl.textContent = selectedRow.Politician || '-';
-                if (dateEl) dateEl.textContent = selectedRow.Date || '-';
-                if (typeEl) typeEl.textContent = selectedRow.Type || '-';
-                if (scoreEl) scoreEl.textContent = selectedRow.Score || '-';
-                if (textEl) textEl.textContent = fullReasoning;
-
-                // Scroll to reasoning section
-                reasoningSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                reasoningSection.classList.add('hidden');
             }
         }
     } else {
@@ -240,6 +265,70 @@ function onSelectionChanged(): void {
         const reasoningSection = document.getElementById('ai-reasoning-section');
         if (reasoningSection) {
             reasoningSection.classList.add('hidden');
+        }
+    }
+}
+
+// Analyze selected trades
+async function analyzeSelectedTrades(): Promise<void> {
+    if (!gridApi) return;
+    
+    const selectedRows = gridApi.getSelectedRows();
+    if (!selectedRows || selectedRows.length === 0) {
+        alert('Please select at least one trade to analyze');
+        return;
+    }
+    
+    // Extract trade IDs from selected rows
+    const tradeIds: number[] = [];
+    for (const row of selectedRows) {
+        if (row._trade_id && typeof row._trade_id === 'number') {
+            tradeIds.push(row._trade_id);
+        }
+    }
+    
+    if (tradeIds.length === 0) {
+        alert('Could not extract trade IDs from selected rows');
+        return;
+    }
+    
+    const analyzeButton = document.getElementById('analyze-selected-btn') as HTMLButtonElement | null;
+    if (analyzeButton) {
+        analyzeButton.disabled = true;
+        analyzeButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Analyzing...';
+    }
+    
+    try {
+        const response = await fetch('/api/congress_trades/analyze', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ trade_ids: tradeIds })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.error || 'Analysis failed');
+        }
+        
+        // Show success message
+        const message = result.message || `Successfully analyzed ${result.processed || tradeIds.length} trade(s)`;
+        alert(`✅ ${message}`);
+        
+        // Refresh the page to show updated analysis
+        window.location.reload();
+        
+    } catch (error) {
+        console.error('Error analyzing trades:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        alert(`❌ Failed to analyze trades: ${errorMsg}`);
+        
+        if (analyzeButton) {
+            analyzeButton.disabled = false;
+            analyzeButton.innerHTML = '<i class="fas fa-brain mr-2"></i>Analyze Selected (<span id="selected-count">0</span>)';
         }
     }
 }
@@ -427,8 +516,8 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         },
         rowSelection: {
             mode: 'multiRow',
-            checkboxes: false,
-            enableClickSelection: false,
+            checkboxes: true,
+            enableClickSelection: true,
         },
         enableRangeSelection: true,
         enableCellTextSelection: true,
@@ -625,6 +714,7 @@ async function fetchTradeData(): Promise<void> {
 
 // Make function available globally for template usage
 (window as any).initializeCongressTradesGrid = initializeCongressTradesGrid;
+(window as any).analyzeSelectedTrades = analyzeSelectedTrades;
 (window as any).refreshData = function () {
     const currentUrl = new URL(window.location.href);
     const currentRefreshKey = parseInt(currentUrl.searchParams.get('refresh_key') || '0');
