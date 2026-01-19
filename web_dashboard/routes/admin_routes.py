@@ -20,6 +20,11 @@ sys.path.append(str(Path(__file__).parent.parent))
 from auth import require_admin
 from supabase_client import SupabaseClient
 from flask_cache_utils import cache_data
+from dashboard_config import (
+    WEBAI_COOKIES_PATH,
+    COOKIE_REFRESH_LOG_PATH,
+    SHARED_COOKIES_DIR
+)
 import time
 from datetime import datetime
 import json
