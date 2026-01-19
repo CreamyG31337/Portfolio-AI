@@ -63,8 +63,8 @@ interface AgGridOptions {
 }
 
 interface AgGridColumnDef {
-    field: string;
-    headerName: string;
+    field?: string;
+    headerName?: string;
     width?: number;
     minWidth?: number;
     flex?: number;
@@ -77,6 +77,9 @@ interface AgGridColumnDef {
     resizable?: boolean;
     tooltipValueGetter?: (params: AgGridParams) => string;
     cellStyle?: Record<string, string>;
+    checkboxSelection?: boolean;
+    headerCheckboxSelection?: boolean;
+    suppressMenu?: boolean;
 }
 
 interface AgGridCellRendererParams {
@@ -435,6 +438,17 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     // Column definitions
     const columnDefs: AgGridColumnDef[] = [
         {
+            headerName: '',
+            checkboxSelection: true,
+            headerCheckboxSelection: true,
+            width: 50,
+            pinned: 'left',
+            suppressMenu: true,
+            sortable: false,
+            filter: false,
+            resizable: false
+        },
+        {
             field: 'Ticker',
             headerName: 'Ticker',
             minWidth: 80,
@@ -569,11 +583,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             filter: true,
             resizable: true
         },
-        rowSelection: {
-            mode: 'multiRow',
-            checkboxes: true,
-            enableClickSelection: true,
-        },
+        rowSelection: 'multiple',
         enableRangeSelection: true,
         enableCellTextSelection: true,
         ensureDomOrder: true,
