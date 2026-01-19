@@ -1,6 +1,9 @@
 <base href="/">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% if CSRF_ENABLED %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+{% endif %}
 
 <!-- Tailwind CSS - Production build (optimized, tree-shaken) -->
 <link href="/assets/css/tailwind.css?v=2" rel="stylesheet">

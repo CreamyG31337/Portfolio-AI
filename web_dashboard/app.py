@@ -74,15 +74,38 @@ try:
     csrf = CSRFProtect(app)
     CSRF_ENABLED = True
     logger.info("CSRF protection enabled via Flask-WTF")
+    
+    # Disable default CSRF checking so we can manually control it
+    app.config['WTF_CSRF_CHECK_DEFAULT'] = False
+    
+    # Exempt API routes from CSRF (they use JWT/token authentication)
+    # Manually protect non-API routes in before_request
+    @app.before_request
+    def csrf_protect_non_api_routes():
+        """Apply CSRF protection only to non-API routes"""
+        # Only check CSRF for state-changing methods
+        if request.method in app.config.get('WTF_CSRF_METHODS', ['POST', 'PUT', 'PATCH', 'DELETE']):
+            # Skip CSRF validation for API routes
+            if not request.path.startswith('/api/'):
+                csrf.protect()
+    
+    logger.info("API routes (/api/*) exempted from CSRF protection")
 except ImportError:
     CSRF_ENABLED = False
+    csrf = None
     logger.warning("Flask-WTF not available - CSRF protection disabled. Install with: pip install flask-wtf")
+
+# Make CSRF_ENABLED available to all templates
+@app.context_processor
+def inject_csrf_enabled():
+    """Make CSRF_ENABLED available to all templates"""
+    return {'CSRF_ENABLED': CSRF_ENABLED}
 
 # Configure CORS to allow credentials from Vercel deployment
 CORS(app, 
      supports_credentials=True,
      origins=["https://webdashboard-hazel.vercel.app", "http://localhost:5000"],
-     allow_headers=["Content-Type", "Authorization"],
+     allow_headers=["Content-Type", "Authorization", "X-CSRFToken"],
      expose_headers=["Content-Type"])
 
 # Initialize Flask-Caching for data caching (similar to Streamlit's @st.cache_data)
