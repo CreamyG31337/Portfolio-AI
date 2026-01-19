@@ -435,6 +435,176 @@ class AIAssistant {
                 element.addEventListener('change', () => this.loadContext());
             }
         });
+
+        // Quick Research sidebar toggle
+        this.setupSidebarToggle();
+    }
+
+    /**
+     * Setup Quick Research sidebar toggle functionality
+     */
+    setupSidebarToggle(): void {
+        const toggleBtn = document.getElementById('quick-research-toggle');
+        const toggleBtnDesktop = document.getElementById('quick-research-toggle-desktop');
+        const sidebarContainer = document.getElementById('quick-research-sidebar-container');
+        const backdrop = document.getElementById('quick-research-backdrop');
+        const chatColumn = document.getElementById('chat-column');
+
+        // Load saved sidebar state (default: visible on desktop, hidden on mobile)
+        const isMobile = window.innerWidth < 768;
+        const savedState = localStorage.getItem('ai-assistant-sidebar-open');
+        // Only use saved state if it exists, otherwise use default (open on desktop, closed on mobile)
+        const shouldBeOpen = savedState !== null ? savedState === 'true' : !isMobile;
+
+        // Initialize sidebar state immediately
+        this.updateSidebarClasses(shouldBeOpen, isMobile);
+        
+        // Update toggle button icons
+        const toggleIcon = document.getElementById('quick-research-toggle-icon');
+        const toggleIconDesktop = document.getElementById('quick-research-toggle-desktop-icon');
+        if (toggleIcon) {
+            toggleIcon.className = shouldBeOpen ? 'fas fa-times' : 'fas fa-search';
+        }
+        if (toggleIconDesktop) {
+            toggleIconDesktop.className = shouldBeOpen ? 'fas fa-chevron-right' : 'fas fa-chevron-left';
+        }
+
+        // Mobile toggle button
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const isOpen = sidebarContainer?.classList.contains('sidebar-open') || false;
+                this.setSidebarOpen(!isOpen, true);
+            });
+        }
+
+        // Desktop toggle button
+        if (toggleBtnDesktop) {
+            toggleBtnDesktop.addEventListener('click', () => {
+                const isOpen = sidebarContainer?.classList.contains('sidebar-open') || false;
+                this.setSidebarOpen(!isOpen, true);
+            });
+        }
+
+        // Close sidebar when clicking backdrop (mobile only)
+        if (backdrop) {
+            backdrop.addEventListener('click', () => {
+                if (window.innerWidth < 768) {
+                    this.setSidebarOpen(false, true);
+                }
+            });
+        }
+
+        // Handle window resize to adjust sidebar behavior
+        let resizeTimeout: number | null = null;
+        window.addEventListener('resize', () => {
+            if (resizeTimeout) clearTimeout(resizeTimeout);
+            resizeTimeout = window.setTimeout(() => {
+                const isMobileNow = window.innerWidth < 768;
+                const isOpen = sidebarContainer?.classList.contains('sidebar-open') || false;
+                
+                // On mobile, if sidebar is open, ensure it's in overlay mode
+                // On desktop, if sidebar was closed, keep it closed
+                if (isMobileNow && isOpen) {
+                    // Sidebar should be overlay on mobile
+                    this.updateSidebarClasses(true, true);
+                } else if (!isMobileNow && !isOpen) {
+                    // Sidebar should be hidden on desktop
+                    this.updateSidebarClasses(false, false);
+                } else if (!isMobileNow && isOpen) {
+                    // Sidebar should be visible side-by-side on desktop
+                    this.updateSidebarClasses(true, false);
+                }
+            }, 150);
+        });
+    }
+
+    /**
+     * Set sidebar open/closed state
+     */
+    setSidebarOpen(isOpen: boolean, saveToStorage: boolean): void {
+        const sidebarContainer = document.getElementById('quick-research-sidebar-container');
+        const backdrop = document.getElementById('quick-research-backdrop');
+        const toggleIcon = document.getElementById('quick-research-toggle-icon');
+        const toggleIconDesktop = document.getElementById('quick-research-toggle-desktop-icon');
+        const chatColumn = document.getElementById('chat-column');
+        const isMobile = window.innerWidth < 768;
+
+        if (saveToStorage) {
+            localStorage.setItem('ai-assistant-sidebar-open', isOpen.toString());
+        }
+
+        this.updateSidebarClasses(isOpen, isMobile);
+
+        // Update toggle button icons
+        if (toggleIcon) {
+            toggleIcon.className = isOpen ? 'fas fa-times' : 'fas fa-search';
+        }
+        if (toggleIconDesktop) {
+            toggleIconDesktop.className = isOpen ? 'fas fa-chevron-right' : 'fas fa-chevron-left';
+        }
+    }
+
+    /**
+     * Update sidebar CSS classes based on state
+     */
+    updateSidebarClasses(isOpen: boolean, isMobile: boolean): void {
+        const sidebarContainer = document.getElementById('quick-research-sidebar-container');
+        const backdrop = document.getElementById('quick-research-backdrop');
+        const chatColumn = document.getElementById('chat-column');
+        const aiContent = document.getElementById('ai-assistant-content');
+
+        if (!sidebarContainer) return;
+
+        // Remove all state classes first
+        sidebarContainer.classList.remove('sidebar-open', 'sidebar-closed', 'sidebar-overlay');
+
+        if (isMobile) {
+            // Mobile: overlay/drawer mode
+            sidebarContainer.classList.add('sidebar-overlay');
+            if (isOpen) {
+                sidebarContainer.classList.add('sidebar-open');
+                sidebarContainer.classList.remove('sidebar-closed');
+                if (backdrop) {
+                    backdrop.classList.remove('hidden');
+                }
+            } else {
+                sidebarContainer.classList.add('sidebar-closed');
+                sidebarContainer.classList.remove('sidebar-open');
+                if (backdrop) {
+                    backdrop.classList.add('hidden');
+                }
+            }
+        } else {
+            // Desktop: side-by-side mode
+            sidebarContainer.classList.remove('sidebar-overlay');
+            if (isOpen) {
+                sidebarContainer.classList.add('sidebar-open');
+                sidebarContainer.classList.remove('sidebar-closed');
+                if (backdrop) {
+                    backdrop.classList.add('hidden');
+                }
+                // Adjust chat column width
+                if (chatColumn) {
+                    chatColumn.style.flex = '0 0 70%';
+                }
+                if (aiContent) {
+                    aiContent.classList.remove('sidebar-closed-content');
+                }
+            } else {
+                sidebarContainer.classList.add('sidebar-closed');
+                sidebarContainer.classList.remove('sidebar-open');
+                if (backdrop) {
+                    backdrop.classList.add('hidden');
+                }
+                // Expand chat column to full width
+                if (chatColumn) {
+                    chatColumn.style.flex = '1 1 100%';
+                }
+                if (aiContent) {
+                    aiContent.classList.add('sidebar-closed-content');
+                }
+            }
+        }
     }
 
     /**

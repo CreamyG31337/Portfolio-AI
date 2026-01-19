@@ -165,11 +165,105 @@
     }
 }
 
+/* Quick Research Sidebar - Mobile Overlay/Drawer Behavior */
+.quick-research-sidebar-container {
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+
+/* Mobile: Sidebar as overlay/drawer */
+@media (max-width: 767px) {
+    .quick-research-sidebar-container {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 80%;
+        max-width: 320px;
+        z-index: 50;
+        background-color: white;
+        border-left: 1px solid #e5e7eb;
+        box-shadow: -4px 0 6px rgba(0, 0, 0, 0.1);
+        padding: 1rem;
+        overflow-y: auto;
+        transform: translateX(100%);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .quick-research-sidebar-container.sidebar-open {
+        transform: translateX(0);
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .quick-research-sidebar-container.sidebar-closed {
+        transform: translateX(100%);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* Ensure chat column takes full width on mobile */
+    #chat-column {
+        flex: 1 1 100% !important;
+        width: 100%;
+    }
+
+    /* Remove sidebar from flex layout on mobile - it's an overlay */
+    .quick-research-sidebar-container.sidebar-overlay {
+        position: fixed;
+    }
+}
+
+/* Dark mode for mobile sidebar */
+@media (prefers-color-scheme: dark) {
+    @media (max-width: 767px) {
+        .quick-research-sidebar-container {
+            background-color: #1f2937;
+            border-left-color: #374151;
+        }
+    }
+}
+
+[data-theme="dark"] .quick-research-sidebar-container {
+    background-color: #1f2937;
+    border-left-color: #374151;
+}
+
+/* Desktop: Sidebar side-by-side, can be toggled */
+@media (min-width: 768px) {
+    .quick-research-sidebar-container {
+        position: relative;
+        transform: translateX(0);
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .quick-research-sidebar-container.sidebar-closed {
+        display: none;
+        width: 0;
+        flex: 0 0 0;
+    }
+
+    .quick-research-sidebar-container.sidebar-open {
+        display: block;
+    }
+}
+
+/* Backdrop overlay for mobile */
+#quick-research-backdrop {
+    z-index: 45;
+}
+
 /* Ensure content doesn't overlap with fixed AI sidebar on medium+ screens */
 @media (min-width: 768px) {
     /* Target the AI assistant page content specifically */
     #ai-assistant-content {
         padding-right: 20rem; /* 80 * 0.25rem = 20rem for w-80 sidebar */
+    }
+    
+    /* When Quick Research sidebar is closed, remove extra padding */
+    #ai-assistant-content.sidebar-closed-content {
+        padding-right: 20rem; /* Still need padding for fixed AI sidebar */
     }
 }
 
