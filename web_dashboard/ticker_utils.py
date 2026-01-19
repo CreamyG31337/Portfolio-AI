@@ -312,6 +312,113 @@ def get_ticker_info(
         except Exception as e:
             logger.warning(f"Error fetching basic info for {ticker_upper}: {e}")
     
+    # If no basic info found, try fetching from yfinance
+    if not result['basic_info']:
+        try:
+            import yfinance as yf
+            logger.info(f"Looking up {ticker_upper} from Yahoo Finance...")
+            ticker_obj = yf.Ticker(ticker_upper)
+            info = ticker_obj.info
+            
+            if info and info.get('symbol'):
+                # Extract fields with multiple fallback attempts
+                company_name = (
+                    info.get('longName') or 
+                    info.get('shortName') or 
+                    info.get('displayName') or 
+                    ticker_upper
+                )
+                
+                # Sector - try multiple fields
+                sector = (
+                    info.get('sector') or 
+                    info.get('sectorDisp') or 
+                    info.get('sectorKey')
+                )
+                
+                # Industry - try multiple fields
+                industry = (
+                    info.get('industry') or 
+                    info.get('industryDisp') or 
+                    info.get('industryKey')
+                )
+                
+                # Currency
+                currency = info.get('currency') or info.get('financialCurrency') or 'USD'
+                
+                # Exchange
+                exchange = (
+                    info.get('exchange') or 
+                    info.get('exchangeName') or 
+                    info.get('fullExchangeName')
+                )
+                
+                # Create basic_info structure from yfinance data
+                result['basic_info'] = {
+                    'ticker': ticker_upper,
+                    'company_name': company_name,
+                    'sector': sector if sector else None,
+                    'industry': industry if industry else None,
+                    'currency': currency,
+                    'exchange': exchange if exchange else None
+                }
+                
+                # Add logo URL
+                try:
+                    from web_dashboard.utils.logo_utils import get_ticker_logo_url
+                    logo_url = get_ticker_logo_url(ticker_upper)
+                    if logo_url:
+                        result['basic_info']['logo_url'] = logo_url
+                except Exception as e:
+                    logger.warning(f"Error fetching logo URL for {ticker_upper}: {e}")
+                
+                result['found'] = True
+                
+                # Save to database for future lookups
+                if supabase_client:
+                    try:
+                        supabase_client.supabase.table("securities").insert(result['basic_info']).execute()
+                        logger.info(f"Saved ticker {ticker_upper} ({company_name}) to securities table from yfinance")
+                    except Exception as insert_error:
+                        # If insert fails (e.g., duplicate), just log it - we still have the data
+                        logger.warning(f"Could not save {ticker_upper} to database: {insert_error}")
+            else:
+                logger.warning(f"Could not find ticker information for {ticker_upper} in yfinance")
+        except Exception as e:
+            logger.warning(f"Error fetching from yfinance for {ticker_upper}: {e}")
+    
+    # If we have basic_info but it's incomplete (None values for sector/industry), try to enrich from yfinance
+    if result['basic_info'] and (result['basic_info'].get('sector') is None or result['basic_info'].get('industry') is None):
+        try:
+            import yfinance as yf
+            logger.info(f"Re-fetching {ticker_upper} from yfinance due to incomplete data")
+            
+            ticker_obj = yf.Ticker(ticker_upper)
+            info = ticker_obj.info
+            
+            if info and info.get('symbol'):
+                # Try to get missing fields
+                sector = result['basic_info'].get('sector') or info.get('sector') or info.get('sectorDisp') or info.get('sectorKey')
+                industry = result['basic_info'].get('industry') or info.get('industry') or info.get('industryDisp') or info.get('industryKey')
+                
+                # Update if we got new data
+                if sector or industry:
+                    result['basic_info']['sector'] = sector
+                    result['basic_info']['industry'] = industry
+                    
+                    # Update database
+                    if supabase_client:
+                        try:
+                            supabase_client.supabase.table("securities")\
+                                .update({'sector': sector, 'industry': industry})\
+                                .eq('ticker', ticker_upper)\
+                                .execute()
+                            logger.info(f"Updated {ticker_upper} with sector/industry from yfinance")
+                        except Exception as update_error:
+                            logger.warning(f"Could not update {ticker_upper}: {update_error}")
+        except Exception as e:
+            logger.warning(f"Error re-fetching data for {ticker_upper}: {e}")
+    
     # 2. Get portfolio data (positions and trades)
     if supabase_client:
         try:
