@@ -91,7 +91,13 @@
 
 <!-- Basic Info Section -->
 <div id="basic-info-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6">
-    <h2 id="company-name" class="text-2xl font-bold mb-4"></h2>
+    <div class="flex items-center gap-4 mb-4">
+        <img id="ticker-logo" src="" alt="" class="hidden w-24 h-24 object-contain rounded-lg border border-gray-200 dark:border-gray-700" style="flex-shrink: 0;" onerror="this.style.display='none';">
+        <div>
+            <h2 id="company-name" class="text-2xl font-bold"></h2>
+            <div id="ticker-symbol" class="text-lg text-gray-600 dark:text-gray-400 font-mono"></div>
+        </div>
+    </div>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="metric-card">
             <div class="text-sm text-gray-600">Sector</div>

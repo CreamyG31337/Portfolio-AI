@@ -300,6 +300,14 @@ def get_ticker_info(
             
             if sec_result.data and len(sec_result.data) > 0:
                 result['basic_info'] = sec_result.data[0]
+                # Add logo URL for frontend display
+                try:
+                    from web_dashboard.utils.logo_utils import get_ticker_logo_url
+                    logo_url = get_ticker_logo_url(ticker_upper)
+                    if logo_url:
+                        result['basic_info']['logo_url'] = logo_url
+                except Exception as e:
+                    logger.warning(f"Error fetching logo URL for {ticker_upper}: {e}")
                 result['found'] = True
         except Exception as e:
             logger.warning(f"Error fetching basic info for {ticker_upper}: {e}")

@@ -12,6 +12,7 @@ interface BasicInfo {
     industry?: string;
     currency?: string;
     exchange?: string;
+    logo_url?: string;
 }
 
 interface TickerPosition {
@@ -289,12 +290,37 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
     section.classList.remove('section-hidden');
 
     const companyName = document.getElementById('company-name');
+    const tickerSymbol = document.getElementById('ticker-symbol');
+    const tickerLogo = document.getElementById('ticker-logo') as HTMLImageElement | null;
     const sector = document.getElementById('sector');
     const industry = document.getElementById('industry');
     const currency = document.getElementById('currency');
     const exchangeInfo = document.getElementById('exchange-info');
 
     if (companyName) companyName.textContent = basicInfo.company_name || 'N/A';
+    if (tickerSymbol) tickerSymbol.textContent = basicInfo.ticker || '';
+    
+    // Display logo if available (bigger size for ticker details page)
+    if (tickerLogo && basicInfo.logo_url) {
+        tickerLogo.src = basicInfo.logo_url;
+        tickerLogo.alt = `${basicInfo.ticker || ''} logo`;
+        tickerLogo.classList.remove('hidden');
+        // Handle image load errors gracefully - try fallback
+        tickerLogo.onerror = function() {
+            // Try Yahoo Finance as fallback if Parqet fails
+            const ticker = basicInfo.ticker || '';
+            const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+            if (tickerLogo.src !== yahooUrl) {
+                tickerLogo.src = yahooUrl;
+            } else {
+                // Both failed, hide the image
+                tickerLogo.classList.add('hidden');
+            }
+        };
+    } else if (tickerLogo) {
+        tickerLogo.classList.add('hidden');
+    }
+    
     if (sector) sector.textContent = basicInfo.sector || 'N/A';
     if (industry) industry.textContent = basicInfo.industry || 'N/A';
     if (currency) currency.textContent = basicInfo.currency || 'USD';
