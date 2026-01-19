@@ -22,6 +22,7 @@ import pandas as pd
 import plotly.graph_objs as go
 from typing import Optional, List, Dict, Tuple, Any
 from datetime import datetime, timedelta
+import colorsys
 import yfinance as yf
 from utils.market_holidays import MarketHolidays
 try:
@@ -1117,19 +1118,27 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
         
         logger.debug(f"[Sector Chart] {ticker}: market_value={market_value}, currency={row.get('currency', 'N/A')}")
         
-        # First, try to use sector from database (faster and more reliable)
+        # First, try to use sector and industry from database (faster and more reliable)
         # Handle nested securities dict (from Supabase join)
         sector = None
+        industry = None
+        has_industry_column = 'industry' in positions_df.columns
+        
         if has_securities_column and isinstance(row.get('securities'), dict):
             sector = row['securities'].get('sector')
-            logger.debug(f"[Sector Chart] {ticker}: sector from nested securities={sector}")
+            industry = row['securities'].get('industry')
+            logger.debug(f"[Sector Chart] {ticker}: sector from nested securities={sector}, industry={industry}")
         elif has_sector_column:
             sector = row.get('sector')
-            logger.debug(f"[Sector Chart] {ticker}: sector from flat column={sector}")
+            if has_industry_column:
+                industry = row.get('industry')
+            logger.debug(f"[Sector Chart] {ticker}: sector from flat column={sector}, industry={industry}")
         
         # Check if sector is valid (not None, not empty string, not NaN)
         if pd.isna(sector) or sector == '' or sector is None:
             sector = None
+        if pd.isna(industry) or industry == '' or industry is None:
+            industry = None
         
         # If sector not in database or is null, try fetching from yfinance
         if not sector:
@@ -1146,6 +1155,10 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
                     sector = 'Other/ETF'
                 else:
                     logger.info(f"[Sector Chart] Retrieved sector '{sector}' from yfinance for {ticker}")
+                
+                # Also get industry if available
+                if not industry:
+                    industry = info.get('industry')
             except Exception as e:
                 # If we can't fetch data, categorize as Unknown
                 logger.warning(f"[Sector Chart] Failed to fetch sector from yfinance for {ticker}: {e}, categorizing as Unknown")
@@ -1154,6 +1167,7 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
         sector_data.append({
             'ticker': ticker,
             'sector': sector,
+            'industry': industry,
             'market_value': market_value
         })
     
@@ -1181,24 +1195,180 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
     logger.info(f"[Sector Chart] Aggregated {len(sector_totals)} sectors: {sector_totals.to_dict('records')}")
     logger.info(f"[Sector Chart] Total market value after aggregation: {sector_totals['market_value'].sum()}")
     
-    # Color palette for sectors
-    sector_colors = {
-        'Technology': '#3b82f6',
-        'Financial Services': '#10b981',
-        'Healthcare': '#ef4444',
-        'Consumer Cyclical': '#f59e0b',
-        'Industrials': '#8b5cf6',
-        'Energy': '#f97316',
-        'Basic Materials': '#06b6d4',
-        'Consumer Defensive': '#84cc16',
-        'Real Estate': '#ec4899',
-        'Communication Services': '#6366f1',
-        'Utilities': '#14b8a6',
-        'Other/ETF': '#9ca3af',
-        'Unknown': '#6b7280'
+    # Smart color palette organized by sector groups (similar sectors get similar colors)
+    # Each group has a base color and variations for related sectors
+    sector_color_groups = {
+        # Technology & Communication (Blues - tech-related)
+        'technology': {
+            'base': '#3b82f6',  # Blue
+            'sectors': ['Technology', 'technology', 'tech'],
+            'variations': {
+                'Communication Services': '#6366f1',  # Indigo (related tech)
+                'Communication': '#6366f1',
+                'Telecommunications': '#4f46e5',  # Darker indigo
+            }
+        },
+        # Healthcare & Biotech (Reds/Pinks - health-related)
+        'healthcare': {
+            'base': '#ef4444',  # Red
+            'sectors': ['Healthcare', 'healthcare', 'health'],
+            'variations': {
+                'Biotechnology': '#f43f5e',  # Rose (biotech)
+                'Pharmaceuticals': '#dc2626',  # Darker red
+                'Medical': '#f87171',  # Light red
+            }
+        },
+        # Financial Services (Greens - money/growth)
+        'financial': {
+            'base': '#10b981',  # Green
+            'sectors': ['Financial Services', 'Financial', 'finance', 'banking'],
+            'variations': {
+                'Banking': '#059669',  # Darker green
+                'Insurance': '#34d399',  # Teal green
+            }
+        },
+        # Energy & Utilities (Oranges/Yellows - power/energy)
+        'energy': {
+            'base': '#f97316',  # Orange
+            'sectors': ['Energy', 'energy'],
+            'variations': {
+                'Utilities': '#14b8a6',  # Teal (power/utilities)
+                'Oil & Gas': '#ea580c',  # Darker orange
+                'Renewable Energy': '#fbbf24',  # Amber
+            }
+        },
+        # Consumer Goods (Yellows/Ambers - consumer products)
+        'consumer': {
+            'base': '#f59e0b',  # Amber
+            'sectors': ['Consumer Cyclical', 'Consumer Defensive', 'consumer'],
+            'variations': {
+                'Consumer Cyclical': '#f59e0b',  # Amber
+                'Consumer Defensive': '#84cc16',  # Lime (more stable)
+                'Retail': '#eab308',  # Yellow
+            }
+        },
+        # Industrials & Materials (Purples/Cyans - manufacturing)
+        'industrial': {
+            'base': '#8b5cf6',  # Purple
+            'sectors': ['Industrials', 'industrial', 'manufacturing'],
+            'variations': {
+                'Basic Materials': '#06b6d4',  # Cyan (raw materials)
+                'Materials': '#06b6d4',
+                'Construction': '#a855f7',  # Violet
+            }
+        },
+        # Real Estate (Pink/Magenta - property)
+        'real_estate': {
+            'base': '#ec4899',  # Pink
+            'sectors': ['Real Estate', 'real estate', 'property'],
+            'variations': {}
+        },
+        # Other/Unknown (Greys - neutral)
+        'other': {
+            'base': '#9ca3af',  # Grey
+            'sectors': ['Other/ETF', 'Other', 'ETF', 'Unknown', 'unknown'],
+            'variations': {
+                'Unknown': '#6b7280',  # Darker grey
+            }
+        }
     }
     
-    colors = [sector_colors.get(sector, '#9ca3af') for sector in sector_totals['sector']]
+    # Build case-insensitive lookup dictionary
+    sector_colors = {}
+    for group_name, group_data in sector_color_groups.items():
+        base_color = group_data['base']
+        # Add base sectors
+        for sector_name in group_data['sectors']:
+            sector_colors[sector_name.lower()] = base_color
+        # Add variations
+        for sector_name, color in group_data['variations'].items():
+            sector_colors[sector_name.lower()] = color
+    
+    # Extended palette for truly unknown sectors (distinct, vibrant colors)
+    extended_palette = [
+        '#eab308',  # Yellow
+        '#a855f7',  # Purple
+        '#22c55e',  # Green
+        '#0ea5e9',  # Sky blue
+        '#fb923c',  # Orange
+        '#4ade80',  # Emerald
+        '#a78bfa',  # Violet
+        '#fbbf24',  # Amber
+        '#60a5fa',  # Light blue
+        '#34d399',  # Teal
+        '#f472b6',  # Pink
+        '#818cf8',  # Indigo
+        '#fb7185',  # Rose red
+        '#38bdf8',  # Cyan
+        '#86efac',  # Light green
+    ]
+    
+    # Get industry data for color variations within same sector
+    sector_industry_map = {}
+    if 'industry' in sector_df.columns:
+        for _, row in sector_df.iterrows():
+            sector_key = (row['sector'] or '').lower()
+            industry = row.get('industry')
+            if sector_key and industry and pd.notna(industry):
+                if sector_key not in sector_industry_map:
+                    sector_industry_map[sector_key] = {}
+                industry_lower = str(industry).lower()
+                if industry_lower not in sector_industry_map[sector_key]:
+                    sector_industry_map[sector_key][industry_lower] = len(sector_industry_map[sector_key])
+    
+    # Assign colors to sectors with smart grouping
+    colors = []
+    unknown_sector_index = 0
+    seen_sectors = {}  # Track which sectors we've seen to create variations
+    
+    for sector in sector_totals['sector']:
+        sector_lower = (sector or '').lower()
+        
+        # Try case-insensitive lookup first
+        color = sector_colors.get(sector_lower, None)
+        
+        if color is None:
+            # Try to find a matching group by partial match
+            color = None
+            for group_name, group_data in sector_color_groups.items():
+                for known_sector in group_data['sectors']:
+                    if known_sector.lower() in sector_lower or sector_lower in known_sector.lower():
+                        color = group_data['base']
+                        # Check for variations
+                        for var_sector, var_color in group_data['variations'].items():
+                            if var_sector.lower() in sector_lower or sector_lower in var_sector.lower():
+                                color = var_color
+                                break
+                        break
+                if color:
+                    break
+            
+            # If still no match, use extended palette
+            if color is None:
+                color = extended_palette[unknown_sector_index % len(extended_palette)]
+                unknown_sector_index += 1
+                logger.info(f"[Sector Chart] Unknown sector '{sector}' assigned color {color}")
+        
+        # Note: Since we aggregate by sector, we won't have duplicates,
+        # but keeping this logic for potential future use or edge cases
+        if sector_lower in seen_sectors:
+            # If we've seen this sector before, create a slight variation
+            seen_count = seen_sectors[sector_lower]
+            if seen_count > 0:
+                # Lighten the color slightly for variation
+                # Convert hex to RGB
+                rgb = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
+                # Convert to HSL, adjust lightness
+                hls = colorsys.rgb_to_hls(rgb[0]/255.0, rgb[1]/255.0, rgb[2]/255.0)
+                # Slightly adjust lightness
+                new_lightness = min(1.0, hls[1] + 0.05 * seen_count)
+                new_rgb = colorsys.hls_to_rgb(hls[0], new_lightness, hls[2])
+                color = f"#{int(new_rgb[0]*255):02x}{int(new_rgb[1]*255):02x}{int(new_rgb[2]*255):02x}"
+            seen_sectors[sector_lower] += 1
+        else:
+            seen_sectors[sector_lower] = 0
+        
+        colors.append(color)
     
     fig = go.Figure()
     
