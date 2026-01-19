@@ -11,11 +11,24 @@ import sys
 from pathlib import Path
 
 # Add the project root to the Python path
-sys.path.insert(0, str(Path(__file__).parent))
+project_root = Path(__file__).parent
 
-from utils.webull_importer import import_webull_data
-from display.console_output import print_success, print_error, print_warning, print_info, print_header
-from utils.fund_manager import get_fund_manager
+if not project_root.exists():
+    print(f"Error: Project root directory not found at {project_root}")
+    sys.exit(1)
+
+sys.path.insert(0, str(project_root))
+
+# Validate that required modules can be imported
+try:
+    from utils.webull_importer import import_webull_data
+    from display.console_output import print_success, print_error, print_warning, print_info, print_header
+    from utils.fund_manager import get_fund_manager
+except ImportError as e:
+    print(f"Error: Failed to import required modules. Ensure this script is run from the project root.")
+    print(f"  Project root: {project_root}")
+    print(f"  Import error: {e}")
+    sys.exit(1)
 
 
 def main():

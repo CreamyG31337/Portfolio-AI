@@ -20,6 +20,11 @@ sys.path.append(str(Path(__file__).parent.parent))
 from auth import require_admin
 from supabase_client import SupabaseClient
 from flask_cache_utils import cache_data
+from config import (
+    WEBAI_COOKIES_PATH,
+    COOKIE_REFRESH_LOG_PATH,
+    SHARED_COOKIES_DIR
+)
 import time
 from datetime import datetime
 import json
@@ -2225,11 +2230,9 @@ def api_ai_status():
                 cookie_source = "Cookie File (web_dashboard)"
             
             # Check shared volume (Docker container)
-            from pathlib import Path
-            shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
-            if shared_cookie_path.exists():
+            if WEBAI_COOKIES_PATH.exists():
                 has_cookies = True
-                cookie_source = "Shared Volume (/shared/cookies)"
+                cookie_source = f"Shared Volume ({SHARED_COOKIES_DIR})"
             
             if has_cookies:
                 try:
@@ -2428,11 +2431,10 @@ def api_test_webai_cookies():
 
         # Find cookie file
         cookie_file = None
-        shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
-        logger.debug(f"Checking shared cookie path: {shared_cookie_path}")
+        logger.debug(f"Checking shared cookie path: {WEBAI_COOKIES_PATH}")
 
-        if shared_cookie_path.exists():
-            cookie_file = str(shared_cookie_path)
+        if WEBAI_COOKIES_PATH.exists():
+            cookie_file = str(WEBAI_COOKIES_PATH)
             logger.info(f"Using cookie file: {cookie_file}")
         else:
             logger.warning(f"Shared cookie file not found: {shared_cookie_path}")
@@ -2515,10 +2517,16 @@ def api_get_webai_cookies():
 def api_get_cookie_refresher_logs():
     """Get cookie refresher logs"""
     try:
-        from pathlib import Path
+        from collections import deque
         
-        log_file = Path("/shared/cookies/cookie_refresher.log")
+        log_file = COOKIE_REFRESH_LOG_PATH
         lines = request.args.get('lines', 100, type=int)
+        
+        # Limit maximum lines to prevent abuse (DoS protection)
+        MAX_LINES = 10000
+        if lines > MAX_LINES:
+            lines = MAX_LINES
+            logger.warning(f"Requested lines ({request.args.get('lines')}) exceeds maximum ({MAX_LINES}), limiting to {MAX_LINES}")
         
         if not log_file.exists():
             return jsonify({
@@ -2528,18 +2536,30 @@ def api_get_cookie_refresher_logs():
                 "message": "Cookie refresher log file does not exist. Logs may not be configured yet."
             })
         
+        # Check file size and warn if unusually large
+        file_size_mb = log_file.stat().st_size / (1024 * 1024)
+        if file_size_mb > 100:  # Warn if file is larger than 100MB
+            logger.warning(f"Log file is unusually large: {file_size_mb:.2f}MB. Consider log rotation.")
+        
         try:
-            # Read last N lines from log file
+            # Efficiently read last N lines using deque (prevents DoS from large files)
+            # This approach only keeps the last N lines in memory, regardless of file size
+            log_lines = deque(maxlen=lines)
+            total_lines = 0
+            
             with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
-                all_lines = f.readlines()
-                # Get last N lines
-                log_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+                for line in f:
+                    total_lines += 1
+                    log_lines.append(line.rstrip('\n\r'))
+            
+            # Convert deque to list for JSON serialization
+            log_lines_list = list(log_lines)
             
             return jsonify({
                 "success": True,
-                "logs": log_lines,
-                "total_lines": len(all_lines),
-                "showing_lines": len(log_lines)
+                "logs": log_lines_list,
+                "total_lines": total_lines,
+                "showing_lines": len(log_lines_list)
             })
         except PermissionError:
             return jsonify({
@@ -2785,11 +2805,10 @@ def api_update_webai_cookies():
         logger.debug(f"  __Secure-1PSIDTS: {f'Present (length: {len(psidts)})' if psidts else 'Missing'}")
 
         # Save to shared volume (Docker container location)
-        from pathlib import Path
         import json
         from datetime import datetime
 
-        shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
+        shared_cookie_path = WEBAI_COOKIES_PATH
         logger.debug(f"Target path: {shared_cookie_path}")
 
         # Create directory if needed
@@ -2841,8 +2860,8 @@ def api_update_webai_cookies():
         return jsonify({"success": True, "message": f"Cookies saved to {shared_cookie_path}"})
     except PermissionError as e:
         logger.error(f"Permission denied writing to {shared_cookie_path}: {e}")
-        logger.error("Check write permissions on /shared/cookies/")
-        return jsonify({"error": "Permission denied. Cannot write to /shared/cookies/"}), 403
+        logger.error(f"Check write permissions on {SHARED_COOKIES_DIR}/")
+        return jsonify({"error": f"Permission denied. Cannot write to {SHARED_COOKIES_DIR}/"}), 403
     except Exception as e:
         logger.error(f"Error updating WebAI cookies: {e}", exc_info=True)
         logger.debug(f"Exception type: {type(e).__name__}")

@@ -11,14 +11,30 @@ from pathlib import Path
 
 # Add web_dashboard to path
 project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root / 'web_dashboard'))
+web_dashboard_path = project_root / 'web_dashboard'
 
-from webai_cookie_client_legacy import WebAICookieClientLegacy
+if not web_dashboard_path.exists():
+    raise ImportError(
+        f"web_dashboard directory not found at {web_dashboard_path}. "
+        f"Ensure this script is run from the project root directory."
+    )
+
+sys.path.insert(0, str(web_dashboard_path))
+
+# Validate that the required module can be imported
+try:
+    from webai_cookie_client_legacy import WebAICookieClientLegacy
+except ImportError as e:
+    raise ImportError(
+        f"Failed to import WebAICookieClientLegacy from web_dashboard. "
+        f"Path added: {web_dashboard_path}. "
+        f"Original error: {e}"
+    )
 
 
-def get_gemini_client() -> WebAICookieClientLegacy:
+def get_webai_client() -> WebAICookieClientLegacy:
     """
-    Get a Gemini client instance, automatically finding the cookie file.
+    Get a WebAI client instance, automatically finding the cookie file.
     
     Returns:
         WebAICookieClientLegacy instance
@@ -43,21 +59,21 @@ def get_gemini_client() -> WebAICookieClientLegacy:
         )
 
 
-def query_gemini(prompt: str) -> str:
+def query_webai(prompt: str) -> str:
     """
-    Simple function to query Gemini.
+    Simple function to query WebAI.
     
     Args:
         prompt: The query/prompt to send
         
     Returns:
-        Response text from Gemini
+        Response text from WebAI
         
     Raises:
         FileNotFoundError: If cookie file not found
         RuntimeError: If query fails
     """
-    client = get_gemini_client()
+    client = get_webai_client()
     
     # Test authentication first
     if not client.test_authentication():
@@ -65,7 +81,7 @@ def query_gemini(prompt: str) -> str:
     
     response = client.query(prompt)
     if not response:
-        raise RuntimeError("Failed to get response from Gemini")
+        raise RuntimeError("Failed to get response from WebAI")
     
     return response
 
@@ -73,14 +89,14 @@ def query_gemini(prompt: str) -> str:
 if __name__ == "__main__":
     # Simple test
     if len(sys.argv) < 2:
-        print("Usage: python gemini_helper.py 'Your query here'")
+        print("Usage: python webai_helper_legacy.py 'Your query here'")
         sys.exit(1)
     
     query = " ".join(sys.argv[1:])
     try:
-        response = query_gemini(query)
+        response = query_webai(query)
         print("\n" + "=" * 60)
-        print("GEMINI RESPONSE:")
+        print("WEBAI RESPONSE:")
         print("=" * 60)
         print(response)
         print("=" * 60)
