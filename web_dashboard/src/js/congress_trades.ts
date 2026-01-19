@@ -1072,47 +1072,35 @@ async function fetchTradeData(): Promise<void> {
 }
 
 // Re-analyze all visible trades
-async function reanalyzeAllTrades(): Promise<void> {
+async function reanalyzeSelectedTrades(): Promise<void> {
     if (!gridApi) {
         alert('Grid not initialized');
         return;
     }
     
-    // Get all visible trades (all rows in the grid)
-    const allRows: CongressTrade[] = [];
-    const nodes = (gridApi as any).getRenderedNodes();
-    if (nodes) {
-        nodes.forEach((node: any) => {
-            if (node.data) {
-                allRows.push(node.data);
-            }
-        });
-    }
+    // Get selected trades (only rows with checkboxes checked)
+    const selectedRows = gridApi.getSelectedRows() as CongressTrade[];
     
-    if (allRows.length === 0) {
-        alert('No trades to analyze');
+    if (selectedRows.length === 0) {
+        alert('Please select at least one trade to re-analyze');
         return;
     }
     
-    // Confirm action
-    const confirmed = confirm(`Re-analyze ${allRows.length} visible trade(s)? This will update their conflict scores and reasoning.`);
-    if (!confirmed) {
-        return;
+    // Extract trade IDs from selected rows
+    const tradeIds: number[] = [];
+    for (const row of selectedRows) {
+        if (row._trade_id && typeof row._trade_id === 'number') {
+            tradeIds.push(row._trade_id);
+        }
     }
-    
-    // Extract trade IDs
-    const tradeIds = allRows
-        .map(trade => trade._trade_id)
-        .filter((id): id is number => id !== undefined && id !== null);
     
     if (tradeIds.length === 0) {
-        alert('No valid trade IDs found');
+        alert('Could not extract trade IDs from selected rows');
         return;
     }
     
     try {
-        // Show loading state
-        const button = document.querySelector('button[onclick="reanalyzeAllTrades()"]') as HTMLButtonElement;
+        const button = document.querySelector('button[onclick="reanalyzeSelectedTrades()"]') as HTMLButtonElement;
         if (button) {
             button.disabled = true;
             button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Re-Analyzing...';
@@ -1124,6 +1112,7 @@ async function reanalyzeAllTrades(): Promise<void> {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify({ trade_ids: tradeIds })
         });
         
@@ -1133,24 +1122,25 @@ async function reanalyzeAllTrades(): Promise<void> {
         
         const result = await response.json();
         
-        if (result.error) {
-            throw new Error(result.error);
+        if (!result.success) {
+            throw new Error(result.error || 'Analysis failed');
         }
         
-        alert(`Successfully re-analyzed ${result.analyzed_count || tradeIds.length} trade(s). Refreshing...`);
+        const message = result.message || `Successfully re-analyzed ${result.processed || tradeIds.length} trade(s)`;
+        alert(`✅ ${message}. Refreshing...`);
         
         // Refresh the page to show updated data
-        (window as any).refreshData();
+        window.location.reload();
         
     } catch (error) {
         console.error('Failed to re-analyze trades:', error);
-        alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        alert(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         
         // Restore button
-        const button = document.querySelector('button[onclick="reanalyzeAllTrades()"]') as HTMLButtonElement;
+        const button = document.querySelector('button[onclick="reanalyzeSelectedTrades()"]') as HTMLButtonElement;
         if (button) {
             button.disabled = false;
-            button.innerHTML = '<i class="fas fa-redo mr-2"></i>Re-Analyze All Visible';
+            button.innerHTML = '<i class="fas fa-redo mr-2"></i>Re-Analyze Selected';
         }
     }
 }
@@ -1158,7 +1148,7 @@ async function reanalyzeAllTrades(): Promise<void> {
 // Make function available globally for template usage
 (window as any).initializeCongressTradesGrid = initializeCongressTradesGrid;
 (window as any).analyzeSelectedTrades = analyzeSelectedTrades;
-(window as any).reanalyzeAllTrades = reanalyzeAllTrades;
+(window as any).reanalyzeSelectedTrades = reanalyzeSelectedTrades;
 (window as any).refreshData = function () {
     const currentUrl = new URL(window.location.href);
     const currentRefreshKey = parseInt(currentUrl.searchParams.get('refresh_key') || '0');

@@ -3016,7 +3016,22 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
     price_df = get_ticker_price_history(ticker, supabase_client, days=range_days)
     
     if price_df.empty:
-        raise ValueError("No price data available")
+        # Return empty chart data structure instead of raising error
+        return json.dumps({
+            "data": [],
+            "layout": {
+                "title": f"No price data available for {ticker}",
+                "annotations": [{
+                    "text": "Price history not available for this ticker",
+                    "xref": "paper",
+                    "yref": "paper",
+                    "x": 0.5,
+                    "y": 0.5,
+                    "showarrow": False,
+                    "font": {"size": 16}
+                }]
+            }
+        })
     
     # Downsample to maintain ~90 data points
     from chart_utils import downsample_price_data

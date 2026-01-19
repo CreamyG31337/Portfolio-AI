@@ -21,7 +21,7 @@ let gridColumnApi: any = null;
 function isDarkMode(): boolean {
     const htmlElement = document.documentElement;
     const theme = htmlElement.getAttribute('data-theme') || 'system';
-    
+
     if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
         return true;
     } else if (theme === 'system') {
@@ -41,7 +41,7 @@ class TickerCellRenderer {
         this.eGui.style.display = 'flex';
         this.eGui.style.alignItems = 'center';
         this.eGui.style.gap = '6px';
-        
+
         if (params.value && params.value !== 'N/A') {
             const ticker = params.value;
             // Check for logo URL - use column-specific logo URL if available, fallback to generic
@@ -49,12 +49,12 @@ class TickerCellRenderer {
             // For etf_ticker column: use _etf_logo_url
             // Fallback to either if column-specific not available (for compatibility)
             const columnId = params.column?.colId || params.column?.getColId?.() || '';
-            const logoUrl = (columnId === 'holding_ticker' && params.data?._holding_logo_url) 
+            const logoUrl = (columnId === 'holding_ticker' && params.data?._holding_logo_url)
                 ? params.data._holding_logo_url
                 : (columnId === 'etf_ticker' && params.data?._etf_logo_url)
-                ? params.data._etf_logo_url
-                : params.data?._holding_logo_url || params.data?._etf_logo_url;
-            
+                    ? params.data._etf_logo_url
+                    : params.data?._holding_logo_url || params.data?._etf_logo_url;
+
             // Add logo image if available
             if (logoUrl) {
                 const img = document.createElement('img');
@@ -66,7 +66,7 @@ class TickerCellRenderer {
                 img.style.borderRadius = '4px';
                 img.style.flexShrink = '0';
                 // Handle image load errors gracefully - try fallback
-                img.onerror = function() {
+                img.onerror = function () {
                     // Try Yahoo Finance as fallback if Parqet fails
                     const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
                     if (img.src !== yahooUrl) {
@@ -78,7 +78,7 @@ class TickerCellRenderer {
                 };
                 this.eGui.appendChild(img);
             }
-            
+
             // Add ticker text
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
@@ -99,7 +99,7 @@ class TickerCellRenderer {
             this.eGui.innerText = params.value || 'N/A';
         }
     }
-    
+
     getGui() {
         return this.eGui;
     }
@@ -134,13 +134,13 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         columnDefs = [
             { field: 'date', headerName: 'Date', flex: 0.8, minWidth: 100, maxWidth: 130, sortable: true, filter: true },
             // ETF ticker is redundant if we selected one, but good for export/context
-            { 
-                field: 'etf_ticker', 
-                headerName: 'ETF', 
-                flex: 0.6, 
-                minWidth: 70, 
-                maxWidth: 100, 
-                sortable: true, 
+            {
+                field: 'etf_ticker',
+                headerName: 'ETF',
+                flex: 0.6,
+                minWidth: 70,
+                maxWidth: 100,
+                sortable: true,
                 filter: true,
                 cellRenderer: TickerCellRenderer  // Add logo support to ETF ticker column
             },
@@ -198,13 +198,13 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         // Changes View
         columnDefs = [
             { field: 'date', headerName: 'Date', flex: 0.8, minWidth: 100, maxWidth: 130, sortable: true, filter: true },
-            { 
-                field: 'etf_ticker', 
-                headerName: 'ETF', 
-                flex: 0.6, 
-                minWidth: 70, 
-                maxWidth: 100, 
-                sortable: true, 
+            {
+                field: 'etf_ticker',
+                headerName: 'ETF',
+                flex: 0.6,
+                minWidth: 70,
+                maxWidth: 100,
+                sortable: true,
                 filter: true,
                 cellRenderer: TickerCellRenderer  // Add logo support to ETF ticker column
             },
@@ -230,7 +230,7 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 valueFormatter: (params: any) => params.value > 0 ? "✓" : "—",
                 cellStyle: (params: any) => {
                     if (params.value > 0) {
-                        return isDarkMode() 
+                        return isDarkMode()
                             ? { color: '#86efac', fontWeight: 'bold' }
                             : { color: '#2d5a3d', fontWeight: 'bold' };
                     }
@@ -256,7 +256,7 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 filter: true,
                 cellStyle: (params: any) => {
                     if (params.value === 'BUY') {
-                        return isDarkMode() 
+                        return isDarkMode()
                             ? { backgroundColor: '#1a4d2e', color: '#86efac', fontWeight: 'bold', textAlign: 'center' }
                             : { backgroundColor: '#d4edda', color: '#155724', fontWeight: 'bold', textAlign: 'center' };
                     }
@@ -326,13 +326,16 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         paginationPageSize: 100,
         paginationPageSizeSelector: [100, 250, 500, 1000],
         animateRows: true,
+        overlayNoRowsTemplate: viewMode === 'changes'
+            ? '<span style="padding: 20px; font-size: 14px; color: #666;">📭 No changes found for the selected date and filters. Try selecting a different date or change type.</span>'
+            : '<span style="padding: 20px; font-size: 14px; color: #666;">📭 No holdings data available. This ETF may not have data for the selected date.</span>',
         // Optional: Highlight rows we hold
         getRowStyle: (params: any) => {
             if (params.data.user_shares > 0) {
                 const htmlElement = document.documentElement;
                 const theme = htmlElement.getAttribute('data-theme') || 'system';
                 let isDark = false;
-                
+
                 if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
                     isDark = true;
                 } else if (theme === 'system') {
@@ -340,10 +343,10 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                         isDark = true;
                     }
                 }
-                
+
                 // Dark green background for owned stocks in dark mode, light green in light mode
-                return isDark 
-                    ? { backgroundColor: '#1a4d2e' } 
+                return isDark
+                    ? { backgroundColor: '#1a4d2e' }
                     : { backgroundColor: '#f0fff4' };
             }
             return null;
@@ -403,7 +406,7 @@ function updateEtfGridTheme(): void {
         gridDiv.classList.remove('ag-theme-alpine-dark');
         gridDiv.classList.add('ag-theme-alpine');
     }
-    
+
     // Refresh grid to update cell and row styles
     if (gridApi) {
         gridApi.refreshCells();
