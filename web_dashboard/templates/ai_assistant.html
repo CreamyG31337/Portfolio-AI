@@ -209,7 +209,15 @@
 
 <!-- Sidebar: Model Selection, Fund Selector, Context Toggles -->
 <aside id="ai-sidebar"
-    class="hidden md:block fixed top-0 right-0 z-40 w-80 h-screen bg-dashboard-surface border-l border-border shadow-lg overflow-y-auto pt-24 px-4">
+    class="hidden md:block fixed top-0 right-0 z-40 w-80 h-screen bg-dashboard-surface border-l border-border shadow-lg overflow-y-auto pt-24 px-4 transition-transform duration-300 ease-in-out"
+    data-collapsed="false">
+    <!-- Toggle button for collapsing sidebar -->
+    <button id="ai-sidebar-toggle"
+        class="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 bg-dashboard-surface border border-border border-r-0 rounded-l-lg px-1 py-3 text-text-secondary hover:text-text-primary hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+        aria-label="Toggle settings sidebar"
+        title="Toggle settings sidebar">
+        <i class="fas fa-chevron-right" id="ai-sidebar-toggle-icon"></i>
+    </button>
     <div class="space-y-6">
         <!-- Model Selection -->
         <div>

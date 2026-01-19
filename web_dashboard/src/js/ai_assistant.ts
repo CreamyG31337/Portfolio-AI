@@ -438,6 +438,9 @@ class AIAssistant {
 
         // Quick Research sidebar toggle
         this.setupSidebarToggle();
+        
+        // AI Settings sidebar toggle (right sidebar)
+        this.setupAISidebarToggle();
     }
 
     /**
@@ -603,6 +606,59 @@ class AIAssistant {
                 if (aiContent) {
                     aiContent.classList.add('sidebar-closed-content');
                 }
+            }
+        }
+    }
+
+    /**
+     * Setup AI Settings sidebar (right sidebar) toggle functionality
+     */
+    setupAISidebarToggle(): void {
+        const toggleBtn = document.getElementById('ai-sidebar-toggle');
+        const sidebar = document.getElementById('ai-sidebar');
+        const aiContent = document.getElementById('ai-assistant-content');
+        const toggleIcon = document.getElementById('ai-sidebar-toggle-icon');
+
+        if (!toggleBtn || !sidebar) return;
+
+        // Load saved state (default: visible)
+        const savedState = localStorage.getItem('ai-settings-sidebar-collapsed');
+        const isCollapsed = savedState === 'true';
+
+        // Apply initial state
+        this.setAISidebarCollapsed(isCollapsed);
+
+        // Toggle button click handler
+        toggleBtn.addEventListener('click', () => {
+            const currentlyCollapsed = sidebar.getAttribute('data-collapsed') === 'true';
+            this.setAISidebarCollapsed(!currentlyCollapsed);
+            localStorage.setItem('ai-settings-sidebar-collapsed', (!currentlyCollapsed).toString());
+        });
+    }
+
+    /**
+     * Set AI Settings sidebar collapsed/expanded state
+     */
+    setAISidebarCollapsed(collapsed: boolean): void {
+        const sidebar = document.getElementById('ai-sidebar');
+        const aiContent = document.getElementById('ai-assistant-content');
+        const toggleIcon = document.getElementById('ai-sidebar-toggle-icon');
+
+        if (!sidebar) return;
+
+        sidebar.setAttribute('data-collapsed', collapsed.toString());
+
+        // Update icon direction
+        if (toggleIcon) {
+            toggleIcon.className = collapsed ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
+        }
+
+        // Adjust content padding
+        if (aiContent) {
+            if (collapsed) {
+                aiContent.classList.add('ai-sidebar-collapsed');
+            } else {
+                aiContent.classList.remove('ai-sidebar-collapsed');
             }
         }
     }
