@@ -407,6 +407,7 @@ def fetch_congress_trades_job() -> None:
                             # This is a new trade - analyze with AI
                             conflict_score = None
                             notes = None
+                            model_name = None  # Will be set if AI analysis runs
                             
                             # Note: Ollama errors (e.g., 404 if service not running) are handled gracefully
                             # Trades will still be saved without AI analysis if Ollama is unavailable
@@ -496,6 +497,41 @@ def fetch_congress_trades_job() -> None:
                                 if result.data:
                                     new_trades += 1
                                     logger.debug(f"✅ Saved trade: {politician} {trade_type} {ticker} on {transaction_date}")
+                                    
+                                    # If AI analysis was successful, also save to PostgreSQL analysis table
+                                    # (UI reads from PostgreSQL, not Supabase conflict_score column)
+                                    if conflict_score is not None and result.data:
+                                        try:
+                                            from postgres_client import PostgresClient
+                                            postgres = PostgresClient()
+                                            
+                                            # Get the trade ID from the inserted/updated record
+                                            trade_id = result.data[0].get('id') if isinstance(result.data, list) and result.data else None
+                                            if not trade_id and isinstance(result.data, dict):
+                                                trade_id = result.data.get('id')
+                                            
+                                            if trade_id:
+                                                # Save analysis to PostgreSQL (same as analyze_congress_trades_job)
+                                                postgres.execute_update(
+                                                    """
+                                                    INSERT INTO congress_trades_analysis 
+                                                        (trade_id, conflict_score, confidence_score, reasoning, model_used, analysis_version)
+                                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                                    ON CONFLICT (trade_id, model_used, analysis_version) 
+                                                    DO UPDATE SET 
+                                                        conflict_score = EXCLUDED.conflict_score,
+                                                        confidence_score = EXCLUDED.confidence_score,
+                                                        reasoning = EXCLUDED.reasoning,
+                                                        analyzed_at = NOW()
+                                                    """,
+                                                    (trade_id, conflict_score, 0.75, notes or "AI analysis completed", model_name or get_summarizing_model(), 1)
+                                                )
+                                                logger.debug(f"   💾 Saved analysis to PostgreSQL for trade {trade_id}")
+                                        except ImportError:
+                                            logger.debug("PostgreSQL client not available - skipping analysis save")
+                                        except Exception as pg_error:
+                                            logger.warning(f"Failed to save analysis to PostgreSQL: {pg_error}")
+                                            # Don't fail the whole job if PostgreSQL save fails
                                 else:
                                     skipped_duplicates += 1
                                     

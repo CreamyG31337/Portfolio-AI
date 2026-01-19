@@ -168,6 +168,59 @@ class TickerCellRenderer implements AgGridCellRenderer {
     }
 }
 
+// Party cell renderer - colors Democrat (blue) and Republican (red)
+class PartyCellRenderer implements AgGridCellRenderer {
+    private eGui!: HTMLElement;
+
+    init(params: AgGridCellRendererParams): void {
+        this.eGui = document.createElement('span');
+        const value = params.value || '';
+        this.eGui.innerText = value || 'N/A';
+        
+        // Color based on party
+        const partyLower = value.toLowerCase();
+        if (partyLower.includes('democrat') || partyLower === 'd') {
+            this.eGui.style.color = '#2563eb'; // Blue
+            this.eGui.style.fontWeight = '500';
+        } else if (partyLower.includes('republican') || partyLower === 'r') {
+            this.eGui.style.color = '#dc2626'; // Red
+            this.eGui.style.fontWeight = '500';
+        } else if (partyLower.includes('independent') || partyLower === 'i') {
+            this.eGui.style.color = '#7c3aed'; // Purple
+            this.eGui.style.fontWeight = '500';
+        }
+    }
+
+    getGui(): HTMLElement {
+        return this.eGui;
+    }
+}
+
+// Type cell renderer - colors Purchase/Buy (green) and Sale/Sell (red)
+class TypeCellRenderer implements AgGridCellRenderer {
+    private eGui!: HTMLElement;
+
+    init(params: AgGridCellRendererParams): void {
+        this.eGui = document.createElement('span');
+        const value = params.value || '';
+        this.eGui.innerText = value || 'N/A';
+        
+        // Color based on transaction type
+        const typeLower = value.toLowerCase();
+        if (typeLower === 'purchase' || typeLower === 'buy') {
+            this.eGui.style.color = '#16a34a'; // Green
+            this.eGui.style.fontWeight = '500';
+        } else if (typeLower === 'sale' || typeLower === 'sell') {
+            this.eGui.style.color = '#dc2626'; // Red
+            this.eGui.style.fontWeight = '500';
+        }
+    }
+
+    getGui(): HTMLElement {
+        return this.eGui;
+    }
+}
+
 // Global click handler - manages navigation vs selection
 function onCellClicked(params: AgGridParams): void {
     if (params.data) {
@@ -421,7 +474,8 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             minWidth: 80,
             flex: 0.8,
             sortable: true,
-            filter: true
+            filter: true,
+            cellRenderer: PartyCellRenderer
         },
         {
             field: 'State',
@@ -445,7 +499,8 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             minWidth: 90,
             flex: 0.9,
             sortable: true,
-            filter: true
+            filter: true,
+            cellRenderer: TypeCellRenderer
         },
         {
             field: 'Amount',
