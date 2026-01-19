@@ -115,8 +115,21 @@ def migrate_conflict_scores(dry_run: bool = True):
     for i, trade in enumerate(trades_to_migrate[:5], 1):
         trade_id = trade.get('id', 'N/A')
         score = trade.get('conflict_score', 'N/A')
-        notes = trade.get('notes', '')[:60] if trade.get('notes') else 'N/A'
-        print(f"   {i}. Trade ID {trade_id}: score={score}, notes={notes[:60]}...")
+        notes = trade.get('notes', '')
+        notes_preview = notes[:100] if notes else 'N/A'
+        
+        # Check if notes looks like reasoning or just a URL
+        if notes:
+            if notes.strip().startswith('http'):
+                notes_type = " (disclosure URL)"
+            elif len(notes.strip()) < 50:
+                notes_type = " (short/generic)"
+            else:
+                notes_type = " (likely AI reasoning)"
+        else:
+            notes_type = " (empty)"
+        
+        print(f"   {i}. Trade ID {trade_id}: score={score}, notes={notes_preview}...{notes_type}")
     
     if not dry_run:
         print("\n4. Migrating to PostgreSQL...")
@@ -128,10 +141,26 @@ def migrate_conflict_scores(dry_run: bool = True):
             try:
                 trade_id = trade.get('id')
                 conflict_score = float(trade.get('conflict_score', 0.0))
-                notes = trade.get('notes', 'Migrated from Supabase conflict_score column')
+                notes = trade.get('notes', '')
                 
                 # Clamp score to 0.0-1.0
                 conflict_score = max(0.0, min(1.0, conflict_score))
+                
+                # Determine reasoning text
+                # The notes field in Supabase was set to the AI reasoning from the analysis
+                # Check if notes contains actual reasoning or just a disclosure URL
+                if notes:
+                    # If notes looks like a URL (starts with http), it's probably just a disclosure link
+                    if notes.strip().startswith('http'):
+                        reasoning = f"Migrated from Supabase. Original notes (disclosure URL): {notes}\n\nNote: This trade was analyzed before the reasoning field was separated. The AI reasoning may have been lost."
+                    # If notes is very short or generic, it might not be the full reasoning
+                    elif len(notes.strip()) < 50:
+                        reasoning = f"Migrated from Supabase. Original notes: {notes}\n\nNote: This trade was analyzed before the reasoning field was separated. The full AI reasoning may not be available."
+                    else:
+                        # Notes likely contains the AI reasoning - use it directly
+                        reasoning = notes
+                else:
+                    reasoning = "Migrated from Supabase conflict_score column. No reasoning text was available in the notes field."
                 
                 # Insert into PostgreSQL
                 postgres.execute_update(
@@ -146,7 +175,7 @@ def migrate_conflict_scores(dry_run: bool = True):
                         reasoning = EXCLUDED.reasoning,
                         analyzed_at = NOW()
                     """,
-                    (trade_id, conflict_score, 0.75, notes, model_name, 1)
+                    (trade_id, conflict_score, 0.75, reasoning, model_name, 1)
                 )
                 
                 migrated += 1

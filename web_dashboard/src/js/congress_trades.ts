@@ -172,24 +172,57 @@ class TickerCellRenderer implements AgGridCellRenderer {
 }
 
 // Party cell renderer - colors Democrat (blue) and Republican (red)
+// Option 1: Full text with colors (current)
+// Option 2: Emoji + letter (🔵 D, 🔴 R, 🟣 I)
+// Option 3: Just emoji (🔵, 🔴, 🟣)
 class PartyCellRenderer implements AgGridCellRenderer {
     private eGui!: HTMLElement;
+    private useEmoji: boolean = true; // Set to false for full text
+    private emojiOnly: boolean = false; // Set to true for emoji only (no letter)
 
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('span');
         const value = params.value || '';
-        this.eGui.innerText = value || 'N/A';
         
         // Color based on party
         const partyLower = value.toLowerCase();
+        let displayText = '';
+        let color = '';
+        
         if (partyLower.includes('democrat') || partyLower === 'd') {
-            this.eGui.style.color = '#2563eb'; // Blue
-            this.eGui.style.fontWeight = '500';
+            color = '#2563eb'; // Blue
+            if (this.emojiOnly) {
+                displayText = '🔵';
+            } else if (this.useEmoji) {
+                displayText = '🔵 D';
+            } else {
+                displayText = value || 'N/A';
+            }
         } else if (partyLower.includes('republican') || partyLower === 'r') {
-            this.eGui.style.color = '#dc2626'; // Red
-            this.eGui.style.fontWeight = '500';
+            color = '#dc2626'; // Red
+            if (this.emojiOnly) {
+                displayText = '🔴';
+            } else if (this.useEmoji) {
+                displayText = '🔴 R';
+            } else {
+                displayText = value || 'N/A';
+            }
         } else if (partyLower.includes('independent') || partyLower === 'i') {
-            this.eGui.style.color = '#7c3aed'; // Purple
+            color = '#7c3aed'; // Purple
+            if (this.emojiOnly) {
+                displayText = '🟣';
+            } else if (this.useEmoji) {
+                displayText = '🟣 I';
+            } else {
+                displayText = value || 'N/A';
+            }
+        } else {
+            displayText = value || 'N/A';
+        }
+        
+        this.eGui.innerText = displayText;
+        if (color) {
+            this.eGui.style.color = color;
             this.eGui.style.fontWeight = '500';
         }
     }
@@ -200,23 +233,138 @@ class PartyCellRenderer implements AgGridCellRenderer {
 }
 
 // Type cell renderer - colors Purchase/Buy (green) and Sale/Sell (red)
+// Option 1: Full text with colors (current)
+// Option 2: Emoji + text (📈 Buy, 📉 Sell)
+// Option 3: Just emoji (📈, 📉)
 class TypeCellRenderer implements AgGridCellRenderer {
     private eGui!: HTMLElement;
+    private useEmoji: boolean = false; // Set to true for emoji
+    private emojiOnly: boolean = false; // Set to true for emoji only
 
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('span');
         const value = params.value || '';
-        this.eGui.innerText = value || 'N/A';
-        
-        // Color based on transaction type
         const typeLower = value.toLowerCase();
+        
+        let displayText = '';
+        let color = '';
+        
         if (typeLower === 'purchase' || typeLower === 'buy') {
-            this.eGui.style.color = '#16a34a'; // Green
-            this.eGui.style.fontWeight = '500';
+            color = '#16a34a'; // Green
+            if (this.emojiOnly) {
+                displayText = '📈';
+            } else if (this.useEmoji) {
+                displayText = '📈 Buy';
+            } else {
+                displayText = value || 'N/A';
+            }
         } else if (typeLower === 'sale' || typeLower === 'sell') {
-            this.eGui.style.color = '#dc2626'; // Red
+            color = '#dc2626'; // Red
+            if (this.emojiOnly) {
+                displayText = '📉';
+            } else if (this.useEmoji) {
+                displayText = '📉 Sell';
+            } else {
+                displayText = value || 'N/A';
+            }
+        } else {
+            displayText = value || 'N/A';
+        }
+        
+        this.eGui.innerText = displayText;
+        if (color) {
+            this.eGui.style.color = color;
             this.eGui.style.fontWeight = '500';
         }
+    }
+
+    getGui(): HTMLElement {
+        return this.eGui;
+    }
+}
+
+// Amount cell renderer - shows emoji based on amount range
+// Option 1: Full text (current)
+// Option 2: Emoji + range (💰 $1-15k, 💵 $15-50k, 💸 $50k+)
+// Option 3: Just emoji (💰, 💵, 💸)
+class AmountCellRenderer implements AgGridCellRenderer {
+    private eGui!: HTMLElement;
+    private useEmoji: boolean = true; // Set to false for full text
+    private emojiOnly: boolean = false; // Set to true for emoji only
+
+    init(params: AgGridCellRendererParams): void {
+        this.eGui = document.createElement('span');
+        const value = params.value || '';
+        
+        if (!value || value === 'N/A') {
+            this.eGui.innerText = 'N/A';
+            return;
+        }
+        
+        // Parse amount range
+        const amountStr = value.toLowerCase();
+        let displayText = '';
+        
+        if (this.useEmoji || this.emojiOnly) {
+            // Determine emoji based on amount
+            if (amountStr.includes('1,001') || amountStr.includes('1,000') || amountStr.includes('15,000')) {
+                displayText = this.emojiOnly ? '💰' : '💰 ' + value;
+            } else if (amountStr.includes('15,001') || amountStr.includes('50,000')) {
+                displayText = this.emojiOnly ? '💵' : '💵 ' + value;
+            } else if (amountStr.includes('50,001') || amountStr.includes('100,000') || amountStr.includes('250,000') || amountStr.includes('500,000') || amountStr.includes('1,000,000')) {
+                displayText = this.emojiOnly ? '💸' : '💸 ' + value;
+            } else {
+                displayText = this.emojiOnly ? '💰' : '💰 ' + value;
+            }
+        } else {
+            displayText = value;
+        }
+        
+        this.eGui.innerText = displayText;
+    }
+
+    getGui(): HTMLElement {
+        return this.eGui;
+    }
+}
+
+// Chamber cell renderer - shows emoji
+// Option 1: Full text (current)
+// Option 2: Emoji + text (🏛️ House, 🏛️ Senate)
+// Option 3: Just emoji (🏛️, 🏛️) - but both are same, so maybe use different
+class ChamberCellRenderer implements AgGridCellRenderer {
+    private eGui!: HTMLElement;
+    private useEmoji: boolean = false; // Set to true for emoji
+    private emojiOnly: boolean = false; // Set to true for emoji only
+
+    init(params: AgGridCellRendererParams): void {
+        this.eGui = document.createElement('span');
+        const value = params.value || '';
+        const chamberLower = value.toLowerCase();
+        
+        let displayText = '';
+        
+        if (chamberLower === 'house') {
+            if (this.emojiOnly) {
+                displayText = '🏛️';
+            } else if (this.useEmoji) {
+                displayText = '🏛️ H';
+            } else {
+                displayText = value || 'N/A';
+            }
+        } else if (chamberLower === 'senate') {
+            if (this.emojiOnly) {
+                displayText = '🏛️';
+            } else if (this.useEmoji) {
+                displayText = '🏛️ S';
+            } else {
+                displayText = value || 'N/A';
+            }
+        } else {
+            displayText = value || 'N/A';
+        }
+        
+        this.eGui.innerText = displayText;
     }
 
     getGui(): HTMLElement {
@@ -477,10 +625,11 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Chamber',
             headerName: 'Chamber',
-            minWidth: 90,
-            flex: 0.9,
+            minWidth: 60,
+            flex: 0.6,
             sortable: true,
-            filter: true
+            filter: true,
+            cellRenderer: ChamberCellRenderer
         },
         {
             field: 'Party',
