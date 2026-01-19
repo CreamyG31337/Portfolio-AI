@@ -45,11 +45,12 @@
 <!-- Filters -->
 <div class="bg-white rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
     <form id="filters-form" action="/etf_holdings" method="GET" class="space-y-4">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
             <!-- ETF Filter -->
             <div>
                 <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">ETF</label>
-                <select name="etf" class="w-full text-sm border border-gray-300 rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                <select name="etf"
+                    class="w-full text-sm border border-gray-300 rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     onchange="updateFilters()">
                     <option value="All ETFs" {% if current_etf=='All ETFs' %}selected{% endif %}>All ETFs</option>
                     {% for etf in available_etfs %}
@@ -62,23 +63,41 @@
 
             <!-- Date Filter -->
             <div>
-                <label class="block mb-2 text-sm font-medium text-gray-900">
+                <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
                     <i class="fas fa-calendar-alt mr-1"></i>View Data As Of
-                    <span class="text-xs text-gray-500 font-normal ml-1">(shows most recent data on or before selected date)</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">(shows most recent data on
+                        or before selected date)</span>
                 </label>
                 <input type="date" name="date" value="{{ current_date }}" max="{{ latest_date }}"
-                    class="w-full text-sm border border-gray-300 rounded-lg p-2" onchange="updateFilters()">
+                    class="w-full text-sm border border-gray-300 rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    onchange="updateFilters()">
                 {% if as_of_date and not date_has_data %}
-                <p class="text-xs text-amber-600 mt-1">
+                <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">
                     <i class="fas fa-info-circle mr-1"></i>
                     No data for {{ current_date }}. Showing data as of <strong>{{ as_of_date }}</strong>
                 </p>
                 {% elif as_of_date and date_has_data %}
-                <p class="text-xs text-gray-500 mt-1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     <i class="fas fa-check-circle mr-1"></i>
                     Showing data as of <strong>{{ as_of_date }}</strong>
                 </p>
                 {% endif %}
+            </div>
+
+            <!-- Change Type Filter (only for changes view) -->
+            <div {% if view_mode !='changes' %}style="display:none;" {% endif %}>
+                <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
+                    <i class="fas fa-filter mr-1"></i>Change Type
+                </label>
+                <select name="change_type"
+                    class="w-full text-sm border border-gray-300 rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    onchange="updateFilters()">
+                    <option value="ALL" {% if current_change_type=='ALL' %}selected{% endif %}>🔍 All Changes</option>
+                    <option value="NEW" {% if current_change_type=='NEW' %}selected{% endif %}>🆕 New Positions</option>
+                    <option value="SOLD" {% if current_change_type=='SOLD' %}selected{% endif %}>❌ Sold Out</option>
+                    <option value="BUY" {% if current_change_type=='BUY' %}selected{% endif %}>📈 Increased</option>
+                    <option value="SELL" {% if current_change_type=='SELL' %}selected{% endif %}>📉 Decreased</option>
+                </select>
             </div>
 
             <!-- Fund Filter (Multi-select) -->
@@ -101,7 +120,8 @@
                     <div id="fund-dropdown-menu"
                         class="hidden absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto dark:bg-gray-700 dark:border-gray-600">
                         <div class="p-2 border-b border-gray-100 dark:border-gray-600">
-                            <label class="flex items-center p-1 rounded hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
+                            <label
+                                class="flex items-center p-1 rounded hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
                                 <input type="checkbox"
                                     class="fund-checkbox rounded text-blue-600 focus:ring-blue-500 mr-2"
                                     value="All Funds" {% if not current_fund or current_fund=='All Funds' %}checked{%
@@ -111,7 +131,8 @@
                         </div>
                         <div class="p-2 space-y-1">
                             {% for fund in available_funds %}
-                            <label class="flex items-center p-1 rounded hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
+                            <label
+                                class="flex items-center p-1 rounded hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
                                 <input type="checkbox"
                                     class="fund-checkbox rounded text-blue-600 focus:ring-blue-500 mr-2"
                                     value="{{ fund }}" {% if current_fund and fund in current_fund and current_fund
@@ -146,10 +167,12 @@
 
 <!-- ETF Ownership Alert -->
 {% if etf_ownership %}
-<div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 flex items-center dark:bg-green-900/20 dark:border-green-800">
+<div
+    class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 flex items-center dark:bg-green-900/20 dark:border-green-800">
     <i class="fas fa-check-circle text-green-500 mr-3 text-xl"></i>
     <div>
-        <h4 class="text-sm font-bold text-green-800 dark:text-green-100">You own {{ etf_ownership.total_shares | int }} shares of {{
+        <h4 class="text-sm font-bold text-green-800 dark:text-green-100">You own {{ etf_ownership.total_shares | int }}
+            shares of {{
             current_etf }}</h4>
         <p class="text-xs text-green-600 dark:text-green-200">Held in: {{ etf_ownership.funds }}</p>
     </div>
@@ -189,14 +212,16 @@
         <div class="text-sm dark:text-gray-300">
             <span class="text-green-600 dark:text-green-400 font-bold">🟢 Largest Buy:</span>
             {{ stats.largest_buy.ticker }} ({{ stats.largest_buy.etf }})
-            <span class="font-mono bg-green-100 dark:bg-green-900/30 px-1 rounded">+{{ stats.largest_buy.change | int }}</span> shares
+            <span class="font-mono bg-green-100 dark:bg-green-900/30 px-1 rounded">+{{ stats.largest_buy.change | int
+                }}</span> shares
         </div>
         {% endif %}
         {% if stats.largest_sell %}
         <div class="text-sm dark:text-gray-300">
             <span class="text-red-600 dark:text-red-400 font-bold">🔴 Largest Sell:</span>
             {{ stats.largest_sell.ticker }} ({{ stats.largest_sell.etf }})
-            <span class="font-mono bg-red-100 dark:bg-red-900/30 px-1 rounded">{{ stats.largest_sell.change | int }}</span> shares
+            <span class="font-mono bg-red-100 dark:bg-red-900/30 px-1 rounded">{{ stats.largest_sell.change | int
+                }}</span> shares
         </div>
         {% endif %}
     </div>
