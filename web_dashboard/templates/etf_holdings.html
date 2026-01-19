@@ -61,16 +61,36 @@
                 </select>
             </div>
 
-            <!-- Date Filter -->
+            <!-- Date Filter with Navigation -->
             <div>
                 <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
                     <i class="fas fa-calendar-alt mr-1"></i>View Data As Of
                     <span class="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">(shows most recent data on
                         or before selected date)</span>
                 </label>
-                <input type="date" name="date" value="{{ current_date }}" max="{{ latest_date }}"
-                    class="w-full text-sm border border-gray-300 rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    onchange="updateFilters()">
+                <div class="flex gap-1">
+                    <!-- Previous Date Button -->
+                    <button type="button" onclick="navigateToDate('{{ prev_date }}')" {% if not prev_date %}disabled{%
+                        endif %}
+                        class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Previous data date ({{ prev_date }} or newer)">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+
+                    <!-- Date Input with Keyboard Support -->
+                    <input type="date" id="date-input" name="date" value="{{ current_date }}" max="{{ latest_date }}"
+                        class="flex-1 text-sm border border-gray-300 rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        onchange="updateFilters()" onkeydown="handleDateKeyboard(event)">
+
+                    <!-- Next Date Button -->
+                    <button type="button" onclick="navigateToDate('{{ next_date }}')" {% if not next_date %}disabled{%
+                        endif %}
+                        class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Next data date ({{ next_date }} or earlier)">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+
                 {% if as_of_date and not date_has_data %}
                 <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">
                     <i class="fas fa-info-circle mr-1"></i>
@@ -98,6 +118,16 @@
                     <option value="BUY" {% if current_change_type=='BUY' %}selected{% endif %}>📈 Increased</option>
                     <option value="SELL" {% if current_change_type=='SELL' %}selected{% endif %}>📉 Decreased</option>
                 </select>
+
+                <!-- Show Changes Only Checkbox -->
+                <div class="mt-2">
+                    <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                        <input type="checkbox" name="changes_only" value="true" {% if current_changes_only %}checked{%
+                            endif %} onchange="updateFilters()"
+                            class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                        <span>Show changes only (hide HOLD)</span>
+                    </label>
+                </div>
             </div>
 
             <!-- Fund Filter (Multi-select) -->
@@ -258,6 +288,38 @@
     "holdingsData": {{ (holdings_data|default([]))|tojson|safe }},
     "viewMode": "{{ view_mode }}"
 }
+</script>
+
+<script>
+    // Date navigation functions
+    function navigateToDate(newDate) {
+        if (!newDate || newDate === 'None') return;
+
+        const form = document.getElementById('filters-form');
+        const dateInput = document.querySelector('input[name="date"]');
+        if (dateInput) {
+            dateInput.value = newDate;
+            form.submit();
+        }
+    }
+
+    function handleDateKeyboard(event) {
+        // Arrow Up = go to previous (newer) date
+        // Arrow Down = go to next (older) date
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            const prevBtn = document.querySelector('button[onclick*="prev_date"]');
+            if (prevBtn && !prevBtn.disabled) {
+                prevBtn.click();
+            }
+        } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            const nextBtn = document.querySelector('button[onclick*="next_date"]');
+            if (nextBtn && !nextBtn.disabled) {
+                nextBtn.click();
+            }
+        }
+    }
 </script>
 
 <script type="module" src="/assets/js/etf_holdings.js"></script>

@@ -164,12 +164,24 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 img.style.flexShrink = '0';
                 // Handle image load errors gracefully - try fallback
                 img.onerror = function() {
+                    // Prevent infinite loop - set onerror to null first
+                    img.onerror = null;
+                    
+                    // Clean ticker for fallback: remove spaces, handle Canadian suffixes
+                    let cleanTicker = ticker.replace(/\s+/g, ''); // Remove spaces
+                    // Remove Canadian exchange suffixes
+                    cleanTicker = cleanTicker.replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+                    
                     // Try Yahoo Finance as fallback if Parqet fails
-                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
                         img.src = yahooUrl;
+                        // If Yahoo also fails, hide the image (onerror is already null, so no loop)
+                        img.onerror = function() {
+                            img.style.display = 'none';
+                        };
                     } else {
-                        // Both failed, hide the image
+                        // Both failed, hide the image immediately
                         img.style.display = 'none';
                     }
                 };

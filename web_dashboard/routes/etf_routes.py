@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # --- Helper Functions (Migrated from Streamlit) ---
 
+
 def get_latest_date(db_client) -> Optional[date]:
     """Get latest available date from etf_holdings_log"""
     if db_client is None:
@@ -30,6 +31,27 @@ def get_latest_date(db_client) -> Optional[date]:
     except Exception as e:
         logger.error(f"Error fetching latest date: {e}")
         return None
+
+def get_available_dates(db_client, etf_ticker: Optional[str] = None) -> List[date]:
+    """Get all available dates from etf_holdings_log (for date navigation)"""
+    if db_client is None:
+        return []
+    try:
+        query = db_client.supabase.table("etf_holdings_log").select("date")
+        if etf_ticker and etf_ticker != "All ETFs":
+            query = query.eq("etf_ticker", etf_ticker)
+        
+        result = query.order("date", desc=True).execute()
+        if not result.data:
+            return []
+        
+        # Get unique dates and sort descending
+        dates = sorted(list(set([datetime.strptime(row['date'], '%Y-%m-%d').date() for row in result.data])), reverse=True)
+        return dates
+    except Exception as e:
+        logger.error(f"Error fetching available dates: {e}")
+        return []
+
 
 def get_as_of_date(db_client, target_date: date, etf_ticker: Optional[str] = None) -> Optional[date]:
     """Get the most recent date <= target_date (As Of logic)"""
@@ -310,6 +332,7 @@ def etf_holdings():
     selected_date_str = request.args.get('date')
     selected_fund = request.args.get('fund', 'All Funds')
     change_type_filter = request.args.get('change_type', 'ALL')  # NEW, SOLD, BUY, SELL, ALL
+    changes_only = request.args.get('changes_only') == 'true'  # Checkbox for hiding HOLD actions
     
     latest_date = get_latest_date(db_client)
     
@@ -324,7 +347,33 @@ def etf_holdings():
     # 3. Available ETFs & Funds
     available_etfs_list = get_available_etfs(db_client)
     available_funds_list = get_available_funds_flask()
-    # Convert to dict for easy lookup if needed, but list is fine for template loop
+    
+    # Get all available dates for navigation (cached internally)
+    available_dates = get_available_dates(db_client, selected_etf)
+    
+    # Calculate previous and next dates
+    prev_date = None
+    next_date = None
+    if as_of_date and available_dates:
+        # Find current position in available dates
+        try:
+            current_idx = available_dates.index(as_of_date)
+            # Next date is earlier (dates are sorted descending)
+            if current_idx < len(available_dates) - 1:
+                next_date = available_dates[current_idx + 1]
+            # Prev date is later
+            if current_idx > 0:
+                prev_date = available_dates[current_idx - 1]
+        except ValueError:
+            # as_of_date not in list, find closest
+            for i, d in enumerate(available_dates):
+                if d <= as_of_date:
+                    if i > 0:
+                        prev_date = available_dates[i - 1]
+                    if i < len(available_dates) - 1:
+                        next_date = available_dates[i + 1]
+                    break
+
     
     # 4. View Mode & Data Fetching
     view_mode = "changes"
@@ -338,6 +387,10 @@ def etf_holdings():
     else:
         view_mode = "changes"
         changes_df, as_of_date = get_holdings_changes(db_client, selected_date, None, selected_fund)
+        
+        # Optional: Filter out HOLD actions (no change) if changes_only is checked
+        if changes_only and not changes_df.empty:
+            changes_df = changes_df[changes_df['share_change'] != 0]
         
         # Apply change type filter for changes view
         if not changes_df.empty and change_type_filter != 'ALL':
@@ -448,7 +501,10 @@ def etf_holdings():
         date_has_data=as_of_date == selected_date if as_of_date else False,
         current_fund=selected_fund,
         current_change_type=change_type_filter,
+        current_changes_only=changes_only,
         latest_date=latest_date.strftime('%Y-%m-%d') if latest_date else date.today().strftime('%Y-%m-%d'),
+        prev_date=prev_date.strftime('%Y-%m-%d') if prev_date else None,
+        next_date=next_date.strftime('%Y-%m-%d') if next_date else None,
         available_etfs=available_etfs_list,
         available_funds=available_funds_list,
         

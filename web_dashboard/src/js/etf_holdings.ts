@@ -67,12 +67,24 @@ class TickerCellRenderer {
                 img.style.flexShrink = '0';
                 // Handle image load errors gracefully - try fallback
                 img.onerror = function () {
+                    // Prevent infinite loop - set onerror to null first
+                    img.onerror = null;
+                    
+                    // Clean ticker for fallback: remove spaces, handle Canadian suffixes
+                    let cleanTicker = ticker.replace(/\s+/g, ''); // Remove spaces
+                    // Remove Canadian exchange suffixes
+                    cleanTicker = cleanTicker.replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+                    
                     // Try Yahoo Finance as fallback if Parqet fails
-                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
                         img.src = yahooUrl;
+                        // If Yahoo also fails, hide the image (onerror is already null, so no loop)
+                        img.onerror = function() {
+                            img.style.display = 'none';
+                        };
                     } else {
-                        // Both failed, hide the image
+                        // Both failed, hide the image immediately
                         img.style.display = 'none';
                     }
                 };
@@ -249,11 +261,16 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
             {
                 field: 'action',
                 headerName: 'Action',
-                flex: 0.6,
-                minWidth: 70,
-                maxWidth: 100,
+                flex: 0.7,
+                minWidth: 90,
+                maxWidth: 120,
                 sortable: true,
                 filter: true,
+                valueFormatter: (params: any) => {
+                    if (params.value === 'BUY') return '🟢 BUY';
+                    if (params.value === 'SELL') return '🔴 SELL';
+                    return params.value;
+                },
                 cellStyle: (params: any) => {
                     if (params.value === 'BUY') {
                         return isDarkMode()
@@ -270,15 +287,23 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
             },
             {
                 field: 'share_change',
-                headerName: 'Change',
+                headerName: 'Δ Shares',  // Delta symbol for mathematical clarity
                 flex: 0.8,
                 minWidth: 90,
                 maxWidth: 130,
                 sortable: true,
                 valueFormatter: (params: any) => (params.value > 0 ? '+' : '') + params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }),
                 cellStyle: (params: any) => {
-                    if (params.value > 0) return { color: '#155724', fontWeight: 'bold' };
-                    if (params.value < 0) return { color: '#721c24', fontWeight: 'bold' };
+                    if (params.value > 0) {
+                        return isDarkMode()
+                            ? { color: '#86efac', fontWeight: 'bold' }
+                            : { color: '#155724', fontWeight: 'bold' };
+                    }
+                    if (params.value < 0) {
+                        return isDarkMode()
+                            ? { color: '#fca5a5', fontWeight: 'bold' }
+                            : { color: '#721c24', fontWeight: 'bold' };
+                    }
                     return null;
                 }
             },
@@ -329,26 +354,44 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         overlayNoRowsTemplate: viewMode === 'changes'
             ? '<span style="padding: 20px; font-size: 14px; color: #666;">📭 No changes found for the selected date and filters. Try selecting a different date or change type.</span>'
             : '<span style="padding: 20px; font-size: 14px; color: #666;">📭 No holdings data available. This ETF may not have data for the selected date.</span>',
-        // Optional: Highlight rows we hold
+
+        // Row styling: light backgrounds for BUY/SELL, gold highlight for positions we own
         getRowStyle: (params: any) => {
-            if (params.data.user_shares > 0) {
-                const htmlElement = document.documentElement;
-                const theme = htmlElement.getAttribute('data-theme') || 'system';
-                let isDark = false;
+            const htmlElement = document.documentElement;
+            const theme = htmlElement.getAttribute('data-theme') || 'system';
+            let isDark = false;
 
-                if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+            if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+                isDark = true;
+            } else if (theme === 'system') {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
                     isDark = true;
-                } else if (theme === 'system') {
-                    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                        isDark = true;
-                    }
                 }
-
-                // Dark green background for owned stocks in dark mode, light green in light mode
-                return isDark
-                    ? { backgroundColor: '#1a4d2e' }
-                    : { backgroundColor: '#f0fff4' };
             }
+
+            const weOwnThis = params.data.user_shares > 0;
+            const action = params.data.action;
+
+            // Priority 1: If we own it, use gold/amber highlighting
+            if (weOwnThis) {
+                return isDark
+                    ? { backgroundColor: '#78350f', borderLeft: '3px solid #fbbf24' }  // Dark amber with gold border
+                    : { backgroundColor: '#fef3c7', borderLeft: '3px solid #f59e0b' }; // Light amber with orange border
+            }
+
+            // Priority 2: Light background based on action (BUY = green, SELL = red)
+            if (action === 'BUY') {
+                return isDark
+                    ? { backgroundColor: '#14532d' }  // Very dark green
+                    : { backgroundColor: '#f0fdf4' }; // Very light green
+            }
+
+            if (action === 'SELL') {
+                return isDark
+                    ? { backgroundColor: '#450a0a' }  // Very dark red
+                    : { backgroundColor: '#fef2f2' }; // Very light red
+            }
+
             return null;
         }
     };

@@ -59,6 +59,7 @@ interface DividendData {
         type: string;
         amount: number;
         gross: number;
+        _logo_url?: string;
         tax: number;
         shares: number;
         drip_price: number;
@@ -121,6 +122,7 @@ interface ActivityData {
         pnl?: number | null;
         amount: number;
         display_amount: number;
+        _logo_url?: string;
     }>;
 }
 
@@ -135,6 +137,7 @@ interface MoverItem {
     total_pnl?: number;
     current_price?: number;
     market_value?: number;
+    _logo_url?: string;
 }
 
 interface MoversData {
@@ -514,12 +517,24 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 img.style.flexShrink = '0';
                 // Handle image load errors gracefully - try fallback
                 img.onerror = function() {
+                    // Prevent infinite loop - set onerror to null first
+                    img.onerror = null;
+                    
+                    // Clean ticker for fallback: remove spaces, handle Canadian suffixes
+                    let cleanTicker = ticker.replace(/\s+/g, ''); // Remove spaces
+                    // Remove Canadian exchange suffixes
+                    cleanTicker = cleanTicker.replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+                    
                     // Try Yahoo Finance as fallback if Parqet fails
-                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
                         img.src = yahooUrl;
+                        // If Yahoo also fails, hide the image (onerror is already null, so no loop)
+                        img.onerror = function() {
+                            img.style.display = 'none';
+                        };
                     } else {
-                        // Both failed, hide the image
+                        // Both failed, hide the image immediately
                         img.style.display = 'none';
                     }
                 };
@@ -1335,10 +1350,17 @@ async function fetchActivity(): Promise<void> {
                 // Company name (or empty string)
                 const companyName = row.company_name || '';
 
+                // Generate logo HTML with fallback
+                const logoUrl = row._logo_url || '';
+                const cleanTicker = row.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+                const logoHtml = logoUrl 
+                    ? `<img src="${logoUrl}" alt="${row.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.style.display='none';}}else{this.style.display='none';}" />`
+                    : '';
+                
                 tr.innerHTML = `
                      <td class="px-6 py-4 whitespace-nowrap">${row.date}</td>
                      <td class="px-6 py-4 font-bold text-blue-600 dark:text-blue-400">
-                         <a href="/ticker?ticker=${row.ticker}" class="hover:underline">${row.ticker}</a>
+                         ${logoHtml}<a href="/ticker?ticker=${row.ticker}" class="hover:underline">${row.ticker}</a>
                      </td>
                      <td class="px-6 py-4 text-gray-700 dark:text-gray-300">${companyName}</td>
                      <td class="px-6 py-4">${actionBadge}</td>
@@ -1508,11 +1530,49 @@ function renderDividends(data: DividendData): void {
                 dateCell.textContent = row.date;
                 tr.appendChild(dateCell);
                 
-                // Ticker (clickable)
+                // Ticker (clickable) with logo
                 const tickerCell = document.createElement('td');
                 tickerCell.className = 'px-4 py-2 text-blue-600 dark:text-blue-400 font-bold cursor-pointer hover:underline';
-                tickerCell.textContent = row.ticker;
                 tickerCell.style.cursor = 'pointer';
+                
+                // Generate logo HTML with fallback
+                const logoUrl = (row as any)._logo_url || '';
+                const baseTicker = row.ticker.replace(/\.(TO|V|CN|TSX|TSXV)$/i, '');
+                if (logoUrl) {
+                    const img = document.createElement('img');
+                    img.src = logoUrl;
+                    img.alt = row.ticker;
+                    img.className = 'inline-block w-6 h-6 mr-2 object-contain rounded';
+                    img.style.verticalAlign = 'middle';
+                    img.onerror = function() {
+                        // Prevent infinite loop - set onerror to null first
+                        img.onerror = null;
+                        
+                        // Clean ticker for fallback: remove spaces
+                        const cleanTicker = baseTicker.replace(/\s+/g, '');
+                        const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
+                        if (img.src !== yahooUrl) {
+                            img.src = yahooUrl;
+                            // If Yahoo also fails, hide the image (onerror is already null, so no loop)
+                            img.onerror = function() {
+                                img.style.display = 'none';
+                            };
+                        } else {
+                            img.style.display = 'none';
+                        }
+                    };
+                    tickerCell.appendChild(img);
+                }
+                
+                const tickerLink = document.createElement('a');
+                tickerLink.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
+                tickerLink.className = 'hover:underline';
+                tickerLink.textContent = row.ticker;
+                tickerLink.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+                tickerCell.appendChild(tickerLink);
+                
                 tickerCell.addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (row.ticker && row.ticker !== 'N/A') {
@@ -1752,10 +1812,17 @@ function renderMovers(data: MoversData): void {
             const fiveDayColor = getPnlColor(item.five_day_pnl);
             const totalColor = getPnlColor(item.total_pnl);
 
+            // Generate logo HTML with fallback
+            const logoUrl = item._logo_url || '';
+            const cleanTicker = item.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+            const logoHtml = logoUrl 
+                ? `<img src="${logoUrl}" alt="${item.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.style.display='none';}}else{this.style.display='none';}" />`
+                : '';
+            
             // Use font-mono for numerical columns to ensure alignment
             tr.innerHTML = `
                 <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">
-                    <a href="/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
+                    ${logoHtml}<a href="/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
                 </td>
                 <td class="px-4 py-3 truncate max-w-[150px]" title="${item.company_name || item.ticker}">${item.company_name || item.ticker}</td>
                 <td class="px-4 py-3 text-right font-mono ${dayColor}">${formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency)}</td>

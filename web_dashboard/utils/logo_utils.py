@@ -36,13 +36,19 @@ def get_ticker_logo_url(ticker: str) -> Optional[str]:
     if not ticker or ticker == 'N/A':
         return None
     
-    # Clean ticker (remove exchange suffixes for logo lookup)
-    clean_ticker = ticker.upper().strip()
+    # Clean ticker (remove spaces and exchange suffixes for logo lookup)
+    clean_ticker = ticker.upper().strip().replace(' ', '')  # Remove spaces (e.g., "SYM UQ" -> "SYMUQ")
     # Remove common exchange suffixes for logo lookup
     # Logos are usually available for base ticker
-    if clean_ticker.endswith(('.TO', '.V', '.CN', '.TSX', '.TSXV')):
-        # For Canadian tickers, try both with and without suffix
-        base_ticker = clean_ticker.rsplit('.', 1)[0]
+    # Handle Canadian tickers: XMA.TO -> XMA, NXT.V -> NXT, etc.
+    if '.' in clean_ticker:
+        # Split on last dot to handle multi-part suffixes
+        parts = clean_ticker.rsplit('.', 1)
+        if len(parts) == 2 and parts[1] in ('TO', 'V', 'CN', 'TSX', 'TSXV', 'NE', 'NEO'):
+            base_ticker = parts[0]
+        else:
+            # Not a recognized exchange suffix, use full ticker
+            base_ticker = clean_ticker
     else:
         base_ticker = clean_ticker
     
