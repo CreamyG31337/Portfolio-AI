@@ -14,6 +14,8 @@
 // Make this a module
 export { };
 
+import { FormatterCache } from './formatters.js';
+
 // Global types are declared in globals.d.ts
 
 console.log('[Dashboard] dashboard.ts file loaded and executing...');
@@ -1857,7 +1859,9 @@ function renderMovers(data: MoversData): void {
 // --- Rendering Helpers ---
 
 // Cache formatter for better performance
-const usdFormatter = new Intl.NumberFormat('en-US', {
+// We use FormatterCache now, but keep this variable for backward compatibility within this file if needed,
+// though we will replace its initialization with the cache.
+const getUsdFormatter = () => FormatterCache.get('en-US', {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 2,
@@ -1868,7 +1872,7 @@ function formatMoney(val: number, currency?: string): string {
     if (typeof val !== 'number' || isNaN(val)) return '--';
 
     // Use cached formatter
-    const formatted = usdFormatter.format(val);
+    const formatted = getUsdFormatter().format(val);
 
     // Remove any currency code that might have been added (e.g., "CA$" -> "$")
     return formatted.replace(/^[A-Z]{2,3}\$?/, '$').replace(/\s*[A-Z]{2,3}$/, '');
@@ -1879,7 +1883,7 @@ function updateMetric(id: string, value: number, currency: string, isCurrency: b
     if (el) {
         if (isCurrency) {
             // Format number with commas and 2 decimal places, with symbol but no code
-            const formatted = new Intl.NumberFormat('en-US', {
+            const formatted = FormatterCache.get('en-US', {
                 style: 'currency',
                 currency: currency || 'USD',
                 currencyDisplay: 'narrowSymbol',
@@ -1899,7 +1903,7 @@ function updateChangeMetric(valId: string, pctId: string, change: number, pct: n
 
     if (valEl) {
         // Format number with $ sign, without currency code prefix
-        const formatted = new Intl.NumberFormat('en-US', {
+        const formatted = FormatterCache.get('en-US', {
             style: 'currency',
             currency: 'USD', // Use USD to get $ sign, then we'll replace if needed
             minimumFractionDigits: 2,
