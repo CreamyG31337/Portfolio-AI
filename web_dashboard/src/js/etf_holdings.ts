@@ -17,6 +17,9 @@ interface GridParams {
 let gridApi: any = null;
 let gridColumnApi: any = null;
 
+// Global cache of tickers that don't have logos (to avoid repeated 404s)
+const failedLogoCache = new Set<string>();
+
 // Helper function to detect dark mode
 function isDarkMode(): boolean {
     const htmlElement = document.documentElement;
@@ -55,8 +58,12 @@ class TickerCellRenderer {
                     ? params.data._etf_logo_url
                     : params.data?._holding_logo_url || params.data?._etf_logo_url;
 
-            // Add logo image if available
-            if (logoUrl) {
+            // Check cache first - skip if we know this ticker doesn't have a logo
+            const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+            const cacheKey = cleanTicker.toUpperCase();
+            
+            // Add logo image if available and not in failed cache
+            if (logoUrl && !failedLogoCache.has(cacheKey)) {
                 const img = document.createElement('img');
                 img.src = logoUrl;
                 img.alt = ticker;
@@ -66,26 +73,28 @@ class TickerCellRenderer {
                 img.style.borderRadius = '4px';
                 img.style.flexShrink = '0';
                 // Handle image load errors gracefully - try fallback
+                let fallbackAttempted = false;
                 img.onerror = function () {
-                    // Prevent infinite loop - set onerror to null first
-                    img.onerror = null;
+                    if (fallbackAttempted) {
+                        // Already tried fallback, add to cache and hide
+                        failedLogoCache.add(cacheKey);
+                        img.style.display = 'none';
+                        img.onerror = null;
+                        return;
+                    }
                     
-                    // Clean ticker for fallback: remove spaces, handle Canadian suffixes
-                    let cleanTicker = ticker.replace(/\s+/g, ''); // Remove spaces
-                    // Remove Canadian exchange suffixes
-                    cleanTicker = cleanTicker.replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+                    // Mark that we've attempted fallback
+                    fallbackAttempted = true;
                     
                     // Try Yahoo Finance as fallback if Parqet fails
                     const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
                         img.src = yahooUrl;
-                        // If Yahoo also fails, hide the image (onerror is already null, so no loop)
-                        img.onerror = function() {
-                            img.style.display = 'none';
-                        };
                     } else {
-                        // Both failed, hide the image immediately
+                        // Same URL, add to cache and hide immediately
+                        failedLogoCache.add(cacheKey);
                         img.style.display = 'none';
+                        img.onerror = null;
                     }
                 };
                 this.eGui.appendChild(img);

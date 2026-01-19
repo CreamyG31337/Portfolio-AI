@@ -506,7 +506,7 @@ except Exception as e:
 
 try:
     from routes.fund_routes import fund_bp
-    app.register_blueprint(fund_bp)
+    app.register_blueprint(fund_bp, url_prefix='/api/v2')
     logger.info("✅ Registered Fund Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Fund Blueprint: {e}", exc_info=True)
@@ -1735,6 +1735,26 @@ def admin_dashboard():
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
     return render_template('admin.html')
+
+@app.route('/admin/funds')
+@require_admin
+def admin_funds_page():
+    """Render the fund management page"""
+    from flask import render_template
+    from flask_auth_utils import get_user_email_flask
+    from user_preferences import get_user_theme
+    from app import get_navigation_context
+    
+    user_email = get_user_email_flask()
+    user_theme = get_user_theme() or 'system'
+    
+    # Get navigation context
+    nav_context = get_navigation_context(current_page='admin_funds')
+    
+    return render_template('funds.html', 
+                         user_email=user_email,
+                         user_theme=user_theme,
+                         **nav_context)
 
 @app.route('/api/admin/users')
 @require_admin

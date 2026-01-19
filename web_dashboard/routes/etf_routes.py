@@ -351,34 +351,14 @@ def etf_holdings():
     # Get all available dates for navigation (cached internally)
     available_dates = get_available_dates(db_client, selected_etf)
     
-    # Calculate previous and next dates
+    # Initialize for later use
+    as_of_date = None
     prev_date = None
     next_date = None
-    if as_of_date and available_dates:
-        # Find current position in available dates
-        try:
-            current_idx = available_dates.index(as_of_date)
-            # Next date is earlier (dates are sorted descending)
-            if current_idx < len(available_dates) - 1:
-                next_date = available_dates[current_idx + 1]
-            # Prev date is later
-            if current_idx > 0:
-                prev_date = available_dates[current_idx - 1]
-        except ValueError:
-            # as_of_date not in list, find closest
-            for i, d in enumerate(available_dates):
-                if d <= as_of_date:
-                    if i > 0:
-                        prev_date = available_dates[i - 1]
-                    if i < len(available_dates) - 1:
-                        next_date = available_dates[i + 1]
-                    break
-
     
     # 4. View Mode & Data Fetching
     view_mode = "changes"
     etf_ownership = None
-    as_of_date = None
     
     if selected_etf and selected_etf != "All ETFs":
         view_mode = "holdings"
@@ -406,6 +386,27 @@ def etf_holdings():
             elif change_type_filter == 'SELL':
                 # All sell actions (including fully sold)
                 changes_df = changes_df[changes_df['action'] == 'SELL']
+    
+    # Calculate previous and next dates AFTER we have as_of_date from data fetching
+    if as_of_date and available_dates:
+        # Find current position in available dates
+        try:
+            current_idx = available_dates.index(as_of_date)
+            # Next date is earlier (dates are sorted descending)
+            if current_idx < len(available_dates) - 1:
+                next_date = available_dates[current_idx + 1]
+            # Prev date is later
+            if current_idx > 0:
+                prev_date = available_dates[current_idx - 1]
+        except ValueError:
+            # as_of_date not in list, find closest
+            for i, d in enumerate(available_dates):
+                if d <= as_of_date:
+                    if i > 0:
+                        prev_date = available_dates[i - 1]
+                    if i < len(available_dates) - 1:
+                        next_date = available_dates[i + 1]
+                    break
 
     
     # 5. Process Data for Frontend (JSON)
