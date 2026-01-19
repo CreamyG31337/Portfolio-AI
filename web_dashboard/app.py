@@ -485,49 +485,49 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
 try:
     from routes.research_routes import research_bp
     app.register_blueprint(research_bp)
-    logger.debug("Registered Research Blueprint")
+    logger.info("✅ Registered Research Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Research Blueprint: {e}", exc_info=True)
 
 try:
     from routes.etf_routes import etf_bp
     app.register_blueprint(etf_bp)
-    logger.debug("Registered ETF Blueprint")
+    logger.info("✅ Registered ETF Blueprint")
 except Exception as e:
     logger.error(f"Failed to register ETF Blueprint: {e}", exc_info=True)
 
 try:
     from routes.social_sentiment_routes import social_sentiment_bp
     app.register_blueprint(social_sentiment_bp)
-    logger.debug("Registered Social Sentiment Blueprint")
+    logger.info("✅ Registered Social Sentiment Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Social Sentiment Blueprint: {e}", exc_info=True)
 
 try:
     from routes.fund_routes import fund_bp
     app.register_blueprint(fund_bp)
-    logger.debug("Registered Fund Blueprint")
+    logger.info("✅ Registered Fund Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Fund Blueprint: {e}", exc_info=True)
 
 try:
     from routes.admin_routes import admin_bp
     app.register_blueprint(admin_bp)
-    logger.debug("Registered Admin Blueprint")
+    logger.info("✅ Registered Admin Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Admin Blueprint: {e}", exc_info=True)
 
 try:
     from routes.color_test_routes import color_test_bp
     app.register_blueprint(color_test_bp)
-    logger.debug("Registered Color Test Blueprint")
+    logger.info("✅ Registered Color Test Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Color Test Blueprint: {e}", exc_info=True)
 
 try:
     from routes.ai_routes import ai_bp
     app.register_blueprint(ai_bp)
-    logger.debug("Registered AI Blueprint")
+    logger.info("✅ Registered AI Blueprint")
 except Exception as e:
     logger.error(f"Failed to register AI Blueprint: {e}", exc_info=True)
 
