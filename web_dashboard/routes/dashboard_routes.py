@@ -855,6 +855,16 @@ def get_holdings_data():
         # Calculate total portfolio value in display currency for weight calculation
         total_portfolio_value = sum(converted_data) if converted_data else 0
         
+        # Batch fetch logo URLs for all tickers (caching-friendly pattern)
+        unique_tickers = positions_df['ticker'].dropna().unique().tolist()
+        logo_urls_map = {}
+        if unique_tickers:
+            try:
+                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
+                logo_urls_map = get_ticker_logo_urls(unique_tickers)
+            except Exception as e:
+                logger.warning(f"Error fetching logo URLs: {e}")
+        
         # Process data
         data = []
         for idx, row in positions_df.iterrows():
@@ -900,6 +910,9 @@ def get_holdings_data():
             
             # Get stop loss if available (might not be in view)
             stop_loss = row.get('stop_loss', None)
+            
+            # Get logo URL (batch-fetched, caching-friendly)
+            logo_url = logo_urls_map.get(ticker) if ticker else None
                 
             data.append({
                 "ticker": ticker,
@@ -918,7 +931,8 @@ def get_holdings_data():
                 "five_day_pnl_pct": five_day_pnl_pct,
                 "weight": weight,
                 "stop_loss": stop_loss,
-                "currency": row.get('currency', 'CAD') # Original currency
+                "currency": row.get('currency', 'CAD'), # Original currency
+                "_logo_url": logo_url  # Logo URL for frontend (caching-friendly)
             })
             
         # Sort by weight desc (matching console app default)

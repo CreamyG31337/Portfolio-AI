@@ -21,6 +21,12 @@ def get_ticker_logo_url(ticker: str) -> Optional[str]:
     
     Note: FMP has very strict rate limits (~10 calls/day), so we prioritize free services.
     
+    Caching-friendly design:
+    - Returns stable URLs (no cache-busting parameters)
+    - Browser caching handles image storage
+    - Future: Can easily add server-side file caching by checking static/logos/{ticker}.png
+      and downloading if missing, then returning /assets/logos/{ticker}.png instead
+    
     Args:
         ticker: Stock ticker symbol (e.g., "AAPL", "TSLA")
         
@@ -41,15 +47,18 @@ def get_ticker_logo_url(ticker: str) -> Optional[str]:
         base_ticker = clean_ticker
     
     # PRIMARY: Parqet Logos API - free, no auth required, good coverage
-    parqet_url = f"https://assets.parqet.com/logos/symbol/{base_ticker}?format=png"
+    # Using size=64 for smaller file sizes (5-10KB vs 10-15KB for 100x100)
+    # Stable URL pattern - no cache-busting, browser will cache effectively
+    parqet_url = f"https://assets.parqet.com/logos/symbol/{base_ticker}?format=png&size=64"
     
     # FALLBACK: Yahoo Finance logo (via yimg.com) - also free
     # Format: https://logo.clearbit.com/{domain} or yahoo's internal logo service
     # Yahoo uses: https://s.yimg.com/cv/apiv2/default/images/logos/{ticker}.png
+    # Stable URL - browser caching will handle this
     yahoo_url = f"https://s.yimg.com/cv/apiv2/default/images/logos/{base_ticker}.png"
     
     # Return Parqet as primary (browser will handle 404s gracefully)
-    # Could implement client-side fallback in TypeScript if needed
+    # Client-side fallback in TypeScript handles Yahoo Finance if Parqet fails
     return parqet_url
 
 

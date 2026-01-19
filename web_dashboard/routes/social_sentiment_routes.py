@@ -652,6 +652,16 @@ def api_latest_sentiment():
                 'created_at': created_at
             })
         
+        # Batch fetch logo URLs for all tickers (caching-friendly pattern)
+        unique_tickers_list = list(ticker_data.keys())
+        logo_urls_map = {}
+        if unique_tickers_list:
+            try:
+                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
+                logo_urls_map = get_ticker_logo_urls(unique_tickers_list)
+            except Exception as e:
+                logger.warning(f"Error fetching logo URLs: {e}")
+        
         # Prepare DataFrame-like structure for AgGrid
         sentiment_icons = {
             'BULLISH': '🚀',
@@ -699,10 +709,12 @@ def api_latest_sentiment():
                         latest_timestamp = p['created_at']
             
             # Build row data
+            logo_url = logo_urls_map.get(ticker)
             row = {
                 'Ticker': ticker,
                 'Company': data['Company'],
                 'In Watchlist': data['In Watchlist'],
+                '_logo_url': logo_url  # Logo URL for frontend (caching-friendly)
             }
             
             # Stocktwits columns

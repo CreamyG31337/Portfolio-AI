@@ -117,6 +117,7 @@ interface AIAnalysis {
 }
 
 interface SentimentRow {
+    _logo_url?: string;
     Ticker: string;
     Company: string;
     'In Watchlist': string;
@@ -137,25 +138,58 @@ interface SentimentRow {
 let watchlistGridApi: AgGridApi | null = null;
 let sentimentGridApi: AgGridApi | null = null;
 
-// Ticker cell renderer - makes ticker clickable
+// Ticker cell renderer - makes ticker clickable with logo
 class TickerCellRenderer implements AgGridCellRenderer {
     private eGui!: HTMLElement;
 
     init(params: AgGridCellRendererParams): void {
-        this.eGui = document.createElement('span');
+        this.eGui = document.createElement('div');
+        this.eGui.style.display = 'flex';
+        this.eGui.style.alignItems = 'center';
+        this.eGui.style.gap = '6px';
+        
         if (params.value && params.value !== 'N/A') {
-            this.eGui.innerText = params.value;
-            this.eGui.style.color = '#1f77b4';
-            this.eGui.style.fontWeight = 'bold';
-            this.eGui.style.textDecoration = 'underline';
-            this.eGui.style.cursor = 'pointer';
-            this.eGui.addEventListener('click', function (e: Event) {
+            const ticker = params.value;
+            const logoUrl = params.data?._logo_url;
+            
+            // Add logo image if available
+            if (logoUrl) {
+                const img = document.createElement('img');
+                img.src = logoUrl;
+                img.alt = ticker;
+                img.style.width = '24px';
+                img.style.height = '24px';
+                img.style.objectFit = 'contain';
+                img.style.borderRadius = '4px';
+                img.style.flexShrink = '0';
+                // Handle image load errors gracefully - try fallback
+                img.onerror = function() {
+                    // Try Yahoo Finance as fallback if Parqet fails
+                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+                    if (img.src !== yahooUrl) {
+                        img.src = yahooUrl;
+                    } else {
+                        // Both failed, hide the image
+                        img.style.display = 'none';
+                    }
+                };
+                this.eGui.appendChild(img);
+            }
+            
+            // Add ticker text
+            const tickerSpan = document.createElement('span');
+            tickerSpan.innerText = ticker;
+            tickerSpan.style.color = '#1f77b4';
+            tickerSpan.style.fontWeight = 'bold';
+            tickerSpan.style.textDecoration = 'underline';
+            tickerSpan.style.cursor = 'pointer';
+            tickerSpan.addEventListener('click', function (e: Event) {
                 e.stopPropagation();
-                const ticker = params.value;
                 if (ticker && ticker !== 'N/A') {
                     window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
                 }
             });
+            this.eGui.appendChild(tickerSpan);
         } else {
             this.eGui.innerText = params.value || 'N/A';
         }

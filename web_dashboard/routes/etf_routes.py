@@ -190,7 +190,7 @@ def get_holdings_changes(
         tickers_to_check = curr_df['etf_ticker'].unique().tolist()
         
         # Find latest previous date for each ETF
-        hist_res = db_client.supabase.table("etf_holdings_log").select("etf_ticker, date").lt("date", target_date_str).in_("etf_ticker", tickers_to_check).order("date", desc=True).execute()
+        hist_res = db_client.supabase.table("etf_holdings_log").select("etf_ticker, date").lt("date", as_of_date_str).in_("etf_ticker", tickers_to_check).order("date", desc=True).execute()
         
         if not hist_res.data:
             curr_df['previous_shares'] = 0
@@ -309,6 +309,7 @@ def etf_holdings():
     selected_etf = request.args.get('etf', 'All ETFs')
     selected_date_str = request.args.get('date')
     selected_fund = request.args.get('fund', 'All Funds')
+    change_type_filter = request.args.get('change_type', 'ALL')  # NEW, SOLD, BUY, SELL, ALL
     
     latest_date = get_latest_date(db_client)
     
@@ -337,6 +338,22 @@ def etf_holdings():
     else:
         view_mode = "changes"
         changes_df, as_of_date = get_holdings_changes(db_client, selected_date, None, selected_fund)
+        
+        # Apply change type filter for changes view
+        if not changes_df.empty and change_type_filter != 'ALL':
+            if change_type_filter == 'NEW':
+                # New positions: BUY where previous_shares = 0
+                changes_df = changes_df[(changes_df['action'] == 'BUY') & (changes_df['previous_shares'] == 0)]
+            elif change_type_filter == 'SOLD':
+                # Sold positions: current_shares = 0 (completely sold)
+                changes_df = changes_df[changes_df['current_shares'] == 0]
+            elif change_type_filter == 'BUY':
+                # All buy actions (including new)
+                changes_df = changes_df[changes_df['action'] == 'BUY']
+            elif change_type_filter == 'SELL':
+                # All sell actions (including fully sold)
+                changes_df = changes_df[changes_df['action'] == 'SELL']
+
     
     # 5. Process Data for Frontend (JSON)
     if not changes_df.empty:
@@ -358,6 +375,28 @@ def etf_holdings():
         # Ensure we have all expected columns
         if 'action' not in changes_df.columns:
             changes_df['action'] = 'HOLD' # For holdings view
+        
+        # Batch fetch logo URLs for all tickers (caching-friendly pattern)
+        # Get unique tickers from both holding_ticker and etf_ticker columns
+        unique_tickers = set()
+        if 'holding_ticker' in changes_df.columns:
+            unique_tickers.update(changes_df['holding_ticker'].dropna().unique())
+        if 'etf_ticker' in changes_df.columns:
+            unique_tickers.update(changes_df['etf_ticker'].dropna().unique())
+        
+        logo_urls_map = {}
+        if unique_tickers:
+            try:
+                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
+                logo_urls_map = get_ticker_logo_urls(list(unique_tickers))
+            except Exception as e:
+                logger.warning(f"Error fetching logo URLs: {e}")
+        
+        # Add logo URLs to DataFrame
+        if 'holding_ticker' in changes_df.columns:
+            changes_df['_holding_logo_url'] = changes_df['holding_ticker'].map(lambda x: logo_urls_map.get(x) if x else None)
+        if 'etf_ticker' in changes_df.columns:
+            changes_df['_etf_logo_url'] = changes_df['etf_ticker'].map(lambda x: logo_urls_map.get(x) if x else None)
             
         data_json = changes_df.to_dict(orient='records')
     else:
@@ -408,6 +447,7 @@ def etf_holdings():
         as_of_date=as_of_date.strftime('%Y-%m-%d') if as_of_date else None,
         date_has_data=as_of_date == selected_date if as_of_date else False,
         current_fund=selected_fund,
+        current_change_type=change_type_filter,
         latest_date=latest_date.strftime('%Y-%m-%d') if latest_date else date.today().strftime('%Y-%m-%d'),
         available_etfs=available_etfs_list,
         available_funds=available_funds_list,

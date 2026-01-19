@@ -8,6 +8,10 @@ interface GridParams {
     value: any;
     data: any;
     eGridCell: HTMLElement;
+    column?: {
+        colId?: string;
+        getColId?: () => string;
+    };
 }
 
 let gridApi: any = null;
@@ -28,32 +32,74 @@ function isDarkMode(): boolean {
     return false;
 }
 
-// Ticker cell renderer - makes ticker clickable
+// Ticker cell renderer - makes ticker clickable with logo
 class TickerCellRenderer {
     eGui!: HTMLElement;
 
     init(params: GridParams) {
-        this.eGui = document.createElement('span');
+        this.eGui = document.createElement('div');
+        this.eGui.style.display = 'flex';
+        this.eGui.style.alignItems = 'center';
+        this.eGui.style.gap = '6px';
+        
         if (params.value && params.value !== 'N/A') {
-            this.eGui.innerText = params.value;
+            const ticker = params.value;
+            // Check for logo URL - use column-specific logo URL if available, fallback to generic
+            // For holding_ticker column: use _holding_logo_url
+            // For etf_ticker column: use _etf_logo_url
+            // Fallback to either if column-specific not available (for compatibility)
+            const columnId = params.column?.colId || params.column?.getColId?.() || '';
+            const logoUrl = (columnId === 'holding_ticker' && params.data?._holding_logo_url) 
+                ? params.data._holding_logo_url
+                : (columnId === 'etf_ticker' && params.data?._etf_logo_url)
+                ? params.data._etf_logo_url
+                : params.data?._holding_logo_url || params.data?._etf_logo_url;
+            
+            // Add logo image if available
+            if (logoUrl) {
+                const img = document.createElement('img');
+                img.src = logoUrl;
+                img.alt = ticker;
+                img.style.width = '24px';
+                img.style.height = '24px';
+                img.style.objectFit = 'contain';
+                img.style.borderRadius = '4px';
+                img.style.flexShrink = '0';
+                // Handle image load errors gracefully - try fallback
+                img.onerror = function() {
+                    // Try Yahoo Finance as fallback if Parqet fails
+                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+                    if (img.src !== yahooUrl) {
+                        img.src = yahooUrl;
+                    } else {
+                        // Both failed, hide the image
+                        img.style.display = 'none';
+                    }
+                };
+                this.eGui.appendChild(img);
+            }
+            
+            // Add ticker text
+            const tickerSpan = document.createElement('span');
+            tickerSpan.innerText = ticker;
             // Theme-aware color: blue for light mode, lighter blue for dark mode
-            this.eGui.style.color = isDarkMode() ? '#60a5fa' : '#1f77b4';
-            this.eGui.style.fontWeight = 'bold';
-            this.eGui.style.textDecoration = 'underline';
-            this.eGui.style.cursor = 'pointer';
-            this.eGui.addEventListener('click', function (e) {
+            tickerSpan.style.color = isDarkMode() ? '#60a5fa' : '#1f77b4';
+            tickerSpan.style.fontWeight = 'bold';
+            tickerSpan.style.textDecoration = 'underline';
+            tickerSpan.style.cursor = 'pointer';
+            tickerSpan.addEventListener('click', function (e) {
                 e.stopPropagation();
-                const ticker = params.value;
                 if (ticker && ticker !== 'N/A') {
                     // Link to Streamlit page for now
                     window.location.href = `/pages/ticker_details?ticker=${encodeURIComponent(ticker)}`;
                 }
             });
-        }
-        else {
+            this.eGui.appendChild(tickerSpan);
+        } else {
             this.eGui.innerText = params.value || 'N/A';
         }
     }
+    
     getGui() {
         return this.eGui;
     }
@@ -88,7 +134,16 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         columnDefs = [
             { field: 'date', headerName: 'Date', flex: 0.8, minWidth: 100, maxWidth: 130, sortable: true, filter: true },
             // ETF ticker is redundant if we selected one, but good for export/context
-            { field: 'etf_ticker', headerName: 'ETF', flex: 0.6, minWidth: 70, maxWidth: 100, sortable: true, filter: true },
+            { 
+                field: 'etf_ticker', 
+                headerName: 'ETF', 
+                flex: 0.6, 
+                minWidth: 70, 
+                maxWidth: 100, 
+                sortable: true, 
+                filter: true,
+                cellRenderer: TickerCellRenderer  // Add logo support to ETF ticker column
+            },
             {
                 field: 'holding_ticker',
                 headerName: 'Ticker',
@@ -143,7 +198,16 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         // Changes View
         columnDefs = [
             { field: 'date', headerName: 'Date', flex: 0.8, minWidth: 100, maxWidth: 130, sortable: true, filter: true },
-            { field: 'etf_ticker', headerName: 'ETF', flex: 0.6, minWidth: 70, maxWidth: 100, sortable: true, filter: true },
+            { 
+                field: 'etf_ticker', 
+                headerName: 'ETF', 
+                flex: 0.6, 
+                minWidth: 70, 
+                maxWidth: 100, 
+                sortable: true, 
+                filter: true,
+                cellRenderer: TickerCellRenderer  // Add logo support to ETF ticker column
+            },
             {
                 field: 'holding_ticker',
                 headerName: 'Ticker',
