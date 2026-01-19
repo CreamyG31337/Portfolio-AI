@@ -247,17 +247,19 @@ class AIAssistant {
         }
 
         // Model selection
-        const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
-        if (modelSelect) {
-            modelSelect.addEventListener('change', (e: Event) => {
-                const target = e.target as HTMLSelectElement;
-                this.selectedModel = target.value;
-                this.saveModelPreference();
-                // Update current model display in footer
-                this.updateModelDisplay();
-                // Recalculate token usage with new model limits
-                this.calculateContextUsage();
-            });
+         const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
+         if (modelSelect) {
+             modelSelect.addEventListener('change', (e: Event) => {
+                 const target = e.target as HTMLSelectElement;
+                 this.selectedModel = target.value;
+                 this.saveModelPreference();
+                 // Update current model display in footer
+                 this.updateModelDisplay();
+                 // Update model description
+                 this.updateModelDescription();
+                 // Recalculate token usage with new model limits
+                 this.calculateContextUsage();
+             });
         }
 
         // Fund selection - use global selector from left nav (or fallback to right sidebar)
