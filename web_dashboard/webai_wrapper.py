@@ -40,6 +40,10 @@ _WEBAI_MODELS = [
     f"{_WEBAI_MODEL_PREFIX}3.0-pro",
 ]
 
+# Default configuration from environment variables
+# Priority: Docker env vars > .env file > Python defaults
+WEBAI_TIMEOUT = int(os.getenv("WEBAI_TIMEOUT", "60"))
+
 
 def is_webai_model(model: Optional[str]) -> bool:
     """Check if a model name is a web-based AI service model."""
@@ -448,8 +452,10 @@ class WebAIClient:
         # Initialize the client (this handles cookie refresh, etc.)
         # Note: auto_refresh=False by default to avoid invalidating browser sessions
         # Single attempt only - no retries to avoid triggering anti-bot detection
+        # Note: Gemini's web API doesn't support streaming, so requests may take longer
+        logger.info(f"WebAI client initializing with timeout={WEBAI_TIMEOUT}s")
         await self._client.init(
-            timeout=30,
+            timeout=WEBAI_TIMEOUT,
             auto_close=False,
             close_delay=300,
             auto_refresh=self.auto_refresh  # Configurable - disabled by default

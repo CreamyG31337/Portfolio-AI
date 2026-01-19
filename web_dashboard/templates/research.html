@@ -7,8 +7,8 @@
 {% block content %}
 <!-- Statistics Dashboard -->
 {% if stats %}
-<div class="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
-    <h2 class="text-2xl font-bold text-gray-900 mb-6">📊 Statistics</h2>
+<div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-border">
+    <h2 class="text-2xl font-bold text-gray-900 dark:text-text-primary mb-6">📊 Statistics</h2>
 
     <!-- Metrics Row -->
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 mb-6">
@@ -45,16 +45,16 @@
     <!-- Charts Row -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Top 10 Sources Chart -->
-        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Top 10 Sources</h3>
+        <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-text-primary mb-4">Top 10 Sources</h3>
             <div style="height: 300px; position: relative;">
                 <canvas id="sources-chart"></canvas>
             </div>
         </div>
 
         <!-- Articles by Day Chart -->
-        <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Articles by Day (Last 90 days)</h3>
+        <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-text-primary mb-4">Articles by Day (Last 90 days)</h3>
             <div style="height: 300px; position: relative;">
                 <canvas id="days-chart"></canvas>
             </div>
@@ -64,27 +64,27 @@
 {% endif %}
 
 <!-- Filters Section -->
-<div class="bg-white rounded-lg shadow-sm p-4 mb-6 border border-gray-200">
+<div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:border-border">
     <form action="/research" method="GET" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Search -->
             <div>
-                <label for="search" class="block mb-2 text-sm font-medium text-gray-900">Search</label>
+                <label for="search" class="block mb-2 text-sm font-medium text-gray-900 dark:text-text-primary">Search</label>
                 <div class="relative">
                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                         <i class="fas fa-search text-gray-500"></i>
                     </div>
                     <input type="text" id="search" name="search" value="{{ filters.search }}"
-                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5"
+                        class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5"
                         placeholder="Search articles...">
                 </div>
             </div>
 
             <!-- Ticker Filter -->
             <div>
-                <label for="ticker" class="block mb-2 text-sm font-medium text-gray-900">Ticker</label>
+                <label for="ticker" class="block mb-2 text-sm font-medium text-gray-900 dark:text-text-primary">Ticker</label>
                 <select id="ticker" name="ticker"
-                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                    class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                     <option value="All" {% if filters.ticker=='All' %}selected{% endif %}>All Tickers</option>
                     {% for t in unique_tickers %}
                     <option value="{{ t }}" {% if filters.ticker==t %}selected{% endif %}>{{ t }}</option>
@@ -94,9 +94,9 @@
 
             <!-- Date Range -->
             <div>
-                <label for="date_range" class="block mb-2 text-sm font-medium text-gray-900">Date Range</label>
+                <label for="date_range" class="block mb-2 text-sm font-medium text-gray-900 dark:text-text-primary">Date Range</label>
                 <select id="date_range" name="date_range"
-                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                    class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                     <option value="Last 7 days" {% if filters.date_range=='Last 7 days' %}selected{% endif %}>Last 7
                         days</option>
                     <option value="Last 30 days" {% if filters.date_range=='Last 30 days' %}selected{% endif %}>Last 30
@@ -110,9 +110,9 @@
 
             <!-- Article Type -->
             <div>
-                <label for="article_type" class="block mb-2 text-sm font-medium text-gray-900">Type</label>
+                <label for="article_type" class="block mb-2 text-sm font-medium text-gray-900 dark:text-text-primary">Type</label>
                 <select id="article_type" name="article_type"
-                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                    class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                     <option value="All" {% if filters.article_type=='All' %}selected{% endif %}>All Types</option>
                     <option value="Market News" {% if filters.article_type=='Market News' %}selected{% endif %}>Market
                         News</option>
@@ -132,8 +132,8 @@
             <div class="flex items-center">
                 <input id="only_owned" name="only_owned" type="checkbox" value="true" {% if filters.only_owned
                     %}checked{% endif %}
-                    class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
-                <label for="only_owned" class="ml-2 text-sm font-medium text-gray-900">Only owned tickers</label>
+                    class="w-4 h-4 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500">
+                <label for="only_owned" class="ml-2 text-sm font-medium text-gray-900 dark:text-text-primary">Only owned tickers</label>
             </div>
 
             <button type="submit"
@@ -145,15 +145,15 @@
 </div>
 
 <!-- Re-Analyze Controls -->
-<div class="bg-white rounded-lg shadow-sm p-4 mb-6 border border-gray-200">
+<div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:border-border">
     <div class="flex items-center justify-between flex-wrap gap-4">
         <div class="flex items-center gap-4 flex-1">
-            <label for="reanalysis-model" class="text-sm font-medium text-gray-900">Re-Analysis Model:</label>
+            <label for="reanalysis-model" class="text-sm font-medium text-gray-900 dark:text-text-primary">Re-Analysis Model:</label>
             <select id="reanalysis-model"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 min-w-[200px]">
+                class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 min-w-[200px]">
                 <option value="">Loading models...</option>
             </select>
-            <span id="selected-count" class="text-sm text-gray-600 hidden">0 articles selected</span>
+            <span id="selected-count" class="text-sm text-gray-600 dark:text-gray-400 hidden">0 articles selected</span>
         </div>
         <button id="reanalyze-btn" disabled
             class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed">
@@ -213,7 +213,7 @@
                             {% endif %}
                         </div>
 
-                        <h3 class="text-xl font-bold text-gray-900 mb-1">
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-text-primary mb-1">
                             {% if article.url %}
                             <a href="{{ article.url }}" target="_blank" class="hover:text-blue-600 hover:underline">
                                 {{ article.title }} <i class="fas fa-external-link-alt text-xs ml-1 text-gray-400"></i>
@@ -284,11 +284,11 @@
         </div>
     </div>
     {% else %}
-    <div class="bg-white rounded-lg shadow-sm p-12 text-center">
+    <div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm p-12 text-center">
         <div class="text-gray-400 mb-4">
             <i class="fas fa-search text-5xl"></i>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">No research found</h3>
+        <h3 class="text-lg font-medium text-gray-900 dark:text-text-primary mb-2">No research found</h3>
         <p class="text-gray-500">Try adjusting your filters or search terms.</p>
     </div>
     {% endfor %}
@@ -299,7 +299,7 @@
     <nav class="flex items-center gap-2">
         {% if filters.page > 1 %}
         <button onclick="changePage({{ filters.page - 1 }})"
-            class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100">
+            class="px-3 py-2 text-sm font-medium text-gray-700 dark:text-text-secondary bg-white dark:bg-dashboard-surface border border-gray-300 dark:border-border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
             Previous
         </button>
         {% endif %}
@@ -309,7 +309,7 @@
         {% if articles|length == 20 %}
         <!-- Assuming page size is 20, if we got 20 items there might be more -->
         <button onclick="changePage({{ filters.page + 1 }})"
-            class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100">
+            class="px-3 py-2 text-sm font-medium text-gray-700 dark:text-text-secondary bg-white dark:bg-dashboard-surface border border-gray-300 dark:border-border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
             Next
         </button>
         {% endif %}
