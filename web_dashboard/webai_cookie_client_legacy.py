@@ -134,21 +134,6 @@ class WebAICookieClientLegacy:
         """
         Try to discover Gemini's API endpoint by inspecting the main page.
         
-        **WARNING: Fragile Implementation**
-        This method uses regex patterns to scrape API URLs from HTML, which is inherently
-        fragile and may break if the external service changes their frontend structure.
-        
-        **Fallback Strategy:**
-        - This method is only used as a last resort if hardcoded endpoints fail
-        - The `query()` method has multiple hardcoded endpoint fallbacks (lines 182-192)
-        - If discovery fails, `_query_via_web_interface()` provides an alternative approach
-        - All failures are logged for monitoring
-        
-        **Recommendation:**
-        - Monitor logs for repeated discovery failures (may indicate frontend changes)
-        - Consider using official APIs when available instead of cookie-based scraping
-        - This is a legacy approach maintained for backwards compatibility
-        
         Returns:
             API endpoint URL if found, None otherwise
         """
@@ -270,9 +255,7 @@ class WebAICookieClientLegacy:
                 continue
         
         # If all API endpoints fail, try the web interface approach
-        # This is the final fallback - simulates browser interaction
         logger.info("API endpoints failed, trying web interface approach...")
-        logger.warning("All hardcoded endpoints failed. This may indicate service changes.")
         return self._query_via_web_interface(prompt)
     
     def _query_via_web_interface(self, prompt: str) -> Optional[str]:
