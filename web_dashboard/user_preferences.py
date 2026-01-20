@@ -636,7 +636,7 @@ def get_all_user_preferences() -> Dict[str, Any]:
         # The client was created with user_token, so it should be stored in self._user_token
         logger.debug(f"[PREF] Calling get_user_preferences RPC for user_id={user_id}")
         try:
-            result = client.rpc('get_user_preferences')
+            result = client.rpc('get_user_preferences', {})
         except Exception as rpc_error:
             logger.error(f"[PREF] RPC call failed: {rpc_error}", exc_info=True)
             # Try fallback: direct HTTP call with explicit Authorization header

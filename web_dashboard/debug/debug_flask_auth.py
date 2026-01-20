@@ -176,7 +176,7 @@ def test_rpc_with_postgrest_client(token: str, user_id: str):
         # Test get_user_preferences (doesn't require user_uuid)
         print(f"\n--- Test 1: get_user_preferences (uses auth.uid()) ---")
         try:
-            result = client.rpc('get_user_preferences')
+            result = client.rpc('get_user_preferences', {})
             print(f"  Result type: {type(result.data).__name__}")
             print(f"  Result data: {result.data}")
             if result.data:

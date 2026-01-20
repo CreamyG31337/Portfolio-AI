@@ -231,10 +231,8 @@ class SupabaseClient:
         
         # Now make the RPC call
         # The session should have the Authorization header set above
-        if params:
-            result = postgrest.rpc(function_name, params).execute()
-        else:
-            result = postgrest.rpc(function_name).execute()
+        # Always pass params (even if empty) as SyncPostgrestClient.rpc() requires it
+        result = postgrest.rpc(function_name, params or {}).execute()
         
         # Verify header was set (for debugging)
         if hasattr(self, '_user_token') and self._user_token:
