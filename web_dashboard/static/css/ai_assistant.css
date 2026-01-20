@@ -64,24 +64,6 @@
     transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }
 
-/* Drawer Tabs */
-.ai-drawer .drawer-tab-btn {
-    background-color: transparent;
-    border: 1px solid transparent;
-    color: var(--text-secondary);
-}
-
-.ai-drawer .drawer-tab-btn:hover {
-    background-color: var(--bg-tertiary);
-    color: var(--text-primary);
-}
-
-.ai-drawer .drawer-tab-btn.is-active {
-    background-color: var(--color-info-bg);
-    border-color: var(--color-info-text);
-    color: var(--color-info-text);
-    box-shadow: 0 0 0 1px var(--color-info-text) inset;
-}
 
 /* Mobile: Sidebar as overlay/drawer */
 @media (max-width: 767px) {

@@ -573,11 +573,25 @@ class AIAssistant {
 
         if (tabButtons.length === 0 || panels.length === 0) return;
 
+        const activeClasses = [
+            "text-blue-600",
+            "border-blue-600",
+            "dark:text-blue-500",
+            "dark:border-blue-500"
+        ];
+        const inactiveClasses = [
+            "border-transparent",
+            "hover:text-gray-600",
+            "hover:border-gray-300",
+            "dark:hover:text-gray-300"
+        ];
+
         const setActive = (tabId: string): void => {
             tabButtons.forEach((btn) => {
                 const isActive = btn.dataset.drawerTab === tabId;
                 btn.setAttribute('aria-selected', isActive.toString());
-                btn.classList.toggle('is-active', isActive);
+                activeClasses.forEach((cls) => btn.classList.toggle(cls, isActive));
+                inactiveClasses.forEach((cls) => btn.classList.toggle(cls, !isActive));
             });
 
             panels.forEach((panel) => {

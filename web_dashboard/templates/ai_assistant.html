@@ -139,16 +139,25 @@
             class="ai-drawer w-80 flex-shrink-0 border-l border-gray-300 dark:border-gray-600 pl-4 overflow-y-auto sticky top-0 max-h-[calc(100vh-200px)] transition-transform duration-300"
             class="flex-[0_0_30%]">
             <div id="quick-research-sidebar">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="inline-flex rounded-lg bg-dashboard-surface-alt border border-border p-1">
-                        <button type="button" data-drawer-tab="quick" aria-controls="drawer-tab-quick" aria-selected="true"
-                            class="drawer-tab-btn px-3 py-1.5 text-sm font-medium rounded-md transition-colors border border-transparent text-text-secondary">
-                            Quick Research
-                        </button>
-                        <button type="button" data-drawer-tab="settings" aria-controls="drawer-tab-settings" aria-selected="false"
-                            class="drawer-tab-btn px-3 py-1.5 text-sm font-medium rounded-md transition-colors border border-transparent text-text-secondary">
-                            Settings
-                        </button>
+                <div class="flex items-end justify-between mb-3">
+                    <div class="border-b border-gray-200 dark:border-gray-700">
+                        <ul class="flex flex-wrap -mb-px text-sm font-medium text-center text-gray-500 dark:text-gray-400"
+                            role="tablist">
+                            <li class="me-2" role="presentation">
+                                <button type="button" data-drawer-tab="quick" aria-controls="drawer-tab-quick"
+                                    aria-selected="true"
+                                    class="drawer-tab-btn inline-flex items-center justify-center p-2 border-b-2 rounded-t-lg border-transparent hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300">
+                                    Quick Research
+                                </button>
+                            </li>
+                            <li class="me-2" role="presentation">
+                                <button type="button" data-drawer-tab="settings" aria-controls="drawer-tab-settings"
+                                    aria-selected="false"
+                                    class="drawer-tab-btn inline-flex items-center justify-center p-2 border-b-2 rounded-t-lg border-transparent hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300">
+                                    Settings
+                                </button>
+                            </li>
+                        </ul>
                     </div>
                     <button id="ai-drawer-close"
                         class="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors focus:ring-2 focus:ring-accent rounded"
