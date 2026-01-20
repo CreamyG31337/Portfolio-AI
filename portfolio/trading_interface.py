@@ -6,7 +6,7 @@ connecting menu selections to the underlying trade processing functions.
 
 import logging
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 import pandas as pd

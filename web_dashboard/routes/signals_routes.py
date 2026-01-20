@@ -80,16 +80,38 @@ def get_cached_watchlist_signals(
             except Exception as e:
                 logger.warning(f"Error fetching watched_tickers: {e}")
         
-        if not watchlist:
-            return []
+        # Batch fetch logo URLs for all tickers (caching-friendly pattern)
+        logo_urls_map = {}
+        try:
+            from web_dashboard.utils.logo_utils import get_ticker_logo_urls
+            unique_tickers_list = [item.get('ticker') for item in watchlist if item.get('ticker')]
+            if unique_tickers_list:
+                logo_urls_map = get_ticker_logo_urls(unique_tickers_list)
+        except Exception as e:
+            logger.warning(f"Error fetching logo URLs: {e}")
         
-        if not watchlist:
-            return []
-        
-        # Get latest signals for each ticker from database
+        # Get latest signals for each ticker from database (batch query)
         signal_engine = SignalEngine()
         data_fetcher = MarketDataFetcher()
         results = []
+
+        tickers = [item.get('ticker') for item in watchlist if item.get('ticker')]
+        latest_by_ticker: Dict[str, Dict[str, Any]] = {}
+        if tickers:
+            try:
+                signal_rows = _supabase_client.supabase.table("signal_analysis")\
+                    .select("*")\
+                    .in_("ticker", tickers)\
+                    .order("analysis_date", desc=True)\
+                    .execute()
+
+                if signal_rows.data:
+                    for row in signal_rows.data:
+                        row_ticker = row.get("ticker")
+                        if row_ticker and row_ticker not in latest_by_ticker:
+                            latest_by_ticker[row_ticker] = row
+            except Exception as e:
+                logger.warning(f"Error fetching signal_analysis batch: {e}")
         
         for ticker_data in watchlist:
             ticker = ticker_data.get('ticker')
@@ -97,25 +119,21 @@ def get_cached_watchlist_signals(
                 continue
             
             try:
-                # Try to get from database first
-                signal_result = _supabase_client.supabase.table("signal_analysis")\
-                    .select("*")\
-                    .eq("ticker", ticker.upper())\
-                    .order("analysis_date", desc=True)\
-                    .limit(1)\
-                    .execute()
-                
-                if signal_result.data and len(signal_result.data) > 0:
+                signal = latest_by_ticker.get(ticker.upper())
+                if signal:
                     # Use cached signal from database
-                    signal = signal_result.data[0]
+                    explanation = signal.get('explanation')
                     results.append({
                         'ticker': ticker,
+                        '_logo_url': logo_urls_map.get(ticker),
                         'overall_signal': signal.get('overall_signal', 'HOLD'),
                         'confidence': signal.get('confidence_score', 0.0),
                         'fear_level': signal.get('fear_risk_signal', {}).get('fear_level', 'LOW') if isinstance(signal.get('fear_risk_signal'), dict) else 'LOW',
                         'risk_score': signal.get('fear_risk_signal', {}).get('risk_score', 0.0) if isinstance(signal.get('fear_risk_signal'), dict) else 0.0,
                         'trend': signal.get('structure_signal', {}).get('trend', 'NEUTRAL') if isinstance(signal.get('structure_signal'), dict) else 'NEUTRAL',
                         'analysis_date': signal.get('analysis_date'),
+                        'explanation': explanation,
+                        'analyzed': bool(explanation),
                         'cached': True
                     })
                 else:
@@ -125,12 +143,15 @@ def get_cached_watchlist_signals(
                         signals = signal_engine.evaluate(ticker, price_data.df)
                         results.append({
                             'ticker': ticker,
+                            '_logo_url': logo_urls_map.get(ticker),
                             'overall_signal': signals.get('overall_signal', 'HOLD'),
                             'confidence': signals.get('confidence', 0.0),
                             'fear_level': signals.get('fear_risk', {}).get('fear_level', 'LOW'),
                             'risk_score': signals.get('fear_risk', {}).get('risk_score', 0.0),
                             'trend': signals.get('structure', {}).get('trend', 'NEUTRAL'),
                             'analysis_date': signals.get('analysis_date'),
+                            'explanation': None,
+                            'analyzed': False,
                             'cached': False
                         })
             except Exception as e:
@@ -192,6 +213,7 @@ def api_analyze_ticker(ticker: str):
     """Analyze a single ticker and return signals"""
     try:
         ticker = ticker.upper().strip()
+        include_ai = request.args.get('include_ai', '0') == '1'
         
         # Fetch price data
         data_fetcher = MarketDataFetcher()
@@ -206,6 +228,13 @@ def api_analyze_ticker(ticker: str):
         # Generate signals
         signal_engine = SignalEngine()
         signals = signal_engine.evaluate(ticker, price_data.df)
+
+        # Optional AI explanation (on-demand)
+        if include_ai:
+            from web_dashboard.signals.ai_explainer import generate_signal_explanation
+            explanation = generate_signal_explanation(ticker, signals)
+            if explanation:
+                signals['explanation'] = explanation
         
         return jsonify({
             'success': True,

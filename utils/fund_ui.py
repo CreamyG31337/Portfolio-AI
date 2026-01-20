@@ -6,6 +6,7 @@ through the command-line interface.
 
 from typing import Optional, List, Dict, Any
 import sys
+from pathlib import Path
 
 from display.console_output import print_success, print_error, print_warning, print_info, print_header, _safe_emoji
 from utils.fund_manager import get_fund_manager, FundManager

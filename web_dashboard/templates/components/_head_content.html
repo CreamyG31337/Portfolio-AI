@@ -17,53 +17,6 @@
 <!-- Flowbite CSS (required for components) -->
 <link href="https://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.css" rel="stylesheet" />
 
-<style>
-    .gradient-bg {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-
-    /* Sync color-scheme with data-theme for consistency */
-        {
-        % if user_theme in ['dark',
-        'midnight-tokyo',
-        'abyss'] %
-    }
-
-    :root {
-        color-scheme: dark;
-    }
-
-        {
-        % elif user_theme=='light' %
-    }
-
-    :root {
-        color-scheme: light;
-    }
-
-        {
-        % endif %
-    }
-
-    /* Sidebar collapse transitions */
-    .sidebar-text {
-        transition: opacity 0.3s ease-in-out, max-width 0.3s ease-in-out;
-        display: inline-block;
-    }
-
-    .sidebar-content {
-        transition: opacity 0.3s ease-in-out, max-height 0.3s ease-in-out;
-    }
-
-    .sidebar-select {
-        transition: opacity 0.3s ease-in-out;
-    }
-
-    .sidebar-badge {
-        transition: opacity 0.3s ease-in-out;
-    }
-</style>
-
 <!-- Theme Management Scripts -->
 <script type="module" src="/assets/js/theme.js"></script>
 <script type="module" src="/assets/js/chart_theme_utils.js"></script>

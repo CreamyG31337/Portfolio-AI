@@ -18,6 +18,30 @@ ignore_missing_imports = true
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".ruff_cache",
+    "node_modules",
+    "build",
+    "dist",
+    "*.egg-info",
+    ".eggs",
+    "web_dashboard/static/js",  # Generated from TypeScript
+    "web_dashboard/static/css/tailwind.css",  # Generated
+    "database/archive",  # Old migrations
+    "trading_data",  # Data files, not code
+    "Research",  # PDFs and research files
+    "debug",  # Debug scripts
+    "test_scripts",  # Test utilities
+    "migrations",  # Migration scripts
+    "web_dashboard/logs",  # Log files
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+]
 
 [tool.ruff.lint]
 select = [

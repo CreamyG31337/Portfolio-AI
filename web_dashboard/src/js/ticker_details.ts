@@ -111,6 +111,7 @@ interface SignalAnalysis {
     overall_signal?: string;
     confidence?: number;
     analysis_date?: string;
+    explanation?: string;
 }
 
 interface TickerInfoResponse {
@@ -843,7 +844,8 @@ async function loadSignals(ticker: string, forceRefresh: boolean = false): Promi
         const updatedEl = document.getElementById('signals-last-updated');
         if (updatedEl) updatedEl.textContent = '-';
         setSignalsLoading(true, forceRefresh ? 'Refreshing signals...' : 'Loading signals...');
-        const response = await fetch(`/api/signals/analyze/${ticker}${forceRefresh ? '?refresh=1' : ''}`, {
+        const aiParam = forceRefresh ? 'include_ai=1' : 'include_ai=0';
+        const response = await fetch(`/api/signals/analyze/${ticker}?${aiParam}`, {
             credentials: 'include'
         });
         if (!response.ok) {
@@ -997,6 +999,16 @@ function renderSignals(signals: SignalAnalysis): void {
         }
         recommendationEl.className = recClass;
         recommendationEl.textContent = recommendation;
+    }
+
+    // AI explanation
+    const explanationEl = document.getElementById('signals-explanation');
+    if (explanationEl) {
+        if (signals.explanation) {
+            explanationEl.textContent = signals.explanation;
+        } else {
+            explanationEl.innerHTML = '<span class="text-gray-500 dark:text-gray-400">No AI explanation available yet.</span>';
+        }
     }
 }
 

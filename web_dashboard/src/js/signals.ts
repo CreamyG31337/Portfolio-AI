@@ -2,6 +2,7 @@ export { }; // Ensure file is treated as a module
 
 // Interfaces
 interface SignalRow {
+    _logo_url?: string;
     ticker: string;
     overall_signal: string;
     confidence: number;
@@ -10,6 +11,8 @@ interface SignalRow {
     trend: string;
     analysis_date?: string;
     cached?: boolean;
+    analyzed?: boolean;
+    explanation?: string | null;
 }
 
 interface SignalsResponse {
@@ -31,7 +34,79 @@ interface SignalsResponse {
 
 // Global variables
 let signalsGridApi: any = null;
+let signalsGridColumnApi: any = null;
 let refreshKey = 0;
+let activeModalTicker: string | null = null;
+
+// Global cache of tickers that don't have logos (to avoid repeated 404s)
+const failedLogoCache = new Set<string>();
+
+// Ticker cell renderer - makes ticker clickable with logo
+class TickerCellRenderer {
+    private eGui!: HTMLElement;
+
+    init(params: any): void {
+        this.eGui = document.createElement('div');
+        this.eGui.style.display = 'flex';
+        this.eGui.style.alignItems = 'center';
+        this.eGui.style.gap = '6px';
+
+        if (params.value && params.value !== 'N/A') {
+            const ticker = params.value;
+            const logoUrl = params.data?._logo_url;
+            const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+            const cacheKey = cleanTicker.toUpperCase();
+
+            if (logoUrl && !failedLogoCache.has(cacheKey)) {
+                const img = document.createElement('img');
+                img.src = logoUrl;
+                img.alt = ticker;
+                img.style.width = '24px';
+                img.style.height = '24px';
+                img.style.objectFit = 'contain';
+                img.style.borderRadius = '4px';
+                img.style.flexShrink = '0';
+                let fallbackAttempted = false;
+                img.onerror = function () {
+                    if (fallbackAttempted) {
+                        failedLogoCache.add(cacheKey);
+                        img.style.display = 'none';
+                        img.onerror = null;
+                        return;
+                    }
+                    fallbackAttempted = true;
+                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
+                    if (img.src !== yahooUrl) {
+                        img.src = yahooUrl;
+                    } else {
+                        failedLogoCache.add(cacheKey);
+                        img.style.display = 'none';
+                        img.onerror = null;
+                    }
+                };
+                this.eGui.appendChild(img);
+            }
+
+            const tickerSpan = document.createElement('span');
+            tickerSpan.innerText = ticker;
+            tickerSpan.style.color = '#1f77b4';
+            tickerSpan.style.fontWeight = 'bold';
+            tickerSpan.style.textDecoration = 'underline';
+            tickerSpan.style.cursor = 'pointer';
+            tickerSpan.addEventListener('click', function (e: Event) {
+                e.stopPropagation();
+                window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
+            });
+            this.eGui.appendChild(tickerSpan);
+        } else {
+            this.eGui.innerText = params.value || 'N/A';
+        }
+    }
+
+    getGui(): HTMLElement {
+        return this.eGui;
+    }
+}
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -41,6 +116,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', refreshData);
+    }
+
+    const modalRefreshBtn = document.getElementById('signals-modal-refresh');
+    if (modalRefreshBtn) {
+        modalRefreshBtn.addEventListener('click', () => {
+            if (activeModalTicker) {
+                setModalStatus('Regenerating AI explanation...');
+                loadModalDetails(activeModalTicker, true);
+            }
+        });
     }
 });
 
@@ -65,16 +150,34 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         return;
     }
 
+    if (signalsGridApi && signalsGridColumnApi) {
+        signalsGridApi.setGridOption('rowData', data);
+        autoSizeSignalsColumns();
+        return;
+    }
+
     const columnDefs = [
         {
             field: 'ticker',
             headerName: 'Ticker',
             width: 100,
-            cellRenderer: (params: any) => {
-                const ticker = params.value;
-                return `<a href="/ticker?ticker=${ticker}" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-semibold">${ticker}</a>`;
-            },
+            cellRenderer: TickerCellRenderer,
             pinned: 'left'
+        },
+        {
+            field: 'analyzed',
+            headerName: 'Analyzed',
+            width: 110,
+            valueFormatter: (params: any) => {
+                return params.value ? 'Yes' : 'No';
+            },
+            cellRenderer: (params: any) => {
+                const val = !!params.value;
+                const badgeClass = val
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                    : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+                return `<span class="px-2 py-1 rounded text-xs font-semibold ${badgeClass}">${val ? 'Yes' : 'No'}</span>`;
+            }
         },
         {
             field: 'overall_signal',
@@ -207,7 +310,12 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         animateRows: true,
         rowHeight: 40,
         headerHeight: 40,
-        suppressCellFocus: true
+        suppressCellFocus: true,
+        onRowClicked: (params: any) => {
+            if (params && params.data) {
+                openSignalsModal(params.data as SignalRow);
+            }
+        }
     };
 
     // Check if dark mode is enabled
@@ -220,10 +328,151 @@ function initializeSignalsGrid(data: SignalRow[]): void {
 
     const gridInstance = new (window as any).agGrid.Grid(gridDiv, gridOptions);
     signalsGridApi = gridInstance.api;
+    signalsGridColumnApi = gridInstance.columnApi;
 
-    if (signalsGridApi) {
-        signalsGridApi.sizeColumnsToFit();
+    if (signalsGridApi && signalsGridColumnApi) {
+        signalsGridApi.addEventListener('firstDataRendered', () => {
+            setTimeout(() => {
+                autoSizeSignalsColumns();
+            }, 300);
+        });
+
+        let resizeTimeout: number | null = null;
+        window.addEventListener('resize', () => {
+            if (resizeTimeout) {
+                clearTimeout(resizeTimeout);
+            }
+            resizeTimeout = window.setTimeout(() => {
+                autoSizeSignalsColumns();
+            }, 150);
+        });
     }
+}
+
+function autoSizeSignalsColumns(): void {
+    if (!signalsGridColumnApi) return;
+    const allColumns = signalsGridColumnApi.getAllDisplayedColumns();
+    if (allColumns && allColumns.length > 0) {
+        const columnIds = allColumns.map((col: any) => col.getColId()).filter(Boolean);
+        if (columnIds.length > 0) {
+            signalsGridColumnApi.autoSizeColumns(columnIds, false);
+        }
+    }
+}
+
+function openSignalsModal(row: SignalRow): void {
+    const toggleBtn = document.getElementById('signals-modal-toggle') as HTMLButtonElement | null;
+    if (toggleBtn) {
+        toggleBtn.click();
+    }
+
+    activeModalTicker = row.ticker;
+
+    const tickerEl = document.getElementById('signals-modal-ticker');
+    const updatedEl = document.getElementById('signals-modal-updated');
+    if (tickerEl) tickerEl.textContent = row.ticker;
+    if (updatedEl) updatedEl.textContent = row.analysis_date ? new Date(row.analysis_date).toLocaleString() : 'N/A';
+
+    const explanationEl = document.getElementById('signals-modal-explanation');
+    if (explanationEl) {
+        explanationEl.textContent = row.explanation || 'Select Regenerate to create an AI explanation.';
+    }
+
+    setModalStatus('Loading signal details...');
+    loadModalDetails(row.ticker, false);
+}
+
+async function loadModalDetails(ticker: string, includeAi: boolean): Promise<void> {
+    try {
+        const response = await fetch(`/api/signals/analyze/${ticker}?include_ai=${includeAi ? '1' : '0'}`, {
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        if (!result.success || !result.data) {
+            setModalStatus('No signal details available.');
+            return;
+        }
+
+        const signals = result.data;
+        renderModalSignals(signals);
+
+        if (includeAi && signals.explanation) {
+            updateGridRowFromSignals(ticker, signals);
+        }
+
+        setModalStatus('');
+    } catch (error) {
+        console.error('Error loading signal details:', error);
+        setModalStatus('Unable to load signal details.');
+    }
+}
+
+function renderModalSignals(signals: any): void {
+    const overallEl = document.getElementById('signals-modal-overall');
+    const confidenceEl = document.getElementById('signals-modal-confidence');
+    const fearEl = document.getElementById('signals-modal-fear');
+    const riskEl = document.getElementById('signals-modal-risk');
+    const trendEl = document.getElementById('signals-modal-trend');
+    const pullbackEl = document.getElementById('signals-modal-pullback');
+    const breakoutEl = document.getElementById('signals-modal-breakout');
+    const volumeEl = document.getElementById('signals-modal-volume');
+    const rsiEl = document.getElementById('signals-modal-rsi');
+    const cciEl = document.getElementById('signals-modal-cci');
+    const updatedEl = document.getElementById('signals-modal-updated');
+    const explanationEl = document.getElementById('signals-modal-explanation');
+
+    const overallSignal = signals.overall_signal || 'HOLD';
+    const confidence = signals.confidence || 0;
+    if (overallEl) overallEl.textContent = overallSignal;
+    if (confidenceEl) confidenceEl.textContent = `${(confidence * 100).toFixed(0)}%`;
+
+    if (updatedEl) updatedEl.textContent = signals.analysis_date ? new Date(signals.analysis_date).toLocaleString() : 'N/A';
+
+    const fearRisk = signals.fear_risk || {};
+    if (fearEl) fearEl.textContent = fearRisk.fear_level || 'LOW';
+    if (riskEl) riskEl.textContent = fearRisk.risk_score !== undefined ? `${fearRisk.risk_score.toFixed(1)}/100` : 'N/A';
+
+    const structure = signals.structure || {};
+    if (trendEl) trendEl.textContent = structure.trend || 'N/A';
+    if (pullbackEl) pullbackEl.textContent = structure.pullback ? 'Yes' : 'No';
+    if (breakoutEl) breakoutEl.textContent = structure.breakout ? 'Yes' : 'No';
+
+    const timing = signals.timing || {};
+    if (volumeEl) volumeEl.textContent = timing.volume_ok ? 'OK' : 'Low';
+    if (rsiEl) rsiEl.textContent = timing.rsi !== undefined ? timing.rsi.toFixed(1) : 'N/A';
+    if (cciEl) cciEl.textContent = timing.cci !== undefined ? timing.cci.toFixed(1) : 'N/A';
+
+    if (explanationEl && signals.explanation) {
+        explanationEl.textContent = signals.explanation;
+    }
+}
+
+function setModalStatus(message: string): void {
+    const statusEl = document.getElementById('signals-modal-status');
+    if (statusEl) {
+        statusEl.textContent = message;
+    }
+}
+
+function updateGridRowFromSignals(ticker: string, signals: any): void {
+    if (!signalsGridApi) return;
+    signalsGridApi.forEachNode((node: any) => {
+        if (node.data?.ticker !== ticker) {
+            return;
+        }
+        node.setDataValue('overall_signal', signals.overall_signal || 'HOLD');
+        node.setDataValue('confidence', signals.confidence || 0);
+        node.setDataValue('fear_level', signals.fear_risk?.fear_level || 'LOW');
+        node.setDataValue('risk_score', signals.fear_risk?.risk_score || 0);
+        node.setDataValue('trend', signals.structure?.trend || 'NEUTRAL');
+        node.setDataValue('analysis_date', signals.analysis_date);
+        node.setDataValue('explanation', signals.explanation || null);
+        node.setDataValue('analyzed', !!signals.explanation);
+    });
 }
 
 // Load signals data

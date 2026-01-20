@@ -415,7 +415,6 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
         selected_fund = None
         try:
             # Check URL parameter first (for persistence across refreshes)
-            from flask import request
             url_fund = request.args.get('fund')
             if url_fund:
                 selected_fund = url_fund
@@ -3799,6 +3798,7 @@ def api_analyze_congress_trades():
             from supabase_client import SupabaseClient
             supabase_client = SupabaseClient(use_service_role=True)
         else:
+            from flask_data_utils import get_supabase_client_flask
             supabase_client = get_supabase_client_flask()
         
         if supabase_client is None:

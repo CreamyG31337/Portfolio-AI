@@ -2,4 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom CSS can be added here if needed */
+/* Custom component styles extracted from inline template styles */
+@layer components {
+    /* Gradient background for header */
+    .gradient-bg {
+        @apply bg-gradient-to-br from-accent-from to-accent-to;
+    }
+
+    /* Sidebar collapse transitions */
+    .sidebar-text {
+        @apply inline-block transition-all duration-300 ease-in-out;
+    }
+
+    .sidebar-content {
+        @apply transition-all duration-300 ease-in-out;
+    }
+
+    .sidebar-badge {
+        @apply transition-opacity duration-300 ease-in-out;
+    }
+}

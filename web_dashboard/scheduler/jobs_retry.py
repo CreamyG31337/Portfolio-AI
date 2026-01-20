@@ -60,7 +60,8 @@ def process_retry_queue_job() -> None:
         OLLAMA_JOBS = [
             'social_sentiment_ai',
             'analyze_congress_trades', 
-            'rescore_congress_sessions'
+            'rescore_congress_sessions',
+            'signal_scan'
         ]
         
         try:

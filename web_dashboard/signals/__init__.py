@@ -17,6 +17,7 @@ from .structure_signal import StructureSignal
 from .timing_signal import TimingSignal
 from .fear_risk_signal import FearRiskSignal
 from .signal_engine import SignalEngine
+from .ai_explainer import generate_signal_explanation
 
 __all__ = [
     'calculate_rsi',
@@ -27,4 +28,5 @@ __all__ = [
     'TimingSignal',
     'FearRiskSignal',
     'SignalEngine',
+    'generate_signal_explanation',
 ]

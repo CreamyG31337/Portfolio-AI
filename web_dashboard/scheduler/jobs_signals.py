@@ -38,6 +38,13 @@ from scheduler.scheduler_core import log_job_execution
 # Initialize logger
 logger = logging.getLogger(__name__)
 
+# AI explanation settings (keep conservative to avoid long job times)
+AI_EXPLANATION_ENABLED = True
+AI_EXPLANATION_MIN_CONFIDENCE = 0.7
+AI_EXPLANATION_SIGNALS = {"BUY", "SELL"}
+AI_EXPLANATION_FEAR_LEVELS = {"HIGH", "EXTREME"}
+AI_EXPLANATION_MAX_PER_RUN = 10
+
 
 def signal_scan_job() -> None:
     """Scan watchlist tickers and generate technical signals.
@@ -118,6 +125,7 @@ def signal_scan_job() -> None:
         processed = 0
         errors = 0
         alerts_sent = 0
+        ai_explanations = 0
         
         # Process each ticker
         for ticker_data in watchlist:
@@ -142,6 +150,24 @@ def signal_scan_job() -> None:
                 
                 # Check if signal should trigger alert
                 should_alert = _should_alert(signals)
+
+                # Optionally generate AI explanation (limited per run)
+                explanation = None
+                if AI_EXPLANATION_ENABLED and ai_explanations < AI_EXPLANATION_MAX_PER_RUN:
+                    overall_signal = signals.get('overall_signal', 'HOLD')
+                    confidence = signals.get('confidence', 0.0)
+                    fear_level = signals.get('fear_risk', {}).get('fear_level', 'LOW')
+                    if (
+                        overall_signal in AI_EXPLANATION_SIGNALS
+                        and confidence >= AI_EXPLANATION_MIN_CONFIDENCE
+                    ) or fear_level in AI_EXPLANATION_FEAR_LEVELS:
+                        try:
+                            from web_dashboard.signals.ai_explainer import generate_signal_explanation
+                            explanation = generate_signal_explanation(ticker, signals)
+                            if explanation:
+                                ai_explanations += 1
+                        except Exception as ai_error:
+                            logger.warning(f"AI explanation failed for {ticker}: {ai_error}")
                 
                 # Insert or update signal analysis
                 try:
@@ -152,7 +178,8 @@ def signal_scan_job() -> None:
                         'timing_signal': signals.get('timing', {}),
                         'fear_risk_signal': signals.get('fear_risk', {}),
                         'overall_signal': signals.get('overall_signal', 'HOLD'),
-                        'confidence_score': signals.get('confidence', 0.0)
+                        'confidence_score': signals.get('confidence', 0.0),
+                        'explanation': explanation
                     }, on_conflict='ticker,analysis_date').execute()
                     
                     processed += 1
@@ -175,7 +202,7 @@ def signal_scan_job() -> None:
                 continue
         
         duration_ms = int((time.time() - start_time) * 1000)
-        message = f"Processed {processed} tickers, {errors} errors, {alerts_sent} alerts"
+        message = f"Processed {processed} tickers, {errors} errors, {alerts_sent} alerts, {ai_explanations} AI notes"
         
         try:
             log_job_execution(job_id, True, message, duration_ms)
