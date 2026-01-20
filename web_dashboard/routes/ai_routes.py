@@ -72,18 +72,15 @@ def _get_context_data_packet(user_id: str, fund: str):
     }
 
 
-@cache_data(ttl=300)
-def _get_preview_context_string(
-    user_id: str,
+def _build_context_from_packet(
     fund: str,
+    data_packet: Dict[str, Any],
     include_thesis: bool,
     include_trades: bool,
     include_price_volume: bool,
     include_fundamentals: bool
-):
-    """Build preview context string with caching for UI toggles."""
-    data_packet = _get_context_data_packet(user_id, fund)
-
+) -> str:
+    """Build context string from a pre-fetched data packet."""
     positions_df = data_packet['positions_df']
     trades_df = data_packet['trades_df']
     metrics = data_packet['metrics']
@@ -116,6 +113,26 @@ def _get_preview_context_string(
         context_parts.append(format_trades(trades_df, limit=100))
 
     return "\n\n---\n\n".join(context_parts) if context_parts else "No context data available"
+
+
+def _get_preview_context_string(
+    user_id: str,
+    fund: str,
+    include_thesis: bool,
+    include_trades: bool,
+    include_price_volume: bool,
+    include_fundamentals: bool
+) -> str:
+    """Build preview context string from cached data."""
+    data_packet = _get_context_data_packet(user_id, fund)
+    return _build_context_from_packet(
+        fund=fund,
+        data_packet=data_packet,
+        include_thesis=include_thesis,
+        include_trades=include_trades,
+        include_price_volume=include_price_volume,
+        include_fundamentals=include_fundamentals
+    )
 
 @cache_data(ttl=30)
 def _get_cached_ollama_health():
@@ -217,18 +234,11 @@ def ai_assistant_page():
         from app import get_navigation_context  # Import here to avoid circular import
         nav_context = get_navigation_context(current_page='ai_assistant')
 
-        # Prewarm default context cache for fast initial load
+        # Prewarm default context data for fast initial load
         try:
             if available_funds:
                 default_fund = available_funds[0]
-                _get_preview_context_string(
-                    user_id=get_user_id_flask(),
-                    fund=default_fund,
-                    include_thesis=False,
-                    include_trades=False,
-                    include_price_volume=True,
-                    include_fundamentals=True
-                )
+                _get_context_data_packet(get_user_id_flask(), default_fund)
         except Exception as e:
             logger.debug(f"Context prewarm skipped: {e}")
         
@@ -350,69 +360,26 @@ def api_ai_context_build():
             logger.warning("[Context Build] No fund specified, returning empty context")
             return jsonify({"context_string": "", "char_count": 0})
 
-        context_parts = []
-        
-        # --- Always Included: Holdings with all data tables ---
-        positions_df = get_current_positions_flask(fund)
-        trades_df = get_trade_log_flask(limit=100, fund=fund)
-        
+        user_id = get_user_id_flask()
+        data_packet = _get_context_data_packet(user_id, fund)
+        positions_df = data_packet['positions_df']
+        trades_df = data_packet['trades_df']
+
         logger.info(f"[Context Build] Positions count: {len(positions_df) if positions_df is not None else 0}")
         logger.info(f"[Context Build] Trades count: {len(trades_df) if trades_df is not None else 0}")
-        
+
         include_pv = data.get('include_price_volume', True)
         include_fund = data.get('include_fundamentals', True)
-        
-        if not positions_df.empty:
-            holdings_text = format_holdings(
-                positions_df,
-                fund,
-                trades_df=trades_df,
-                include_price_volume=include_pv,
-                include_fundamentals=include_fund
-            )
-            context_parts.append(holdings_text)
-            logger.info(f"[Context Build] Holdings text length: {len(holdings_text)}")
-        else:
-            logger.warning(f"[Context Build] No positions found for fund: {fund}")
-        
-        # --- Always Included: Performance Metrics ---
-        try:
-            metrics = calculate_performance_metrics_flask(fund)
-            portfolio_df = calculate_portfolio_value_over_time_flask(fund, days=365)
-            if metrics:
-                context_parts.append(format_performance_metrics(metrics, portfolio_df))
-                logger.info(f"[Context Build] Performance metrics added")
-        except Exception as e:
-            logger.warning(f"Error loading performance metrics: {e}")
-        
-        # --- Always Included: Cash Balances ---
-        try:
-            cash = get_cash_balances_flask(fund)
-            if cash:
-                context_parts.append(format_cash_balances(cash))
-                logger.info(f"[Context Build] Cash balances added")
-        except Exception as e:
-            logger.warning(f"Error loading cash balances: {e}")
-        
-        # --- Optional: Thesis ---
-        if data.get('include_thesis', False):
-            try:
-                thesis_data = get_fund_thesis_data_flask(fund)
-                if thesis_data:
-                    context_parts.append(format_thesis(thesis_data))
-            except Exception as e:
-                logger.warning(f"Error loading thesis: {e}")
-        
-        # --- Optional: Trades ---
-        if data.get('include_trades', False):
-            try:
-                if trades_df is not None and not trades_df.empty:
-                    context_parts.append(format_trades(trades_df, limit=100))
-            except Exception as e:
-                logger.warning(f"Error loading trades: {e}")
-        
-        # Combine all parts
-        context_string = "\n\n---\n\n".join(context_parts) if context_parts else ""
+
+        context_string = _build_context_from_packet(
+            fund=fund,
+            data_packet=data_packet,
+            include_thesis=data.get('include_thesis', False),
+            include_trades=data.get('include_trades', False),
+            include_price_volume=include_pv,
+            include_fundamentals=include_fund
+        )
+        context_parts = context_string.split("\n\n---\n\n") if context_string else []
         
         logger.info(f"[Context Build] Final context length: {len(context_string)} chars, {len(context_parts)} parts")
         
