@@ -71,6 +71,52 @@ def _get_context_data_packet(user_id: str, fund: str):
         'thesis_data': thesis_data
     }
 
+
+@cache_data(ttl=300)
+def _get_preview_context_string(
+    user_id: str,
+    fund: str,
+    include_thesis: bool,
+    include_trades: bool,
+    include_price_volume: bool,
+    include_fundamentals: bool
+):
+    """Build preview context string with caching for UI toggles."""
+    data_packet = _get_context_data_packet(user_id, fund)
+
+    positions_df = data_packet['positions_df']
+    trades_df = data_packet['trades_df']
+    metrics = data_packet['metrics']
+    portfolio_df = data_packet['portfolio_df']
+    cash = data_packet['cash']
+    thesis_data = data_packet['thesis_data']
+
+    context_parts = []
+
+    if not positions_df.empty:
+        holdings_text = format_holdings(
+            positions_df,
+            fund,
+            trades_df=trades_df,
+            include_price_volume=include_price_volume,
+            include_fundamentals=include_fundamentals
+        )
+        context_parts.append(holdings_text)
+
+    if metrics:
+        context_parts.append(format_performance_metrics(metrics, portfolio_df))
+
+    if cash:
+        context_parts.append(format_cash_balances(cash))
+
+    if include_thesis and thesis_data:
+        context_parts.append(format_thesis(thesis_data))
+
+    if include_trades and not trades_df.empty:
+        context_parts.append(format_trades(trades_df, limit=100))
+
+    return "\n\n---\n\n".join(context_parts) if context_parts else "No context data available"
+
 @cache_data(ttl=30)
 def _get_cached_ollama_health():
     """Check Ollama health with 30s cache"""
@@ -170,6 +216,21 @@ def ai_assistant_page():
         # Get navigation context
         from app import get_navigation_context  # Import here to avoid circular import
         nav_context = get_navigation_context(current_page='ai_assistant')
+
+        # Prewarm default context cache for fast initial load
+        try:
+            if available_funds:
+                default_fund = available_funds[0]
+                _get_preview_context_string(
+                    user_id=get_user_id_flask(),
+                    fund=default_fund,
+                    include_thesis=False,
+                    include_trades=False,
+                    include_price_volume=True,
+                    include_fundamentals=True
+                )
+        except Exception as e:
+            logger.debug(f"Context prewarm skipped: {e}")
         
         return render_template('ai_assistant.html',
                              user_email=user_email,
@@ -240,51 +301,19 @@ def api_ai_preview_context():
 
         user_id = get_user_id_flask()
         
-        # Get cached data packet
-        data_packet = _get_context_data_packet(user_id, fund)
-            
-        # --- Context Assembly ---
-        positions_df = data_packet['positions_df']
-        trades_df = data_packet['trades_df']
-        metrics = data_packet['metrics']
-        portfolio_df = data_packet['portfolio_df']
-        cash = data_packet['cash']
-        thesis_data = data_packet['thesis_data']
-        
-        context_parts = []
-        
-        # 1. ALWAYS INCLUDED: Holdings
         include_pv = data.get('include_price_volume', True)
         include_fund = data.get('include_fundamentals', True)
-        
-        if not positions_df.empty:
-            holdings_text = format_holdings(
-                positions_df,
-                fund,
-                trades_df=trades_df,
-                include_price_volume=include_pv,
-                include_fundamentals=include_fund
-            )
-            context_parts.append(holdings_text)
-        
-        # 2. ALWAYS INCLUDED: Performance Metrics
-        if metrics:
-            context_parts.append(format_performance_metrics(metrics, portfolio_df))
-        
-        # 3. ALWAYS INCLUDED: Cash Balances
-        if cash:
-            context_parts.append(format_cash_balances(cash))
-        
-        # 4. OPTIONAL: Thesis
-        if data.get('include_thesis', False) and thesis_data:
-            context_parts.append(format_thesis(thesis_data))
-        
-        # 5. OPTIONAL: Recent Trades
-        if data.get('include_trades', False) and not trades_df.empty:
-            context_parts.append(format_trades(trades_df, limit=100))
-        
-        # Combine all parts
-        context_string = "\n\n---\n\n".join(context_parts) if context_parts else "No context data available"
+        include_thesis = data.get('include_thesis', False)
+        include_trades = data.get('include_trades', False)
+
+        context_string = _get_preview_context_string(
+            user_id=user_id,
+            fund=fund,
+            include_thesis=include_thesis,
+            include_trades=include_trades,
+            include_price_volume=include_pv,
+            include_fundamentals=include_fund
+        )
         
         return jsonify({
             "success": True, 

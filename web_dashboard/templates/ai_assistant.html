@@ -12,10 +12,10 @@
 <div id="ai-assistant-content" class="flex flex-col h-[calc(100vh-200px)]">
     <!-- Header with Clear Chat button -->
     <div class="flex justify-between items-center mb-4">
-        <h2 class="text-2xl font-bold text-text-primary"> Chat</h2>
+        <h2 class="text-2xl font-bold text-text-primary">💬 Chat</h2>
         <button id="clear-chat-btn"
             class="px-4 py-2 bg-gray-200 dark:bg-dashboard-surface-alt hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-text-primary rounded-lg text-sm font-medium transition-colors focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-             Clear Chat
+             🧹 Clear Chat
         </button>
     </div>
 
@@ -41,9 +41,7 @@
             <div id="context-preview-panel"
                 class="mb-4 border border-border rounded-lg bg-gray-50 dark:bg-dashboard-surface">
                 <div class="p-3 border-b border-border">
-                    <span class="font-semibold text-text-primary">
-                        Context Preview
-                        <span id="context-char-badge"
+                    <span class="font-semibold text-text-primary">🧩 Context Preview<span id="context-char-badge"
                             class="ml-2 text-xs font-normal text-text-tertiary">(loading...)</span>
                     </span>
                 </div>
@@ -65,7 +63,7 @@
                 <div id="retry-button-container" class="hidden mt-4 text-center">
                     <button id="retry-btn"
                         class="px-4 py-2 bg-gray-200 dark:bg-dashboard-surface-alt hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-text-primary rounded-lg text-sm font-medium transition-colors">
-                        Retry Last Response
+                        🔁 Retry Last Response
                     </button>
                 </div>
             </div>
@@ -73,7 +71,7 @@
             <!-- Suggested Prompt Area (hidden by default) -->
             <div id="suggested-prompt-area" class="hidden mb-4">
                 <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                    <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Edit Your Prompt</h3>
+                    <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">✏️ Edit Your Prompt</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Review and edit the prompt below, then
                         click Send.</p>
                     <textarea id="editable-prompt" rows="4"
@@ -81,7 +79,7 @@
                     <div class="flex gap-2">
                         <button id="send-edited-prompt-btn"
                             class="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-colors">
-                            Send
+                            📩 Send
                         </button>
                         <button id="cancel-edited-prompt-btn"
                             class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors">
@@ -95,14 +93,14 @@
             <div id="start-analysis-area" class="hidden mb-4">
                 <div
                     class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                    <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Start Analysis</h3>
+                    <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">🚀 Start Analysis</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Review and edit the prompt below, then
                         click Run to start.</p>
                     <textarea id="initial-prompt" rows="6"
                         class="w-full p-2 border border-border rounded-lg mb-2 bg-dashboard-surface text-text-primary focus:ring-2 focus:ring-accent focus:border-accent"></textarea>
                     <button id="run-analysis-btn"
                         class="px-4 py-2 bg-green-600 dark:bg-green-700 text-white rounded-lg hover:bg-green-700 dark:hover:bg-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
-                        Run Analysis
+                        ▶️ Run Analysis
                     </button>
                 </div>
             </div>
@@ -147,14 +145,14 @@
                                 <button type="button" data-drawer-tab="quick" aria-controls="drawer-tab-quick"
                                     aria-selected="true"
                                     class="drawer-tab-btn inline-flex items-center justify-center p-2 border-b-2 rounded-t-lg border-transparent hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300">
-                                    Quick Research
+                                    🔍 Quick Research
                                 </button>
                             </li>
                             <li class="me-2" role="presentation">
                                 <button type="button" data-drawer-tab="settings" aria-controls="drawer-tab-settings"
                                     aria-selected="false"
                                     class="drawer-tab-btn inline-flex items-center justify-center p-2 border-b-2 rounded-t-lg border-transparent hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300">
-                                    Settings
+                                    ⚙️ Settings
                                 </button>
                             </li>
                         </ul>
@@ -190,19 +188,19 @@
                         <div id="ticker-actions" class="hidden mb-4">
                             <button id="research-ticker-btn"
                                 class="w-full mb-2 px-3 py-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg text-sm transition-colors focus:ring-2 focus:ring-accent focus:ring-offset-2">
-                                Research
+                                🔎 Research
                             </button>
                             <button id="analyze-ticker-btn"
                                 class="w-full mb-2 px-3 py-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg text-sm transition-colors focus:ring-2 focus:ring-accent focus:ring-offset-2">
-                                Analyze
+                                📈 Analyze
                             </button>
                             <button id="compare-tickers-btn"
                                 class="w-full mb-2 px-3 py-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg text-sm hidden transition-colors focus:ring-2 focus:ring-accent focus:ring-offset-2">
-                                Compare Stocks
+                                ⚖️ Compare Stocks
                             </button>
                             <button id="earnings-ticker-btn"
                                 class="w-full mb-2 px-3 py-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg text-sm transition-colors focus:ring-2 focus:ring-accent focus:ring-offset-2">
-                                Earnings
+                                💰 Earnings
                             </button>
                         </div>
 
@@ -210,15 +208,15 @@
                         <div class="mb-4">
                             <button id="portfolio-analysis-btn"
                                 class="w-full mb-2 px-3 py-2 bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50 text-green-800 dark:text-green-200 rounded-lg text-sm transition-colors focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
-                                Portfolio Analysis
+                                🧠 Portfolio Analysis
                             </button>
                             <button id="market-news-btn"
                                 class="w-full mb-2 px-3 py-2 bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50 text-green-800 dark:text-green-200 rounded-lg text-sm transition-colors focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
-                                Market News
+                                📰 Market News
                             </button>
                             <button id="sector-news-btn"
                                 class="w-full mb-2 px-3 py-2 bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50 text-green-800 dark:text-green-200 rounded-lg text-sm transition-colors focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
-                                Sector News
+                                🏭 Sector News
                             </button>
                         </div>
                     </div>
@@ -227,7 +225,7 @@
                 <div id="drawer-tab-settings" data-drawer-panel="settings" class="hidden">
                     <!-- Model Selection -->
                     <div>
-                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Model</h3>
+                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">🤖 Model</h3>
                         <select id="model-select"
                             class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent">
                             <!-- Populated by JavaScript -->
@@ -239,7 +237,7 @@
 
                     <!-- Fund Selection -->
                     <div>
-                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Data Source</h3>
+                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">🗄️ Data Source</h3>
                         <select id="fund-select"
                             class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent">
                             {% for fund in available_funds %}
@@ -252,8 +250,8 @@
 
                     <!-- Context Selection -->
                     <div>
-                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Analysis Context</h3>
-                        <p class="text-xs text-gray-600 dark:text-gray-400 mb-2">Always Included: Holdings, Performance Metrics,
+                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">📋 Analysis Context</h3>
+                        <p class="text-xs text-gray-600 dark:text-gray-400 mb-2">ℹ️ Always Included: Holdings, Performance Metrics,
                             Cash Balances</p>
                         <p class="text-xs font-semibold mb-2 text-gray-900 dark:text-gray-100">Optional:</p>
 
@@ -271,7 +269,7 @@
 
                         <hr class="my-4 border-gray-200 dark:border-gray-700">
 
-                        <h4 class="font-semibold mb-2 text-sm text-gray-900 dark:text-gray-100">Portfolio Table Options</h4>
+                        <h4 class="font-semibold mb-2 text-sm text-gray-900 dark:text-gray-100">📊 Portfolio Table Options</h4>
 
                         <label class="flex items-center mb-2 cursor-pointer">
                             <input type="checkbox" id="toggle-price-volume" checked
@@ -290,7 +288,7 @@
 
                     <!-- Web Search -->
                     <div>
-                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Web Search</h3>
+                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">🌐 Web Search</h3>
                         {% if searxng_available %}
                         <p class="text-xs text-green-600 dark:text-green-400 mb-2">? SearXNG available</p>
                         <label class="flex items-center mb-2 cursor-pointer">
@@ -299,7 +297,7 @@
                             <span class="text-sm text-gray-900 dark:text-gray-100">Enable Web Search</span>
                         </label>
                         {% else %}
-                        <p class="text-xs text-yellow-600 dark:text-yellow-400 mb-2">SearXNG unavailable</p>
+                        <p class="text-xs text-yellow-600 dark:text-yellow-400 mb-2">⚠️ SearXNG unavailable</p>
                         {% endif %}
                     </div>
 
@@ -307,7 +305,7 @@
 
                     <!-- Research Repository -->
                     <div>
-                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Research Knowledge</h3>
+                        <h3 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">🧠 Research Knowledge</h3>
                         {% if ollama_available %}
                         <label class="flex items-center mb-2 cursor-pointer">
                             <input type="checkbox" id="toggle-repository" checked
@@ -315,7 +313,7 @@
                             <span class="text-sm text-gray-900 dark:text-gray-100">Use Research Repository</span>
                         </label>
                         {% else %}
-                        <p class="text-xs text-yellow-600 dark:text-yellow-400 mb-2">Repository search requires Ollama</p>
+                        <p class="text-xs text-yellow-600 dark:text-yellow-400 mb-2">⚠️ Repository search requires Ollama</p>
                         {% endif %}
                     </div>
 
@@ -326,7 +324,7 @@
                         <p class="text-xs text-gray-600 dark:text-gray-400 mb-2" id="context-summary">No context items selected</p>
                         <button id="clear-context-btn"
                             class="w-full px-3 py-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-800 dark:text-red-200 rounded-lg text-sm mb-4 transition-colors focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-                            Clear All
+                            🧹 Clear All
                         </button>
                     </div>
 
@@ -334,7 +332,7 @@
 
                     <!-- Context Status (Debug moved to main area) -->
                     <div>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Expand "Context Preview" in the chat area to see raw
+                        <p class="text-xs text-gray-500 dark:text-gray-400">📌 Expand "Context Preview" in the chat area to see raw
                             data tables.</p>
                     </div>
                 </div>

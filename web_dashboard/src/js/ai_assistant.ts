@@ -107,6 +107,7 @@ class AIAssistant {
     private contextReady: boolean = false;  // True when context is loaded and ready
     private contextLoading: boolean = false; // True while loading (prevent duplicate requests)
     private isSending: boolean = false; // True while a message is being sent (prevent duplicate sends)
+    private contextReloadQueued: boolean = false; // True when a refresh is requested during loading
 
     constructor(config: AIAssistantConfig) {
         this.config = config;
@@ -450,6 +451,14 @@ class AIAssistant {
         const drawer = document.getElementById('ai-drawer');
         const backdrop = document.getElementById('ai-drawer-backdrop');
 
+        if (toggleBtn?.dataset.bound === 'true') {
+            return;
+        }
+
+        if (toggleBtn) {
+            toggleBtn.dataset.bound = 'true';
+        }
+
         // Load saved drawer state (default: visible on desktop, hidden on mobile)
         const isMobile = window.innerWidth < 768;
         const savedState = localStorage.getItem('ai-assistant-drawer-open');
@@ -512,6 +521,14 @@ class AIAssistant {
      */
     setDrawerOpen(isOpen: boolean, saveToStorage: boolean): void {
         const isMobile = window.innerWidth < 768;
+        const drawer = document.getElementById('ai-drawer');
+
+        if (!drawer) return;
+
+        const currentlyOpen = drawer.classList.contains('drawer-open');
+        if (currentlyOpen === isOpen) {
+            return;
+        }
 
         if (saveToStorage) {
             localStorage.setItem('ai-assistant-drawer-open', isOpen.toString());
@@ -570,6 +587,15 @@ class AIAssistant {
     setupDrawerTabs(): void {
         const tabButtons = Array.from(document.querySelectorAll('[data-drawer-tab]')) as HTMLButtonElement[];
         const panels = Array.from(document.querySelectorAll('[data-drawer-panel]')) as HTMLElement[];
+        const drawer = document.getElementById('ai-drawer');
+
+        if (drawer?.dataset.tabsBound === 'true') {
+            return;
+        }
+
+        if (drawer) {
+            drawer.dataset.tabsBound = 'true';
+        }
 
         if (tabButtons.length === 0 || panels.length === 0) return;
 
@@ -622,7 +648,8 @@ class AIAssistant {
     async loadContext(): Promise<void> {
         // Prevent duplicate requests
         if (this.contextLoading) {
-            console.log('[AIAssistant] Context already loading, skipping...');
+            this.contextReloadQueued = true;
+            console.log('[AIAssistant] Context already loading, queueing refresh...');
             return;
         }
 
@@ -720,6 +747,11 @@ class AIAssistant {
         } finally {
             clearTimeout(timeout);
             this.contextLoading = false;
+
+            if (this.contextReloadQueued) {
+                this.contextReloadQueued = false;
+                this.loadContext();
+            }
         }
     }
 
