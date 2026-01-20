@@ -23,7 +23,7 @@
         <ul class="space-y-1">
             {% if navigation_links %}
             <li>
-                <a href="{{ url_for('dashboard.dashboard_page') }}"
+                <a href="/dashboard"
                     class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'dashboard' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
                     <span class="mr-3 text-lg flex-shrink-0">📈</span>
                     <span class="sidebar-text whitespace-nowrap overflow-hidden">Dashboard</span>

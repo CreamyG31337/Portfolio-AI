@@ -6,6 +6,10 @@ import pandas as pd
 from datetime import datetime, timezone
 import json
 
+from auth import require_auth
+from flask_auth_utils import get_user_email_flask
+from user_preferences import get_user_theme, get_user_currency, get_user_selected_fund
+
 from flask_data_utils import (
     fetch_dividend_log_flask, 
     get_supabase_client_flask,
