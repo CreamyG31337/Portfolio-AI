@@ -64,34 +64,22 @@ steps:
     image: python:3.11-slim
     commands:
       - echo "Starting PR Validation Pipeline"
-      - echo "Python version: $(python --version)"
-      - echo "Event: $CI_PIPELINE_EVENT"
-      - echo "Branch: $CI_COMMIT_BRANCH"
-      - echo "PR: $CI_COMMIT_PULL_REQUEST"
-      
-      # Install system dependencies
+      - python --version
+      - echo "Event: $$CI_PIPELINE_EVENT"
+      - echo "Branch: $$CI_COMMIT_BRANCH"
+      - echo "PR: $$CI_COMMIT_PULL_REQUEST"
       - apt-get update -qq && apt-get install -y -qq git > /dev/null
-      
-      # Install Python dependencies
       - echo "Installing Python dependencies..."
       - pip install --quiet --upgrade pip
       - pip install --quiet -r requirements.txt
       - pip install --quiet ruff mypy
-      
-      # Run linting
       - echo "Running Ruff linter..."
-      - ruff check . --output-format=concise || (echo "Linting failed" && exit 1)
+      - ruff check . --output-format=concise
       - echo "Linting passed"
-      
-      # Run type checking (on key files, skip missing imports for speed)
       - echo "Running MyPy type checking..."
-      - mypy portfolio/ financial/ utils/ --ignore-missing-imports --no-error-summary || (echo "Type checking found issues (non-blocking)" && true)
-      
-      # Run tests
+      - mypy portfolio/ financial/ utils/ --ignore-missing-imports --no-error-summary || true
       - echo "Running Python tests..."
-      - python -m pytest tests/ -v --tb=short || (echo "Tests failed" && exit 1)
-      - echo "All tests passed"
-      
+      - python -m pytest tests/ -v --tb=short
       - echo "PR Validation complete - all checks passed!"
     when:
       event: pull_request
