@@ -134,9 +134,10 @@
             <div>
                 <label class="block mb-2 text-sm font-medium text-gray-900">Holdings Filter</label>
                 <div class="relative group">
-                    <button type="button"
+                    <button type="button" id="fund-dropdown-button"
+                        data-dropdown-toggle="fund-dropdown-menu"
                         class="w-full bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-lg text-sm text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                        onclick="document.getElementById('fund-dropdown-menu').classList.toggle('hidden')">
+                        aria-haspopup="true" aria-expanded="false">
                         <span id="fund-select-label">
                             {% if current_fund and current_fund != 'All Funds' and current_fund != '' %}
                             {{ current_fund }}
