@@ -51,8 +51,27 @@ def dashboard_page():
                              initial_fund=selected_fund,
                              **nav_context)
     except Exception as e:
-        logger.error(f"Error rendering dashboard: {e}", exc_info=True)
-        # Fallback with minimal context
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"Error rendering dashboard: {e}\n{tb}")
+        
+        # Show full stack trace in debug mode (like AI Assistant does)
+        from flask import current_app
+        if current_app.debug:
+            return f'''<!DOCTYPE html>
+<html>
+<head><title>Error - Dashboard</title></head>
+<body style="background:#1a1a2e;color:#eee;font-family:monospace;padding:20px;">
+<h1 style="color:#ff6b6b;">❌ Failed to load Dashboard</h1>
+<h2 style="color:#feca57;">Exception: {type(e).__name__}</h2>
+<pre style="background:#16213e;padding:20px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-wrap:break-word;">{e}</pre>
+<h3 style="color:#54a0ff;">Stack Trace:</h3>
+<pre style="background:#16213e;padding:20px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-wrap:break-word;">{tb}</pre>
+<p><a href="/" style="color:#5f27cd;">← Back to Home</a></p>
+</body>
+</html>''', 500
+        
+        # Fallback with minimal context in production
         try:
             from app import get_navigation_context
             nav_context = get_navigation_context(current_page='dashboard')

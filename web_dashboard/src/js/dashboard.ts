@@ -859,26 +859,40 @@ async function refreshDashboard(): Promise<void> {
         await initTimeDisplay();
     } catch (error) {
         const duration = performance.now() - startTime;
+        const traceback = (error as any)?.traceback;
         console.error('[Dashboard] Error refreshing dashboard:', {
             error: error,
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,
+            traceback: traceback ? 'present' : 'missing',
             duration: `${duration.toFixed(2)}ms`,
             timestamp: new Date().toISOString()
         });
-        showDashboardError(error);
+        showDashboardError(error, traceback);
     }
 }
 
-function showDashboardError(error: unknown): void {
+/**
+ * Extract error information from API response, including traceback if available
+ */
+function extractErrorInfo(errorData: any): { message: string; traceback?: string } {
+    const message = errorData.error || errorData.message || 'Unknown error';
+    const traceback = errorData.traceback || undefined;
+    return { message, traceback };
+}
+
+function showDashboardError(error: unknown, traceback?: string): void {
     const errorContainer = document.getElementById('dashboard-error-container');
     const errorMessage = document.getElementById('dashboard-error-message');
 
     if (errorContainer && errorMessage) {
         const errorText = error instanceof Error ? error.message : String(error);
-        const errorStack = error instanceof Error && error.stack ? `<pre class="mt-2 text-xs overflow-auto">${error.stack}</pre>` : '';
+        const errorStack = error instanceof Error && error.stack ? `<pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded">${error.stack}</pre>` : '';
+        
+        // Include server traceback if available (from API response)
+        const serverTraceback = traceback ? `<div class="mt-4"><h4 class="text-sm font-semibold mb-2">Server Stack Trace:</h4><pre class="text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></div>` : '';
 
-        errorMessage.innerHTML = `<p>${errorText}</p>${errorStack}`;
+        errorMessage.innerHTML = `<p class="font-semibold">${errorText}</p>${errorStack}${serverTraceback}`;
         errorContainer.classList.remove('hidden');
     }
 }
@@ -936,12 +950,17 @@ async function fetchSummary(): Promise<void> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
             console.error('[Dashboard] Summary API error:', {
                 status: response.status,
                 errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
                 url: url
             });
-            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            // Create error with traceback attached
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            (error as any).traceback = errorInfo.traceback;
+            throw error;
         }
 
         const data: DashboardSummary = await response.json();
@@ -1058,8 +1077,9 @@ async function fetchSummary(): Promise<void> {
         if (totalPnlEl) totalPnlEl.textContent = 'Error';
         if (cashEl) cashEl.textContent = 'Error';
 
-        // Show error in UI
-        showDashboardError(new Error(`Failed to load summary: ${errorMsg}`));
+        // Show error in UI (include traceback if available)
+        const traceback = (error as any)?.traceback;
+        showDashboardError(new Error(`Failed to load summary: ${errorMsg}`), traceback);
         throw error; // Re-throw so refreshDashboard can catch it
     }
 }
@@ -1088,15 +1108,18 @@ async function fetchPerformanceChart(): Promise<void> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
-            const errorMsg = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+            const errorInfo = extractErrorInfo(errorData);
             console.error('[Dashboard] Performance chart API error:', {
                 status: response.status,
                 statusText: response.statusText,
-                error: errorMsg,
+                error: errorInfo.message,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
                 errorData: JSON.stringify(errorData),
                 url: url
             });
-            throw new Error(errorMsg);
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            (error as any).traceback = errorInfo.traceback;
+            throw error;
         }
 
         const data: PerformanceChartData = await response.json();
@@ -1123,7 +1146,9 @@ async function fetchPerformanceChart(): Promise<void> {
         });
         const chartEl = document.getElementById('performance-chart');
         if (chartEl) {
-            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading chart: ${errorMsg}</p></div>`;
+            const traceback = (error as any)?.traceback;
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading chart: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
@@ -1151,12 +1176,16 @@ async function fetchSectorChart(): Promise<void> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
             console.error('[Dashboard] Sector chart API error:', {
                 status: response.status,
                 errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
                 url: url
             });
-            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            (error as any).traceback = errorInfo.traceback;
+            throw error;
         }
 
         const data: AllocationChartData = await response.json();
@@ -1170,15 +1199,19 @@ async function fetchSectorChart(): Promise<void> {
 
     } catch (error) {
         const duration = performance.now() - startTime;
+        const traceback = (error as any)?.traceback;
         console.error('[Dashboard] Error fetching sector chart:', {
             error: error,
             message: error instanceof Error ? error.message : String(error),
+            traceback: traceback ? 'present' : 'missing',
             url: url,
             duration: `${duration.toFixed(2)}ms`
         });
         const chartEl = document.getElementById('sector-chart');
         if (chartEl) {
-            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading sector chart: ${error instanceof Error ? error.message : 'Unknown error'}</p></div>`;
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading sector chart: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
@@ -1204,15 +1237,18 @@ async function fetchHoldings(): Promise<void> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
-            const errorMsg = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+            const errorInfo = extractErrorInfo(errorData);
             console.error('[Dashboard] Holdings API error:', {
                 status: response.status,
                 statusText: response.statusText,
-                error: errorMsg,
+                error: errorInfo.message,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
                 errorData: JSON.stringify(errorData),
                 url: url
             });
-            throw new Error(errorMsg);
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            (error as any).traceback = errorInfo.traceback;
+            throw error;
         }
 
         const data: HoldingsData = await response.json();
@@ -1278,16 +1314,19 @@ async function fetchHoldings(): Promise<void> {
         const duration = performance.now() - startTime;
         const errorMsg = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : undefined;
+        const traceback = (error as any)?.traceback;
         console.error('[Dashboard] Error fetching holdings:', {
             error: errorMsg,
             stack: errorStack,
+            traceback: traceback ? 'present' : 'missing',
             url: url,
             duration: `${duration.toFixed(2)}ms`,
             errorObject: JSON.stringify(error, Object.getOwnPropertyNames(error))
         });
         const gridEl = document.getElementById('holdings-grid');
         if (gridEl) {
-            gridEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading holdings: ${errorMsg}</p></div>`;
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            gridEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading holdings: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
@@ -1313,12 +1352,16 @@ async function fetchActivity(): Promise<void> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
             console.error('[Dashboard] Activity API error:', {
                 status: response.status,
                 errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
                 url: url
             });
-            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            (error as any).traceback = errorInfo.traceback;
+            throw error;
         }
 
         const data: ActivityData = await response.json();
@@ -1387,15 +1430,19 @@ async function fetchActivity(): Promise<void> {
     } catch (error) {
         hideSpinner('activity-table-spinner');
         const duration = performance.now() - startTime;
+        const traceback = (error as any)?.traceback;
         console.error('[Dashboard] Error fetching activity:', {
             error: error,
             message: error instanceof Error ? error.message : String(error),
+            traceback: traceback ? 'present' : 'missing',
             url: url,
             duration: `${duration.toFixed(2)}ms`
         });
         const tableBody = document.getElementById('activity-table-body');
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-red-500 py-4">Error loading activity: ${error instanceof Error ? error.message : 'Unknown error'}</td></tr>`;
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-red-500 py-4"><p>Error loading activity: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
         }
     }
 }
@@ -1421,12 +1468,16 @@ async function fetchMovers(): Promise<void> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
             console.error('[Dashboard] Movers API error:', {
                 status: response.status,
                 errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
                 url: url
             });
-            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            (error as any).traceback = errorInfo.traceback;
+            throw error;
         }
 
         const data: MoversData = await response.json();
@@ -1443,20 +1494,23 @@ async function fetchMovers(): Promise<void> {
         hideSpinner('gainers-spinner');
         hideSpinner('losers-spinner');
         const duration = performance.now() - startTime;
+        const traceback = (error as any)?.traceback;
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         console.error('[Dashboard] Error fetching movers:', {
             error: error,
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMsg,
+            traceback: traceback ? 'present' : 'missing',
             url: url,
             duration: `${duration.toFixed(2)}ms`
         });
+        const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
         const gainersBody = document.getElementById('gainers-table-body');
         const losersBody = document.getElementById('losers-table-body');
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         if (gainersBody) {
-            gainersBody.innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-4">Error: ${errorMsg}</td></tr>`;
+            gainersBody.innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-4"><p>Error: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
         }
         if (losersBody) {
-            losersBody.innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-4">Error: ${errorMsg}</td></tr>`;
+            losersBody.innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-4"><p>Error: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
         }
     }
 }
@@ -1995,8 +2049,10 @@ async function fetchIndividualHoldingsChart(): Promise<void> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
-            const errorMsg = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
-            throw new Error(errorMsg);
+            const errorInfo = extractErrorInfo(errorData);
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            (error as any).traceback = errorInfo.traceback;
+            throw error;
         }
 
         const data: IndividualHoldingsChartData = await response.json();
@@ -2006,10 +2062,15 @@ async function fetchIndividualHoldingsChart(): Promise<void> {
     } catch (error) {
         hideSpinner('individual-holdings-spinner');
         const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error('[Dashboard] Error fetching individual holdings chart:', errorMsg);
+        const traceback = (error as any)?.traceback;
+        console.error('[Dashboard] Error fetching individual holdings chart:', {
+            error: errorMsg,
+            traceback: traceback ? 'present' : 'missing'
+        });
         const chartEl = document.getElementById('individual-holdings-chart');
         if (chartEl) {
-            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading chart: ${errorMsg}</p></div>`;
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading chart: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
@@ -2287,12 +2348,16 @@ async function loadPnlChart(fund: string): Promise<void> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
             console.error('[Dashboard] P&L chart API error:', {
                 status: response.status,
                 errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
                 url: url
             });
-            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            (error as any).traceback = errorInfo.traceback;
+            throw error;
         }
 
         const data: PnlChartData = await response.json();
@@ -2303,16 +2368,19 @@ async function loadPnlChart(fund: string): Promise<void> {
     } catch (error) {
         hideSpinner('pnl-chart-spinner');
         const duration = performance.now() - startTime;
+        const traceback = (error as any)?.traceback;
         console.error('[Dashboard] Error fetching P&L chart:', {
             error: error,
             message: error instanceof Error ? error.message : String(error),
+            traceback: traceback ? 'present' : 'missing',
             url: url,
             duration: `${duration.toFixed(2)}ms`
         });
         const chartEl = document.getElementById('pnl-chart');
         if (chartEl) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error: ${errorMsg}</p></div>`;
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
