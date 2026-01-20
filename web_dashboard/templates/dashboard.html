@@ -50,8 +50,8 @@
                 </button>
             </div>
             <button onclick="document.getElementById('dashboard-error-container').classList.add('hidden')"
-                class="ml-auto text-red-400 hover:text-red-600">
-                <i class="fas fa-times"></i>
+                class="ml-auto text-red-400 hover:text-red-600" aria-label="Close error message">
+                <i class="fas fa-times" aria-hidden="true"></i>
             </button>
         </div>
     </div>
@@ -375,9 +375,10 @@
                 <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     <span class="text-green-500">💰</span> Dividends
                 </h3>
-                <button onclick="document.getElementById('dividend-log-container').classList.toggle('hidden')" 
-                    class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
-                    Hide Log
+                <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)"
+                    aria-expanded="true" aria-controls="dividend-log-container"
+                    class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
+                    <i class="fas fa-eye-slash mr-1" aria-hidden="true"></i> <span>Hide Log</span>
                 </button>
             </div>
             
@@ -488,6 +489,31 @@
     // Pass initial data from backend if needed, or just let JS fetch it
     const INITIAL_FUND = "{{ iund }}";
     console.log('[Dashboard] Script block loaded, INITIAL_FUND:', INITIAL_FUND);
+
+    function toggleDividendLog(btn) {
+        const container = document.getElementById('dividend-log-container');
+        if (!container) return;
+
+        const isHidden = container.classList.toggle('hidden');
+        const icon = btn.querySelector('i');
+        const span = btn.querySelector('span');
+
+        btn.setAttribute('aria-expanded', !isHidden);
+
+        if (isHidden) {
+            if (span) span.textContent = 'Show Log';
+            if (icon) {
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        } else {
+            if (span) span.textContent = 'Hide Log';
+            if (icon) {
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            }
+        }
+    }
 </script>
 <script type="module"
     src="/assets/js/dashboard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
