@@ -61,7 +61,12 @@
 /* AI Drawer - Mobile Overlay/Drawer Behavior */
 /* Complex transforms and state management - cannot be fully replaced with Tailwind */
 .ai-drawer {
-    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    transition:
+        transform 0.3s ease-in-out,
+        opacity 0.3s ease-in-out,
+        width 0.3s ease-in-out,
+        padding 0.3s ease-in-out,
+        border-width 0.3s ease-in-out;
 }
 
 
@@ -134,13 +139,18 @@
     }
 
     .ai-drawer.drawer-closed {
-        display: none;
         width: 0;
-        flex: 0 0 0;
+        padding-left: 0;
+        border-left-width: 0;
+        opacity: 0;
+        transform: translateX(8px);
+        pointer-events: none;
+        overflow: hidden;
     }
 
     .ai-drawer.drawer-open {
-        display: block;
+        opacity: 1;
+        transform: translateX(0);
     }
 }
 
