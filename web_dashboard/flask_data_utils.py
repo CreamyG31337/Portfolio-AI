@@ -646,8 +646,6 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
             
             # Keep only needed columns
             cols_to_keep = ['ticker', 'date', 'performance_index', 'return_pct', 'daily_pnl_pct', 'sector', 'industry', 'currency']
-            holdings_performance.append(ticker_df[cols_to_keep])
-        
         if not holdings_performance:
             return pd.DataFrame()
         
@@ -663,3 +661,113 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
     except Exception as e:
         logger.error(f"Error fetching individual holdings (Flask): {e}", exc_info=True)
         return pd.DataFrame()
+
+
+@cache_data(ttl=3600)
+def fetch_latest_rates_bulk_flask(currencies: List[str], target_currency: str) -> Dict[str, float]:
+    """
+    Fetch latest exchange rates (Flask version).
+    """
+    if not currencies:
+        return {}
+        
+    unique_currencies = list(set([str(c).upper() for c in currencies if c and str(c).upper() != target_currency.upper()]))
+    
+    if not unique_currencies:
+        return {}
+
+    client = get_supabase_client_flask()
+    if not client:
+        return {c: 1.0 for c in unique_currencies}
+        
+    try:
+        from datetime import datetime, timedelta
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        response = client.supabase.table('exchange_rates').select('*') \
+            .gte('timestamp', thirty_days_ago) \
+            .execute()
+            
+        if not response.data:
+            return {}
+            
+        latest_rates = {}
+        for row in response.data:
+            fc = row['from_currency'].upper()
+            tc = row['to_currency'].upper()
+            ts = row['timestamp']
+            r = float(row['rate'])
+            
+            key = (fc, tc)
+            if key not in latest_rates or ts > latest_rates[key][0]:
+                latest_rates[key] = (ts, r)
+                
+        result = {}
+        target = target_currency.upper()
+        
+        for curr in unique_currencies:
+            curr = curr.upper()
+            rate = None
+            
+            if (curr, target) in latest_rates:
+                rate = latest_rates[(curr, target)][1]
+            elif (target, curr) in latest_rates:
+                inv_rate = latest_rates[(target, curr)][1]
+                if inv_rate != 0:
+                    rate = 1.0 / inv_rate
+            
+            if rate is None:
+                if curr == 'USD' and target == 'CAD':
+                    result[curr] = 1.35
+                elif curr == 'CAD' and target == 'USD':
+                    result[curr] = 1.0 / 1.35
+                else:
+                    result[curr] = 1.0
+            else:
+                result[curr] = rate
+                
+        return result
+    except Exception as e:
+        logger.error(f"Error in fetch_latest_rates_bulk_flask: {e}")
+        return {c: 1.0 for c in unique_currencies}
+
+
+@cache_data(ttl=300)
+def get_investor_count_flask(fund: Optional[str] = None) -> int:
+    """Get number of unique investors (Flask version)"""
+    client = get_supabase_client_flask()
+    if not client:
+        return 0
+        
+    try:
+        query = client.supabase.table("user_funds").select("user_id", count='exact')
+        if fund:
+            query = query.eq("fund_name", fund)
+            
+        result = query.execute()
+        return result.count or 0
+    except Exception as e:
+        logger.error(f"Error getting investor count (Flask): {e}")
+        return 0
+
+
+@cache_data(ttl=300)
+def get_first_trade_dates_flask(fund: Optional[str] = None) -> Dict[str, datetime]:
+    """Get first trade dates (Flask version)"""
+    # Simply reuse trade log fetching which is efficient enough
+    try:
+        trades_df = get_trade_log_flask(limit=5000, fund=fund) # reasonable limit
+        if trades_df.empty:
+            return {}
+            
+        # Group by ticker and find min date
+        if 'date' in trades_df.columns and 'ticker' in trades_df.columns:
+            # Convert to datetime if not already
+            trades_df['date'] = pd.to_datetime(trades_df['date'])
+            first_dates = trades_df.groupby('ticker')['date'].min().to_dict()
+            return first_dates
+            
+        return {}
+    except Exception as e:
+        logger.error(f"Error getting first trade dates (Flask): {e}")
+        return {}

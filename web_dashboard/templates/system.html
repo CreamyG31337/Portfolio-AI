@@ -52,16 +52,11 @@
     <!-- Cache Management -->
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
         <h3 class="text-lg font-semibold text-gray-900 mb-4">Cache Management</h3>
-        <p class="text-sm text-gray-600 mb-4">Clear cached data to force fresh data retrieval. Useful after code
-            deployments or data updates.</p>
+        <p class="text-sm text-gray-600 mb-4">Reset all system caches and increment the cache version to force fresh data retrieval.</p>
         <div class="flex items-center space-x-4">
-            <button id="clear-cache-btn" onclick="clearCache()"
-                class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center">
-                <i class="fas fa-trash-alt mr-2"></i> Clear All Cache
-            </button>
-            <button id="bump-cache-version-btn" onclick="bumpCacheVersion()"
-                class="text-white bg-orange-600 hover:bg-orange-700 focus:ring-4 focus:outline-none focus:ring-orange-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center">
-                <i class="fas fa-sync-alt mr-2"></i> Bump Cache Version
+            <button id="reset-cache-btn" onclick="resetSystemCache()"
+                class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                <i class="fas fa-trash-alt mr-2"></i> Reset System Cache
             </button>
             <div id="cache-status" class="text-sm text-gray-600"></div>
         </div>

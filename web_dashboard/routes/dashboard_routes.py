@@ -9,20 +9,22 @@ import json
 from auth import require_auth
 from flask_auth_utils import get_user_email_flask
 from user_preferences import get_user_theme, get_user_currency, get_user_selected_fund, get_user_preference
-from flask_data_utils import fetch_dividend_log_flask, get_supabase_client_flask
-from chart_utils import create_currency_exposure_chart
-from streamlit_utils import (
-    get_current_positions,
-    get_trade_log,
-    get_cash_balances,
-    calculate_portfolio_value_over_time,
-    get_user_investment_metrics,
-    get_fund_thesis_data,
-    fetch_latest_rates_bulk,
-    get_investor_count,
-    get_biggest_movers,
-    get_first_trade_dates
+from flask_data_utils import (
+    fetch_dividend_log_flask, 
+    get_supabase_client_flask,
+    get_current_positions_flask as get_current_positions,
+    get_trade_log_flask as get_trade_log,
+    get_cash_balances_flask as get_cash_balances,
+    get_fund_thesis_data_flask as get_fund_thesis_data,
+    fetch_latest_rates_bulk_flask as fetch_latest_rates_bulk,
+    get_investor_count_flask as get_investor_count,
+    get_first_trade_dates_flask as get_first_trade_dates,
+    calculate_portfolio_value_over_time_flask as calculate_portfolio_value_over_time
 )
+# from streamlit_utils import (
+#     get_user_investment_metrics, # Not yet ported/needed?
+#     get_biggest_movers, # Not yet ported/needed?
+# )
 
 logger = logging.getLogger(__name__)
 

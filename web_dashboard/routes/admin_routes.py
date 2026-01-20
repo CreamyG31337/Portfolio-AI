@@ -1199,6 +1199,36 @@ def api_bump_cache_version():
             "message": str(e)
         }), 500
 
+@admin_bp.route('/api/admin/system/cache/reset', methods=['POST'])
+@require_admin
+def api_reset_cache():
+    """Reset all system caches (Clear + Bump)"""
+    try:
+        from flask_cache_utils import clear_all_caches
+        from cache_version import bump_cache_version, get_cache_version
+        
+        # 1. Clear in-memory/backend caches
+        clear_all_caches()
+        
+        # 2. Bump version for persistent/distributed invalidation
+        old_version = get_cache_version()
+        bump_cache_version()
+        new_version = get_cache_version()
+        
+        logger.info(f"[System API] System cache reset by admin. Version: {old_version} -> {new_version}")
+        
+        return jsonify({
+            "success": True,
+            "message": "System cache reset successfully",
+            "cache_version": new_version
+        })
+    except Exception as e:
+        logger.error(f"[System API] Error resetting cache: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
 @admin_bp.route('/api/admin/system/files/content')
 @require_admin
 def api_read_log_file():
