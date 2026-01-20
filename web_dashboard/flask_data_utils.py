@@ -761,6 +761,13 @@ def get_first_trade_dates_flask(fund: Optional[str] = None) -> Dict[str, datetim
             return {}
             
         # Group by ticker and find min date
+        if 'date' in trades_df.columns and 'ticker' in trades_df.columns:
+            # Convert to datetime if not already
+            trades_df['date'] = pd.to_datetime(trades_df['date'])
+            first_dates = trades_df.groupby('ticker')['date'].min().to_dict()
+            return first_dates
+            
+        return {}
     except Exception as e:
         logger.error(f"Error getting first trade dates (Flask): {e}")
         return {}
