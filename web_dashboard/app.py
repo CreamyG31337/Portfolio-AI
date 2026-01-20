@@ -2371,9 +2371,9 @@ def export_cash():
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
 
 @app.route('/logs/debug')
-@require_auth
+@require_admin
 def logs_debug():
-    """Debug endpoint to check admin status without requiring admin"""
+    """Debug endpoint to check admin status (requires admin privileges)"""
     try:
         from flask_auth_utils import get_user_email_flask, get_user_id_flask
         from auth import is_admin
