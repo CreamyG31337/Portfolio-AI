@@ -3,6 +3,13 @@
 # This pipeline builds the Streamlit dashboard Docker image and deploys it to the server.
 # It uses Docker socket mounting to build directly on the server (no SSH needed).
 #
+# Pipeline Events:
+# - pull_request: Runs PR validation (tests, linting, type checking) when PR is opened/updated
+# - push to main/master: Runs build-and-deploy pipeline (builds and deploys Docker images)
+#
+# IMPORTANT: Ensure "Pull Request" events are enabled in Woodpecker repository settings
+# for PR validation to work. Go to: Repository → Settings → and enable PR events.
+#
 # Build Process:
 # 1. Build Docker image from web_dashboard/Dockerfile
 # 2. Tag image with commit SHA for version tracking
@@ -48,8 +55,47 @@
 #
 # Note: Secrets are loaded using from_secret in the environment section
 # Note: Repository must be marked as "Trusted" in Woodpecker settings to use volumes
+# Note: For PR validation to work, ensure "Pull Request" events are enabled in Woodpecker repo settings
 
 steps:
+  # PR Validation Pipeline - Runs tests, linting, and type checking on pull requests
+  # This runs when a PR is opened or updated (not on merge - merge triggers build-and-deploy)
+  pr-validation:
+    image: python:3.11-slim
+    commands:
+      - echo "Starting PR Validation Pipeline"
+      - echo "Python version: $(python --version)"
+      - echo "Event: $CI_PIPELINE_EVENT"
+      - echo "Branch: $CI_COMMIT_BRANCH"
+      - echo "PR: $CI_COMMIT_PULL_REQUEST"
+      
+      # Install system dependencies
+      - apt-get update -qq && apt-get install -y -qq git > /dev/null
+      
+      # Install Python dependencies
+      - echo "Installing Python dependencies..."
+      - pip install --quiet --upgrade pip
+      - pip install --quiet -r requirements.txt
+      - pip install --quiet ruff mypy
+      
+      # Run linting
+      - echo "Running Ruff linter..."
+      - ruff check . --output-format=concise || (echo "Linting failed" && exit 1)
+      - echo "Linting passed"
+      
+      # Run type checking (on key files, skip missing imports for speed)
+      - echo "Running MyPy type checking..."
+      - mypy portfolio/ financial/ utils/ --ignore-missing-imports --no-error-summary || (echo "Type checking found issues (non-blocking)" && true)
+      
+      # Run tests
+      - echo "Running Python tests..."
+      - python -m pytest tests/ -v --tb=short || (echo "Tests failed" && exit 1)
+      - echo "All tests passed"
+      
+      - echo "PR Validation complete - all checks passed!"
+    when:
+      event: pull_request
+
   build-and-deploy:
     image: docker:24
     volumes:

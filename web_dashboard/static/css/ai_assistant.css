@@ -47,24 +47,7 @@
     background: rgba(128, 128, 128, 0.6);
 }
 
-/* Message Content Typography */
-.message-content {
-    line-height: 1.6;
-}
-
-.message-content p {
-    margin: 0.5rem 0;
-}
-
-.message-content p:first-child {
-    margin-top: 0;
-}
-
-.message-content p:last-child {
-    margin-bottom: 0;
-}
-
-/* Streaming Indicator - Using Tailwind animate-pulse in JS, but keeping fallback */
+/* Streaming Indicator - Custom animation (not available in Tailwind) */
 .streaming-indicator {
     display: inline-block;
     animation: blink 1s infinite;
@@ -75,99 +58,29 @@
     51%, 100% { opacity: 0.3; }
 }
 
-/* Error Message Styling - Enhanced with Tailwind classes in HTML/JS */
-.error-message .message-bubble {
-    background-color: #fee2e2;
-    border: 1px solid #fca5a5;
-    color: #991b1b;
-}
-
-.error-message .message-bubble.assistant {
-    background-color: #fee2e2;
-    color: #991b1b;
-}
-
-/* Dark mode error messages */
-@media (prefers-color-scheme: dark) {
-    .error-message .message-bubble {
-        background-color: #7f1d1d;
-        border-color: #991b1b;
-        color: #fee2e2;
-    }
-}
-
-[data-theme="dark"] .error-message .message-bubble {
-    background-color: #7f1d1d;
-    border-color: #991b1b;
-    color: #fee2e2;
-}
-
-/* Search Results Display - Utility classes */
-.search-results {
-    margin-top: 0.5rem;
-    padding: 0.75rem;
-    background-color: #eff6ff;
-    border-radius: 0.5rem;
-    font-size: 0.875rem;
-}
-
-.search-results h4 {
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-}
-
-.search-results ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.search-results li {
-    margin-bottom: 0.5rem;
-    padding-left: 1rem;
-}
-
-/* Dark mode search results */
-@media (prefers-color-scheme: dark) {
-    .search-results {
-        background-color: #1e3a8a;
-    }
-}
-
-[data-theme="dark"] .search-results {
-    background-color: #1e3a8a;
-}
-
-/* Repository Results Display */
-.repository-results {
-    margin-top: 0.5rem;
-    padding: 0.75rem;
-    background-color: #f0fdf4;
-    border-radius: 0.5rem;
-    font-size: 0.875rem;
-}
-
-/* Dark mode repository results */
-@media (prefers-color-scheme: dark) {
-    .repository-results {
-        background-color: #14532d;
-    }
-}
-
-[data-theme="dark"] .repository-results {
-    background-color: #14532d;
-}
-
-/* Mobile Responsive - Some adjustments that Tailwind breakpoints handle, but keeping specific ones */
-@media (max-width: 768px) {
-    #chat-container {
-        height: 60vh;
-    }
-}
-
 /* AI Drawer - Mobile Overlay/Drawer Behavior */
+/* Complex transforms and state management - cannot be fully replaced with Tailwind */
 .ai-drawer {
     transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+
+/* Drawer Tabs */
+.ai-drawer .drawer-tab-btn {
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+}
+
+.ai-drawer .drawer-tab-btn:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.ai-drawer .drawer-tab-btn.is-active {
+    background-color: var(--color-info-bg);
+    border-color: var(--color-info-text);
+    color: var(--color-info-text);
+    box-shadow: 0 0 0 1px var(--color-info-text) inset;
 }
 
 /* Mobile: Sidebar as overlay/drawer */
@@ -255,6 +168,7 @@
 }
 
 /* Button theming fixes for dark themes */
+/* These override Tailwind classes for better dark theme contrast */
 [data-theme="dark"] button.bg-gray-200,
 [data-theme="midnight-tokyo"] button.bg-gray-200,
 [data-theme="abyss"] button.bg-gray-200 {

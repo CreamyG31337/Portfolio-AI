@@ -573,15 +573,11 @@ class AIAssistant {
 
         if (tabButtons.length === 0 || panels.length === 0) return;
 
-        const activeClasses = ['bg-white', 'dark:bg-gray-900', 'text-text-primary', 'shadow-sm'];
-        const inactiveClasses = ['text-text-secondary', 'hover:text-text-primary'];
-
         const setActive = (tabId: string): void => {
             tabButtons.forEach((btn) => {
                 const isActive = btn.dataset.drawerTab === tabId;
                 btn.setAttribute('aria-selected', isActive.toString());
-                activeClasses.forEach((cls) => btn.classList.toggle(cls, isActive));
-                inactiveClasses.forEach((cls) => btn.classList.toggle(cls, !isActive));
+                btn.classList.toggle('is-active', isActive);
             });
 
             panels.forEach((panel) => {
@@ -1344,7 +1340,7 @@ class AIAssistant {
             bubble.className = 'message-bubble bg-accent text-white rounded-lg rounded-br-sm px-4 py-3 shadow-sm';
 
             const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content text-white';
+            contentDiv.className = 'message-content leading-relaxed text-white';
             if (isLoading) {
                 contentDiv.innerHTML = content;
             } else {
@@ -1373,7 +1369,7 @@ class AIAssistant {
             bubble.className = 'message-bubble bg-gray-100 dark:bg-dashboard-surface-alt text-text-primary rounded-lg rounded-bl-sm px-4 py-3 shadow-sm';
 
             const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
+            contentDiv.className = 'message-content leading-relaxed [&>p]:my-2 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0';
             if (isLoading) {
                 contentDiv.innerHTML = content;
             } else {

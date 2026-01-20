@@ -9,25 +9,14 @@
     <!-- Theme CSS - Uses CSS variables -->
     <link rel="stylesheet" href="/assets/css/theme.css">
 
-    <!-- Tailwind CSS for utility classes -->
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Tailwind CSS - Production build (optimized, tree-shaken) -->
+    <link href="/assets/css/tailwind.css?v=2" rel="stylesheet">
+
+    <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
-    <style>
-        .card-hover:hover {
-            transform: translateY(-2px);
-            transition: transform 0.2s ease-in-out;
-        }
-
-        /* Theme toggle button styling */
-        #theme-toggle {
-            width: 44px;
-            height: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-    </style>
+    <!-- Flowbite CSS (required for components) -->
+    <link href="https://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.css" rel="stylesheet" />
 </head>
 
 <body class="bg-gray-100 min-h-screen flex flex-col">
@@ -42,7 +31,7 @@
 
         <!-- Theme Toggle Button -->
         <button id="theme-toggle"
-            class="absolute top-4 right-4 p-2 rounded-full bg-black/20 hover:bg-black/30 text-white transition-all focus:outline-none z-50 border border-white/20"
+            class="absolute top-4 right-4 w-11 h-11 flex items-center justify-center rounded-full bg-black/20 hover:bg-black/30 text-white transition-all focus:outline-none z-50 border border-white/20"
             aria-label="Toggle Theme">
             <!-- Sun Icon (visible in dark themes) -->
             <svg id="sun-icon" class="w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 20 20"
@@ -63,7 +52,7 @@
     <div class="w-full px-4 py-8 flex-grow">
         <div class="max-w-md mx-auto">
             <!-- Login Form -->
-            <div id="login-form" class="bg-white rounded-lg shadow-lg p-8 card-hover border border-gray-200">
+            <div id="login-form" class="bg-white rounded-lg shadow-lg p-8 hover:-translate-y-0.5 transition-transform duration-200 border border-gray-200">
                 <h2 class="text-2xl font-bold text-gray-900 mb-6 text-center">Sign In</h2>
 
                 <form id="loginForm">
@@ -106,7 +95,7 @@
             </div>
 
             <!-- Register Form -->
-            <div id="register-form" class="bg-white rounded-lg shadow-lg p-8 card-hover hidden border border-gray-200">
+            <div id="register-form" class="bg-white rounded-lg shadow-lg p-8 hover:-translate-y-0.5 transition-transform duration-200 hidden border border-gray-200">
                 <h2 class="text-2xl font-bold text-gray-900 mb-6 text-center">Create Account</h2>
 
                 <form id="registerForm">
@@ -158,7 +147,7 @@
 
             <!-- Forgot Password Form -->
             <div id="forgot-password-form"
-                class="bg-white rounded-lg shadow-lg p-8 card-hover hidden border border-gray-200">
+                class="bg-white rounded-lg shadow-lg p-8 hover:-translate-y-0.5 transition-transform duration-200 hidden border border-gray-200">
                 <h2 class="text-2xl font-bold text-gray-900 mb-2 text-center">Reset Password</h2>
                 <p class="text-gray-600 text-center mb-6 text-sm">Enter your email to receive a reset link</p>
 
@@ -198,6 +187,9 @@
             <p class="text-xs text-gray-500 mt-1">Build: {{ build_timestamp|default('Development') }}</p>
         </div>
     </footer>
+
+    <!-- Flowbite JavaScript (required for interactive components) -->
+    <script src="https://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.js"></script>
 
     <!-- Theme Manager Script -->
     <script type="module" src="/assets/js/theme.js"></script>

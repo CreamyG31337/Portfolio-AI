@@ -8,6 +8,7 @@
 {% block extra_head %}
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 <style>
+    /* Loading spinner animation - custom animation not available in Tailwind */
     .loading-spinner {
         border: 4px solid var(--border-color);
         border-top: 4px solid #3498db;
@@ -15,13 +16,6 @@
         width: 40px;
         height: 40px;
         animation: spin 1s linear infinite;
-    }
-
-    #chart-loading {
-        min-height: 200px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
     }
 
     @keyframes spin {
@@ -32,34 +26,6 @@
         100% {
             transform: rotate(360deg);
         }
-    }
-
-    .section-hidden {
-        display: none;
-    }
-
-    .external-link {
-        display: block;
-        padding: 0.5rem;
-        text-decoration: none;
-        color: inherit;
-        border-radius: 0.25rem;
-        transition: background-color 0.2s;
-    }
-
-    .external-link:hover {
-        background-color: rgba(0, 0, 0, 0.05);
-    }
-
-    .metric-card {
-        background-color: var(--bg-primary);
-        padding: 1rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    }
-
-    [data-theme="dark"] .external-link:hover {
-        background-color: rgba(255, 255, 255, 0.1);
     }
 </style>
 {% endblock %}
@@ -77,10 +43,10 @@
 </div>
 
 <!-- Loading Spinner -->
-<div id="loading-spinner" class="loading-spinner section-hidden"></div>
+<div id="loading-spinner" class="loading-spinner hidden"></div>
 
 <!-- Error Message -->
-<div id="error-message" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6 section-hidden">
+<div id="error-message" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6 hidden">
     <p id="error-text"></p>
 </div>
 
@@ -90,24 +56,24 @@
 </div>
 
 <!-- Basic Info Section -->
-<div id="basic-info-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6">
+<div id="basic-info-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
     <div class="flex items-center gap-4 mb-4">
-        <img id="ticker-logo" src="" alt="" class="hidden w-24 h-24 object-contain rounded-lg border border-gray-200 dark:border-gray-700" style="flex-shrink: 0;" onerror="this.style.display='none';">
+        <img id="ticker-logo" src="" alt="" class="hidden w-24 h-24 object-contain rounded-lg border border-gray-200 dark:border-gray-700 flex-shrink-0" onerror="this.style.display='none';">
         <div>
             <h2 id="company-name" class="text-2xl font-bold"></h2>
             <div id="ticker-symbol" class="text-lg text-gray-600 dark:text-gray-400 font-mono"></div>
         </div>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="metric-card">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
             <div class="text-sm text-gray-600">Sector</div>
             <div id="sector" class="text-xl font-semibold">N/A</div>
         </div>
-        <div class="metric-card">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
             <div class="text-sm text-gray-600">Industry</div>
             <div id="industry" class="text-xl font-semibold">N/A</div>
         </div>
-        <div class="metric-card">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
             <div class="text-sm text-gray-600">Currency</div>
             <div id="currency" class="text-xl font-semibold">N/A</div>
         </div>
@@ -116,7 +82,7 @@
 </div>
 
 <!-- External Links Section -->
-<div id="external-links-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6">
+<div id="external-links-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
     <h2 class="text-xl font-bold mb-4">🔗 External Links</h2>
     <div id="external-links-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <!-- Links populated by JavaScript -->
@@ -124,7 +90,7 @@
 </div>
 
 <!-- Portfolio Data Section -->
-<div id="portfolio-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6">
+<div id="portfolio-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
     <h2 class="text-xl font-bold mb-4">💼 Portfolio Data</h2>
 
     <!-- Current Positions -->
@@ -185,7 +151,7 @@
 </div>
 
 <!-- Price History Chart Section -->
-<div id="chart-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6">
+<div id="chart-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
     <div class="flex justify-between items-center mb-4">
         <h2 class="text-xl font-bold">📈 Price History</h2>
         <div class="flex items-center gap-4">
@@ -205,20 +171,20 @@
     <div class="mb-2 text-sm text-gray-500 md:hidden">
         💡 Tip: Rotate your device for better viewing
     </div>
-    <div id="chart-loading" class="section-hidden">
+    <div id="chart-loading" class="hidden min-h-[200px] flex items-center justify-center">
         <div class="loading-spinner"></div>
     </div>
     <div id="chart-container" class="overflow-x-auto"></div>
     <div id="chart-metrics" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-        <div class="metric-card">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
             <div class="text-sm text-gray-600">First Price</div>
             <div id="first-price" class="text-xl font-semibold">-</div>
         </div>
-        <div class="metric-card">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
             <div class="text-sm text-gray-600">Last Price</div>
             <div id="last-price" class="text-xl font-semibold">-</div>
         </div>
-        <div class="metric-card">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
             <div class="text-sm text-gray-600">Change (3M)</div>
             <div id="price-change" class="text-xl font-semibold">-</div>
         </div>
@@ -226,7 +192,7 @@
 </div>
 
 <!-- Research Articles Section -->
-<div id="research-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6">
+<div id="research-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
     <h2 class="text-xl font-bold mb-4">📚 Research Articles</h2>
     <p id="research-count" class="text-sm text-gray-600 mb-4"></p>
     <div id="research-articles-list">
@@ -235,7 +201,7 @@
 </div>
 
 <!-- Social Sentiment Section -->
-<div id="sentiment-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6">
+<div id="sentiment-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
     <h2 class="text-xl font-bold mb-4">💬 Social Sentiment</h2>
 
     <!-- Latest Metrics -->
@@ -276,7 +242,7 @@
 </div>
 
 <!-- Congress Trades Section -->
-<div id="congress-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6 dark:bg-gray-800 dark:border dark:border-gray-700">
+<div id="congress-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6 dark:bg-gray-800 dark:border dark:border-gray-700">
     <h2 class="text-xl font-bold mb-4 dark:text-white">🏛️ Congress Trades</h2>
     <p id="congress-count" class="text-sm text-gray-600 dark:text-gray-400 mb-4"></p>
     <div class="overflow-x-auto">
@@ -305,18 +271,18 @@
 </div>
 
 <!-- Watchlist Status Section -->
-<div id="watchlist-section" class="section-hidden bg-white rounded-lg shadow-md p-6 mb-6">
+<div id="watchlist-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
     <h2 class="text-xl font-bold mb-4">📋 Watchlist Status</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="metric-card">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
             <div class="text-sm text-gray-600">Status</div>
             <div id="watchlist-status" class="text-xl font-semibold">-</div>
         </div>
-        <div class="metric-card">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
             <div class="text-sm text-gray-600">Priority Tier</div>
             <div id="watchlist-tier" class="text-xl font-semibold">-</div>
         </div>
-        <div class="metric-card">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
             <div class="text-sm text-gray-600">Source</div>
             <div id="watchlist-source" class="text-xl font-semibold">-</div>
         </div>

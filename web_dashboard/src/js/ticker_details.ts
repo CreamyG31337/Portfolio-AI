@@ -287,7 +287,7 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
     const section = document.getElementById('basic-info-section');
     if (!section) return;
 
-    section.classList.remove('section-hidden');
+    section.classList.remove('hidden');
 
     const companyName = document.getElementById('company-name');
     const tickerSymbol = document.getElementById('ticker-symbol');
@@ -362,14 +362,14 @@ async function renderExternalLinks(basicInfo: BasicInfo): Promise<void> {
             link.href = url;
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
-            link.className = 'external-link';
+            link.className = 'block p-2 no-underline text-inherit rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors';
             link.textContent = name;
             grid.appendChild(link);
         });
 
         const section = document.getElementById('external-links-section');
         if (section && Object.keys(links).length > 0) {
-            section.classList.remove('section-hidden');
+            section.classList.remove('hidden');
         }
     } catch (error) {
         console.error('Error loading external links:', error);
@@ -385,7 +385,7 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
     const section = document.getElementById('portfolio-section');
     if (!section) return;
 
-    section.classList.remove('section-hidden');
+    section.classList.remove('hidden');
 
     // Render positions
     if (portfolioData.has_positions && portfolioData.positions && portfolioData.positions.length > 0) {
@@ -455,11 +455,11 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
 
     // Clear any existing chart
     chartContainer.innerHTML = '';
-    chartLoading.classList.remove('section-hidden');
+    chartLoading.classList.remove('hidden');
 
     // Show chart section (but with loading indicator)
     const chartSection = document.getElementById('chart-section');
-    if (chartSection) chartSection.classList.remove('section-hidden');
+    if (chartSection) chartSection.classList.remove('hidden');
 
     try {
         // Detect actual theme from page
@@ -530,7 +530,7 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
         }
 
         // Hide loading indicator AFTER successful rendering
-        chartLoading.classList.add('section-hidden');
+        chartLoading.classList.add('hidden');
         chartLoading.style.display = 'none';
 
         // Load price history for metrics
@@ -538,13 +538,13 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
     } catch (error) {
         console.error('Error loading chart:', error);
         // Hide loading indicator
-        chartLoading.classList.add('section-hidden');
+        chartLoading.classList.add('hidden');
         // Show error message to user
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         showTickerError(`Failed to load chart: ${errorMessage}`);
         // Hide chart section on error
         const chartSection = document.getElementById('chart-section');
-        if (chartSection) chartSection.classList.add('section-hidden');
+        if (chartSection) chartSection.classList.add('hidden');
     }
 }
 
@@ -616,7 +616,7 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
     const section = document.getElementById('research-section');
     if (!section) return;
 
-    section.classList.remove('section-hidden');
+    section.classList.remove('hidden');
 
     const countEl = document.getElementById('research-count');
     if (countEl) countEl.textContent = `Found ${articles.length} articles mentioning ${currentTicker} (last 30 days)`;
@@ -676,7 +676,7 @@ function renderSocialSentiment(sentiment: SocialSentiment): void {
     const section = document.getElementById('sentiment-section');
     if (!section) return;
 
-    section.classList.remove('section-hidden');
+    section.classList.remove('hidden');
 
     // Render metrics
     if (sentiment.latest_metrics && sentiment.latest_metrics.length > 0) {
@@ -749,7 +749,7 @@ function renderCongressTickerTrades(trades: CongressTickerTrade[]): void {
     const section = document.getElementById('congress-section');
     if (!section) return;
 
-    section.classList.remove('section-hidden');
+    section.classList.remove('hidden');
 
     const countEl = document.getElementById('congress-count');
     if (countEl) countEl.textContent = `Found ${trades.length} trades by politicians`;
@@ -783,7 +783,7 @@ function renderWatchlistStatus(status: WatchlistStatus): void {
     const section = document.getElementById('watchlist-section');
     if (!section) return;
 
-    section.classList.remove('section-hidden');
+    section.classList.remove('hidden');
 
     const statusEl = document.getElementById('watchlist-status');
     const tierEl = document.getElementById('watchlist-tier');
@@ -815,24 +815,24 @@ function formatNumber(value: number | string, decimals: number = 2): string {
 
 function showLoading(): void {
     const spinner = document.getElementById('loading-spinner');
-    if (spinner) spinner.classList.remove('section-hidden');
+    if (spinner) spinner.classList.remove('hidden');
 }
 
 function hideLoading(): void {
     const spinner = document.getElementById('loading-spinner');
-    if (spinner) spinner.classList.add('section-hidden');
+    if (spinner) spinner.classList.add('hidden');
 }
 
 function showTickerError(message: string): void {
     const errorText = document.getElementById('error-text');
     const errorMessage = document.getElementById('error-message');
     if (errorText) errorText.textContent = message;
-    if (errorMessage) errorMessage.classList.remove('section-hidden');
+    if (errorMessage) errorMessage.classList.remove('hidden');
 }
 
 function hideTickerError(): void {
     const errorMessage = document.getElementById('error-message');
-    if (errorMessage) errorMessage.classList.add('section-hidden');
+    if (errorMessage) errorMessage.classList.add('hidden');
 }
 
 function toggleSummary(summaryId: string): void {
@@ -860,13 +860,13 @@ function toggleSummary(summaryId: string): void {
 
 function showPlaceholder(): void {
     const placeholder = document.getElementById('placeholder-message');
-    if (placeholder) placeholder.classList.remove('section-hidden');
+    if (placeholder) placeholder.classList.remove('hidden');
     hideAllSections();
 }
 
 function hidePlaceholder(): void {
     const placeholder = document.getElementById('placeholder-message');
-    if (placeholder) placeholder.classList.add('section-hidden');
+    if (placeholder) placeholder.classList.add('hidden');
 }
 
 function hideAllSections(): void {
@@ -883,6 +883,6 @@ function hideAllSections(): void {
 
     sections.forEach(id => {
         const section = document.getElementById(id);
-        if (section) section.classList.add('section-hidden');
+        if (section) section.classList.add('hidden');
     });
 }

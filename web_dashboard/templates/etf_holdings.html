@@ -105,7 +105,7 @@
             </div>
 
             <!-- Change Type Filter (only for changes view) -->
-            <div {% if view_mode !='changes' %}style="display:none;" {% endif %}>
+            <div {% if view_mode !='changes' %}class="hidden" {% endif %}>
                 <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
                     <i class="fas fa-filter mr-1"></i>Change Type
                 </label>
@@ -276,7 +276,7 @@
         </div>
         {% endif %}
     </div>
-    <div id="etf-holdings-grid" class="ag-theme-alpine" style="height: 600px; width: 100%;"></div>
+    <div id="etf-holdings-grid" class="ag-theme-alpine h-[600px] w-full"></div>
 </div>
 
 {% endblock %}

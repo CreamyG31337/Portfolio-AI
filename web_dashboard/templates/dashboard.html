@@ -215,7 +215,7 @@
                     <span>📱 Solid Lines Only (for mobile)</span>
                 </label>
             </div>
-            <div class="w-full relative" id="performance-chart" style="min-height: 500px;">
+            <div class="w-full relative min-h-[500px]" id="performance-chart">
                 <!-- Loading spinner -->
                 <div id="performance-chart-spinner"
                     class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
@@ -277,7 +277,7 @@
                     </div>
                     
                     <!-- Chart Container -->
-                    <div class="w-full relative" id="individual-holdings-chart" style="min-height: 450px;">
+                    <div class="w-full relative min-h-[450px]" id="individual-holdings-chart">
                         <div id="individual-holdings-spinner" class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10 hidden">
                             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
                         </div>
@@ -289,9 +289,9 @@
         <!-- Sector Allocation (1/3 width) -->
         <div class="xl:col-span-1 flex flex-col gap-6">
             <!-- Sector Allocation Chart -->
-            <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 flex-shrink-0" style="height: 780px;">
+            <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 flex-shrink-0 h-[780px]">
                 <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Sector Allocation</h3>
-                <div class="w-full relative" id="sector-chart" style="height: 700px !important; min-height: 700px;">
+                <div class="w-full relative h-[700px] min-h-[700px]" id="sector-chart">
                     <!-- Loading spinner -->
                     <div id="sector-chart-spinner"
                         class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
@@ -327,7 +327,7 @@
                         </div>
                         
                         <!-- Historical Rate Chart -->
-                        <div class="w-full relative" id="exchange-rate-chart" style="min-height: 200px;">
+                        <div class="w-full relative min-h-[200px]" id="exchange-rate-chart">
                             <div id="exchange-rate-chart-spinner"
                                 class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
                                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400">
@@ -338,7 +338,7 @@
                     
                     <!-- Right column: Currency exposure pie chart -->
                     <div class="lg:col-span-2">
-                        <div class="w-full relative overflow-hidden" id="currency-chart" style="min-height: 300px; max-height: 400px;">
+                        <div class="w-full relative overflow-hidden min-h-[300px] max-h-[400px]" id="currency-chart">
                             <!-- Loading spinner -->
                             <div id="currency-chart-spinner"
                                 class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
@@ -361,7 +361,7 @@
             <strong>Winning positions with losses offset by dividends</strong> show red bar below axis (loss) + gold bar above axis (dividends) at the same position. 
             <strong>Losing positions</strong> show single red bars below axis.
         </div>
-        <div class="w-full relative" id="pnl-chart" style="min-height: 500px;">
+        <div class="w-full relative min-h-[500px]" id="pnl-chart">
             <div id="pnl-chart-spinner" class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
             </div>

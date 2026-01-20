@@ -47,7 +47,7 @@
         <!-- Top 10 Sources Chart -->
         <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-text-primary mb-4">Top 10 Sources</h3>
-            <div style="height: 300px; position: relative;">
+            <div class="h-[300px] relative">
                 <canvas id="sources-chart"></canvas>
             </div>
         </div>
@@ -55,7 +55,7 @@
         <!-- Articles by Day Chart -->
         <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-text-primary mb-4">Articles by Day (Last 90 days)</h3>
-            <div style="height: 300px; position: relative;">
+            <div class="h-[300px] relative">
                 <canvas id="days-chart"></canvas>
             </div>
         </div>
@@ -163,7 +163,7 @@
     <div id="reanalyze-progress" class="hidden mt-4">
         <div class="w-full bg-gray-200 rounded-full h-2.5">
             <div id="reanalyze-progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-                style="width: 0%"></div>
+                class="w-0"></div>
         </div>
         <p id="reanalyze-status" class="text-sm text-gray-600 mt-2"></p>
     </div>
@@ -255,7 +255,7 @@
             <div class="mb-4 relative">
                 <div id="summary-{{ article.id }}"
                     class="prose prose-sm dark:prose-invert max-w-none whitespace-pre-line overflow-hidden transition-all duration-300 ease-in-out"
-                    style="max-height: 10rem;">
+                    class="max-h-40">
                     {{ full_text }}
                 </div>
 

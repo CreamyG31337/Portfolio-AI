@@ -194,6 +194,138 @@ web_dashboard/
 
 **See `web_dashboard/src/js/README.md` for detailed TypeScript development guidelines.**
 
+### Frontend CSS & UI Component Standards
+
+**CRITICAL**: The web dashboard uses **Tailwind CSS** and **Flowbite** as the standard CSS framework and UI component library. These are coding standards and must be used for all frontend development.
+
+#### Core CSS & UI Libraries
+
+1. **Tailwind CSS** (v3.4.1) - **PRIMARY CSS FRAMEWORK**
+   - Utility-first CSS framework for all styling
+   - Built from source: `npm run build:css`
+   - Output: `web_dashboard/static/css/tailwind.css`
+   - **✅ DO**: Use Tailwind utility classes for all styling
+   - **❌ DON'T**: Write custom CSS unless absolutely necessary (use Tailwind classes instead)
+
+2. **Flowbite** (v2.5.2) - **PRIMARY UI COMPONENT LIBRARY**
+   - Interactive UI components built on top of Tailwind CSS
+   - Provides: modals, dropdowns, drawers, tooltips, tabs, forms, etc.
+   - **✅ DO**: Use Flowbite components for interactive UI elements
+   - **❌ DON'T**: Build custom components that Flowbite already provides
+   - CSS: Loaded via CDN in `components/_head_content.html`
+   - JS: Loaded via CDN in `components/_scripts_content.html`
+
+3. **Font Awesome** (v6.0.0) - **ICON LIBRARY**
+   - Standard icon library for all icons
+   - **✅ DO**: Use Font Awesome icons (`<i class="fas fa-..."></i>`)
+   - **❌ DON'T**: Use other icon libraries or custom SVG icons unless necessary
+
+#### Additional Libraries (Page-Specific)
+
+4. **AG Grid** (v31.0.0) - Data grids for complex tables
+   - Used in: ETF holdings, Congress trades, Social sentiment, Dashboard tables
+   - **When to use**: Complex data tables with sorting, filtering, pagination
+
+5. **Plotly** (v2.27.0) - Advanced interactive charts
+   - Used in: Dashboard performance charts, Ticker details, Currency charts
+   - **When to use**: Complex interactive charts with zoom, pan, hover details
+
+6. **Chart.js** - Simple charts
+   - Used in: Research page, Simple line/bar charts
+   - **When to use**: Simple, lightweight charts without complex interactions
+
+7. **Marked + DOMPurify** - Markdown parsing and sanitization
+   - Used in: AI Assistant for rendering markdown safely
+   - **When to use**: Rendering user-generated or AI-generated markdown content
+
+#### Frontend Development Standards
+
+**Styling:**
+- **Always use Tailwind utility classes** for styling
+- Prefer Tailwind's responsive utilities (`md:`, `lg:`, etc.) over custom media queries
+- Use Tailwind's dark mode utilities (`dark:`) for theme support
+- Only add custom CSS in `<style>` tags when Tailwind utilities are insufficient
+- Custom CSS should be minimal and documented
+
+**UI Components:**
+- **Always use Flowbite components** when available (modals, dropdowns, drawers, etc.)
+- Follow Flowbite's data attributes pattern: `data-drawer-target`, `data-modal-target`, etc.
+- Use Flowbite's JavaScript initialization for interactive components
+- Check [Flowbite documentation](https://flowbite.com/docs/getting-started/introduction/) before building custom components
+
+**Icons:**
+- **Always use Font Awesome** for icons
+- Use semantic icon names (e.g., `fa-chart-line` for charts, `fa-user` for users)
+- Prefer solid style (`fas`) unless outlined style (`far`) is specifically needed
+
+**Build Process:**
+```powershell
+# Build Tailwind CSS (required before deploying)
+npm run build:css
+
+# Watch mode for development
+npm run watch:css
+
+# Build both CSS and TypeScript
+npm run build
+```
+
+**File Locations:**
+- Tailwind source: `web_dashboard/static/css/input.css`
+- Tailwind output: `web_dashboard/static/css/tailwind.css`
+- Theme CSS: `web_dashboard/static/css/theme.css` (custom theme variables)
+- Head content (includes Flowbite CSS): `web_dashboard/templates/components/_head_content.html`
+- Scripts content (includes Flowbite JS): `web_dashboard/templates/components/_scripts_content.html`
+
+**Before Adding New CSS/UI Libraries:**
+1. Check if Tailwind CSS can handle the requirement
+2. Check if Flowbite has a component for the requirement
+3. Only add new libraries if absolutely necessary and document why
+4. Update this section with the new library and its use case
+
+#### Acceptable Custom CSS Exceptions
+
+While Tailwind CSS should be used for all styling, there are specific cases where custom CSS is acceptable and necessary:
+
+**✅ Acceptable Custom CSS:**
+
+1. **Webkit-specific features** (cannot be done with Tailwind):
+   - Custom scrollbar styling (`::-webkit-scrollbar`, `::-webkit-scrollbar-track`, etc.)
+   - Browser-specific pseudo-elements not supported by Tailwind
+
+2. **Complex animations** not available in Tailwind:
+   - Custom keyframe animations (e.g., `@keyframes spin`, `@keyframes blink`)
+   - Complex multi-step animations that require precise timing
+
+3. **Theme-specific CSS variables**:
+   - Custom CSS variables for theme system (e.g., `--bg-primary`, `--text-primary`)
+   - Theme-specific gradients that use CSS variables
+   - Color scheme rules (`color-scheme: dark/light`)
+
+4. **Complex state management**:
+   - Sidebar collapse transitions with dynamic width calculations
+   - Mobile drawer transforms that require JavaScript coordination
+   - Complex responsive behavior that can't be expressed with Tailwind breakpoints
+
+5. **Third-party library overrides**:
+   - Styling overrides for AG Grid, Plotly, or other third-party components
+   - Dark theme fixes for components that don't support Tailwind's dark mode
+
+**❌ NOT Acceptable (Use Tailwind Instead):**
+
+- Typography (line-height, font-size, margins) → Use Tailwind typography utilities
+- Colors and backgrounds → Use Tailwind color utilities
+- Spacing (padding, margin) → Use Tailwind spacing utilities
+- Borders and rounded corners → Use Tailwind border utilities
+- Display and visibility → Use Tailwind display utilities (`hidden`, `block`, `flex`, etc.)
+- Hover states → Use Tailwind hover utilities (`hover:bg-gray-100`, etc.)
+- Simple transitions → Use Tailwind transition utilities
+
+**Documentation Requirements:**
+- All custom CSS files must include comments explaining why Tailwind cannot be used
+- Custom CSS should be minimized to only the necessary rules
+- When adding custom CSS, document the specific limitation that requires it
+
 ### Test-Driven Development (TDD) and Test Selection
 
 **CRITICAL**: Always run the appropriate test suite based on what code you're modifying.

@@ -6,36 +6,12 @@
 {% block page_subtitle %}Configure your dashboard settings{% endblock %}
 
 {% block extra_head %}
-<style>
-    .card-hover:hover {
-        transform: translateY(-2px);
-        transition: transform 0.2s ease-in-out;
-    }
-
-    .success-message {
-        background-color: #10b981;
-        color: white;
-        padding: 0.75rem 1rem;
-        border-radius: 0.5rem;
-        margin-top: 0.5rem;
-        display: none;
-    }
-
-    .error-message {
-        background-color: #ef4444;
-        color: white;
-        padding: 0.75rem 1rem;
-        border-radius: 0.5rem;
-        margin-top: 0.5rem;
-        display: none;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto">
     <!-- Timezone Settings -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 card-hover">
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
         <h2 class="text-2xl font-bold text-text-primary mb-4">🌍 Timezone</h2>
         <p class="text-text-secondary mb-4">Select your timezone. All times in the dashboard will be displayed in this
             timezone.</p>
@@ -61,12 +37,12 @@
 
         <div id="timezone-preview" class="text-sm text-gray-500 mb-4"></div>
 
-        <div id="timezone-success" class="success-message">✅ Timezone saved successfully!</div>
-        <div id="timezone-error" class="error-message">❌ Failed to save timezone. Please try again.</div>
+        <div id="timezone-success" class="hidden bg-green-100 text-green-800 border border-green-400 rounded-lg px-4 py-3 mt-2">✅ Timezone saved successfully!</div>
+        <div id="timezone-error" class="hidden bg-red-100 text-red-800 border border-red-400 rounded-lg px-4 py-3 mt-2">❌ Failed to save timezone. Please try again.</div>
     </div>
 
     <!-- Currency Settings -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 card-hover">
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
         <h2 class="text-2xl font-bold text-text-primary mb-4">💰 Currency</h2>
         <p class="text-text-secondary mb-4">Select your preferred display currency. All values will be converted and
             displayed in this currency.</p>
@@ -81,12 +57,12 @@
             </select>
         </div>
 
-        <div id="currency-success" class="success-message">✅ Currency saved successfully!</div>
-        <div id="currency-error" class="error-message">❌ Failed to save currency. Please try again.</div>
+        <div id="currency-success" class="hidden bg-green-100 text-green-800 border border-green-400 rounded-lg px-4 py-3 mt-2">✅ Currency saved successfully!</div>
+        <div id="currency-error" class="hidden bg-red-100 text-red-800 border border-red-400 rounded-lg px-4 py-3 mt-2">❌ Failed to save currency. Please try again.</div>
     </div>
 
     <!-- Theme Settings -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 card-hover">
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
         <h2 class="text-2xl font-bold text-text-primary mb-4">🎨 Theme</h2>
         <p class="text-text-secondary mb-4">Override your browser/system theme preference. 'System Default' follows your
             OS setting.</p>
@@ -127,13 +103,13 @@
             <p class="text-xs text-text-secondary mt-2">Open the color testing tool to preview and customize theme
                 colors with live examples.</p>
         </div>
-        <div id="theme-success" class="success-message" style="display: none;">✅ Theme saved successfully!</div>
-        <div id="theme-error" class="error-message" style="display: none;">❌ Failed to save theme. Please try again.
+        <div id="theme-success" class="hidden bg-green-100 text-green-800 border border-green-400 rounded-lg px-4 py-3 mt-2">✅ Theme saved successfully!</div>
+        <div id="theme-error" class="hidden bg-red-100 text-red-800 border border-red-400 rounded-lg px-4 py-3 mt-2">❌ Failed to save theme. Please try again.
         </div>
     </div>
 
     <!-- Security Settings -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 card-hover">
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
         <h2 class="text-2xl font-bold text-text-primary mb-4">🔒 Security</h2>
         <p class="text-text-secondary mb-4">Manage your account security settings.</p>
 
@@ -158,8 +134,8 @@
             </button>
         </form>
 
-        <div id="password-success" class="success-message" style="display: none;">✅ Password updated successfully!</div>
-        <div id="password-error" class="error-message" style="display: none;">❌ Failed to update password.</div>
+        <div id="password-success" class="hidden bg-green-100 text-green-800 border border-green-400 rounded-lg px-4 py-3 mt-2">✅ Password updated successfully!</div>
+        <div id="password-error" class="hidden bg-red-100 text-red-800 border border-red-400 rounded-lg px-4 py-3 mt-2">❌ Failed to update password.</div>
     </div>
 </div>
 {% endblock %}

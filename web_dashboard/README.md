@@ -112,11 +112,13 @@ Anon Key: your-anon-key-here
 - **Scheduled Tasks** - Background job management
 
 ### UI Framework (Flask Pages)
-- **Flowbite Integration** - Mobile-responsive UI components
+- **Tailwind CSS** (v3.4.1) - Primary CSS framework (utility-first styling)
+- **Flowbite** (v2.5.2) - UI component library (modals, dropdowns, drawers, etc.)
+- **Font Awesome** (v6.0.0) - Icon library
+- **Mobile-First Design** - Responsive layout optimized for all devices
 - **Hamburger Navigation** - Collapsible sidebar on mobile devices
 - **User Menu Dropdown** - Quick access to Settings and Logout
-- **Mobile-First Design** - Optimized for phones and tablets
-- See [FLOWBITE_GUIDE.md](FLOWBITE_GUIDE.md) for component usage
+- **See `AGENTS.md`** for complete frontend CSS & UI component standards and guidelines
 
 ### Multi-Investor Features
 - **NAV-Based Tracking** - Accurate per-investor returns using Net Asset Value
