@@ -563,21 +563,21 @@ class AIAssistant {
             }
         } else {
             drawer.classList.remove('drawer-overlay');
-            if (isOpen) {
-                drawer.classList.add('drawer-open');
-                drawer.classList.remove('drawer-closed');
-                if (backdrop) backdrop.classList.add('hidden');
-                if (chatColumn) {
-                    chatColumn.style.flex = '0 0 70%';
+                if (isOpen) {
+                    drawer.classList.add('drawer-open');
+                    drawer.classList.remove('drawer-closed');
+                    if (backdrop) backdrop.classList.add('hidden');
+                    if (chatColumn) {
+                        chatColumn.style.flex = '';
+                    }
+                } else {
+                    drawer.classList.add('drawer-closed');
+                    drawer.classList.remove('drawer-open');
+                    if (backdrop) backdrop.classList.add('hidden');
+                    if (chatColumn) {
+                        chatColumn.style.flex = '';
+                    }
                 }
-            } else {
-                drawer.classList.add('drawer-closed');
-                drawer.classList.remove('drawer-open');
-                if (backdrop) backdrop.classList.add('hidden');
-                if (chatColumn) {
-                    chatColumn.style.flex = '1 1 100%';
-                }
-            }
         }
     }
 
