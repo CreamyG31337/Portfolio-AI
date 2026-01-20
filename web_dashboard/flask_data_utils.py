@@ -500,7 +500,7 @@ def fetch_dividend_log_flask(days_lookback: int = 365, fund: Optional[str] = Non
         start_date = (datetime.now() - timedelta(days=days_lookback)).date().isoformat()
         
         query = client.supabase.table('dividend_log')\
-            .select('*')\
+            .select('*, securities(company_name)')\
             .gte('pay_date', start_date)
         
         # Apply fund filter if provided

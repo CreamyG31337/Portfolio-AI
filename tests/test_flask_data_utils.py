@@ -42,13 +42,13 @@ def test_get_current_positions_flattens_all_fundamentals():
     
     with patch('flask_data_utils.get_supabase_client_flask', return_value=mock_client), \
          patch('cache_version.get_cache_version', return_value="v1"):
-        
+
         df = get_current_positions_flask(fund="TestFund")
-        
+
         # Verify the basics
         assert not df.empty
         assert df.iloc[0]['symbol'] == "AAPL"
-        
+
         # Verify flattened columns
         assert 'sector' in df.columns
         assert 'industry' in df.columns
