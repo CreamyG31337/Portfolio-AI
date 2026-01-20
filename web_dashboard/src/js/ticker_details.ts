@@ -85,6 +85,34 @@ interface WatchlistStatus {
     source?: string;
 }
 
+interface SignalAnalysis {
+    ticker?: string;
+    structure?: {
+        trend?: string;
+        pullback?: boolean;
+        breakout?: boolean;
+        price?: number;
+        ma_short?: number;
+        ma_long?: number;
+    };
+    timing?: {
+        volume_ok?: boolean;
+        rsi?: number;
+        rsi_ok?: boolean;
+        cci?: number;
+        cci_ok?: boolean;
+        timing_ok?: boolean;
+    };
+    fear_risk?: {
+        fear_level?: string;
+        risk_score?: number;
+        recommendation?: string;
+    };
+    overall_signal?: string;
+    confidence?: number;
+    analysis_date?: string;
+}
+
 interface TickerInfoResponse {
     basic_info?: BasicInfo;
     portfolio_data?: TickerPortfolioData;
@@ -158,6 +186,16 @@ document.addEventListener('DOMContentLoaded', function (): void {
                 const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
                 const useSolid = checkbox ? checkbox.checked : false;
                 loadAndRenderChart(currentTicker, useSolid, this.value);
+            }
+        });
+    }
+
+    // Set up signals refresh button
+    const signalsRefreshBtn = document.getElementById('signals-refresh-btn') as HTMLButtonElement | null;
+    if (signalsRefreshBtn) {
+        signalsRefreshBtn.addEventListener('click', () => {
+            if (currentTicker) {
+                loadSignals(currentTicker, true);
             }
         });
     }
@@ -261,6 +299,9 @@ async function loadTickerData(ticker: string): Promise<void> {
         if (data.watchlist_status) {
             renderWatchlistStatus(data.watchlist_status);
         }
+
+        // Load signals
+        await loadSignals(ticker);
 
         // Load and render chart
         const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
@@ -794,6 +835,195 @@ function renderWatchlistStatus(status: WatchlistStatus): void {
     if (sourceEl) sourceEl.textContent = status.source || 'N/A';
 }
 
+// Load signals for ticker
+async function loadSignals(ticker: string, forceRefresh: boolean = false): Promise<void> {
+    try {
+        const section = document.getElementById('signals-section');
+        if (section) section.classList.remove('hidden');
+        const updatedEl = document.getElementById('signals-last-updated');
+        if (updatedEl) updatedEl.textContent = '-';
+        setSignalsLoading(true, forceRefresh ? 'Refreshing signals...' : 'Loading signals...');
+        const response = await fetch(`/api/signals/analyze/${ticker}${forceRefresh ? '?refresh=1' : ''}`, {
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            if (response.status === 404) {
+                // No price data available for signals
+                setSignalsLoading(false, 'No price data available');
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        if (result.success && result.data) {
+            renderSignals(result.data);
+        } else {
+            setSignalsLoading(false, 'No signals available');
+            return;
+        }
+        setSignalsLoading(false, '');
+    } catch (error) {
+        console.error('Error loading signals:', error);
+        setSignalsLoading(false, 'Unable to load signals');
+    }
+}
+
+// Render signals
+function renderSignals(signals: SignalAnalysis): void {
+    if (!signals) {
+        return;
+    }
+
+    const section = document.getElementById('signals-section');
+    if (!section) return;
+
+    section.classList.remove('hidden');
+
+    // Overall signal badge
+    const overallSignal = signals.overall_signal || 'HOLD';
+    const confidence = signals.confidence || 0;
+    const badgeEl = document.getElementById('overall-signal-badge');
+    const confidenceEl = document.getElementById('signal-confidence');
+    
+    if (badgeEl) {
+        let badgeClass = 'px-4 py-2 rounded-lg font-semibold ';
+        let badgeText = overallSignal;
+        
+        switch (overallSignal) {
+            case 'BUY':
+                badgeClass += 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+                break;
+            case 'SELL':
+                badgeClass += 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+                break;
+            case 'WATCH':
+                badgeClass += 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+                break;
+            default:
+                badgeClass += 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+        }
+        
+        badgeEl.className = badgeClass;
+        badgeEl.textContent = badgeText;
+    }
+    
+    if (confidenceEl) {
+        confidenceEl.textContent = `${(confidence * 100).toFixed(0)}%`;
+    }
+
+    // Last updated
+    const updatedEl = document.getElementById('signals-last-updated');
+    if (updatedEl) {
+        updatedEl.textContent = signals.analysis_date ? formatDateTime(signals.analysis_date) : 'N/A';
+    }
+
+    // Structure signal
+    const structure = signals.structure || {};
+    const trendEl = document.getElementById('structure-trend');
+    const pullbackEl = document.getElementById('structure-pullback');
+    const breakoutEl = document.getElementById('structure-breakout');
+    
+    if (trendEl) trendEl.textContent = structure.trend || 'N/A';
+    if (pullbackEl) pullbackEl.textContent = structure.pullback ? '✅ Yes' : '❌ No';
+    if (breakoutEl) breakoutEl.textContent = structure.breakout ? '✅ Yes' : '❌ No';
+
+    // Timing signal
+    const timing = signals.timing || {};
+    const volumeEl = document.getElementById('timing-volume');
+    const rsiEl = document.getElementById('timing-rsi');
+    const cciEl = document.getElementById('timing-cci');
+    
+    if (volumeEl) {
+        volumeEl.textContent = timing.volume_ok ? '✅ OK' : '❌ Low';
+    }
+    if (rsiEl) {
+        const rsiValue = timing.rsi !== undefined ? timing.rsi.toFixed(1) : 'N/A';
+        const rsiStatus = timing.rsi_ok ? '✅' : '❌';
+        rsiEl.textContent = `${rsiStatus} ${rsiValue}`;
+    }
+    if (cciEl) {
+        const cciValue = timing.cci !== undefined ? timing.cci.toFixed(1) : 'N/A';
+        const cciStatus = timing.cci_ok ? '✅' : '❌';
+        cciEl.textContent = `${cciStatus} ${cciValue}`;
+    }
+
+    // Fear & Risk signal
+    const fearRisk = signals.fear_risk || {};
+    const fearLevelEl = document.getElementById('fear-level');
+    const riskScoreEl = document.getElementById('risk-score');
+    const recommendationEl = document.getElementById('risk-recommendation');
+    
+    if (fearLevelEl) {
+        const fearLevel = fearRisk.fear_level || 'LOW';
+        let fearClass = 'text-xl font-semibold ';
+        switch (fearLevel) {
+            case 'EXTREME':
+                fearClass += 'text-red-600 dark:text-red-400';
+                break;
+            case 'HIGH':
+                fearClass += 'text-orange-600 dark:text-orange-400';
+                break;
+            case 'MODERATE':
+                fearClass += 'text-yellow-600 dark:text-yellow-400';
+                break;
+            default:
+                fearClass += 'text-green-600 dark:text-green-400';
+        }
+        fearLevelEl.className = fearClass;
+        fearLevelEl.textContent = fearLevel;
+    }
+    
+    if (riskScoreEl) {
+        const riskScore = fearRisk.risk_score || 0;
+        riskScoreEl.textContent = `${riskScore.toFixed(1)}/100`;
+    }
+    
+    if (recommendationEl) {
+        const recommendation = fearRisk.recommendation || 'SAFE';
+        let recClass = 'text-xl font-semibold ';
+        switch (recommendation) {
+            case 'AVOID':
+                recClass += 'text-red-600 dark:text-red-400';
+                break;
+            case 'RISKY':
+                recClass += 'text-orange-600 dark:text-orange-400';
+                break;
+            case 'CAUTION':
+                recClass += 'text-yellow-600 dark:text-yellow-400';
+                break;
+            default:
+                recClass += 'text-green-600 dark:text-green-400';
+        }
+        recommendationEl.className = recClass;
+        recommendationEl.textContent = recommendation;
+    }
+}
+
+function setSignalsLoading(isLoading: boolean, message: string): void {
+    const loadingEl = document.getElementById('signals-loading');
+    const statusEl = document.getElementById('signals-status');
+    const refreshBtn = document.getElementById('signals-refresh-btn') as HTMLButtonElement | null;
+
+    if (loadingEl) {
+        if (isLoading) {
+            loadingEl.classList.remove('hidden');
+        } else {
+            loadingEl.classList.add('hidden');
+        }
+    }
+
+    if (statusEl) {
+        statusEl.textContent = message || '';
+    }
+
+    if (refreshBtn) {
+        refreshBtn.disabled = isLoading;
+        refreshBtn.classList.toggle('opacity-60', isLoading);
+        refreshBtn.classList.toggle('cursor-not-allowed', isLoading);
+    }
+}
+
 // Utility functions
 function formatDate(dateStr?: string): string {
     if (!dateStr) return 'N/A';
@@ -802,6 +1032,16 @@ function formatDate(dateStr?: string): string {
         return date.toLocaleDateString();
     } catch (e) {
         return dateStr.substring(0, 10); // Return first 10 chars if parsing fails
+    }
+}
+
+function formatDateTime(dateStr?: string): string {
+    if (!dateStr) return 'N/A';
+    try {
+        const date = new Date(dateStr);
+        return date.toLocaleString();
+    } catch (e) {
+        return dateStr.replace('T', ' ').slice(0, 19);
     }
 }
 
@@ -878,7 +1118,8 @@ function hideAllSections(): void {
         'research-section',
         'sentiment-section',
         'congress-section',
-        'watchlist-section'
+        'watchlist-section',
+        'signals-section'
     ];
 
     sections.forEach(id => {

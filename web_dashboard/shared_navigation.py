@@ -10,6 +10,7 @@ MIGRATED_PAGES = {
     'settings': '/settings',  # Routed to Flask via Caddy /v2/* handler
     'research': '/research',
     'social_sentiment': '/social_sentiment',
+    'signals': '/signals',
     'etf_holdings': '/etf_holdings',
     'congress_trades': '/congress_trades',
     'ticker_details': '/ticker',
@@ -42,6 +43,7 @@ def get_navigation_links() -> list:
     links = [
         {'name': 'Research Repository', 'page': 'research', 'icon': '📚'},
         {'name': 'Social Sentiment', 'page': 'social_sentiment', 'icon': '💬'},
+        {'name': 'Technical Signals', 'page': 'signals', 'icon': '📊'},
         {'name': 'ETF Holdings', 'page': 'etf_holdings', 'icon': '💼'},
         {'name': 'Congress Trades', 'page': 'congress_trades', 'icon': '🏛️'},
         {'name': 'Ticker Lookup', 'page': 'ticker_details', 'icon': '🔍'},

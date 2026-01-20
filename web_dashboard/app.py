@@ -512,6 +512,13 @@ except Exception as e:
     logger.error(f"Failed to register Social Sentiment Blueprint: {e}", exc_info=True)
 
 try:
+    from routes.signals_routes import signals_bp
+    app.register_blueprint(signals_bp)
+    logger.info("✅ Registered Signals Blueprint")
+except Exception as e:
+    logger.error(f"Failed to register Signals Blueprint: {e}", exc_info=True)
+
+try:
     from routes.fund_routes import fund_bp
     app.register_blueprint(fund_bp, url_prefix='/api/v2')
     logger.info("✅ Registered Fund Blueprint")

@@ -288,6 +288,96 @@
         </div>
     </div>
 </div>
+
+<!-- Technical Signals Section -->
+<div id="signals-section" class="hidden bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+            <h2 class="text-xl font-bold">📊 Technical Signals</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Last updated: <span id="signals-last-updated">-</span></p>
+        </div>
+        <div class="flex items-center gap-2">
+            <span id="signals-status" class="text-sm text-gray-500 dark:text-gray-400"></span>
+            <button id="signals-refresh-btn" type="button"
+                class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-500 font-medium rounded-lg text-sm px-4 py-2 inline-flex items-center">
+                <i class="fas fa-sync-alt mr-2"></i>Refresh
+            </button>
+        </div>
+    </div>
+
+    <div id="signals-loading" class="hidden text-sm text-gray-500 dark:text-gray-400 mb-4">
+        <div class="inline-flex items-center gap-2">
+            <div class="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+            <span>Calculating signals...</span>
+        </div>
+    </div>
+    
+    <!-- Overall Signal -->
+    <div class="mb-6">
+        <div class="flex items-center gap-4 mb-4">
+            <div class="text-sm text-gray-600 dark:text-gray-400">Overall Signal</div>
+            <div id="overall-signal-badge" class="px-4 py-2 rounded-lg font-semibold">-</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">Confidence: <span id="signal-confidence">-</span></div>
+        </div>
+    </div>
+    
+    <!-- Structure Signal -->
+    <div class="mb-6">
+        <h3 class="text-lg font-semibold mb-3">Structure Signal</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="text-sm text-gray-600 dark:text-gray-400">Trend</div>
+                <div id="structure-trend" class="text-xl font-semibold">-</div>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="text-sm text-gray-600 dark:text-gray-400">Pullback</div>
+                <div id="structure-pullback" class="text-xl font-semibold">-</div>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="text-sm text-gray-600 dark:text-gray-400">Breakout</div>
+                <div id="structure-breakout" class="text-xl font-semibold">-</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Timing Signal -->
+    <div class="mb-6">
+        <h3 class="text-lg font-semibold mb-3">Timing Signal</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="text-sm text-gray-600 dark:text-gray-400">Volume</div>
+                <div id="timing-volume" class="text-xl font-semibold">-</div>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="text-sm text-gray-600 dark:text-gray-400">RSI</div>
+                <div id="timing-rsi" class="text-xl font-semibold">-</div>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="text-sm text-gray-600 dark:text-gray-400">CCI</div>
+                <div id="timing-cci" class="text-xl font-semibold">-</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Fear & Risk Signal -->
+    <div>
+        <h3 class="text-lg font-semibold mb-3">Fear & Risk</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="text-sm text-gray-600 dark:text-gray-400">Fear Level</div>
+                <div id="fear-level" class="text-xl font-semibold">-</div>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="text-sm text-gray-600 dark:text-gray-400">Risk Score</div>
+                <div id="risk-score" class="text-xl font-semibold">-</div>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="text-sm text-gray-600 dark:text-gray-400">Recommendation</div>
+                <div id="risk-recommendation" class="text-xl font-semibold">-</div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}

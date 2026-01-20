@@ -190,6 +190,13 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '🤖'
     },
+    'signal_scan': {
+        'name': 'Technical Signal Scan',
+        'description': 'Calculate technical signals (trend, timing, fear/risk) for watchlist tickers',
+        'default_interval_minutes': 240,  # Every 4 hours
+        'enabled_by_default': True,
+        'icon': '📊'
+    },
     'congress_trades': {
         'name': 'Congress Trade Fetch',
         'description': 'Fetch and analyze congressional stock trades from FMP API',
@@ -464,6 +471,9 @@ from scheduler.jobs_reddit_discovery import subreddit_scanner_job
 # Import securities refresh job
 from scheduler.jobs_securities import refresh_securities_metadata_job
 
+# Import signals job
+from scheduler.jobs_signals import signal_scan_job
+
 # Import shared utilities
 from scheduler.jobs_common import calculate_relevance_score
 
@@ -506,6 +516,8 @@ __all__ = [
     'subreddit_scanner_job',
     # Securities refresh
     'refresh_securities_metadata_job',
+    # Signals job
+    'signal_scan_job',
     # Shared utilities
     'calculate_relevance_score',
     # Registry functions (defined in this file)
@@ -916,6 +928,19 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: social_sentiment_fetch (every 60 minutes - 1 hour)")
+    
+    # Signal scan job - every 4 hours
+    if AVAILABLE_JOBS['signal_scan']['enabled_by_default']:
+        scheduler.add_job(
+            signal_scan_job,
+            trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['signal_scan']['default_interval_minutes']),
+            id='signal_scan',
+            name=f"{get_job_icon('signal_scan')} Technical Signal Scan",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: signal_scan (every 240 minutes - 4 hours)")
     
     # Social sentiment AI analysis job - every 2 hours
     # DISABLED: Redundant with inline analysis in fetch_social_sentiment_job

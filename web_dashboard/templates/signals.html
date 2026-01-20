@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Technical Signals - Portfolio Dashboard{% endblock %}
+{% block page_title %}📊 Technical Signals{% endblock %}
+{% block page_subtitle %}Monitor technical signals for watchlist tickers{% endblock %}
+
+{% block extra_head %}
+<!-- AgGrid Community Edition -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine-dark.css">
+<script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 dark:bg-red-900/20 dark:border-red-800">
+    <div class="flex">
+        <div class="flex-shrink-0">
+            <i class="fas fa-exclamation-triangle text-red-400"></i>
+        </div>
+        <div class="ml-3">
+            <h3 class="text-sm font-medium text-red-800 dark:text-red-100">{{ error }}</h3>
+            <div class="mt-2 text-sm text-red-700 dark:text-red-200">
+                <p>{{ error_message }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+
+<!-- Description -->
+<div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 dark:bg-blue-900/20 dark:border-blue-800">
+    <p class="text-sm text-blue-800 dark:text-blue-100">
+        <strong>Monitor Technical Signals</strong> by analyzing trend structure, timing indicators, and fear/risk metrics
+        for watchlist tickers. Signals are generated using moving averages, RSI, CCI, volatility analysis, and drawdown calculations.
+    </p>
+    <p class="text-xs text-blue-600 dark:text-blue-200 mt-2">
+        <em>Signals are calculated every 4 hours by the automated scheduler, or on-demand when viewing ticker details.</em>
+    </p>
+</div>
+
+<!-- Refresh Button -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:border-gray-700">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold dark:text-white">Data Refresh</h2>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Last updated: <span id="last-updated">{{
+                    newest_timestamp|default('Loading...') }}</span></p>
+        </div>
+        <button type="button" id="refresh-btn" onclick="refreshData()"
+            class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-500 font-medium rounded-lg text-sm px-5 py-2.5">
+            <i class="fas fa-sync-alt mr-2"></i>Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Summary Metrics -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
+    <h2 class="text-xl font-bold mb-4">Summary</h2>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="signals-total">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">Total Tickers</div>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-green-600 dark:text-green-400" id="signals-buy">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">BUY Signals</div>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-red-600 dark:text-red-400" id="signals-sell">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">SELL Signals</div>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400" id="signals-watch">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">WATCH Signals</div>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-gray-600 dark:text-gray-400" id="signals-hold">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">HOLD Signals</div>
+        </div>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-green-600 dark:text-green-400" id="fear-low">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">Low Fear</div>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400" id="fear-moderate">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">Moderate Fear</div>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-orange-600 dark:text-orange-400" id="fear-high">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">High Fear</div>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div class="text-2xl font-bold text-red-600 dark:text-red-400" id="fear-extreme">0</div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">Extreme Fear</div>
+        </div>
+    </div>
+</div>
+
+<!-- Signals Table -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
+    <h2 class="text-xl font-bold mb-4">Watchlist Signals</h2>
+    
+    <div id="signals-loading" class="text-center py-8">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Loading signals...</p>
+    </div>
+
+    <div id="signals-content" class="hidden">
+        <div id="signals-grid" class="ag-theme-alpine h-[600px] w-full"></div>
+    </div>
+
+    <div id="signals-empty" class="hidden">
+        <div class="text-center py-8">
+            <p class="text-sm text-blue-800 dark:text-blue-100">📭 No signals available yet. Signals will appear after the scheduler runs.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/signals.js"></script>
+{% endblock %}
