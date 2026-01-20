@@ -893,6 +893,7 @@ def update_portfolio_prices_job(
                             'shares': float(shares),
                             'price': float(current_price),
                             'cost_basis': float(cost_basis),
+                            'total_value': float(market_value),  # CRITICAL: Set total_value (was missing!)
                             'pnl': float(unrealized_pnl),
                             'currency': holding['currency'],
                             'date': utc_datetime.isoformat(),
@@ -1551,6 +1552,7 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                                 'shares': float(shares),
                                 'price': float(current_price),
                                 'cost_basis': float(cost_basis),
+                                'total_value': float(market_value),  # CRITICAL: Set total_value (was missing!)
                                 'pnl': float(unrealized_pnl),
                                 'currency': holding['currency'],
                                 'date': utc_datetime.isoformat(),

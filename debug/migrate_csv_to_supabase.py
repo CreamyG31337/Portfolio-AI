@@ -69,13 +69,17 @@ def migrate_csv_to_supabase(fund_name="TEST", data_dir="trading_data/funds/TEST"
     # Convert to Supabase format
     portfolio_entries = []
     for _, row in latest_positions.iterrows():
+        shares = float(row['Shares'])
+        price = float(row['Current Price'])
+        market_value = shares * price  # Calculate total_value
         entry = {
             'fund': fund_name,
             'ticker': row['Ticker'],
             'company': row.get('Company', ''),
-            'shares': float(row['Shares']),
-            'price': float(row['Current Price']),
+            'shares': shares,
+            'price': price,
             'cost_basis': float(row['Cost Basis']),
+            'total_value': market_value,  # CRITICAL: Set total_value (was missing!)
             'pnl': float(row.get('PnL', 0)),
             'currency': row.get('Currency', 'USD'),
             'date': row['Date'].isoformat()

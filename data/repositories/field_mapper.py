@@ -97,6 +97,7 @@ class PositionMapper:
             'shares': shares,
             'price': price,  # Current market price (or avg_price if current not available)
             'cost_basis': cost_basis,
+            'total_value': market_value,  # CRITICAL: Set total_value (market_value) - this was missing!
             'pnl': pnl,
             'currency': position.currency,
             'fund': fund,

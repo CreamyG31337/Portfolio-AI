@@ -367,11 +367,15 @@ class SupabaseClient:
             # Convert DataFrame to list of dictionaries
             positions = []
             for _, row in positions_df.iterrows():
+                shares = float(row["Shares"])
+                price = float(row["Current Price"])
+                market_value = shares * price  # Calculate total_value
                 positions.append({
                     "ticker": row["Ticker"],
-                    "shares": float(row["Shares"]),
-                    "price": float(row["Current Price"]),  # Fixed column name
+                    "shares": shares,
+                    "price": price,
                     "cost_basis": float(row["Cost Basis"]),
+                    "total_value": market_value,  # CRITICAL: Set total_value (was missing!)
                     "pnl": float(row["PnL"]),
                     "date": row["Date"].isoformat() if pd.notna(row["Date"]) else datetime.now(timezone.utc).isoformat()
                 })
