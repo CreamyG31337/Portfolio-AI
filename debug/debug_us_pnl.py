@@ -31,8 +31,8 @@ def main():
     # Check US stocks specifically
     us_stocks = []
     for pos in current_portfolio.positions:
-        # US stocks typically don't have .TO or .V suffixes
-        if not pos.ticker.endswith(('.TO', '.V')):
+        # US stocks typically don't have .TO, .V, or .CN suffixes
+        if not pos.ticker.endswith(('.TO', '.V', '.CN')):
             us_stocks.append(pos)
     
     print(f"\nFound {len(us_stocks)} US stocks:")

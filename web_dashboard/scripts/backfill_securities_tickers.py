@@ -37,11 +37,11 @@ load_dotenv("web_dashboard/.env")
 def determine_currency_from_ticker(ticker: str) -> str:
     """Determine currency from ticker symbol.
 
-    Canadian tickers typically end with .TO, .V, or are on TSX.
+    Canadian tickers typically end with .TO, .V, .CN, or are on TSX.
     Default to USD for others.
     """
     ticker_upper = ticker.upper()
-    if ticker_upper.endswith('.TO') or ticker_upper.endswith('.V'):
+    if ticker_upper.endswith(('.TO', '.V', '.CN')):
         return 'CAD'
     # Could add more heuristics here if needed
     return 'USD'

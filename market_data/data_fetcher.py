@@ -159,7 +159,7 @@ class MarketDataFetcher:
                                     self._portfolio_currency_cache[base_ticker] = currency
                                     logger.debug(f"Mapped base ticker {base_ticker} -> {currency} from {ticker}")
                             # If base ticker is CAD, also try to map to .TO variant
-                            elif currency == 'CAD' and not ticker.endswith(('.TO', '.V')):
+                            elif currency == 'CAD' and not ticker.endswith(('.TO', '.V', '.CN')):
                                 to_variant = f"{ticker}.TO"
                                 if to_variant not in self._portfolio_currency_cache:
                                     self._portfolio_currency_cache[to_variant] = currency
@@ -202,7 +202,7 @@ class MarketDataFetcher:
                                     base_ticker = ticker[:-2]
                                     if base_ticker not in self._portfolio_currency_cache:
                                         self._portfolio_currency_cache[base_ticker] = currency
-                                elif currency == 'CAD' and not ticker.endswith(('.TO', '.V')):
+                                elif currency == 'CAD' and not ticker.endswith(('.TO', '.V', '.CN')):
                                     to_variant = f"{ticker}.TO"
                                     if to_variant not in self._portfolio_currency_cache:
                                         self._portfolio_currency_cache[to_variant] = currency
@@ -335,7 +335,7 @@ class MarketDataFetcher:
         fetch_strategies = []
         
         # Check if this is a Canadian ticker based on currency in portfolio data
-        is_likely_canadian = ticker.endswith(('.TO', '.V'))  # Already has Canadian suffix
+        is_likely_canadian = ticker.endswith(('.TO', '.V', '.CN'))  # Already has Canadian suffix
         
         # If no suffix, check if we have currency info from portfolio
         if not is_likely_canadian and hasattr(self, '_portfolio_currency_cache'):
@@ -358,7 +358,7 @@ class MarketDataFetcher:
         if is_likely_canadian:
             # For likely Canadian tickers, try Canadian suffixes first
             # But don't add suffixes if ticker already has them
-            if ticker.endswith(('.TO', '.V')):
+            if ticker.endswith(('.TO', '.V', '.CN')):
                 # Ticker already has Canadian suffix, use as-is
                 fetch_strategies = [
                     ("yahoo", lambda: self._fetch_yahoo_data(ticker, start_date, end_date, **kwargs)),
@@ -383,7 +383,7 @@ class MarketDataFetcher:
         else:
             # For likely US tickers, try US first, then Canadian as fallback
             # But don't add suffixes if ticker already has them
-            if ticker.endswith(('.TO', '.V')):
+            if ticker.endswith(('.TO', '.V', '.CN')):
                 # Ticker already has Canadian suffix, use as-is
                 fetch_strategies = [
                     ("yahoo", lambda: self._fetch_yahoo_data(ticker, start_date, end_date, **kwargs)),
@@ -447,12 +447,12 @@ class MarketDataFetcher:
             else:
                 logger.debug(f"{ticker}: Successfully fetched from primary source {successful_strategy}")
 
-            # Note: Canadian stocks (.TO, .V) already return CAD prices from Canadian exchanges
+            # Note: Canadian stocks (.TO, .V, .CN) already return CAD prices from Canadian exchanges
             # Only convert if we're getting US data for Canadian tickers (fallback case)
             if hasattr(self, '_portfolio_currency_cache'):
                 currency = self._portfolio_currency_cache.get(ticker)
-                # Don't convert if ticker already has Canadian suffix (.TO, .V) - these are already in CAD
-                if currency == 'CAD' and not successful_strategy.startswith('yahoo-ca') and not ticker.endswith(('.TO', '.V')):
+                # Don't convert if ticker already has Canadian suffix (.TO, .V, .CN) - these are already in CAD
+                if currency == 'CAD' and not successful_strategy.startswith('yahoo-ca') and not ticker.endswith(('.TO', '.V', '.CN')):
                     # Only convert if we got data from US exchange, not Canadian, and ticker doesn't have Canadian suffix
                     result = self._convert_usd_to_cad(result)
 
@@ -1134,7 +1134,7 @@ class MarketDataFetcher:
             
             # Country fallback based on ticker suffix
             if fundamentals['country'] == 'N/A':
-                if ticker.endswith('.TO') or ticker.endswith('.V'):
+                if ticker.endswith(('.TO', '.V', '.CN')):
                     fundamentals['country'] = 'Canada'
                 else:
                     fundamentals['country'] = 'USA'

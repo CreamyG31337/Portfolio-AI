@@ -650,6 +650,49 @@ def update_portfolio_prices_job(
                 
                     logger.info(f"  Found {len(current_holdings)} active positions")
                     
+                    # CRITICAL: Check which markets are actually open on target_date
+                    # This prevents fetching stale/bad data when one market is closed but the other is open
+                    us_market_open = not market_holidays.is_us_market_closed(target_date)
+                    canadian_market_open = not market_holidays.is_canadian_market_closed(target_date)
+                    
+                    logger.info(f"  Market status for {target_date}: US={'OPEN' if us_market_open else 'CLOSED'}, Canada={'OPEN' if canadian_market_open else 'CLOSED'}")
+                    
+                    # Helper to detect market from ticker suffix (more reliable than currency)
+                    def is_canadian_ticker(ticker: str) -> bool:
+                        return ticker.endswith(('.TO', '.V', '.CN'))
+                    
+                    # Categorize tickers by market status - but DON'T remove closed-market tickers!
+                    # We'll fetch prices for open-market tickers and use cached/previous prices for closed ones
+                    tickers_to_fetch = []  # Tickers whose market is open - fetch fresh prices
+                    tickers_to_carry_forward = []  # Tickers whose market is closed - use previous close
+                    
+                    for ticker, holding in current_holdings.items():
+                        is_canadian = is_canadian_ticker(ticker)
+                        ticker_market_open = (canadian_market_open if is_canadian else us_market_open)
+                        
+                        if ticker_market_open:
+                            tickers_to_fetch.append(ticker)
+                        else:
+                            tickers_to_carry_forward.append(ticker)
+                    
+                    if tickers_to_carry_forward:
+                        market_status = []
+                        if not us_market_open:
+                            market_status.append("US closed")
+                        if not canadian_market_open:
+                            market_status.append("Canada closed")
+                        logger.info(f"  📋 {len(tickers_to_carry_forward)} ticker(s) will use previous close ({', '.join(market_status)})")
+                        for ticker in tickers_to_carry_forward[:5]:  # Show first 5
+                            logger.debug(f"    {ticker} (will use cached/previous price)")
+                        if len(tickers_to_carry_forward) > 5:
+                            logger.debug(f"    ... and {len(tickers_to_carry_forward) - 5} more")
+                    
+                    if not tickers_to_fetch and not tickers_to_carry_forward:
+                        logger.warning(f"  ⏭️  No positions for {fund_name} - skipping")
+                        continue
+                    
+                    logger.info(f"  Will fetch fresh prices for {len(tickers_to_fetch)}/{len(current_holdings)} ticker(s)")
+                    
                     # Get exchange rate for target date (for USD→base_currency conversion)
                     exchange_rate = Decimal('1.0')  # Default for same currency or no conversion needed
                     if base_currency != 'USD':  # Only fetch rate if converting TO non-USD currency
@@ -666,7 +709,8 @@ def update_portfolio_prices_job(
                             exchange_rate = Decimal('1.35')
                             logger.warning(f"  Missing exchange rate for {target_date}, using fallback {exchange_rate}")
                     
-                    # OPTIMIZATION: Fetch current prices for all tickers in parallel
+                    # OPTIMIZATION: Fetch current prices for open-market tickers in parallel
+                    # For closed-market tickers, we'll use cached/previous prices
                     current_prices = {}
                     failed_tickers = []
                     rate_limit_errors = 0
@@ -700,29 +744,62 @@ def update_portfolio_prices_job(
                             else:
                                 return (ticker, None, 'error')
                     
-                    # Fetch prices in parallel using ThreadPoolExecutor
-                    # Use conservative max_workers=5 for free-tier APIs (Yahoo Finance) to avoid rate limiting
-                    tickers_list = list(current_holdings.keys())
-                    max_workers = min(5, len(tickers_list))
+                    # Helper to get cached/previous close for closed-market tickers
+                    def get_cached_price(ticker: str) -> tuple[str, Optional[Decimal], Optional[str]]:
+                        """Get cached price for a ticker whose market is closed. Returns (ticker, price, source)."""
+                        try:
+                            cached_data = price_cache.get_cached_price(ticker)
+                            if cached_data is not None and not cached_data.empty:
+                                latest_price = Decimal(str(cached_data['Close'].iloc[-1]))
+                                return (ticker, latest_price, 'carried_forward')
+                            else:
+                                return (ticker, None, 'no_cache')
+                        except Exception:
+                            return (ticker, None, 'cache_error')
                     
-                    if len(tickers_list) > 0:
-                        logger.info(f"  Fetching prices for {len(tickers_list)} tickers in parallel (max_workers={max_workers})...")
+                    # Step 1: Get prices for closed-market tickers from cache (previous close)
+                    if tickers_to_carry_forward:
+                        logger.info(f"  Getting previous close for {len(tickers_to_carry_forward)} closed-market tickers...")
+                        carried_forward_count = 0
+                        for ticker in tickers_to_carry_forward:
+                            ticker, price, source = get_cached_price(ticker)
+                            if price is not None:
+                                current_prices[ticker] = price
+                                carried_forward_count += 1
+                                logger.debug(f"    {ticker}: ${price} (previous close)")
+                            else:
+                                # If no cache available, we'll still try to include the position
+                                # using the last known price from the holding if available
+                                holding = current_holdings.get(ticker, {})
+                                last_known_price = holding.get('last_price') or holding.get('price')
+                                if last_known_price:
+                                    current_prices[ticker] = Decimal(str(last_known_price))
+                                    carried_forward_count += 1
+                                    logger.debug(f"    {ticker}: ${last_known_price} (from holding)")
+                                else:
+                                    logger.warning(f"    {ticker}: No cached or holding price available")
+                                    failed_tickers.append(ticker)
+                        logger.info(f"  Carried forward {carried_forward_count}/{len(tickers_to_carry_forward)} closed-market prices")
+                    
+                    # Step 2: Fetch prices for open-market tickers in parallel
+                    max_workers = min(5, len(tickers_to_fetch)) if tickers_to_fetch else 1
+                    
+                    if tickers_to_fetch:
+                        logger.info(f"  Fetching fresh prices for {len(tickers_to_fetch)} open-market tickers (max_workers={max_workers})...")
                         price_fetch_start = time.time()
                         
                         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                            # Submit all tasks
-                            future_to_ticker = {executor.submit(fetch_ticker_price, ticker): ticker for ticker in tickers_list}
+                            # Submit tasks only for open-market tickers
+                            future_to_ticker = {executor.submit(fetch_ticker_price, ticker): ticker for ticker in tickers_to_fetch}
                             
                             # Process completed tasks
-                            completed = 0
                             for future in as_completed(future_to_ticker):
-                                completed += 1
                                 ticker, price, error_type = future.result()
                                 
                                 if price is not None:
                                     current_prices[ticker] = price
                                     if error_type == 'cached':
-                                        logger.debug(f"    {ticker}: ${price} (cached)")
+                                        logger.debug(f"    {ticker}: ${price} (cached fallback)")
                                     else:
                                         logger.debug(f"    {ticker}: ${price}")
                                 else:
@@ -739,15 +816,19 @@ def update_portfolio_prices_job(
                                         failed_tickers.append(ticker)
                         
                         price_fetch_time = time.time() - price_fetch_start
-                        avg_time_per_ticker = price_fetch_time / len(tickers_list) if tickers_list else 0
-                        logger.info(f"  Parallel fetch complete: {len(current_prices)} succeeded, {len(failed_tickers)} failed ({price_fetch_time:.2f}s, ~{avg_time_per_ticker:.2f}s per ticker)")
+                        fetched_count = len([t for t in tickers_to_fetch if t in current_prices])
+                        avg_time_per_ticker = price_fetch_time / len(tickers_to_fetch) if tickers_to_fetch else 0
+                        logger.info(f"  Parallel fetch complete: {fetched_count}/{len(tickers_to_fetch)} succeeded ({price_fetch_time:.2f}s, ~{avg_time_per_ticker:.2f}s per ticker)")
                         
                         if rate_limit_errors > 0:
                             logger.warning(f"  ⚠️  Rate limiting detected: {rate_limit_errors} tickers hit 429 errors")
                             logger.warning(f"     Consider: reducing max_workers, adding delays, or using API keys")
                     
+                    # Summary of all prices (fetched + carried forward)
+                    logger.info(f"  Total prices available: {len(current_prices)}/{len(current_holdings)} tickers")
+                    
                     if failed_tickers:
-                        logger.warning(f"  Failed to fetch prices for {len(failed_tickers)} tickers: {failed_tickers}")
+                        logger.warning(f"  Failed to get prices for {len(failed_tickers)} tickers: {failed_tickers}")
                         # If ALL tickers failed, skip this fund (don't create empty snapshot)
                         if len(failed_tickers) == len(current_holdings):
                             logger.warning(f"  All tickers failed for {fund_name} - skipping update")
@@ -1138,10 +1219,60 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                     
                     # Identify all unique tickers across ALL trades
                     all_tickers = set()
+                    ticker_currencies = {}  # Track currency for each ticker (for reference, not market detection)
                     for trade in trades_with_dates:
-                        all_tickers.add(trade['ticker'])
+                        ticker = trade['ticker']
+                        all_tickers.add(ticker)
+                        # Store currency for reference (used for base currency conversion, not market detection)
+                        currency = trade.get('currency', 'USD')
+                        if currency and isinstance(currency, str):
+                            currency_upper = currency.strip().upper()
+                            if currency_upper and currency_upper not in ('NAN', 'NONE', 'NULL', ''):
+                                ticker_currencies[ticker] = currency_upper
+                            else:
+                                ticker_currencies[ticker] = 'USD'  # Default
+                        else:
+                            ticker_currencies[ticker] = 'USD'  # Default
                     
                     logger.info(f"  Found {len(all_tickers)} unique tickers across all trades")
+                    
+                    # Helper to detect market from ticker suffix (more reliable than currency)
+                    def is_canadian_ticker(ticker: str) -> bool:
+                        return ticker.endswith(('.TO', '.V', '.CN'))
+                    
+                    # CRITICAL: Build per-day market-aware ticker list using TICKER SUFFIX (not currency)
+                    # For each trading day, only fetch prices for tickers whose market is open
+                    # Closed-market tickers will get forward-filled prices later
+                    tickers_per_day = {}  # {date: [tickers]} - tickers whose market is open that day
+                    skipped_per_day = defaultdict(list)  # {date: [tickers]} - for logging
+                    
+                    for day in trading_days:
+                        us_open = not market_holidays.is_us_market_closed(day)
+                        canada_open = not market_holidays.is_canadian_market_closed(day)
+                        
+                        day_tickers = []
+                        for ticker in all_tickers:
+                            is_canadian = is_canadian_ticker(ticker)
+                            ticker_market_open = canada_open if is_canadian else us_open
+                            
+                            if ticker_market_open:
+                                day_tickers.append(ticker)
+                            else:
+                                skipped_per_day[day].append(ticker)
+                        
+                        tickers_per_day[day] = day_tickers
+                    
+                    # Log market-aware filtering results
+                    total_skipped = sum(len(v) for v in skipped_per_day.values())
+                    if total_skipped > 0:
+                        logger.info(f"  📋 {total_skipped} ticker-day combinations will use forward-fill (market closed)")
+                        # Show a few examples
+                        for day in sorted(skipped_per_day.keys())[:3]:  # First 3 days with skips
+                            skipped = skipped_per_day[day]
+                            us_open = not market_holidays.is_us_market_closed(day)
+                            canada_open = not market_holidays.is_canadian_market_closed(day)
+                            market_status = f"US={'OPEN' if us_open else 'CLOSED'}, CA={'OPEN' if canada_open else 'CLOSED'}"
+                            logger.info(f"      {day}: {len(skipped)} ticker(s) ({market_status})")
                     
                     # OPTIMIZATION: Fetch price data for ALL tickers for the ENTIRE date range at once
                     # This is 1 API call per ticker instead of 1 API call per ticker per day
@@ -1184,15 +1315,20 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                                     else:
                                         df_with_dates['_date'] = pd.to_datetime(df.index).date
                                     
-                                    # Filter to only our trading days (vectorized operation)
-                                    trading_days_set = set(trading_days)
-                                    mask = df_with_dates['_date'].isin(trading_days_set)
+                                    # Filter to only days where THIS ticker's market was open
+                                    # This prevents using stale prices on market holidays
+                                    valid_days_for_ticker = set()
+                                    for day in trading_days:
+                                        if ticker in tickers_per_day.get(day, []):
+                                            valid_days_for_ticker.add(day)
+                                    
+                                    mask = df_with_dates['_date'].isin(valid_days_for_ticker)
                                     filtered = df_with_dates.loc[mask]
                                     
                                     # Extract prices (already filtered, fast iteration)
                                     for _, row in filtered.iterrows():
                                         day = row['_date']
-                                        if day in trading_days_set:
+                                        if day in valid_days_for_ticker:
                                             ticker_prices[day] = Decimal(str(row['Close']))
                                 
                                 return (ticker, ticker_prices, True, None)
@@ -1252,6 +1388,30 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                     
                     if failed_tickers:
                         logger.warning(f"  Failed to fetch prices for {len(failed_tickers)} tickers: {failed_tickers}")
+                    
+                    # CRITICAL: Build forward-fill lookup table for closed-market days
+                    # This ensures positions aren't dropped when their market is closed
+                    # For each ticker, if a day is missing, carry forward the last known price
+                    logger.info(f"  Building forward-fill price lookup for {len(all_tickers)} tickers...")
+                    forward_fill_count = 0
+                    
+                    for ticker in all_tickers:
+                        if ticker in failed_tickers:
+                            continue  # Skip tickers that completely failed
+                        
+                        last_known_price = None
+                        for day in trading_days:  # trading_days is already sorted ascending
+                            cache_key = (ticker, day)
+                            if cache_key in price_cache_dict:
+                                # We have a price for this day - update last known
+                                last_known_price = price_cache_dict[cache_key]
+                            elif last_known_price is not None:
+                                # No price for this day (market closed) - use forward-fill
+                                price_cache_dict[cache_key] = last_known_price
+                                forward_fill_count += 1
+                    
+                    if forward_fill_count > 0:
+                        logger.info(f"  Forward-filled {forward_fill_count} ticker-day prices for closed-market days")
                     
                     # Now process each trading day
                     all_positions = []  # Collect all position records for batch insert

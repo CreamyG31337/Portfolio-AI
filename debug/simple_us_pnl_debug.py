@@ -21,8 +21,8 @@ def main():
     tickers = df['Ticker'].unique()
     print(f"Found {len(tickers)} unique tickers: {sorted(tickers)}")
     
-    # Identify US stocks (those without .TO or .V suffixes)
-    us_stocks = [t for t in tickers if not t.endswith(('.TO', '.V'))]
+    # Identify US stocks (those without .TO, .V, or .CN suffixes)
+    us_stocks = [t for t in tickers if not t.endswith(('.TO', '.V', '.CN'))]
     print(f"US stocks: {us_stocks}")
     
     # Check data for each US stock

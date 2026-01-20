@@ -390,7 +390,7 @@ def get_company_name(ticker: str, currency: str = None) -> str:
     variants_to_try = []
     
     # Determine if this is a Canadian ticker
-    is_likely_canadian = key.endswith(('.TO', '.V'))  # Already has Canadian suffix
+    is_likely_canadian = key.endswith(('.TO', '.V', '.CN'))  # Already has Canadian suffix
     
     # If currency is provided explicitly, use it (this is the primary source of truth)
     if currency:
@@ -481,14 +481,14 @@ def get_company_name(ticker: str, currency: str = None) -> str:
             # If we know we want a Canadian ticker, prioritize Canadian variants
             if is_likely_canadian:
                 for candidate in candidates:
-                    if candidate['variant'].endswith(('.TO', '.V')) or candidate['country'] == 'Canada':
+                    if candidate['variant'].endswith(('.TO', '.V', '.CN')) or candidate['country'] == 'Canada':
                         best = candidate
                         logger.debug(f"Selected Canadian variant: {best['variant']}")
                         break
             # If we know we want a US ticker, prioritize US variants (avoid Canadian)
             elif is_likely_canadian is False:  # Explicitly False (not just None/unknown)
                 for candidate in candidates:
-                    if not candidate['variant'].endswith(('.TO', '.V')) and candidate['country'] != 'Canada':
+                    if not candidate['variant'].endswith(('.TO', '.V', '.CN')) and candidate['country'] != 'Canada':
                         best = candidate
                         logger.debug(f"Selected US variant: {best['variant']}")
                         break

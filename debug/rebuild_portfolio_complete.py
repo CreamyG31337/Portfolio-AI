@@ -735,15 +735,26 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
                         else:
                             df_with_dates['_date'] = pd.to_datetime(df.index).date
                         
-                        # Filter to only our trading days (vectorized)
-                        trading_days_set = set(all_trading_days_list)
-                        mask = df_with_dates['_date'].isin(trading_days_set)
+                        # Filter to only STICTLY OPEN trading days for this specific ticker
+                        # This prevents "leaking" prices from holidays if the API returns them,
+                        # and ensures we validly filter out days where this ticker's market was closed.
+                        is_canadian = ticker.endswith(('.TO', '.V', '.CN'))
+                        valid_days_for_ticker = set()
+                        for day in all_trading_days_list:
+                            if is_canadian:
+                                if not market_holidays.is_canadian_market_closed(day):
+                                    valid_days_for_ticker.add(day)
+                            else:
+                                if not market_holidays.is_us_market_closed(day):
+                                    valid_days_for_ticker.add(day)
+
+                        mask = df_with_dates['_date'].isin(valid_days_for_ticker)
                         filtered = df_with_dates.loc[mask]
                         
                         # Extract prices (vectorized)
                         for _, row in filtered.iterrows():
                             day = row['_date']
-                            if day in trading_days_set:
+                            if day in valid_days_for_ticker:
                                 ticker_prices[day] = Decimal(str(row['Close']))
                     
                     return (ticker, ticker_prices, True)
@@ -916,7 +927,7 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
             # Check if any market was open for our positions
             any_market_open = False
             for ticker in all_held_positions.keys():
-                is_canadian = ticker.endswith(('.TO', '.V'))
+                is_canadian = ticker.endswith(('.TO', '.V', '.CN'))
                 market_open = (trading_day in canadian_trading_days) if is_canadian else (trading_day in us_trading_days)
                 if market_open:
                     any_market_open = True
@@ -934,11 +945,11 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
             daily_positions = []
             for ticker, position in all_held_positions.items():
                 if position['shares'] > 0:  # Only include positions with shares
-                    # OPTIMIZATION: Use pre-computed market days instead of checking each time
-                    is_canadian = ticker.endswith(('.TO', '.V'))
-                    market_open = (trading_day in canadian_trading_days) if is_canadian else (trading_day in us_trading_days)
-                    if not market_open:
-                        continue
+                    # CRITICAL FIX: Do NOT skip tickers if their market is closed!
+                    # If we skip them, they disappear from the portfolio snapshot, causing a massive drop in value.
+                    # Instead, we should let them fall through to the forward-fill logic below,
+                    # which will pick up the last known price.
+                    
                     # Ensure no division by zero
                     if position['shares'] > 0:
                         avg_price = position['cost'] / position['shares']
