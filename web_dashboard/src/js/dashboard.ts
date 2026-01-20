@@ -1858,9 +1858,7 @@ function renderMovers(data: MoversData): void {
 
 // --- Rendering Helpers ---
 
-// Cache formatter for better performance
-// We use FormatterCache now, but keep this variable for backward compatibility within this file if needed,
-// though we will replace its initialization with the cache.
+// Use FormatterCache for better performance
 const getUsdFormatter = () => FormatterCache.get('en-US', {
     style: 'currency',
     currency: 'USD',

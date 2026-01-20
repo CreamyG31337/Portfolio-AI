@@ -12,14 +12,20 @@ export class FormatterCache {
      * @returns A cached Intl.NumberFormat instance
      */
     static get(locale: string, options: Intl.NumberFormatOptions): Intl.NumberFormat {
-        // Create a unique key for the cache
-        // We assume options keys are consistent.
-        // For this specific application usage, the options objects are created with consistent property order.
-        const key = `${locale}:${JSON.stringify(options)}`;
+        // Normalize options by sorting keys for consistent cache keys
+        // This ensures that objects with the same properties but different order
+        // will still hit the same cache entry
+        const normalizedOptions = Object.keys(options)
+            .sort()
+            .reduce((acc, key) => {
+                acc[key] = options[key as keyof Intl.NumberFormatOptions];
+                return acc;
+            }, {} as Intl.NumberFormatOptions);
+        
+        const key = `${locale}:${JSON.stringify(normalizedOptions)}`;
 
         let formatter = this.cache.get(key);
         if (!formatter) {
-            // console.debug(`[FormatterCache] Creating new formatter for key: ${key}`);
             formatter = new Intl.NumberFormat(locale, options);
             this.cache.set(key, formatter);
         }
