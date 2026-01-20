@@ -681,7 +681,7 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
                     except Exception as e:
                         print_warning(f"   Could not update P&L for {trade_info['ticker']}: {e}")
                 
-                print_success(f"   ✅ Backfilled P&L for {updated_count} trades")
+                print_success(f"   Backfilled P&L for {updated_count} trades")
                 if skipped_count > 0:
                     print_info(f"   Skipped {skipped_count} trades (P&L already calculated)")
             else:
@@ -698,6 +698,14 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
         all_tickers = set()
         for positions in date_positions.values():
             all_tickers.update(positions.keys())
+        
+        # Populate currency cache from positions before fetching
+        # This ensures we know which tickers are USD vs CAD to avoid wrong Canadian fallbacks
+        for trading_day, positions in date_positions.items():
+            for ticker, pos in positions.items():
+                currency = pos.get('currency', 'USD')
+                if currency:
+                    market_fetcher._portfolio_currency_cache[ticker.upper()] = currency.upper()
         
         # Fetch prices for all tickers and dates
         price_cache_dict = {}  # {(ticker, date): price}

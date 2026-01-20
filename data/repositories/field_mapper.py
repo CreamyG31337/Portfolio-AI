@@ -91,13 +91,15 @@ class PositionMapper:
             date_only = timestamp.astimezone(timezone.utc).date()
         
         # Build base dictionary
+        # NOTE: total_value is a GENERATED COLUMN in the database (calculated as shares * price)
+        # Do NOT include it in inserts - the database will calculate it automatically
         db_data = {
             'ticker': position.ticker,
             # 'company': position.company,  # Deprecated - now normalized in securities table
             'shares': shares,
             'price': price,  # Current market price (or avg_price if current not available)
             'cost_basis': cost_basis,
-            'total_value': market_value,  # CRITICAL: Set total_value (market_value) - this was missing!
+            # 'total_value': market_value,  # REMOVED: This is a generated column - DB calculates it automatically
             'pnl': pnl,
             'currency': position.currency,
             'fund': fund,

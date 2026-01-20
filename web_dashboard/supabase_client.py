@@ -365,17 +365,15 @@ class SupabaseClient:
                 self.ensure_ticker_in_securities(ticker, currency, company_name)
             
             # Convert DataFrame to list of dictionaries
+            # NOTE: total_value is a GENERATED COLUMN - do not include it in inserts
             positions = []
             for _, row in positions_df.iterrows():
-                shares = float(row["Shares"])
-                price = float(row["Current Price"])
-                market_value = shares * price  # Calculate total_value
                 positions.append({
                     "ticker": row["Ticker"],
-                    "shares": shares,
-                    "price": price,
+                    "shares": float(row["Shares"]),
+                    "price": float(row["Current Price"]),
                     "cost_basis": float(row["Cost Basis"]),
-                    "total_value": market_value,  # CRITICAL: Set total_value (was missing!)
+                    # "total_value": market_value,  # REMOVED: Generated column - DB calculates automatically
                     "pnl": float(row["PnL"]),
                     "date": row["Date"].isoformat() if pd.notna(row["Date"]) else datetime.now(timezone.utc).isoformat()
                 })

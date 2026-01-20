@@ -1090,6 +1090,13 @@ def run_portfolio_workflow(args: argparse.Namespace, settings: Settings, reposit
         tickers = [pos.ticker for pos in latest_snapshot.positions]
 
         if tickers:
+            # Populate currency cache from portfolio positions before fetching
+            # This ensures we know which tickers are USD vs CAD to avoid wrong Canadian fallbacks
+            for pos in latest_snapshot.positions:
+                currency = pos.currency or 'USD'
+                if currency:
+                    market_data_fetcher._portfolio_currency_cache[pos.ticker.upper()] = currency.upper()
+            
             end_date = datetime.now()
             # Go back about 15 calendar days to ensure we get at least 10 trading days
             start_date = end_date - timedelta(days=15)

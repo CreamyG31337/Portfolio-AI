@@ -92,17 +92,15 @@ def migrate_portfolio_data(client, portfolio_df, fund_name="Project Chimera"):
             if ticker not in ticker_currencies:
                 ticker_currencies[ticker] = currency
 
-            shares = float(row.get("Shares", 0))
-            price = float(row.get("Current Price", 0))
-            market_value = shares * price  # Calculate total_value
+            # NOTE: total_value is a GENERATED COLUMN - do not include it in inserts
             record = {
                 "fund": fund_name,
                 "ticker": ticker,
                 "company": str(row.get("Company", "")),
-                "shares": shares,
-                "price": price,
+                "shares": float(row.get("Shares", 0)),
+                "price": float(row.get("Current Price", 0)),
                 "cost_basis": float(row.get("Cost Basis", 0)),
-                "total_value": market_value,  # CRITICAL: Set total_value (was missing!)
+                # "total_value": market_value,  # REMOVED: Generated column - DB calculates automatically
                 "pnl": float(row.get("PnL", 0)),
                 "currency": currency,
                 "date": datetime.now().isoformat(),

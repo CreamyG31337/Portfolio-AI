@@ -115,15 +115,20 @@ class MarketDataFetcher:
             logging.getLogger(__name__).debug(f"Could not load fundamentals cache: {e}")
     
     def _load_currency_cache(self):
-        """Load currency information from trade log and portfolio CSV files.
+        """Load currency information from Supabase and CSV files.
         
-        Trade log is the source of truth for currency information.
+        This provides a baseline cache population. The actual source of truth is determined
+        by repository mode, and callers will populate the cache from their repository context
+        before fetching prices.
+        
+        Loads from both sources to ensure cache has data even if one source is unavailable.
         """
         try:
             import pandas as pd
             import glob
+            import os
             
-            # First load from trade logs (source of truth)
+            # Load from CSV files (source of truth in CSV mode)
             trade_log_files = []
             trade_log_paths = [
                 'trading_data/funds/*/llm_trade_log.csv',
@@ -210,6 +215,46 @@ class MarketDataFetcher:
                         logger.debug(f"Supplemented currency cache from portfolio {file_path}: {len([t for t in latest_entries.index if t not in self._portfolio_currency_cache])} new tickers")
                 except Exception as e:
                     logger.debug(f"Could not load currency cache from portfolio {file_path}: {e}")
+            
+            # Load from Supabase if available (source of truth in Supabase mode)
+            try:
+                if os.getenv("SUPABASE_URL"):  # Only try if Supabase is configured
+                    from web_dashboard.supabase_client import SupabaseClient
+                    client = SupabaseClient(use_service_role=True)  # Bypass RLS for background jobs
+                    trades = client.supabase.table("trade_log")\
+                        .select("ticker, currency")\
+                        .execute()
+                    
+                    supabase_count = 0
+                    for trade in trades.data:
+                        ticker = trade['ticker'].upper()
+                        currency = trade.get('currency', 'USD').upper()
+                        # Add or override (Supabase takes precedence if both exist)
+                        self._portfolio_currency_cache[ticker] = currency
+                        supabase_count += 1
+                        
+                        # Handle ticker variants for smart lookup (same logic as CSV loading)
+                        # If ticker has .TO/.V suffix, also cache the base ticker
+                        if ticker.endswith('.TO'):
+                            base_ticker = ticker[:-3]  # Remove .TO
+                            if base_ticker not in self._portfolio_currency_cache:
+                                self._portfolio_currency_cache[base_ticker] = currency
+                                logger.debug(f"Mapped base ticker {base_ticker} -> {currency} from {ticker}")
+                        elif ticker.endswith('.V'):
+                            base_ticker = ticker[:-2]  # Remove .V
+                            if base_ticker not in self._portfolio_currency_cache:
+                                self._portfolio_currency_cache[base_ticker] = currency
+                                logger.debug(f"Mapped base ticker {base_ticker} -> {currency} from {ticker}")
+                        # If base ticker is CAD, also try to map to .TO variant
+                        elif currency == 'CAD' and not ticker.endswith(('.TO', '.V', '.CN')):
+                            to_variant = f"{ticker}.TO"
+                            if to_variant not in self._portfolio_currency_cache:
+                                self._portfolio_currency_cache[to_variant] = currency
+                                logger.debug(f"Mapped .TO variant {to_variant} -> {currency} from {ticker}")
+                    
+                    logger.debug(f"Loaded currency cache from Supabase: {supabase_count} tickers")
+            except Exception as e:
+                logger.debug(f"Could not load currency cache from Supabase: {e}")
                     
         except Exception as e:
             logger.warning(f"Could not load currency cache: {e}")
@@ -394,17 +439,38 @@ class MarketDataFetcher:
                     ("yahoo-proxy", lambda: self._fetch_proxy_data(ticker, start_date, end_date, **kwargs)),
                 ]
             else:
-                # Ticker doesn't have suffix, try US first then Canadian fallback
-                fetch_strategies = [
-                    ("yahoo", lambda: self._fetch_yahoo_data(ticker, start_date, end_date, **kwargs)),
-                    ("stooq-pdr", lambda: self._fetch_stooq_pdr(ticker, start_date, end_date)),
-                    ("stooq-csv", lambda: self._fetch_stooq_csv(ticker, start_date, end_date)),
-                    ("yahoo-ca-to", lambda: self._fetch_yahoo_data(f"{ticker}.TO", start_date, end_date, **kwargs)),
-                    ("yahoo-ca-v", lambda: self._fetch_yahoo_data(f"{ticker}.V", start_date, end_date, **kwargs)),
-                    ("yahoo-retry-period", lambda: self._fetch_yahoo_data_retry_period(ticker, period)),
-                    ("yahoo-retry-simple", lambda: self._fetch_yahoo_data_retry_simple(ticker)),
-                    ("yahoo-proxy", lambda: self._fetch_proxy_data(ticker, start_date, end_date, **kwargs)),
-                ]
+                # Ticker doesn't have suffix - check if we know it's USD
+                # CRITICAL FIX: Don't try Canadian variants for known USD tickers!
+                # This prevents fetching wrong data (e.g., DG.TO is a different stock than DG)
+                is_known_usd = False
+                if hasattr(self, '_portfolio_currency_cache'):
+                    currency = self._portfolio_currency_cache.get(ticker.upper())
+                    if currency == 'USD':
+                        is_known_usd = True
+                        logger.debug(f"Skipping Canadian variants for known USD ticker: {ticker}")
+                
+                if is_known_usd:
+                    # Known USD ticker - don't try Canadian variants (they're different stocks!)
+                    fetch_strategies = [
+                        ("yahoo", lambda: self._fetch_yahoo_data(ticker, start_date, end_date, **kwargs)),
+                        ("stooq-pdr", lambda: self._fetch_stooq_pdr(ticker, start_date, end_date)),
+                        ("stooq-csv", lambda: self._fetch_stooq_csv(ticker, start_date, end_date)),
+                        ("yahoo-retry-period", lambda: self._fetch_yahoo_data_retry_period(ticker, period)),
+                        ("yahoo-retry-simple", lambda: self._fetch_yahoo_data_retry_simple(ticker)),
+                        ("yahoo-proxy", lambda: self._fetch_proxy_data(ticker, start_date, end_date, **kwargs)),
+                    ]
+                else:
+                    # Unknown currency - try US first then Canadian fallback (for ambiguous cases)
+                    fetch_strategies = [
+                        ("yahoo", lambda: self._fetch_yahoo_data(ticker, start_date, end_date, **kwargs)),
+                        ("stooq-pdr", lambda: self._fetch_stooq_pdr(ticker, start_date, end_date)),
+                        ("stooq-csv", lambda: self._fetch_stooq_csv(ticker, start_date, end_date)),
+                        ("yahoo-ca-to", lambda: self._fetch_yahoo_data(f"{ticker}.TO", start_date, end_date, **kwargs)),
+                        ("yahoo-ca-v", lambda: self._fetch_yahoo_data(f"{ticker}.V", start_date, end_date, **kwargs)),
+                        ("yahoo-retry-period", lambda: self._fetch_yahoo_data_retry_period(ticker, period)),
+                        ("yahoo-retry-simple", lambda: self._fetch_yahoo_data_retry_simple(ticker)),
+                        ("yahoo-proxy", lambda: self._fetch_proxy_data(ticker, start_date, end_date, **kwargs)),
+                    ]
 
         successful_strategy = None
         failed_strategies = []

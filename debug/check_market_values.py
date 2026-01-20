@@ -190,9 +190,10 @@ def check_market_values(fund_name: str = "Project Chimera", days_back: int = 30)
         for p in sorted(latest_positions, key=lambda x: x.get('ticker', '')):
             ticker = p.get('ticker')
             price = p.get('price')
-            market_val = p.get('market_value')
+            # Check both total_value (table column) and market_value (from views)
+            market_val = p.get('total_value') or p.get('market_value')
             shares = p.get('shares')
-            cost = p.get('cost')
+            cost = p.get('cost_basis') or p.get('cost')
             currency = p.get('currency')
             
             try:

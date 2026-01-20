@@ -650,6 +650,13 @@ def update_portfolio_prices_job(
                 
                     logger.info(f"  Found {len(current_holdings)} active positions")
                     
+                    # Populate currency cache from current holdings before fetching
+                    # This ensures we know which tickers are USD vs CAD to avoid wrong Canadian fallbacks
+                    for ticker, holding in current_holdings.items():
+                        currency = holding.get('currency', 'USD')
+                        if currency:
+                            market_fetcher._portfolio_currency_cache[ticker.upper()] = currency.upper()
+                    
                     # CRITICAL: Check which markets are actually open on target_date
                     # This prevents fetching stale/bad data when one market is closed but the other is open
                     us_market_open = not market_holidays.is_us_market_closed(target_date)
@@ -893,7 +900,7 @@ def update_portfolio_prices_job(
                             'shares': float(shares),
                             'price': float(current_price),
                             'cost_basis': float(cost_basis),
-                            'total_value': float(market_value),  # CRITICAL: Set total_value (was missing!)
+                            # 'total_value': float(market_value),  # REMOVED: Generated column - DB calculates automatically
                             'pnl': float(unrealized_pnl),
                             'currency': holding['currency'],
                             'date': utc_datetime.isoformat(),
@@ -1237,6 +1244,11 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                     
                     logger.info(f"  Found {len(all_tickers)} unique tickers across all trades")
                     
+                    # Populate currency cache from trades before fetching
+                    # This ensures we know which tickers are USD vs CAD to avoid wrong Canadian fallbacks
+                    for ticker, currency in ticker_currencies.items():
+                        market_fetcher._portfolio_currency_cache[ticker.upper()] = currency.upper()
+                    
                     # Helper to detect market from ticker suffix (more reliable than currency)
                     def is_canadian_ticker(ticker: str) -> bool:
                         return ticker.endswith(('.TO', '.V', '.CN'))
@@ -1552,7 +1564,7 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                                 'shares': float(shares),
                                 'price': float(current_price),
                                 'cost_basis': float(cost_basis),
-                                'total_value': float(market_value),  # CRITICAL: Set total_value (was missing!)
+                                # 'total_value': float(market_value),  # REMOVED: Generated column - DB calculates automatically
                                 'pnl': float(unrealized_pnl),
                                 'currency': holding['currency'],
                                 'date': utc_datetime.isoformat(),

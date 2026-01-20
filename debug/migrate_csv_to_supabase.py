@@ -67,19 +67,17 @@ def migrate_csv_to_supabase(fund_name="TEST", data_dir="trading_data/funds/TEST"
     print(f"   Found {len(latest_positions)} unique positions")
     
     # Convert to Supabase format
+    # NOTE: total_value is a GENERATED COLUMN - do not include it in inserts
     portfolio_entries = []
     for _, row in latest_positions.iterrows():
-        shares = float(row['Shares'])
-        price = float(row['Current Price'])
-        market_value = shares * price  # Calculate total_value
         entry = {
             'fund': fund_name,
             'ticker': row['Ticker'],
             'company': row.get('Company', ''),
-            'shares': shares,
-            'price': price,
+            'shares': float(row['Shares']),
+            'price': float(row['Current Price']),
             'cost_basis': float(row['Cost Basis']),
-            'total_value': market_value,  # CRITICAL: Set total_value (was missing!)
+            # 'total_value': market_value,  # REMOVED: Generated column - DB calculates automatically
             'pnl': float(row.get('PnL', 0)),
             'currency': row.get('Currency', 'USD'),
             'date': row['Date'].isoformat()
