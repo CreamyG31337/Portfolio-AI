@@ -18,9 +18,10 @@ export class FormatterCache {
         const normalizedOptions = Object.keys(options)
             .sort()
             .reduce((acc, key) => {
-                acc[key] = options[key as keyof Intl.NumberFormatOptions];
+                const typedKey = key as keyof Intl.NumberFormatOptions;
+                acc[typedKey] = options[typedKey];
                 return acc;
-            }, {} as Intl.NumberFormatOptions);
+            }, {} as Record<string, any>) as Intl.NumberFormatOptions;
         
         const key = `${locale}:${JSON.stringify(normalizedOptions)}`;
 
