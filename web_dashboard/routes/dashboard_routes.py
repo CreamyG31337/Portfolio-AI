@@ -6,9 +6,6 @@ import pandas as pd
 from datetime import datetime, timezone
 import json
 
-from auth import require_auth
-from flask_auth_utils import get_user_email_flask
-from user_preferences import get_user_theme, get_user_currency, get_user_selected_fund, get_user_preference
 from flask_data_utils import (
     fetch_dividend_log_flask, 
     get_supabase_client_flask,
@@ -19,12 +16,9 @@ from flask_data_utils import (
     fetch_latest_rates_bulk_flask as fetch_latest_rates_bulk,
     get_investor_count_flask as get_investor_count,
     get_first_trade_dates_flask as get_first_trade_dates,
-    calculate_portfolio_value_over_time_flask as calculate_portfolio_value_over_time
+    calculate_portfolio_value_over_time_flask as calculate_portfolio_value_over_time,
+    get_biggest_movers_flask as get_biggest_movers
 )
-# from streamlit_utils import (
-#     get_user_investment_metrics, # Not yet ported/needed?
-#     get_biggest_movers, # Not yet ported/needed?
-# )
 
 logger = logging.getLogger(__name__)
 

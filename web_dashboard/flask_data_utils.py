@@ -761,13 +761,143 @@ def get_first_trade_dates_flask(fund: Optional[str] = None) -> Dict[str, datetim
             return {}
             
         # Group by ticker and find min date
-        if 'date' in trades_df.columns and 'ticker' in trades_df.columns:
-            # Convert to datetime if not already
-            trades_df['date'] = pd.to_datetime(trades_df['date'])
-            first_dates = trades_df.groupby('ticker')['date'].min().to_dict()
-            return first_dates
-            
-        return {}
     except Exception as e:
         logger.error(f"Error getting first trade dates (Flask): {e}")
         return {}
+
+
+def get_biggest_movers_flask(positions_df: pd.DataFrame, display_currency: str, limit: int = 10) -> Dict[str, pd.DataFrame]:
+    """Get biggest gainers and losers from positions (Flask version).
+    
+    Args:
+        positions_df: DataFrame with positions data
+        display_currency: Currency to display values in
+        limit: Number of top movers to return (default 10)
+        
+    Returns:
+        Dictionary with 'gainers' and 'losers' DataFrames
+    """
+    if positions_df.empty:
+        return {'gainers': pd.DataFrame(), 'losers': pd.DataFrame()}
+    
+    # Get exchange rates for currency conversion
+    all_currencies = set()
+    if 'currency' in positions_df.columns:
+        all_currencies.update(positions_df['currency'].fillna('CAD').astype(str).str.upper().unique().tolist())
+    
+    rate_map = fetch_latest_rates_bulk_flask(list(all_currencies), display_currency) if all_currencies else {}
+    
+    def get_rate_safe(curr):
+        return rate_map.get(str(curr).upper(), 1.0)
+    
+    # Create a copy to avoid modifying original
+    df = positions_df.copy()
+    
+    # Ensure we have required columns
+    required_cols = ['ticker']
+    if not all(col in df.columns for col in required_cols):
+        return {'gainers': pd.DataFrame(), 'losers': pd.DataFrame()}
+    
+    # Determine which P&L column to use (prefer daily_pnl_pct, fallback to return_pct)
+    pnl_pct_col = None
+    pnl_dollar_col = None
+    
+    if 'daily_pnl_pct' in df.columns:
+        pnl_pct_col = 'daily_pnl_pct'
+    elif 'return_pct' in df.columns:
+        pnl_pct_col = 'return_pct'
+    
+    if 'daily_pnl' in df.columns:
+        pnl_dollar_col = 'daily_pnl'
+    elif 'unrealized_pnl' in df.columns:
+        pnl_dollar_col = 'unrealized_pnl'
+    
+    if not pnl_pct_col and not pnl_dollar_col:
+        return {'gainers': pd.DataFrame(), 'losers': pd.DataFrame()}
+    
+    # Filter out positions with zero or missing P&L
+    if pnl_pct_col:
+        df = df[df[pnl_pct_col].notna() & (df[pnl_pct_col] != 0)]
+        sort_col = pnl_pct_col
+    else:
+        df = df[df[pnl_dollar_col].notna() & (df[pnl_dollar_col] != 0)]
+        sort_col = pnl_dollar_col
+    
+    if df.empty:
+        return {'gainers': pd.DataFrame(), 'losers': pd.DataFrame()}
+    
+    # Convert currency if needed
+    if 'currency' in df.columns and pnl_dollar_col:
+        rates = df['currency'].fillna('CAD').astype(str).str.upper().map(get_rate_safe)
+        df['pnl_display'] = df[pnl_dollar_col] * rates
+    elif pnl_dollar_col:
+        df['pnl_display'] = df[pnl_dollar_col]
+    
+    # Handle 5-day P&L currency conversion
+    if 'five_day_pnl' in df.columns:
+        if 'currency' in df.columns:
+            rates = df['currency'].fillna('CAD').astype(str).str.upper().map(get_rate_safe)
+            df['five_day_pnl_display'] = df['five_day_pnl'] * rates
+        else:
+            df['five_day_pnl_display'] = df['five_day_pnl']
+    
+    # Handle total P&L (unrealized_pnl) currency conversion
+    if 'unrealized_pnl' in df.columns:
+        if 'currency' in df.columns:
+            rates = df['currency'].fillna('CAD').astype(str).str.upper().map(get_rate_safe)
+            df['total_pnl_display'] = df['unrealized_pnl'] * rates
+        else:
+            df['total_pnl_display'] = df['unrealized_pnl']
+    
+    # Get company names if available
+    company_col = None
+    if 'securities' in df.columns:
+        # Handle nested securities data
+        try:
+            df['company_name'] = df['securities'].apply(
+                lambda x: x.get('company_name', '') if isinstance(x, dict) else ''
+            )
+            company_col = 'company_name'
+        except:
+            pass
+    elif 'company_name' in df.columns:
+        company_col = 'company_name'
+    
+    # Build result columns (only include columns that exist)
+    result_cols = ['ticker']
+    if company_col and company_col in df.columns:
+        result_cols.append(company_col)
+    if pnl_pct_col and pnl_pct_col in df.columns:
+        result_cols.append(pnl_pct_col)
+    if pnl_dollar_col and 'pnl_display' in df.columns:
+        result_cols.append('pnl_display')
+    if 'five_day_pnl_pct' in df.columns:
+        result_cols.append('five_day_pnl_pct')
+    if 'five_day_pnl_display' in df.columns:
+        result_cols.append('five_day_pnl_display')
+    # Add total return % only if it's different from the daily P&L column
+    if 'return_pct' in df.columns and (not pnl_pct_col or pnl_pct_col != 'return_pct'):
+        result_cols.append('return_pct')
+    if 'total_pnl_display' in df.columns:
+        result_cols.append('total_pnl_display')
+    if 'current_price' in df.columns:
+        result_cols.append('current_price')
+    if 'market_value' in df.columns:
+        result_cols.append('market_value')
+    
+    # Filter to only columns that exist
+    result_cols = [col for col in result_cols if col in df.columns]
+    
+    if not result_cols:
+        return {'gainers': pd.DataFrame(), 'losers': pd.DataFrame()}
+    
+    # Get gainers (positive P&L)
+    gainers = df[df[sort_col] > 0].sort_values(sort_col, ascending=False).head(limit)
+    
+    # Get losers (negative P&L)
+    losers = df[df[sort_col] < 0].sort_values(sort_col, ascending=True).head(limit)
+    
+    return {
+        'gainers': gainers[result_cols].reset_index(drop=True), 
+        'losers': losers[result_cols].reset_index(drop=True)
+    }
