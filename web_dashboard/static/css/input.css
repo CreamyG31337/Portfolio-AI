@@ -6,7 +6,7 @@
 @layer components {
     /* Gradient background for header */
     .gradient-bg {
-        @apply bg-gradient-to-br from-accent-from to-accent-to;
+        background-image: linear-gradient(to bottom right, var(--gradient-from), var(--gradient-to));
     }
 
     /* Sidebar collapse transitions */
