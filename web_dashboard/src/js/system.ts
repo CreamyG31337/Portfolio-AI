@@ -3,7 +3,7 @@
  * Handles system status and cache management
  */
 
-import { clearCache, bumpCacheVersion } from './system_cache_functions.js';
+import { clearCache, bumpCacheVersion, resetSystemCache } from './system_cache_functions.js';
 
 // Type definitions
 interface SystemStatus {
@@ -136,3 +136,4 @@ async function fetchSystemStatus(): Promise<void> {
 // Make functions available globally for onclick handlers
 (window as any).clearCache = clearCache;
 (window as any).bumpCacheVersion = bumpCacheVersion;
+(window as any).resetSystemCache = resetSystemCache;

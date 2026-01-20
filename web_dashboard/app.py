@@ -980,14 +980,6 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
         logger.error(f"Error creating performance chart: {e}", exc_info=True)
         return json.dumps({})
 
-# Register Dashboard Blueprint
-try:
-    from routes.dashboard_routes import dashboard_bp
-    app.register_blueprint(dashboard_bp)
-    logger.debug("Registered Dashboard Blueprint")
-except Exception as e:
-    logger.error(f"Failed to register Dashboard Blueprint: {e}", exc_info=True)
-
 # Fallback route for dashboard if blueprint registration fails
 # This prevents 404 errors and provides helpful error info
 @app.route('/dashboard')
