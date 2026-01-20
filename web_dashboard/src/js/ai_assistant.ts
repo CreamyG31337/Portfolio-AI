@@ -247,19 +247,19 @@ class AIAssistant {
         }
 
         // Model selection
-         const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
-         if (modelSelect) {
-             modelSelect.addEventListener('change', (e: Event) => {
-                 const target = e.target as HTMLSelectElement;
-                 this.selectedModel = target.value;
-                 this.saveModelPreference();
-                 // Update current model display in footer
-                 this.updateModelDisplay();
-                 // Update model description
-                 this.updateModelDescription();
-                 // Recalculate token usage with new model limits
-                 this.calculateContextUsage();
-             });
+        const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
+        if (modelSelect) {
+            modelSelect.addEventListener('change', (e: Event) => {
+                const target = e.target as HTMLSelectElement;
+                this.selectedModel = target.value;
+                this.saveModelPreference();
+                // Update current model display in footer
+                this.updateModelDisplay();
+                // Update model description
+                this.updateModelDescription();
+                // Recalculate token usage with new model limits
+                this.calculateContextUsage();
+            });
         }
 
         // Fund selection - use global selector from left nav (or fallback to right sidebar)
@@ -436,231 +436,172 @@ class AIAssistant {
             }
         });
 
-        // Quick Research sidebar toggle
-        this.setupSidebarToggle();
-        
-        // AI Settings sidebar toggle (right sidebar)
-        this.setupAISidebarToggle();
+        // AI drawer toggle + tabs
+        this.setupDrawerToggle();
+        this.setupDrawerTabs();
     }
 
     /**
-     * Setup Quick Research sidebar toggle functionality
+     * Setup AI drawer toggle functionality
      */
-    setupSidebarToggle(): void {
-        const toggleBtn = document.getElementById('quick-research-toggle');
-        const toggleBtnDesktop = document.getElementById('quick-research-toggle-desktop');
-        const sidebarContainer = document.getElementById('quick-research-sidebar-container');
-        const backdrop = document.getElementById('quick-research-backdrop');
-        const chatColumn = document.getElementById('chat-column');
+    setupDrawerToggle(): void {
+        const toggleBtn = document.getElementById('ai-drawer-toggle');
+        const closeBtn = document.getElementById('ai-drawer-close');
+        const drawer = document.getElementById('ai-drawer');
+        const backdrop = document.getElementById('ai-drawer-backdrop');
 
-        // Load saved sidebar state (default: visible on desktop, hidden on mobile)
+        // Load saved drawer state (default: visible on desktop, hidden on mobile)
         const isMobile = window.innerWidth < 768;
-        const savedState = localStorage.getItem('ai-assistant-sidebar-open');
-        // Only use saved state if it exists, otherwise use default (open on desktop, closed on mobile)
+        const savedState = localStorage.getItem('ai-assistant-drawer-open');
         const shouldBeOpen = savedState !== null ? savedState === 'true' : !isMobile;
 
-        // Initialize sidebar state immediately
-        this.updateSidebarClasses(shouldBeOpen, isMobile);
-        
-        // Update toggle button icons
-        const toggleIcon = document.getElementById('quick-research-toggle-icon');
-        const toggleIconDesktop = document.getElementById('quick-research-toggle-desktop-icon');
-        if (toggleIcon) {
-            toggleIcon.className = shouldBeOpen ? 'fas fa-times' : 'fas fa-search';
-        }
-        if (toggleIconDesktop) {
-            toggleIconDesktop.className = shouldBeOpen ? 'fas fa-chevron-right' : 'fas fa-chevron-left';
-        }
+        // Initialize drawer state immediately
+        this.updateDrawerClasses(shouldBeOpen, isMobile);
+        this.updateDrawerToggleIcon(shouldBeOpen);
 
-        // Mobile toggle button
         if (toggleBtn) {
             toggleBtn.addEventListener('click', () => {
-                const isOpen = sidebarContainer?.classList.contains('sidebar-open') || false;
-                this.setSidebarOpen(!isOpen, true);
+                const isOpen = drawer?.classList.contains('drawer-open') || false;
+                this.setDrawerOpen(!isOpen, true);
             });
         }
 
-        // Desktop toggle button
-        if (toggleBtnDesktop) {
-            toggleBtnDesktop.addEventListener('click', () => {
-                const isOpen = sidebarContainer?.classList.contains('sidebar-open') || false;
-                this.setSidebarOpen(!isOpen, true);
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                this.setDrawerOpen(false, true);
             });
         }
 
-        // Close sidebar when clicking backdrop (mobile only)
+        // Close drawer when clicking backdrop (mobile only)
         if (backdrop) {
             backdrop.addEventListener('click', () => {
                 if (window.innerWidth < 768) {
-                    this.setSidebarOpen(false, true);
+                    this.setDrawerOpen(false, true);
                 }
             });
         }
 
-        // Handle window resize to adjust sidebar behavior
+        // Handle window resize to adjust drawer behavior
         let resizeTimeout: number | null = null;
         window.addEventListener('resize', () => {
             if (resizeTimeout) clearTimeout(resizeTimeout);
             resizeTimeout = window.setTimeout(() => {
                 const isMobileNow = window.innerWidth < 768;
-                const isOpen = sidebarContainer?.classList.contains('sidebar-open') || false;
-                
-                // On mobile, if sidebar is open, ensure it's in overlay mode
-                // On desktop, if sidebar was closed, keep it closed
+                const isOpen = drawer?.classList.contains('drawer-open') || false;
+
                 if (isMobileNow && isOpen) {
-                    // Sidebar should be overlay on mobile
-                    this.updateSidebarClasses(true, true);
+                    this.updateDrawerClasses(true, true);
                 } else if (!isMobileNow && !isOpen) {
-                    // Sidebar should be hidden on desktop
-                    this.updateSidebarClasses(false, false);
+                    this.updateDrawerClasses(false, false);
                 } else if (!isMobileNow && isOpen) {
-                    // Sidebar should be visible side-by-side on desktop
-                    this.updateSidebarClasses(true, false);
+                    this.updateDrawerClasses(true, false);
                 }
             }, 150);
         });
     }
 
+    updateDrawerToggleIcon(isOpen: boolean): void {
+        const toggleIcon = document.getElementById('ai-drawer-toggle-icon');
+        if (toggleIcon) {
+            toggleIcon.className = isOpen ? 'fas fa-times' : 'fas fa-sliders-h';
+        }
+    }
+
     /**
-     * Set sidebar open/closed state
+     * Set drawer open/closed state
      */
-    setSidebarOpen(isOpen: boolean, saveToStorage: boolean): void {
-        const sidebarContainer = document.getElementById('quick-research-sidebar-container');
-        const backdrop = document.getElementById('quick-research-backdrop');
-        const toggleIcon = document.getElementById('quick-research-toggle-icon');
-        const toggleIconDesktop = document.getElementById('quick-research-toggle-desktop-icon');
-        const chatColumn = document.getElementById('chat-column');
+    setDrawerOpen(isOpen: boolean, saveToStorage: boolean): void {
         const isMobile = window.innerWidth < 768;
 
         if (saveToStorage) {
-            localStorage.setItem('ai-assistant-sidebar-open', isOpen.toString());
+            localStorage.setItem('ai-assistant-drawer-open', isOpen.toString());
         }
 
-        this.updateSidebarClasses(isOpen, isMobile);
-
-        // Update toggle button icons
-        if (toggleIcon) {
-            toggleIcon.className = isOpen ? 'fas fa-times' : 'fas fa-search';
-        }
-        if (toggleIconDesktop) {
-            toggleIconDesktop.className = isOpen ? 'fas fa-chevron-right' : 'fas fa-chevron-left';
-        }
+        this.updateDrawerClasses(isOpen, isMobile);
+        this.updateDrawerToggleIcon(isOpen);
     }
 
     /**
-     * Update sidebar CSS classes based on state
+     * Update drawer CSS classes based on state
      */
-    updateSidebarClasses(isOpen: boolean, isMobile: boolean): void {
-        const sidebarContainer = document.getElementById('quick-research-sidebar-container');
-        const backdrop = document.getElementById('quick-research-backdrop');
+    updateDrawerClasses(isOpen: boolean, isMobile: boolean): void {
+        const drawer = document.getElementById('ai-drawer');
+        const backdrop = document.getElementById('ai-drawer-backdrop');
         const chatColumn = document.getElementById('chat-column');
-        const aiContent = document.getElementById('ai-assistant-content');
 
-        if (!sidebarContainer) return;
+        if (!drawer) return;
 
-        // Remove all state classes first
-        sidebarContainer.classList.remove('sidebar-open', 'sidebar-closed', 'sidebar-overlay');
+        drawer.classList.remove('drawer-open', 'drawer-closed', 'drawer-overlay');
 
         if (isMobile) {
-            // Mobile: overlay/drawer mode
-            sidebarContainer.classList.add('sidebar-overlay');
+            drawer.classList.add('drawer-overlay');
             if (isOpen) {
-                sidebarContainer.classList.add('sidebar-open');
-                sidebarContainer.classList.remove('sidebar-closed');
-                if (backdrop) {
-                    backdrop.classList.remove('hidden');
-                }
+                drawer.classList.add('drawer-open');
+                drawer.classList.remove('drawer-closed');
+                if (backdrop) backdrop.classList.remove('hidden');
             } else {
-                sidebarContainer.classList.add('sidebar-closed');
-                sidebarContainer.classList.remove('sidebar-open');
-                if (backdrop) {
-                    backdrop.classList.add('hidden');
-                }
+                drawer.classList.add('drawer-closed');
+                drawer.classList.remove('drawer-open');
+                if (backdrop) backdrop.classList.add('hidden');
             }
         } else {
-            // Desktop: side-by-side mode
-            sidebarContainer.classList.remove('sidebar-overlay');
+            drawer.classList.remove('drawer-overlay');
             if (isOpen) {
-                sidebarContainer.classList.add('sidebar-open');
-                sidebarContainer.classList.remove('sidebar-closed');
-                if (backdrop) {
-                    backdrop.classList.add('hidden');
-                }
-                // Adjust chat column width
+                drawer.classList.add('drawer-open');
+                drawer.classList.remove('drawer-closed');
+                if (backdrop) backdrop.classList.add('hidden');
                 if (chatColumn) {
                     chatColumn.style.flex = '0 0 70%';
                 }
-                if (aiContent) {
-                    aiContent.classList.remove('sidebar-closed-content');
-                }
             } else {
-                sidebarContainer.classList.add('sidebar-closed');
-                sidebarContainer.classList.remove('sidebar-open');
-                if (backdrop) {
-                    backdrop.classList.add('hidden');
-                }
-                // Expand chat column to full width
+                drawer.classList.add('drawer-closed');
+                drawer.classList.remove('drawer-open');
+                if (backdrop) backdrop.classList.add('hidden');
                 if (chatColumn) {
                     chatColumn.style.flex = '1 1 100%';
                 }
-                if (aiContent) {
-                    aiContent.classList.add('sidebar-closed-content');
-                }
             }
         }
     }
 
     /**
-     * Setup AI Settings sidebar (right sidebar) toggle functionality
+     * Setup AI drawer tabs
      */
-    setupAISidebarToggle(): void {
-        const toggleBtn = document.getElementById('ai-sidebar-toggle');
-        const sidebar = document.getElementById('ai-sidebar');
-        const aiContent = document.getElementById('ai-assistant-content');
-        const toggleIcon = document.getElementById('ai-sidebar-toggle-icon');
+    setupDrawerTabs(): void {
+        const tabButtons = Array.from(document.querySelectorAll('[data-drawer-tab]')) as HTMLButtonElement[];
+        const panels = Array.from(document.querySelectorAll('[data-drawer-panel]')) as HTMLElement[];
 
-        if (!toggleBtn || !sidebar) return;
+        if (tabButtons.length === 0 || panels.length === 0) return;
 
-        // Load saved state (default: visible)
-        const savedState = localStorage.getItem('ai-settings-sidebar-collapsed');
-        const isCollapsed = savedState === 'true';
+        const activeClasses = ['bg-white', 'dark:bg-gray-900', 'text-text-primary', 'shadow-sm'];
+        const inactiveClasses = ['text-text-secondary', 'hover:text-text-primary'];
 
-        // Apply initial state
-        this.setAISidebarCollapsed(isCollapsed);
+        const setActive = (tabId: string): void => {
+            tabButtons.forEach((btn) => {
+                const isActive = btn.dataset.drawerTab === tabId;
+                btn.setAttribute('aria-selected', isActive.toString());
+                activeClasses.forEach((cls) => btn.classList.toggle(cls, isActive));
+                inactiveClasses.forEach((cls) => btn.classList.toggle(cls, !isActive));
+            });
 
-        // Toggle button click handler
-        toggleBtn.addEventListener('click', () => {
-            const currentlyCollapsed = sidebar.getAttribute('data-collapsed') === 'true';
-            this.setAISidebarCollapsed(!currentlyCollapsed);
-            localStorage.setItem('ai-settings-sidebar-collapsed', (!currentlyCollapsed).toString());
+            panels.forEach((panel) => {
+                panel.classList.toggle('hidden', panel.dataset.drawerPanel !== tabId);
+            });
+
+            localStorage.setItem('ai-assistant-drawer-tab', tabId);
+        };
+
+        const savedTab = localStorage.getItem('ai-assistant-drawer-tab');
+        const defaultTab = savedTab && tabButtons.some((btn) => btn.dataset.drawerTab === savedTab)
+            ? savedTab
+            : 'quick';
+        setActive(defaultTab);
+
+        tabButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                setActive(btn.dataset.drawerTab || 'quick');
+            });
         });
-    }
-
-    /**
-     * Set AI Settings sidebar collapsed/expanded state
-     */
-    setAISidebarCollapsed(collapsed: boolean): void {
-        const sidebar = document.getElementById('ai-sidebar');
-        const aiContent = document.getElementById('ai-assistant-content');
-        const toggleIcon = document.getElementById('ai-sidebar-toggle-icon');
-
-        if (!sidebar) return;
-
-        sidebar.setAttribute('data-collapsed', collapsed.toString());
-
-        // Update icon direction
-        if (toggleIcon) {
-            toggleIcon.className = collapsed ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
-        }
-
-        // Adjust content padding
-        if (aiContent) {
-            if (collapsed) {
-                aiContent.classList.add('ai-sidebar-collapsed');
-            } else {
-                aiContent.classList.remove('ai-sidebar-collapsed');
-            }
-        }
     }
 
     /**
@@ -1198,6 +1139,170 @@ class AIAssistant {
             word.length >= 1
         );
         return tickers;
+    }
+
+    /**
+     * Display search results in the chat UI (before sending to LLM)
+     * Matches the Streamlit implementation style
+     */
+    displaySearchResults(searchData: any): void {
+        const messagesDiv = document.getElementById('chat-messages');
+        if (!messagesDiv) return;
+
+        const results = searchData.results || [];
+        if (results.length === 0) return;
+
+        // Create search results display container
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'search-results-display bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4';
+
+        // Header
+        const header = document.createElement('h4');
+        header.className = 'font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2';
+        header.innerHTML = `
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+            <span>Search Results (${results.length} found)</span>
+        `;
+        resultDiv.appendChild(header);
+
+        // Results list
+        const list = document.createElement('div');
+        list.className = 'space-y-3';
+
+        results.slice(0, 5).forEach((result: any, index: number) => {
+            const item = document.createElement('div');
+            item.className = 'text-sm border-l-2 border-blue-400 dark:border-blue-500 pl-3 py-1';
+
+            // Title with link
+            const titleLink = document.createElement('a');
+            titleLink.href = result.url || '#';
+            titleLink.target = '_blank';
+            titleLink.rel = 'noopener noreferrer';
+            titleLink.className = 'font-medium text-blue-700 dark:text-blue-300 hover:underline block';
+            titleLink.textContent = `${index + 1}. ${result.title || 'Untitled'}`;
+            item.appendChild(titleLink);
+
+            // Content/summary
+            if (result.content) {
+                const content = document.createElement('p');
+                content.className = 'text-gray-600 dark:text-gray-400 text-xs mt-1';
+                const truncated = result.content.length > 150
+                    ? result.content.substring(0, 150) + '...'
+                    : result.content;
+                content.textContent = truncated;
+                item.appendChild(content);
+            }
+
+            // Source/engine
+            if (result.engine) {
+                const source = document.createElement('span');
+                source.className = 'text-gray-500 dark:text-gray-500 text-xs';
+                source.textContent = `Source: ${result.engine}`;
+                item.appendChild(source);
+            }
+
+            list.appendChild(item);
+        });
+
+        resultDiv.appendChild(list);
+
+        // Collapse/expand functionality
+        let isExpanded = true;
+        header.style.cursor = 'pointer';
+        header.addEventListener('click', () => {
+            isExpanded = !isExpanded;
+            list.style.display = isExpanded ? 'block' : 'none';
+        });
+
+        messagesDiv.appendChild(resultDiv);
+        this.scrollToBottom();
+    }
+
+    /**
+     * Display repository articles in the chat UI (before sending to LLM)
+     * Matches the Streamlit implementation style
+     */
+    displayRepositoryArticles(articles: any[]): void {
+        const messagesDiv = document.getElementById('chat-messages');
+        if (!messagesDiv) return;
+
+        if (!articles || articles.length === 0) return;
+
+        // Create repository articles display container
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'repository-articles-display bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 mb-4';
+
+        // Header
+        const header = document.createElement('h4');
+        header.className = 'font-semibold text-green-900 dark:text-green-100 mb-3 flex items-center gap-2';
+        header.innerHTML = `
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+            </svg>
+            <span>Research Articles (${articles.length} found)</span>
+        `;
+        resultDiv.appendChild(header);
+
+        // Articles list
+        const list = document.createElement('div');
+        list.className = 'space-y-4';
+
+        articles.forEach((article: any, index: number) => {
+            const item = document.createElement('div');
+            item.className = 'text-sm border-l-2 border-green-400 dark:border-green-500 pl-3 py-2';
+
+            // Title and similarity
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'font-medium text-green-900 dark:text-green-100 mb-1';
+
+            const similarity = article.similarity !== undefined ? (article.similarity * 100).toFixed(0) : 0;
+            titleDiv.textContent = `${index + 1}. ${article.title || 'Untitled'}`;
+
+            const similarityBadge = document.createElement('span');
+            similarityBadge.className = 'ml-2 text-xs font-normal text-green-700 dark:text-green-300';
+            similarityBadge.textContent = `(Similarity: ${similarity}%)`;
+            titleDiv.appendChild(similarityBadge);
+
+            item.appendChild(titleDiv);
+
+            // Source and date
+            const meta = document.createElement('div');
+            meta.className = 'text-gray-600 dark:text-gray-400 text-xs italic mb-1';
+            let metaText = `Source: ${article.source || 'Unknown'}`;
+            if (article.published_at) {
+                metaText += ` | Published: ${article.published_at}`;
+            }
+            meta.textContent = metaText;
+            item.appendChild(meta);
+
+            // Summary
+            if (article.summary) {
+                const summary = document.createElement('p');
+                summary.className = 'text-gray-700 dark:text-gray-300 text-xs mt-2';
+                const truncated = article.summary.length > 200
+                    ? article.summary.substring(0, 200) + '...'
+                    : article.summary;
+                summary.textContent = truncated;
+                item.appendChild(summary);
+            }
+
+            list.appendChild(item);
+        });
+
+        resultDiv.appendChild(list);
+
+        // Collapse/expand functionality
+        let isExpanded = true;
+        header.style.cursor = 'pointer';
+        header.addEventListener('click', () => {
+            isExpanded = !isExpanded;
+            list.style.display = isExpanded ? 'block' : 'none';
+        });
+
+        messagesDiv.appendChild(resultDiv);
+        this.scrollToBottom();
     }
 
     sendWebAIMessage(requestData: ChatRequest, loadingId: string): void {

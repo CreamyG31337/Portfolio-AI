@@ -165,14 +165,14 @@
     }
 }
 
-/* Quick Research Sidebar - Mobile Overlay/Drawer Behavior */
-.quick-research-sidebar-container {
+/* AI Drawer - Mobile Overlay/Drawer Behavior */
+.ai-drawer {
     transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }
 
 /* Mobile: Sidebar as overlay/drawer */
 @media (max-width: 767px) {
-    .quick-research-sidebar-container {
+    .ai-drawer {
         position: fixed;
         top: 0;
         right: 0;
@@ -190,13 +190,13 @@
         pointer-events: none;
     }
 
-    .quick-research-sidebar-container.sidebar-open {
+    .ai-drawer.drawer-open {
         transform: translateX(0);
         opacity: 1;
         pointer-events: auto;
     }
 
-    .quick-research-sidebar-container.sidebar-closed {
+    .ai-drawer.drawer-closed {
         transform: translateX(100%);
         opacity: 0;
         pointer-events: none;
@@ -209,7 +209,7 @@
     }
 
     /* Remove sidebar from flex layout on mobile - it's an overlay */
-    .quick-research-sidebar-container.sidebar-overlay {
+    .ai-drawer.drawer-overlay {
         position: fixed;
     }
 }
@@ -217,77 +217,41 @@
 /* Dark mode for mobile sidebar */
 @media (prefers-color-scheme: dark) {
     @media (max-width: 767px) {
-        .quick-research-sidebar-container {
+        .ai-drawer {
             background-color: #1f2937;
             border-left-color: #374151;
         }
     }
 }
 
-[data-theme="dark"] .quick-research-sidebar-container {
+[data-theme="dark"] .ai-drawer {
     background-color: #1f2937;
     border-left-color: #374151;
 }
 
 /* Desktop: Sidebar side-by-side, can be toggled */
 @media (min-width: 768px) {
-    .quick-research-sidebar-container {
+    .ai-drawer {
         position: relative;
         transform: translateX(0);
         opacity: 1;
         pointer-events: auto;
     }
 
-    .quick-research-sidebar-container.sidebar-closed {
+    .ai-drawer.drawer-closed {
         display: none;
         width: 0;
         flex: 0 0 0;
     }
 
-    .quick-research-sidebar-container.sidebar-open {
+    .ai-drawer.drawer-open {
         display: block;
     }
 }
 
 /* Backdrop overlay for mobile */
-#quick-research-backdrop {
+#ai-drawer-backdrop {
     z-index: 45;
-}
-
-/* Ensure content doesn't overlap with fixed AI sidebar on medium+ screens */
-@media (min-width: 768px) {
-    /* Target the AI assistant page content specifically */
-    #ai-assistant-content {
-        padding-right: 20rem; /* 80 * 0.25rem = 20rem for w-80 sidebar */
-    }
-    
-    /* When Quick Research sidebar is closed, remove extra padding */
-    #ai-assistant-content.sidebar-closed-content {
-        padding-right: 20rem; /* Still need padding for fixed AI sidebar */
-    }
-}
-
-/* AI Settings Sidebar (right sidebar) - Collapsible */
-#ai-sidebar {
-    transition: transform 0.3s ease-in-out;
-}
-
-#ai-sidebar[data-collapsed="true"] {
-    transform: translateX(100%);
-}
-
-#ai-sidebar[data-collapsed="false"] {
-    transform: translateX(0);
-}
-
-/* Adjust main content padding when sidebar is collapsed */
-#ai-assistant-content.ai-sidebar-collapsed {
-    padding-right: 0 !important;
-}
-
-/* Ensure toggle button stays visible when sidebar is collapsed */
-#ai-sidebar-toggle {
-    z-index: 50;
 }
 
 /* Button theming fixes for dark themes */
