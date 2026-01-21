@@ -26,6 +26,12 @@
     --color-accent-hover: #6d28d9;
     /* purple-700 */
 
+    /* Link Colors */
+    --color-link: #7c3aed;
+    /* purple-600 */
+    --color-link-hover: #6d28d9;
+    /* purple-700 */
+
     /* Log level colors (light mode) */
     --log-debug: #6b7280;
     --log-perf: #8b5cf6;
@@ -76,6 +82,12 @@
     --color-accent-hover: #6d28d9;
     /* purple-700 */
 
+    /* Link Colors */
+    --color-link: #7c3aed;
+    /* purple-600 */
+    --color-link-hover: #6d28d9;
+    /* purple-700 */
+
     /* Log level colors (light mode) */
     --log-debug: #6b7280;
     --log-perf: #8b5cf6;
@@ -122,9 +134,16 @@
     --code-border: #374151;
 
     /* Accent Colors */
-    --color-accent: #7c3aed;
-    /* purple-600 - Keeping consistent with light mode default for now, can be blue-600 #2563eb if preferred */
-    --color-accent-hover: #6d28d9;
+    --color-accent: #a78bfa;
+    /* purple-400 - Brighter for dark mode visibility */
+    --color-accent-hover: #c4b5fd;
+    /* purple-300 */
+
+    /* Link Colors */
+    --color-link: #a78bfa;
+    /* purple-400 - Bright and readable on dark backgrounds */
+    --color-link-hover: #c4b5fd;
+    /* purple-300 */
 
     /* Log level colors (dark mode - slightly brighter for visibility) */
     --log-debug: #9ca3af;
@@ -174,6 +193,12 @@
     --color-accent: #f000d0;
     --color-accent-hover: #bd00b6;
 
+    /* Link Colors */
+    --color-link: #bb9af7;
+    /* Tokyo Purple - Bright and readable */
+    --color-link-hover: #c0caf5;
+    /* Tokyo Foreground */
+
     /* Log level colors */
     --log-debug: #565f89;
     --log-perf: #bb9af7;
@@ -215,8 +240,16 @@
     --code-border: #233554;
 
     /* Accent Colors */
-    --color-accent: #021024;
-    --color-accent-hover: #061940;
+    --color-accent: #64ffda;
+    /* Vibrant cyan - Much brighter for visibility */
+    --color-accent-hover: #80ffe5;
+    /* Lighter cyan */
+
+    /* Link Colors */
+    --color-link: #64ffda;
+    /* Vibrant cyan - Highly visible on deep backgrounds */
+    --color-link-hover: #80ffe5;
+    /* Lighter cyan */
 
     /* Log level colors */
     --log-debug: #8892b0;

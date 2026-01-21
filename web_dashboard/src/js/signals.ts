@@ -90,7 +90,7 @@ class TickerCellRenderer {
 
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
-            tickerSpan.className = 'text-accent hover:text-accent-hover font-bold underline cursor-pointer';
+            tickerSpan.className = 'text-link hover:text-link-hover font-bold underline cursor-pointer';
             tickerSpan.addEventListener('click', function (e: Event) {
                 e.stopPropagation();
                 window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
@@ -191,16 +191,16 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             width: 100,
             cellRenderer: (params: any) => {
                 const signal = params.value || 'HOLD';
-                let badgeClass = 'px-2 py-1 rounded text-xs font-semibold border ';
+                let badgeClass = 'px-3 py-1 rounded-full text-xs font-bold border ';
                 switch (signal) {
                     case 'BUY':
-                        badgeClass += 'bg-theme-success-bg text-theme-success-text border-theme-success-text';
+                        badgeClass += 'bg-green-500/10 text-green-500 border-green-500/30';
                         break;
                     case 'SELL':
-                        badgeClass += 'bg-theme-error-bg text-theme-error-text border-theme-error-text';
+                        badgeClass += 'bg-red-500/10 text-red-500 border-red-500/30';
                         break;
                     case 'WATCH':
-                        badgeClass += 'bg-theme-warning-bg text-theme-warning-text border-theme-warning-text';
+                        badgeClass += 'bg-orange-500/10 text-orange-500 border-orange-500/30';
                         break;
                     default:
                         badgeClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
@@ -233,21 +233,21 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             width: 130,
             cellRenderer: (params: any) => {
                 const level = params.value || 'LOW';
-                let textClass = 'font-semibold ';
+                let badgeClass = 'px-2 py-1 rounded text-xs font-bold ';
                 switch (level) {
                     case 'EXTREME':
-                        textClass += 'text-theme-error-text';
+                        badgeClass += 'text-red-500';
                         break;
                     case 'HIGH':
-                        textClass += 'text-orange-500';
+                        badgeClass += 'text-orange-500';
                         break;
                     case 'MODERATE':
-                        textClass += 'text-theme-warning-text';
+                        badgeClass += 'text-yellow-500';
                         break;
                     default:
-                        textClass += 'text-theme-success-text';
+                        badgeClass += 'text-green-500';
                 }
-                return `<span class="${textClass}">${level}</span>`;
+                return `<span class="${badgeClass}">${level}</span>`;
             }
         },
         {
@@ -277,18 +277,18 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             width: 120,
             cellRenderer: (params: any) => {
                 const trend = params.value || 'NEUTRAL';
-                let textClass = 'font-semibold ';
+                let badgeClass = 'px-2 py-1 rounded text-xs font-bold ';
                 switch (trend) {
                     case 'UPTREND':
-                        textClass += 'text-theme-success-text';
+                        badgeClass += 'text-green-500';
                         break;
                     case 'DOWNTREND':
-                        textClass += 'text-theme-error-text';
+                        badgeClass += 'text-red-500';
                         break;
                     default:
-                        textClass += 'text-text-secondary';
+                        badgeClass += 'text-text-secondary';
                 }
-                return `<span class="${textClass}">${trend}</span>`;
+                return `<span class="${badgeClass}">${trend}</span>`;
             }
         },
         {

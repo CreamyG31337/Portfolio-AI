@@ -309,15 +309,31 @@ def get_previous_holdings(db: SupabaseClient, etf_ticker: str, date: datetime) -
         previous_date = date_res.data[0]['date']
         logger.info(f"Comparing {etf_ticker} against latest snapshot: {previous_date}")
 
-        # 2. Fetch holdings for that date
-        result = db.supabase.table('etf_holdings_log').select(
-            'holding_ticker, shares_held, weight_percent'
-        ).eq('etf_ticker', etf_ticker).eq('date', previous_date).execute()
+        # 2. Fetch holdings for that date (with pagination to handle large ETFs like IWM)
+        all_data = []
+        page_size = 1000
+        offset = 0
         
-        if not result.data:
+        while True:
+            result = db.supabase.table('etf_holdings_log').select(
+                'holding_ticker, shares_held, weight_percent'
+            ).eq('etf_ticker', etf_ticker).eq('date', previous_date).range(offset, offset + page_size - 1).execute()
+            
+            if not result.data:
+                break
+            
+            all_data.extend(result.data)
+            
+            # If we got fewer than page_size, we've reached the end
+            if len(result.data) < page_size:
+                break
+            
+            offset += page_size
+        
+        if not all_data:
             return pd.DataFrame(columns=['ticker', 'shares', 'weight_percent'])
         
-        df = pd.DataFrame(result.data)
+        df = pd.DataFrame(all_data)
         # Rename to match expected schema
         df = df.rename(columns={
             'holding_ticker': 'ticker',

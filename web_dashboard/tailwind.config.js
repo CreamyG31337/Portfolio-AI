@@ -25,6 +25,10 @@ module.exports = {
                     'from': 'var(--gradient-from)',
                     'to': 'var(--gradient-to)',
                 },
+                'link': {
+                    'DEFAULT': 'var(--color-link)',
+                    'hover': 'var(--color-link-hover)',
+                },
                 'border': {
                     'DEFAULT': 'var(--border-color)',
                     'hover': 'var(--border-hover)',
