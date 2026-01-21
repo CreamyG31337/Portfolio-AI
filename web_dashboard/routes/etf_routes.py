@@ -324,8 +324,9 @@ def get_holdings_changes(
                 # For single ETF view, show all holdings but mark insignificant changes
                 curr_df['is_significant'] = significant_mask
             else:
-                # For "All ETFs" changes view, only show significant changes
-                curr_df = curr_df[significant_mask | (curr_df['action'] == 'HOLD')].copy()
+                # For "All ETFs" changes view, only show significant changes (exclude HOLD)
+                # HOLD actions will be filtered out later if changes_only is True
+                curr_df = curr_df[significant_mask].copy()
         
         # Filter systematic adjustments (same logic as job)
         if not curr_df.empty and len(curr_df) > 5:
@@ -411,20 +412,25 @@ def etf_holdings():
 
     # 2. Parameters
     refresh_key = request.args.get('refresh_key', 0)
-    selected_etf = request.args.get('etf', 'All ETFs')
+    selected_etf = request.args.get('etf', 'All ETFs')  # Default to "All ETFs" to show changes view
     selected_date_str = request.args.get('date')
     selected_fund = request.args.get('fund', 'All Funds')
     change_type_filter = request.args.get('change_type', 'ALL')  # NEW, SOLD, BUY, SELL, ALL
-    changes_only = request.args.get('changes_only') == 'true'  # Checkbox for hiding HOLD actions
+    # Default to True (show changes only, hide HOLD) if not specified
+    # Hidden input always sends a value ('true' or 'false'), so we can default to 'true'
+    changes_only_param = request.args.get('changes_only', 'true')  # Default to 'true' (checked)
+    changes_only = changes_only_param == 'true'  # Show changes only when 'true'
     
     latest_date = get_latest_date(db_client)
     
+    # Default to latest available date if no date specified
     if selected_date_str:
         try:
             selected_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
         except ValueError:
             selected_date = latest_date or date.today()
     else:
+        # No date specified - use latest available date to show most recent changes
         selected_date = latest_date or date.today()
 
     # 3. Available ETFs & Funds
@@ -440,20 +446,25 @@ def etf_holdings():
     next_date = None
     
     # 4. View Mode & Data Fetching
+    # Default to "changes" view (show all ETF changes) when no ETF is selected
     view_mode = "changes"
     etf_ownership = None
     
     if selected_etf and selected_etf != "All ETFs":
+        # Single ETF selected - show holdings view
         view_mode = "holdings"
         changes_df, as_of_date = get_all_holdings(db_client, selected_date, selected_etf, selected_fund)
         etf_ownership = check_etf_ownership(db_client, selected_etf)
     else:
+        # "All ETFs" or no selection - show changes view (default behavior)
         view_mode = "changes"
         changes_df, as_of_date = get_holdings_changes(db_client, selected_date, None, selected_fund)
         
-        # Optional: Filter out HOLD actions (no change) if changes_only is checked
-        if changes_only and not changes_df.empty:
-            changes_df = changes_df[changes_df['share_change'] != 0]
+        # Filter out HOLD actions by default in changes view (only show actual changes)
+        # The checkbox "Show changes only" is checked by default - hide HOLD unless user unchecks it
+        if not changes_df.empty and changes_only:
+            # Hide HOLD actions (show only actual changes)
+            changes_df = changes_df[changes_df['action'] != 'HOLD'].copy()
         
         # Apply change type filter for changes view
         if not changes_df.empty and change_type_filter != 'ALL':

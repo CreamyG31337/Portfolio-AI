@@ -121,9 +121,11 @@
 
                 <!-- Show Changes Only Checkbox -->
                 <div class="mt-2">
+                    <!-- Hidden input to always send value (false when unchecked) -->
+                    <input type="hidden" name="changes_only" value="false" id="changes_only_hidden">
                     <label class="flex items-center text-sm text-text-primary cursor-pointer">
-                        <input type="checkbox" name="changes_only" value="true" {% if current_changes_only %}checked{%
-                            endif %} onchange="updateFilters()"
+                        <input type="checkbox" name="changes_only" value="true" id="changes_only_checkbox" {% if current_changes_only %}checked{%
+                            endif %} onchange="handleChangesOnlyToggle()"
                             class="mr-2 h-4 w-4 text-accent border-border rounded focus:ring-accent bg-dashboard-background">
                         <span>Show changes only (hide HOLD)</span>
                     </label>
@@ -317,6 +319,23 @@
             if (nextBtn && !nextBtn.disabled) {
                 nextBtn.click();
             }
+        }
+    }
+    
+    function handleChangesOnlyToggle() {
+        const checkbox = document.getElementById('changes_only_checkbox');
+        const hidden = document.getElementById('changes_only_hidden');
+        if (checkbox && hidden) {
+            // Update hidden input based on checkbox state
+            hidden.value = checkbox.checked ? 'true' : 'false';
+        }
+        updateFilters();
+    }
+    
+    function updateFilters() {
+        const form = document.getElementById('filters-form');
+        if (form) {
+            form.submit();
         }
     }
 </script>
