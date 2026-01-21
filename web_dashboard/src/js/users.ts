@@ -875,11 +875,11 @@ function renderUnregisteredContributors(): void {
         const contribution = contrib.total_contribution ? `$${parseFloat(String(contrib.total_contribution)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00';
 
         return `
-            <div class="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
+            <div class="bg-dashboard-background rounded-lg p-4 flex items-center justify-between border border-border">
                 <div class="flex-1">
-                    <h4 class="font-semibold">${escapeHtmlForUsers(contrib.contributor)}</h4>
-                    <p class="text-sm text-gray-600">${escapeHtmlForUsers(email)}</p>
-                    <p class="text-xs text-gray-500 mt-1">Funds: ${escapeHtmlForUsers(fundsStr)} | Contribution: ${contribution}</p>
+                    <h4 class="font-semibold text-text-primary">${escapeHtmlForUsers(contrib.contributor)}</h4>
+                    <p class="text-sm text-text-secondary">${escapeHtmlForUsers(email)}</p>
+                    <p class="text-xs text-text-tertiary mt-1">Funds: ${escapeHtmlForUsers(fundsStr)} | Contribution: ${contribution}</p>
                 </div>
                 <div>
                     ${hasEmail
@@ -1003,14 +1003,14 @@ function renderAccessTable(): void {
 
     const rows = accessRecords.map(access => `
         <tr>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${escapeHtmlForUsers(access.contributor)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtmlForUsers(access.contributor_email)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${escapeHtmlForUsers(access.user_email)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtmlForUsers(access.user_name || '')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtmlForUsers(access.contributor)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${escapeHtmlForUsers(access.contributor_email)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtmlForUsers(access.user_email)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${escapeHtmlForUsers(access.user_name || '')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm">
-                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">${escapeHtmlForUsers(access.access_level)}</span>
+                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-theme-info-bg text-theme-info-text border border-theme-info-text/20">${escapeHtmlForUsers(access.access_level)}</span>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtmlForUsers(access.granted || '')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-tertiary">${escapeHtmlForUsers(access.granted || '')}</td>
         </tr>
     `).join('');
 
@@ -1090,15 +1090,15 @@ function showToast(message: string, type: 'success' | 'error' | 'warning' | 'inf
             type === 'info' ? 'ℹ️' :
                 '✅';
 
-    toast.className = `flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow-lg dark:text-gray-400 dark:bg-gray-800 border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border-l-4 ${borderColor} transition-opacity duration-300 opacity-100 border border-border`;
     toast.innerHTML = `
         <div class="ms-3 text-sm font-normal flex items-center gap-2">
             <span class="text-lg">${icon}</span>
             <span>${escapeHtmlForUsers(message)}</span>
         </div>
-        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-white text-gray-400 hover:text-gray-900 rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-gray-100 inline-flex items-center justify-center h-8 w-8 dark:text-gray-500 dark:hover:text-white dark:bg-gray-800 dark:hover:bg-gray-700" aria-label="Close">
+        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-transparent text-text-tertiary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-accent p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8" aria-label="Close">
             <span class="sr-only">Close</span>
-            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+            <svg class="w-3 h-3" aria-true="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
             </svg>
         </button>
