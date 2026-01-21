@@ -844,7 +844,7 @@ async function handleUpdateEmail(): Promise<void> {
         const result: ApiResponse = await response.json();
 
         if (response.ok && result.success) {
-            elements.updateEmailResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+            elements.updateEmailResult.className = 'mt-4 bg-theme-success-bg border border-theme-success-text rounded-lg p-4';
             elements.updateEmailResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${result.message || 'Email updated'}</span>`;
             elements.updateEmailResult.classList.remove('hidden');
 
@@ -858,7 +858,7 @@ async function handleUpdateEmail(): Promise<void> {
             fetchUsers();
             fetchContributors();
         } else {
-            elements.updateEmailResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+            elements.updateEmailResult.className = 'mt-4 bg-theme-error-bg border border-theme-error-text rounded-lg p-4';
             elements.updateEmailResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${result.error || 'Failed to update email'}</span>`;
             elements.updateEmailResult.classList.remove('hidden');
         }
@@ -979,7 +979,7 @@ async function handleGrantAccess(): Promise<void> {
         const data: ApiResponse = await response.json();
 
         if (response.ok && data.success) {
-            elements.grantAccessResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+            elements.grantAccessResult.className = 'mt-4 bg-theme-success-bg border border-theme-success-text rounded-lg p-4';
             elements.grantAccessResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${data.message || 'Access granted'}</span>`;
             elements.grantAccessResult.classList.remove('hidden');
 
@@ -991,7 +991,7 @@ async function handleGrantAccess(): Promise<void> {
             // Refresh access records
             fetchAccessRecords();
         } else {
-            elements.grantAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+            elements.grantAccessResult.className = 'mt-4 bg-theme-error-bg border border-theme-error-text rounded-lg p-4';
             elements.grantAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${data.error || data.message || 'Failed to grant access'}</span>`;
             elements.grantAccessResult.classList.remove('hidden');
         }

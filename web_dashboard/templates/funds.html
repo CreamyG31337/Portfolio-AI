@@ -92,7 +92,7 @@
                     <!-- Populated by JS -->
                 </select>
                 <button onclick="rebuildPortfolio()"
-                    class="w-full bg-theme-warning-bg/10 text-theme-warning-text border border-theme-warning-text/30 px-5 py-2.5 rounded-lg hover:bg-theme-warning-bg/20 transition-all duration-200 shadow-sm hover:shadow-md active:scale-95 font-semibold text-sm">
+                    class="w-full bg-theme-warning-text text-white border border-theme-warning-text px-5 py-2.5 rounded-lg hover:shadow-md transition-all duration-200 shadow-sm active:scale-95 font-semibold text-sm">
                     Start Rebuild Job
                 </button>
             </div>
@@ -226,17 +226,17 @@
 
                     <div class="border-t border-border pt-4 mt-4">
                         <button type="button" onclick="showDeleteConfirm()"
-                            class="w-full text-theme-error-text bg-transparent border border-theme-error-text hover:bg-theme-error-bg/10 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-all duration-200 hover:shadow-sm">
+                            class="w-full text-theme-error-text bg-transparent border border-theme-error-text hover:bg-theme-error-bg font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-all duration-200 hover:shadow-sm">
                             Delete Fund
                         </button>
                         <div id="delete-confirm-area"
-                            class="hidden mt-4 p-4 border border-theme-error-text/30 bg-theme-error-bg/10 rounded-lg">
+                            class="hidden mt-4 p-4 border border-theme-error-text bg-theme-error-bg rounded-lg">
                             <p class="text-sm text-theme-error-text mb-2">Type the fund name to confirm deletion:</p>
                             <input type="text" id="delete-confirm-input"
                                 class="bg-dashboard-background border border-theme-error-text text-text-primary text-sm rounded-lg block w-full p-2.5 mb-2"
                                 placeholder="Fund Name">
                             <button type="button" onclick="confirmDeleteFund()"
-                                class="w-full bg-theme-error-text text-white px-5 py-2.5 rounded-lg hover:bg-theme-error-text/90 transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
+                                class="w-full bg-theme-error-text text-white px-5 py-2.5 rounded-lg hover:bg-theme-error-text transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
                                 Confirm Delete
                             </button>
                         </div>

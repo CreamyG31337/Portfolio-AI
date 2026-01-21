@@ -345,10 +345,10 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
             'bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400': (params: any) => params.data && params.data.user_shares > 0,
 
             // Priority 2: BUY = Success background
-            'bg-theme-success-bg/30': (params: any) => params.data && !params.data.user_shares && params.data.action === 'BUY',
+            'bg-theme-success-bg': (params: any) => params.data && !params.data.user_shares && params.data.action === 'BUY',
 
             // Priority 3: SELL = Error background
-            'bg-theme-error-bg/30': (params: any) => params.data && !params.data.user_shares && params.data.action === 'SELL'
+            'bg-theme-error-bg': (params: any) => params.data && !params.data.user_shares && params.data.action === 'SELL'
         }
     };
 

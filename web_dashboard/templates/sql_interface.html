@@ -15,7 +15,7 @@
         <i class="fas fa-arrow-left mr-2"></i>Back to Dev Tools
     </a>
     <button onclick="clearQuery()"
-        class="text-theme-warning-text bg-transparent border border-theme-warning-text hover:bg-theme-warning-bg/10 focus:ring-4 focus:ring-theme-warning-bg/30 px-4 py-2 rounded-lg transition-colors duration-200">
+        class="text-theme-warning-text bg-transparent border border-theme-warning-text hover:bg-theme-warning-bg focus:ring-4 focus:ring-theme-warning-text px-4 py-2 rounded-lg transition-colors duration-200">
         <i class="fas fa-eraser mr-2"></i>Clear
     </button>
 </div>
@@ -73,7 +73,7 @@
                 </h2>
                 <div class="flex space-x-2">
                     <button onclick="exportResults()"
-                        class="text-theme-success-text bg-transparent border border-theme-success-text hover:bg-theme-success-bg/10 focus:ring-4 focus:ring-theme-success-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                        class="text-theme-success-text bg-transparent border border-theme-success-text hover:bg-theme-success-bg focus:ring-4 focus:ring-theme-success-text font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
                         <i class="fas fa-download mr-2"></i>Export
                     </button>
                     <button onclick="clearResults()"
@@ -101,16 +101,16 @@
             </h3>
             <div class="space-y-2">
                 <button onclick="loadQuickQuery('portfolio')"
-                    class="w-full text-left bg-theme-info-bg/20 hover:bg-theme-info-bg/30 p-3 rounded-lg transition border border-theme-info-text/20">
+                    class="w-full text-left bg-theme-info-bg hover:bg-theme-info-text hover:text-white p-3 rounded-lg transition border border-theme-info-text">
                     <div class="font-semibold text-theme-info-text">Portfolio Positions</div>
-                    <div class="text-sm text-theme-info-text/80">SELECT * FROM portfolio_positions LIMIT 10;
+                    <div class="text-sm text-theme-info-text">SELECT * FROM portfolio_positions LIMIT 10;
                     </div>
                 </button>
 
                 <button onclick="loadQuickQuery('trades')"
-                    class="w-full text-left bg-theme-success-bg/20 hover:bg-theme-success-bg/30 p-3 rounded-lg transition border border-theme-success-text/20">
+                    class="w-full text-left bg-theme-success-bg hover:bg-theme-success-text hover:text-white p-3 rounded-lg transition border border-theme-success-text">
                     <div class="font-semibold text-theme-success-text">Recent Trades</div>
-                    <div class="text-sm text-theme-success-text/80">SELECT * FROM trade_log ORDER BY date DESC
+                    <div class="text-sm text-theme-success-text">SELECT * FROM trade_log ORDER BY date DESC
                         LIMIT 10;</div>
                 </button>
 
@@ -121,9 +121,9 @@
                 </button>
 
                 <button onclick="loadQuickQuery('users')"
-                    class="w-full text-left bg-theme-warning-bg/20 hover:bg-theme-warning-bg/30 p-3 rounded-lg transition border border-theme-warning-text/20">
+                    class="w-full text-left bg-theme-warning-bg hover:bg-theme-warning-text hover:text-white p-3 rounded-lg transition border border-theme-warning-text">
                     <div class="font-semibold text-theme-warning-text">User Assignments</div>
-                    <div class="text-sm text-theme-warning-text/80">SELECT * FROM user_funds;</div>
+                    <div class="text-sm text-theme-warning-text">SELECT * FROM user_funds;</div>
                 </button>
             </div>
         </div>
@@ -291,7 +291,7 @@
 
         // Results info
         const info = document.createElement('div');
-        info.className = 'mb-4 p-3 bg-theme-info-bg/20 text-theme-info-text rounded-lg border border-theme-info-text/20';
+        info.className = 'mb-4 p-3 bg-theme-info-bg text-theme-info-text rounded-lg border border-theme-info-text';
         info.innerHTML = `<i class="fas fa-info-circle mr-2"></i>Query executed successfully. ${count} rows returned.`;
 
         resultsContainer.innerHTML = '';
@@ -302,7 +302,7 @@
     function displayError(error) {
         const resultsContainer = document.getElementById('resultsContainer');
         resultsContainer.innerHTML = `
-            <div class="bg-theme-error-bg/20 border border-theme-error-text/30 rounded-lg p-4">
+            <div class="bg-theme-error-bg border border-theme-error-text rounded-lg p-4">
                 <div class="flex items-center">
                     <i class="fas fa-exclamation-triangle text-theme-error-text mr-2"></i>
                     <span class="font-semibold text-theme-error-text">Query Error</span>

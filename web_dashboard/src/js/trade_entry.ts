@@ -454,8 +454,8 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                 const reason = (trade.reason || '').toLowerCase();
                 const isSell = reason.includes('sell') || reason.includes('sold');
                 const actionBadge = isSell
-                    ? '<span class="bg-theme-error-bg/10 text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text/30">SELL</span>'
-                    : '<span class="bg-theme-success-bg/10 text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text/30">BUY</span>';
+                    ? '<span class="bg-theme-error-bg text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text">SELL</span>'
+                    : '<span class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text">BUY</span>';
 
                 const dateStr = new Date(trade.date).toLocaleString([], {
                     year: 'numeric',
