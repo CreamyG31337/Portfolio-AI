@@ -65,8 +65,8 @@ export function getPlotlyLayout(themeName: Theme): PlotlyLayout {
             zerolinecolor: '#3b4261'
         },
         abyss: {
-            paper_bgcolor: '#0f1c2e',
-            plot_bgcolor: '#0f1c2e',
+            paper_bgcolor: '#000c18',
+            plot_bgcolor: '#000c18',
             font: { color: '#a9b1d6' },
             gridcolor: '#1a2b42',
             zerolinecolor: '#1a2b42'

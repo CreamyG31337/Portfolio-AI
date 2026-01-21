@@ -160,8 +160,8 @@ def get_chart_theme_config(theme: Optional[str] = 'system') -> Dict[str, any]:
         'abyss': {
             'is_dark': True,
             'template': 'plotly_dark',
-            'paper_bgcolor': '#0f1c2e',
-            'plot_bgcolor': '#0f1c2e',
+            'paper_bgcolor': '#000c18',
+            'plot_bgcolor': '#000c18',
             'font_color': '#a9b1d6',
             'grid_color': '#1a2b42',
             'weekend_shading_color': 'rgba(65, 166, 181, 0.08)',

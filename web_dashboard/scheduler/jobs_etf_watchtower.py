@@ -356,7 +356,7 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
         etf_ticker: ETF ticker for logging
         
     Returns:
-        List of dicts with significant changes (filtered to stocks only)
+        List of dicts with significant changes (filtered to stocks only, excluding systematic adjustments)
     """
     # Merge on ticker
     merged = today.merge(
@@ -387,6 +387,30 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     
     if filtered_out > 0:
         logger.info(f"🔍 {etf_ticker}: Filtered out {filtered_out} non-stock changes (cash/futures/derivatives)")
+    
+    # Detect and filter systematic adjustments (e.g., expense ratio deductions)
+    # Systematic adjustments affect all holdings by approximately the same percentage
+    if len(significant) > 5:  # Need enough data points to detect pattern
+        from collections import Counter
+        # Round percentages to 0.1% to detect clustering
+        rounded_pcts = [round(abs(row['percent_change']), 1) for _, row in significant.iterrows()]
+        pct_counts = Counter(rounded_pcts)
+        most_common_pct, most_common_count = pct_counts.most_common(1)[0]
+        
+        # If 80%+ of changes cluster around the same percentage, it's likely systematic
+        if most_common_count >= len(significant) * 0.8:
+            # Additional check: ensure it's a small percentage (systematic adjustments are typically <2%)
+            if most_common_pct <= 2.0:
+                # Check if all changes are in same direction (systematic adjustments are uniform)
+                all_same_direction = (
+                    all(row['share_diff'] > 0 for _, row in significant.iterrows()) or
+                    all(row['share_diff'] < 0 for _, row in significant.iterrows())
+                )
+                
+                if all_same_direction:
+                    logger.info(f"🔍 {etf_ticker}: Detected systematic adjustment ({most_common_count}/{len(significant)} changes at ~{most_common_pct:.1f}%) - filtering out")
+                    # Return empty list - these aren't real trading changes
+                    return []
     
     # Add context
     significant['etf'] = etf_ticker
