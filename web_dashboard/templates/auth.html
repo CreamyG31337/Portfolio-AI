@@ -35,14 +35,14 @@
             aria-label="Toggle Theme">
             <!-- Sun Icon (visible in dark themes) -->
             <svg id="sun-icon" class="w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 20 20"
-                style="display: none;">
+                style="display: none;" aria-hidden="true">
                 <path
                     d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z">
                 </path>
             </svg>
             <!-- Moon Icon (visible in light theme) -->
             <svg id="moon-icon" class="w-6 h-6 text-indigo-100" fill="currentColor" viewBox="0 0 20 20"
-                style="display: none;">
+                style="display: none;" aria-hidden="true">
                 <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
             </svg>
         </button>
@@ -86,9 +86,9 @@
                     </button>
 
                     <div class="flex justify-between items-center text-sm">
-                        <button id="show-forgot-password" class="text-gray-500 hover:text-gray-700 font-medium">Forgot
+                        <button id="show-forgot-password" class="text-gray-500 hover:text-gray-700 font-medium focus:underline focus:outline-none">Forgot
                             Password?</button>
-                        <button id="show-register" class="text-blue-600 hover:text-blue-800 font-medium">Create
+                        <button id="show-register" class="text-blue-600 hover:text-blue-800 font-medium focus:underline focus:outline-none">Create
                             Account</button>
                     </div>
                 </div>
@@ -140,7 +140,7 @@
 
                 <div class="mt-4 text-center">
                     <p class="text-sm text-gray-600">Already have an account?
-                        <button id="show-login-2" class="text-blue-600 hover:text-blue-800 font-medium">Sign in</button>
+                        <button id="show-login-2" class="text-blue-600 hover:text-blue-800 font-medium focus:underline focus:outline-none">Sign in</button>
                     </p>
                 </div>
             </div>
@@ -167,8 +167,8 @@
                 </form>
 
                 <div class="mt-4 text-center">
-                    <button id="back-to-login" class="text-sm text-gray-500 hover:text-gray-700 font-medium">
-                        <i class="fas fa-arrow-left mr-1"></i> Back to Login
+                    <button id="back-to-login" class="text-sm text-gray-500 hover:text-gray-700 font-medium focus:underline focus:outline-none">
+                        <i class="fas fa-arrow-left mr-1" aria-hidden="true"></i> Back to Login
                     </button>
                 </div>
             </div>

@@ -50,8 +50,8 @@
                 </button>
             </div>
             <button onclick="document.getElementById('dashboard-error-container').classList.add('hidden')"
-                class="ml-auto text-red-400 hover:text-red-600">
-                <i class="fas fa-times"></i>
+                class="ml-auto text-red-400 hover:text-red-600" aria-label="Close error message">
+                <i class="fas fa-times" aria-hidden="true"></i>
             </button>
         </div>
     </div>
@@ -67,7 +67,8 @@
             <!-- Content -->
         </div>
         <!-- Pillars Section (Dynamic) -->
-        <div id="thesis-pillars" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+        <div id="thesis-pillars"
+            class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
             <!-- Pillars will be injected here -->
         </div>
     </div>
@@ -114,7 +115,8 @@
     <!-- Fund Stats -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <!-- Investors (hidden if count <= 1) -->
-        <div id="investor-metric-container" class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+        <div id="investor-metric-container"
+            class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
             <h5 class="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Investors</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-gray-900 dark:text-white" id="metric-investors">--</span>
@@ -224,15 +226,16 @@
                 </div>
                 <!-- Plotly Chart -->
             </div>
-            
+
             <!-- Individual Stock Performance (below main chart, same card) -->
             <div class="border-t border-gray-200 dark:border-gray-600 mt-4 pt-4">
                 <label class="flex items-center gap-2 cursor-pointer mb-4">
                     <input type="checkbox" id="show-individual-holdings"
                         class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                    <span class="text-base font-semibold text-gray-900 dark:text-white">📊 Show Individual Stock Performance</span>
+                    <span class="text-base font-semibold text-gray-900 dark:text-white">📊 Show Individual Stock
+                        Performance</span>
                 </label>
-                
+
                 <!-- Individual Holdings Controls (hidden by default) -->
                 <div id="individual-holdings-container" class="hidden">
                     <div class="flex flex-wrap items-center gap-4 mb-4">
@@ -240,25 +243,31 @@
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-gray-600 dark:text-gray-400">Date Range:</span>
                             <div class="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
-                                <label class="px-3 py-1.5 text-sm cursor-pointer bg-blue-600 text-white individual-range-btn" data-days="7">
+                                <label
+                                    class="px-3 py-1.5 text-sm cursor-pointer bg-blue-600 text-white individual-range-btn"
+                                    data-days="7">
                                     <input type="radio" name="individual-range" value="7" checked class="sr-only">
                                     7 Days
                                 </label>
-                                <label class="px-3 py-1.5 text-sm cursor-pointer bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 individual-range-btn" data-days="30">
+                                <label
+                                    class="px-3 py-1.5 text-sm cursor-pointer bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 individual-range-btn"
+                                    data-days="30">
                                     <input type="radio" name="individual-range" value="30" class="sr-only">
                                     30 Days
                                 </label>
-                                <label class="px-3 py-1.5 text-sm cursor-pointer bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 individual-range-btn" data-days="0">
+                                <label
+                                    class="px-3 py-1.5 text-sm cursor-pointer bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 individual-range-btn"
+                                    data-days="0">
                                     <input type="radio" name="individual-range" value="0" class="sr-only">
                                     All Time
                                 </label>
                             </div>
                         </div>
-                        
+
                         <!-- Stock Filter Dropdown -->
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-gray-600 dark:text-gray-400">Filter:</span>
-                            <select id="individual-stock-filter" 
+                            <select id="individual-stock-filter"
                                 class="text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 py-1.5 focus:ring-blue-500 focus:border-blue-500">
                                 <option value="all">All stocks</option>
                                 <option value="winners">Winners (↑ total %)</option>
@@ -271,15 +280,18 @@
                                 <option value="usd">American (USD)</option>
                             </select>
                         </div>
-                        
+
                         <!-- Stock Count -->
                         <span id="individual-stock-count" class="text-sm text-gray-500 dark:text-gray-400"></span>
                     </div>
-                    
+
                     <!-- Chart Container -->
                     <div class="w-full relative min-h-[450px]" id="individual-holdings-chart">
-                        <div id="individual-holdings-spinner" class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10 hidden">
-                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
+                        <div id="individual-holdings-spinner"
+                            class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10 hidden">
+                            <div
+                                class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -289,13 +301,15 @@
         <!-- Sector Allocation (1/3 width) -->
         <div class="xl:col-span-1 flex flex-col gap-6">
             <!-- Sector Allocation Chart -->
-            <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 flex-shrink-0 h-[780px]">
+            <div
+                class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 flex-shrink-0 h-[780px]">
                 <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Sector Allocation</h3>
                 <div class="w-full relative h-[700px] min-h-[700px]" id="sector-chart">
                     <!-- Loading spinner -->
                     <div id="sector-chart-spinner"
                         class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
+                        <div
+                            class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
                         </div>
                     </div>
                     <!-- Plotly Chart -->
@@ -307,42 +321,46 @@
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-lg font-bold text-gray-900 dark:text-white">Currency Exposure</h3>
                     <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600 dark:text-gray-400">
-                        <input type="checkbox" id="inverse-exchange-rate" 
+                        <input type="checkbox" id="inverse-exchange-rate"
                             class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
                         <span>Show CAD/USD</span>
                     </label>
                 </div>
-                
+
                 <!-- Two-column layout: Rate metrics + Pie chart -->
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <!-- Left column: Exchange rate metric and historical chart -->
                     <div class="lg:col-span-1">
                         <!-- Current Rate Metric -->
                         <div id="exchange-rate-metric" class="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                            <div class="text-sm text-gray-500 dark:text-gray-400" id="exchange-rate-label">USD/CAD Rate</div>
+                            <div class="text-sm text-gray-500 dark:text-gray-400" id="exchange-rate-label">USD/CAD Rate
+                            </div>
                             <div class="text-2xl font-bold text-gray-900 dark:text-white" id="exchange-rate-value">
                                 <div class="animate-pulse bg-gray-200 dark:bg-gray-600 h-8 w-24 rounded"></div>
                             </div>
-                            <div class="text-xs text-gray-400 dark:text-gray-500" id="exchange-rate-help">1 USD = X CAD</div>
+                            <div class="text-xs text-gray-400 dark:text-gray-500" id="exchange-rate-help">1 USD = X CAD
+                            </div>
                         </div>
-                        
+
                         <!-- Historical Rate Chart -->
                         <div class="w-full relative min-h-[200px]" id="exchange-rate-chart">
                             <div id="exchange-rate-chart-spinner"
                                 class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400">
+                                <div
+                                    class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400">
                                 </div>
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Right column: Currency exposure pie chart -->
                     <div class="lg:col-span-2">
                         <div class="w-full relative overflow-hidden min-h-[300px] max-h-[400px]" id="currency-chart">
                             <!-- Loading spinner -->
                             <div id="currency-chart-spinner"
                                 class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
+                                <div
+                                    class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
                                 </div>
                             </div>
                             <!-- Plotly Chart -->
@@ -357,12 +375,14 @@
     <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 mb-6">
         <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">P&L by Position</h3>
         <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
-            💡 <strong>Winning positions with gains</strong> show overlay bars (green unrealized + gold dividends). 
-            <strong>Winning positions with losses offset by dividends</strong> show red bar below axis (loss) + gold bar above axis (dividends) at the same position. 
+            💡 <strong>Winning positions with gains</strong> show overlay bars (green unrealized + gold dividends).
+            <strong>Winning positions with losses offset by dividends</strong> show red bar below axis (loss) + gold bar
+            above axis (dividends) at the same position.
             <strong>Losing positions</strong> show single red bars below axis.
         </div>
         <div class="w-full relative min-h-[500px]" id="pnl-chart">
-            <div id="pnl-chart-spinner" class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
+            <div id="pnl-chart-spinner"
+                class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
             </div>
         </div>
@@ -375,12 +395,13 @@
                 <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     <span class="text-green-500">💰</span> Dividends
                 </h3>
-                <button onclick="document.getElementById('dividend-log-container').classList.toggle('hidden')" 
-                    class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
-                    Hide Log
+                <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)" aria-expanded="true"
+                    aria-controls="dividend-log-container"
+                    class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
+                    <i class="fas fa-eye-slash mr-1" aria-hidden="true"></i> <span>Hide Log</span>
                 </button>
             </div>
-            
+
             <!-- Dividend Metrics -->
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
                 <div class="p-3 bg-green-50 dark:!bg-gray-800 rounded border border-green-100 dark:!border-gray-600">
@@ -405,11 +426,13 @@
                     <div class="text-lg font-bold text-gray-700 dark:text-gray-300" id="div-events">--</div>
                 </div>
             </div>
-            
+
             <!-- Dividend Log Table -->
-            <div id="dividend-log-container" class="relative overflow-x-auto max-h-[300px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+            <div id="dividend-log-container"
+                class="relative overflow-x-auto max-h-[300px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
                 <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
+                    <thead
+                        class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
                         <tr>
                             <th scope="col" class="px-4 py-2">Pay Date</th>
                             <th scope="col" class="px-4 py-2">Ticker</th>
@@ -486,8 +509,33 @@
 <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
 <script>
     // Pass initial data from backend if needed, or just let JS fetch it
-    const INITIAL_FUND = "{{ iund }}";
+    const INITIAL_FUND = "{{ initial_fund }}";
     console.log('[Dashboard] Script block loaded, INITIAL_FUND:', INITIAL_FUND);
+
+    function toggleDividendLog(btn) {
+        const container = document.getElementById('dividend-log-container');
+        if (!container) return;
+
+        const isHidden = container.classList.toggle('hidden');
+        const icon = btn.querySelector('i');
+        const span = btn.querySelector('span');
+
+        btn.setAttribute('aria-expanded', !isHidden);
+
+        if (isHidden) {
+            if (span) span.textContent = 'Show Log';
+            if (icon) {
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        } else {
+            if (span) span.textContent = 'Hide Log';
+            if (icon) {
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            }
+        }
+    }
 </script>
 <script type="module"
     src="/assets/js/dashboard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
@@ -497,7 +545,7 @@
     if (typeof refreshDashboard === 'undefined') {
         console.error('[Dashboard] ERROR: refreshDashboard function not found! Script may not have loaded.');
     } else {
-  log('[Dashboard] refreshDashboard function found, script loaded successfully');
+        log('[Dashboard] refreshDashboard function found, script loaded successfully');
     }
 </script>
 {% endblock %}
