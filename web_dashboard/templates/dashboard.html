@@ -16,15 +16,16 @@
         <!-- Controls -->
         <div class="flex gap-4 items-center">
             <!-- Time Range -->
-            <div class="inline-flex rounded-md shadow-sm" role="group">
-                <button type="button" data-range="1M" class="range-btn px-4 py-2 text-sm font-medium text-text-primary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent>
+            <div class="inline-flex rounded-md shadow-sm" role="group" aria-label="Time range selection">
+                <button type="button" data-range="1M" aria-pressed="false"
+                    class="range-btn px-4 py-2 text-sm font-medium text-text-primary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
                     1M
                 </button>
-                <button type=" button" data-range="3M"
+                <button type="button" data-range="3M" aria-pressed="false"
                     class="range-btn px-4 py-2 text-sm font-medium text-text-primary bg-dashboard-surface border-t border-b border-border hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
                     3M
                 </button>
-                <button type="button" data-range="ALL"
+                <button type="button" data-range="ALL" aria-pressed="true"
                     class="range-btn active ring-2 ring-accent z-10 text-accent px-4 py-2 text-sm font-medium bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent">
                     All
                 </button>
