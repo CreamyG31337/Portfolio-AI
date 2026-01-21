@@ -352,10 +352,11 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         }
     };
 
-    // Create grid
-    const gridInstance = new (window as any).agGrid.Grid(gridDiv, gridOptions);
-    gridApi = gridInstance.api;
-    gridColumnApi = gridInstance.columnApi;
+    // Create grid using v31 API (createGrid instead of new Grid)
+    // createGrid returns the grid API directly
+    gridApi = (window as any).agGrid.createGrid(gridDiv, gridOptions);
+    // gridColumnApi is deprecated in v31 - column API methods are now on the main grid API
+    gridColumnApi = null; // Keep for compatibility but don't use
 
     // Auto-size columns to fit container
     if (gridApi) {

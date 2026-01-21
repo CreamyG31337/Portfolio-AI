@@ -611,7 +611,7 @@ function createJobCard(job: Job): string {
                 
                 <div class="mt-4 flex justify-end border-t border-border pt-3">
                      <button class="text-sm text-text-secondary mr-3 hover:text-text-primary px-3 py-1.5" onclick="toggleParams('${job.id}')">Cancel</button>
-                     <button class="bg-accent text-white px-4 py-1.5 rounded text-sm hover:bg-accent-hover shadow-sm flex items-center run-btn" 
+                     <button class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-1.5 focus:outline-none transition-colors duration-200 flex items-center run-btn" 
                         onclick="runJobWithParams('${job.id}', '${job.actual_job_id || job.id}')">
                         <i class="fas fa-play mr-1.5 text-xs"></i> Run Now
                      </button>

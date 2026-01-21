@@ -238,10 +238,12 @@ def get_holdings_changes(
         hist_res = db_client.supabase.table("etf_holdings_log").select("etf_ticker, date").lt("date", as_of_date_str).in_("etf_ticker", tickers_to_check).order("date", desc=True).execute()
         
         if not hist_res.data:
+            # No previous data - all holdings are "new" (first time seeing them)
+            # Mark as BUY (new positions) instead of HOLD so they show up in changes view
             curr_df['previous_shares'] = 0
-            curr_df['share_change'] = 0
-            curr_df['percent_change'] = 0
-            curr_df['action'] = 'HOLD'
+            curr_df['share_change'] = curr_df['shares_held']  # All shares are "new"
+            curr_df['percent_change'] = 100.0  # 100% change (new position)
+            curr_df['action'] = 'BUY'  # Mark as BUY so they appear in changes view
         else:
             hist_df = pd.DataFrame(hist_res.data)
             latest_prev = hist_df.groupby('etf_ticker')['date'].max().reset_index()
@@ -303,34 +305,33 @@ def get_holdings_changes(
                 merged_df['action'] = merged_df.apply(determine_action, axis=1)
                 curr_df = merged_df
             else:
+                # No previous holdings found (even though hist_res had data, no actual holdings)
+                # Mark all as new positions (BUY)
                 curr_df['previous_shares'] = 0
-                curr_df['share_change'] = 0
-                curr_df['percent_change'] = 0
-                curr_df['action'] = 'HOLD'
+                curr_df['share_change'] = curr_df['shares_held']  # All shares are "new"
+                curr_df['percent_change'] = 100.0  # 100% change (new position)
+                curr_df['action'] = 'BUY'  # Mark as BUY so they appear in changes view
         
         curr_df = curr_df.rename(columns={'shares_held': 'current_shares'})
         
-        # Apply change thresholds (only show significant changes)
+        # Note: We show ALL changes on the web page (not just "significant" ones)
+        # The MIN_SHARE_CHANGE and MIN_PERCENT_CHANGE thresholds are used by the job
+        # to generate articles, but for the web UI we want to show all changes so users
+        # can see everything that's happening. Users can filter if needed.
+        # 
+        # Mark significant changes for potential future use (e.g., highlighting)
         if not curr_df.empty:
-            # Filter for significant changes (same logic as job)
             significant_mask = (
                 (curr_df['share_change'].abs() >= MIN_SHARE_CHANGE) |
                 (curr_df['percent_change'].abs() >= MIN_PERCENT_CHANGE)
             )
-            
-            # Also keep HOLD actions (no change) for holdings view context
-            # But filter out tiny changes that don't meet thresholds
-            if etf_ticker and etf_ticker != "All ETFs":
-                # For single ETF view, show all holdings but mark insignificant changes
-                curr_df['is_significant'] = significant_mask
-            else:
-                # For "All ETFs" changes view, only show significant changes (exclude HOLD)
-                # HOLD actions will be filtered out later if changes_only is True
-                curr_df = curr_df[significant_mask].copy()
+            curr_df['is_significant'] = significant_mask
         
         # Filter systematic adjustments (same logic as job)
+        # Only filter if we have enough data to make a determination
         if not curr_df.empty and len(curr_df) > 5:
             # Group by ETF for systematic adjustment detection
+            etfs_to_remove = []
             for etf in curr_df['etf_ticker'].unique():
                 etf_changes = curr_df[
                     (curr_df['etf_ticker'] == etf) & 
@@ -349,15 +350,22 @@ def get_holdings_changes(
                         # If 80%+ cluster around same percentage ≤2%, and all same direction
                         if (most_common_count >= len(etf_changes) * 0.8 and 
                             most_common_pct <= 2.0):
+                            # Check if all changes are in the same direction
+                            etf_change_indices = etf_changes.index
+                            share_changes = curr_df.loc[etf_change_indices, 'share_change']
                             all_same_dir = (
-                                all(curr_df.loc[etf_changes.index, 'share_change'] > 0) or
-                                all(curr_df.loc[etf_changes.index, 'share_change'] < 0)
+                                all(share_changes > 0) or
+                                all(share_changes < 0)
                             )
                             
                             if all_same_dir:
-                                # Filter out systematic adjustments for this ETF
+                                # Mark this ETF for removal (systematic adjustment)
                                 logger.debug(f"Filtering systematic adjustment for {etf}: {most_common_count}/{len(etf_changes)} changes at ~{most_common_pct:.1f}%")
-                                curr_df = curr_df[curr_df['etf_ticker'] != etf].copy()
+                                etfs_to_remove.append(etf)
+            
+            # Remove all ETFs that were flagged as systematic adjustments
+            if etfs_to_remove:
+                curr_df = curr_df[~curr_df['etf_ticker'].isin(etfs_to_remove)].copy()
         
         # User overlap
         max_date_res = db_client.supabase.table("portfolio_positions").select("date").order("date", desc=True).limit(1).execute()
@@ -460,11 +468,21 @@ def etf_holdings():
         view_mode = "changes"
         changes_df, as_of_date = get_holdings_changes(db_client, selected_date, None, selected_fund)
         
+        # Log for debugging
+        if changes_df.empty:
+            logger.warning(f"No changes found for date {selected_date}, as_of_date={as_of_date}")
+        else:
+            logger.info(f"Found {len(changes_df)} changes before filtering (date={selected_date}, as_of_date={as_of_date})")
+        
         # Filter out HOLD actions by default in changes view (only show actual changes)
         # The checkbox "Show changes only" is checked by default - hide HOLD unless user unchecks it
         if not changes_df.empty and changes_only:
             # Hide HOLD actions (show only actual changes)
+            before_filter = len(changes_df)
             changes_df = changes_df[changes_df['action'] != 'HOLD'].copy()
+            after_filter = len(changes_df)
+            if before_filter != after_filter:
+                logger.debug(f"Filtered out {before_filter - after_filter} HOLD actions, {after_filter} changes remaining")
         
         # Apply change type filter for changes view
         if not changes_df.empty and change_type_filter != 'ALL':
