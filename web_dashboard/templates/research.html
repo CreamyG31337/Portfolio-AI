@@ -195,12 +195,12 @@
                             <!-- Sentiment Badge -->
                             {% if article.sentiment == 'positive' or article.sentiment == 'bullish' %}
                             <span
-                                class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text">
+                                class="bg-theme-success-bg/70 text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text">
                                 <i class="fas fa-arrow-up mr-1 user-select-none"></i>Bullish
                             </span>
                             {% elif article.sentiment == 'negative' or article.sentiment == 'bearish' %}
                             <span
-                                class="bg-theme-error-bg text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text">
+                                class="bg-theme-error-bg/70 text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text">
                                 <i class="fas fa-arrow-down mr-1 user-select-none"></i>Bearish
                             </span>
                             {% elif article.sentiment %}
@@ -230,7 +230,7 @@
                     <div class="flex flex-wrap gap-1 justify-end max-w-xs">
                         {% for ticker in article.tickers|default([]) %}
                         <a href="/research?ticker={{ ticker }}"
-                            class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2 py-0.5 rounded border border-theme-info-text hover:bg-theme-info-bg">
+                            class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2 py-0.5 rounded border border-theme-info-text hover:bg-theme-info-bg/80">
                             ${{ ticker }}
                         </a>
                         {% endfor %}

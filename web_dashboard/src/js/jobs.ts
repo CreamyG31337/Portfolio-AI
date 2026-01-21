@@ -644,11 +644,11 @@ function createJobCard(job: Job): string {
                 
                 <div class="flex space-x-2">
                     ${job.next_run
-            ? `<button class="job-action-btn text-theme-warning-text hover:text-theme-warning-text p-2" 
+            ? `<button class="job-action-btn text-theme-warning-text hover:text-theme-warning-text/80 p-2" 
                                 data-action="pause" data-id="${job.actual_job_id || job.id}" title="Pause Job">
                                 <i class="fas fa-pause"></i>
                            </button>`
-            : `<button class="job-action-btn text-theme-success-text hover:text-theme-success-text p-2" 
+            : `<button class="job-action-btn text-theme-success-text hover:text-theme-success-text/80 p-2" 
                                 data-action="resume" data-id="${job.actual_job_id || job.id}" title="Resume Job">
                                 <i class="fas fa-play"></i>
                            </button>`
@@ -676,15 +676,15 @@ function createJobCard(job: Job): string {
 // Helper Functions
 function getStatusClass(job: Job): string {
     if (job.is_paused || !job.next_run) {
-        return 'bg-theme-warning-bg text-theme-warning-text border border-theme-warning-text';
+        return 'bg-theme-warning-bg/10 text-theme-warning-text border border-theme-warning-text/20';
     }
     if (job.is_running) {
-        return 'bg-theme-info-bg text-theme-info-text border border-theme-info-text';
+        return 'bg-theme-info-bg/10 text-theme-info-text border border-theme-info-text/20';
     }
     if (job.last_error) {
-        return 'bg-theme-error-bg text-theme-error-text border border-theme-error-text';
+        return 'bg-theme-error-bg/10 text-theme-error-text border border-theme-error-text/20';
     }
-    return 'bg-theme-success-bg text-theme-success-text border border-theme-success-text';
+    return 'bg-theme-success-bg/10 text-theme-success-text border border-theme-success-text/20';
 }
 
 function getJobStatusLabel(job: Job): string {

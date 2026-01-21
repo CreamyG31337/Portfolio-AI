@@ -202,8 +202,8 @@ async function fetchHistory(): Promise<void> {
 
                 const isContrib = row.contribution_type === 'CONTRIBUTION';
                 const typeBadge = isContrib
-                    ? '<span class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text">DEPOSIT</span>'
-                    : '<span class="bg-theme-error-bg text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text">WITHDRAWAL</span>';
+                    ? '<span class="bg-theme-success-bg/10 text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text/30">DEPOSIT</span>'
+                    : '<span class="bg-theme-error-bg/10 text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text/30">WITHDRAWAL</span>';
 
                 const dateStr = new Date(row.timestamp).toLocaleDateString();
 

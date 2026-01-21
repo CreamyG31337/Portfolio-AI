@@ -14,14 +14,14 @@
 
 {% block content %}
 {% if error %}
-<div class="bg-theme-error-bg border border-theme-error-text rounded-lg p-4 mb-6">
+<div class="bg-theme-error-bg/20 border border-theme-error-text/30 rounded-lg p-4 mb-6">
     <div class="flex">
         <div class="flex-shrink-0">
             <i class="fas fa-exclamation-triangle text-theme-error-text"></i>
         </div>
         <div class="ml-3">
             <h3 class="text-sm font-medium text-theme-error-text">{{ error }}</h3>
-            <div class="mt-2 text-sm text-theme-error-text">
+            <div class="mt-2 text-sm text-theme-error-text/80">
                 <p>{{ error_message }}</p>
             </div>
         </div>
@@ -31,13 +31,13 @@
 
 <!-- Description -->
 <!-- Description -->
-<div class="bg-theme-info-bg border border-theme-info-text rounded-lg p-4 mb-6">
+<div class="bg-theme-info-bg/10 border border-theme-info-text/20 rounded-lg p-4 mb-6">
     <p class="text-sm text-theme-info-text">
         <strong>Monitor Social Sentiment</strong> by tracking crowd sentiment for watched tickers on StockTwits and
         Reddit.
         Get alerts for extreme sentiment (EUPHORIC/FEARFUL) and view AI-powered analysis of social media discussions.
     </p>
-    <p class="text-xs text-theme-info-text mt-2">
+    <p class="text-xs text-theme-info-text/80 mt-2">
         <em>Data is collected every 60 minutes by the automated scheduler.</em>
     </p>
 </div>
@@ -97,7 +97,7 @@
     </div>
 
     <div id="watchlist-empty" class="hidden">
-        <div class="bg-theme-info-bg border border-theme-info-text rounded-lg p-4">
+        <div class="bg-theme-info-bg/10 border border-theme-info-text/20 rounded-lg p-4">
             <p class="text-sm text-theme-info-text">📭 No tickers found in watchlist. Tickers are dynamically populated
                 from
                 trade log, congress trades (last 30 days), research articles (last 30 days), extreme sentiment alerts
@@ -122,7 +122,7 @@
     </div>
 
     <div id="alerts-empty" class="hidden">
-        <div class="bg-theme-success-bg border border-theme-success-text rounded-lg p-4">
+        <div class="bg-theme-success-bg/20 border border-theme-success-text/30 rounded-lg p-4">
             <p class="text-sm text-theme-success-text">✅ No extreme sentiment alerts in the last 24 hours</p>
         </div>
     </div>
@@ -165,7 +165,7 @@
     </div>
 
     <div id="ai-empty" class="hidden">
-        <div class="bg-theme-info-bg border border-theme-info-text rounded-lg p-4">
+        <div class="bg-theme-info-bg/10 border border-theme-info-text/20 rounded-lg p-4">
             <p class="text-sm text-theme-info-text">🤖 No AI analyses available yet. AI analysis will be performed on
                 sentiment
                 sessions as data is collected.</p>
@@ -197,7 +197,7 @@
     </div>
 
     <div id="sentiment-empty" class="hidden">
-        <div class="bg-theme-info-bg border border-theme-info-text rounded-lg p-4">
+        <div class="bg-theme-info-bg/10 border border-theme-info-text/20 rounded-lg p-4">
             <p class="text-sm text-theme-info-text">📭 No social sentiment data available yet. Data is collected every
                 60
                 minutes (1 hour) by the automated scheduler.</p>

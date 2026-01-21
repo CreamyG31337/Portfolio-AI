@@ -565,8 +565,8 @@ async function loadAlertsData(refreshKey: number): Promise<void> {
                     alertDiv.className = 'mb-4 p-4 rounded-lg border';
                     alertDiv.classList.add(
                         alert.sentiment_label === 'EUPHORIC'
-                            ? 'bg-theme-success-bg border-theme-success-text'
-                            : 'bg-theme-error-bg border-theme-error-text'
+                            ? 'bg-theme-success-bg/20 border-theme-success-text/30'
+                            : 'bg-theme-error-bg/20 border-theme-error-text/30'
                     );
 
                     alertDiv.innerHTML = `

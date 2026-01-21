@@ -13,7 +13,7 @@
 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
     <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
         <div class="flex items-center">
-            <div class="p-3 bg-theme-info-bg rounded-full">
+            <div class="p-3 bg-theme-info-bg/20 rounded-full">
                 <i class="fas fa-database text-theme-info-text text-xl"></i>
             </div>
             <div class="ml-4">
@@ -25,7 +25,7 @@
 
     <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
         <div class="flex items-center">
-            <div class="p-3 bg-theme-success-bg rounded-full">
+            <div class="p-3 bg-theme-success-bg/20 rounded-full">
                 <i class="fas fa-chart-line text-theme-success-text text-xl"></i>
             </div>
             <div class="ml-4">
@@ -49,7 +49,7 @@
 
     <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
         <div class="flex items-center">
-            <div class="p-3 bg-theme-warning-bg rounded-full">
+            <div class="p-3 bg-theme-warning-bg/20 rounded-full">
                 <i class="fas fa-bug text-theme-warning-text text-xl"></i>
             </div>
             <div class="ml-4">
@@ -145,7 +145,7 @@
                 <i class="fas fa-sync mr-2"></i>Refresh Debug Info
             </button>
             <button onclick="testRefreshToken()"
-                class="bg-theme-success-text text-white px-4 py-2 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
+                class="bg-theme-success-text text-white px-4 py-2 rounded-lg hover:bg-theme-success-text/90 transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
                 <i class="fas fa-redo mr-2"></i>Test Token Refresh
             </button>
             <button onclick="testLoginResponse()"
@@ -175,7 +175,7 @@
         </button>
 
         <button onclick="exportData()"
-            class="bg-theme-success-text text-white px-4 py-3 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm text-left inline-flex items-center">
+            class="bg-theme-success-text text-white px-4 py-3 rounded-lg hover:bg-theme-success-text/90 transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm text-left inline-flex items-center">
             <i class="fas fa-download mr-2"></i>
             Export All Data
         </button>
