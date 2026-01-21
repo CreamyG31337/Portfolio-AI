@@ -426,6 +426,23 @@ textarea:focus {
     box-shadow: 0 0 0 4px var(--color-accent-ring) !important;
 }
 
+/* Consistent focus ring for button-like controls across the app */
+button:focus,
+button:focus-visible,
+input[type="button"]:focus,
+input[type="button"]:focus-visible,
+input[type="submit"]:focus,
+input[type="submit"]:focus-visible,
+input[type="reset"]:focus,
+input[type="reset"]:focus-visible,
+a:focus,
+a:focus-visible,
+[role="button"]:focus,
+[role="button"]:focus-visible {
+    outline: none !important;
+    box-shadow: 0 0 0 4px var(--color-accent-ring) !important;
+}
+
 /* Placeholder visibility */
 ::placeholder {
     color: var(--text-tertiary) !important;
