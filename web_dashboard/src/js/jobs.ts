@@ -611,7 +611,7 @@ function createJobCard(job: Job): string {
                 
                 <div class="mt-4 flex justify-end border-t border-border pt-3">
                      <button class="text-sm text-text-secondary mr-3 hover:text-text-primary px-3 py-1.5" onclick="toggleParams('${job.id}')">Cancel</button>
-                     <button class="bg-accent text-white px-4 py-1.5 rounded-lg hover:bg-accent-hover shadow-md hover:shadow-lg active:scale-95 transition-all duration-200 font-semibold text-sm flex items-center run-btn" 
+                     <button class="bg-accent text-white px-4 py-1.5 rounded text-sm hover:bg-accent-hover shadow-sm flex items-center run-btn" 
                         onclick="runJobWithParams('${job.id}', '${job.actual_job_id || job.id}')">
                         <i class="fas fa-play mr-1.5 text-xs"></i> Run Now
                      </button>
@@ -621,7 +621,7 @@ function createJobCard(job: Job): string {
     }
 
     return `
-        <div class="job-card bg-dashboard-surface rounded-lg shadow-sm p-6 border-l-4 ${getStatusBorderColor(job)} relative border border-border hover:shadow-md transition-shadow duration-200">
+        <div class="job-card bg-dashboard-surface rounded-lg shadow-sm p-6 border-l-4 ${getStatusBorderColor(job)} relative border-border">
             <div class="flex justify-between items-start">
                 <div>
                     <div class="flex items-center space-x-3">
@@ -676,15 +676,15 @@ function createJobCard(job: Job): string {
 // Helper Functions
 function getStatusClass(job: Job): string {
     if (job.is_paused || !job.next_run) {
-        return 'bg-theme-warning-bg/10 text-theme-warning-text border border-theme-warning-text/20';
+        return 'status-paused';
     }
     if (job.is_running) {
-        return 'bg-theme-info-bg/10 text-theme-info-text border border-theme-info-text/20';
+        return 'status-running';
     }
     if (job.last_error) {
-        return 'bg-theme-error-bg/10 text-theme-error-text border border-theme-error-text/20';
+        return 'status-failed';
     }
-    return 'bg-theme-success-bg/10 text-theme-success-text border border-theme-success-text/20';
+    return 'status-idle';
 }
 
 function getJobStatusLabel(job: Job): string {

@@ -150,9 +150,9 @@ document.addEventListener('DOMContentLoaded', function (): void {
         // If ticker in URL, load it
         if (tickerParam) {
             currentTicker = tickerParam.toUpperCase();
-            const input = document.getElementById('ticker-input') as HTMLInputElement | null;
-            if (input) {
-                input.value = currentTicker;
+            const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
+            if (select) {
+                select.value = currentTicker;
             }
             loadTickerData(currentTicker);
         } else {
@@ -162,15 +162,9 @@ document.addEventListener('DOMContentLoaded', function (): void {
     });
 
     // Set up ticker dropdown change handler
-    const input = document.getElementById('ticker-input') as HTMLInputElement | null;
-    if (input) {
-        input.addEventListener('change', handleTickerSearch);
-        input.addEventListener('keydown', (event: KeyboardEvent) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                handleTickerSearch();
-            }
-        });
+    const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
+    if (select) {
+        select.addEventListener('change', handleTickerSearch);
     }
 
     // Set up chart controls
@@ -223,21 +217,20 @@ async function loadTickerList(): Promise<void> {
         tickerList = data.tickers || [];
 
         // Populate dropdown
-        const list = document.getElementById('ticker-list') as HTMLDataListElement | null;
-        if (!list) return;
+        const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
+        if (!select) return;
 
-        list.innerHTML = '';
-        const placeholderOption = document.createElement('option');
-        placeholderOption.value = '';
-        placeholderOption.textContent = 'Select ticker symbol...';
-        list.appendChild(placeholderOption);
+        // Clear existing options except first one
+        while (select.options.length > 1) {
+            select.remove(1);
+        }
 
         // Add tickers
         tickerList.forEach(ticker => {
             const option = document.createElement('option');
             option.value = ticker;
             option.textContent = ticker;
-            list.appendChild(option);
+            select.appendChild(option);
         });
     } catch (error) {
         console.error('Error loading ticker list:', error);
@@ -246,10 +239,10 @@ async function loadTickerList(): Promise<void> {
 
 // Handle ticker search dropdown change
 function handleTickerSearch(): void {
-    const input = document.getElementById('ticker-input') as HTMLInputElement | null;
-    if (!input) return;
+    const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
+    if (!select) return;
 
-    const selectedTicker = input.value.toUpperCase().trim();
+    const selectedTicker = select.value.toUpperCase().trim();
 
     if (selectedTicker) {
         // Update URL without reload

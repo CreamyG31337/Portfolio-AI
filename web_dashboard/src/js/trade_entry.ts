@@ -65,13 +65,14 @@ function showToastForTradeEntry(message: string, type: 'success' | 'error' | 'in
     const toast = document.createElement('div');
     const borderColor = type === 'error' ? 'border-theme-error-text' : (type === 'info' ? 'border-theme-info-text' : 'border-theme-success-text');
 
-    toast.className = `flex items-center w-full max-w-sm p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-xl border border-border border-l-4 ${borderColor} transition-all duration-500 transform translate-x-full opacity-0`;
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
     toast.innerHTML = `
-        <div class="flex items-center gap-3 text-text-primary">
-            <span class="font-medium text-sm">${escapeHtmlForTradeEntry(message)}</span>
-        </div>
-        <button type="button" onclick="this.parentElement.remove()" class="ms-auto -mx-1.5 -my-1.5 bg-transparent text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-accent p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8">
-            <i class="fas fa-times"></i>
+        <div class="ms-3 text-sm font-normal">${escapeHtmlForTradeEntry(message)}</div>
+        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-dashboard-surface text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-dashboard-surface-alt inline-flex items-center justify-center h-8 w-8">
+            <span class="sr-only">Close</span>
+            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+            </svg>
         </button>
     `;
 
@@ -81,18 +82,9 @@ function showToastForTradeEntry(message: string, type: 'success' | 'error' | 'in
     }
     container.appendChild(toast);
 
-    // Animate in
-    requestAnimationFrame(() => {
-        toast.classList.remove('translate-x-full', 'opacity-0');
-    });
-
     setTimeout(() => {
-        if (toast.parentElement) {
-            toast.classList.add('translate-x-full', 'opacity-0');
-            setTimeout(() => {
-                if (toast.parentElement) toast.remove();
-            }, 500);
-        }
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
     }, 4000);
 }
 
@@ -454,8 +446,8 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                 const reason = (trade.reason || '').toLowerCase();
                 const isSell = reason.includes('sell') || reason.includes('sold');
                 const actionBadge = isSell
-                    ? '<span class="bg-theme-error-bg/10 text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text/30">SELL</span>'
-                    : '<span class="bg-theme-success-bg/10 text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text/30">BUY</span>';
+                    ? '<span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-300">SELL</span>'
+                    : '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-300">BUY</span>';
 
                 const dateStr = new Date(trade.date).toLocaleString([], {
                     year: 'numeric',

@@ -18,7 +18,7 @@
         <div class="px-6 py-4 border-b border-border flex justify-between items-center">
             <h2 class="text-lg font-semibold text-text-primary">All Funds</h2>
             <button data-modal-target="create-fund-modal" data-modal-toggle="create-fund-modal"
-                class="bg-accent text-white px-5 py-2.5 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200">
                 <i class="fas fa-plus mr-2"></i>New Fund
             </button>
         </div>
@@ -71,7 +71,7 @@
                     </div>
                 </div>
                 <button onclick="refreshTickerMetadata()"
-                    class="w-full bg-accent text-white px-5 py-2.5 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
+                    class="w-full text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200">
                     Fetch & Update
                 </button>
                 <div id="refresh-result" class="hidden p-4 mb-4 text-sm rounded-lg" role="alert"></div>
@@ -92,7 +92,7 @@
                     <!-- Populated by JS -->
                 </select>
                 <button onclick="rebuildPortfolio()"
-                    class="w-full bg-theme-warning-bg/10 text-theme-warning-text border border-theme-warning-text/30 px-5 py-2.5 rounded-lg hover:bg-theme-warning-bg/20 transition-all duration-200 shadow-sm hover:shadow-md active:scale-95 font-semibold text-sm">
+                    class="w-full text-theme-warning-text bg-transparent border border-theme-warning-text hover:bg-theme-warning-bg/10 focus:ring-4 focus:ring-theme-warning-bg/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200">
                     Start Rebuild Job
                 </button>
             </div>
@@ -155,7 +155,7 @@
                         </div>
                     </div>
                     <button type="submit"
-                        class="w-full bg-accent text-white px-5 py-2.5 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
+                        class="w-full text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200">
                         Create Fund
                     </button>
                 </form>
@@ -220,13 +220,13 @@
                         </div>
                     </div>
                     <button type="submit"
-                        class="w-full bg-accent text-white px-5 py-2.5 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
+                        class="w-full text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200">
                         Save Changes
                     </button>
 
                     <div class="border-t border-border pt-4 mt-4">
                         <button type="button" onclick="showDeleteConfirm()"
-                            class="w-full text-theme-error-text bg-transparent border border-theme-error-text hover:bg-theme-error-bg/10 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-all duration-200 hover:shadow-sm">
+                            class="w-full text-theme-error-text bg-transparent border border-theme-error-text hover:bg-theme-error-bg/10 focus:ring-4 focus:ring-theme-error-bg/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200">
                             Delete Fund
                         </button>
                         <div id="delete-confirm-area"
@@ -236,7 +236,7 @@
                                 class="bg-dashboard-background border border-theme-error-text text-text-primary text-sm rounded-lg block w-full p-2.5 mb-2"
                                 placeholder="Fund Name">
                             <button type="button" onclick="confirmDeleteFund()"
-                                class="w-full bg-theme-error-text text-white px-5 py-2.5 rounded-lg hover:bg-theme-error-text/90 transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
+                                class="w-full text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-900 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200">
                                 Confirm Delete
                             </button>
                         </div>

@@ -134,7 +134,7 @@
             </div>
 
             <button type="submit"
-                class="bg-accent text-white px-6 py-2.5 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm">
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2 focus:outline-none transition-colors duration-200">
                 <i class="fas fa-filter mr-2"></i>Apply Filters
             </button>
         </div>
@@ -153,7 +153,7 @@
             <span id="selected-count" class="text-sm text-text-secondary hidden">0 articles selected</span>
         </div>
         <button id="reanalyze-btn" disabled
-            class="bg-accent text-white px-6 py-2.5 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+            class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
             <i class="fas fa-sync-alt mr-2"></i>Re-Analyze Selected
         </button>
     </div>
@@ -254,7 +254,7 @@
             <div class="mb-4 relative">
                 <div id="summary-{{ article.id }}"
                     class="prose prose-sm dark:prose-invert max-w-none whitespace-pre-line overflow-hidden transition-all duration-300 ease-in-out"
-                    style="max-height: 10rem;">
+                    class="max-h-40">
                     {{ full_text }}
                 </div>
 
@@ -773,13 +773,11 @@
             icon = 'fa-info-circle';
         }
 
-        toastEl.className = `flex items-center w-full max-w-sm p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-xl border border-border border-l-4 ${borderClass} transition-all duration-500 transform translate-x-full opacity-0`;
+        toastEl.className = `${bgClass} ${textClass} border ${borderClass} px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-500 transform translate-x-full opacity-0 max-w-md`;
         toastEl.innerHTML = `
-            <div class="flex items-center gap-3 text-text-primary">
-                <span class="text-xl ${textClass.replace('bg-', 'text-')}"><i class="fas ${icon}"></i></span>
-                <span class="font-medium text-sm">${message}</span>
-            </div>
-            <button onclick="this.parentElement.remove()" class="ms-auto -mx-1.5 -my-1.5 bg-transparent text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-accent p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8">
+            <i class="fas ${icon} text-lg"></i>
+            <span class="font-medium text-sm">${message}</span>
+            <button onclick="this.parentElement.remove()" class="ml-auto text-text-tertiary hover:text-text-primary focus:outline-none">
                 <i class="fas fa-times"></i>
             </button>
         `;
@@ -816,5 +814,6 @@
             }, duration);
         }
     }
+
 </script>
 {% endblock %}

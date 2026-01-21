@@ -32,8 +32,8 @@
     }
 
     .tab-button.active {
-        color: var(--color-accent);
-        border-bottom-color: var(--color-accent);
+        color: var(--accent-color);
+        border-bottom-color: var(--accent-color);
     }
 </style>
 {% endblock %}
@@ -71,7 +71,7 @@
         <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-text-primary">All Contributors</h3>
             <button id="refresh-contributors-btn"
-                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold">
+                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200">
                 <i class="fas fa-sync-alt mr-2"></i>Refresh
             </button>
         </div>
@@ -95,9 +95,9 @@
                 <p>No contributors found.</p>
             </div>
             <div id="error-contributors"
-                class="hidden bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4">
+                class="hidden bg-theme-error-bg/20 border border-theme-error-text/30 rounded-lg p-4">
                 <i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i>
-                <span id="error-contributors-text" class="text-theme-error-text font-medium"></span>
+                <span id="error-contributors-text" class="text-theme-error-text"></span>
             </div>
         </div>
     </div>
@@ -140,7 +140,7 @@
             </div>
 
             <button id="split-contributor-btn"
-                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled>
                 <i class="fas fa-cut mr-2"></i>Split Contributor
             </button>
@@ -175,15 +175,12 @@
         </div>
 
         <div id="merge-preview"
-            class="hidden mb-4 p-4 bg-theme-warning-bg/10 border border-theme-warning-text/30 rounded-lg">
-            <p class="text-sm text-theme-warning-text font-medium flex items-center">
-                <i class="fas fa-exclamation-triangle mr-2"></i>
-                <span id="merge-preview-text"></span>
-            </p>
+            class="hidden mb-4 p-4 bg-theme-warning-bg/20 border border-theme-warning-text/30 rounded-md">
+            <p class="text-sm text-theme-warning-text" id="merge-preview-text"></p>
         </div>
 
         <button id="merge-contributors-btn"
-            class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled>
             <i class="fas fa-link mr-2"></i>Merge Contributors
         </button>
@@ -219,7 +216,7 @@
             </div>
 
             <button id="save-contributor-btn"
-                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold">
+                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200">
                 <i class="fas fa-save mr-2"></i>Save Changes
             </button>
         </div>
@@ -264,7 +261,7 @@
         </div>
         <div class="mt-4">
             <button id="grant-access-btn"
-                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold">
+                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200">
                 <i class="fas fa-key mr-2"></i>Grant Access
             </button>
         </div>
@@ -315,9 +312,9 @@
                 contributors.
             </div>
             <div id="error-access"
-                class="hidden bg-theme-warning-bg/10 border border-theme-warning-text/30 rounded-lg p-4 mt-4">
+                class="hidden bg-theme-warning-bg/20 border border-theme-warning-text/30 rounded-lg p-4 mt-4">
                 <i class="fas fa-exclamation-triangle text-theme-warning-text mr-2"></i>
-                <span id="error-access-text" class="text-theme-warning-text font-medium"></span>
+                <span id="error-access-text" class="text-theme-warning-text"></span>
             </div>
         </div>
     </div>
