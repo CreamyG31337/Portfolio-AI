@@ -120,9 +120,24 @@ def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Opti
         if all_rows:
             df = pd.DataFrame(all_rows)
             
-            # Flattening removed to match streamlit_utils.py and preserve 'securities' object
-            # for ai_context_builder.py which handles both list and dict formats robustly.
-            # checks like row.get('securities') in format_fundamentals_table rely on this column.
+            # Flatten securities fields for easy access while preserving the nested object
+            if 'securities' in df.columns:
+                securities_df = pd.json_normalize(df['securities'])
+                if not securities_df.empty:
+                    for col in [
+                        'company_name',
+                        'sector',
+                        'industry',
+                        'market_cap',
+                        'country',
+                        'trailing_pe',
+                        'dividend_yield',
+                        'fifty_two_week_high',
+                        'fifty_two_week_low',
+                        'last_updated'
+                    ]:
+                        if col in securities_df.columns:
+                            df[col] = securities_df[col]
             
             return df
         return pd.DataFrame()

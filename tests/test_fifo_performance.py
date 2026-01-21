@@ -1,8 +1,9 @@
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import sys
 import os
+import importlib
 from collections import deque
 from decimal import Decimal
 
@@ -10,21 +11,18 @@ from decimal import Decimal
 sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.getcwd(), 'web_dashboard'))
 
-# Mock app and supabase_client
-sys.modules['app'] = MagicMock()
-sys.modules['supabase_client'] = MagicMock()
-sys.modules['flask'] = MagicMock()
-sys.modules['auth'] = MagicMock()
-sys.modules['jwt'] = MagicMock()
-
-# Import the function to test
-from web_dashboard.routes.admin_routes import calculate_fifo_pnl
-
-# Mock the get_supabase_client function
-from app import get_supabase_client
+@pytest.fixture
+def fifo_context(monkeypatch):
+    app_mock = MagicMock()
+    app_mock.get_supabase_client = MagicMock()
+    monkeypatch.setitem(sys.modules, "app", app_mock)
+    module = importlib.import_module("web_dashboard.routes.admin_routes")
+    importlib.reload(module)
+    yield {"module": module, "app_mock": app_mock}
+    sys.modules.pop("web_dashboard.routes.admin_routes", None)
 
 @pytest.fixture
-def mock_supabase_client():
+def mock_supabase_client(fifo_context):
     mock_client = MagicMock()
     # Setup chain: client.supabase.table().select().eq().eq().order().execute()
     mock_table = mock_client.supabase.table.return_value
@@ -42,16 +40,17 @@ def mock_supabase_client():
     ]
     mock_order.execute.return_value = mock_response
 
-    get_supabase_client.return_value = mock_client
+    fifo_context["app_mock"].get_supabase_client.return_value = mock_client
     return mock_client
 
-def test_calculate_fifo_pnl_baseline(benchmark, mock_supabase_client):
+def test_calculate_fifo_pnl_baseline(benchmark, mock_supabase_client, fifo_context):
     """Benchmark the calculate_fifo_pnl function without pre-fetched data (Baseline)."""
     # This simulates the old behavior where it fetches from DB
+    calculate_fifo_pnl = fifo_context["module"].calculate_fifo_pnl
     result = benchmark(calculate_fifo_pnl, "Test Fund", "TEST", 50.0, 30.0)
     assert result == 1000.0
 
-def test_calculate_fifo_pnl_optimized(benchmark, mock_supabase_client):
+def test_calculate_fifo_pnl_optimized(benchmark, mock_supabase_client, fifo_context):
     """Benchmark the calculate_fifo_pnl function WITH pre-fetched data (Optimized)."""
 
     # Pre-fetch data
@@ -61,11 +60,13 @@ def test_calculate_fifo_pnl_optimized(benchmark, mock_supabase_client):
     ]
 
     # Run benchmark passing existing_trades
+    calculate_fifo_pnl = fifo_context["module"].calculate_fifo_pnl
     result = benchmark(calculate_fifo_pnl, "Test Fund", "TEST", 50.0, 30.0, existing_trades)
     assert result == 1000.0
 
-def test_calculate_fifo_pnl_db_calls(mock_supabase_client):
+def test_calculate_fifo_pnl_db_calls(mock_supabase_client, fifo_context):
     """Verify DB calls."""
+    calculate_fifo_pnl = fifo_context["module"].calculate_fifo_pnl
     # Without existing_trades, should call DB
     calculate_fifo_pnl("Test Fund", "TEST", 50.0, 30.0)
     assert mock_supabase_client.supabase.table.called

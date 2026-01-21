@@ -60,7 +60,7 @@ def test_logs_debug_requires_admin_non_admin_denied(client):
         mock_is_admin.return_value = False
         
         # Set auth cookie to simulate authenticated user
-        client.set_cookie('auth_token', 'test-token')
+        client.set_cookie('auth_token', 'test.token.value')
         
         # Attempt access
         response = client.get('/logs/debug')
@@ -122,7 +122,7 @@ def test_logs_debug_allows_admin_access(client):
         mock_is_admin_helper.return_value = True
         
         # Set auth cookie
-        client.set_cookie('auth_token', 'test-token')
+        client.set_cookie('auth_token', 'test.token.value')
         
         # Access should succeed
         response = client.get('/logs/debug')
