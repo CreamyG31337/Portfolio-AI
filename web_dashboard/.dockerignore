@@ -45,6 +45,10 @@ Thumbs.db
 # Documentation
 *.md
 !schema/README.md
+!web_dashboard/templates/
+!web_dashboard/templates/**/*.html
+!web_dashboard/src/
+!web_dashboard/src/**/*.ts
 
 # Migration scripts (keep schema, but not migration scripts in root)
 migrate*.py

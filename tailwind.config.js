@@ -3,6 +3,7 @@ module.exports = {
   content: [
     "./web_dashboard/templates/**/*.html",
     "./web_dashboard/static/**/*.js",
+    "./web_dashboard/src/**/*.ts",
     // Include any Python files that might contain Tailwind classes in strings
     "./web_dashboard/**/*.py",
   ],

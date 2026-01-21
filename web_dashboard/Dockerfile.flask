@@ -21,6 +21,7 @@ RUN --mount=type=cache,target=/root/.npm \
 # Copy in order: config, input CSS, then templates (for better caching)
 COPY web_dashboard/static/css/input.css ./web_dashboard/static/css/input.css
 COPY web_dashboard/templates ./web_dashboard/templates
+COPY web_dashboard/src ./web_dashboard/src
 
 # Build Tailwind CSS (production-optimized, minified)
 # Ensure output directory exists and build with error handling

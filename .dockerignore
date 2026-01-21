@@ -78,6 +78,10 @@ Research/
 !package.json
 !package-lock.json
 !tailwind.config.js
+!web_dashboard/templates/
+!web_dashboard/templates/**/*.html
+!web_dashboard/src/
+!web_dashboard/src/**/*.ts
 
 # Git and version control
 .git/
