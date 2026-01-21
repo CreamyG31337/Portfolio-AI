@@ -6,8 +6,40 @@ Tracks daily changes in ETF holdings via direct CSV downloads.
 Detects institutional accumulation/distribution ("The Diff Engine").
 
 Supported ETFs:
-- iShares: IVV, IWM, IBIT
-- ARK: ARKK, ARKQ
+- iShares: IVV, IWM, IWC, IWO
+- ARK: ARKK, ARKQ, ARKW, ARKG, ARKF, ARKX, IZRL, PRNT
+
+Change Detection:
+- Detects significant changes in holdings (MIN_SHARE_CHANGE or MIN_PERCENT_CHANGE)
+- Filters out non-stock holdings (cash, futures, derivatives)
+- Filters out systematic adjustments (expense ratio deductions, data normalization)
+
+Systematic Adjustment Filtering:
+---------------------------------
+The job automatically filters out systematic adjustments that affect all holdings
+proportionally. These are NOT trading activity.
+
+A systematic adjustment is detected when:
+1. 80%+ of changes cluster around the same percentage (within 0.1%)
+2. That percentage is ≤2% (small adjustments, not large trades)
+3. All changes are in the same direction (all buys OR all sells)
+
+Examples of systematic adjustments:
+- Expense ratio deductions (~0.5% annually, applied proportionally)
+- Data normalization/rounding adjustments
+- Systematic rebalancing calculations
+
+Real trading activity shows:
+- Different percentages for different holdings
+- Mixed buys and sells
+- New positions added / old positions removed
+- Varied change patterns
+
+Pagination:
+-----------
+For ETFs with >1000 holdings (IWM, IWC, IWO), the job uses pagination to fetch
+all holdings from the database. This prevents false positives where holdings
+beyond the 1000-row limit appear as "new" positions.
 """
 
 import logging
@@ -73,6 +105,27 @@ ETF_NAMES = {
 # Thresholds for "significant" changes
 MIN_SHARE_CHANGE = 1000  # Minimum absolute share change to log
 MIN_PERCENT_CHANGE = 0.5  # Minimum % change relative to previous holdings
+
+# Systematic Adjustment Detection
+# ===============================
+# The change detection logic filters out systematic adjustments (e.g., expense ratio deductions)
+# that affect all holdings proportionally. These are NOT trading activity.
+#
+# A systematic adjustment is detected when:
+# 1. 80%+ of changes cluster around the same percentage (within 0.1%)
+# 2. That percentage is ≤2% (small adjustments, not large trades)
+# 3. All changes are in the same direction (all buys OR all sells)
+#
+# Examples of systematic adjustments:
+# - Expense ratio deductions (~0.5% annually, applied proportionally)
+# - Data normalization/rounding adjustments
+# - Systematic rebalancing calculations
+#
+# Real trading activity shows:
+# - Different percentages for different holdings
+# - Mixed buys and sells
+# - New positions added / old positions removed
+# - Varied change patterns
 
 # Tickers to exclude from change detection (cash, futures, derivatives, etc.)
 # These are valid holdings but not actionable stock signals
@@ -390,6 +443,8 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     
     # Detect and filter systematic adjustments (e.g., expense ratio deductions)
     # Systematic adjustments affect all holdings by approximately the same percentage
+    # This is NOT trading activity - it's administrative adjustments like fee deductions
+    # See documentation at top of file for detection criteria
     if len(significant) > 5:  # Need enough data points to detect pattern
         from collections import Counter
         # Round percentages to 0.1% to detect clustering

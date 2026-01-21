@@ -120,7 +120,7 @@ function renderContributors(contribs: ContributorData[]): void {
 
     contribs.forEach(contrib => {
         const card = document.createElement('div');
-        card.className = 'contributor-card bg-dashboard-surface rounded-lg shadow-sm p-6 mb-4 border border-border';
+        card.className = 'contributor-card bg-dashboard-surface rounded-lg shadow-sm p-6 mb-4 border border-border transition hover:bg-dashboard-surface-alt hover:shadow-md hover:-translate-y-0.5';
         card.innerHTML = `
             <div class="flex items-start justify-between">
                 <div class="flex-1">

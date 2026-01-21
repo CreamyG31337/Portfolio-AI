@@ -3,6 +3,7 @@ from datetime import datetime, date, timedelta
 import pandas as pd
 import logging
 from typing import Optional, Dict, Any, List
+from collections import Counter
 
 # Import utilities
 from flask_auth_utils import get_user_email_flask
@@ -15,6 +16,10 @@ from supabase_client import SupabaseClient
 
 etf_bp = Blueprint('etf_bp', __name__)
 logger = logging.getLogger(__name__)
+
+# Change detection thresholds (matching jobs_etf_watchtower.py)
+MIN_SHARE_CHANGE = 1000  # Minimum absolute share change to show
+MIN_PERCENT_CHANGE = 0.5  # Minimum % change relative to previous holdings
 
 # --- Helper Functions (Migrated from Streamlit) ---
 
@@ -196,18 +201,36 @@ def get_holdings_changes(
         
         as_of_date_str = as_of_date.isoformat()
         
-        curr_query = db_client.supabase.table("etf_holdings_log").select(
-            "date, etf_ticker, holding_ticker, holding_name, shares_held"
-        ).eq("date", as_of_date_str)
+        # Fetch current holdings with pagination (for "All ETFs" view or large ETFs)
+        curr_holdings_list = []
+        page_size = 1000
+        offset = 0
         
-        if etf_ticker and etf_ticker != "All ETFs":
-            curr_query = curr_query.eq("etf_ticker", etf_ticker)
+        while True:
+            curr_query = db_client.supabase.table("etf_holdings_log").select(
+                "date, etf_ticker, holding_ticker, holding_name, shares_held"
+            ).eq("date", as_of_date_str)
             
-        curr_res = curr_query.execute()
-        if not curr_res.data:
+            if etf_ticker and etf_ticker != "All ETFs":
+                curr_query = curr_query.eq("etf_ticker", etf_ticker)
+            
+            curr_res = curr_query.range(offset, offset + page_size - 1).execute()
+            
+            if not curr_res.data:
+                break
+            
+            curr_holdings_list.extend(curr_res.data)
+            
+            # If we got fewer than page_size, we've reached the end
+            if len(curr_res.data) < page_size:
+                break
+            
+            offset += page_size
+        
+        if not curr_holdings_list:
             return pd.DataFrame(), as_of_date
         
-        curr_df = pd.DataFrame(curr_res.data)
+        curr_df = pd.DataFrame(curr_holdings_list)
         
         tickers_to_check = curr_df['etf_ticker'].unique().tolist()
         
@@ -230,12 +253,24 @@ def get_holdings_changes(
                 batch_date = date_row['date']
                 batch_etfs = date_row['etf_ticker']
                 
-                p_res = db_client.supabase.table("etf_holdings_log").select(
-                    "etf_ticker, holding_ticker, shares_held"
-                ).eq("date", batch_date).in_("etf_ticker", batch_etfs).execute()
-                
-                if p_res.data:
+                # Use pagination to fetch all holdings (for ETFs with >1000 holdings like IWM)
+                page_size = 1000
+                offset = 0
+                while True:
+                    p_res = db_client.supabase.table("etf_holdings_log").select(
+                        "etf_ticker, holding_ticker, shares_held"
+                    ).eq("date", batch_date).in_("etf_ticker", batch_etfs).range(offset, offset + page_size - 1).execute()
+                    
+                    if not p_res.data:
+                        break
+                    
                     prev_holdings_list.extend(p_res.data)
+                    
+                    # If we got fewer than page_size, we've reached the end
+                    if len(p_res.data) < page_size:
+                        break
+                    
+                    offset += page_size
             
             if prev_holdings_list:
                 prev_df = pd.DataFrame(prev_holdings_list)
@@ -274,6 +309,54 @@ def get_holdings_changes(
                 curr_df['action'] = 'HOLD'
         
         curr_df = curr_df.rename(columns={'shares_held': 'current_shares'})
+        
+        # Apply change thresholds (only show significant changes)
+        if not curr_df.empty:
+            # Filter for significant changes (same logic as job)
+            significant_mask = (
+                (curr_df['share_change'].abs() >= MIN_SHARE_CHANGE) |
+                (curr_df['percent_change'].abs() >= MIN_PERCENT_CHANGE)
+            )
+            
+            # Also keep HOLD actions (no change) for holdings view context
+            # But filter out tiny changes that don't meet thresholds
+            if etf_ticker and etf_ticker != "All ETFs":
+                # For single ETF view, show all holdings but mark insignificant changes
+                curr_df['is_significant'] = significant_mask
+            else:
+                # For "All ETFs" changes view, only show significant changes
+                curr_df = curr_df[significant_mask | (curr_df['action'] == 'HOLD')].copy()
+        
+        # Filter systematic adjustments (same logic as job)
+        if not curr_df.empty and len(curr_df) > 5:
+            # Group by ETF for systematic adjustment detection
+            for etf in curr_df['etf_ticker'].unique():
+                etf_changes = curr_df[
+                    (curr_df['etf_ticker'] == etf) & 
+                    (curr_df['action'] != 'HOLD') &
+                    (curr_df['share_change'] != 0)
+                ]
+                
+                if len(etf_changes) > 5:
+                    # Check for systematic adjustment pattern
+                    percent_changes = [abs(p) for p in etf_changes['percent_change'] if pd.notna(p)]
+                    if len(percent_changes) > 5:
+                        rounded_pcts = [round(p, 1) for p in percent_changes]
+                        pct_counts = Counter(rounded_pcts)
+                        most_common_pct, most_common_count = pct_counts.most_common(1)[0]
+                        
+                        # If 80%+ cluster around same percentage ≤2%, and all same direction
+                        if (most_common_count >= len(etf_changes) * 0.8 and 
+                            most_common_pct <= 2.0):
+                            all_same_dir = (
+                                all(curr_df.loc[etf_changes.index, 'share_change'] > 0) or
+                                all(curr_df.loc[etf_changes.index, 'share_change'] < 0)
+                            )
+                            
+                            if all_same_dir:
+                                # Filter out systematic adjustments for this ETF
+                                logger.debug(f"Filtering systematic adjustment for {etf}: {most_common_count}/{len(etf_changes)} changes at ~{most_common_pct:.1f}%")
+                                curr_df = curr_df[curr_df['etf_ticker'] != etf].copy()
         
         # User overlap
         max_date_res = db_client.supabase.table("portfolio_positions").select("date").order("date", desc=True).limit(1).execute()

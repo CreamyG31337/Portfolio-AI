@@ -7,33 +7,12 @@
 
 {% block extra_head %}
 <style>
-    .contributor-card {
-        transition: transform 0.2s ease-in-out;
-        border: 1px solid var(--border-color);
-    }
-
-    .contributor-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        background-color: var(--dashboard-hover);
-    }
-
     .tab-content {
         display: none;
     }
 
     .tab-content.active {
         display: block;
-    }
-
-    .tab-button {
-        transition: all 0.2s;
-        cursor: pointer;
-    }
-
-    .tab-button.active {
-        color: var(--accent-color);
-        border-bottom-color: var(--accent-color);
     }
 </style>
 {% endblock %}
@@ -43,23 +22,23 @@
 <div class="mb-6 border-b border-border">
     <nav class="flex space-x-8" aria-label="Tabs">
         <button id="tab-view"
-            class="tab-button active border-b-2 border-accent py-4 px-1 text-sm font-medium text-accent">
+            class="tab-button active border-b-2 border-accent py-4 px-1 text-sm font-medium text-accent transition-colors cursor-pointer">
             📋 View Contributors
         </button>
         <button id="tab-split"
-            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border">
+            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border transition-colors cursor-pointer">
             ✂️ Split Contributor
         </button>
         <button id="tab-merge"
-            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border">
+            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border transition-colors cursor-pointer">
             🔗 Merge Contributors
         </button>
         <button id="tab-edit"
-            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border">
+            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border transition-colors cursor-pointer">
             ✏️ Edit Contributor
         </button>
         <button id="tab-access"
-            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border">
+            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border transition-colors cursor-pointer">
             👥 User Access
         </button>
     </nav>
