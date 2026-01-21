@@ -1079,33 +1079,12 @@ def get_dividend_data():
         display_currency = get_user_currency() or 'CAD'
         logger.info(f"[Dividend API] Request received - fund={fund}, currency={display_currency}")
         
-        # Fetch dividend data with company names (join with securities table like trade_log does)
-        client = get_supabase_client_flask()
-        if not client:
-            logger.error("[Dividend API] Database client not available")
-            return jsonify({"error": "Database client not available"}), 500
+        # Fetch dividend data using cached function
+        # This function is now optimized to include securities(company_name) and is cached for 300s
+        # The cache key includes user_id to prevent cross-user data leakage (security fix)
+        logger.debug(f"[Dividend API] Querying dividends via cached function")
         
-        logger.debug("[Dividend API] Database client obtained")
-        
-        # Calculate start date for LTM metrics
-        from datetime import datetime, timedelta
-        start_date_ltm = (datetime.now() - timedelta(days=365)).date().isoformat()
-        
-        logger.debug(f"[Dividend API] Querying dividends since {start_date_ltm}")
-        
-        # Build query to fetch dividend data
-        query = client.supabase.table("dividend_log").select(
-            "*, securities(company_name)"
-        ).gte('pay_date', start_date_ltm)
-        
-        # Apply fund filter if provided
-        if fund:
-            query = query.eq('fund', fund)
-            logger.debug(f"[Dividend API] Applied fund filter: {fund}")
-        
-        # Fetch all LTM dividend data
-        dividend_response = query.order('pay_date', desc=True).execute()
-        dividend_list = dividend_response.data or []
+        dividend_list = fetch_dividend_log_flask(days_lookback=365, fund=fund)
         
         logger.info(f"[Dividend API] Fetched {len(dividend_list)} dividend records")
         

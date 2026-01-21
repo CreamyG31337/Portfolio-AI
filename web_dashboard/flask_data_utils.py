@@ -479,16 +479,10 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
 
 
 @cache_data(ttl=300)
-def fetch_dividend_log_flask(days_lookback: int = 365, fund: Optional[str] = None) -> List[Dict[str, Any]]:
+def _fetch_dividend_log_flask_cached(days_lookback: int = 365, fund: Optional[str] = None, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Fetch dividend log from Supabase (Flask version).
-    
-    Args:
-        days_lookback: Number of days of history to fetch (default 365)
-        fund: Optional fund name to filter by
-        
-    Returns:
-        List of dicts containing dividend records
+    Internal cached function for fetching dividend log.
+    The user_id parameter ensures cache keys are user-scoped to prevent cross-user data leakage.
     """
     client = get_supabase_client_flask()
     if not client:
@@ -499,8 +493,9 @@ def fetch_dividend_log_flask(days_lookback: int = 365, fund: Optional[str] = Non
         from datetime import datetime, timedelta
         start_date = (datetime.now() - timedelta(days=days_lookback)).date().isoformat()
         
+        # Include securities(company_name) join for consistency with trade_log
         query = client.supabase.table('dividend_log')\
-            .select('*')\
+            .select('*, securities(company_name)')\
             .gte('pay_date', start_date)
         
         # Apply fund filter if provided
@@ -513,6 +508,28 @@ def fetch_dividend_log_flask(days_lookback: int = 365, fund: Optional[str] = Non
     except Exception as e:
         logger.error(f"Error fetching dividend log (Flask): {e}", exc_info=True)
         return []
+
+
+def fetch_dividend_log_flask(days_lookback: int = 365, fund: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Fetch dividend log from Supabase (Flask version).
+    
+    This function automatically includes user_id in the cache key to prevent cross-user
+    data leakage. Each user gets their own cached results based on RLS policies.
+    
+    Args:
+        days_lookback: Number of days of history to fetch (default 365)
+        fund: Optional fund name to filter by
+        
+    Returns:
+        List of dicts containing dividend records with securities(company_name) joined
+    """
+    # Get user_id for cache key scoping (prevents cross-user cache hits)
+    # This ensures each user gets their own cached results, preventing RLS bypass
+    user_id = get_user_id_flask() or 'anonymous'
+    
+    # Call the cached function with user_id included in kwargs (so it's in the cache key)
+    return _fetch_dividend_log_flask_cached(days_lookback=days_lookback, fund=fund, user_id=user_id)
 
 
 @cache_data(ttl=300)
