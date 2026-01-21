@@ -89,6 +89,26 @@ def get_cached_watchlist_signals(
                 logo_urls_map = get_ticker_logo_urls(unique_tickers_list)
         except Exception as e:
             logger.warning(f"Error fetching logo URLs: {e}")
+
+        # Batch fetch company names for all tickers
+        company_names_map = {}
+        if _supabase_client and unique_tickers_list:
+            try:
+                for i in range(0, len(unique_tickers_list), 50):
+                    ticker_batch = unique_tickers_list[i:i + 50]
+                    result = _supabase_client.supabase.table("securities")\
+                        .select("ticker, company_name")\
+                        .in_("ticker", ticker_batch)\
+                        .execute()
+
+                    if result.data:
+                        for item in result.data:
+                            ticker_key = item.get('ticker', '').upper()
+                            company_name = item.get('company_name', '')
+                            if company_name and company_name.strip() and company_name != 'Unknown':
+                                company_names_map[ticker_key] = company_name.strip()
+            except Exception as e:
+                logger.warning(f"Error fetching company names: {e}")
         
         # Get latest signals for each ticker from database (batch query)
         signal_engine = SignalEngine()
@@ -125,6 +145,7 @@ def get_cached_watchlist_signals(
                     explanation = signal.get('explanation')
                     results.append({
                         'ticker': ticker,
+                        'company_name': company_names_map.get(ticker.upper()),
                         '_logo_url': logo_urls_map.get(ticker),
                         'overall_signal': signal.get('overall_signal', 'HOLD'),
                         'confidence': signal.get('confidence_score', 0.0),
@@ -143,6 +164,7 @@ def get_cached_watchlist_signals(
                         signals = signal_engine.evaluate(ticker, price_data.df)
                         results.append({
                             'ticker': ticker,
+                            'company_name': company_names_map.get(ticker.upper()),
                             '_logo_url': logo_urls_map.get(ticker),
                             'overall_signal': signals.get('overall_signal', 'HOLD'),
                             'confidence': signals.get('confidence', 0.0),

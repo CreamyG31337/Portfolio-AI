@@ -4,6 +4,7 @@ export { }; // Ensure file is treated as a module
 interface SignalRow {
     _logo_url?: string;
     ticker: string;
+    company_name?: string | null;
     overall_signal: string;
     confidence: number;
     fear_level: string;
@@ -163,6 +164,14 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             width: 100,
             cellRenderer: TickerCellRenderer,
             pinned: 'left'
+        },
+        {
+            field: 'company_name',
+            headerName: 'Company',
+            width: 220,
+            valueFormatter: (params: any) => {
+                return params.value || 'N/A';
+            }
         },
         {
             field: 'analyzed',
