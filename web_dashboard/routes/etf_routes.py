@@ -405,12 +405,13 @@ def get_holdings_changes(
 @etf_bp.route('/etf_holdings', methods=['GET'])
 @require_auth
 def etf_holdings():
-    from app import get_navigation_context, get_supabase_client
+    from app import get_navigation_context
     
     # 1. Navigation & Context
     nav_context = get_navigation_context(current_page='etf_holdings')
     user_email = get_user_email_flask()
-    db_client = get_supabase_client()
+    # Use service role to bypass RLS - this is server-side and already protected by @require_auth
+    db_client = SupabaseClient(use_service_role=True)
     
     if not db_client:
          return render_template('etf_holdings.html', 
@@ -445,9 +446,6 @@ def etf_holdings():
     # 3. Available ETFs & Funds
     available_etfs_list = get_available_etfs(db_client)
     available_funds_list = get_available_funds_flask()
-    
-    # Get all available dates for navigation (cached internally)
-    available_dates = get_available_dates(db_client, selected_etf)
     
     # Initialize for later use
     as_of_date = None
@@ -500,6 +498,11 @@ def etf_holdings():
                 # All sell actions (including fully sold)
                 changes_df = changes_df[changes_df['action'] == 'SELL']
     
+    # Get all available dates for navigation AFTER we have as_of_date
+    # For "All ETFs", we want all dates across all ETFs (pass None)
+    # For specific ETF, we want dates for that ETF only
+    available_dates = get_available_dates(db_client, selected_etf if selected_etf != "All ETFs" else None)
+    
     # Calculate previous and next dates AFTER we have as_of_date from data fetching
     if as_of_date and available_dates:
         # Convert available_dates to date objects if they're strings
@@ -525,13 +528,31 @@ def etf_holdings():
                     prev_date = available_dates_clean[current_idx - 1]
             except ValueError:
                 # as_of_date not in list, find closest
+                # This can happen if as_of_date is calculated differently than available_dates
+                # Find the closest date in available_dates_clean
+                closest_idx = None
+                min_diff = None
                 for i, d in enumerate(available_dates_clean):
-                    if d <= as_of_date:
-                        if i > 0:
-                            prev_date = available_dates_clean[i - 1]
-                        if i < len(available_dates_clean) - 1:
-                            next_date = available_dates_clean[i + 1]
-                        break
+                    diff = abs((d - as_of_date).days)
+                    if min_diff is None or diff < min_diff:
+                        min_diff = diff
+                        closest_idx = i
+                
+                if closest_idx is not None:
+                    # Use closest date as current position
+                    if closest_idx < len(available_dates_clean) - 1:
+                        next_date = available_dates_clean[closest_idx + 1]
+                    if closest_idx > 0:
+                        prev_date = available_dates_clean[closest_idx - 1]
+                else:
+                    # Fallback: find dates around as_of_date
+                    for i, d in enumerate(available_dates_clean):
+                        if d <= as_of_date:
+                            if i > 0:
+                                prev_date = available_dates_clean[i - 1]
+                            if i < len(available_dates_clean) - 1:
+                                next_date = available_dates_clean[i + 1]
+                            break
 
     
     # 5. Process Data for Frontend (JSON)
