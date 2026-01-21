@@ -342,9 +342,11 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
     if (companyName) companyName.textContent = basicInfo.company_name || 'N/A';
     if (tickerSymbol) tickerSymbol.textContent = basicInfo.ticker || '';
 
-    // Display logo if available (bigger size for ticker details page)
+    // Display logo if available (larger size for ticker details page - 160px)
     if (tickerLogo && basicInfo.logo_url) {
-        tickerLogo.src = basicInfo.logo_url;
+        // Use higher resolution for larger display (size=256 instead of 64)
+        const largeLogoUrl = basicInfo.logo_url.replace('size=64', 'size=256');
+        tickerLogo.src = largeLogoUrl;
         tickerLogo.alt = `${basicInfo.ticker || ''} logo`;
         tickerLogo.classList.remove('hidden');
         // Handle image load errors gracefully - try fallback
