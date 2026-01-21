@@ -55,8 +55,8 @@
                             class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block p-2"
                             placeholder="Search contributor...">
                         <button id="refresh-history-btn"
-                            class="p-2 text-text-secondary rounded bg-dashboard-surface-alt hover:bg-dashboard-hover">
-                            🔄
+                            class="p-2.5 text-text-secondary rounded-lg bg-dashboard-surface-alt border border-border hover:bg-dashboard-hover hover:text-text-primary transition-all duration-200 shadow-sm active:scale-95">
+                            <i class="fas fa-sync-alt"></i>
                         </button>
                     </div>
                 </div>
@@ -123,7 +123,7 @@
                                 <input type="radio" id="type-contrib" name="type" value="CONTRIBUTION"
                                     class="hidden peer" checked>
                                 <label for="type-contrib"
-                                    class="inline-flex items-center justify-center w-full p-2 text-text-secondary bg-dashboard-surface border border-border rounded-lg cursor-pointer peer-checked:border-accent peer-checked:text-accent hover:text-text-primary hover:bg-dashboard-hover">
+                                    class="inline-flex items-center justify-center w-full p-2 text-text-secondary bg-dashboard-surface border border-border rounded-lg cursor-pointer peer-checked:border-theme-success-text peer-checked:text-theme-success-text hover:text-text-primary hover:bg-dashboard-hover transition-all duration-200">
                                     <span class="text-sm font-medium">Deposit</span>
                                 </label>
                             </div>
@@ -131,7 +131,7 @@
                                 <input type="radio" id="type-withdraw" name="type" value="WITHDRAWAL"
                                     class="hidden peer">
                                 <label for="type-withdraw"
-                                    class="inline-flex items-center justify-center w-full p-2 text-text-secondary bg-dashboard-surface border border-border rounded-lg cursor-pointer peer-checked:border-accent peer-checked:text-accent hover:text-text-primary hover:bg-dashboard-hover">
+                                    class="inline-flex items-center justify-center w-full p-2 text-text-secondary bg-dashboard-surface border border-border rounded-lg cursor-pointer peer-checked:border-theme-error-text peer-checked:text-theme-error-text hover:text-text-primary hover:bg-dashboard-hover transition-all duration-200">
                                     <span class="text-sm font-medium">Withdrawal</span>
                                 </label>
                             </div>
@@ -183,8 +183,8 @@
                     </div>
 
                     <button type="submit" id="submit-contrib-btn"
-                        class="w-full text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 focus:outline-none transition-colors duration-200">
-                        💾 Save Transaction
+                        class="w-full bg-accent text-white px-6 py-2.5 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm flex justify-center items-center gap-2">
+                        <i class="fas fa-save"></i> Save Transaction
                     </button>
 
                 </form>

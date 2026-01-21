@@ -79,9 +79,9 @@ async function fetchSystemStatus(): Promise<void> {
         const dbEl = document.getElementById('status-db');
         if (dbEl) {
             if (status.supabase_connected) {
-                dbEl.innerHTML = `<span class="bg-theme-success-bg text-theme-success-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-success-text">Connected</span>`;
+                dbEl.innerHTML = `<span class="bg-theme-success-bg/10 text-theme-success-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-success-text/30">Connected</span>`;
             } else {
-                dbEl.innerHTML = `<span class="bg-theme-error-bg text-theme-error-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-error-text">Disconnected</span>`;
+                dbEl.innerHTML = `<span class="bg-theme-error-bg/10 text-theme-error-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-error-text/30">Disconnected</span>`;
             }
         }
 
@@ -90,12 +90,12 @@ async function fetchSystemStatus(): Promise<void> {
         const pgStats = document.getElementById('stats-postgres');
         if (pgEl) {
             if (status.postgres_connected) {
-                pgEl.innerHTML = `<span class="bg-theme-success-bg text-theme-success-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-success-text">Connected</span>`;
+                pgEl.innerHTML = `<span class="bg-theme-success-bg/10 text-theme-success-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-success-text/30">Connected</span>`;
                 if (pgStats && status.postgres_stats) {
                     pgStats.innerHTML = `<div>Total Articles: ${status.postgres_stats.total}</div>`;
                 }
             } else {
-                pgEl.innerHTML = `<span class="bg-theme-error-bg text-theme-error-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-error-text">Disconnected</span>`;
+                pgEl.innerHTML = `<span class="bg-theme-error-bg/10 text-theme-error-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-error-text/30">Disconnected</span>`;
             }
         }
 

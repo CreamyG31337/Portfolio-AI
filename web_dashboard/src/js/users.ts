@@ -772,7 +772,8 @@ function updateContributorSelect(): void {
         const email = c.email || '';
         const display = email ? `${name} (${email}) [Contributor]` : `${name} (no email) [Contributor]`;
         const data: ContributorSelectData = { type: 'contributor', id: c.id, name, email };
-        options.push(`<option value="${escapeHtmlForUsers(JSON.stringify(data))}">${escapeHtmlForUsers(display)}</option>`);
+        const jsonValue = JSON.stringify(data).replace(/"/g, '&quot;');
+        options.push(`<option value="${jsonValue}">${escapeHtmlForUsers(display)}</option>`);
     });
 
     // Add registered users
@@ -781,7 +782,8 @@ function updateContributorSelect(): void {
         const email = u.email || '';
         const display = name && email ? `${name} (${email}) [Registered User]` : `${email} [Registered User]`;
         const data: ContributorSelectData = { type: 'user', id: u.user_id, name, email };
-        options.push(`<option value="${escapeHtmlForUsers(JSON.stringify(data))}">${escapeHtmlForUsers(display)}</option>`);
+        const jsonValue = JSON.stringify(data).replace(/"/g, '&quot;');
+        options.push(`<option value="${jsonValue}">${escapeHtmlForUsers(display)}</option>`);
     });
 
     elements.contributorSelect.innerHTML = options.join('');
@@ -800,7 +802,9 @@ function handleContributorSelectChange(): void {
     }
 
     try {
-        const data: ContributorSelectData = JSON.parse(selected);
+        // Decode HTML entities before parsing JSON
+        const decodedValue = selected.replace(/&quot;/g, '"');
+        const data: ContributorSelectData = JSON.parse(decodedValue);
         elements.newEmailInput.disabled = false;
         elements.newEmailInput.value = '';
         elements.currentEmailText.textContent = `Current email: ${data.email || 'None'}`;
@@ -822,7 +826,9 @@ async function handleUpdateEmail(): Promise<void> {
     }
 
     try {
-        const data: ContributorSelectData = JSON.parse(selected);
+        // Decode HTML entities before parsing JSON
+        const decodedValue = selected.replace(/&quot;/g, '"');
+        const data: ContributorSelectData = JSON.parse(decodedValue);
 
         const response = await fetch('/api/admin/users/update-contributor-email', {
             method: 'POST',

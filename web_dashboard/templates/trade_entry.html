@@ -136,12 +136,12 @@
                 </div>
 
                 <div id="manual-total-preview"
-                    class="p-4 mb-4 text-sm text-theme-info-text rounded-lg bg-theme-info-bg font-medium text-center hidden">
-                    Total Value: <span id="total-value-display">$0.00</span>
+                    class="p-4 mb-4 text-sm text-theme-info-text rounded-lg bg-theme-info-bg/10 border border-theme-info-text/30 font-medium text-center hidden">
+                    Total Value: <span id="total-value-display" class="font-bold">$0.00</span>
                 </div>
 
                 <button type="submit" id="submit-manual-btn"
-                    class="w-full text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-3 me-2 mb-2 focus:outline-none flex justify-center items-center gap-2 transition-colors duration-200">
+                    class="w-full bg-accent text-white px-6 py-3 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm flex justify-center items-center gap-2">
                     📈 Submit Trade
                 </button>
             </form>
@@ -160,11 +160,11 @@
 
                 <div class="flex gap-4">
                     <button id="parse-email-btn" type="button"
-                        class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
+                        class="bg-accent text-white px-6 py-2.5 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm flex items-center gap-2">
                         🔍 Parse Email
                     </button>
                     <button id="clear-email-btn" type="button"
-                        class="text-theme-error-text bg-transparent border border-theme-error-text hover:bg-theme-error-bg/10 focus:ring-4 focus:ring-theme-error-bg/30 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
+                        class="bg-theme-error-text text-white px-6 py-2.5 rounded-lg hover:bg-theme-error-text/90 transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm flex items-center gap-2">
                         🗑️ Clear
                     </button>
                 </div>
@@ -202,7 +202,7 @@
 
                     <div class="mt-6 flex justify-end">
                         <button id="confirm-email-trade-btn"
-                            class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200">
+                            class="bg-accent text-white px-6 py-2.5 rounded-lg hover:bg-accent-hover transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 font-semibold text-sm flex items-center gap-2">
                             ✅ Confirm & Save
                         </button>
                     </div>

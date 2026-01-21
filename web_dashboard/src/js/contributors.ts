@@ -128,7 +128,7 @@ function renderContributors(contribs: ContributorData[]): void {
                     <p class="text-sm text-text-secondary mb-2">${contrib.email || 'No email'}</p>
                     <p class="text-xs text-text-secondary">ID: ${contrib.id.substring(0, 8)}...</p>
                 </div>
-                <button class="view-contributions-btn bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover text-sm"
+                <button class="view-contributions-btn bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition-all duration-200 shadow-sm hover:shadow-md active:scale-95 font-semibold text-sm"
                         data-contributor-id="${contrib.id}">
                     <i class="fas fa-eye mr-1"></i>View Contributions
                 </button>
@@ -193,7 +193,7 @@ async function loadContributorContributions(contributorId: string, container: HT
             }, 0);
 
             html += `
-                <div class="bg-dashboard-surface-alt rounded p-3">
+                <div class="bg-dashboard-surface-alt rounded-lg p-3 border border-border/50 shadow-sm">
                     <h4 class="font-semibold text-text-primary mb-2">${escapeHtml(fund)}</h4>
                     <p class="text-sm text-text-secondary">${contribs.length} transaction(s), Net: $${net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
@@ -395,8 +395,8 @@ async function splitContributor(): Promise<void> {
         const resultDiv = document.getElementById('split-result');
         if (resultDiv) {
             resultDiv.classList.remove('hidden');
-            resultDiv.className = 'mt-4 p-4 bg-theme-success-bg/20 border border-theme-success-text/30 rounded-md';
-            resultDiv.innerHTML = `<p class="text-theme-success-text">✅ ${data.message}</p>`;
+            resultDiv.className = 'mt-4 p-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg';
+            resultDiv.innerHTML = `<p class="text-theme-success-text flex items-center font-medium"><i class="fas fa-check-circle mr-2"></i>${data.message}</p>`;
         }
 
         // Reload contributors
@@ -414,8 +414,8 @@ async function splitContributor(): Promise<void> {
         const resultDiv = document.getElementById('split-result');
         if (resultDiv) {
             resultDiv.classList.remove('hidden');
-            resultDiv.className = 'mt-4 p-4 bg-theme-error-bg/20 border border-theme-error-text/30 rounded-md';
-            resultDiv.innerHTML = `<p class="text-theme-error-text">❌ ${error instanceof Error ? error.message : 'Failed to split contributor'}</p>`;
+            resultDiv.className = 'mt-4 p-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg';
+            resultDiv.innerHTML = `<p class="text-theme-error-text flex items-center font-medium"><i class="fas fa-exclamation-circle mr-2"></i>${error instanceof Error ? error.message : 'Failed to split contributor'}</p>`;
         }
     }
 }
@@ -453,8 +453,8 @@ async function mergeContributors(): Promise<void> {
         const resultDiv = document.getElementById('merge-result');
         if (resultDiv) {
             resultDiv.classList.remove('hidden');
-            resultDiv.className = 'mt-4 p-4 bg-theme-success-bg/20 border border-theme-success-text/30 rounded-md';
-            resultDiv.innerHTML = `<p class="text-theme-success-text">✅ ${data.message}</p>`;
+            resultDiv.className = 'mt-4 p-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg';
+            resultDiv.innerHTML = `<p class="text-theme-success-text flex items-center font-medium"><i class="fas fa-check-circle mr-2"></i>${data.message}</p>`;
         }
 
         // Reload contributors
@@ -471,8 +471,8 @@ async function mergeContributors(): Promise<void> {
         const resultDiv = document.getElementById('merge-result');
         if (resultDiv) {
             resultDiv.classList.remove('hidden');
-            resultDiv.className = 'mt-4 p-4 bg-theme-error-bg/20 border border-theme-error-text/30 rounded-md';
-            resultDiv.innerHTML = `<p class="text-theme-error-text">❌ ${error instanceof Error ? error.message : 'Failed to merge contributors'}</p>`;
+            resultDiv.className = 'mt-4 p-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg';
+            resultDiv.innerHTML = `<p class="text-theme-error-text flex items-center font-medium"><i class="fas fa-exclamation-circle mr-2"></i>${error instanceof Error ? error.message : 'Failed to merge contributors'}</p>`;
         }
     }
 }
@@ -524,8 +524,8 @@ async function updateContributor(): Promise<void> {
         const resultDiv = document.getElementById('edit-result');
         if (resultDiv) {
             resultDiv.classList.remove('hidden');
-            resultDiv.className = 'mt-4 p-4 bg-theme-success-bg/20 border border-theme-success-text/30 rounded-md';
-            resultDiv.innerHTML = `<p class="text-theme-success-text">✅ ${data.message}</p>`;
+            resultDiv.className = 'mt-4 p-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg';
+            resultDiv.innerHTML = `<p class="text-theme-success-text flex items-center font-medium"><i class="fas fa-check-circle mr-2"></i>${data.message}</p>`;
         }
 
         // Reload contributors
@@ -536,8 +536,8 @@ async function updateContributor(): Promise<void> {
         const resultDiv = document.getElementById('edit-result');
         if (resultDiv) {
             resultDiv.classList.remove('hidden');
-            resultDiv.className = 'mt-4 p-4 bg-theme-error-bg/20 border border-theme-error-text/30 rounded-md';
-            resultDiv.innerHTML = `<p class="text-theme-error-text">❌ ${error instanceof Error ? error.message : 'Failed to update contributor'}</p>`;
+            resultDiv.className = 'mt-4 p-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg';
+            resultDiv.innerHTML = `<p class="text-theme-error-text flex items-center font-medium"><i class="fas fa-exclamation-circle mr-2"></i>${error instanceof Error ? error.message : 'Failed to update contributor'}</p>`;
         }
     }
 }
@@ -585,13 +585,13 @@ function showContributorToast(message: string, type: 'success' | 'error' | 'warn
             type === 'info' ? 'ℹ️' :
                 '✅';
 
-    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border border-border border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
     toast.innerHTML = `
         <div class="ms-3 text-sm font-normal flex items-center gap-2 text-text-primary">
             <span class="text-lg">${icon}</span>
             <span>${escapeHtml(message)}</span>
         </div>
-        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-dashboard-surface text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-border p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8" aria-label="Close">
+        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-transparent text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-accent p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8" aria-label="Close">
             <span class="sr-only">Close</span>
             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
@@ -740,14 +740,15 @@ function renderContributorAccessTable(): void {
             <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtml(access.user_email)}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${escapeHtml(access.user_name || '')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm">
-                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-theme-info-bg/20 text-theme-info-text">${escapeHtml(access.access_level)}</span>
+                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-theme-info-bg/10 text-theme-info-text border border-theme-info-text/20">${escapeHtml(access.access_level)}</span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${escapeHtml(access.granted || '')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm">
-                <button class="revoke-access-btn text-theme-error-text hover:text-theme-error-text/80" 
+                <button class="revoke-access-btn text-theme-error-text hover:text-theme-error-text/80 transition-colors duration-200 font-medium flex items-center gap-1" 
                         data-contributor-email="${escapeHtml(access.contributor_email)}" 
                         data-user-email="${escapeHtml(access.user_email)}">
-                    <i class="fas fa-ban mr-1"></i>Revoke
+                    <i class="fas fa-ban"></i>
+                    <span>Revoke</span>
                 </button>
             </td>
         </tr>

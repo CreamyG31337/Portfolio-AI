@@ -33,13 +33,14 @@
 {% block content %}
 <!-- Ticker Search -->
 <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
-    <label for="ticker-select" class="block text-sm font-medium text-text-primary mb-2">
+    <label for="ticker-input" class="block text-sm font-medium text-text-primary mb-2">
         Search Ticker
     </label>
-    <select id="ticker-select"
-        class="w-full md:w-1/3 px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+    <input id="ticker-input" list="ticker-list" type="text" placeholder="Type to search ticker symbol..."
+        class="w-full md:w-1/3 px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary" />
+    <datalist id="ticker-list">
         <option value="">Select ticker symbol...</option>
-    </select>
+    </datalist>
 </div>
 
 <!-- Loading Spinner -->
