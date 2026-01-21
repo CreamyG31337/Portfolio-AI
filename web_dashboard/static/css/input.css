@@ -21,4 +21,15 @@
     .sidebar-badge {
         @apply transition-opacity duration-300 ease-in-out;
     }
+
+    /* Global outline button hover/ring using currentColor; avoids per-button utility churn. */
+    button[class*="bg-transparent"][class*="border"]:not(:disabled):hover,
+    a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):hover {
+        background-color: color-mix(in srgb, currentColor 10%, transparent);
+    }
+
+    button[class*="bg-transparent"][class*="border"]:not(:disabled):focus-visible,
+    a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):focus-visible {
+        box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 30%, transparent);
+    }
 }
