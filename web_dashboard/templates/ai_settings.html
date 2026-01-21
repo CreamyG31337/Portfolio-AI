@@ -70,9 +70,7 @@
                         class="block mb-2 text-sm font-medium text-text-primary">Auto-Blacklist Threshold
                         (0.0 - 1.0)</label>
                     <input type="number" id="auto_blacklist_threshold" name="auto_blacklist_threshold" min="0" max="1"
-                        step="0.01"
-                        class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
-                        required>
+                        step="0.01" class="border rounded-lg block w-full p-2.5" required>
                     <p class="mt-1 text-xs text-text-tertiary">Domains with < 10% useful content ratio will be
                             auto-blacklisted below this threshold.</p>
                 </div>
@@ -82,8 +80,7 @@
                         Research Batch
                         Size</label>
                     <input type="number" id="max_research_batch_size" name="max_research_batch_size" min="1" max="500"
-                        class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
-                        required>
+                        class="border rounded-lg block w-full p-2.5" required>
                 </div>
 
                 <button type="submit" id="save-settings-btn"
@@ -99,7 +96,7 @@
                 <h2 class="text-xl font-bold tracking-tight text-text-primary">🚫 Research Blacklist</h2>
                 <div class="flex gap-2">
                     <input type="text" id="add-domain-input" placeholder="example.com"
-                        class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block p-2">
+                        class="border rounded-lg block p-2">
                     <button id="add-domain-btn"
                         class="px-3 py-2 text-sm font-medium text-center text-theme-error-text bg-transparent border border-theme-error-text rounded-lg hover:bg-theme-error-bg/10 focus:ring-4 focus:outline-none focus:ring-theme-error-bg/30 transition-colors duration-200">
                         Add
@@ -188,8 +185,7 @@
         <!-- JSON Method -->
         <div id="cookie-json-method" class="cookie-method">
             <label for="cookie-json-input" class="block mb-2 text-sm font-medium text-text-primary">Cookie JSON</label>
-            <textarea id="cookie-json-input" rows="6"
-                class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
+            <textarea id="cookie-json-input" rows="6" class="border rounded-lg block w-full p-2.5"
                 placeholder='{"__Secure-1PSID": "...", "__Secure-1PSIDTS": "..."}'></textarea>
             <p class="mt-1 text-xs text-text-tertiary">Paste the cookie JSON here</p>
         </div>
@@ -201,15 +197,13 @@
                     <label for="cookie-1psid-input"
                         class="block mb-2 text-sm font-medium text-text-primary">__Secure-1PSID (required)</label>
                     <input type="text" id="cookie-1psid-input"
-                        class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5 font-mono text-xs"
-                        placeholder="Cookie value">
+                        class="border rounded-lg block w-full p-2.5 font-mono text-xs" placeholder="Cookie value">
                 </div>
                 <div>
                     <label for="cookie-1psidts-input"
                         class="block mb-2 text-sm font-medium text-text-primary">__Secure-1PSIDTS (optional)</label>
                     <input type="text" id="cookie-1psidts-input"
-                        class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5 font-mono text-xs"
-                        placeholder="Cookie value">
+                        class="border rounded-lg block w-full p-2.5 font-mono text-xs" placeholder="Cookie value">
                 </div>
             </div>
         </div>
@@ -236,7 +230,7 @@
             <div class="flex-1 min-w-[200px]">
                 <label for="glm-api-key-input" class="block mb-2 text-sm font-medium text-text-primary">API Key</label>
                 <input type="password" id="glm-api-key-input" placeholder="Paste your Zhipu API key"
-                    class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                    class="border rounded-lg block w-full p-2.5">
             </div>
             <button id="save-glm-key-btn"
                 class="px-4 py-2.5 text-sm font-medium text-accent bg-transparent border border-accent rounded-lg hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 transition-colors duration-200">

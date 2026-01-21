@@ -55,26 +55,40 @@ def extract_change_count(summary: str) -> int:
     return 0
 
 def is_suspicious_change_count(etf_ticker: str, change_count: int) -> bool:
-    """Check if change count is suspiciously high (likely caused by pagination bug)"""
+    """Check if change count is suspiciously high (likely caused by pagination bug)
+    
+    The pagination bug ONLY affected iShares ETFs with >1000 holdings:
+    - IWM: 1957 holdings (bug caused ~958 false changes)
+    - IWC: 1316 holdings (bug caused ~316 false changes)
+    - IWO: 1102 holdings (bug caused ~102 false changes)
+    
+    ARK ETFs have <1000 holdings, so they were NOT affected by the bug.
+    High change counts for ARK ETFs might be legitimate rebalancings.
+    """
     etf_size = ETF_SIZES.get(etf_ticker, 0)
     if etf_size == 0:
         return False
     
-    # If change count is > 50% of ETF size, it's suspicious
-    # The bug would cause ~958 changes for IWM (1957 - 1000 + 1)
-    # So anything > 50% is likely bad
-    threshold = etf_size * 0.5
+    # Only flag iShares ETFs that were affected by pagination bug (>1000 holdings)
+    # The bug caused holdings beyond the 1000 limit to appear as "new"
+    ishares_etfs_affected = ['IWM', 'IWC', 'IWO', 'IVV']
     
-    # Also check for specific known bad patterns
-    # IWM with ~955 changes is definitely bad
+    if etf_ticker not in ishares_etfs_affected:
+        # ARK ETFs - don't flag these, they weren't affected by pagination bug
+        return False
+    
+    # For affected iShares ETFs, check for specific known bad patterns
+    # These are the actual bad change counts we saw
     if etf_ticker == 'IWM' and change_count > 900:
         return True
-    if etf_ticker == 'IWC' and change_count > 600:
+    if etf_ticker == 'IWC' and change_count > 300:
         return True
-    if etf_ticker == 'IWO' and change_count > 500:
+    if etf_ticker == 'IWO' and change_count > 100:
+        return True
+    if etf_ticker == 'IVV' and change_count > 250:  # IVV has 509 holdings, so >250 is suspicious
         return True
     
-    return change_count > threshold
+    return False
 
 def main():
     import argparse

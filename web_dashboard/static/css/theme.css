@@ -56,6 +56,9 @@
     /* blue-100 */
     --color-info-text: #1e40af;
     /* blue-800 */
+
+    /* Input focus ring (accent with 30% opacity) */
+    --color-accent-ring: rgba(124, 58, 237, 0.3);
 }
 
 /* Explicit Light Mode */
@@ -169,6 +172,9 @@
     /* blue-500 @ 20% */
     --color-info-text: #93c5fd;
     /* blue-300 */
+
+    /* Input focus ring (accent-brighter with 30% opacity) */
+    --color-accent-ring: rgba(167, 139, 250, 0.3);
 }
 
 /* Midnight Tokyo Theme - Cyberpunk/Neon */
@@ -219,6 +225,9 @@
     --color-info-bg: rgba(125, 207, 255, 0.15);
     /* Tokyo Blue */
     --color-info-text: #7dcfff;
+
+    /* Input focus ring */
+    --color-accent-ring: rgba(240, 0, 208, 0.3);
 }
 
 /* Abyss Theme - Deep Ocean/Void */
@@ -271,6 +280,9 @@
     --color-info-bg: rgba(121, 134, 203, 0.1);
     /* Indigo/Blue */
     --color-info-text: #7986cb;
+
+    /* Input focus ring */
+    --color-accent-ring: rgba(100, 255, 218, 0.3);
 }
 
 
@@ -306,6 +318,7 @@
         --color-warning-text: #854d0e;
         --color-info-bg: #dbeafe;
         --color-info-text: #1e40af;
+        --color-accent-ring: rgba(124, 58, 237, 0.3);
     }
 }
 
@@ -340,6 +353,7 @@
         --color-warning-text: #fde047;
         --color-info-bg: rgba(59, 130, 246, 0.2);
         --color-info-text: #93c5fd;
+        --color-accent-ring: rgba(167, 139, 250, 0.3);
     }
 }
 
@@ -390,4 +404,55 @@ body {
     #sidebar {
         transform: none !important;
     }
+}
+
+/* --- Standardized Form Global Styles --- */
+
+/* Base Input/Select/Textarea styling */
+input,
+select,
+textarea {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+    transition: all 0.2s ease-in-out;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none !important;
+    border-color: var(--color-accent) !important;
+    box-shadow: 0 0 0 4px var(--color-accent-ring) !important;
+}
+
+/* Placeholder visibility */
+::placeholder {
+    color: var(--text-tertiary) !important;
+    opacity: 0.8;
+}
+
+/* Fix for Chrome/Webkit autofill background forcing white/yellow */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px var(--bg-tertiary) inset !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Dark mode select icons (dropdown arrow) */
+[data-theme="dark"] select,
+[data-theme="midnight-tokyo"] select,
+[data-theme="abyss"] select,
+.dark select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
 }

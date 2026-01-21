@@ -75,16 +75,14 @@
                         <i class="fas fa-search text-text-secondary"></i>
                     </div>
                     <input type="text" id="search" name="search" value="{{ filters.search }}"
-                        class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full pl-10 p-2.5"
-                        placeholder="Search articles...">
+                        class="border rounded-lg block w-full pl-10 p-2.5" placeholder="Search articles...">
                 </div>
             </div>
 
             <!-- Ticker Filter -->
             <div>
                 <label for="ticker" class="block mb-2 text-sm font-medium text-text-primary">Ticker</label>
-                <select id="ticker" name="ticker"
-                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                <select id="ticker" name="ticker" class="border rounded-lg block w-full p-2.5">
                     <option value="All" {% if filters.ticker=='All' %}selected{% endif %}>All Tickers</option>
                     {% for t in unique_tickers %}
                     <option value="{{ t }}" {% if filters.ticker==t %}selected{% endif %}>{{ t }}</option>
@@ -95,8 +93,7 @@
             <!-- Date Range -->
             <div>
                 <label for="date_range" class="block mb-2 text-sm font-medium text-text-primary">Date Range</label>
-                <select id="date_range" name="date_range"
-                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                <select id="date_range" name="date_range" class="border rounded-lg block w-full p-2.5">
                     <option value="Last 7 days" {% if filters.date_range=='Last 7 days' %}selected{% endif %}>Last 7
                         days</option>
                     <option value="Last 30 days" {% if filters.date_range=='Last 30 days' %}selected{% endif %}>Last 30
@@ -198,12 +195,12 @@
                             <!-- Sentiment Badge -->
                             {% if article.sentiment == 'positive' or article.sentiment == 'bullish' %}
                             <span
-                                class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text">
+                                class="bg-theme-success-bg/70 text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text">
                                 <i class="fas fa-arrow-up mr-1 user-select-none"></i>Bullish
                             </span>
                             {% elif article.sentiment == 'negative' or article.sentiment == 'bearish' %}
                             <span
-                                class="bg-theme-error-bg text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text">
+                                class="bg-theme-error-bg/70 text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text">
                                 <i class="fas fa-arrow-down mr-1 user-select-none"></i>Bearish
                             </span>
                             {% elif article.sentiment %}
@@ -233,7 +230,7 @@
                     <div class="flex flex-wrap gap-1 justify-end max-w-xs">
                         {% for ticker in article.tickers|default([]) %}
                         <a href="/research?ticker={{ ticker }}"
-                            class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2 py-0.5 rounded hover:bg-theme-info-bg/80">
+                            class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2 py-0.5 rounded border border-theme-info-text hover:bg-theme-info-bg/80">
                             ${{ ticker }}
                         </a>
                         {% endfor %}

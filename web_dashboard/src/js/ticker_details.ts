@@ -346,21 +346,43 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
     if (tickerLogo && basicInfo.logo_url) {
         // Use higher resolution for larger display (size=256 instead of 64)
         const largeLogoUrl = basicInfo.logo_url.replace('size=64', 'size=256');
-        tickerLogo.src = largeLogoUrl;
-        tickerLogo.alt = `${basicInfo.ticker || ''} logo`;
-        tickerLogo.classList.remove('hidden');
-        // Handle image load errors gracefully - try fallback
+        const ticker = basicInfo.ticker || '';
+        
+        // Clear any existing error handlers and reset state
+        tickerLogo.onerror = null;
+        tickerLogo.onload = null;
+        
+        // Set alt text
+        tickerLogo.alt = `${ticker} logo`;
+        
+        // Handle image load errors gracefully - try fallback (matches dashboard pattern)
+        let fallbackAttempted = false;
         tickerLogo.onerror = function () {
+            if (fallbackAttempted) {
+                // Already tried fallback, hide the image
+                tickerLogo.classList.add('hidden');
+                tickerLogo.onerror = null;
+                return;
+            }
+
+            // Mark that we've attempted fallback
+            fallbackAttempted = true;
+
             // Try Yahoo Finance as fallback if Parqet fails
-            const ticker = basicInfo.ticker || '';
             const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
             if (tickerLogo.src !== yahooUrl) {
                 tickerLogo.src = yahooUrl;
             } else {
-                // Both failed, hide the image
+                // Same URL, hide immediately
                 tickerLogo.classList.add('hidden');
+                tickerLogo.onerror = null;
             }
         };
+        
+        // Set src AFTER error handler is attached - this is key!
+        // Also remove hidden class so image can load
+        tickerLogo.classList.remove('hidden');
+        tickerLogo.src = largeLogoUrl;
     } else if (tickerLogo) {
         tickerLogo.classList.add('hidden');
     }

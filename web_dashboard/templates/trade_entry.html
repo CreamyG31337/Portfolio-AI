@@ -74,7 +74,7 @@
                                 <span
                                     class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-text-secondary">🔍</span>
                                 <input type="text" id="ticker" name="ticker"
-                                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full ps-10 p-2.5 uppercase transition-colors duration-300"
+                                    class="border text-sm rounded-lg block w-full ps-10 p-2.5 uppercase transition-colors duration-300"
                                     placeholder="AAPL" autocomplete="off" aria-required="true" required>
                             </div>
                         </div>
@@ -83,8 +83,8 @@
                             <label for="shares" class="block mb-2 text-sm font-medium text-text-primary">Shares <span
                                     class="text-theme-error-text">*</span></label>
                             <input type="number" id="shares" name="shares" step="any" min="0.000001"
-                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
-                                inputmode="decimal" aria-required="true" autocomplete="off" required>
+                                class="border text-sm rounded-lg block w-full p-2.5" inputmode="decimal"
+                                aria-required="true" autocomplete="off" required>
                         </div>
                     </div>
 
@@ -97,16 +97,15 @@
                                 <span
                                     class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-text-secondary">$</span>
                                 <input type="number" id="price" name="price" step="0.01" min="0.01"
-                                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full ps-8 p-2.5"
-                                    inputmode="decimal" aria-required="true" autocomplete="off" required>
+                                    class="border text-sm rounded-lg block w-full ps-8 p-2.5" inputmode="decimal"
+                                    aria-required="true" autocomplete="off" required>
                             </div>
                         </div>
 
                         <div>
                             <label for="currency"
                                 class="block mb-2 text-sm font-medium text-text-primary">Currency</label>
-                            <select id="currency" name="currency"
-                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                            <select id="currency" name="currency" class="border text-sm rounded-lg block w-full p-2.5">
                                 <option value="USD" selected>USD - US Dollar</option>
                                 <option value="CAD">CAD - Canadian Dollar</option>
                             </select>
@@ -117,15 +116,13 @@
                                 <label for="trade-date" class="block mb-2 text-sm font-medium text-text-primary">Date
                                     <span class="text-theme-error-text">*</span></label>
                                 <input type="date" id="trade-date" name="date"
-                                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
-                                    aria-required="true" required>
+                                    class="border text-sm rounded-lg block w-full p-2.5" aria-required="true" required>
                             </div>
                             <div>
                                 <label for="trade-time" class="block mb-2 text-sm font-medium text-text-primary">Time
                                     <span class="text-theme-error-text">*</span></label>
                                 <input type="time" id="trade-time" name="time"
-                                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
-                                    aria-required="true" required>
+                                    class="border text-sm rounded-lg block w-full p-2.5" aria-required="true" required>
                             </div>
                         </div>
                     </div>
@@ -134,8 +131,7 @@
                 <div class="pt-4 border-t border-border">
                     <label for="reason" class="block mb-2 text-sm font-medium text-text-primary">Reason /
                         Notes (Optional)</label>
-                    <input type="text" id="reason" name="reason"
-                        class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
+                    <input type="text" id="reason" name="reason" class="border text-sm rounded-lg block w-full p-2.5"
                         placeholder="e.g. Rebalancing, Limit Fill">
                 </div>
 
@@ -158,8 +154,7 @@
                 <div>
                     <label for="email-text" class="block mb-2 text-sm font-medium text-text-primary">Paste
                         Trade Confirmation Email</label>
-                    <textarea id="email-text" rows="10"
-                        class="block p-2.5 w-full text-sm text-text-primary bg-dashboard-background rounded-lg border border-border focus:ring-accent focus:border-accent font-mono"
+                    <textarea id="email-text" rows="10" class="block p-2.5 w-full text-sm rounded-lg border font-mono"
                         placeholder="Your order has been filled..."></textarea>
                 </div>
 
