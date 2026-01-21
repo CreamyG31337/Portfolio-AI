@@ -128,7 +128,7 @@ function renderContributors(contribs: ContributorData[]): void {
                     <p class="text-sm text-text-secondary mb-2">${contrib.email || 'No email'}</p>
                     <p class="text-xs text-text-secondary">ID: ${contrib.id.substring(0, 8)}...</p>
                 </div>
-                <button class="view-contributions-btn text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200"
+                <button class="view-contributions-btn text-purple-600 dark:text-purple-400 bg-transparent border border-purple-600 dark:border-purple-400 hover:bg-purple-600/10 dark:hover:bg-purple-400/10 focus:ring-4 focus:ring-purple-600/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200"
                         data-contributor-id="${contrib.id}">
                     <i class="fas fa-eye mr-1"></i>View Contributions
                 </button>
