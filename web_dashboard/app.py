@@ -101,6 +101,16 @@ def inject_csrf_enabled():
     """Make CSRF_ENABLED available to all templates"""
     return {'CSRF_ENABLED': CSRF_ENABLED}
 
+# Add Security Headers
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to response"""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
+
 # Configure CORS to allow credentials from Vercel deployment
 CORS(app, 
      supports_credentials=True,
