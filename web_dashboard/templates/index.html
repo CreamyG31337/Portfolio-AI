@@ -10,7 +10,7 @@
     <div>
         <label for="fund-select" class="text-sm text-blue-100 block">Select Fund</label>
         <select id="fund-select"
-            class="bg-white text-gray-900 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            class="bg-dashboard-surface text-text-primary border border-border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent">
             <option value="">Select Fund</option>
         </select>
     </div>
@@ -29,59 +29,59 @@
 {% block content %}
 <!-- Performance Metrics Cards -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-    <div class="bg-white rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
         <div class="flex items-center">
-            <div class="p-3 rounded-full bg-blue-100 text-blue-600">
+            <div class="p-3 rounded-full bg-theme-info-bg text-theme-info-text">
                 <i class="fas fa-dollar-sign text-2xl"></i>
             </div>
             <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Total Value</p>
-                <p class="text-2xl font-bold text-gray-900" id="total-value">$0.00</p>
+                <p class="text-sm font-medium text-text-secondary">Total Value</p>
+                <p class="text-2xl font-bold text-text-primary" id="total-value">$0.00</p>
             </div>
         </div>
     </div>
 
-    <div class="bg-white rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
         <div class="flex items-center">
-            <div class="p-3 rounded-full bg-green-100 text-green-600">
+            <div class="p-3 rounded-full bg-theme-success-bg text-theme-success-text">
                 <i class="fas fa-chart-line text-2xl"></i>
             </div>
             <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Performance</p>
-                <p class="text-2xl font-bold" id="performance-pct">0.00%</p>
+                <p class="text-sm font-medium text-text-secondary">Performance</p>
+                <p class="text-2xl font-bold text-text-primary" id="performance-pct">0.00%</p>
             </div>
         </div>
     </div>
 
-    <div class="bg-white rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-purple-100 text-purple-600">
                 <i class="fas fa-coins text-2xl"></i>
             </div>
             <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Unrealized P&L</p>
-                <p class="text-2xl font-bold" id="unrealized-pnl">$0.00</p>
+                <p class="text-sm font-medium text-text-secondary">Unrealized P&L</p>
+                <p class="text-2xl font-bold text-text-primary" id="unrealized-pnl">$0.00</p>
             </div>
         </div>
     </div>
 
-    <div class="bg-white rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
         <div class="flex items-center">
-            <div class="p-3 rounded-full bg-orange-100 text-orange-600">
+            <div class="p-3 rounded-full bg-theme-warning-bg text-theme-warning-text">
                 <i class="fas fa-exchange-alt text-2xl"></i>
             </div>
             <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Total Trades</p>
-                <p class="text-2xl font-bold text-gray-900" id="total-trades">0</p>
+                <p class="text-sm font-medium text-text-secondary">Total Trades</p>
+                <p class="text-2xl font-bold text-text-primary" id="total-trades">0</p>
             </div>
         </div>
     </div>
 </div>
 
 <!-- Performance Chart -->
-<div class="bg-white rounded-lg shadow-lg p-6 mb-8">
-    <h2 class="text-2xl font-bold text-gray-900 mb-4">📊 Performance Over Time</h2>
-    <div class="mb-2 text-sm text-gray-500 md:hidden">
+<div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-8">
+    <h2 class="text-2xl font-bold text-text-primary mb-4">📊 Performance Over Time</h2>
+    <div class="mb-2 text-sm text-text-tertiary md:hidden">
         💡 Tip: Rotate your device for better viewing
     </div>
     <div id="performance-chart" class="h-[500px] overflow-x-auto"></div>
@@ -90,10 +90,10 @@
 <!-- Current Positions and Recent Trades -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
     <!-- Current Positions -->
-    <div class="bg-white rounded-lg shadow-lg p-6">
-        <h2 class="text-2xl font-bold text-gray-900 mb-4">💼 Current Positions</h2>
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6">
+        <h2 class="text-2xl font-bold text-text-primary mb-4">💼 Current Positions</h2>
         <div id="positions-container">
-            <div class="text-center text-gray-500 py-8">
+            <div class="text-center text-text-tertiary py-8">
                 <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
                 <p>Loading positions...</p>
             </div>
@@ -101,10 +101,10 @@
     </div>
 
     <!-- Recent Trades -->
-    <div class="bg-white rounded-lg shadow-lg p-6">
-        <h2 class="text-2xl font-bold text-gray-900 mb-4">📋 Recent Trades</h2>
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6">
+        <h2 class="text-2xl font-bold text-text-primary mb-4">📋 Recent Trades</h2>
         <div id="trades-container">
-            <div class="text-center text-gray-500 py-8">
+            <div class="text-center text-text-tertiary py-8">
                 <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
                 <p>Loading trades...</p>
             </div>
@@ -113,29 +113,29 @@
 </div>
 
 <!-- Cash Balances -->
-<div class="bg-white rounded-lg shadow-lg p-6 mt-8">
-    <h2 class="text-2xl font-bold text-gray-900 mb-4">💰 Cash Balances</h2>
+<div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mt-8">
+    <h2 class="text-2xl font-bold text-text-primary mb-4">💰 Cash Balances</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="bg-blue-50 rounded-lg p-4">
+        <div class="bg-theme-info-bg rounded-lg p-4">
             <div class="flex items-center justify-between">
-                <span class="text-lg font-medium text-gray-700">CAD Balance</span>
-                <span class="text-2xl font-bold text-blue-600" id="cad-balance">$0.00</span>
+                <span class="text-lg font-medium text-theme-info-text">CAD Balance</span>
+                <span class="text-2xl font-bold text-theme-info-text" id="cad-balance">$0.00</span>
             </div>
         </div>
-        <div class="bg-green-50 rounded-lg p-4">
+        <div class="bg-theme-success-bg rounded-lg p-4">
             <div class="flex items-center justify-between">
-                <span class="text-lg font-medium text-gray-700">USD Balance</span>
-                <span class="text-2xl font-bold text-green-600" id="usd-balance">$0.00</span>
+                <span class="text-lg font-medium text-theme-success-text">USD Balance</span>
+                <span class="text-2xl font-bold text-theme-success-text" id="usd-balance">$0.00</span>
             </div>
         </div>
     </div>
 </div>
 
 <!-- Fund Contributors/Holders -->
-<div class="bg-white rounded-lg shadow-lg p-6 mt-8">
-    <h2 class="text-2xl font-bold text-gray-900 mb-4">👥 Fund Contributors</h2>
+<div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mt-8">
+    <h2 class="text-2xl font-bold text-text-primary mb-4">👥 Fund Contributors</h2>
     <div id="contributors-container">
-        <div class="text-center text-gray-500 py-8">
+        <div class="text-center text-text-tertiary py-8">
             <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
             <p>Loading contributors...</p>
         </div>

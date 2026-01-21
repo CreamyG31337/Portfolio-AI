@@ -1,5 +1,6 @@
 <!-- Header with hamburger menu and user dropdown -->
-<header id="main-header" class="gradient-bg text-white shadow-lg sticky top-0 z-50 transition-transform duration-300" data-page-id="{{ current_page|default('unknown') }}">
+<header id="main-header" class="gradient-bg text-white shadow-lg sticky top-0 z-50 transition-transform duration-300"
+    data-page-id="{{ current_page|default('unknown') }}">
     <div class="container mx-auto px-4 py-4">
         <div class="flex items-center justify-between">
             <!-- Hamburger menu (mobile only) -->
@@ -33,15 +34,17 @@
                         <i class="fas fa-user-circle text-2xl"></i>
                     </button>
                     <div id="user-menu"
-                        class="hidden z-50 absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 border border-gray-200">
-                        <a href="/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        class="hidden z-50 absolute right-0 mt-2 w-48 bg-dashboard-surface rounded-lg shadow-lg py-1 border border-border">
+                        <a href="/settings"
+                            class="block px-4 py-2 text-sm text-text-secondary hover:bg-dashboard-surface-alt">
                             <i class="fas fa-cog mr-2"></i>Settings
                         </a>
-                        <a href="/" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        <a href="/" class="block px-4 py-2 text-sm text-text-secondary hover:bg-dashboard-surface-alt">
                             <i class="fas fa-home mr-2"></i>Dashboard
                         </a>
-                        <hr class="my-1">
-                        <a href="/api/auth/logout" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                        <hr class="my-1 border-border">
+                        <a href="/api/auth/logout"
+                            class="block px-4 py-2 text-sm text-theme-error-text hover:bg-theme-error-bg">
                             <i class="fas fa-sign-out-alt mr-2"></i>Logout
                         </a>
                     </div>

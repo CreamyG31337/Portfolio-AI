@@ -57,18 +57,16 @@
     </div>
 
     <!-- Thesis Section (Dynamic) -->
-    <div id="thesis-container"
-        class="hidden mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
-        <h3 class="text-lg font-bold text-gray-900 dark:text-blue-100 flex items-center gap-2">
+    <div id="thesis-container" class="hidden mb-6 p-4 bg-dashboard-surface border border-border rounded-lg shadow-sm">
+        <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
             <span class="text-xl">📋</span> <span id="thesis-title">Investment Thesis</span>
         </h3>
-        <div id="thesis-content"
-            class="mt-2 text-sm text-gray-700 dark:text-gray-300 prose dark:prose-invert max-w-none">
+        <div id="thesis-content" class="mt-2 text-sm text-text-secondary prose dark:prose-invert max-w-none">
             <!-- Content -->
         </div>
         <!-- Pillars Section (Dynamic) -->
         <div id="thesis-pillars"
-            class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 pt-6 border-t border-border">
             <!-- Pillars will be injected here -->
         </div>
     </div>
@@ -76,38 +74,38 @@
     <!-- Key Metrics Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <!-- Total Value -->
-        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-            <h5 class="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Total Value</h5>
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+            <h5 class="mb-1 text-sm font-medium text-text-tertiary">Total Value</h5>
             <div class="flex items-baseline gap-2">
-                <span class="text-2xl font-bold text-gray-900 dark:text-white" id="metric-total-value">--</span>
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400" id="metric-currency">CAD</span>
+                <span class="text-2xl font-bold text-text-primary" id="metric-total-value">--</span>
+                <span class="text-xs font-medium text-text-tertiary" id="metric-currency">CAD</span>
             </div>
         </div>
 
         <!-- Day Change -->
-        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-            <h5 class="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Day Change</h5>
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+            <h5 class="mb-1 text-sm font-medium text-text-tertiary">Day Change</h5>
             <div class="flex items-baseline gap-2">
-                <span class="text-2xl font-bold" id="metric-day-change">--</span>
+                <span class="text-2xl font-bold text-text-primary" id="metric-day-change">--</span>
                 <span class="text-sm font-medium px-2 py-0.5 rounded" id="metric-day-pct">--%</span>
             </div>
         </div>
 
         <!-- Unrealized P&L -->
-        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-            <h5 class="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Unrealized P&L</h5>
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+            <h5 class="mb-1 text-sm font-medium text-text-tertiary">Unrealized P&L</h5>
             <div class="flex items-baseline gap-2">
-                <span class="text-2xl font-bold" id="metric-total-pnl">--</span>
+                <span class="text-2xl font-bold text-text-primary" id="metric-total-pnl">--</span>
                 <span class="text-sm font-medium px-2 py-0.5 rounded" id="metric-total-pnl-pct">--%</span>
             </div>
         </div>
 
         <!-- Cash Balance -->
-        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-            <h5 class="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Cash Balance</h5>
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+            <h5 class="mb-1 text-sm font-medium text-text-tertiary">Cash Balance</h5>
             <div class="flex items-baseline gap-2">
-                <span class="text-2xl font-bold text-gray-900 dark:text-white" id="metric-cash">--</span>
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">(Combined)</span>
+                <span class="text-2xl font-bold text-text-primary" id="metric-cash">--</span>
+                <span class="text-xs font-medium text-text-tertiary">(Combined)</span>
             </div>
         </div>
     </div>
@@ -143,20 +141,18 @@
     <!-- Biggest Daily Movers -->
     <div id="movers-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <!-- Top Gainers -->
-        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <span class="text-green-500">🟢</span> Top Gainers
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+            <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+                <span class="text-theme-success-text">🟢</span> Top Gainers
             </h3>
-            <div
-                class="relative overflow-x-auto max-h-[400px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+            <div class="relative overflow-x-auto max-h-[400px] overflow-y-auto border border-border rounded-lg">
                 <div id="gainers-spinner"
-                    class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 dark:border-green-400">
+                    class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-theme-success-text">
                     </div>
                 </div>
-                <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-                    <thead
-                        class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
+                <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                    <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
                         <tr>
                             <th scope="col" class="px-4 py-3">Ticker</th>
                             <th scope="col" class="px-4 py-3">Company</th>
@@ -174,19 +170,17 @@
         </div>
 
         <!-- Top Losers -->
-        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <span class="text-red-500">🔴</span> Top Losers
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+            <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+                <span class="text-theme-error-text">🔴</span> Top Losers
             </h3>
-            <div
-                class="relative overflow-x-auto max-h-[400px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+            <div class="relative overflow-x-auto max-h-[400px] overflow-y-auto border border-border rounded-lg">
                 <div id="losers-spinner"
-                    class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 dark:border-red-400"></div>
+                    class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-theme-error-text"></div>
                 </div>
-                <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-                    <thead
-                        class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
+                <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                    <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
                         <tr>
                             <th scope="col" class="px-4 py-3">Ticker</th>
                             <th scope="col" class="px-4 py-3">Company</th>
@@ -207,32 +201,31 @@
     <!-- Main Charts -->
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6 w-full">
         <!-- Performance Chart (2/3 width) -->
-        <div
-            class="xl:col-span-2 p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+        <div class="xl:col-span-2 p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-900 dark:text-white">Portfolio Performance</h3>
-                <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                <h3 class="text-lg font-bold text-text-primary">Portfolio Performance</h3>
+                <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
                     <input type="checkbox" id="use-solid-lines"
-                        class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        class="rounded border-border text-accent focus:ring-accent">
                     <span>📱 Solid Lines Only (for mobile)</span>
                 </label>
             </div>
             <div class="w-full relative min-h-[500px]" id="performance-chart">
                 <!-- Loading spinner -->
                 <div id="performance-chart-spinner"
-                    class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
+                    class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent">
                     </div>
                 </div>
                 <!-- Plotly Chart -->
             </div>
 
             <!-- Individual Stock Performance (below main chart, same card) -->
-            <div class="border-t border-gray-200 dark:border-gray-600 mt-4 pt-4">
+            <div class="border-t border-border mt-4 pt-4">
                 <label class="flex items-center gap-2 cursor-pointer mb-4">
                     <input type="checkbox" id="show-individual-holdings"
-                        class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                    <span class="text-base font-semibold text-gray-900 dark:text-white">📊 Show Individual Stock
+                        class="rounded border-border text-accent focus:ring-accent">
+                    <span class="text-base font-semibold text-text-primary">📊 Show Individual Stock
                         Performance</span>
                 </label>
 
@@ -301,9 +294,8 @@
         <!-- Sector Allocation (1/3 width) -->
         <div class="xl:col-span-1 flex flex-col gap-6">
             <!-- Sector Allocation Chart -->
-            <div
-                class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 flex-shrink-0 h-[780px]">
-                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Sector Allocation</h3>
+            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm flex-shrink-0 h-[780px]">
+                <h3 class="text-lg font-bold text-text-primary mb-4">Sector Allocation</h3>
                 <div class="w-full relative h-[700px] min-h-[700px]" id="sector-chart">
                     <!-- Loading spinner -->
                     <div id="sector-chart-spinner"
@@ -317,12 +309,12 @@
             </div>
 
             <!-- Currency Exposure Section -->
-            <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white">Currency Exposure</h3>
-                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600 dark:text-gray-400">
+                    <h3 class="text-lg font-bold text-text-primary">Currency Exposure</h3>
+                    <label class="flex items-center gap-2 cursor-pointer text-sm text-text-secondary">
                         <input type="checkbox" id="inverse-exchange-rate"
-                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                            class="rounded border-border text-accent focus:ring-accent bg-dashboard-surface">
                         <span>Show CAD/USD</span>
                     </label>
                 </div>
@@ -372,8 +364,8 @@
     </div>
 
     <!-- P&L by Position Chart -->
-    <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 mb-6">
-        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">P&L by Position</h3>
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm mb-6">
+        <h3 class="text-lg font-bold text-text-primary mb-4">P&L by Position</h3>
         <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
             💡 <strong>Winning positions with gains</strong> show overlay bars (green unrealized + gold dividends).
             <strong>Winning positions with losses offset by dividends</strong> show red bar below axis (loss) + gold bar
@@ -390,10 +382,10 @@
 
     <!-- Dividends Section -->
     <div class="mb-6">
-        <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <span class="text-green-500">💰</span> Dividends
+                <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
+                    <span class="text-theme-success-text">💰</span> Dividends
                 </h3>
                 <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)" aria-expanded="true"
                     aria-controls="dividend-log-container"
@@ -452,8 +444,8 @@
     </div>
 
     <!-- Holdings Table -->
-    <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700 mb-6">
-        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Current Holdings</h3>
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm mb-6">
+        <h3 class="text-lg font-bold text-text-primary mb-4">Current Holdings</h3>
         <div class="relative w-full h-[500px]">
             <!-- Loading spinner -->
             <div id="holdings-grid-spinner"
@@ -465,8 +457,8 @@
     </div>
 
     <!-- Recent Activity -->
-    <div class="p-4 bg-white rounded-lg border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+        <h3 class="text-lg font-bold text-text-primary mb-4">Recent Activity</h3>
         <div
             class="relative overflow-x-auto max-h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
             <!-- Loading spinner -->

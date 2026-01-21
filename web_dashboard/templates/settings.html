@@ -11,7 +11,8 @@
 {% block content %}
 <div class="max-w-4xl mx-auto">
     <!-- Timezone Settings -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div
+        class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
         <h2 class="text-2xl font-bold text-text-primary mb-4">🌍 Timezone</h2>
         <p class="text-text-secondary mb-4">Select your timezone. All times in the dashboard will be displayed in this
             timezone.</p>
@@ -35,14 +36,19 @@
             </select>
         </div>
 
-        <div id="timezone-preview" class="text-sm text-gray-500 mb-4"></div>
+        <div id="timezone-preview" class="text-sm text-text-tertiary mb-4"></div>
 
-        <div id="timezone-success" class="hidden bg-green-100 text-green-800 border border-green-400 rounded-lg px-4 py-3 mt-2">✅ Timezone saved successfully!</div>
-        <div id="timezone-error" class="hidden bg-red-100 text-red-800 border border-red-400 rounded-lg px-4 py-3 mt-2">❌ Failed to save timezone. Please try again.</div>
+        <div id="timezone-success"
+            class="hidden bg-theme-success-bg text-theme-success-text border border-theme-success-text rounded-lg px-4 py-3 mt-2">
+            ✅ Timezone saved successfully!</div>
+        <div id="timezone-error"
+            class="hidden bg-theme-error-bg text-theme-error-text border border-theme-error-text rounded-lg px-4 py-3 mt-2">
+            ❌ Failed to save timezone. Please try again.</div>
     </div>
 
     <!-- Currency Settings -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div
+        class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
         <h2 class="text-2xl font-bold text-text-primary mb-4">💰 Currency</h2>
         <p class="text-text-secondary mb-4">Select your preferred display currency. All values will be converted and
             displayed in this currency.</p>
@@ -57,12 +63,17 @@
             </select>
         </div>
 
-        <div id="currency-success" class="hidden bg-green-100 text-green-800 border border-green-400 rounded-lg px-4 py-3 mt-2">✅ Currency saved successfully!</div>
-        <div id="currency-error" class="hidden bg-red-100 text-red-800 border border-red-400 rounded-lg px-4 py-3 mt-2">❌ Failed to save currency. Please try again.</div>
+        <div id="currency-success"
+            class="hidden bg-theme-success-bg text-theme-success-text border border-theme-success-text rounded-lg px-4 py-3 mt-2">
+            ✅ Currency saved successfully!</div>
+        <div id="currency-error"
+            class="hidden bg-theme-error-bg text-theme-error-text border border-theme-error-text rounded-lg px-4 py-3 mt-2">
+            ❌ Failed to save currency. Please try again.</div>
     </div>
 
     <!-- Theme Settings -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div
+        class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
         <h2 class="text-2xl font-bold text-text-primary mb-4">🎨 Theme</h2>
         <p class="text-text-secondary mb-4">Override your browser/system theme preference. 'System Default' follows your
             OS setting.</p>
@@ -81,7 +92,7 @@
             </select>
         </div>
 
-        <div id="theme-preview" class="text-sm text-gray-500 mb-4">
+        <div id="theme-preview" class="text-sm text-text-tertiary mb-4">
             {% if current_theme == 'system' %}
             ℹ️ Theme will follow your browser/OS dark mode setting
             {% elif current_theme == 'dark' %}
@@ -103,39 +114,48 @@
             <p class="text-xs text-text-secondary mt-2">Open the color testing tool to preview and customize theme
                 colors with live examples.</p>
         </div>
-        <div id="theme-success" class="hidden bg-green-100 text-green-800 border border-green-400 rounded-lg px-4 py-3 mt-2">✅ Theme saved successfully!</div>
-        <div id="theme-error" class="hidden bg-red-100 text-red-800 border border-red-400 rounded-lg px-4 py-3 mt-2">❌ Failed to save theme. Please try again.
+        <div id="theme-success"
+            class="hidden bg-theme-success-bg text-theme-success-text border border-theme-success-text rounded-lg px-4 py-3 mt-2">
+            ✅ Theme saved successfully!</div>
+        <div id="theme-error"
+            class="hidden bg-theme-error-bg text-theme-error-text border border-theme-error-text rounded-lg px-4 py-3 mt-2">
+            ❌ Failed to save theme. Please try again.
         </div>
     </div>
 
     <!-- Security Settings -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div
+        class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
         <h2 class="text-2xl font-bold text-text-primary mb-4">🔒 Security</h2>
         <p class="text-text-secondary mb-4">Manage your account security settings.</p>
 
         <form id="change-password-form" class="mb-4">
             <div class="mb-4">
                 <label for="new-password" class="block text-sm font-medium text-text-secondary mb-2">
-                    New Password <span class="text-red-500">*</span>
+                    New Password <span class="text-theme-error-text">*</span>
                 </label>
                 <input type="password" id="new-password" required minlength="6"
                     class="w-full px-4 py-2 bg-dashboard-surface border border-border text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent">
             </div>
             <div class="mb-4">
                 <label for="confirm-password" class="block text-sm font-medium text-text-secondary mb-2">
-                    Confirm New Password <span class="text-red-500">*</span>
+                    Confirm New Password <span class="text-theme-error-text">*</span>
                 </label>
                 <input type="password" id="confirm-password" required minlength="6"
                     class="w-full px-4 py-2 bg-dashboard-surface border border-border text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent">
             </div>
             <button type="submit" id="change-password-btn"
-                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+                class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg font-medium transition-colors">
                 Update Password
             </button>
         </form>
 
-        <div id="password-success" class="hidden bg-green-100 text-green-800 border border-green-400 rounded-lg px-4 py-3 mt-2">✅ Password updated successfully!</div>
-        <div id="password-error" class="hidden bg-red-100 text-red-800 border border-red-400 rounded-lg px-4 py-3 mt-2">❌ Failed to update password.</div>
+        <div id="password-success"
+            class="hidden bg-theme-success-bg text-theme-success-text border border-theme-success-text rounded-lg px-4 py-3 mt-2">
+            ✅ Password updated successfully!</div>
+        <div id="password-error"
+            class="hidden bg-theme-error-bg text-theme-error-text border border-theme-error-text rounded-lg px-4 py-3 mt-2">
+            ❌ Failed to update password.</div>
     </div>
 </div>
 {% endblock %}

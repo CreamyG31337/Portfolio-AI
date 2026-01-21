@@ -7,19 +7,22 @@
     {% block extra_head %}{% endblock %}
 </head>
 
-<body class="bg-gray-100 min-h-screen" data-page-id="{{ current_page|default('unknown') }}">
+<body class="bg-dashboard-background min-h-screen" data-page-id="{{ current_page|default('unknown') }}">
     <!-- Accessibility: Skip to main content -->
     <a href="#main-content"
-        class="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:z-[100] focus:p-4 focus:bg-white focus:text-blue-700 focus:shadow-lg focus:font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-br-lg transition-transform duration-200">
+        class="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:z-[100] focus:p-4 focus:bg-dashboard-surface focus:text-accent focus:shadow-lg focus:font-bold focus:outline-none focus:ring-2 focus:ring-accent rounded-br-lg transition-transform duration-200 sematic-focus">
         Skip to main content
     </a>
 
     <!-- Header with hamburger menu and user dropdown -->
-    <header id="main-header" class="gradient-bg text-white shadow-lg sticky top-0 z-50 transition-transform duration-300" data-page-id="{{ current_page|default('unknown') }}">
+    <header id="main-header"
+        class="gradient-bg text-white shadow-lg sticky top-0 z-50 transition-transform duration-300"
+        data-page-id="{{ current_page|default('unknown') }}">
         <div class="container mx-auto px-4 py-4">
             <div class="flex items-center justify-between">
                 <!-- Hamburger menu (mobile only) -->
-                <button id="sidebar-toggle" data-drawer-target="sidebar" data-drawer-toggle="sidebar" aria-controls="sidebar" aria-expanded="false" aria-label="Toggle navigation menu"
+                <button id="sidebar-toggle" data-drawer-target="sidebar" data-drawer-toggle="sidebar"
+                    aria-controls="sidebar" aria-expanded="false" aria-label="Toggle navigation menu"
                     class="md:hidden p-2 rounded-lg hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50">
                     <i class="fas fa-bars text-xl" aria-hidden="true"></i>
                 </button>
@@ -44,20 +47,24 @@
 
                     <!-- User dropdown menu -->
                     <div class="relative">
-                        <button id="user-menu-button" data-dropdown-toggle="user-menu" aria-controls="user-menu" aria-haspopup="true" aria-expanded="false" aria-label="User menu"
+                        <button id="user-menu-button" data-dropdown-toggle="user-menu" aria-controls="user-menu"
+                            aria-haspopup="true" aria-expanded="false" aria-label="User menu"
                             class="flex items-center p-2 rounded-lg hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50">
                             <i class="fas fa-user-circle text-2xl" aria-hidden="true"></i>
                         </button>
                         <div id="user-menu"
-                            class="hidden z-50 absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 border border-gray-200">
-                            <a href="/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            class="hidden z-50 absolute right-0 mt-2 w-48 bg-dashboard-surface rounded-lg shadow-lg py-1 border border-border">
+                            <a href="/settings"
+                                class="block px-4 py-2 text-sm text-text-secondary hover:bg-dashboard-surface-alt">
                                 <i class="fas fa-cog mr-2"></i>Settings
                             </a>
-                            <a href="/" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <a href="/"
+                                class="block px-4 py-2 text-sm text-text-secondary hover:bg-dashboard-surface-alt">
                                 <i class="fas fa-home mr-2"></i>Dashboard
                             </a>
-                            <hr class="my-1">
-                            <a href="/api/auth/logout" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                            <hr class="my-1 border-border">
+                            <a href="/api/auth/logout"
+                                class="block px-4 py-2 text-sm text-theme-error-text hover:bg-theme-error-bg">
                                 <i class="fas fa-sign-out-alt mr-2"></i>Logout
                             </a>
                         </div>

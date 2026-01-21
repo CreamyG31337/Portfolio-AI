@@ -2,20 +2,19 @@
 <!-- Mobile: Flowbite drawer (hidden by default, toggled via hamburger) -->
 <!-- Desktop: Collapsible sidebar (visible, can be collapsed) -->
 <aside id="sidebar"
-    class="fixed top-0 left-0 z-40 h-screen bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-300 ease-in-out transform -translate-x-full md:translate-x-0"
+    class="fixed top-0 left-0 z-40 h-screen bg-dashboard-surface border-r border-border shadow-sm transition-all duration-300 ease-in-out transform -translate-x-full md:translate-x-0"
     aria-label="Sidebar" tabindex="-1" aria-labelledby="sidebar-label">
     <!-- Toggle Button (visible on desktop) -->
     <button id="sidebar-collapse-toggle"
-        class="hidden md:flex absolute top-20 right-0 z-50 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-l-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 items-center justify-center"
+        class="hidden md:flex absolute top-20 right-0 z-50 p-2 bg-dashboard-surface border border-border rounded-l-lg shadow-md hover:bg-dashboard-surface-alt transition-all duration-300 items-center justify-center"
         aria-label="Toggle sidebar">
         <i id="sidebar-toggle-icon"
-            class="fas fa-chevron-left text-gray-600 dark:text-gray-300 transition-transform duration-300"></i>
+            class="fas fa-chevron-left text-text-secondary transition-transform duration-300"></i>
     </button>
 
-    <div class="h-full px-3 pb-4 pt-24 overflow-y-auto bg-white dark:bg-gray-800 transition-all duration-300">
+    <div class="h-full px-3 pb-4 pt-24 overflow-y-auto bg-dashboard-surface transition-all duration-300">
         <div class="mb-4 mt-2 sidebar-content">
-            <h2
-                class="text-lg font-bold text-gray-900 dark:text-white px-2 whitespace-nowrap overflow-hidden sidebar-text">
+            <h2 class="text-lg font-bold text-text-primary px-2 whitespace-nowrap overflow-hidden sidebar-text">
                 Navigation</h2>
         </div>
 
@@ -24,7 +23,7 @@
             {% if navigation_links %}
             <li>
                 <a href="/dashboard"
-                    class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'dashboard' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                    class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'dashboard' %}bg-dashboard-surface-alt text-accent{% endif %}">
                     <span class="mr-3 text-lg flex-shrink-0">📈</span>
                     <span class="sidebar-text whitespace-nowrap overflow-hidden">Dashboard</span>
                 </a>
@@ -33,7 +32,7 @@
             {% if link.show %}
             <li>
                 <a href="{{ link.url }}"
-                    class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if link.active %}bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-400{% endif %}">
+                    class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if link.active %}bg-theme-info-bg text-theme-info-text{% endif %}">
                     <span class="mr-3 text-lg flex-shrink-0">{{ link.icon }}</span>
                     <span class="sidebar-text whitespace-nowrap overflow-hidden">{{ link.name }}</span>
                 </a>
@@ -43,7 +42,7 @@
             {% else %}
             <li>
                 <a href="/"
-                    class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                    class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt">
                     <span class="mr-3 text-lg flex-shrink-0">📈</span>
                     <span class="sidebar-text whitespace-nowrap overflow-hidden">Dashboard</span>
                 </a>
@@ -52,16 +51,16 @@
         </ul>
 
         <!-- Fund Selector (like Streamlit sidebar) -->
-        <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 sidebar-content">
+        <div class="mt-6 pt-4 border-t border-border sidebar-content">
             <div class="px-3 mb-2">
                 <label for="global-fund-select"
-                    class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase whitespace-nowrap overflow-hidden sidebar-text">
+                    class="text-xs font-semibold text-text-tertiary uppercase whitespace-nowrap overflow-hidden sidebar-text">
                     📊 Data Source
                 </label>
             </div>
             <div class="px-2">
                 <select id="global-fund-select"
-                    class="w-full p-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sidebar-select">
+                    class="w-full p-2 text-sm border border-border rounded-lg bg-dashboard-surface text-text-primary focus:ring-2 focus:ring-accent focus:border-accent sidebar-select">
                     {% if allow_all_funds is not defined or allow_all_funds %}
                     <option value="all" {% if not selected_fund or selected_fund=='all' %}selected{% endif %}>
                         All Funds</option>
@@ -81,96 +80,96 @@
 
         <!-- Admin section (if admin) -->
         {% if is_admin|default(false) %}
-        <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 sidebar-content">
+        <div class="mt-6 pt-6 border-t border-border sidebar-content">
             <div class="px-3 mb-2">
                 <span
-                    class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase whitespace-nowrap overflow-hidden sidebar-text">Admin</span>
+                    class="text-xs font-semibold text-text-tertiary uppercase whitespace-nowrap overflow-hidden sidebar-text">Admin</span>
             </div>
             <ul class="space-y-1">
                 <li>
                     <a href="/admin/scheduler"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'admin_scheduler' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_scheduler' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🔨</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Jobs Scheduler</span>
                         {% if scheduler_status == 'running' %}
                         <span
-                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-green-800 bg-green-100 rounded-full dark:bg-green-900 dark:text-green-300 sidebar-badge">Running</span>
+                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-success-text bg-theme-success-bg rounded-full sidebar-badge">Running</span>
                         {% else %}
                         <span
-                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-red-800 bg-red-100 rounded-full dark:bg-red-900 dark:text-red-300 sidebar-badge">Stopped</span>
+                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-error-text bg-theme-error-bg rounded-full sidebar-badge">Stopped</span>
                         {% endif %}
                     </a>
                 </li>
                 <li>
                     <a href="/admin/users"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'admin_users' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_users' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">👥</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">User Management</span>
                     </a>
                 </li>
                 <li>
                     <a href="/admin/contributors"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'admin_contributors' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_contributors' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">👤</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Contributors</span>
                     </a>
                 </li>
                 <li>
                     <a href="/admin/funds"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'admin_funds' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_funds' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🏦</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Fund Management</span>
                     </a>
                 </li>
                 <li>
                     <a href="/admin/trade-entry"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'admin_trade_entry' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_trade_entry' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">📈</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Trade Entry</span>
                     </a>
                 </li>
                 <li>
                     <a href="/admin/contributions"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'admin_contributions' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_contributions' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">💰</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Contributions</span>
                     </a>
                 </li>
                 <li>
                     <a href="/admin/ai-settings"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'admin_ai_settings' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_ai_settings' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🤖</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">AI Settings</span>
                     </a>
                 </li>
                 <li>
                     <a href="/admin/system"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'admin_system' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_system' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🖥️</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">System Monitor</span>
                     </a>
                 </li>
                 <li>
                     <a href="/logs"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page == 'admin_logs' %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_logs' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">📜</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Logs</span>
                     </a>
                 </li>
                 <li>
                     <a href="{{ url_for('dev_home') }}"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {% if current_page in ['dev_home', 'sql_interface'] %}bg-gray-100 dark:bg-gray-700 text-blue-700 dark:text-blue-400{% endif %}">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page in ['dev_home', 'sql_interface'] %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🛠️</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Developer Tools</span>
                     </a>
                 </li>
                 <li>
                     <a href="/streamlit/" target="_blank"
-                        class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt">
                         <span class="mr-3 text-lg flex-shrink-0">🔄</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Streamlit (Legacy)</span>
                         <span
-                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-yellow-800 bg-yellow-100 rounded-full dark:bg-yellow-900 dark:text-yellow-300 sidebar-badge">Old</span>
+                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-warning-text bg-theme-warning-bg rounded-full sidebar-badge">Old</span>
                     </a>
                 </li>
             </ul>
