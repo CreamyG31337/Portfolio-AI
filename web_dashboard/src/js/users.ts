@@ -883,7 +883,7 @@ function renderUnregisteredContributors(): void {
                 </div>
                 <div>
                     ${hasEmail
-                ? `<button class="send-invite-btn bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover text-sm shadow-sm" 
+                ? `<button class="send-invite-btn text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200" 
                                  data-email="${escapeHtmlForUsers(contrib.email || '')}">
                             <i class="fas fa-envelope mr-1"></i>Send Invite
                           </button>`
