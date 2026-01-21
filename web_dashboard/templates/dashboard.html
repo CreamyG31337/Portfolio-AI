@@ -17,16 +17,15 @@
         <div class="flex gap-4 items-center">
             <!-- Time Range -->
             <div class="inline-flex rounded-md shadow-sm" role="group">
-                <button type="button" data-range="1M"
-                    class="range-btn px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-s-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500 dark:focus:text-white">
+                <button type="button" data-range="1M" class="range-btn px-4 py-2 text-sm font-medium text-text-primary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent>
                     1M
                 </button>
-                <button type="button" data-range="3M"
-                    class="range-btn px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500 dark:focus:text-white">
+                <button type=" button" data-range="3M"
+                    class="range-btn px-4 py-2 text-sm font-medium text-text-primary bg-dashboard-surface border-t border-b border-border hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
                     3M
                 </button>
                 <button type="button" data-range="ALL"
-                    class="range-btn active ring-2 ring-blue-700 z-10 text-blue-700 px-4 py-2 text-sm font-medium bg-white border border-gray-200 rounded-e-lg hover:bg-gray-100 hover:text-blue-700 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500 dark:focus:text-white">
+                    class="range-btn active ring-2 ring-accent z-10 text-accent px-4 py-2 text-sm font-medium bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent">
                     All
                 </button>
             </div>
@@ -234,22 +233,22 @@
                     <div class="flex flex-wrap items-center gap-4 mb-4">
                         <!-- Date Range Radio Buttons -->
                         <div class="flex items-center gap-2">
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Date Range:</span>
-                            <div class="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
+                            <span class="text-sm text-text-secondary">Date Range:</span>
+                            <div class="flex rounded-lg overflow-hidden border border-border">
                                 <label
-                                    class="px-3 py-1.5 text-sm cursor-pointer bg-blue-600 text-white individual-range-btn"
+                                    class="px-3 py-1.5 text-sm cursor-pointer bg-accent text-white individual-range-btn"
                                     data-days="7">
                                     <input type="radio" name="individual-range" value="7" checked class="sr-only">
                                     7 Days
                                 </label>
                                 <label
-                                    class="px-3 py-1.5 text-sm cursor-pointer bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 individual-range-btn"
+                                    class="px-3 py-1.5 text-sm cursor-pointer bg-dashboard-surface-alt text-text-primary individual-range-btn"
                                     data-days="30">
                                     <input type="radio" name="individual-range" value="30" class="sr-only">
                                     30 Days
                                 </label>
                                 <label
-                                    class="px-3 py-1.5 text-sm cursor-pointer bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 individual-range-btn"
+                                    class="px-3 py-1.5 text-sm cursor-pointer bg-dashboard-surface-alt text-text-primary individual-range-btn"
                                     data-days="0">
                                     <input type="radio" name="individual-range" value="0" class="sr-only">
                                     All Time
@@ -259,9 +258,9 @@
 
                         <!-- Stock Filter Dropdown -->
                         <div class="flex items-center gap-2">
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Filter:</span>
+                            <span class="text-sm text-text-secondary">Filter:</span>
                             <select id="individual-stock-filter"
-                                class="text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 py-1.5 focus:ring-blue-500 focus:border-blue-500">
+                                class="text-sm rounded-lg border border-border bg-dashboard-surface text-text-primary px-3 py-1.5 focus:ring-accent focus:border-accent">
                                 <option value="all">All stocks</option>
                                 <option value="winners">Winners (↑ total %)</option>
                                 <option value="losers">Losers (↓ total %)</option>
@@ -275,15 +274,14 @@
                         </div>
 
                         <!-- Stock Count -->
-                        <span id="individual-stock-count" class="text-sm text-gray-500 dark:text-gray-400"></span>
+                        <span id="individual-stock-count" class="text-sm text-text-tertiary"></span>
                     </div>
 
                     <!-- Chart Container -->
                     <div class="w-full relative min-h-[450px]" id="individual-holdings-chart">
                         <div id="individual-holdings-spinner"
-                            class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10 hidden">
-                            <div
-                                class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
+                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10 hidden">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent">
                             </div>
                         </div>
                     </div>
@@ -400,22 +398,22 @@
                     <div class="text-xs text-green-800 dark:text-green-200 font-medium">Total (LTM)</div>
                     <div class="text-lg font-bold text-green-700 dark:text-green-300" id="div-total">--</div>
                 </div>
-                <div class="p-3 bg-gray-50 dark:bg-gray-700/30 rounded border border-gray-100 dark:border-gray-600">
-                    <div class="text-xs text-gray-600 dark:text-gray-400 font-medium">Tax Paid (LTM)</div>
-                    <div class="text-lg font-bold text-gray-700 dark:text-gray-300" id="div-tax">--</div>
+                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                    <div class="text-xs text-text-secondary font-medium">Tax Paid (LTM)</div>
+                    <div class="text-lg font-bold text-text-primary" id="div-tax">--</div>
                 </div>
-                <div class="p-3 bg-gray-50 dark:bg-gray-700/30 rounded border border-gray-100 dark:border-gray-600">
-                    <div class="text-xs text-gray-600 dark:text-gray-400 font-medium">Largest</div>
-                    <div class="text-lg font-bold text-gray-700 dark:text-gray-300" id="div-largest">--</div>
-                    <div class="text-xs text-gray-500" id="div-largest-ticker"></div>
+                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                    <div class="text-xs text-text-secondary font-medium">Largest</div>
+                    <div class="text-lg font-bold text-text-primary" id="div-largest">--</div>
+                    <div class="text-xs text-text-tertiary" id="div-largest-ticker"></div>
                 </div>
-                <div class="p-3 bg-gray-50 dark:bg-gray-700/30 rounded border border-gray-100 dark:border-gray-600">
-                    <div class="text-xs text-gray-600 dark:text-gray-400 font-medium">Reinvested</div>
-                    <div class="text-lg font-bold text-gray-700 dark:text-gray-300" id="div-reinvested">--</div>
+                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                    <div class="text-xs text-text-secondary font-medium">Reinvested</div>
+                    <div class="text-lg font-bold text-text-primary" id="div-reinvested">--</div>
                 </div>
-                <div class="p-3 bg-gray-50 dark:bg-gray-700/30 rounded border border-gray-100 dark:border-gray-600">
-                    <div class="text-xs text-gray-600 dark:text-gray-400 font-medium">Events</div>
-                    <div class="text-lg font-bold text-gray-700 dark:text-gray-300" id="div-events">--</div>
+                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                    <div class="text-xs text-text-secondary font-medium">Events</div>
+                    <div class="text-lg font-bold text-text-primary" id="div-events">--</div>
                 </div>
             </div>
 
@@ -449,8 +447,8 @@
         <div class="relative w-full h-[500px]">
             <!-- Loading spinner -->
             <div id="holdings-grid-spinner"
-                class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
+                class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
             </div>
             <div id="holdings-grid" class="ag-theme-alpine w-full h-full"></div>
         </div>
@@ -463,8 +461,8 @@
             class="relative overflow-x-auto max-h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
             <!-- Loading spinner -->
             <div id="activity-table-spinner"
-                class="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
+                class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
             </div>
             <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
                 <thead
