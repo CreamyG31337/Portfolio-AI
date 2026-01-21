@@ -17,7 +17,7 @@
             </div>
             <p class="mb-3 font-normal text-text-secondary text-sm" id="ollama-message">Checking...</p>
             <button id="test-ollama-btn"
-                class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-accent rounded-lg hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent">
+                class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-accent bg-transparent border border-accent rounded-lg hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 transition-colors duration-200">
                 Test Connection
             </button>
         </div>
@@ -40,7 +40,7 @@
             <p class="mb-3 font-normal text-text-secondary text-sm" id="webai-message">Checking...</p>
             <p class="mb-2 text-xs text-text-tertiary" id="webai-source"></p>
             <button id="test-webai-btn"
-                class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-accent rounded-lg hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent">
+                class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-accent bg-transparent border border-accent rounded-lg hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 transition-colors duration-200">
                 Test Connection
             </button>
         </div>
@@ -54,7 +54,7 @@
             <p class="mb-3 font-normal text-text-secondary text-sm" id="glm-message">Checking...</p>
             <p class="mb-2 text-xs text-text-tertiary" id="glm-source"></p>
             <button id="test-glm-btn"
-                class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-accent rounded-lg hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent">
+                class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-accent bg-transparent border border-accent rounded-lg hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 transition-colors duration-200">
                 Test Connection
             </button>
         </div>
@@ -87,7 +87,7 @@
                 </div>
 
                 <button type="submit" id="save-settings-btn"
-                    class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 focus:outline-none">
+                    class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 focus:outline-none transition-colors duration-200">
                     💾 Save Configuration
                 </button>
             </form>
@@ -101,7 +101,7 @@
                     <input type="text" id="add-domain-input" placeholder="example.com"
                         class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block p-2">
                     <button id="add-domain-btn"
-                        class="px-3 py-2 text-sm font-medium text-center text-white bg-theme-error-bg text-theme-error-text rounded-lg hover:brightness-90 focus:ring-4 focus:outline-none focus:ring-red-300 border border-theme-error-text">
+                        class="px-3 py-2 text-sm font-medium text-center text-theme-error-text bg-transparent border border-theme-error-text rounded-lg hover:bg-theme-error-bg/10 focus:ring-4 focus:outline-none focus:ring-theme-error-bg/30 transition-colors duration-200">
                         Add
                     </button>
                 </div>
@@ -138,7 +138,7 @@
                 </div>
             </div>
             <button id="refresh-cookie-logs-btn"
-                class="px-3 py-2 text-sm font-medium text-center text-white bg-accent rounded-lg hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent">
+                class="px-3 py-2 text-sm font-medium text-center text-accent bg-transparent border border-accent rounded-lg hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 transition-colors duration-200">
                 🔄 Refresh
             </button>
         </div>
@@ -216,7 +216,7 @@
 
         <div class="mt-4 flex gap-2">
             <button id="save-cookies-btn"
-                class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200">
                 💾 Save Cookies
             </button>
         </div>
@@ -230,7 +230,8 @@
             key at <a href="https://open.bigmodel.cn/" target="_blank" rel="noopener"
                 class="text-accent hover:underline">open.bigmodel.cn</a> or from your Z.AI Coding Plan. You can also set
             <code class="px-1 py-0.5 bg-dashboard-surface-alt rounded text-xs">ZHIPU_API_KEY</code> in <code
-                class="px-1 py-0.5 bg-dashboard-surface-alt rounded text-xs">.env</code>.</p>
+                class="px-1 py-0.5 bg-dashboard-surface-alt rounded text-xs">.env</code>.
+        </p>
         <div class="flex flex-wrap items-end gap-2">
             <div class="flex-1 min-w-[200px]">
                 <label for="glm-api-key-input" class="block mb-2 text-sm font-medium text-text-primary">API Key</label>
@@ -238,7 +239,7 @@
                     class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
             </div>
             <button id="save-glm-key-btn"
-                class="px-4 py-2.5 text-sm font-medium text-white bg-accent rounded-lg hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent">
+                class="px-4 py-2.5 text-sm font-medium text-accent bg-transparent border border-accent rounded-lg hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 transition-colors duration-200">
                 💾 Save Key
             </button>
         </div>

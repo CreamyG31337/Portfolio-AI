@@ -85,7 +85,7 @@
             </div>
         </div>
         <a href="/dev/sql"
-            class="mt-4 inline-block bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-lg transition font-medium">
+            class="mt-4 inline-block text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 font-medium rounded-lg text-sm px-6 py-3 transition-colors duration-200">
             <i class="fas fa-play mr-2"></i>Open SQL Interface
         </a>
     </div>
@@ -139,17 +139,17 @@
     <p class="text-text-secondary mb-4">Debug authentication tokens and cookie issues.</p>
 
     <div id="auth-debug-content" class="space-y-4">
-        <div class="flex items-center space-x-4">
+        <div class="flex flex-wrap items-center gap-4">
             <button onclick="loadAuthDebug()"
-                class="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg transition font-medium">
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
                 <i class="fas fa-sync mr-2"></i>Refresh Debug Info
             </button>
             <button onclick="testRefreshToken()"
-                class="bg-theme-success-bg hover:bg-theme-success-bg/80 text-white px-4 py-2 rounded-lg transition font-medium">
+                class="text-theme-success-text bg-transparent border border-theme-success-text hover:bg-theme-success-bg/10 focus:ring-4 focus:ring-theme-success-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
                 <i class="fas fa-redo mr-2"></i>Test Token Refresh
             </button>
             <button onclick="testLoginResponse()"
-                class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition font-medium">
+                class="text-purple-600 dark:text-purple-400 bg-transparent border border-purple-600 dark:border-purple-400 hover:bg-purple-600/10 dark:hover:bg-purple-400/10 focus:ring-4 focus:ring-purple-600/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
                 <i class="fas fa-sign-in-alt mr-2"></i>Test Login Response
             </button>
         </div>

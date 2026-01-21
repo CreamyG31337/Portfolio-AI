@@ -10,10 +10,12 @@
 
 {% block header_extra %}
 <div class="flex space-x-4">
-    <a href="/dev" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition hover:no-underline">
+    <a href="/dev"
+        class="bg-transparent border border-border text-text-primary hover:bg-dashboard-hover px-4 py-2 rounded-lg transition-colors duration-200">
         <i class="fas fa-arrow-left mr-2"></i>Back to Dev Tools
     </a>
-    <button onclick="clearQuery()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition">
+    <button onclick="clearQuery()"
+        class="text-theme-warning-text bg-transparent border border-theme-warning-text hover:bg-theme-warning-bg/10 focus:ring-4 focus:ring-theme-warning-bg/30 px-4 py-2 rounded-lg transition-colors duration-200">
         <i class="fas fa-eraser mr-2"></i>Clear
     </button>
 </div>
@@ -36,11 +38,11 @@
                 </h2>
                 <div class="flex space-x-2">
                     <button onclick="executeQuery()"
-                        class="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg transition">
+                        class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
                         <i class="fas fa-play mr-2"></i>Execute
                     </button>
                     <button onclick="formatQuery()"
-                        class="bg-text-secondary hover:bg-text-primary text-white px-4 py-2 rounded-lg transition">
+                        class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-hover focus:ring-4 focus:ring-border/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
                         <i class="fas fa-magic mr-2"></i>Format
                     </button>
                 </div>
@@ -71,11 +73,11 @@
                 </h2>
                 <div class="flex space-x-2">
                     <button onclick="exportResults()"
-                        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition">
+                        class="text-theme-success-text bg-transparent border border-theme-success-text hover:bg-theme-success-bg/10 focus:ring-4 focus:ring-theme-success-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
                         <i class="fas fa-download mr-2"></i>Export
                     </button>
                     <button onclick="clearResults()"
-                        class="bg-text-secondary hover:bg-text-primary text-white px-4 py-2 rounded-lg transition">
+                        class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-hover focus:ring-4 focus:ring-border/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
                         <i class="fas fa-trash mr-2"></i>Clear
                     </button>
                 </div>
