@@ -862,17 +862,20 @@ def get_holdings_data():
         all_currencies = positions_df['currency'].fillna('CAD').astype(str).str.upper().unique().tolist()
         rate_map = fetch_latest_rates_bulk(all_currencies, display_currency)
         def get_rate(curr): return rate_map.get(str(curr).upper(), 1.0)
+        
+        # Optimize: Vectorized calculation for total portfolio value
+        # map() returns a Series aligned with positions_df index
         rates = positions_df['currency'].fillna('CAD').astype(str).str.upper().map(get_rate)
         
-        # Process data and calculate converted values first
-        converted_data = []
-        for idx, row in positions_df.iterrows():
-            rate = get_rate(row.get('currency', 'CAD'))
-            market_val = (row.get('market_value', 0) or 0) * rate
-            converted_data.append(market_val)
-        
-        # Calculate total portfolio value in display currency for weight calculation
-        total_portfolio_value = sum(converted_data) if converted_data else 0
+        # Safe access to market_value column
+        if 'market_value' in positions_df.columns:
+            market_values = positions_df['market_value'].fillna(0)
+        else:
+            market_values = pd.Series([0] * len(positions_df), index=positions_df.index)
+
+        # Vectorized market value in display currency
+        market_vals_display = (market_values * rates)
+        total_portfolio_value = market_vals_display.sum()
         
         # Batch fetch logo URLs for all tickers (caching-friendly pattern)
         unique_tickers = positions_df['ticker'].dropna().unique().tolist()
@@ -884,39 +887,49 @@ def get_holdings_data():
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
         
-        # Process data
+        # Optimize: Pre-calculate commonly used columns/values to avoid repeated lookups inside loop
+        # Use itertuples() instead of iterrows() for significantly better performance (10-100x faster)
         data = []
-        for idx, row in positions_df.iterrows():
-            ticker = row.get('ticker')
-            
+
+        # Note: itertuples yields named tuples. Access via dot notation (row.ticker) or index.
+        # However, accessing dict columns like 'securities' via dot notation works fine.
+        for row in positions_df.itertuples(index=False):
+            # Access attributes via dot notation (faster) or getattr for safety if column might be missing
+            ticker = getattr(row, 'ticker', None)
+            if not ticker:
+                continue
+
             # Handle nested securities data
             company_name = ticker # Default
             sector = ""
-            if isinstance(row.get('securities'), dict):
-                company_name = row['securities'].get('company_name') or ticker
-                sector = row['securities'].get('sector') or ""
+            securities_data = getattr(row, 'securities', None)
+            if isinstance(securities_data, dict):
+                company_name = securities_data.get('company_name') or ticker
+                sector = securities_data.get('sector') or ""
             
-            # Use 'shares' from latest_positions view (not 'quantity')
-            shares = row.get('shares', 0) or 0
-            cost_basis = row.get('cost_basis', 0) or 0
-            current_price = row.get('current_price', 0) or 0
+            # Use 'shares' from latest_positions view
+            shares = getattr(row, 'shares', 0) or 0
+            cost_basis = getattr(row, 'cost_basis', 0) or 0
+            current_price = getattr(row, 'current_price', 0) or 0
             
-            # Calculate average price from cost_basis / shares
+            # Calculate average price
             avg_price = (cost_basis / shares) if shares > 0 else 0
             
-            # Values in Display Currency
-            rate = get_rate(row.get('currency', 'CAD'))
-            market_val = (row.get('market_value', 0) or 0) * rate
-            pnl = (row.get('unrealized_pnl', 0) or 0) * rate
-            day_pnl = (row.get('daily_pnl', 0) or 0) * rate
-            five_day_pnl = (row.get('five_day_pnl', 0) or 0) * rate
+            # Currency conversion
+            curr_code = getattr(row, 'currency', 'CAD')
+            rate = rate_map.get(str(curr_code).upper(), 1.0)
             
-            # Use P&L percentages from view (already calculated correctly)
-            pnl_pct = row.get('return_pct', 0) or 0
-            day_pnl_pct = row.get('daily_pnl_pct', 0) or 0
-            five_day_pnl_pct = row.get('five_day_pnl_pct', 0) or 0
+            market_val = (getattr(row, 'market_value', 0) or 0) * rate
+            pnl = (getattr(row, 'unrealized_pnl', 0) or 0) * rate
+            day_pnl = (getattr(row, 'daily_pnl', 0) or 0) * rate
+            five_day_pnl = (getattr(row, 'five_day_pnl', 0) or 0) * rate
             
-            # Calculate weight as percentage of total portfolio (in display currency)
+            # Use P&L percentages from view
+            pnl_pct = getattr(row, 'return_pct', 0) or 0
+            day_pnl_pct = getattr(row, 'daily_pnl_pct', 0) or 0
+            five_day_pnl_pct = getattr(row, 'five_day_pnl_pct', 0) or 0
+
+            # Calculate weight
             weight = (market_val / total_portfolio_value * 100) if total_portfolio_value > 0 else 0
             
             # Get opened date
@@ -927,11 +940,11 @@ def get_holdings_data():
                 except:
                     opened_date = None
             
-            # Get stop loss if available (might not be in view)
-            stop_loss = row.get('stop_loss', None)
+            # Get stop loss if available
+            stop_loss = getattr(row, 'stop_loss', None)
             
-            # Get logo URL (batch-fetched, caching-friendly)
-            logo_url = logo_urls_map.get(ticker) if ticker else None
+            # Get logo URL
+            logo_url = logo_urls_map.get(ticker)
                 
             data.append({
                 "ticker": ticker,
@@ -950,8 +963,8 @@ def get_holdings_data():
                 "five_day_pnl_pct": five_day_pnl_pct,
                 "weight": weight,
                 "stop_loss": stop_loss,
-                "currency": row.get('currency', 'CAD'), # Original currency
-                "_logo_url": logo_url  # Logo URL for frontend (caching-friendly)
+                "currency": curr_code,
+                "_logo_url": logo_url
             })
             
         # Sort by weight desc (matching console app default)
