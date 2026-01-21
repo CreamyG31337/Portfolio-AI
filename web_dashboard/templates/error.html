@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Error - Trading Bot{% endblock %}
+
+{% block content %}
+<div class="min-h-[60vh] flex items-center justify-center">
+    <div class="max-w-2xl w-full text-center p-8">
+        <div class="inline-flex items-center justify-center p-4 bg-theme-error-bg/20 rounded-full mb-6">
+            <i class="fas fa-exclamation-triangle text-4xl text-theme-error-text"></i>
+        </div>
+
+        <h1 class="text-3xl font-bold text-text-primary mb-4">Something went wrong</h1>
+
+        <p class="text-lg text-text-secondary mb-8">
+            An unexpected error occurred while processing your request.
+            The administrative team has been notified.
+        </p>
+
+        {% if error %}
+        <div class="text-left bg-dashboard-surface-alt border border-border rounded-lg p-4 mb-8 overflow-auto max-h-64">
+            <p class="font-mono text-sm text-theme-error-text">{{ error }}</p>
+        </div>
+        {% endif %}
+
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="/" class="px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-lg font-medium transition">
+                <i class="fas fa-home mr-2"></i>Return Home
+            </a>
+            <button onclick="window.location.reload()"
+                class="px-6 py-3 bg-dashboard-surface hover:bg-dashboard-hover text-text-primary border border-border rounded-lg font-medium transition">
+                <i class="fas fa-redo mr-2"></i>Try Again
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}

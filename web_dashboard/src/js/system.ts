@@ -41,16 +41,16 @@ async function fetchDeploymentInfo(): Promise<void> {
         if (deployInfo) {
             if (data.build_info && (data.build_info.commit || data.build_info.timestamp)) {
                 deployInfo.innerHTML = `
-                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                    <span class="text-xs text-text-secondary">
                         🚀 Deployed: ${data.build_info.build_date || data.build_info.timestamp || 'Unknown'} 
-                        | Commit: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">${(data.build_info.commit || 'unknown').substring(0, 8)}</code>
+                        | Commit: <code class="bg-dashboard-background px-1 rounded text-accent">${(data.build_info.commit || 'unknown').substring(0, 8)}</code>
                         | Branch: ${data.build_info.branch || 'Unknown'}
                     </span>
                 `;
             } else {
                 // Handle case where build info is missing but API worked
                 deployInfo.innerHTML = `
-                    <span class="text-xs text-gray-400 dark:text-gray-500">
+                    <span class="text-xs text-text-secondary">
                         Deployment info unavailable
                     </span>
                 `;
@@ -61,7 +61,7 @@ async function fetchDeploymentInfo(): Promise<void> {
         const deployInfo = document.getElementById('deployment-info');
         if (deployInfo) {
             deployInfo.innerHTML = `
-                <span class="text-xs text-red-400 dark:text-red-400" title="${error}">
+                <span class="text-xs text-theme-error-text" title="${error}">
                     Failed to load deployment info
                 </span>
             `;
@@ -79,9 +79,9 @@ async function fetchSystemStatus(): Promise<void> {
         const dbEl = document.getElementById('status-db');
         if (dbEl) {
             if (status.supabase_connected) {
-                dbEl.innerHTML = `<span class="bg-green-100 text-green-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded">Connected</span>`;
+                dbEl.innerHTML = `<span class="bg-theme-success-bg text-theme-success-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-success-text">Connected</span>`;
             } else {
-                dbEl.innerHTML = `<span class="bg-red-100 text-red-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded">Disconnected</span>`;
+                dbEl.innerHTML = `<span class="bg-theme-error-bg text-theme-error-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-error-text">Disconnected</span>`;
             }
         }
 
@@ -90,12 +90,12 @@ async function fetchSystemStatus(): Promise<void> {
         const pgStats = document.getElementById('stats-postgres');
         if (pgEl) {
             if (status.postgres_connected) {
-                pgEl.innerHTML = `<span class="bg-green-100 text-green-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded">Connected</span>`;
+                pgEl.innerHTML = `<span class="bg-theme-success-bg text-theme-success-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-success-text">Connected</span>`;
                 if (pgStats && status.postgres_stats) {
                     pgStats.innerHTML = `<div>Total Articles: ${status.postgres_stats.total}</div>`;
                 }
             } else {
-                pgEl.innerHTML = `<span class="bg-red-100 text-red-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded">Disconnected</span>`;
+                pgEl.innerHTML = `<span class="bg-theme-error-bg text-theme-error-text text-sm font-medium mr-2 px-2.5 py-0.5 rounded border border-theme-error-text">Disconnected</span>`;
             }
         }
 
@@ -103,9 +103,9 @@ async function fetchSystemStatus(): Promise<void> {
         const ratesEl = document.getElementById('status-rates');
         if (ratesEl) {
             if (status.exchange_rates) {
-                ratesEl.innerHTML = `<span class="text-xl font-bold text-gray-900">${status.exchange_rates}</span>`;
+                ratesEl.innerHTML = `<span class="text-xl font-bold text-text-primary">${status.exchange_rates}</span>`;
             } else {
-                ratesEl.innerHTML = `<span class="text-gray-400">N/A</span>`;
+                ratesEl.innerHTML = `<span class="text-text-secondary">N/A</span>`;
             }
         }
 
@@ -113,19 +113,19 @@ async function fetchSystemStatus(): Promise<void> {
         const tbody = document.getElementById('jobs-table-body');
         if (tbody && data.jobs && data.jobs.length > 0) {
             tbody.innerHTML = data.jobs.map(job => `
-                <tr class="bg-white border-b hover:bg-gray-50">
-                    <td class="px-6 py-4 font-medium">${job.job_id}</td>
+                <tr class="bg-dashboard-surface border-b border-border hover:bg-dashboard-hover">
+                    <td class="px-6 py-4 font-medium text-text-primary">${job.job_id}</td>
                     <td class="px-6 py-4">
                         ${job.success
-                    ? '<span class="text-green-600"><i class="fas fa-check-circle"></i> Success</span>'
-                    : '<span class="text-red-600"><i class="fas fa-times-circle"></i> Failed</span>'}
+                    ? '<span class="text-theme-success-text"><i class="fas fa-check-circle"></i> Success</span>'
+                    : '<span class="text-theme-error-text"><i class="fas fa-times-circle"></i> Failed</span>'}
                     </td>
-                    <td class="px-6 py-4">${job.timestamp}</td>
-                    <td class="px-6 py-4 truncate max-w-xs" title="${job.message}">${job.message}</td>
+                    <td class="px-6 py-4 text-text-secondary">${job.timestamp}</td>
+                    <td class="px-6 py-4 truncate max-w-xs text-text-secondary" title="${job.message}">${job.message}</td>
                 </tr>
             `).join('');
         } else if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No recent job logs found</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-text-secondary">No recent job logs found</td></tr>`;
         }
 
     } catch (error) {

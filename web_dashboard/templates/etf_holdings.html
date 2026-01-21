@@ -15,14 +15,14 @@
 {% block content %}
 
 {% if error %}
-<div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 dark:bg-red-900/20 dark:border-red-800">
+<div class="bg-theme-error-bg border border-theme-error-text rounded-lg p-4 mb-6">
     <div class="flex">
         <div class="flex-shrink-0">
-            <i class="fas fa-exclamation-triangle text-red-400"></i>
+            <i class="fas fa-exclamation-triangle text-theme-error-text"></i>
         </div>
         <div class="ml-3">
-            <h3 class="text-sm font-medium text-red-800 dark:text-red-100">{{ error }}</h3>
-            <div class="mt-2 text-sm text-red-700 dark:text-red-200">
+            <h3 class="text-sm font-medium text-theme-error-text">{{ error }}</h3>
+            <div class="mt-2 text-sm text-theme-error-text/80">
                 <p>{{ error_message }}</p>
             </div>
         </div>
@@ -31,26 +31,26 @@
 {% endif %}
 
 <!-- Info Box -->
-<div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 dark:bg-blue-900/20 dark:border-blue-800">
-    <p class="text-sm text-blue-800 dark:text-blue-100">
+<div class="bg-theme-info-bg border border-theme-info-text rounded-lg p-4 mb-6">
+    <p class="text-sm text-theme-info-text">
         <strong>Track Institutional Activity</strong> by monitoring daily changes in ETF holdings. The <strong>Diff
             Engine</strong> detects when ETFs accumulate or distribute positions—signals that often precede significant
         price movements.
     </p>
-    <p class="text-xs text-blue-600 dark:text-blue-200 mt-2">
+    <p class="text-xs text-theme-info-text/80 mt-2">
         <em>Increases in shares held are bullish signals, decreases are bearish signals.</em>
     </p>
 </div>
 
 <!-- Filters -->
-<div class="bg-white rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
     <form id="filters-form" action="/etf_holdings" method="GET" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
             <!-- ETF Filter -->
             <div>
-                <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">ETF</label>
+                <label class="block mb-2 text-sm font-medium text-text-primary">ETF</label>
                 <select name="etf"
-                    class="w-full text-sm border border-gray-300 rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    class="w-full text-sm bg-dashboard-background border border-border rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent"
                     onchange="updateFilters()">
                     <option value="All ETFs" {% if current_etf=='All ETFs' %}selected{% endif %}>All ETFs</option>
                     {% for etf in available_etfs %}
@@ -63,41 +63,41 @@
 
             <!-- Date Filter with Navigation -->
             <div>
-                <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
+                <label class="block mb-2 text-sm font-medium text-text-primary">
                     <i class="fas fa-calendar-alt mr-1"></i>View Data As Of
-                    <span class="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">(shows most recent data on
+                    <span class="text-xs text-text-secondary font-normal ml-1">(shows most recent data on
                         or before selected date)</span>
                 </label>
                 <div class="flex gap-1">
                     <!-- Previous Date Button -->
                     <button type="button" onclick="navigateToDate('{{ prev_date }}')" {% if not prev_date %}disabled{%
                         endif %}
-                        class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="px-3 py-2 text-sm border border-border rounded-lg hover:bg-dashboard-background disabled:opacity-50 disabled:cursor-not-allowed text-text-primary"
                         title="Previous data date ({{ prev_date }} or newer)">
                         <i class="fas fa-chevron-left"></i>
                     </button>
 
                     <!-- Date Input with Keyboard Support -->
                     <input type="date" id="date-input" name="date" value="{{ current_date }}" max="{{ latest_date }}"
-                        class="flex-1 text-sm border border-gray-300 rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        class="flex-1 text-sm bg-dashboard-background border border-border rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent"
                         onchange="updateFilters()" onkeydown="handleDateKeyboard(event)">
 
                     <!-- Next Date Button -->
                     <button type="button" onclick="navigateToDate('{{ next_date }}')" {% if not next_date %}disabled{%
                         endif %}
-                        class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="px-3 py-2 text-sm border border-border rounded-lg hover:bg-dashboard-background disabled:opacity-50 disabled:cursor-not-allowed text-text-primary"
                         title="Next data date ({{ next_date }} or earlier)">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
 
                 {% if as_of_date and not date_has_data %}
-                <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                <p class="text-xs text-theme-warning-text mt-1">
                     <i class="fas fa-info-circle mr-1"></i>
                     No data for {{ current_date }}. Showing data as of <strong>{{ as_of_date }}</strong>
                 </p>
                 {% elif as_of_date and date_has_data %}
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="text-xs text-theme-success-text mt-1">
                     <i class="fas fa-check-circle mr-1"></i>
                     Showing data as of <strong>{{ as_of_date }}</strong>
                 </p>
@@ -106,11 +106,11 @@
 
             <!-- Change Type Filter (only for changes view) -->
             <div {% if view_mode !='changes' %}class="hidden" {% endif %}>
-                <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
+                <label class="block mb-2 text-sm font-medium text-text-primary">
                     <i class="fas fa-filter mr-1"></i>Change Type
                 </label>
                 <select name="change_type"
-                    class="w-full text-sm border border-gray-300 rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    class="w-full text-sm bg-dashboard-background border border-border rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent"
                     onchange="updateFilters()">
                     <option value="ALL" {% if current_change_type=='ALL' %}selected{% endif %}>🔍 All Changes</option>
                     <option value="NEW" {% if current_change_type=='NEW' %}selected{% endif %}>🆕 New Positions</option>
@@ -121,10 +121,10 @@
 
                 <!-- Show Changes Only Checkbox -->
                 <div class="mt-2">
-                    <label class="flex items-center text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <label class="flex items-center text-sm text-text-primary cursor-pointer">
                         <input type="checkbox" name="changes_only" value="true" {% if current_changes_only %}checked{%
                             endif %} onchange="updateFilters()"
-                            class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700">
+                            class="mr-2 h-4 w-4 text-accent border-border rounded focus:ring-accent bg-dashboard-background">
                         <span>Show changes only (hide HOLD)</span>
                     </label>
                 </div>
@@ -132,11 +132,10 @@
 
             <!-- Fund Filter (Multi-select) -->
             <div>
-                <label class="block mb-2 text-sm font-medium text-gray-900">Holdings Filter</label>
+                <label class="block mb-2 text-sm font-medium text-text-primary">Holdings Filter</label>
                 <div class="relative group">
-                    <button type="button" id="fund-dropdown-button"
-                        data-dropdown-toggle="fund-dropdown-menu"
-                        class="w-full bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-lg text-sm text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    <button type="button" id="fund-dropdown-button" data-dropdown-toggle="fund-dropdown-menu"
+                        class="w-full bg-dashboard-background border border-border text-text-primary py-2 px-3 rounded-lg text-sm text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-accent"
                         aria-haspopup="true" aria-expanded="false">
                         <span id="fund-select-label">
                             {% if current_fund and current_fund != 'All Funds' and current_fund != '' %}
@@ -145,36 +144,34 @@
                             All Funds (Show All)
                             {% endif %}
                         </span>
-                        <i class="fas fa-chevron-down text-xs text-gray-500"></i>
+                        <i class="fas fa-chevron-down text-xs text-text-secondary"></i>
                     </button>
 
                     <div id="fund-dropdown-menu"
-                        class="hidden absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto dark:bg-gray-700 dark:border-gray-600">
-                        <div class="p-2 border-b border-gray-100 dark:border-gray-600">
-                            <label
-                                class="flex items-center p-1 rounded hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
+                        class="hidden absolute z-10 w-full bg-dashboard-surface border border-border rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
+                        <div class="p-2 border-b border-border">
+                            <label class="flex items-center p-1 rounded hover:bg-dashboard-background cursor-pointer">
                                 <input type="checkbox"
-                                    class="fund-checkbox rounded text-blue-600 focus:ring-blue-500 mr-2"
+                                    class="fund-checkbox rounded text-accent focus:ring-accent mr-2 bg-dashboard-background border-border"
                                     value="All Funds" {% if not current_fund or current_fund=='All Funds' %}checked{%
                                     endif %} onchange="handleFundSelection(this)">
-                                <span class="text-sm font-medium text-gray-900 dark:text-white">All Funds</span>
+                                <span class="text-sm font-medium text-text-primary">All Funds</span>
                             </label>
                         </div>
                         <div class="p-2 space-y-1">
                             {% for fund in available_funds %}
-                            <label
-                                class="flex items-center p-1 rounded hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
+                            <label class="flex items-center p-1 rounded hover:bg-dashboard-background cursor-pointer">
                                 <input type="checkbox"
-                                    class="fund-checkbox rounded text-blue-600 focus:ring-blue-500 mr-2"
+                                    class="fund-checkbox rounded text-accent focus:ring-accent mr-2 bg-dashboard-background border-border"
                                     value="{{ fund }}" {% if current_fund and fund in current_fund and current_fund
                                     !='All Funds' %}checked{% endif %} onchange="handleFundSelection(this)">
-                                <span class="text-sm text-gray-700 dark:text-gray-300">{{ fund }}</span>
+                                <span class="text-sm text-text-primary">{{ fund }}</span>
                             </label>
                             {% endfor %}
                         </div>
-                        <div class="p-2 border-t border-gray-100 dark:border-gray-600 flex justify-end">
+                        <div class="p-2 border-t border-border flex justify-end">
                             <button type="button"
-                                class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
+                                class="text-xs bg-accent hover:bg-accent-hover text-white px-3 py-1 rounded"
                                 onclick="updateFilters()">
                                 Apply
                             </button>
@@ -188,7 +185,7 @@
             <!-- Refresh Button -->
             <div class="flex items-end">
                 <button type="button" onclick="updateFilters(true)"
-                    class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 w-full text-center">
+                    class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 w-full text-center">
                     <i class="fas fa-sync-alt mr-2"></i>Refresh Data
                 </button>
             </div>
@@ -198,60 +195,61 @@
 
 <!-- ETF Ownership Alert -->
 {% if etf_ownership %}
-<div
-    class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 flex items-center dark:bg-green-900/20 dark:border-green-800">
-    <i class="fas fa-check-circle text-green-500 mr-3 text-xl"></i>
+<div class="bg-theme-success-bg border border-theme-success-text rounded-lg p-4 mb-6 flex items-center">
+    <i class="fas fa-check-circle text-theme-success-text mr-3 text-xl"></i>
     <div>
-        <h4 class="text-sm font-bold text-green-800 dark:text-green-100">You own {{ etf_ownership.total_shares | int }}
+        <h4 class="text-sm font-bold text-theme-success-text">You own {{ etf_ownership.total_shares | int }}
             shares of {{
             current_etf }}</h4>
-        <p class="text-xs text-green-600 dark:text-green-200">Held in: {{ etf_ownership.funds }}</p>
+        <p class="text-xs text-theme-success-text/80">Held in: {{ etf_ownership.funds }}</p>
     </div>
 </div>
 {% endif %}
 
 <!-- Summary Stats (Only for Changes View) -->
 {% if view_mode == 'changes' and stats %}
-<div class="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-    <h2 class="text-xl font-bold mb-4 dark:text-white">📊 Summary Statistics</h2>
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">📊 Summary Statistics</h2>
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div class="bg-gray-50 rounded-lg p-4 dark:bg-gray-700">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Latest Update</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{{ current_date }}</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-xs text-text-secondary uppercase font-bold">Latest Update</div>
+            <div class="text-lg font-bold text-text-primary">{{ current_date }}</div>
         </div>
-        <div class="bg-gray-50 rounded-lg p-4 dark:bg-gray-700">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Total Changes</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{{ stats.total_changes }}</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-xs text-text-secondary uppercase font-bold">Total Changes</div>
+            <div class="text-lg font-bold text-text-primary">{{ stats.total_changes }}</div>
         </div>
-        <div class="bg-green-50 rounded-lg p-4 border-l-4 border-green-500 dark:bg-green-900/20 dark:border-green-600">
-            <div class="text-xs text-green-700 dark:text-green-300 uppercase font-bold">Bullish (BUY)</div>
-            <div class="text-lg font-bold text-green-900 dark:text-green-100">{{ stats.bullish_count }}</div>
+        <div class="bg-theme-success-bg rounded-lg p-4 border-l-4 border-theme-success-text">
+            <div class="text-xs text-theme-success-text uppercase font-bold">Bullish (BUY)</div>
+            <div class="text-lg font-bold text-theme-success-text">{{ stats.bullish_count }}</div>
         </div>
-        <div class="bg-red-50 rounded-lg p-4 border-l-4 border-red-500 dark:bg-red-900/20 dark:border-red-600">
-            <div class="text-xs text-red-700 dark:text-red-300 uppercase font-bold">Bearish (SELL)</div>
-            <div class="text-lg font-bold text-red-900 dark:text-red-100">{{ stats.bearish_count }}</div>
+        <div class="bg-theme-error-bg rounded-lg p-4 border-l-4 border-theme-error-text">
+            <div class="text-xs text-theme-error-text uppercase font-bold">Bearish (SELL)</div>
+            <div class="text-lg font-bold text-theme-error-text">{{ stats.bearish_count }}</div>
         </div>
-        <div class="bg-gray-50 rounded-lg p-4 dark:bg-gray-700">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">ETFs Tracked</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{{ stats.total_etfs }}</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-xs text-text-secondary uppercase font-bold">ETFs Tracked</div>
+            <div class="text-lg font-bold text-text-primary">{{ stats.total_etfs }}</div>
         </div>
     </div>
 
     {% if stats.largest_buy or stats.largest_sell %}
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-border">
         {% if stats.largest_buy %}
-        <div class="text-sm dark:text-gray-300">
-            <span class="text-green-600 dark:text-green-400 font-bold">🟢 Largest Buy:</span>
+        <div class="text-sm text-text-primary">
+            <span class="text-theme-success-text font-bold">🟢 Largest Buy:</span>
             {{ stats.largest_buy.ticker }} ({{ stats.largest_buy.etf }})
-            <span class="font-mono bg-green-100 dark:bg-green-900/30 px-1 rounded">+{{ stats.largest_buy.change | int
+            <span class="font-mono bg-theme-success-bg px-1 rounded text-theme-success-text">+{{
+                stats.largest_buy.change | int
                 }}</span> shares
         </div>
         {% endif %}
         {% if stats.largest_sell %}
-        <div class="text-sm dark:text-gray-300">
-            <span class="text-red-600 dark:text-red-400 font-bold">🔴 Largest Sell:</span>
+        <div class="text-sm text-text-primary">
+            <span class="text-theme-error-text font-bold">🔴 Largest Sell:</span>
             {{ stats.largest_sell.ticker }} ({{ stats.largest_sell.etf }})
-            <span class="font-mono bg-red-100 dark:bg-red-900/30 px-1 rounded">{{ stats.largest_sell.change | int
+            <span class="font-mono bg-theme-error-bg px-1 rounded text-theme-error-text">{{ stats.largest_sell.change |
+                int
                 }}</span> shares
         </div>
         {% endif %}
@@ -261,9 +259,9 @@
 {% endif %}
 
 <!-- Data Table -->
-<div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
     <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold dark:text-white">
+        <h2 class="text-xl font-bold text-text-primary">
             {% if view_mode == 'holdings' %}
             Current Holdings - {{ current_etf }}
             {% else %}
@@ -271,7 +269,7 @@
             {% endif %}
         </h2>
         {% if as_of_date %}
-        <div class="text-sm text-gray-600 dark:text-gray-400">
+        <div class="text-sm text-text-secondary">
             <i class="fas fa-calendar-check mr-1"></i>
             Data as of: <strong>{{ as_of_date }}</strong>
         </div>

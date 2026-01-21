@@ -170,10 +170,10 @@ def internal_server_error(e):
             <head>
                 <title>500 Internal Server Error</title>
                 <style>
-                    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; line-height: 1.5; }}
-                    h1 {{ color: #dc2626; border-bottom: 2px solid #fee2e2; padding-bottom: 0.5rem; }}
-                    pre {{ background: #f3f4f6; padding: 1.5rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.9em; border: 1px solid #e5e7eb; }}
-                    .error-msg {{ font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937; }}
+                    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; line-height: 1.5; background-color: #1a1b26; color: #a9b1d6; }}
+                    h1 {{ color: #f7768e; border-bottom: 1px solid #414868; padding-bottom: 0.5rem; }}
+                    pre {{ background: #24283b; padding: 1.5rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.9em; border: 1px solid #414868; color: #c0caf5; }}
+                    .error-msg {{ font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #f7768e; }}
                 </style>
             </head>
             <body>
@@ -187,8 +187,8 @@ def internal_server_error(e):
         return render_template("error.html", error=e) if os.path.exists(os.path.join(app.root_path, 'templates', 'error.html')) else f"""
         <html>
             <head><title>500 Internal Server Error</title></head>
-            <body style="font-family: sans-serif; padding: 2rem; text-align: center;">
-                <h1>500 Internal Server Error</h1>
+            <body style="font-family: sans-serif; padding: 2rem; text-align: center; background-color: #1a1b26; color: #a9b1d6;">
+                <h1 style="color: #f7768e;">500 Internal Server Error</h1>
                 <p>An unexpected error occurred. Please contact the administrator.</p>
             </body>
         </html>
@@ -231,10 +231,10 @@ def handle_exception(e):
             <head>
                 <title>Application Error</title>
                 <style>
-                    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; line-height: 1.5; }}
-                    h1 {{ color: #dc2626; border-bottom: 2px solid #fee2e2; padding-bottom: 0.5rem; }}
-                    pre {{ background: #f3f4f6; padding: 1.5rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.9em; border: 1px solid #e5e7eb; }}
-                    .error-msg {{ font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937; }}
+                    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; line-height: 1.5; background-color: #1a1b26; color: #a9b1d6; }}
+                    h1 {{ color: #f7768e; border-bottom: 1px solid #414868; padding-bottom: 0.5rem; }}
+                    pre {{ background: #24283b; padding: 1.5rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.9em; border: 1px solid #414868; color: #c0caf5; }}
+                    .error-msg {{ font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #f7768e; }}
                 </style>
             </head>
             <body>
@@ -248,8 +248,8 @@ def handle_exception(e):
         return render_template("error.html", error=e) if os.path.exists(os.path.join(app.root_path, 'templates', 'error.html')) else f"""
         <html>
             <head><title>Application Error</title></head>
-            <body style="font-family: sans-serif; padding: 2rem; text-align: center;">
-                <h1>Application Error</h1>
+            <body style="font-family: sans-serif; padding: 2rem; text-align: center; background-color: #1a1b26; color: #a9b1d6;">
+                <h1 style="color: #f7768e;">Application Error</h1>
                 <p>An unexpected error occurred. Please contact the administrator.</p>
             </body>
         </html>

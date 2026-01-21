@@ -188,20 +188,20 @@ function startAutoRefresh(): void {
     if (refreshInterval) {
         clearInterval(refreshInterval);
     }
-    
+
     // Use a function that adjusts delay based on errors
     const scheduleNextRefresh = () => {
         if (refreshInterval) {
             clearInterval(refreshInterval);
         }
-        
+
         if (!autoRefresh) {
             return;
         }
-        
+
         const delay = consecutiveErrors > 0 ? currentBackoffDelay : 5000;
         console.log(`[Jobs] Scheduling next refresh in ${delay}ms (errors: ${consecutiveErrors})`);
-        
+
         refreshInterval = setTimeout(() => {
             if (autoRefresh) {
                 console.log('[Jobs] Auto-refresh triggered');
@@ -212,7 +212,7 @@ function startAutoRefresh(): void {
             }
         }, delay);
     };
-    
+
     // Start the first refresh
     scheduleNextRefresh();
 }
@@ -286,7 +286,7 @@ async function fetchStatus(): Promise<void> {
             isRecovering = false;
             // Hide any recovery message
             if (elements.infoText) {
-                elements.infoText.classList.remove('text-yellow-600');
+                elements.infoText.classList.remove('text-theme-warning-text');
             }
         }
 
@@ -294,10 +294,10 @@ async function fetchStatus(): Promise<void> {
     } catch (error) {
         const duration = performance.now() - startTime;
         consecutiveErrors++;
-        
+
         // Simple backoff: 5s on first error, then 10s max
         currentBackoffDelay = consecutiveErrors === 1 ? 5000 : maxBackoffDelay;
-        
+
         console.error('[Jobs] Error fetching status:', {
             error: error,
             message: error instanceof Error ? error.message : String(error),
@@ -306,25 +306,25 @@ async function fetchStatus(): Promise<void> {
             consecutiveErrors: consecutiveErrors,
             nextRetryIn: `${currentBackoffDelay}ms`
         });
-        
+
         // Show error with retry information
-        const errorMsg = consecutiveErrors === 1 
+        const errorMsg = consecutiveErrors === 1
             ? 'Failed to fetch scheduler status. Retrying...'
-            : `Connection lost (${consecutiveErrors} attempts). Retrying in ${Math.round(currentBackoffDelay/1000)}s...`;
-        
+            : `Connection lost (${consecutiveErrors} attempts). Retrying in ${Math.round(currentBackoffDelay / 1000)}s...`;
+
         showJobsError(errorMsg);
-        
+
         // Show recovery indicator
         if (!isRecovering) {
             isRecovering = true;
             if (elements.infoText) {
                 elements.infoText.textContent = `⚠️ Reconnecting... (attempt ${consecutiveErrors})`;
-                elements.infoText.classList.add('text-yellow-600');
+                elements.infoText.classList.add('text-theme-warning-text');
             }
         } else if (elements.infoText) {
-            elements.infoText.textContent = `⚠️ Reconnecting... (attempt ${consecutiveErrors}, retry in ${Math.round(currentBackoffDelay/1000)}s)`;
+            elements.infoText.textContent = `⚠️ Reconnecting... (attempt ${consecutiveErrors}, retry in ${Math.round(currentBackoffDelay / 1000)}s)`;
         }
-        
+
         // Restart auto-refresh with new backoff delay
         if (autoRefresh) {
             startAutoRefresh();
@@ -342,7 +342,7 @@ function updateStatusUI(running: boolean): void {
             elements.statusText.textContent = 'Running';
         }
         if (elements.statusIndicator) {
-            elements.statusIndicator.className = 'w-3 h-3 rounded-full bg-green-500';
+            elements.statusIndicator.className = 'w-3 h-3 rounded-full bg-theme-success-text';
         }
         // Hide/show containers
         if (elements.errorContainer) {
@@ -367,7 +367,7 @@ function updateStatusUI(running: boolean): void {
             elements.statusText.textContent = 'Stopped';
         }
         if (elements.statusIndicator) {
-            elements.statusIndicator.className = 'w-3 h-3 rounded-full bg-red-500';
+            elements.statusIndicator.className = 'w-3 h-3 rounded-full bg-theme-error-text';
         }
         // Hide/show containers
         if (elements.runningContainer) {
@@ -402,7 +402,7 @@ function renderJobs(jobsData: Job[]): void {
     if (jobs.length === 0) {
         console.log('[Jobs] No jobs to render');
         if (elements.jobsList) {
-            elements.jobsList.innerHTML = '<div class="text-center py-8 text-gray-500 dark:text-gray-400">No jobs available</div>';
+            elements.jobsList.innerHTML = '<div class="text-center py-8 text-text-secondary">No jobs available</div>';
         }
         if (elements.noJobs) {
             elements.noJobs.classList.remove('hidden');
@@ -433,7 +433,7 @@ function renderJobs(jobsData: Job[]): void {
         const jobCards = jobs.map(job => createJobCard(job));
         elements.jobsList.innerHTML = jobCards.join('');
         console.log('[Jobs] Rendered', jobs.length, 'job cards to element:', elements.jobsList.id);
-        
+
         // Restore open parameter forms after re-rendering
         openParamForms.forEach(jobId => {
             const paramForm = document.getElementById(`params-${jobId}`);
@@ -475,16 +475,16 @@ function createJobCard(job: Job): string {
     let logsHtml = '';
     if (job.recent_logs && job.recent_logs.length > 0) {
         logsHtml = `
-            <div class="mt-4 bg-gray-50 rounded border border-gray-200 overflow-hidden">
-                <div class="px-3 py-1 bg-gray-100 text-xs font-semibold text-gray-500 border-b border-gray-200">
+            <div class="mt-4 bg-dashboard-background rounded border border-border overflow-hidden">
+                <div class="px-3 py-1 bg-dashboard-surface text-xs font-semibold text-text-secondary border-b border-border">
                     Recent Logs
                 </div>
                 <div class="max-h-32 overflow-y-auto">
                     ${job.recent_logs.map(log => `
                         <div class="log-entry ${getLogClass(log.level || '')}">
-                            <span class="text-gray-400">[${new Date(log.timestamp).toLocaleString()}]</span>
-                            <span class="${getLogLevelColor(log.level || '')} font-bold">${log.level || 'INFO'}</span>: 
-                            ${escapeHtmlForJobs(log.message)}
+                            <span class="text-text-secondary/70 font-mono text-xs mr-2">[${new Date(log.timestamp).toLocaleString()}]</span>
+                            <span class="${getLogLevelColor(log.level || '')} font-bold mr-1">${log.level || 'INFO'}</span>: 
+                            <span class="text-text-primary text-sm">${escapeHtmlForJobs(log.message)}</span>
                         </div>
                     `).join('')}
                 </div>
@@ -507,8 +507,8 @@ function createJobCard(job: Job): string {
                 return `
                     <div class="flex items-center mt-4 mb-2">
                         <input type="checkbox" id="param-${job.id}-${key}" data-param="${key}" 
-                               class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" ${isChecked}>
-                        <label for="param-${job.id}-${key}" class="ml-2 block text-sm text-gray-900 leading-none">
+                               class="h-4 w-4 text-accent focus:ring-accent border-border rounded" ${isChecked}>
+                        <label for="param-${job.id}-${key}" class="ml-2 block text-sm text-text-primary leading-none">
                             ${label}
                         </label>
                     </div>
@@ -521,25 +521,25 @@ function createJobCard(job: Job): string {
                 }
                 return `
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">${label}</label>
+                        <label class="block text-xs font-medium text-text-primary mb-1">${label}</label>
                         <input type="date" data-param="${key}" value="${val}" 
-                            class="w-full text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 p-1">
+                            class="w-full text-sm bg-dashboard-surface border-border rounded-md focus:ring-accent focus:border-accent text-text-primary p-1">
                     </div>
                 `;
             } else if (p.type === 'number') {
                 return `
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">${label}</label>
+                        <label class="block text-xs font-medium text-text-primary mb-1">${label}</label>
                         <input type="number" data-param="${key}" value="${defaultValue}" 
-                            class="w-full text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 p-1">
+                            class="w-full text-sm bg-dashboard-surface border-border rounded-md focus:ring-accent focus:border-accent text-text-primary p-1">
                     </div>
                 `;
             } else {
                 return `
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">${label}</label>
+                        <label class="block text-xs font-medium text-text-primary mb-1">${label}</label>
                         <input type="text" data-param="${key}" placeholder="${defaultValue}" value="${defaultValue}"
-                            class="w-full text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 p-1">
+                            class="w-full text-sm bg-dashboard-surface border-border rounded-md focus:ring-accent focus:border-accent text-text-primary p-1">
                     </div>
                 `;
             }
@@ -556,12 +556,12 @@ function createJobCard(job: Job): string {
                     <div class="flex items-center">
                         <input type="checkbox" id="param-${job.id}-use_date_range" data-param="use_date_range" 
                                onchange="toggleDateRange('${job.id}', this)"
-                               class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-                        <label for="param-${job.id}-use_date_range" class="ml-2 block text-sm font-medium text-gray-900">
+                               class="h-4 w-4 text-accent focus:ring-accent border-border rounded">
+                        <label for="param-${job.id}-use_date_range" class="ml-2 block text-sm font-medium text-text-primary">
                             Use Date Range
                         </label>
                     </div>
-                    <p class="text-xs text-gray-500 ml-6 mt-0.5">Process data for a range of dates instead of a single day</p>
+                    <p class="text-xs text-text-secondary ml-6 mt-0.5">Process data for a range of dates instead of a single day</p>
                 </div>
             `;
 
@@ -597,10 +597,10 @@ function createJobCard(job: Job): string {
         }
 
         paramsHtml = `
-            <div class="mt-4 parameter-form hidden bg-gray-50 p-4 rounded-md border border-gray-200" id="params-${job.id}">
+            <div class="mt-4 parameter-form hidden bg-dashboard-background p-4 rounded-md border border-border" id="params-${job.id}">
                 <div class="flex justify-between items-center mb-3">
-                    <h4 class="text-sm font-bold text-gray-800">⚙️ Job Parameters</h4>
-                    <button class="text-xs text-gray-500 hover:text-gray-700" onclick="toggleParams('${job.id}')">
+                    <h4 class="text-sm font-bold text-text-primary">⚙️ Job Parameters</h4>
+                    <button class="text-xs text-text-secondary hover:text-text-primary" onclick="toggleParams('${job.id}')">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -609,9 +609,9 @@ function createJobCard(job: Job): string {
                     ${fieldsHtml}
                 </div>
                 
-                <div class="mt-4 flex justify-end border-t border-gray-200 pt-3">
-                     <button class="text-sm text-gray-600 mr-3 hover:text-gray-800 px-3 py-1.5" onclick="toggleParams('${job.id}')">Cancel</button>
-                     <button class="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 shadow-sm flex items-center run-btn" 
+                <div class="mt-4 flex justify-end border-t border-border pt-3">
+                     <button class="text-sm text-text-secondary mr-3 hover:text-text-primary px-3 py-1.5" onclick="toggleParams('${job.id}')">Cancel</button>
+                     <button class="bg-accent text-white px-4 py-1.5 rounded text-sm hover:bg-accent-hover shadow-sm flex items-center run-btn" 
                         onclick="runJobWithParams('${job.id}', '${job.actual_job_id || job.id}')">
                         <i class="fas fa-play mr-1.5 text-xs"></i> Run Now
                      </button>
@@ -621,45 +621,45 @@ function createJobCard(job: Job): string {
     }
 
     return `
-        <div class="job-card bg-white rounded-lg shadow p-6 border-l-4 ${getStatusBorderColor(job)} relative">
+        <div class="job-card bg-dashboard-surface rounded-lg shadow-sm p-6 border-l-4 ${getStatusBorderColor(job)} relative border-border">
             <div class="flex justify-between items-start">
                 <div>
                     <div class="flex items-center space-x-3">
-                        <h3 class="text-lg font-bold text-gray-900">${job.name || job.id}</h3>
+                        <h3 class="text-lg font-bold text-text-primary">${job.name || job.id}</h3>
                         <span class="status-badge ${statusClass}">${getJobStatusLabel(job)}</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1 font-mono">${job.id}</p>
+                    <p class="text-xs text-text-secondary mt-1 font-mono">${job.id}</p>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 text-sm">
                         <div>
-                            <span class="text-gray-500">Next Run:</span>
-                            <span class="font-medium ${!job.next_run ? 'text-yellow-600' : 'text-gray-900'}">${nextRun}</span>
+                            <span class="text-text-secondary">Next Run:</span>
+                            <span class="font-medium ${!job.next_run ? 'text-theme-warning-text' : 'text-text-primary'}">${nextRun}</span>
                         </div>
                         <div>
-                            <span class="text-gray-500">Schedule:</span>
-                            <span class="font-medium text-gray-900">${getScheduleText(job.trigger || '')}</span>
+                            <span class="text-text-secondary">Schedule:</span>
+                            <span class="font-medium text-text-primary">${getScheduleText(job.trigger || '')}</span>
                         </div>
                     </div>
                 </div>
                 
                 <div class="flex space-x-2">
                     ${job.next_run
-            ? `<button class="job-action-btn text-yellow-600 hover:text-yellow-800 p-2" 
+            ? `<button class="job-action-btn text-theme-warning-text hover:text-theme-warning-text/80 p-2" 
                                 data-action="pause" data-id="${job.actual_job_id || job.id}" title="Pause Job">
                                 <i class="fas fa-pause"></i>
                            </button>`
-            : `<button class="job-action-btn text-green-600 hover:text-green-800 p-2" 
+            : `<button class="job-action-btn text-theme-success-text hover:text-theme-success-text/80 p-2" 
                                 data-action="resume" data-id="${job.actual_job_id || job.id}" title="Resume Job">
                                 <i class="fas fa-play"></i>
                            </button>`
         }
                     
                     ${Object.keys(job.parameters || {}).length > 0
-            ? `<button class="text-blue-600 hover:text-blue-800 p-2" 
+            ? `<button class="text-accent hover:text-accent-hover p-2" 
                                 onclick="toggleParams('${job.id}')" title="Run with Parameters">
                                 <i class="fas fa-cog"></i>
                            </button>`
-            : `<button class="job-action-btn text-blue-600 hover:text-blue-800 p-2" 
+            : `<button class="job-action-btn text-accent hover:text-accent-hover p-2" 
                                 data-action="run" data-id="${job.actual_job_id || job.id}" title="Run Now">
                                 <i class="fas fa-bolt"></i>
                            </button>`
@@ -702,15 +702,15 @@ function getJobStatusLabel(job: Job): string {
 
 function getStatusBorderColor(job: Job): string {
     if (job.is_paused || !job.next_run) {
-        return 'border-yellow-400';
+        return 'border-theme-warning-text';
     }
     if (job.last_error) {
-        return 'border-red-500';
+        return 'border-theme-error-text';
     }
     if (job.is_running) {
-        return 'border-blue-500';
+        return 'border-theme-info-text';
     }
-    return 'border-green-500';
+    return 'border-theme-success-text';
 }
 
 function getScheduleText(trigger: string): string {
@@ -723,17 +723,17 @@ function getScheduleText(trigger: string): string {
 }
 
 function getLogClass(level: string): string {
-    return level === 'ERROR' ? 'bg-red-50' : '';
+    return level === 'ERROR' ? 'bg-theme-error-bg text-theme-error-text' : 'text-text-primary';
 }
 
 function getLogLevelColor(level: string): string {
     if (level === 'ERROR') {
-        return 'text-red-600';
+        return 'text-theme-error-text';
     }
     if (level === 'WARNING') {
-        return 'text-yellow-600';
+        return 'text-theme-warning-text';
     }
-    return 'text-blue-600';
+    return 'text-theme-info-text';
 }
 
 function escapeHtmlForJobs(text: string): string {
@@ -781,7 +781,7 @@ async function handleJobAction(e: Event): Promise<void> {
         // Check if response is JSON before parsing
         const contentType = response.headers.get('content-type');
         const isJson = contentType && contentType.includes('application/json');
-        
+
         let data: JobsApiResponse;
         if (isJson) {
             data = await response.json();
@@ -810,15 +810,15 @@ async function handleJobAction(e: Event): Promise<void> {
 
 async function startScheduler(): Promise<void> {
     try {
-        const response = await fetch('/api/admin/scheduler/start', { 
+        const response = await fetch('/api/admin/scheduler/start', {
             method: 'POST',
             credentials: 'include'
         });
-        
+
         // Check if response is JSON before parsing
         const contentType = response.headers.get('content-type');
         const isJson = contentType && contentType.includes('application/json');
-        
+
         let data: JobsApiResponse;
         if (isJson) {
             data = await response.json();
@@ -827,7 +827,7 @@ async function startScheduler(): Promise<void> {
             const text = await response.text();
             throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
         }
-        
+
         if (!response.ok) {
             throw new Error(data.error || `Failed to start scheduler (${response.status})`);
         }
@@ -910,11 +910,11 @@ async function runJobWithParams(id: string, actualJobId: string): Promise<void> 
             body: JSON.stringify(params),
             credentials: 'include'
         });
-        
+
         // Check if response is JSON before parsing
         const contentType = response.headers.get('content-type');
         const isJson = contentType && contentType.includes('application/json');
-        
+
         let data: JobsApiResponse;
         if (isJson) {
             data = await response.json();

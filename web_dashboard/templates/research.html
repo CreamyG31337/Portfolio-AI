@@ -7,54 +7,54 @@
 {% block content %}
 <!-- Statistics Dashboard -->
 {% if stats %}
-<div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-border">
-    <h2 class="text-2xl font-bold text-gray-900 dark:text-text-primary mb-6">📊 Statistics</h2>
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-2xl font-bold text-text-primary mb-6">📊 Statistics</h2>
 
     <!-- Metrics Row -->
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 mb-6">
-        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
-            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Total Articles</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{{ total_articles|default(0) }}</div>
+        <div class="bg-dashboard-background rounded-lg p-2 border border-border">
+            <div class="text-xs text-text-secondary mb-0.5">Total Articles</div>
+            <div class="text-lg font-bold text-text-primary">{{ total_articles|default(0) }}</div>
         </div>
 
-        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
-            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Market News</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and
+        <div class="bg-dashboard-background rounded-lg p-2 border border-border">
+            <div class="text-xs text-text-secondary mb-0.5">Market News</div>
+            <div class="text-lg font-bold text-text-primary">{% if stats.by_type and
                 stats.by_type.market_news %}{{ stats.by_type.market_news }}{% else %}0{% endif %}</div>
         </div>
 
-        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
-            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Ticker News</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and
+        <div class="bg-dashboard-background rounded-lg p-2 border border-border">
+            <div class="text-xs text-text-secondary mb-0.5">Ticker News</div>
+            <div class="text-lg font-bold text-text-primary">{% if stats.by_type and
                 stats.by_type.ticker_news %}{{ stats.by_type.ticker_news }}{% else %}0{% endif %}</div>
         </div>
 
-        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
-            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Earnings</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{% if stats.by_type and stats.by_type.earnings
+        <div class="bg-dashboard-background rounded-lg p-2 border border-border">
+            <div class="text-xs text-text-secondary mb-0.5">Earnings</div>
+            <div class="text-lg font-bold text-text-primary">{% if stats.by_type and stats.by_type.earnings
                 %}{{ stats.by_type.earnings }}{% else %}0{% endif %}</div>
         </div>
 
-        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-gray-700 dark:border-gray-600">
-            <div class="text-xs text-gray-600 dark:text-gray-400 mb-0.5">Embedded (RAG)</div>
-            <div class="text-lg font-bold text-gray-900 dark:text-white">{{ embedded_articles|default(0) }}</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ embedding_pct|round(0)|int }}%</div>
+        <div class="bg-dashboard-background rounded-lg p-2 border border-border">
+            <div class="text-xs text-text-secondary mb-0.5">Embedded (RAG)</div>
+            <div class="text-lg font-bold text-text-primary">{{ embedded_articles|default(0) }}</div>
+            <div class="text-xs text-text-tertiary mt-0.5">{{ embedding_pct|round(0)|int }}%</div>
         </div>
     </div>
 
     <!-- Charts Row -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Top 10 Sources Chart -->
-        <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-text-primary mb-4">Top 10 Sources</h3>
+        <div class="bg-dashboard-background rounded-lg p-4 border border-border">
+            <h3 class="text-lg font-semibold text-text-primary mb-4">Top 10 Sources</h3>
             <div class="h-[300px] relative">
                 <canvas id="sources-chart"></canvas>
             </div>
         </div>
 
         <!-- Articles by Day Chart -->
-        <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-text-primary mb-4">Articles by Day (Last 90 days)</h3>
+        <div class="bg-dashboard-background rounded-lg p-4 border border-border">
+            <h3 class="text-lg font-semibold text-text-primary mb-4">Articles by Day (Last 90 days)</h3>
             <div class="h-[300px] relative">
                 <canvas id="days-chart"></canvas>
             </div>
@@ -64,27 +64,27 @@
 {% endif %}
 
 <!-- Filters Section -->
-<div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
     <form action="/research" method="GET" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Search -->
             <div>
-                <label for="search" class="block mb-2 text-sm font-medium text-gray-900 dark:text-text-primary">Search</label>
+                <label for="search" class="block mb-2 text-sm font-medium text-text-primary">Search</label>
                 <div class="relative">
                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                        <i class="fas fa-search text-gray-500"></i>
+                        <i class="fas fa-search text-text-secondary"></i>
                     </div>
                     <input type="text" id="search" name="search" value="{{ filters.search }}"
-                        class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5"
+                        class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full pl-10 p-2.5"
                         placeholder="Search articles...">
                 </div>
             </div>
 
             <!-- Ticker Filter -->
             <div>
-                <label for="ticker" class="block mb-2 text-sm font-medium text-gray-900 dark:text-text-primary">Ticker</label>
+                <label for="ticker" class="block mb-2 text-sm font-medium text-text-primary">Ticker</label>
                 <select id="ticker" name="ticker"
-                    class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                     <option value="All" {% if filters.ticker=='All' %}selected{% endif %}>All Tickers</option>
                     {% for t in unique_tickers %}
                     <option value="{{ t }}" {% if filters.ticker==t %}selected{% endif %}>{{ t }}</option>
@@ -94,9 +94,9 @@
 
             <!-- Date Range -->
             <div>
-                <label for="date_range" class="block mb-2 text-sm font-medium text-gray-900 dark:text-text-primary">Date Range</label>
+                <label for="date_range" class="block mb-2 text-sm font-medium text-text-primary">Date Range</label>
                 <select id="date_range" name="date_range"
-                    class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                     <option value="Last 7 days" {% if filters.date_range=='Last 7 days' %}selected{% endif %}>Last 7
                         days</option>
                     <option value="Last 30 days" {% if filters.date_range=='Last 30 days' %}selected{% endif %}>Last 30
@@ -110,9 +110,9 @@
 
             <!-- Article Type -->
             <div>
-                <label for="article_type" class="block mb-2 text-sm font-medium text-gray-900 dark:text-text-primary">Type</label>
+                <label for="article_type" class="block mb-2 text-sm font-medium text-text-primary">Type</label>
                 <select id="article_type" name="article_type"
-                    class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                     <option value="All" {% if filters.article_type=='All' %}selected{% endif %}>All Types</option>
                     <option value="Market News" {% if filters.article_type=='Market News' %}selected{% endif %}>Market
                         News</option>
@@ -132,12 +132,12 @@
             <div class="flex items-center">
                 <input id="only_owned" name="only_owned" type="checkbox" value="true" {% if filters.only_owned
                     %}checked{% endif %}
-                    class="w-4 h-4 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500">
-                <label for="only_owned" class="ml-2 text-sm font-medium text-gray-900 dark:text-text-primary">Only owned tickers</label>
+                    class="w-4 h-4 text-accent bg-dashboard-background border-border rounded focus:ring-accent">
+                <label for="only_owned" class="ml-2 text-sm font-medium text-text-primary">Only owned tickers</label>
             </div>
 
             <button type="submit"
-                class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2 focus:outline-none">
+                class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2 focus:outline-none">
                 <i class="fas fa-filter mr-2"></i>Apply Filters
             </button>
         </div>
@@ -145,27 +145,27 @@
 </div>
 
 <!-- Re-Analyze Controls -->
-<div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
     <div class="flex items-center justify-between flex-wrap gap-4">
         <div class="flex items-center gap-4 flex-1">
-            <label for="reanalysis-model" class="text-sm font-medium text-gray-900 dark:text-text-primary">Re-Analysis Model:</label>
+            <label for="reanalysis-model" class="text-sm font-medium text-text-primary">Re-Analysis Model:</label>
             <select id="reanalysis-model"
-                class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-text-primary text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 min-w-[200px]">
+                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent px-3 py-2 min-w-[200px]">
                 <option value="">Loading models...</option>
             </select>
-            <span id="selected-count" class="text-sm text-gray-600 dark:text-gray-400 hidden">0 articles selected</span>
+            <span id="selected-count" class="text-sm text-text-secondary hidden">0 articles selected</span>
         </div>
         <button id="reanalyze-btn" disabled
-            class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed">
+            class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed">
             <i class="fas fa-sync-alt mr-2"></i>Re-Analyze Selected
         </button>
     </div>
     <div id="reanalyze-progress" class="hidden mt-4">
-        <div class="w-full bg-gray-200 rounded-full h-2.5">
-            <div id="reanalyze-progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+        <div class="w-full bg-border rounded-full h-2.5">
+            <div id="reanalyze-progress-bar" class="bg-accent h-2.5 rounded-full transition-all duration-300"
                 class="w-0"></div>
         </div>
-        <p id="reanalyze-status" class="text-sm text-gray-600 mt-2"></p>
+        <p id="reanalyze-status" class="text-sm text-text-secondary mt-2"></p>
     </div>
     <div id="reanalyze-messages" class="mt-4"></div>
 </div>
@@ -173,23 +173,24 @@
 <!-- Articles Grid -->
 <div class="grid grid-cols-1 gap-6">
     {% for article in articles %}
-    <div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm border border-gray-200 dark:border-border hover:shadow-md transition-shadow duration-200">
+    <div
+        class="bg-dashboard-surface rounded-lg shadow-sm border border-border hover:shadow-md transition-shadow duration-200">
         <div class="p-6">
             <div class="flex items-start gap-3 mb-4">
                 <input type="checkbox"
-                    class="article-checkbox mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                    class="article-checkbox mt-1 w-4 h-4 text-accent bg-dashboard-background border-border rounded focus:ring-accent"
                     data-article-id="{{ article.id }}" onchange="updateSelectedCount()">
                 <div class="flex justify-between items-start flex-1">
                     <div>
                         <!-- Badges -->
                         <div class="flex flex-wrap gap-2 mb-2">
                             <span
-                                class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded border border-blue-400">
+                                class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-info-text">
                                 {{ article.source }}
                             </span>
                             {% if article.type %}
                             <span
-                                class="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded border border-gray-500">
+                                class="bg-dashboard-surface-alt text-text-primary text-xs font-medium px-2.5 py-0.5 rounded border border-border">
                                 {{ article.type }}
                             </span>
                             {% endif %}
@@ -197,32 +198,33 @@
                             <!-- Sentiment Badge -->
                             {% if article.sentiment == 'positive' or article.sentiment == 'bullish' %}
                             <span
-                                class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded border border-green-400">
+                                class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text">
                                 <i class="fas fa-arrow-up mr-1 user-select-none"></i>Bullish
                             </span>
                             {% elif article.sentiment == 'negative' or article.sentiment == 'bearish' %}
                             <span
-                                class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded border border-red-400">
+                                class="bg-theme-error-bg text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text">
                                 <i class="fas fa-arrow-down mr-1 user-select-none"></i>Bearish
                             </span>
                             {% elif article.sentiment %}
                             <span
-                                class="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded border border-gray-400">
+                                class="bg-dashboard-surface-alt text-text-primary text-xs font-medium px-2.5 py-0.5 rounded border border-border">
                                 {{ article.sentiment|title }}
                             </span>
                             {% endif %}
                         </div>
 
-                        <h3 class="text-xl font-bold text-gray-900 dark:text-text-primary mb-1">
+                        <h3 class="text-xl font-bold text-text-primary mb-1">
                             {% if article.url %}
-                            <a href="{{ article.url }}" target="_blank" class="hover:text-blue-600 hover:underline">
-                                {{ article.title }} <i class="fas fa-external-link-alt text-xs ml-1 text-gray-400"></i>
+                            <a href="{{ article.url }}" target="_blank" class="hover:text-accent hover:underline">
+                                {{ article.title }} <i
+                                    class="fas fa-external-link-alt text-xs ml-1 text-text-tertiary"></i>
                             </a>
                             {% else %}
                             {{ article.title }}
                             {% endif %}
                         </h3>
-                        <p class="text-sm text-gray-500">
+                        <p class="text-sm text-text-secondary">
                             <i class="far fa-calendar-alt mr-1"></i> {{ article.published_at|default('Unknown Date') }}
                         </p>
                     </div>
@@ -231,7 +233,7 @@
                     <div class="flex flex-wrap gap-1 justify-end max-w-xs">
                         {% for ticker in article.tickers|default([]) %}
                         <a href="/research?ticker={{ ticker }}"
-                            class="bg-indigo-100 text-indigo-800 text-xs font-medium px-2 py-0.5 rounded hover:bg-indigo-200">
+                            class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2 py-0.5 rounded hover:bg-theme-info-bg/80">
                             ${{ ticker }}
                         </a>
                         {% endfor %}
@@ -262,12 +264,12 @@
                 {% if has_more %}
                 <!-- Gradient fade overlay (theme-aware) -->
                 <div id="fade-{{ article.id }}"
-                    class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white dark:from-dashboard-surface to-transparent pointer-events-none transition-opacity duration-300">
+                    class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-dashboard-surface to-transparent pointer-events-none transition-opacity duration-300">
                 </div>
 
                 <!-- Inline expand/collapse button -->
                 <button id="toggle-btn-{{ article.id }}" onclick="toggleSummary('{{ article.id }}')"
-                    class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium focus:outline-none mt-2 inline-flex items-center transition-colors">
+                    class="text-accent hover:text-accent-hover text-sm font-medium focus:outline-none mt-2 inline-flex items-center transition-colors">
                     <span id="toggle-text-{{ article.id }}">Show more</span>
                     <i id="toggle-icon-{{ article.id }}"
                         class="fas fa-chevron-down ml-1 transition-transform duration-300"></i>
@@ -276,20 +278,20 @@
             </div>
 
             <!-- Footer Actions -->
-            <div class="flex items-center justify-between pt-4 border-t border-gray-100">
-                <div class="text-xs text-gray-400">
+            <div class="flex items-center justify-between pt-4 border-t border-border">
+                <div class="text-xs text-text-tertiary">
                     ID: {{ article.id|string|truncate(8, True, '') }}
                 </div>
             </div>
         </div>
     </div>
     {% else %}
-    <div class="bg-white dark:bg-dashboard-surface rounded-lg shadow-sm p-12 text-center">
-        <div class="text-gray-400 mb-4">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-12 text-center">
+        <div class="text-text-tertiary mb-4">
             <i class="fas fa-search text-5xl"></i>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 dark:text-text-primary mb-2">No research found</h3>
-        <p class="text-gray-500">Try adjusting your filters or search terms.</p>
+        <h3 class="text-lg font-medium text-text-primary mb-2">No research found</h3>
+        <p class="text-text-secondary">Try adjusting your filters or search terms.</p>
     </div>
     {% endfor %}
 </div>
@@ -299,17 +301,17 @@
     <nav class="flex items-center gap-2">
         {% if filters.page > 1 %}
         <button onclick="changePage({{ filters.page - 1 }})"
-            class="px-3 py-2 text-sm font-medium text-gray-700 dark:text-text-secondary bg-white dark:bg-dashboard-surface border border-gray-300 dark:border-border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+            class="px-3 py-2 text-sm font-medium text-text-secondary bg-dashboard-surface border border-border rounded-lg hover:bg-dashboard-surface-alt">
             Previous
         </button>
         {% endif %}
 
-        <span class="px-3 py-2 text-sm text-gray-600">Page {{ filters.page }}</span>
+        <span class="px-3 py-2 text-sm text-text-secondary">Page {{ filters.page }}</span>
 
         {% if articles|length == 20 %}
         <!-- Assuming page size is 20, if we got 20 items there might be more -->
         <button onclick="changePage({{ filters.page + 1 }})"
-            class="px-3 py-2 text-sm font-medium text-gray-700 dark:text-text-secondary bg-white dark:bg-dashboard-surface border border-gray-300 dark:border-border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+            class="px-3 py-2 text-sm font-medium text-text-secondary bg-dashboard-surface border border-border rounded-lg hover:bg-dashboard-surface-alt">
             Next
         </button>
         {% endif %}
@@ -758,19 +760,19 @@
         // Define colors based on type
         let bgClass, borderClass, textClass, icon;
         if (type === 'success') {
-            bgClass = 'bg-green-50';
-            borderClass = 'border-green-400';
-            textClass = 'text-green-800';
+            bgClass = 'bg-theme-success-bg';
+            borderClass = 'border-theme-success-text';
+            textClass = 'text-theme-success-text';
             icon = 'fa-check-circle';
         } else if (type === 'error') {
-            bgClass = 'bg-red-50';
-            borderClass = 'border-red-400';
-            textClass = 'text-red-800';
+            bgClass = 'bg-theme-error-bg';
+            borderClass = 'border-theme-error-text';
+            textClass = 'text-theme-error-text';
             icon = 'fa-exclamation-circle';
         } else {
-            bgClass = 'bg-yellow-50';
-            borderClass = 'border-yellow-400';
-            textClass = 'text-yellow-800';
+            bgClass = 'bg-theme-warning-bg';
+            borderClass = 'border-theme-warning-text';
+            textClass = 'text-theme-warning-text';
             icon = 'fa-info-circle';
         }
 
@@ -778,7 +780,7 @@
         toastEl.innerHTML = `
             <i class="fas ${icon} text-lg"></i>
             <span class="font-medium text-sm">${message}</span>
-            <button onclick="this.parentElement.remove()" class="ml-auto text-gray-400 hover:text-gray-600 focus:outline-none">
+            <button onclick="this.parentElement.remove()" class="ml-auto text-text-tertiary hover:text-text-primary focus:outline-none">
                 <i class="fas fa-times"></i>
             </button>
         `;

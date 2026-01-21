@@ -150,15 +150,15 @@ class TickerCellRenderer implements AgGridCellRenderer {
         this.eGui.style.display = 'flex';
         this.eGui.style.alignItems = 'center';
         this.eGui.style.gap = '6px';
-        
+
         if (params.value && params.value !== 'N/A') {
             const ticker = params.value;
             const logoUrl = params.data?._logo_url;
-            
+
             // Check cache first - skip if we know this ticker doesn't have a logo
             const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
             const cacheKey = cleanTicker.toUpperCase();
-            
+
             // Add logo image if available and not in failed cache
             if (logoUrl && !failedLogoCache.has(cacheKey)) {
                 const img = document.createElement('img');
@@ -171,7 +171,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 img.style.flexShrink = '0';
                 // Handle image load errors gracefully - try fallback
                 let fallbackAttempted = false;
-                img.onerror = function() {
+                img.onerror = function () {
                     if (fallbackAttempted) {
                         // Already tried fallback, add to cache and hide
                         failedLogoCache.add(cacheKey);
@@ -179,10 +179,10 @@ class TickerCellRenderer implements AgGridCellRenderer {
                         img.onerror = null;
                         return;
                     }
-                    
+
                     // Mark that we've attempted fallback
                     fallbackAttempted = true;
-                    
+
                     // Try Yahoo Finance as fallback if Parqet fails
                     const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
@@ -196,14 +196,11 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 };
                 this.eGui.appendChild(img);
             }
-            
+
             // Add ticker text
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
-            tickerSpan.style.color = '#1f77b4';
-            tickerSpan.style.fontWeight = 'bold';
-            tickerSpan.style.textDecoration = 'underline';
-            tickerSpan.style.cursor = 'pointer';
+            tickerSpan.className = 'text-accent font-bold underline cursor-pointer';
             tickerSpan.addEventListener('click', function (e: Event) {
                 e.stopPropagation();
                 if (ticker && ticker !== 'N/A') {
@@ -232,15 +229,13 @@ class SentimentCellRenderer implements AgGridCellRenderer {
 
         // Apply color based on sentiment
         if (value.includes('EUPHORIC')) {
-            this.eGui.style.color = 'green';
-            this.eGui.style.fontWeight = 'bold';
+            this.eGui.className = 'text-theme-success-text font-bold';
         } else if (value.includes('FEARFUL')) {
-            this.eGui.style.color = 'red';
-            this.eGui.style.fontWeight = 'bold';
+            this.eGui.className = 'text-theme-error-text font-bold';
         } else if (value.includes('BULLISH')) {
-            this.eGui.style.color = 'lightgreen';
+            this.eGui.className = 'text-theme-success-text';
         } else if (value.includes('BEARISH')) {
-            this.eGui.style.color = 'lightcoral';
+            this.eGui.className = 'text-theme-error-text';
         }
     }
 
@@ -570,27 +565,27 @@ async function loadAlertsData(refreshKey: number): Promise<void> {
                     alertDiv.className = 'mb-4 p-4 rounded-lg border';
                     alertDiv.classList.add(
                         alert.sentiment_label === 'EUPHORIC'
-                            ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700'
-                            : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700'
+                            ? 'bg-theme-success-bg/20 border-theme-success-text/30'
+                            : 'bg-theme-error-bg/20 border-theme-error-text/30'
                     );
 
                     alertDiv.innerHTML = `
                         <div class="flex items-center justify-between mb-2">
                             <div>
-                                <span class="font-bold text-lg text-gray-900 dark:text-gray-100">${alert.ticker}</span>
-                                <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">(${alert.platform.toUpperCase()})</span>
-                                <span class="ml-2 font-semibold text-gray-900 dark:text-gray-100">${alert.sentiment_label}</span>
-                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Score: ${alert.sentiment_score.toFixed(1)}</span>
+                                <span class="font-bold text-lg text-text-primary">${alert.ticker}</span>
+                                <span class="ml-2 text-sm text-text-secondary">(${alert.platform.toUpperCase()})</span>
+                                <span class="ml-2 font-semibold text-text-primary">${alert.sentiment_label}</span>
+                                <span class="ml-2 text-sm text-text-tertiary">Score: ${alert.sentiment_score.toFixed(1)}</span>
                             </div>
-                            <div class="text-sm text-gray-600 dark:text-gray-400">${alert.created_at}</div>
+                            <div class="text-sm text-text-secondary">${alert.created_at}</div>
                         </div>
                         <div class="flex gap-2 mt-2">
                             <button onclick="loadAlertPosts(${alert.id}, ${alert.analysis_session_id || 'null'}, ${idx})" 
-                                    class="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+                                    class="text-white px-3 py-1 bg-accent rounded hover:bg-accent-hover text-sm">
                                 View Source Posts
                             </button>
                             <button onclick="window.location.href='/ticker?ticker=${encodeURIComponent(alert.ticker)}'" 
-                                    class="text-sm px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700">
+                                    class="text-white px-3 py-1 bg-text-secondary rounded hover:bg-text-primary text-sm">
                                 View Ticker Details
                             </button>
                         </div>
@@ -633,21 +628,21 @@ async function loadAlertPosts(metricId: number, sessionId: number | null, alertI
         const result = await response.json();
         if (result.success && result.data) {
             const posts = result.data;
-            postsDiv.innerHTML = '<h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Source Posts:</h4>';
+            postsDiv.innerHTML = '<h4 class="font-semibold mb-2 text-text-primary">Source Posts:</h4>';
 
             if (posts.length > 0) {
                 posts.forEach((post: any) => {
                     const postDiv = document.createElement('div');
-                    postDiv.className = 'mb-3 p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700';
+                    postDiv.className = 'mb-3 p-3 bg-dashboard-surface rounded border border-border';
                     postDiv.innerHTML = `
                         <div class="flex justify-between mb-1">
-                            <span class="font-semibold text-gray-900 dark:text-gray-100">${post.author || 'Unknown'}</span>
-                            <span class="text-sm text-gray-600 dark:text-gray-400">${post.posted_at}</span>
+                            <span class="font-semibold text-text-primary">${post.author || 'Unknown'}</span>
+                            <span class="text-sm text-text-secondary">${post.posted_at}</span>
                         </div>
-                        <p class="text-sm mb-2 text-gray-700 dark:text-gray-300">${post.content || ''}</p>
-                        <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                        <p class="text-sm mb-2 text-text-primary">${post.content || ''}</p>
+                        <div class="flex justify-between text-xs text-text-secondary">
                             <span>👍 ${post.engagement_score || 0} engagement</span>
-                            ${post.url ? `<a href="${post.url}" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">View Original Post</a>` : ''}
+                            ${post.url ? `<a href="${post.url}" target="_blank" class="text-accent hover:underline">View Original Post</a>` : ''}
                         </div>
                     `;
                     postsDiv.appendChild(postDiv);
@@ -660,7 +655,7 @@ async function loadAlertPosts(metricId: number, sessionId: number | null, alertI
         }
     } catch (error) {
         console.error('Error loading alert posts:', error);
-        postsDiv.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Error loading posts.</p>';
+        postsDiv.innerHTML = '<p class="text-sm text-theme-error-text">Error loading posts.</p>';
         postsDiv.classList.remove('hidden');
     }
 }
@@ -695,26 +690,26 @@ async function loadAIAnalysesData(refreshKey: number): Promise<void> {
 
                 analyses.forEach((analysis) => {
                     const analysisDiv = document.createElement('div');
-                    analysisDiv.className = 'mb-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600';
+                    analysisDiv.className = 'mb-4 p-4 bg-dashboard-surface-alt rounded-lg border border-border';
                     analysisDiv.innerHTML = `
                         <div class="flex items-center justify-between mb-2">
                             <div>
-                                <span class="font-bold text-gray-900 dark:text-gray-100">${analysis.ticker}</span>
-                                <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">${analysis.platform.toUpperCase()}</span>
-                                <span class="ml-2 font-semibold ${analysis.sentiment_label === 'EUPHORIC' ? 'text-green-600 dark:text-green-400' : analysis.sentiment_label === 'FEARFUL' ? 'text-red-600 dark:text-red-400' : ''}">
+                                <span class="font-bold text-text-primary">${analysis.ticker}</span>
+                                <span class="ml-2 text-sm text-text-secondary">${analysis.platform.toUpperCase()}</span>
+                                <span class="ml-2 font-semibold ${analysis.sentiment_label === 'EUPHORIC' ? 'text-theme-success-text' : analysis.sentiment_label === 'FEARFUL' ? 'text-theme-error-text' : ''}">
                                     ${analysis.sentiment_label}
                                 </span>
                             </div>
-                            <div class="text-sm text-gray-600 dark:text-gray-400">${analysis.analyzed_at}</div>
+                            <div class="text-sm text-text-secondary">${analysis.analyzed_at}</div>
                         </div>
-                        <div class="grid grid-cols-4 gap-4 text-sm mb-2 text-gray-700 dark:text-gray-300">
+                        <div class="grid grid-cols-4 gap-4 text-sm mb-2 text-text-primary">
                             <div>Score: ${analysis.sentiment_score.toFixed(1)}</div>
                             <div>Confidence: ${(analysis.confidence_score * 100).toFixed(1)}%</div>
                             <div>Posts: ${analysis.post_count}</div>
                             <div>Engagement: ${analysis.total_engagement}</div>
                         </div>
                         <button onclick="loadAIDetails(${analysis.id}, ${analysis.session_id})" 
-                                class="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+                                class="text-white px-3 py-1 bg-accent rounded hover:bg-accent-hover text-sm">
                             View Details
                         </button>
                         <div id="ai-details-${analysis.id}" class="hidden mt-4"></div>
@@ -755,44 +750,44 @@ async function loadAIDetails(analysisId: number, sessionId: number): Promise<voi
             const posts = data.posts || [];
 
             detailsDiv.innerHTML = `
-                <div class="bg-white dark:bg-gray-800 p-4 rounded border border-gray-300 dark:border-gray-600">
-                    <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Analysis Summary</h4>
-                    <p class="text-sm mb-4 text-gray-700 dark:text-gray-300">${analysis.summary || 'No summary available'}</p>
+                <div class="bg-dashboard-surface p-4 rounded border border-border">
+                    <h4 class="font-semibold mb-2 text-text-primary">Analysis Summary</h4>
+                    <p class="text-sm mb-4 text-text-secondary">${analysis.summary || 'No summary available'}</p>
                     
-                    <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Key Themes</h4>
-                    <ul class="list-disc list-inside text-sm mb-4 text-gray-700 dark:text-gray-300">
+                    <h4 class="font-semibold mb-2 text-text-primary">Key Themes</h4>
+                    <ul class="list-disc list-inside text-sm mb-4 text-text-secondary">
                         ${analysis.key_themes && analysis.key_themes.length > 0
                     ? analysis.key_themes.map((theme: string) => `<li>${theme}</li>`).join('')
                     : '<li>No themes identified</li>'}
                     </ul>
                     
-                    <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Detailed Reasoning</h4>
-                    <p class="text-sm mb-4 text-gray-700 dark:text-gray-300">${analysis.reasoning || 'No reasoning provided'}</p>
+                    <h4 class="font-semibold mb-2 text-text-primary">Detailed Reasoning</h4>
+                    <p class="text-sm mb-4 text-text-secondary">${analysis.reasoning || 'No reasoning provided'}</p>
                     
                     ${extractedTickers.length > 0 ? `
-                        <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Extracted Tickers</h4>
-                        <div class="text-sm mb-4 text-gray-700 dark:text-gray-300">
+                        <h4 class="font-semibold mb-2 text-text-primary">Extracted Tickers</h4>
+                        <div class="text-sm mb-4 text-text-secondary">
                             ${extractedTickers.map((t: any) => `
                                 <div class="mb-1">
                                     <strong>${t.ticker}</strong> (${(t.confidence * 100).toFixed(1)}%) - ${t.company_name || 'Unknown'}
-                                    ${t.is_primary ? ' <span class="text-green-600 dark:text-green-400">Primary</span>' : ''}
+                                    ${t.is_primary ? ' <span class="text-theme-success-text">Primary</span>' : ''}
                                 </div>
                             `).join('')}
                         </div>
                     ` : ''}
                     
                     ${posts.length > 0 ? `
-                        <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Sample Posts</h4>
+                        <h4 class="font-semibold mb-2 text-text-primary">Sample Posts</h4>
                         ${posts.map((post: any) => `
-                            <div class="mb-3 p-2 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                            <div class="mb-3 p-2 bg-dashboard-surface-alt rounded border border-border">
                                 <div class="flex justify-between mb-1">
-                                    <span class="font-semibold text-sm text-gray-900 dark:text-gray-100">${post.author || 'Unknown'}</span>
-                                    <span class="text-xs text-gray-600 dark:text-gray-400">${post.posted_at}</span>
+                                    <span class="font-semibold text-sm text-text-primary">${post.author || 'Unknown'}</span>
+                                    <span class="text-xs text-text-secondary">${post.posted_at}</span>
                                 </div>
-                                <p class="text-sm text-gray-700 dark:text-gray-300">${post.content ? (post.content.length > 300 ? post.content.substring(0, 300) + '...' : post.content) : ''}</p>
-                                <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                <p class="text-sm text-text-primary">${post.content ? (post.content.length > 300 ? post.content.substring(0, 300) + '...' : post.content) : ''}</p>
+                                <div class="flex justify-between text-xs text-text-secondary mt-1">
                                     <span>👍 ${post.engagement_score || 0} engagement</span>
-                                    ${post.url ? `<a href="${post.url}" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">View Original</a>` : ''}
+                                    ${post.url ? `<a href="${post.url}" target="_blank" class="text-accent hover:underline">View Original</a>` : ''}
                                 </div>
                             </div>
                         `).join('')}

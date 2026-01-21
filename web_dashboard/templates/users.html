@@ -11,10 +11,12 @@
         transition: transform 0.2s ease-in-out;
         border: 1px solid var(--border-color, #e5e7eb);
     }
+
     .user-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
+
     .role-badge {
         display: inline-block;
         padding: 0.25rem 0.75rem;
@@ -22,45 +24,56 @@
         font-size: 0.875rem;
         font-weight: 600;
     }
+
     .role-admin {
-        background-color: #fbbf24;
-        color: #78350f;
+        background-color: var(--color-warning-bg);
+        color: var(--color-warning-text);
+        border: 1px solid var(--color-warning-text);
     }
+
     .role-user {
-        background-color: #6b7280;
-        color: white;
+        background-color: var(--dashboard-background);
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
     }
+
     .tab-button {
         transition: all 0.2s;
         cursor: pointer;
     }
+
     .tab-button.active {
-        color: var(--primary-color, #2563eb);
-        border-bottom-color: var(--primary-color, #2563eb);
+        color: var(--color-accent);
+        border-bottom-color: var(--color-accent);
     }
+
     .tab-content {
         display: none;
     }
+
     .tab-content.active {
         display: block;
     }
+
     .action-popover {
         position: relative;
     }
+
     .popover-content {
         display: none;
         position: absolute;
         right: 0;
         top: 100%;
         z-index: 50;
-        background: white;
-        border: 1px solid #e5e7eb;
+        background: var(--dashboard-surface);
+        border: 1px solid var(--border-color);
         border-radius: 0.5rem;
         box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
         min-width: 250px;
         padding: 1rem;
         margin-top: 0.5rem;
     }
+
     .popover-content.show {
         display: block;
     }
@@ -69,12 +82,14 @@
 
 {% block content %}
 <!-- Tabs -->
-<div class="mb-6 border-b border-gray-200">
+<div class="mb-6 border-b border-border">
     <nav class="flex space-x-8" aria-label="Tabs">
-        <button id="tab-users" class="tab-button active border-b-2 border-blue-500 py-4 px-1 text-sm font-medium text-blue-600">
+        <button id="tab-users"
+            class="tab-button active border-b-2 border-accent py-4 px-1 text-sm font-medium text-accent">
             👥 User Management
         </button>
-        <button id="tab-access" class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+        <button id="tab-access"
+            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border">
             🔐 Contributor Access
         </button>
     </nav>
@@ -83,10 +98,11 @@
 <!-- User Management Tab Content -->
 <div id="tab-content-users" class="tab-content active">
     <!-- Stats -->
-    <div class="bg-white rounded-lg shadow-lg p-4 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-4 mb-6 border border-border">
         <div class="flex items-center justify-between">
-            <div id="stats-text" class="text-sm text-gray-600">Loading users...</div>
-            <button id="refresh-users-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition duration-200">
+            <div id="stats-text" class="text-sm text-text-secondary">Loading users...</div>
+            <button id="refresh-users-btn"
+                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200">
                 <i class="fas fa-sync-alt mr-2"></i>Refresh
             </button>
         </div>
@@ -94,42 +110,48 @@
 
     <!-- Users List -->
     <div id="users-container" class="space-y-4 mb-6">
-        <div id="loading-users" class="text-center py-8 text-gray-500">
+        <div id="loading-users" class="text-center py-8 text-text-secondary">
             <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
             <p>Loading users...</p>
         </div>
         <div id="users-list" class="hidden"></div>
-        <div id="no-users" class="hidden bg-white rounded-lg shadow-lg p-6 text-center text-gray-500">
+        <div id="no-users"
+            class="hidden bg-dashboard-surface rounded-lg shadow-lg p-6 text-center text-text-secondary border border-border">
             <i class="fas fa-users text-4xl mb-4"></i>
             <p>No users found.</p>
         </div>
-        <div id="error-users" class="hidden bg-red-50 border border-red-200 rounded-lg p-4">
-            <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>
-            <span id="error-users-text" class="text-red-700"></span>
+        <div id="error-users" class="hidden bg-theme-error-bg border border-theme-error-text rounded-lg p-4">
+            <i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i>
+            <span id="error-users-text" class="text-theme-error-text"></span>
         </div>
     </div>
 
     <!-- Update Contributor Email Section -->
-    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-        <h3 class="text-lg font-semibold mb-4">Update Contributor Email</h3>
-        <p class="text-sm text-gray-600 mb-4">Change a contributor's email address (updates contributors table and fund_contributions records)</p>
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 border border-border">
+        <h3 class="text-lg font-semibold mb-4 text-text-primary">Update Contributor Email</h3>
+        <p class="text-sm text-text-secondary mb-4">Change a contributor's email address (updates contributors table and
+            fund_contributions records)</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Select Contributor/User to Update</label>
-                <select id="contributor-select" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label class="block text-sm font-medium text-text-primary mb-2">Select Contributor/User to
+                    Update</label>
+                <select id="contributor-select"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent text-text-primary">
                     <option value="">-- Select --</option>
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">New Email Address</label>
+                <label class="block text-sm font-medium text-text-primary mb-2">New Email Address</label>
                 <input type="email" id="new-email-input" placeholder="Enter new email address"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent text-text-primary"
                     disabled>
-                <p id="current-email-text" class="text-xs text-gray-500 mt-1"></p>
+                <p id="current-email-text" class="text-xs text-text-secondary mt-1"></p>
             </div>
         </div>
         <div class="mt-4">
-            <button id="update-email-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            <button id="update-email-btn"
+                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled>
                 <i class="fas fa-edit mr-2"></i>Update Email
             </button>
         </div>
@@ -137,20 +159,22 @@
     </div>
 
     <!-- Unregistered Contributors Section -->
-    <div class="bg-white rounded-lg shadow-lg p-6">
-        <h3 class="text-lg font-semibold mb-4">📨 Unregistered Contributors</h3>
-        <p class="text-sm text-gray-600 mb-4">Contributors with fund contributions who haven't created an account yet</p>
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 border border-border">
+        <h3 class="text-lg font-semibold mb-4 text-text-primary">📨 Unregistered Contributors</h3>
+        <p class="text-sm text-text-secondary mb-4">Contributors with fund contributions who haven't created an account
+            yet</p>
         <div id="unregistered-container">
-            <div id="loading-unregistered" class="text-center py-4 text-gray-500">
+            <div id="loading-unregistered" class="text-center py-4 text-text-secondary">
                 <i class="fas fa-spinner fa-spin mr-2"></i>Loading...
             </div>
             <div id="unregistered-list" class="hidden space-y-2"></div>
-            <div id="no-unregistered" class="hidden text-center py-4 text-green-600">
+            <div id="no-unregistered" class="hidden text-center py-4 text-theme-success-text">
                 <i class="fas fa-check-circle mr-2"></i>All contributors have registered accounts!
             </div>
-            <div id="error-unregistered" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
-                <i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
-                <span id="error-unregistered-text" class="text-yellow-700"></span>
+            <div id="error-unregistered"
+                class="hidden bg-theme-warning-bg border border-theme-warning-text rounded-lg p-4 mt-4">
+                <i class="fas fa-exclamation-triangle text-theme-warning-text mr-2"></i>
+                <span id="error-unregistered-text" class="text-theme-warning-text"></span>
             </div>
         </div>
     </div>
@@ -159,34 +183,39 @@
 <!-- Contributor Access Tab Content -->
 <div id="tab-content-access" class="tab-content">
     <!-- Grant Access Section -->
-    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-        <h3 class="text-lg font-semibold mb-4">Grant Access</h3>
-        <p class="text-sm text-gray-600 mb-4">Allow a user to view/manage a contributor's account</p>
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 border border-border">
+        <h3 class="text-lg font-semibold mb-4 text-text-primary">Grant Access</h3>
+        <p class="text-sm text-text-secondary mb-4">Allow a user to view/manage a contributor's account</p>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Contributor</label>
-                <select id="grant-contributor-select" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label class="block text-sm font-medium text-text-primary mb-2">Contributor</label>
+                <select id="grant-contributor-select"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent text-text-primary">
                     <option value="">-- Select Contributor --</option>
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">User Email</label>
-                <select id="grant-user-select" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label class="block text-sm font-medium text-text-primary mb-2">User Email</label>
+                <select id="grant-user-select"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent text-text-primary">
                     <option value="">-- Select User --</option>
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Access Level</label>
-                <select id="grant-access-level-select" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label class="block text-sm font-medium text-text-primary mb-2">Access Level</label>
+                <select id="grant-access-level-select"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent text-text-primary">
                     <option value="viewer">viewer</option>
                     <option value="manager">manager</option>
                     <option value="owner">owner</option>
                 </select>
-                <p class="text-xs text-gray-500 mt-1">viewer: Can view data | manager: Can view and manage | owner: Full control</p>
+                <p class="text-xs text-text-secondary mt-1">viewer: Can view data | manager: Can view and manage |
+                    owner: Full control</p>
             </div>
         </div>
         <div class="mt-4">
-            <button id="grant-access-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition duration-200">
+            <button id="grant-access-btn"
+                class="bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200">
                 <i class="fas fa-key mr-2"></i>Grant Access
             </button>
         </div>
@@ -194,59 +223,76 @@
     </div>
 
     <!-- Current Access Section -->
-    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-        <h3 class="text-lg font-semibold mb-4">Current Access</h3>
-        <p class="text-sm text-gray-600 mb-4">View all contributor-user access relationships</p>
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 border border-border">
+        <h3 class="text-lg font-semibold mb-4 text-text-primary">Current Access</h3>
+        <p class="text-sm text-text-secondary mb-4">View all contributor-user access relationships</p>
         <div id="access-container">
-            <div id="loading-access" class="text-center py-4 text-gray-500">
+            <div id="loading-access" class="text-center py-4 text-text-secondary">
                 <i class="fas fa-spinner fa-spin mr-2"></i>Loading access records...
             </div>
             <div id="access-table-container" class="hidden overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                <table class="min-w-full divide-y divide-border">
+                    <thead class="bg-dashboard-background">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contributor</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contributor Email</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Email</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Name</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Access Level</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Granted</th>
+                            <th
+                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                Contributor</th>
+                            <th
+                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                Contributor Email</th>
+                            <th
+                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                User Email</th>
+                            <th
+                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                User Name</th>
+                            <th
+                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                Access Level</th>
+                            <th
+                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                Granted</th>
                         </tr>
                     </thead>
-                    <tbody id="access-table-body" class="bg-white divide-y divide-gray-200">
+                    <tbody id="access-table-body" class="bg-dashboard-surface divide-y divide-border">
                     </tbody>
                 </table>
             </div>
-            <div id="no-access" class="hidden text-center py-4 text-gray-500">
-                <i class="fas fa-info-circle mr-2"></i>No access records found. Grant access to link users to contributors.
+            <div id="no-access" class="hidden text-center py-4 text-text-secondary">
+                <i class="fas fa-info-circle mr-2"></i>No access records found. Grant access to link users to
+                contributors.
             </div>
-            <div id="error-access" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
-                <i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
-                <span id="error-access-text" class="text-yellow-700"></span>
+            <div id="error-access"
+                class="hidden bg-theme-warning-bg border border-theme-warning-text rounded-lg p-4 mt-4">
+                <i class="fas fa-exclamation-triangle text-theme-warning-text mr-2"></i>
+                <span id="error-access-text" class="text-theme-warning-text"></span>
             </div>
         </div>
     </div>
 
     <!-- Revoke Access Section -->
-    <div class="bg-white rounded-lg shadow-lg p-6">
-        <h3 class="text-lg font-semibold mb-4">Revoke Access</h3>
-        <p class="text-sm text-gray-600 mb-4">Remove user access to a contributor's account</p>
+    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 border border-border">
+        <h3 class="text-lg font-semibold mb-4 text-text-primary">Revoke Access</h3>
+        <p class="text-sm text-text-secondary mb-4">Remove user access to a contributor's account</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Contributor</label>
-                <select id="revoke-contributor-select" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label class="block text-sm font-medium text-text-primary mb-2">Contributor</label>
+                <select id="revoke-contributor-select"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent text-text-primary">
                     <option value="">-- Select Contributor --</option>
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">User Email</label>
-                <select id="revoke-user-select" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label class="block text-sm font-medium text-text-primary mb-2">User Email</label>
+                <select id="revoke-user-select"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent text-text-primary">
                     <option value="">-- Select User --</option>
                 </select>
             </div>
         </div>
         <div class="mt-4">
-            <button id="revoke-access-btn" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition duration-200">
+            <button id="revoke-access-btn"
+                class="bg-theme-error-bg text-theme-error-text border border-theme-error-text px-4 py-2 rounded-md hover:bg-theme-error-bg/80 transition duration-200">
                 <i class="fas fa-ban mr-2"></i>Revoke Access
             </button>
         </div>
@@ -258,4 +304,3 @@
 {% block extra_scripts %}
 <script type="module" src="/assets/js/users.js"></script>
 {% endblock %}
-

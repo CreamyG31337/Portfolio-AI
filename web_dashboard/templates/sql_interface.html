@@ -29,18 +29,18 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
     <!-- Query Editor -->
     <div class="lg:col-span-2">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                <h2 class="text-xl font-bold text-text-primary">
                     <i class="fas fa-code mr-2"></i>Query Editor
                 </h2>
                 <div class="flex space-x-2">
                     <button onclick="executeQuery()"
-                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+                        class="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg transition">
                         <i class="fas fa-play mr-2"></i>Execute
                     </button>
                     <button onclick="formatQuery()"
-                        class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition">
+                        class="bg-text-secondary hover:bg-text-primary text-white px-4 py-2 rounded-lg transition">
                         <i class="fas fa-magic mr-2"></i>Format
                     </button>
                 </div>
@@ -48,11 +48,11 @@
 
             <div class="mb-4">
                 <textarea id="sqlQuery"
-                    class="w-full h-64 p-4 border rounded-lg font-mono text-sm bg-gray-50 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                    class="w-full h-64 p-4 border border-border rounded-lg font-mono text-sm bg-dashboard-surface-alt text-text-primary"
                     placeholder="Enter your SQL query here...&#10;&#10;Example:&#10;SELECT * FROM portfolio_positions LIMIT 10;&#10;&#10;SELECT fund, COUNT(*) as positions&#10;FROM portfolio_positions&#10;WHERE shares > 0&#10;GROUP BY fund;"></textarea>
             </div>
 
-            <div class="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+            <div class="flex items-center justify-between text-sm text-text-secondary">
                 <div>
                     <i class="fas fa-info-circle mr-1"></i>
                     Only SELECT queries are allowed for safety
@@ -64,9 +64,9 @@
         </div>
 
         <!-- Results -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mt-6">
+        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mt-6 border border-border">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                <h2 class="text-xl font-bold text-text-primary">
                     <i class="fas fa-table mr-2"></i>Results
                 </h2>
                 <div class="flex space-x-2">
@@ -75,14 +75,14 @@
                         <i class="fas fa-download mr-2"></i>Export
                     </button>
                     <button onclick="clearResults()"
-                        class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition">
+                        class="bg-text-secondary hover:bg-text-primary text-white px-4 py-2 rounded-lg transition">
                         <i class="fas fa-trash mr-2"></i>Clear
                     </button>
                 </div>
             </div>
 
             <div id="resultsContainer" class="min-h-32 overflow-x-auto">
-                <div class="text-center text-gray-500 py-8">
+                <div class="text-center text-text-secondary py-8">
                     <i class="fas fa-database text-4xl mb-4"></i>
                     <p>Execute a query to see results here</p>
                 </div>
@@ -93,22 +93,22 @@
     <!-- Sidebar -->
     <div class="space-y-6">
         <!-- Quick Queries -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
+        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+            <h3 class="text-lg font-bold text-text-primary mb-4">
                 <i class="fas fa-bolt mr-2"></i>Quick Queries
             </h3>
             <div class="space-y-2">
                 <button onclick="loadQuickQuery('portfolio')"
-                    class="w-full text-left bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 p-3 rounded-lg transition">
-                    <div class="font-semibold text-blue-800 dark:text-blue-300">Portfolio Positions</div>
-                    <div class="text-sm text-blue-600 dark:text-blue-400">SELECT * FROM portfolio_positions LIMIT 10;
+                    class="w-full text-left bg-theme-info-bg/20 hover:bg-theme-info-bg/30 p-3 rounded-lg transition border border-theme-info-text/20">
+                    <div class="font-semibold text-theme-info-text">Portfolio Positions</div>
+                    <div class="text-sm text-theme-info-text/80">SELECT * FROM portfolio_positions LIMIT 10;
                     </div>
                 </button>
 
                 <button onclick="loadQuickQuery('trades')"
-                    class="w-full text-left bg-green-50 dark:bg-green-900/30 hover:bg-green-100 dark:hover:bg-green-900/50 p-3 rounded-lg transition">
-                    <div class="font-semibold text-green-800 dark:text-green-300">Recent Trades</div>
-                    <div class="text-sm text-green-600 dark:text-green-400">SELECT * FROM trade_log ORDER BY date DESC
+                    class="w-full text-left bg-theme-success-bg/20 hover:bg-theme-success-bg/30 p-3 rounded-lg transition border border-theme-success-text/20">
+                    <div class="font-semibold text-theme-success-text">Recent Trades</div>
+                    <div class="text-sm text-theme-success-text/80">SELECT * FROM trade_log ORDER BY date DESC
                         LIMIT 10;</div>
                 </button>
 
@@ -119,47 +119,47 @@
                 </button>
 
                 <button onclick="loadQuickQuery('users')"
-                    class="w-full text-left bg-orange-50 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 p-3 rounded-lg transition">
-                    <div class="font-semibold text-orange-800 dark:text-orange-300">User Assignments</div>
-                    <div class="text-sm text-orange-600 dark:text-orange-400">SELECT * FROM user_funds;</div>
+                    class="w-full text-left bg-theme-warning-bg/20 hover:bg-theme-warning-bg/30 p-3 rounded-lg transition border border-theme-warning-text/20">
+                    <div class="font-semibold text-theme-warning-text">User Assignments</div>
+                    <div class="text-sm text-theme-warning-text/80">SELECT * FROM user_funds;</div>
                 </button>
             </div>
         </div>
 
         <!-- Table Schema -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
+        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+            <h3 class="text-lg font-bold text-text-primary mb-4">
                 <i class="fas fa-database mr-2"></i>Table Schema
             </h3>
             <div class="space-y-3 text-sm">
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-gray-200">portfolio_positions</div>
-                    <div class="text-gray-600 dark:text-gray-400">id, fund, ticker, shares, price, cost_basis, pnl, date
+                    <div class="font-semibold text-text-primary">portfolio_positions</div>
+                    <div class="text-text-secondary">id, fund, ticker, shares, price, cost_basis, pnl, date
                     </div>
                 </div>
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-gray-200">trade_log</div>
-                    <div class="text-gray-600 dark:text-gray-400">id, fund, date, ticker, shares, price, cost_basis,
+                    <div class="font-semibold text-text-primary">trade_log</div>
+                    <div class="text-text-secondary">id, fund, date, ticker, shares, price, cost_basis,
                         pnl, reason</div>
                 </div>
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-gray-200">cash_balances</div>
-                    <div class="text-gray-600 dark:text-gray-400">id, fund, currency, amount, updated_at</div>
+                    <div class="font-semibold text-text-primary">cash_balances</div>
+                    <div class="text-text-secondary">id, fund, currency, amount, updated_at</div>
                 </div>
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-gray-200">user_funds</div>
-                    <div class="text-gray-600 dark:text-gray-400">id, user_id, fund_name, created_at</div>
+                    <div class="font-semibold text-text-primary">user_funds</div>
+                    <div class="text-text-secondary">id, user_id, fund_name, created_at</div>
                 </div>
             </div>
         </div>
 
         <!-- Query History -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
+        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+            <h3 class="text-lg font-bold text-text-primary mb-4">
                 <i class="fas fa-history mr-2"></i>Query History
             </h3>
             <div id="queryHistory" class="space-y-2 max-h-48 overflow-y-auto">
-                <div class="text-gray-500 text-sm">No queries executed yet</div>
+                <div class="text-text-secondary text-sm">No queries executed yet</div>
             </div>
         </div>
     </div>
@@ -246,22 +246,22 @@
         const resultsContainer = document.getElementById('resultsContainer');
 
         if (!data || data.length === 0) {
-            resultsContainer.innerHTML = '<div class="text-center py-8 text-gray-500"><i class="fas fa-info-circle text-2xl mb-4"></i><p>Query executed successfully, but no results returned</p></div>';
+            resultsContainer.innerHTML = '<div class="text-center py-8 text-text-secondary"><i class="fas fa-info-circle text-2xl mb-4"></i><p>Query executed successfully, but no results returned</p></div>';
             return;
         }
 
         // Create table
         const table = document.createElement('table');
-        table.className = 'w-full border-collapse border border-gray-300 dark:border-gray-700 text-sm';
+        table.className = 'w-full border-collapse border border-border text-sm';
 
         // Header
         const thead = document.createElement('thead');
         const headerRow = document.createElement('tr');
-        headerRow.className = 'bg-gray-100 dark:bg-gray-700';
+        headerRow.className = 'bg-dashboard-surface-alt';
 
         Object.keys(data[0]).forEach(key => {
             const th = document.createElement('th');
-            th.className = 'border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100';
+            th.className = 'border border-border px-4 py-2 text-left font-semibold text-text-primary';
             th.textContent = key;
             headerRow.appendChild(th);
         });
@@ -273,11 +273,11 @@
         const tbody = document.createElement('tbody');
         data.forEach(row => {
             const tr = document.createElement('tr');
-            tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-800 dark:text-gray-300';
+            tr.className = 'hover:bg-dashboard-hover text-text-primary';
 
             Object.values(row).forEach(value => {
                 const td = document.createElement('td');
-                td.className = 'border border-gray-300 dark:border-gray-600 px-4 py-2';
+                td.className = 'border border-border px-4 py-2';
                 td.textContent = value !== null ? value : 'NULL';
                 tr.appendChild(td);
             });
@@ -289,7 +289,7 @@
 
         // Results info
         const info = document.createElement('div');
-        info.className = 'mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-lg';
+        info.className = 'mb-4 p-3 bg-theme-info-bg/20 text-theme-info-text rounded-lg border border-theme-info-text/20';
         info.innerHTML = `<i class="fas fa-info-circle mr-2"></i>Query executed successfully. ${count} rows returned.`;
 
         resultsContainer.innerHTML = '';
@@ -300,12 +300,12 @@
     function displayError(error) {
         const resultsContainer = document.getElementById('resultsContainer');
         resultsContainer.innerHTML = `
-            <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-900 rounded-lg p-4">
+            <div class="bg-theme-error-bg/20 border border-theme-error-text/30 rounded-lg p-4">
                 <div class="flex items-center">
-                    <i class="fas fa-exclamation-triangle text-red-600 dark:text-red-400 mr-2"></i>
-                    <span class="font-semibold text-red-800 dark:text-red-300">Query Error</span>
+                    <i class="fas fa-exclamation-triangle text-theme-error-text mr-2"></i>
+                    <span class="font-semibold text-theme-error-text">Query Error</span>
                 </div>
-                <p class="text-red-700 dark:text-red-300 mt-2">${error}</p>
+                <p class="text-theme-error-text mt-2">${error}</p>
             </div>
         `;
     }
@@ -320,7 +320,7 @@
     }
 
     function clearResults() {
-        document.getElementById('resultsContainer').innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-database text-4xl mb-4"></i><p>Execute a query to see results here</p></div>';
+        document.getElementById('resultsContainer').innerHTML = '<div class="text-center text-text-secondary py-8"><i class="fas fa-database text-4xl mb-4"></i><p>Execute a query to see results here</p></div>';
     }
 
     function formatQuery() {
@@ -368,14 +368,14 @@
         const historyContainer = document.getElementById('queryHistory');
 
         if (queryHistory.length === 0) {
-            historyContainer.innerHTML = '<div class="text-gray-500 text-sm">No queries executed yet</div>';
+            historyContainer.innerHTML = '<div class="text-text-secondary text-sm">No queries executed yet</div>';
             return;
         }
 
         historyContainer.innerHTML = queryHistory.slice(0, 10).map((item, index) => \`
-            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50" onclick="loadHistoryQuery(\${index})">
-                <div class="text-sm font-mono text-gray-800 dark:text-gray-300 truncate">\${item.query}</div>
-                <div class="text-xs text-gray-500">\${item.timestamp}</div>
+            <div class="border border-border rounded-lg p-2 cursor-pointer hover:bg-dashboard-hover" onclick="loadHistoryQuery(\${index})">
+                <div class="text-sm font-mono text-text-primary truncate">\${item.query}</div>
+                <div class="text-xs text-text-secondary">\${item.timestamp}</div>
             </div>
         \`).join('');
     }

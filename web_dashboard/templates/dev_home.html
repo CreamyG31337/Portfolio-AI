@@ -11,50 +11,50 @@
 {% block content %}
 <!-- Quick Stats -->
 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
         <div class="flex items-center">
-            <div class="p-3 bg-blue-100 dark:bg-blue-900 rounded-full">
-                <i class="fas fa-database text-blue-600 dark:text-blue-300 text-xl"></i>
+            <div class="p-3 bg-theme-info-bg/20 rounded-full">
+                <i class="fas fa-database text-theme-info-text text-xl"></i>
             </div>
             <div class="ml-4">
-                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Database</h3>
-                <p class="text-gray-600 dark:text-gray-400">Supabase Connected</p>
+                <h3 class="text-lg font-semibold text-text-primary">Database</h3>
+                <p class="text-text-secondary">Supabase Connected</p>
             </div>
         </div>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
         <div class="flex items-center">
-            <div class="p-3 bg-green-100 dark:bg-green-900 rounded-full">
-                <i class="fas fa-chart-line text-green-600 dark:text-green-300 text-xl"></i>
+            <div class="p-3 bg-theme-success-bg/20 rounded-full">
+                <i class="fas fa-chart-line text-theme-success-text text-xl"></i>
             </div>
             <div class="ml-4">
-                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Analytics</h3>
-                <p class="text-gray-600 dark:text-gray-400">Real-time Data</p>
+                <h3 class="text-lg font-semibold text-text-primary">Analytics</h3>
+                <p class="text-text-secondary">Real-time Data</p>
             </div>
         </div>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
         <div class="flex items-center">
             <div class="p-3 bg-purple-100 dark:bg-purple-900 rounded-full">
                 <i class="fas fa-code text-purple-600 dark:text-purple-300 text-xl"></i>
             </div>
             <div class="ml-4">
-                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">API Access</h3>
-                <p class="text-gray-600 dark:text-gray-400">LLM Ready</p>
+                <h3 class="text-lg font-semibold text-text-primary">API Access</h3>
+                <p class="text-text-secondary">LLM Ready</p>
             </div>
         </div>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
         <div class="flex items-center">
-            <div class="p-3 bg-orange-100 dark:bg-orange-900 rounded-full">
-                <i class="fas fa-bug text-orange-600 dark:text-orange-300 text-xl"></i>
+            <div class="p-3 bg-theme-warning-bg/20 rounded-full">
+                <i class="fas fa-bug text-theme-warning-text text-xl"></i>
             </div>
             <div class="ml-4">
-                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Debugging</h3>
-                <p class="text-gray-600 dark:text-gray-400">SQL Interface</p>
+                <h3 class="text-lg font-semibold text-text-primary">Debugging</h3>
+                <p class="text-text-secondary">SQL Interface</p>
             </div>
         </div>
     </div>
@@ -63,115 +63,119 @@
 <!-- Main Tools -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
     <!-- SQL Interface -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
         <div class="flex items-center mb-4">
-            <i class="fas fa-terminal text-blue-600 dark:text-blue-400 text-2xl mr-3"></i>
-            <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">SQL Interface</h2>
+            <i class="fas fa-terminal text-accent text-2xl mr-3"></i>
+            <h2 class="text-2xl font-bold text-text-primary">SQL Interface</h2>
         </div>
-        <p class="text-gray-600 dark:text-gray-400 mb-4">Execute SQL queries directly on the database for debugging and
+        <p class="text-text-secondary mb-4">Execute SQL queries directly on the database for debugging and
             analysis.</p>
         <div class="space-y-3">
-            <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                <i class="fas fa-check-circle text-green-500 mr-2"></i>
+            <div class="flex items-center text-sm text-text-tertiary">
+                <i class="fas fa-check-circle text-theme-success-text mr-2"></i>
                 Safe query execution (read-only)
             </div>
-            <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                <i class="fas fa-check-circle text-green-500 mr-2"></i>
+            <div class="flex items-center text-sm text-text-tertiary">
+                <i class="fas fa-check-circle text-theme-success-text mr-2"></i>
                 Real-time results
             </div>
-            <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                <i class="fas fa-check-circle text-green-500 mr-2"></i>
+            <div class="flex items-center text-sm text-text-tertiary">
+                <i class="fas fa-check-circle text-theme-success-text mr-2"></i>
                 Query history
             </div>
         </div>
         <a href="/dev/sql"
-            class="mt-4 inline-block bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition font-medium">
+            class="mt-4 inline-block bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-lg transition font-medium">
             <i class="fas fa-play mr-2"></i>Open SQL Interface
         </a>
     </div>
 </div>
 
 <!-- API Documentation -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mt-8">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mt-8 border border-border">
     <div class="flex items-center mb-4">
         <i class="fas fa-book text-purple-600 dark:text-purple-400 text-2xl mr-3"></i>
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">API Endpoints</h2>
+        <h2 class="text-2xl font-bold text-text-primary">API Endpoints</h2>
     </div>
-    <p class="text-gray-600 dark:text-gray-400 mb-4">Programmatic access for LLM analysis and debugging.</p>
+    <p class="text-text-secondary mb-4">Programmatic access for LLM analysis and debugging.</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="border dark:border-gray-700 rounded-lg p-4">
-            <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">Portfolio Data</h3>
+        <div class="border border-border rounded-lg p-4">
+            <h3 class="font-semibold text-text-primary mb-2">Portfolio Data</h3>
             <code
-                class="text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-2 py-1 rounded">GET /api/export/portfolio</code>
-            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Export portfolio positions</p>
+                class="text-sm bg-dashboard-surface-alt text-text-secondary px-2 py-1 rounded">GET /api/export/portfolio</code>
+            <p class="text-sm text-text-secondary mt-1">Export portfolio positions</p>
         </div>
 
-        <div class="border dark:border-gray-700 rounded-lg p-4">
-            <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">Trade History</h3>
+        <div class="border border-border rounded-lg p-4">
+            <h3 class="font-semibold text-text-primary mb-2">Trade History</h3>
             <code
-                class="text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-2 py-1 rounded">GET /api/export/trades</code>
-            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Export trade log</p>
+                class="text-sm bg-dashboard-surface-alt text-text-secondary px-2 py-1 rounded">GET /api/export/trades</code>
+            <p class="text-sm text-text-secondary mt-1">Export trade log</p>
         </div>
 
-        <div class="border dark:border-gray-700 rounded-lg p-4">
-            <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">Performance</h3>
+        <div class="border border-border rounded-lg p-4">
+            <h3 class="font-semibold text-text-primary mb-2">Performance</h3>
             <code
-                class="text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-2 py-1 rounded">GET /api/export/performance</code>
-            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Export performance metrics</p>
+                class="text-sm bg-dashboard-surface-alt text-text-secondary px-2 py-1 rounded">GET /api/export/performance</code>
+            <p class="text-sm text-text-secondary mt-1">Export performance metrics</p>
         </div>
 
-        <div class="border dark:border-gray-700 rounded-lg p-4">
-            <h3 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">Cash Balances</h3>
+        <div class="border border-border rounded-lg p-4">
+            <h3 class="font-semibold text-text-primary mb-2">Cash Balances</h3>
             <code
-                class="text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-2 py-1 rounded">GET /api/export/cash</code>
-            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Export cash balances</p>
+                class="text-sm bg-dashboard-surface-alt text-text-secondary px-2 py-1 rounded">GET /api/export/cash</code>
+            <p class="text-sm text-text-secondary mt-1">Export cash balances</p>
         </div>
     </div>
 </div>
 
 <!-- Auth Debugging -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mt-8">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mt-8 border border-border">
     <div class="flex items-center mb-4">
-        <i class="fas fa-key text-red-600 dark:text-red-400 text-2xl mr-3"></i>
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Authentication Debug</h2>
+        <i class="fas fa-key text-theme-error-text text-2xl mr-3"></i>
+        <h2 class="text-2xl font-bold text-text-primary">Authentication Debug</h2>
     </div>
-    <p class="text-gray-600 dark:text-gray-400 mb-4">Debug authentication tokens and cookie issues.</p>
-    
+    <p class="text-text-secondary mb-4">Debug authentication tokens and cookie issues.</p>
+
     <div id="auth-debug-content" class="space-y-4">
         <div class="flex items-center space-x-4">
-            <button onclick="loadAuthDebug()" class="bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition font-medium">
+            <button onclick="loadAuthDebug()"
+                class="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg transition font-medium">
                 <i class="fas fa-sync mr-2"></i>Refresh Debug Info
             </button>
-            <button onclick="testRefreshToken()" class="bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-600 text-white px-4 py-2 rounded-lg transition font-medium">
+            <button onclick="testRefreshToken()"
+                class="bg-theme-success-bg hover:bg-theme-success-bg/80 text-white px-4 py-2 rounded-lg transition font-medium">
                 <i class="fas fa-redo mr-2"></i>Test Token Refresh
             </button>
-            <button onclick="testLoginResponse()" class="bg-purple-600 dark:bg-purple-700 hover:bg-purple-700 dark:hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition font-medium">
+            <button onclick="testLoginResponse()"
+                class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition font-medium">
                 <i class="fas fa-sign-in-alt mr-2"></i>Test Login Response
             </button>
         </div>
-        <div id="auth-debug-output" class="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm overflow-auto max-h-96 text-gray-800 dark:text-gray-200">
-            <p class="text-gray-500 dark:text-gray-400">Click "Refresh Debug Info" to load token information...</p>
+        <div id="auth-debug-output"
+            class="bg-dashboard-background rounded-lg p-4 font-mono text-sm overflow-auto max-h-96 text-text-primary">
+            <p class="text-text-tertiary">Click "Refresh Debug Info" to load token information...</p>
         </div>
     </div>
 </div>
 
 <!-- Quick Actions -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mt-8">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mt-8 border border-border">
     <div class="flex items-center mb-4">
-        <i class="fas fa-bolt text-yellow-600 dark:text-yellow-400 text-2xl mr-3"></i>
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Quick Actions</h2>
+        <i class="fas fa-bolt text-theme-warning-text text-2xl mr-3"></i>
+        <h2 class="text-2xl font-bold text-text-primary">Quick Actions</h2>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button onclick="testConnection()"
-            class="bg-blue-100 dark:bg-blue-900/80 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 px-4 py-3 rounded-lg transition text-left font-medium">
+            class="bg-theme-info-bg/20 hover:bg-theme-info-bg/30 text-theme-info-text px-4 py-3 rounded-lg transition text-left font-medium">
             <i class="fas fa-plug mr-2"></i>
             Test Database Connection
         </button>
 
         <button onclick="exportData()"
-            class="bg-green-100 dark:bg-green-900/80 hover:bg-green-200 dark:hover:bg-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg transition text-left font-medium">
+            class="bg-theme-success-bg/20 hover:bg-theme-success-bg/30 text-theme-success-text px-4 py-3 rounded-lg transition text-left font-medium">
             <i class="fas fa-download mr-2"></i>
             Export All Data
         </button>
@@ -224,22 +228,22 @@
 
     function loadAuthDebug() {
         const output = document.getElementById('auth-debug-output');
-        output.innerHTML = '<p class="text-gray-500">Loading...</p>';
-        
+        output.innerHTML = '<p class="text-text-tertiary">Loading...</p>';
+
         fetch('/auth/debug')
             .then(response => response.json())
             .then(data => {
                 output.innerHTML = '<pre class="text-xs">' + JSON.stringify(data, null, 2) + '</pre>';
             })
             .catch(error => {
-                output.innerHTML = '<p class="text-red-600">Error: ' + error + '</p>';
+                output.innerHTML = '<p class="text-theme-error-text">Error: ' + error + '</p>';
             });
     }
 
     function testRefreshToken() {
         const output = document.getElementById('auth-debug-output');
-        output.innerHTML = '<p class="text-gray-500">Testing token refresh...</p>';
-        
+        output.innerHTML = '<p class="text-text-tertiary">Testing token refresh...</p>';
+
         fetch('/api/debug/refresh-attempt')
             .then(response => response.json())
             .then(data => {
@@ -252,7 +256,7 @@
 
     function testLoginResponse() {
         const output = document.getElementById('auth-debug-output');
-        output.innerHTML = '<p class="text-gray-500">This would require test credentials. Check server logs during actual login.</p>';
+        output.innerHTML = '<p class="text-text-tertiary">This would require test credentials. Check server logs during actual login.</p>';
     }
 </script>
 {% endblock %}

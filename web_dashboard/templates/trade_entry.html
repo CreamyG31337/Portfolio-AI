@@ -8,44 +8,28 @@
 <!-- PAGE: trade_entry.html | ID: admin_trade_entry -->
 <div class="px-4 py-6">
     <!-- Tabs -->
-    <div class="mb-4 border-b border-gray-200 dark:border-gray-700">
+    <div class="mb-4 border-b border-border">
         <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="trade-tabs" role="tablist">
             <li class="me-2" role="presentation">
-                <button
-                    class="inline-block p-4 border-b-2 rounded-t-lg focus:outline-none active"
-                    id="manual-tab" 
-                    data-tabs-target="#manual-content"
-                    data-tabs-toggle="#manual-tab"
-                    type="button" 
-                    role="tab" 
-                    aria-controls="manual-content" 
-                    aria-selected="true">
+                <button class="inline-block p-4 border-b-2 rounded-t-lg focus:outline-none active" id="manual-tab"
+                    data-tabs-target="#manual-content" data-tabs-toggle="#manual-tab" type="button" role="tab"
+                    aria-controls="manual-content" aria-selected="true">
                     ✍️ Manual Entry
                 </button>
             </li>
             <li class="me-2" role="presentation">
                 <button
-                    class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300 focus:outline-none"
-                    id="email-tab"
-                    data-tabs-target="#email-content"
-                    data-tabs-toggle="#email-tab"
-                    type="button" 
-                    role="tab" 
-                    aria-controls="email-content" 
-                    aria-selected="false">
+                    class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-text-primary hover:border-border-hover focus:outline-none"
+                    id="email-tab" data-tabs-target="#email-content" data-tabs-toggle="#email-tab" type="button"
+                    role="tab" aria-controls="email-content" aria-selected="false">
                     📧 Email Parse
                 </button>
             </li>
             <li class="me-2" role="presentation">
                 <button
-                    class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300 focus:outline-none"
-                    id="history-tab"
-                    data-tabs-target="#history-content"
-                    data-tabs-toggle="#history-tab"
-                    type="button" 
-                    role="tab" 
-                    aria-controls="history-content" 
-                    aria-selected="false">
+                    class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-text-primary hover:border-border-hover focus:outline-none"
+                    id="history-tab" data-tabs-target="#history-content" data-tabs-toggle="#history-tab" type="button"
+                    role="tab" aria-controls="history-content" aria-selected="false">
                     📜 Recent Trades
                 </button>
             </li>
@@ -54,54 +38,52 @@
 
     <div id="tab-content">
         <!-- Manual Entry Content -->
-        <div class="hidden p-4 rounded-lg bg-gray-50 dark:bg-gray-800" id="manual-content" role="tabpanel"
+        <div class="hidden p-4 rounded-lg bg-dashboard-surface" id="manual-content" role="tabpanel"
             aria-labelledby="manual-tab">
             <form id="manual-trade-form" class="space-y-6 max-w-4xl mx-auto">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Column 1 -->
                     <div class="space-y-4">
                         <div>
-                            <label class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Action</label>
+                            <label class="block mb-2 text-sm font-medium text-text-primary">Action</label>
                             <div class="flex gap-4">
                                 <div
-                                    class="flex items-center ps-4 border border-gray-200 rounded dark:border-gray-700 w-full bg-white dark:bg-gray-700">
+                                    class="flex items-center ps-4 border border-border rounded w-full bg-dashboard-surface">
                                     <input id="action-buy" type="radio" value="BUY" name="action"
-                                        class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                                        class="w-4 h-4 text-theme-success-text bg-dashboard-background border-border focus:ring-theme-success-text dark:focus:ring-theme-success-text dark:ring-offset-dashboard-surface focus:ring-2"
                                         checked>
                                     <label for="action-buy"
-                                        class="w-full py-3 ms-2 text-sm font-medium text-gray-900 dark:text-gray-300 cursor-pointer">🟢
+                                        class="w-full py-3 ms-2 text-sm font-medium text-text-primary cursor-pointer">🟢
                                         BUY</label>
                                 </div>
                                 <div
-                                    class="flex items-center ps-4 border border-gray-200 rounded dark:border-gray-700 w-full bg-white dark:bg-gray-700">
+                                    class="flex items-center ps-4 border border-border rounded w-full bg-dashboard-surface">
                                     <input id="action-sell" type="radio" value="SELL" name="action"
-                                        class="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 focus:ring-red-500 dark:focus:ring-red-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+                                        class="w-4 h-4 text-theme-error-text bg-dashboard-background border-border focus:ring-theme-error-text dark:focus:ring-theme-error-text dark:ring-offset-dashboard-surface focus:ring-2">
                                     <label for="action-sell"
-                                        class="w-full py-3 ms-2 text-sm font-medium text-gray-900 dark:text-gray-300 cursor-pointer">🔴
+                                        class="w-full py-3 ms-2 text-sm font-medium text-text-primary cursor-pointer">🔴
                                         SELL</label>
                                 </div>
                             </div>
                         </div>
 
                         <div>
-                            <label for="ticker"
-                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Ticker
-                                Symbol <span class="text-red-500">*</span></label>
+                            <label for="ticker" class="block mb-2 text-sm font-medium text-text-primary">Ticker
+                                Symbol <span class="text-theme-error-text">*</span></label>
                             <div class="relative">
                                 <span
-                                    class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-gray-500">🔍</span>
+                                    class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-text-secondary">🔍</span>
                                 <input type="text" id="ticker" name="ticker"
-                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white uppercase transition-colors duration-300"
+                                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full ps-10 p-2.5 uppercase transition-colors duration-300"
                                     placeholder="AAPL" autocomplete="off" aria-required="true" required>
                             </div>
                         </div>
 
                         <div>
-                            <label for="shares"
-                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Shares <span
-                                    class="text-red-500">*</span></label>
+                            <label for="shares" class="block mb-2 text-sm font-medium text-text-primary">Shares <span
+                                    class="text-theme-error-text">*</span></label>
                             <input type="number" id="shares" name="shares" step="any" min="0.000001"
-                                class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
+                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
                                 inputmode="decimal" aria-required="true" autocomplete="off" required>
                         </div>
                     </div>
@@ -109,23 +91,22 @@
                     <!-- Column 2 -->
                     <div class="space-y-4">
                         <div>
-                            <label for="price"
-                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Price ($) <span
-                                    class="text-red-500">*</span></label>
+                            <label for="price" class="block mb-2 text-sm font-medium text-text-primary">Price ($) <span
+                                    class="text-theme-error-text">*</span></label>
                             <div class="relative">
                                 <span
-                                    class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-gray-500">$</span>
+                                    class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-text-secondary">$</span>
                                 <input type="number" id="price" name="price" step="0.01" min="0.01"
-                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-8 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
+                                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full ps-8 p-2.5"
                                     inputmode="decimal" aria-required="true" autocomplete="off" required>
                             </div>
                         </div>
 
                         <div>
                             <label for="currency"
-                                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Currency</label>
+                                class="block mb-2 text-sm font-medium text-text-primary">Currency</label>
                             <select id="currency" name="currency"
-                                class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                                 <option value="USD" selected>USD - US Dollar</option>
                                 <option value="CAD">CAD - Canadian Dollar</option>
                             </select>
@@ -133,54 +114,52 @@
 
                         <div class="grid grid-cols-2 gap-4">
                             <div>
-                                <label for="trade-date"
-                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Date <span
-                                        class="text-red-500">*</span></label>
+                                <label for="trade-date" class="block mb-2 text-sm font-medium text-text-primary">Date
+                                    <span class="text-theme-error-text">*</span></label>
                                 <input type="date" id="trade-date" name="date"
-                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
                                     aria-required="true" required>
                             </div>
                             <div>
-                                <label for="trade-time"
-                                    class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Time <span
-                                        class="text-red-500">*</span></label>
+                                <label for="trade-time" class="block mb-2 text-sm font-medium text-text-primary">Time
+                                    <span class="text-theme-error-text">*</span></label>
                                 <input type="time" id="trade-time" name="time"
-                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
                                     aria-required="true" required>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <label for="reason" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Reason /
+                <div class="pt-4 border-t border-border">
+                    <label for="reason" class="block mb-2 text-sm font-medium text-text-primary">Reason /
                         Notes (Optional)</label>
                     <input type="text" id="reason" name="reason"
-                        class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
                         placeholder="e.g. Rebalancing, Limit Fill">
                 </div>
 
                 <div id="manual-total-preview"
-                    class="p-4 mb-4 text-sm text-blue-800 rounded-lg bg-blue-50 dark:bg-gray-800 dark:text-blue-400 font-medium text-center hidden">
+                    class="p-4 mb-4 text-sm text-theme-info-text rounded-lg bg-theme-info-bg font-medium text-center hidden">
                     Total Value: <span id="total-value-display">$0.00</span>
                 </div>
 
                 <button type="submit" id="submit-manual-btn"
-                    class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-3 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800 flex justify-center items-center gap-2">
+                    class="w-full text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-5 py-3 me-2 mb-2 focus:outline-none flex justify-center items-center gap-2">
                     📈 Submit Trade
                 </button>
             </form>
         </div>
 
         <!-- Email Parse Content -->
-        <div class="hidden p-4 rounded-lg bg-gray-50 dark:bg-gray-800" id="email-content" role="tabpanel"
+        <div class="hidden p-4 rounded-lg bg-dashboard-surface" id="email-content" role="tabpanel"
             aria-labelledby="email-tab">
             <div class="max-w-4xl mx-auto space-y-6">
                 <div>
-                    <label for="email-text" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Paste
+                    <label for="email-text" class="block mb-2 text-sm font-medium text-text-primary">Paste
                         Trade Confirmation Email</label>
                     <textarea id="email-text" rows="10"
-                        class="block p-2.5 w-full text-sm text-gray-900 bg-white rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 font-mono"
+                        class="block p-2.5 w-full text-sm text-text-primary bg-dashboard-background rounded-lg border border-border focus:ring-accent focus:border-accent font-mono"
                         placeholder="Your order has been filled..."></textarea>
                 </div>
 
@@ -190,45 +169,45 @@
                         🔍 Parse Email
                     </button>
                     <button id="clear-email-btn" type="button"
-                        class="text-gray-900 bg-white border border-gray-300 focus:outline-none hover:bg-gray-100 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-gray-800 dark:text-white dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:border-gray-600">
+                        class="text-text-primary bg-dashboard-surface border border-border focus:outline-none hover:bg-dashboard-surface-alt focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-5 py-2.5">
                         🗑️ Clear
                     </button>
                 </div>
 
                 <!-- Parsed Result Card -->
                 <div id="parsed-result"
-                    class="hidden mt-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-6 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">📋 Trade Preview</h3>
+                    class="hidden mt-6 bg-dashboard-surface border border-border rounded-lg p-6 shadow-sm">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">📋 Trade Preview</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                         <div>
-                            <p class="text-gray-500 dark:text-gray-400">Ticker</p>
-                            <p class="font-bold text-lg text-gray-900 dark:text-white" id="preview-ticker">-</p>
+                            <p class="text-text-secondary">Ticker</p>
+                            <p class="font-bold text-lg text-text-primary" id="preview-ticker">-</p>
                         </div>
                         <div>
-                            <p class="text-gray-500 dark:text-gray-400">Action</p>
+                            <p class="text-text-secondary">Action</p>
                             <p class="font-bold text-lg" id="preview-action">-</p>
                         </div>
                         <div>
-                            <p class="text-gray-500 dark:text-gray-400">Shares</p>
-                            <p class="font-medium text-gray-900 dark:text-white" id="preview-shares">-</p>
+                            <p class="text-text-secondary">Shares</p>
+                            <p class="font-medium text-text-primary" id="preview-shares">-</p>
                         </div>
                         <div>
-                            <p class="text-gray-500 dark:text-gray-400">Price</p>
-                            <p class="font-medium text-gray-900 dark:text-white" id="preview-price">-</p>
+                            <p class="text-text-secondary">Price</p>
+                            <p class="font-medium text-text-primary" id="preview-price">-</p>
                         </div>
                         <div>
-                            <p class="text-gray-500 dark:text-gray-400">Total Value</p>
-                            <p class="font-medium text-gray-900 dark:text-white" id="preview-total">-</p>
+                            <p class="text-text-secondary">Total Value</p>
+                            <p class="font-medium text-text-primary" id="preview-total">-</p>
                         </div>
                         <div>
-                            <p class="text-gray-500 dark:text-gray-400">Timestamp</p>
-                            <p class="font-medium text-gray-900 dark:text-white" id="preview-date">-</p>
+                            <p class="text-text-secondary">Timestamp</p>
+                            <p class="font-medium text-text-primary" id="preview-date">-</p>
                         </div>
                     </div>
 
                     <div class="mt-6 flex justify-end">
                         <button id="confirm-email-trade-btn"
-                            class="text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-green-500 dark:hover:bg-green-600 dark:focus:ring-green-800">
+                            class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">
                             ✅ Confirm & Save
                         </button>
                     </div>
@@ -237,11 +216,11 @@
         </div>
 
         <!-- History Content -->
-        <div class="hidden p-4 rounded-lg bg-gray-50 dark:bg-gray-800" id="history-content" role="tabpanel"
+        <div class="hidden p-4 rounded-lg bg-dashboard-surface" id="history-content" role="tabpanel"
             aria-labelledby="history-tab">
             <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
-                <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                    <thead class="text-xs text-text-secondary uppercase bg-dashboard-surface-alt">
                         <tr>
                             <th scope="col" class="px-6 py-3">Date</th>
                             <th scope="col" class="px-6 py-3">Action</th>
@@ -253,7 +232,7 @@
                     </thead>
                     <tbody id="trades-table-body">
                         <!-- Populated by JS -->
-                        <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">
+                        <tr class="bg-dashboard-surface border-b border-border">
                             <td colspan="6" class="px-6 py-4 text-center">Loading...</td>
                         </tr>
                     </tbody>
@@ -261,11 +240,10 @@
                 <!-- Pagination -->
                 <nav class="flex items-center flex-column flex-wrap md:flex-row justify-between pt-4 px-4 pb-2"
                     aria-label="Table navigation">
-                    <span
-                        class="text-sm font-normal text-gray-500 dark:text-gray-400 mb-4 md:mb-0 block w-full md:inline md:w-auto">
-                        Showing <span class="font-semibold text-gray-900 dark:text-white" id="page-start">1</span>-
-                        <span class="font-semibold text-gray-900 dark:text-white" id="page-end">10</span> of
-                        <span class="font-semibold text-gray-900 dark:text-white" id="total-count">0</span>
+                    <span class="text-sm font-normal text-text-secondary mb-4 md:mb-0 block w-full md:inline md:w-auto">
+                        Showing <span class="font-semibold text-text-primary" id="page-start">1</span>-
+                        <span class="font-semibold text-text-primary" id="page-end">10</span> of
+                        <span class="font-semibold text-text-primary" id="total-count">0</span>
                     </span>
                     <ul class="inline-flex -space-x-px rtl:space-x-reverse text-sm h-8" id="pagination">
                         <!-- Populated by JS -->

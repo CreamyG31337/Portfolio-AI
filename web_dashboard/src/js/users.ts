@@ -77,7 +77,7 @@ interface UsersDOMElements {
     tabAccess: HTMLElement | null;
     tabContentUsers: HTMLElement | null;
     tabContentAccess: HTMLElement | null;
-    
+
     // User Management
     statsText: HTMLElement | null;
     refreshUsersBtn: HTMLElement | null;
@@ -86,28 +86,28 @@ interface UsersDOMElements {
     noUsers: HTMLElement | null;
     errorUsers: HTMLElement | null;
     errorUsersText: HTMLElement | null;
-    
+
     // Update Email
     contributorSelect: HTMLSelectElement | null;
     newEmailInput: HTMLInputElement | null;
     currentEmailText: HTMLElement | null;
     updateEmailBtn: HTMLButtonElement | null;
     updateEmailResult: HTMLElement | null;
-    
+
     // Unregistered
     loadingUnregistered: HTMLElement | null;
     unregisteredList: HTMLElement | null;
     noUnregistered: HTMLElement | null;
     errorUnregistered: HTMLElement | null;
     errorUnregisteredText: HTMLElement | null;
-    
+
     // Contributor Access
     grantContributorSelect: HTMLSelectElement | null;
     grantUserSelect: HTMLSelectElement | null;
     grantAccessLevelSelect: HTMLSelectElement | null;
     grantAccessBtn: HTMLButtonElement | null;
     grantAccessResult: HTMLElement | null;
-    
+
     // Access Table
     loadingAccess: HTMLElement | null;
     accessTableContainer: HTMLElement | null;
@@ -115,7 +115,7 @@ interface UsersDOMElements {
     noAccess: HTMLElement | null;
     errorAccess: HTMLElement | null;
     errorAccessText: HTMLElement | null;
-    
+
     // Revoke Access
     revokeContributorSelect: HTMLSelectElement | null;
     revokeUserSelect: HTMLSelectElement | null;
@@ -139,7 +139,7 @@ const elements: UsersDOMElements = {
     tabAccess: document.getElementById('tab-access'),
     tabContentUsers: document.getElementById('tab-content-users'),
     tabContentAccess: document.getElementById('tab-content-access'),
-    
+
     // User Management
     statsText: document.getElementById('stats-text'),
     refreshUsersBtn: document.getElementById('refresh-users-btn'),
@@ -148,28 +148,28 @@ const elements: UsersDOMElements = {
     noUsers: document.getElementById('no-users'),
     errorUsers: document.getElementById('error-users'),
     errorUsersText: document.getElementById('error-users-text'),
-    
+
     // Update Email
     contributorSelect: document.getElementById('contributor-select') as HTMLSelectElement | null,
     newEmailInput: document.getElementById('new-email-input') as HTMLInputElement | null,
     currentEmailText: document.getElementById('current-email-text'),
     updateEmailBtn: document.getElementById('update-email-btn') as HTMLButtonElement | null,
     updateEmailResult: document.getElementById('update-email-result'),
-    
+
     // Unregistered
     loadingUnregistered: document.getElementById('loading-unregistered'),
     unregisteredList: document.getElementById('unregistered-list'),
     noUnregistered: document.getElementById('no-unregistered'),
     errorUnregistered: document.getElementById('error-unregistered'),
     errorUnregisteredText: document.getElementById('error-unregistered-text'),
-    
+
     // Contributor Access
     grantContributorSelect: document.getElementById('grant-contributor-select') as HTMLSelectElement | null,
     grantUserSelect: document.getElementById('grant-user-select') as HTMLSelectElement | null,
     grantAccessLevelSelect: document.getElementById('grant-access-level-select') as HTMLSelectElement | null,
     grantAccessBtn: document.getElementById('grant-access-btn') as HTMLButtonElement | null,
     grantAccessResult: document.getElementById('grant-access-result'),
-    
+
     // Access Table
     loadingAccess: document.getElementById('loading-access'),
     accessTableContainer: document.getElementById('access-table-container'),
@@ -177,7 +177,7 @@ const elements: UsersDOMElements = {
     noAccess: document.getElementById('no-access'),
     errorAccess: document.getElementById('error-access'),
     errorAccessText: document.getElementById('error-access-text'),
-    
+
     // Revoke Access
     revokeContributorSelect: document.getElementById('revoke-contributor-select') as HTMLSelectElement | null,
     revokeUserSelect: document.getElementById('revoke-user-select') as HTMLSelectElement | null,
@@ -192,7 +192,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
     fetchContributors();
     fetchUnregisteredContributors();
     fetchAccessRecords();
-    
+
     // Tab switching
     if (elements.tabUsers) {
         elements.tabUsers.addEventListener('click', () => switchUsersTab('users'));
@@ -200,12 +200,12 @@ document.addEventListener('DOMContentLoaded', (): void => {
     if (elements.tabAccess) {
         elements.tabAccess.addEventListener('click', () => switchUsersTab('access'));
     }
-    
+
     // User Management
     if (elements.refreshUsersBtn) {
         elements.refreshUsersBtn.addEventListener('click', fetchUsers);
     }
-    
+
     // Update Email
     if (elements.contributorSelect) {
         elements.contributorSelect.addEventListener('change', handleContributorSelectChange);
@@ -213,12 +213,12 @@ document.addEventListener('DOMContentLoaded', (): void => {
     if (elements.updateEmailBtn) {
         elements.updateEmailBtn.addEventListener('click', handleUpdateEmail);
     }
-    
+
     // Grant Access
     if (elements.grantAccessBtn) {
         elements.grantAccessBtn.addEventListener('click', handleGrantAccess);
     }
-    
+
     // Revoke Access
     if (elements.revokeAccessBtn) {
         elements.revokeAccessBtn.addEventListener('click', handleRevokeAccess);
@@ -230,14 +230,14 @@ function switchUsersTab(tabName: 'users' | 'access'): void {
     // Update tab buttons
     if (tabName === 'users') {
         if (elements.tabUsers) {
-            elements.tabUsers.classList.add('active', 'border-blue-500', 'text-blue-600');
-            elements.tabUsers.classList.remove('border-transparent', 'text-gray-500');
+            elements.tabUsers.classList.add('active', 'border-accent', 'text-accent');
+            elements.tabUsers.classList.remove('border-transparent', 'text-text-secondary');
         }
         if (elements.tabAccess) {
-            elements.tabAccess.classList.remove('active', 'border-blue-500', 'text-blue-600');
-            elements.tabAccess.classList.add('border-transparent', 'text-gray-500');
+            elements.tabAccess.classList.remove('active', 'border-accent', 'text-accent');
+            elements.tabAccess.classList.add('border-transparent', 'text-text-secondary');
         }
-        
+
         if (elements.tabContentUsers) {
             elements.tabContentUsers.classList.add('active');
         }
@@ -246,21 +246,21 @@ function switchUsersTab(tabName: 'users' | 'access'): void {
         }
     } else {
         if (elements.tabAccess) {
-            elements.tabAccess.classList.add('active', 'border-blue-500', 'text-blue-600');
-            elements.tabAccess.classList.remove('border-transparent', 'text-gray-500');
+            elements.tabAccess.classList.add('active', 'border-accent', 'text-accent');
+            elements.tabAccess.classList.remove('border-transparent', 'text-text-secondary');
         }
         if (elements.tabUsers) {
-            elements.tabUsers.classList.remove('active', 'border-blue-500', 'text-blue-600');
-            elements.tabUsers.classList.add('border-transparent', 'text-gray-500');
+            elements.tabUsers.classList.remove('active', 'border-accent', 'text-accent');
+            elements.tabUsers.classList.add('border-transparent', 'text-text-secondary');
         }
-        
+
         if (elements.tabContentAccess) {
             elements.tabContentAccess.classList.add('active');
         }
         if (elements.tabContentUsers) {
             elements.tabContentUsers.classList.remove('active');
         }
-        
+
         // Load access data when switching to access tab
         fetchAccessRecords();
     }
@@ -273,29 +273,29 @@ async function fetchUsers(): Promise<void> {
         if (elements.usersList) elements.usersList.classList.add('hidden');
         if (elements.noUsers) elements.noUsers.classList.add('hidden');
         if (elements.errorUsers) elements.errorUsers.classList.add('hidden');
-        
+
         const response = await fetch('/api/admin/users/list');
         const data: UsersResponse = await response.json();
-        
+
         if (!response.ok) {
             throw new Error((data as unknown as ApiResponse).error || 'Failed to fetch users');
         }
-        
+
         users = data.users || [];
-        
+
         // Update stats
         if (elements.statsText) {
             elements.statsText.textContent = `${data.stats.total_users} users, ${data.stats.total_funds} funds, ${data.stats.total_assignments} assignments`;
         }
-        
+
         renderUsers();
-        
+
         if (elements.loadingUsers) elements.loadingUsers.classList.add('hidden');
         if (elements.usersList) elements.usersList.classList.remove('hidden');
-        
+
         // Update contributor select for email update
         updateContributorSelect();
-        
+
         // Update user selects for access management
         updateUserSelects();
     } catch (error) {
@@ -315,7 +315,7 @@ async function fetchFunds(): Promise<void> {
     try {
         const response = await fetch('/api/admin/funds');
         const data = await response.json();
-        
+
         if (response.ok) {
             funds = data.funds || [];
         }
@@ -329,7 +329,7 @@ async function fetchContributors(): Promise<void> {
     try {
         const response = await fetch('/api/admin/contributors');
         const data: ContributorsResponse = await response.json();
-        
+
         if (response.ok) {
             contributors = data.contributors || [];
             updateContributorSelects();
@@ -346,10 +346,10 @@ async function fetchUnregisteredContributors(): Promise<void> {
         if (elements.unregisteredList) elements.unregisteredList.classList.add('hidden');
         if (elements.noUnregistered) elements.noUnregistered.classList.add('hidden');
         if (elements.errorUnregistered) elements.errorUnregistered.classList.add('hidden');
-        
+
         const response = await fetch('/api/admin/contributors/unregistered');
         const data: UnregisteredContributorsResponse = await response.json();
-        
+
         if (response.status === 404) {
             // Table doesn't exist
             if (elements.loadingUnregistered) elements.loadingUnregistered.classList.add('hidden');
@@ -361,13 +361,13 @@ async function fetchUnregisteredContributors(): Promise<void> {
             }
             return;
         }
-        
+
         if (!response.ok) {
             throw new Error((data as unknown as ApiResponse).error || 'Failed to fetch unregistered contributors');
         }
-        
+
         unregisteredContributors = data.contributors || [];
-        
+
         if (unregisteredContributors.length === 0) {
             if (elements.loadingUnregistered) elements.loadingUnregistered.classList.add('hidden');
             if (elements.noUnregistered) elements.noUnregistered.classList.remove('hidden');
@@ -395,10 +395,10 @@ async function fetchAccessRecords(): Promise<void> {
         if (elements.accessTableContainer) elements.accessTableContainer.classList.add('hidden');
         if (elements.noAccess) elements.noAccess.classList.add('hidden');
         if (elements.errorAccess) elements.errorAccess.classList.add('hidden');
-        
+
         const response = await fetch('/api/admin/contributor-access');
         const data: AccessResponse = await response.json();
-        
+
         if (response.status === 404) {
             // Table doesn't exist
             if (elements.loadingAccess) elements.loadingAccess.classList.add('hidden');
@@ -410,13 +410,13 @@ async function fetchAccessRecords(): Promise<void> {
             }
             return;
         }
-        
+
         if (!response.ok) {
             throw new Error((data as unknown as ApiResponse).error || 'Failed to fetch access records');
         }
-        
+
         accessRecords = data.access || [];
-        
+
         if (accessRecords.length === 0) {
             if (elements.loadingAccess) elements.loadingAccess.classList.add('hidden');
             if (elements.noAccess) elements.noAccess.classList.remove('hidden');
@@ -443,14 +443,14 @@ function renderUsers(): void {
         if (elements.noUsers) elements.noUsers.classList.remove('hidden');
         return;
     }
-    
+
     if (elements.noUsers) elements.noUsers.classList.add('hidden');
-    
+
     if (!elements.usersList) return;
-    
+
     const html = users.map(user => createUserCard(user)).join('');
     elements.usersList.innerHTML = html;
-    
+
     // Attach event listeners
     document.querySelectorAll('.user-action-btn').forEach(btn => {
         btn.addEventListener('click', handleUserAction);
@@ -464,28 +464,28 @@ function createUserCard(user: User): string {
     const fundsList = user.funds || [];
     const isAdmin = role === 'admin';
     const isSelf = email === currentUserEmail;
-    
-    const fundsStr = fundsList.length > 0 
-        ? (fundsList.join(', ').length > 30 
-            ? fundsList.join(', ').substring(0, 27) + '...' 
+
+    const fundsStr = fundsList.length > 0
+        ? (fundsList.join(', ').length > 30
+            ? fundsList.join(', ').substring(0, 27) + '...'
             : fundsList.join(', '))
         : 'No funds';
-    
+
     return `
-        <div class="user-card bg-white rounded-lg shadow p-6">
+        <div class="user-card bg-dashboard-surface rounded-lg shadow p-6 border border-border">
             <div class="flex items-start justify-between">
                 <div class="flex-1">
                     <div class="flex items-center space-x-3 mb-2">
-                        <h3 class="text-lg font-semibold text-gray-900">${escapeHtmlForUsers(fullName)}</h3>
+                        <h3 class="text-lg font-semibold text-text-primary">${escapeHtmlForUsers(fullName)}</h3>
                         <span class="role-badge ${isAdmin ? 'role-admin' : 'role-user'}">
                             ${isAdmin ? '🔑 Admin' : '👤 User'}
                         </span>
                     </div>
-                    <p class="text-sm text-gray-600 mb-2">${escapeHtmlForUsers(email)}</p>
-                    <p class="text-sm text-gray-500">📊 ${escapeHtmlForUsers(fundsStr)}</p>
+                    <p class="text-sm text-text-secondary mb-2">${escapeHtmlForUsers(email)}</p>
+                    <p class="text-sm text-text-secondary">📊 ${escapeHtmlForUsers(fundsStr)}</p>
                 </div>
                 <div class="action-popover">
-                    <button class="user-action-btn bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-md text-sm" 
+                    <button class="user-action-btn bg-dashboard-background hover:bg-dashboard-hover px-3 py-2 rounded-md text-sm border border-border text-text-primary" 
                             data-email="${escapeHtmlForUsers(email)}" data-role="${role}" data-is-self="${isSelf}">
                         <i class="fas fa-cog mr-1"></i>Actions
                     </button>
@@ -501,11 +501,11 @@ async function handleUserAction(e: Event): Promise<void> {
     const email = btn.dataset.email || '';
     const role = btn.dataset.role || '';
     const isSelf = btn.dataset.isSelf === 'true';
-    
+
     // Show action menu (simplified - in production, use a proper dropdown)
     const action = await showActionMenu(email, role, isSelf);
     if (!action) return;
-    
+
     // Handle the action
     switch (action) {
         case 'grant-admin':
@@ -535,40 +535,40 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
         const menu = document.createElement('div');
         menu.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center';
         menu.innerHTML = `
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border-2 border-gray-300 dark:border-gray-600 max-w-md w-full mx-4">
-                <div class="border-b border-gray-200 dark:border-gray-700 px-6 py-4 bg-gray-50 dark:bg-gray-900 rounded-t-lg">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100">Actions for User</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">${escapeHtmlForUsers(email)}</p>
+            <div class="bg-dashboard-surface rounded-lg shadow-2xl border-2 border-border max-w-md w-full mx-4">
+                <div class="border-b border-border px-6 py-4 bg-dashboard-background rounded-t-lg">
+                    <h3 class="text-lg font-bold text-text-primary">Actions for User</h3>
+                    <p class="text-sm text-text-secondary mt-1">${escapeHtmlForUsers(email)}</p>
                 </div>
                 <div class="p-6 space-y-2">
-                    ${role !== 'admin' 
-                        ? `<button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-blue-200 dark:hover:border-gray-600 transition-colors" data-action="grant-admin">
-                            <i class="fas fa-shield-alt mr-2 text-blue-600"></i>Grant Admin
+                    ${role !== 'admin'
+                ? `<button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="grant-admin">
+                            <i class="fas fa-shield-alt mr-2 text-theme-info-text"></i>Grant Admin
                            </button>`
-                        : `<button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-orange-50 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-orange-200 dark:hover:border-gray-600 transition-colors ${isSelf ? 'opacity-50 cursor-not-allowed' : ''}" 
+                : `<button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary ${isSelf ? 'opacity-50 cursor-not-allowed' : ''}" 
                                  data-action="revoke-admin" ${isSelf ? 'disabled' : ''}>
-                            <i class="fas fa-shield-alt mr-2 text-orange-600"></i>Revoke Admin
+                            <i class="fas fa-shield-alt mr-2 text-theme-warning-text"></i>Revoke Admin
                            </button>`}
-                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-gray-300 dark:hover:border-gray-600 transition-colors" data-action="assign-fund">
-                        <i class="fas fa-plus-circle mr-2 text-green-600"></i>Assign Fund
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="assign-fund">
+                        <i class="fas fa-plus-circle mr-2 text-theme-success-text"></i>Assign Fund
                     </button>
-                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-gray-300 dark:hover:border-gray-600 transition-colors" data-action="remove-fund">
-                        <i class="fas fa-minus-circle mr-2 text-yellow-600"></i>Remove Fund
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="remove-fund">
+                        <i class="fas fa-minus-circle mr-2 text-theme-warning-text"></i>Remove Fund
                     </button>
-                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-gray-300 dark:hover:border-gray-600 transition-colors" data-action="send-invite">
-                        <i class="fas fa-envelope mr-2 text-blue-600"></i>Send Invite
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="send-invite">
+                        <i class="fas fa-envelope mr-2 text-theme-info-text"></i>Send Invite
                     </button>
-                    <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
-                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md border border-transparent hover:border-red-200 dark:hover:border-red-800 transition-colors text-red-600 dark:text-red-400 font-medium" data-action="delete">
+                    <div class="border-t border-border my-2"></div>
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-theme-error-text font-medium" data-action="delete">
                         <i class="fas fa-trash-alt mr-2"></i>Delete User
                     </button>
-                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md border border-transparent hover:border-gray-300 dark:hover:border-gray-600 transition-colors mt-2" data-action="cancel">
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors mt-2 text-text-primary" data-action="cancel">
                         <i class="fas fa-times mr-2"></i>Cancel
                     </button>
                 </div>
             </div>
         `;
-        
+
         // Close on backdrop click
         menu.addEventListener('click', (e: Event) => {
             if (e.target === menu) {
@@ -576,7 +576,7 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
                 resolve(null);
             }
         });
-        
+
         menu.querySelectorAll('.action-menu-btn').forEach(btn => {
             btn.addEventListener('click', (e: Event) => {
                 e.stopPropagation();
@@ -589,7 +589,7 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
                 }
             });
         });
-        
+
         document.body.appendChild(menu);
     });
 }
@@ -597,16 +597,16 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
 // User Actions
 async function grantAdminRole(email: string): Promise<void> {
     if (!confirm(`Grant admin role to ${email}?`)) return;
-    
+
     try {
         const response = await fetch('/api/admin/users/grant-admin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_email: email })
         });
-        
+
         const data: ApiResponse = await response.json();
-        
+
         if (response.ok && data.success) {
             showToast(data.message || 'Admin role granted', 'success');
             fetchUsers();
@@ -623,18 +623,18 @@ async function revokeAdminRole(email: string, isSelf: boolean): Promise<void> {
         showToast('Cannot remove your own admin role', 'warning');
         return;
     }
-    
+
     if (!confirm(`Revoke admin role from ${email}?`)) return;
-    
+
     try {
         const response = await fetch('/api/admin/users/revoke-admin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_email: email })
         });
-        
+
         const data: ApiResponse = await response.json();
-        
+
         if (response.ok && data.success) {
             showToast(data.message || 'Admin role revoked', 'success');
             fetchUsers();
@@ -651,21 +651,21 @@ async function showAssignFundDialog(email: string): Promise<void> {
         showToast('No funds available', 'warning');
         return;
     }
-    
+
     const fund = prompt(`Assign fund to ${email}:\n\nAvailable funds: ${funds.join(', ')}`);
     if (!fund || !funds.includes(fund)) {
         return;
     }
-    
+
     try {
         const response = await fetch('/api/admin/assign-fund', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_email: email, fund_name: fund })
         });
-        
+
         const data: ApiResponse = await response.json();
-        
+
         if (response.ok && data.success) {
             showToast(data.message || 'Fund assigned', 'success');
             fetchUsers();
@@ -685,21 +685,21 @@ async function showRemoveFundDialog(email: string): Promise<void> {
         showToast('User has no funds assigned', 'warning');
         return;
     }
-    
+
     const fund = prompt(`Remove fund from ${email}:\n\nAssigned funds: ${user.funds.join(', ')}`);
     if (!fund || !user.funds.includes(fund)) {
         return;
     }
-    
+
     try {
         const response = await fetch('/api/admin/remove-fund', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_email: email, fund_name: fund })
         });
-        
+
         const data: ApiResponse = await response.json();
-        
+
         if (response.ok) {
             showToast(data.message || 'Fund removed', 'success');
             fetchUsers();
@@ -718,9 +718,9 @@ async function sendInvite(email: string): Promise<void> {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_email: email })
         });
-        
+
         const data: ApiResponse = await response.json();
-        
+
         if (response.ok && data.success) {
             showToast(data.message || 'Invite sent', 'success');
         } else {
@@ -735,20 +735,20 @@ async function deleteUser(email: string): Promise<void> {
     if (!confirm(`⚠️ Delete user ${email}?\n\nThis cannot be undone. Contributors cannot be deleted.`)) {
         return;
     }
-    
+
     if (!confirm(`Are you absolutely sure you want to delete ${email}?`)) {
         return;
     }
-    
+
     try {
         const response = await fetch('/api/admin/users/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_email: email })
         });
-        
+
         const data: ApiResponse = await response.json();
-        
+
         if (response.ok && data.success) {
             showToast(data.message || 'User deleted', 'success');
             fetchUsers();
@@ -763,9 +763,9 @@ async function deleteUser(email: string): Promise<void> {
 // Update Contributor Email
 function updateContributorSelect(): void {
     if (!elements.contributorSelect) return;
-    
+
     const options: string[] = ['<option value="">-- Select --</option>'];
-    
+
     // Add contributors from contributors table
     contributors.forEach(c => {
         const name = c.name || '';
@@ -774,7 +774,7 @@ function updateContributorSelect(): void {
         const data: ContributorSelectData = { type: 'contributor', id: c.id, name, email };
         options.push(`<option value="${escapeHtmlForUsers(JSON.stringify(data))}">${escapeHtmlForUsers(display)}</option>`);
     });
-    
+
     // Add registered users
     users.forEach(u => {
         const name = u.full_name || u.email || '';
@@ -783,13 +783,13 @@ function updateContributorSelect(): void {
         const data: ContributorSelectData = { type: 'user', id: u.user_id, name, email };
         options.push(`<option value="${escapeHtmlForUsers(JSON.stringify(data))}">${escapeHtmlForUsers(display)}</option>`);
     });
-    
+
     elements.contributorSelect.innerHTML = options.join('');
 }
 
 function handleContributorSelectChange(): void {
     if (!elements.contributorSelect || !elements.newEmailInput || !elements.currentEmailText || !elements.updateEmailBtn) return;
-    
+
     const selected = elements.contributorSelect.value;
     if (!selected) {
         elements.newEmailInput.disabled = true;
@@ -798,7 +798,7 @@ function handleContributorSelectChange(): void {
         elements.updateEmailBtn.disabled = true;
         return;
     }
-    
+
     try {
         const data: ContributorSelectData = JSON.parse(selected);
         elements.newEmailInput.disabled = false;
@@ -812,18 +812,18 @@ function handleContributorSelectChange(): void {
 
 async function handleUpdateEmail(): Promise<void> {
     if (!elements.contributorSelect || !elements.newEmailInput || !elements.updateEmailResult) return;
-    
+
     const selected = elements.contributorSelect.value;
     const newEmail = elements.newEmailInput.value.trim();
-    
+
     if (!selected || !newEmail) {
         showToast('Please select a contributor and enter a new email address', 'warning');
         return;
     }
-    
+
     try {
         const data: ContributorSelectData = JSON.parse(selected);
-        
+
         const response = await fetch('/api/admin/users/update-contributor-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -834,20 +834,20 @@ async function handleUpdateEmail(): Promise<void> {
                 new_email: newEmail
             })
         });
-        
+
         const result: ApiResponse = await response.json();
-        
+
         if (response.ok && result.success) {
             elements.updateEmailResult.className = 'mt-4 bg-green-50 border border-green-200 rounded-lg p-4';
             elements.updateEmailResult.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-2"></i><span class="text-green-700">✅ ${result.message || 'Email updated'}</span>`;
             elements.updateEmailResult.classList.remove('hidden');
-            
+
             // Clear form
             if (elements.contributorSelect) elements.contributorSelect.value = '';
             if (elements.newEmailInput) elements.newEmailInput.value = '';
             if (elements.currentEmailText) elements.currentEmailText.textContent = '';
             if (elements.updateEmailBtn) elements.updateEmailBtn.disabled = true;
-            
+
             // Refresh data
             fetchUsers();
             fetchContributors();
@@ -867,13 +867,13 @@ async function handleUpdateEmail(): Promise<void> {
 // Render Unregistered Contributors
 function renderUnregisteredContributors(): void {
     if (!elements.unregisteredList) return;
-    
+
     const html = unregisteredContributors.map(contrib => {
         const email = contrib.email || 'No Email';
         const hasEmail = !!contrib.email;
         const fundsStr = contrib.funds ? contrib.funds.join(', ') : 'None';
-        const contribution = contrib.total_contribution ? `$${parseFloat(String(contrib.total_contribution)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '$0.00';
-        
+        const contribution = contrib.total_contribution ? `$${parseFloat(String(contrib.total_contribution)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00';
+
         return `
             <div class="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
                 <div class="flex-1">
@@ -882,19 +882,19 @@ function renderUnregisteredContributors(): void {
                     <p class="text-xs text-gray-500 mt-1">Funds: ${escapeHtmlForUsers(fundsStr)} | Contribution: ${contribution}</p>
                 </div>
                 <div>
-                    ${hasEmail 
-                        ? `<button class="send-invite-btn bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm" 
+                    ${hasEmail
+                ? `<button class="send-invite-btn bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm" 
                                  data-email="${escapeHtmlForUsers(contrib.email || '')}">
                             <i class="fas fa-envelope mr-1"></i>Send Invite
                           </button>`
-                        : `<span class="text-yellow-600 text-sm">⚠️ Add email to invite</span>`}
+                : `<span class="text-yellow-600 text-sm">⚠️ Add email to invite</span>`}
                 </div>
             </div>
         `;
     }).join('');
-    
+
     elements.unregisteredList.innerHTML = html;
-    
+
     // Attach event listeners
     document.querySelectorAll('.send-invite-btn').forEach(btn => {
         btn.addEventListener('click', (e: Event) => {
@@ -909,14 +909,14 @@ function renderUnregisteredContributors(): void {
 // Update Contributor Selects for Access Management
 function updateContributorSelects(): void {
     const options: string[] = ['<option value="">-- Select Contributor --</option>'];
-    
+
     contributors.forEach(c => {
         const name = c.name || '';
         const email = c.email || 'No email';
         const display = `${name} (${email})`;
         options.push(`<option value="${escapeHtmlForUsers(email)}">${escapeHtmlForUsers(display)}</option>`);
     });
-    
+
     const html = options.join('');
     if (elements.grantContributorSelect) {
         elements.grantContributorSelect.innerHTML = html;
@@ -929,14 +929,14 @@ function updateContributorSelects(): void {
 // Update User Selects
 function updateUserSelects(): void {
     const options: string[] = ['<option value="">-- Select User --</option>'];
-    
+
     users.forEach(u => {
         const email = u.email || '';
         if (email) {
             options.push(`<option value="${escapeHtmlForUsers(email)}">${escapeHtmlForUsers(email)}</option>`);
         }
     });
-    
+
     const html = options.join('');
     if (elements.grantUserSelect) {
         elements.grantUserSelect.innerHTML = html;
@@ -949,16 +949,16 @@ function updateUserSelects(): void {
 // Grant Contributor Access
 async function handleGrantAccess(): Promise<void> {
     if (!elements.grantContributorSelect || !elements.grantUserSelect || !elements.grantAccessLevelSelect || !elements.grantAccessResult) return;
-    
+
     const contributorEmail = elements.grantContributorSelect.value;
     const userEmail = elements.grantUserSelect.value;
     const accessLevel = elements.grantAccessLevelSelect.value;
-    
+
     if (!contributorEmail || !userEmail) {
         showToast('Please select both contributor and user', 'warning');
         return;
     }
-    
+
     try {
         const response = await fetch('/api/admin/contributor-access/grant', {
             method: 'POST',
@@ -969,19 +969,19 @@ async function handleGrantAccess(): Promise<void> {
                 access_level: accessLevel
             })
         });
-        
+
         const data: ApiResponse = await response.json();
-        
+
         if (response.ok && data.success) {
             elements.grantAccessResult.className = 'mt-4 bg-green-50 border border-green-200 rounded-lg p-4';
             elements.grantAccessResult.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-2"></i><span class="text-green-700">✅ ${data.message || 'Access granted'}</span>`;
             elements.grantAccessResult.classList.remove('hidden');
-            
+
             // Clear form
             elements.grantContributorSelect.value = '';
             elements.grantUserSelect.value = '';
             elements.grantAccessLevelSelect.value = 'viewer';
-            
+
             // Refresh access records
             fetchAccessRecords();
         } else {
@@ -1000,7 +1000,7 @@ async function handleGrantAccess(): Promise<void> {
 // Render Access Table
 function renderAccessTable(): void {
     if (!elements.accessTableBody) return;
-    
+
     const rows = accessRecords.map(access => `
         <tr>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${escapeHtmlForUsers(access.contributor)}</td>
@@ -1013,26 +1013,26 @@ function renderAccessTable(): void {
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtmlForUsers(access.granted || '')}</td>
         </tr>
     `).join('');
-    
+
     elements.accessTableBody.innerHTML = rows;
 }
 
 // Revoke Contributor Access
 async function handleRevokeAccess(): Promise<void> {
     if (!elements.revokeContributorSelect || !elements.revokeUserSelect || !elements.revokeAccessResult) return;
-    
+
     const contributorEmail = elements.revokeContributorSelect.value;
     const userEmail = elements.revokeUserSelect.value;
-    
+
     if (!contributorEmail || !userEmail) {
         showToast('Please select both contributor and user', 'warning');
         return;
     }
-    
+
     if (!confirm(`Revoke access for ${userEmail} to ${contributorEmail}?`)) {
         return;
     }
-    
+
     try {
         const response = await fetch('/api/admin/contributor-access/revoke', {
             method: 'POST',
@@ -1042,18 +1042,18 @@ async function handleRevokeAccess(): Promise<void> {
                 user_email: userEmail
             })
         });
-        
+
         const data: ApiResponse = await response.json();
-        
+
         if (response.ok && data.success) {
             elements.revokeAccessResult.className = 'mt-4 bg-green-50 border border-green-200 rounded-lg p-4';
             elements.revokeAccessResult.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-2"></i><span class="text-green-700">✅ ${data.message || 'Access revoked'}</span>`;
             elements.revokeAccessResult.classList.remove('hidden');
-            
+
             // Clear form
             elements.revokeContributorSelect.value = '';
             elements.revokeUserSelect.value = '';
-            
+
             // Refresh access records
             fetchAccessRecords();
         } else {
@@ -1080,15 +1080,15 @@ function showToast(message: string, type: 'success' | 'error' | 'warning' | 'inf
     }
 
     const toast = document.createElement('div');
-    const borderColor = type === 'error' ? 'border-red-500' : 
-                       type === 'warning' ? 'border-yellow-500' : 
-                       type === 'info' ? 'border-blue-500' : 
-                       'border-green-500';
-    
-    const icon = type === 'error' ? '❌' : 
-                 type === 'warning' ? '⚠️' : 
-                 type === 'info' ? 'ℹ️' : 
-                 '✅';
+    const borderColor = type === 'error' ? 'border-red-500' :
+        type === 'warning' ? 'border-yellow-500' :
+            type === 'info' ? 'border-blue-500' :
+                'border-green-500';
+
+    const icon = type === 'error' ? '❌' :
+        type === 'warning' ? '⚠️' :
+            type === 'info' ? 'ℹ️' :
+                '✅';
 
     toast.className = `flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow-lg dark:text-gray-400 dark:bg-gray-800 border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
     toast.innerHTML = `

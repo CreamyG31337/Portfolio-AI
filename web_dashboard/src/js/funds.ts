@@ -77,9 +77,8 @@ function escapeHtmlForFunds(text: string | undefined | null): string {
 
 function showToastForFunds(message: string, type: 'success' | 'error' = 'success'): void {
     const toast = document.createElement('div');
-    toast.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
-        type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-    }`;
+    toast.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${type === 'success' ? 'bg-theme-success-bg text-theme-success-text border border-theme-success-text' : 'bg-theme-error-bg text-theme-error-text border border-theme-error-text'
+        }`;
     toast.textContent = message;
     document.body.appendChild(toast);
 
@@ -115,7 +114,7 @@ function initializeModals(): void {
 
 function setupModals(): void {
     const elements = getElements();
-    
+
     if (!elements.editModalEl || !elements.createModalEl) {
         console.warn('[Funds] Modal elements not found');
         return;
@@ -173,14 +172,14 @@ async function loadFunds(): Promise<void> {
 
     try {
         const response = await fetch('/api/v2/funds', { credentials: 'include' });
-        
+
         if (!response.ok) {
-            const errorData: ApiResponse = await response.json().catch(() => ({ 
-                error: `HTTP ${response.status}: ${response.statusText}` 
+            const errorData: ApiResponse = await response.json().catch(() => ({
+                error: `HTTP ${response.status}: ${response.statusText}`
             }));
             throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data: FundsResponse = await response.json();
         allFunds = data.funds || [];
 
@@ -192,24 +191,24 @@ async function loadFunds(): Promise<void> {
         } else {
             if (tableBody) {
                 tableBody.innerHTML = allFunds.map(fund => `
-                    <tr class="bg-white border-b hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                        <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">${escapeHtmlForFunds(fund.name)}</td>
-                        <td class="px-6 py-4 dark:text-gray-400">${escapeHtmlForFunds(fund.type || 'investment')}</td>
-                        <td class="px-6 py-4 dark:text-gray-400">${escapeHtmlForFunds(fund.currency || 'CAD')}</td>
+                    <tr class="bg-dashboard-surface border-b border-border hover:bg-dashboard-background">
+                        <td class="px-6 py-4 font-medium text-text-primary whitespace-nowrap">${escapeHtmlForFunds(fund.name)}</td>
+                        <td class="px-6 py-4 text-text-secondary">${escapeHtmlForFunds(fund.type || 'investment')}</td>
+                        <td class="px-6 py-4 text-text-secondary">${escapeHtmlForFunds(fund.currency || 'CAD')}</td>
                         <td class="px-6 py-4">
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" value="" class="sr-only peer" ${fund.is_production ? 'checked' : ''} onchange="window.toggleProduction('${escapeHtmlForFunds(fund.name)}', this.checked)">
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent dark:bg-gray-700 dark:border-gray-600"></div>
                             </label>
                         </td>
-                        <td class="px-6 py-4 dark:text-gray-400">
+                        <td class="px-6 py-4 text-text-secondary">
                             <div class="text-xs">
                                 <div>Pos: ${fund.positions || 0}</div>
                                 <div>Trades: ${fund.trades || 0}</div>
                             </div>
                         </td>
                         <td class="px-6 py-4 text-right">
-                            <button onclick="window.openEditModal('${escapeHtmlForFunds(fund.name)}')" class="text-blue-600 hover:text-blue-800 font-medium">Edit</button>
+                            <button onclick="window.openEditModal('${escapeHtmlForFunds(fund.name)}')" class="text-accent hover:text-accent-hover font-medium">Edit</button>
                         </td>
                     </tr>
                 `).join('');
@@ -232,38 +231,38 @@ async function loadFunds(): Promise<void> {
             const totalFunds = allFunds.length;
             const productionFunds = allFunds.filter(f => f.is_production).length;
             const totalPositions = allFunds.reduce((sum, f) => sum + (f.positions || 0), 0);
-            
+
             statsCards.innerHTML = `
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 dark:bg-gray-800 dark:border-gray-700">
+                <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
                     <div class="flex items-center">
-                        <div class="p-3 bg-blue-100 rounded-lg dark:bg-blue-900">
-                            <i class="fas fa-building text-blue-600 text-2xl dark:text-blue-400"></i>
+                        <div class="p-3 bg-theme-info-bg rounded-lg">
+                            <i class="fas fa-building text-theme-info-text text-2xl"></i>
                         </div>
                         <div class="ml-4">
-                            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Funds</p>
-                            <p class="text-2xl font-bold text-gray-900 dark:text-white">${totalFunds}</p>
+                            <p class="text-sm font-medium text-text-secondary">Total Funds</p>
+                            <p class="text-2xl font-bold text-text-primary">${totalFunds}</p>
                         </div>
                     </div>
                 </div>
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 dark:bg-gray-800 dark:border-gray-700">
+                <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
                     <div class="flex items-center">
-                        <div class="p-3 bg-green-100 rounded-lg dark:bg-green-900">
-                            <i class="fas fa-check-circle text-green-600 text-2xl dark:text-green-400"></i>
+                        <div class="p-3 bg-theme-success-bg rounded-lg">
+                            <i class="fas fa-check-circle text-theme-success-text text-2xl"></i>
                         </div>
                         <div class="ml-4">
-                            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Production</p>
-                            <p class="text-2xl font-bold text-gray-900 dark:text-white">${productionFunds}</p>
+                            <p class="text-sm font-medium text-text-secondary">Production</p>
+                            <p class="text-2xl font-bold text-text-primary">${productionFunds}</p>
                         </div>
                     </div>
                 </div>
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 dark:bg-gray-800 dark:border-gray-700">
+                <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
                     <div class="flex items-center">
-                        <div class="p-3 bg-purple-100 rounded-lg dark:bg-purple-900">
+                        <div class="p-3 bg-purple-100 rounded-lg dark:bg-purple-900/30">
                             <i class="fas fa-chart-line text-purple-600 text-2xl dark:text-purple-400"></i>
                         </div>
                         <div class="ml-4">
-                            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Positions</p>
-                            <p class="text-2xl font-bold text-gray-900 dark:text-white">${totalPositions}</p>
+                            <p class="text-sm font-medium text-text-secondary">Total Positions</p>
+                            <p class="text-2xl font-bold text-text-primary">${totalPositions}</p>
                         </div>
                     </div>
                 </div>
@@ -274,7 +273,7 @@ async function loadFunds(): Promise<void> {
         console.error('[Funds] Error loading funds:', error);
         if (tableBody) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">Error loading funds: ${escapeHtmlForFunds(errorMessage)}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-theme-error-text">Error loading funds: ${escapeHtmlForFunds(errorMessage)}</td></tr>`;
         }
     }
 }
@@ -290,8 +289,8 @@ async function toggleProduction(fundName: string, isProduction: boolean): Promis
         });
 
         if (!response.ok) {
-            const errorData: ApiResponse = await response.json().catch(() => ({ 
-                error: `HTTP ${response.status}` 
+            const errorData: ApiResponse = await response.json().catch(() => ({
+                error: `HTTP ${response.status}`
             }));
             throw new Error(errorData.error || 'Failed to update production status');
         }
@@ -338,7 +337,7 @@ async function createFund(event: Event): Promise<void> {
     const form = event.target as HTMLFormElement;
     const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
     if (!btn) return;
-    
+
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
     btn.disabled = true;
@@ -367,11 +366,11 @@ async function createFund(event: Event): Promise<void> {
 
         showToastForFunds('✅ Fund created successfully', 'success');
         form.reset();
-        
+
         if (window.createModal) {
             window.createModal.hide();
         }
-        
+
         await loadFunds();
     } catch (error) {
         console.error('[Funds] Error creating fund:', error);
@@ -389,7 +388,7 @@ async function updateFund(event: Event): Promise<void> {
     const form = event.target as HTMLFormElement;
     const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
     if (!btn) return;
-    
+
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
     btn.disabled = true;
@@ -412,8 +411,8 @@ async function updateFund(event: Event): Promise<void> {
             });
 
             if (!renameResponse.ok) {
-                const errorData: ApiResponse = await renameResponse.json().catch(() => ({ 
-                    error: 'Rename failed' 
+                const errorData: ApiResponse = await renameResponse.json().catch(() => ({
+                    error: 'Rename failed'
                 }));
                 throw new Error(errorData.error || 'Failed to rename fund');
             }
@@ -426,7 +425,7 @@ async function updateFund(event: Event): Promise<void> {
             currency: currency
         };
 
-        const response = await fetch(`/api/v2/funds/${encodeURIComponent(newName)}`, {
+        const response = await fetch(`/ api / v2 / funds / ${encodeURIComponent(newName)} `, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updateData),
@@ -434,18 +433,18 @@ async function updateFund(event: Event): Promise<void> {
         });
 
         if (!response.ok) {
-            const errorData: ApiResponse = await response.json().catch(() => ({ 
-                error: 'Update failed' 
+            const errorData: ApiResponse = await response.json().catch(() => ({
+                error: 'Update failed'
             }));
             throw new Error(errorData.error || 'Failed to update fund');
         }
 
         showToastForFunds('✅ Fund updated successfully', 'success');
-        
+
         if (window.editModal) {
             window.editModal.hide();
         }
-        
+
         await loadFunds();
     } catch (error) {
         console.error('[Funds] Error updating fund:', error);
@@ -477,24 +476,24 @@ async function confirmDeleteFund(): Promise<void> {
     }
 
     try {
-        const response = await fetch(`/api/v2/funds/${encodeURIComponent(originalName)}`, {
+        const response = await fetch(`/ api / v2 / funds / ${encodeURIComponent(originalName)} `, {
             method: 'DELETE',
             credentials: 'include'
         });
 
         if (!response.ok) {
-            const errorData: ApiResponse = await response.json().catch(() => ({ 
-                error: 'Delete failed' 
+            const errorData: ApiResponse = await response.json().catch(() => ({
+                error: 'Delete failed'
             }));
             throw new Error(errorData.error || 'Failed to delete fund');
         }
 
         showToastForFunds('✅ Fund deleted successfully', 'success');
-        
+
         if (window.editModal) {
             window.editModal.hide();
         }
-        
+
         await loadFunds();
     } catch (error) {
         console.error('[Funds] Error deleting fund:', error);
@@ -517,9 +516,9 @@ async function refreshTickerMetadata(): Promise<void> {
 
     if (!resultDiv) return;
 
-    resultDiv.classList.remove('hidden', 'bg-green-50', 'text-green-800', 'bg-red-50', 'text-red-800');
+    resultDiv.classList.remove('hidden', 'bg-theme-success-bg', 'text-theme-success-text', 'bg-theme-error-bg', 'text-theme-error-text');
     resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
-    resultDiv.classList.add('bg-blue-50', 'text-blue-800');
+    resultDiv.classList.add('bg-theme-info-bg', 'text-theme-info-text');
 
     try {
         const response = await fetch('/api/v2/ticker/refresh', {
@@ -538,9 +537,9 @@ async function refreshTickerMetadata(): Promise<void> {
         const companyName = result.data?.company_name || ticker;
         const sector = result.data?.sector || 'N/A';
         resultDiv.innerHTML = `✅ Updated: ${companyName} (${sector})`;
-        resultDiv.classList.remove('bg-blue-50', 'text-blue-800');
-        resultDiv.classList.add('bg-green-50', 'text-green-800');
-        
+        resultDiv.classList.remove('bg-theme-info-bg', 'text-theme-info-text');
+        resultDiv.classList.add('bg-theme-success-bg', 'text-theme-success-text');
+
         if (elements.refreshTicker) {
             elements.refreshTicker.value = '';
         }
@@ -548,8 +547,8 @@ async function refreshTickerMetadata(): Promise<void> {
         console.error('[Funds] Error refreshing ticker:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         resultDiv.innerHTML = '❌ ' + errorMessage;
-        resultDiv.classList.remove('bg-blue-50', 'text-blue-800');
-        resultDiv.classList.add('bg-red-50', 'text-red-800');
+        resultDiv.classList.remove('bg-theme-info-bg', 'text-theme-info-text');
+        resultDiv.classList.add('bg-theme-error-bg', 'text-theme-error-text');
     }
 }
 
@@ -564,7 +563,7 @@ async function rebuildPortfolio(): Promise<void> {
         return;
     }
 
-    if (!confirm(`Are you sure you want to rebuild portfolio for "${fundName}"? This may take several minutes.`)) {
+    if (!confirm(`Are you sure you want to rebuild portfolio for "${fundName}" ? This may take several minutes.`)) {
         return;
     }
 
@@ -583,7 +582,7 @@ async function rebuildPortfolio(): Promise<void> {
         }
 
         const pid = result.pid || 'N/A';
-        showToastForFunds(`✅ Rebuild started for ${fundName} (PID: ${pid})`, 'success');
+        showToastForFunds(`✅ Rebuild started for ${fundName}(PID: ${pid})`, 'success');
     } catch (error) {
         console.error('[Funds] Error starting rebuild:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

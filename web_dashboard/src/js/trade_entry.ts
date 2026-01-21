@@ -63,12 +63,12 @@ function showToastForTradeEntry(message: string, type: 'success' | 'error' | 'in
     }
 
     const toast = document.createElement('div');
-    const borderColor = type === 'error' ? 'border-red-500' : (type === 'info' ? 'border-blue-500' : 'border-green-500');
+    const borderColor = type === 'error' ? 'border-theme-error-text' : (type === 'info' ? 'border-theme-info-text' : 'border-theme-success-text');
 
-    toast.className = `flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800 border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
     toast.innerHTML = `
         <div class="ms-3 text-sm font-normal">${escapeHtmlForTradeEntry(message)}</div>
-        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-white text-gray-400 hover:text-gray-900 rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-gray-100 inline-flex items-center justify-center h-8 w-8 dark:text-gray-500 dark:hover:text-white dark:bg-gray-800 dark:hover:bg-gray-700">
+        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-dashboard-surface text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-dashboard-surface-alt inline-flex items-center justify-center h-8 w-8">
             <span class="sr-only">Close</span>
             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
@@ -136,8 +136,8 @@ function initTabs(): void {
         }
 
         btn.addEventListener('click', () => {
-            const activeClasses = ['text-blue-600', 'border-blue-600', 'dark:text-blue-500', 'dark:border-blue-500'];
-            const inactiveClasses = ['text-gray-500', 'border-transparent', 'hover:text-gray-600', 'hover:border-gray-300', 'dark:text-gray-400', 'dark:hover:text-gray-300'];
+            const activeClasses = ['text-accent', 'border-accent'];
+            const inactiveClasses = ['text-text-secondary', 'border-transparent', 'hover:text-text-primary', 'hover:border-border-hover'];
 
             tabs.forEach(t => {
                 const b = document.getElementById(t.id);
@@ -320,9 +320,9 @@ async function handleEmailParse(): Promise<void> {
 
             // Color action
             if (action === 'SELL') {
-                previewAction.className = 'font-bold text-lg text-red-600';
+                previewAction.className = 'font-bold text-lg text-theme-error-text';
             } else {
-                previewAction.className = 'font-bold text-lg text-green-600';
+                previewAction.className = 'font-bold text-lg text-theme-success-text';
             }
         }
 
@@ -409,7 +409,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     if (!fund) {
         const tbody = document.getElementById('trades-table-body');
         if (tbody) {
-            tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="6" class="px-6 py-4 text-center text-gray-500">Please select a fund from the sidebar menu</td></tr>';
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="6" class="px-6 py-4 text-center text-text-secondary">Please select a fund from the sidebar menu</td></tr>';
         }
         return;
     }
@@ -420,7 +420,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     const tbody = document.getElementById('trades-table-body');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="6" class="px-6 py-4 text-center">Loading...</td></tr>';
+    tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="6" class="px-6 py-4 text-center">Loading...</td></tr>';
 
     try {
         const response = await fetch(`/api/admin/trades/recent?fund=${encodeURIComponent(fund)}&page=${page}&limit=${limit}`, {
@@ -436,11 +436,11 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
         tbody.innerHTML = '';
 
         if (data.trades.length === 0) {
-            tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="6" class="px-6 py-4 text-center text-gray-500">No trades found</td></tr>';
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="6" class="px-6 py-4 text-center text-text-secondary">No trades found</td></tr>';
         } else {
             data.trades.forEach(trade => {
                 const tr = document.createElement('tr');
-                tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
+                tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
 
                 // Determine Action
                 const reason = (trade.reason || '').toLowerCase();
@@ -461,7 +461,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                 tr.innerHTML = `
                     <td class="px-6 py-4">${escapeHtmlForTradeEntry(dateStr)}</td>
                     <td class="px-6 py-4">${actionBadge}</td>
-                    <td class="px-6 py-4 font-bold text-gray-900 dark:text-white">${escapeHtmlForTradeEntry(trade.ticker)}</td>
+                    <td class="px-6 py-4 font-bold text-text-primary">${escapeHtmlForTradeEntry(trade.ticker)}</td>
                     <td class="px-6 py-4 text-right">${trade.shares}</td>
                     <td class="px-6 py-4 text-right">$${trade.price.toFixed(2)}</td>
                     <td class="px-6 py-4 text-right">$${total.toFixed(2)}</td>
@@ -484,7 +484,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     } catch (error) {
         console.error('[Trade Entry] Error fetching trades:', error);
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        tbody.innerHTML = `<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="6" class="px-6 py-4 text-center text-red-500">Error loading trades: ${escapeHtmlForTradeEntry(errorMsg)}</td></tr>`;
+        tbody.innerHTML = `<tr class="bg-dashboard-surface border-b border-border"><td colspan="6" class="px-6 py-4 text-center text-theme-error-text">Error loading trades: ${escapeHtmlForTradeEntry(errorMsg)}</td></tr>`;
     }
 }
 
@@ -498,7 +498,7 @@ function renderPagination(totalPages: number, currPage: number): void {
     // Prev
     const prevLi = document.createElement('li');
     prevLi.innerHTML = `
-        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-gray-500 bg-white border border-gray-300 rounded-s-lg hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white ${currPage === 0 ? 'pointer-events-none opacity-50' : ''}">
+        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${currPage === 0 ? 'pointer-events-none opacity-50' : ''}">
             <span class="sr-only">Previous</span>
             <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
               <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
@@ -516,7 +516,7 @@ function renderPagination(totalPages: number, currPage: number): void {
     // Next
     const nextLi = document.createElement('li');
     nextLi.innerHTML = `
-        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 rounded-e-lg hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white ${currPage >= totalPages - 1 ? 'pointer-events-none opacity-50' : ''}">
+        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${currPage >= totalPages - 1 ? 'pointer-events-none opacity-50' : ''}">
             <span class="sr-only">Next</span>
             <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
               <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 9 4-4-4-4"/>
@@ -557,9 +557,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Visual feedback if value changed
             if (originalValue !== tickerInput.value) {
-                tickerInput.classList.add('border-green-500', 'dark:border-green-400');
+                tickerInput.classList.add('border-theme-success-text');
                 setTimeout(() => {
-                    tickerInput.classList.remove('border-green-500', 'dark:border-green-400');
+                    tickerInput.classList.remove('border-theme-success-text');
                 }, 300);
             }
         });

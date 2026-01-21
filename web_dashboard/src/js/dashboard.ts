@@ -308,7 +308,7 @@ async function initFundSelector(): Promise<void> {
     // Read fund from URL parameter first (for persistence across refreshes)
     const urlParams = new URLSearchParams(window.location.search);
     const urlFund = urlParams.get('fund');
-    
+
     if (urlFund) {
         // URL parameter takes precedence
         state.currentFund = urlFund;
@@ -331,7 +331,7 @@ async function initFundSelector(): Promise<void> {
         const target = e.target as HTMLSelectElement;
         state.currentFund = target.value;
         console.log('[Dashboard] Global fund changed to:', state.currentFund);
-        
+
         // Update URL to persist selection across page refreshes
         const url = new URL(window.location.href);
         if (state.currentFund && state.currentFund.toLowerCase() !== 'all') {
@@ -341,7 +341,7 @@ async function initFundSelector(): Promise<void> {
         }
         // Use pushState to update URL without page reload
         window.history.pushState({ fund: state.currentFund }, '', url.toString());
-        
+
         refreshDashboard();
     });
 }
@@ -505,15 +505,15 @@ class TickerCellRenderer implements AgGridCellRenderer {
         this.eGui.style.display = 'flex';
         this.eGui.style.alignItems = 'center';
         this.eGui.style.gap = '6px';
-        
+
         if (params.value && params.value !== 'N/A') {
             const ticker = params.value;
             const logoUrl = params.data?._logo_url;
-            
+
             // Check cache first - skip if we know this ticker doesn't have a logo
             const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
             const cacheKey = cleanTicker.toUpperCase();
-            
+
             // Add logo image if available and not in failed cache
             if (logoUrl && !failedLogoCache.has(cacheKey)) {
                 const img = document.createElement('img');
@@ -526,7 +526,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 img.style.flexShrink = '0';
                 // Handle image load errors gracefully - try fallback
                 let fallbackAttempted = false;
-                img.onerror = function() {
+                img.onerror = function () {
                     if (fallbackAttempted) {
                         // Already tried fallback, add to cache and hide
                         failedLogoCache.add(cacheKey);
@@ -534,10 +534,10 @@ class TickerCellRenderer implements AgGridCellRenderer {
                         img.onerror = null;
                         return;
                     }
-                    
+
                     // Mark that we've attempted fallback
                     fallbackAttempted = true;
-                    
+
                     // Try Yahoo Finance as fallback if Parqet fails
                     const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
@@ -551,11 +551,11 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 };
                 this.eGui.appendChild(img);
             }
-            
+
             // Add ticker text
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
-            tickerSpan.style.color = '#1f77b4';
+            tickerSpan.style.color = 'var(--color-accent)';
             tickerSpan.style.fontWeight = 'bold';
             tickerSpan.style.textDecoration = 'underline';
             tickerSpan.style.cursor = 'pointer';
@@ -888,7 +888,7 @@ function showDashboardError(error: unknown, traceback?: string): void {
     if (errorContainer && errorMessage) {
         const errorText = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error && error.stack ? `<pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded">${error.stack}</pre>` : '';
-        
+
         // Include server traceback if available (from API response)
         const serverTraceback = traceback ? `<div class="mt-4"><h4 class="text-sm font-semibold mb-2">Server Stack Trace:</h4><pre class="text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></div>` : '';
 
@@ -910,9 +910,9 @@ function showSpinner(spinnerId: string): void {
             if (spinnerId === 'sector-chart-spinner') {
                 spinner.className = 'flex items-center justify-center h-full';
             } else {
-                spinner.className = 'absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10';
+                spinner.className = 'absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10';
             }
-            spinner.innerHTML = '<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>';
+            spinner.innerHTML = '<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>';
             chartEl.appendChild(spinner);
         } else {
             return; // Can't create spinner without parent element
@@ -1005,17 +1005,17 @@ async function fetchSummary(): Promise<void> {
             }
         }
         if (data.holdings_count !== undefined) updateMetric('metric-holdings-count', data.holdings_count, '', false);
-        
+
         // Update First Trade Date
         if (data.first_trade_date) {
             const firstTradeDateEl = document.getElementById('metric-first-trade-date');
             if (firstTradeDateEl) {
                 // Format date as MM/DD/YYYY
                 const date = new Date(data.first_trade_date);
-                const formattedDate = date.toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: '2-digit', 
-                    day: '2-digit' 
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
                 });
                 firstTradeDateEl.textContent = formattedDate;
             }
@@ -1379,11 +1379,11 @@ async function fetchActivity(): Promise<void> {
         tbody.innerHTML = '';
 
         if (!data.data || data.data.length === 0) {
-            tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="7" class="px-6 py-4 text-center text-gray-500">No recent activity</td></tr>';
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center text-text-secondary">No recent activity</td></tr>';
         } else {
             data.data.forEach(row => {
                 const tr = document.createElement('tr');
-                tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
+                tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
 
                 // Action badge with DRIP support
                 let actionBadge: string;
@@ -1397,20 +1397,20 @@ async function fetchActivity(): Promise<void> {
 
                 // Format shares to 4 decimal places
                 const sharesFormatted = row.shares.toFixed(4);
-                
+
                 // Use display_amount (P&L for sells, amount for buys/drips)
                 const displayAmount = row.display_amount || row.amount || (row.shares * row.price);
-                
+
                 // Company name (or empty string)
                 const companyName = row.company_name || '';
 
                 // Generate logo HTML with fallback
                 const logoUrl = row._logo_url || '';
                 const cleanTicker = row.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
-                const logoHtml = logoUrl 
+                const logoHtml = logoUrl
                     ? `<img src="${logoUrl}" alt="${row.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.style.display='none';}}else{this.style.display='none';}" />`
                     : '';
-                
+
                 tr.innerHTML = `
                      <td class="px-6 py-4 whitespace-nowrap">${row.date}</td>
                      <td class="px-6 py-4 font-bold text-blue-600 dark:text-blue-400">
@@ -1503,14 +1503,16 @@ async function fetchMovers(): Promise<void> {
             url: url,
             duration: `${duration.toFixed(2)}ms`
         });
-        const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+        const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-text-secondary">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-dashboard-surface-alt p-2 rounded whitespace-pre-wrap text-text-primary">${traceback}</pre></details>` : '';
+
         const gainersBody = document.getElementById('gainers-table-body');
-        const losersBody = document.getElementById('losers-table-body');
         if (gainersBody) {
-            gainersBody.innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-4"><p>Error: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
+            gainersBody.innerHTML = `<tr><td colspan="4" class="text-center text-theme-error-text py-4"><p>Error: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
         }
+
+        const losersBody = document.getElementById('losers-table-body');
         if (losersBody) {
-            losersBody.innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-4"><p>Error: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
+            losersBody.innerHTML = `<tr><td colspan="4" class="text-center text-theme-error-text py-4"><p>Error: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
         }
     }
 }
@@ -1533,11 +1535,11 @@ function renderPillars(pillars: Array<{ name: string; allocation: string; thesis
         }
 
         div.innerHTML = `
-            <div class="font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-1 mb-1 flex justify-between">
+            <div class="font-bold text-text-primary border-b border-border pb-1 mb-1 flex justify-between">
                 <span>${pillar.name}</span>
-                <span class="text-xs font-normal text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">${pillar.allocation || 'N/A'}</span>
+                <span class="text-xs font-normal text-text-secondary bg-dashboard-surface-alt px-2 py-0.5 rounded">${pillar.allocation || 'N/A'}</span>
             </div>
-            <div class="text-sm text-gray-600 dark:text-gray-400 prose dark:prose-invert max-w-none text-xs">
+            <div class="text-sm text-text-secondary prose dark:prose-invert max-w-none text-xs">
                 ${thesisHtml}
             </div>
         `;
@@ -1583,23 +1585,23 @@ function renderDividends(data: DividendData): void {
     if (tbody) {
         tbody.innerHTML = '';
         if (data.log.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-2 text-center text-gray-500">No dividend history</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-2 text-center text-text-secondary">No dividend history</td></tr>';
         } else {
             data.log.forEach(row => {
                 const tr = document.createElement('tr');
-                tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
-                
+                tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
+
                 // Pay Date
                 const dateCell = document.createElement('td');
                 dateCell.className = 'px-4 py-2 font-medium text-gray-900 dark:text-white whitespace-nowrap';
                 dateCell.textContent = row.date;
                 tr.appendChild(dateCell);
-                
+
                 // Ticker (clickable) with logo
                 const tickerCell = document.createElement('td');
                 tickerCell.className = 'px-4 py-2 text-blue-600 dark:text-blue-400 font-bold cursor-pointer hover:underline';
                 tickerCell.style.cursor = 'pointer';
-                
+
                 // Generate logo HTML with fallback
                 const logoUrl = (row as any)._logo_url || '';
                 const baseTicker = row.ticker.replace(/\.(TO|V|CN|TSX|TSXV)$/i, '');
@@ -1610,17 +1612,17 @@ function renderDividends(data: DividendData): void {
                     img.className = 'inline-block w-6 h-6 mr-2 object-contain rounded';
                     img.style.verticalAlign = 'middle';
                     let fallbackAttempted = false;
-                    img.onerror = function() {
+                    img.onerror = function () {
                         if (fallbackAttempted) {
                             // Already tried fallback, hide the image
                             img.style.display = 'none';
                             img.onerror = null;
                             return;
                         }
-                        
+
                         // Mark that we've attempted fallback
                         fallbackAttempted = true;
-                        
+
                         // Clean ticker for fallback: remove spaces
                         const cleanTicker = baseTicker.replace(/\s+/g, '');
                         const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
@@ -1634,7 +1636,7 @@ function renderDividends(data: DividendData): void {
                     };
                     tickerCell.appendChild(img);
                 }
-                
+
                 const tickerLink = document.createElement('a');
                 tickerLink.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
                 tickerLink.className = 'hover:underline';
@@ -1643,7 +1645,7 @@ function renderDividends(data: DividendData): void {
                     e.stopPropagation();
                 });
                 tickerCell.appendChild(tickerLink);
-                
+
                 tickerCell.addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (row.ticker && row.ticker !== 'N/A') {
@@ -1651,37 +1653,37 @@ function renderDividends(data: DividendData): void {
                     }
                 });
                 tr.appendChild(tickerCell);
-                
+
                 // Company Name
                 const companyCell = document.createElement('td');
                 companyCell.className = 'px-4 py-2 text-gray-700 dark:text-gray-300';
                 companyCell.textContent = row.company_name || '';
                 tr.appendChild(companyCell);
-                
+
                 // Gross ($)
                 const grossCell = document.createElement('td');
                 grossCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
                 grossCell.textContent = formatMoney(row.gross || 0, currency);
                 tr.appendChild(grossCell);
-                
+
                 // Net ($)
                 const netCell = document.createElement('td');
                 netCell.className = 'px-4 py-2 text-right font-medium text-green-600 dark:text-green-400';
                 netCell.textContent = formatMoney(row.amount, currency);
                 tr.appendChild(netCell);
-                
+
                 // Reinvested Shares
                 const sharesCell = document.createElement('td');
                 sharesCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
                 sharesCell.textContent = (row.shares || 0).toFixed(4);
                 tr.appendChild(sharesCell);
-                
+
                 // DRIP Price ($)
                 const dripPriceCell = document.createElement('td');
                 dripPriceCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
                 dripPriceCell.textContent = row.drip_price > 0 ? formatMoney(row.drip_price, currency) : 'N/A';
                 tr.appendChild(dripPriceCell);
-                
+
                 tbody.appendChild(tr);
             });
         }
@@ -1863,20 +1865,20 @@ function renderMovers(data: MoversData): void {
     const getPnlColor = (val: number | null | undefined) => {
         if (val == null) return '';
         return val > 0
-            ? 'text-green-600 dark:text-green-400 font-bold'
-            : (val < 0 ? 'text-red-600 dark:text-red-400 font-bold' : '');
+            ? 'text-theme-success-text font-bold'
+            : (val < 0 ? 'text-theme-error-text font-bold' : '');
     };
 
     const renderTable = (tbody: HTMLElement, items: MoverItem[], isGainer: boolean) => {
         tbody.innerHTML = '';
         if (!items || items.length === 0) {
-            tbody.innerHTML = `<tr class="bg-white dark:bg-gray-800"><td colspan="${MOVERS_COLUMN_COUNT}" class="px-4 py-4 text-center text-gray-500">No ${isGainer ? 'gainers' : 'losers'} to display</td></tr>`;
+            tbody.innerHTML = `<tr class="bg-dashboard-surface"><td colspan="${MOVERS_COLUMN_COUNT}" class="px-4 py-4 text-center text-text-secondary">No ${isGainer ? 'gainers' : 'losers'} to display</td></tr>`;
             return;
         }
 
         items.forEach(item => {
             const tr = document.createElement('tr');
-            tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
+            tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
 
             // Calculate colors
             const dayColor = getPnlColor(item.daily_pnl);
@@ -1886,10 +1888,10 @@ function renderMovers(data: MoversData): void {
             // Generate logo HTML with fallback
             const logoUrl = item._logo_url || '';
             const cleanTicker = item.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
-            const logoHtml = logoUrl 
+            const logoHtml = logoUrl
                 ? `<img src="${logoUrl}" alt="${item.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.style.display='none';}}else{this.style.display='none';}" />`
                 : '';
-            
+
             // Use font-mono for numerical columns to ensure alignment
             tr.innerHTML = `
                 <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">

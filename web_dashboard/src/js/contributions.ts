@@ -79,12 +79,12 @@ function showToastForContributions(message: string, type: 'success' | 'error' = 
     }
 
     const toast = document.createElement('div');
-    const borderColor = type === 'error' ? 'border-red-500' : 'border-green-500';
+    const borderColor = type === 'error' ? 'border-theme-error-text' : 'border-theme-success-text';
 
-    toast.className = `flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800 border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
     toast.innerHTML = `
-        <div class="ms-3 text-sm font-normal">${escapeHtmlForContributions(message)}</div>
-        <button type="button" class="bg-white text-gray-400 hover:text-gray-900 rounded-lg p-1.5 hover:bg-gray-100 inline-flex items-center justify-center h-8 w-8 dark:text-gray-500 dark:bg-gray-800 dark:hover:text-white dark:hover:bg-gray-700" onclick="this.parentElement.remove()">✕</button>
+        <div class="ms-3 text-sm font-normal text-text-primary">${escapeHtmlForContributions(message)}</div>
+        <button type="button" class="bg-dashboard-surface text-text-secondary hover:text-text-primary rounded-lg p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8" onclick="this.parentElement.remove()">✕</button>
     `;
     container.appendChild(toast);
     setTimeout(() => {
@@ -97,14 +97,14 @@ function showToastForContributions(message: string, type: 'success' | 'error' = 
 async function loadFunds(): Promise<void> {
     try {
         const response = await fetch('/api/funds', { credentials: 'include' });
-        
+
         if (!response.ok) {
-            const errorData: ApiResponse = await response.json().catch(() => ({ 
-                error: `HTTP ${response.status}: ${response.statusText}` 
+            const errorData: ApiResponse = await response.json().catch(() => ({
+                error: `HTTP ${response.status}: ${response.statusText}`
             }));
             throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data: FundsResponse | Fund[] = await response.json();
         // Handle both array and object response formats
         const funds = Array.isArray(data) ? data : (data.funds || []);
@@ -116,7 +116,7 @@ async function loadFunds(): Promise<void> {
 
         // Keep "All" in filter (don't clear it)
         formSelect.innerHTML = '';
-        
+
         funds.forEach(fund => {
             const opt = document.createElement('option');
             // Handle both string and object formats
@@ -147,19 +147,19 @@ async function fetchHistory(): Promise<void> {
     const fund = fundSelect?.value || '';
     const search = searchInput?.value || '';
 
-    tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="5" class="px-6 py-4 text-center">Loading...</td></tr>';
+    tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="5" class="px-6 py-4 text-center text-text-secondary">Loading...</td></tr>';
 
     try {
         const url = `/api/admin/contributions?fund=${encodeURIComponent(fund)}&search=${encodeURIComponent(search)}`;
         const response = await fetch(url, { credentials: 'include' });
-        
+
         if (!response.ok) {
-            const errorData: ApiResponse = await response.json().catch(() => ({ 
-                error: `HTTP ${response.status}: ${response.statusText}` 
+            const errorData: ApiResponse = await response.json().catch(() => ({
+                error: `HTTP ${response.status}: ${response.statusText}`
             }));
             throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data: ContributionsResponse | Contribution[] = await response.json();
 
         tbody.innerHTML = '';
@@ -169,36 +169,36 @@ async function fetchHistory(): Promise<void> {
         const uniqueNames = new Set<string>();
 
         // Handle response format - check for contributions array
-        const contributions: Contribution[] = Array.isArray(data) 
-            ? data 
+        const contributions: Contribution[] = Array.isArray(data)
+            ? data
             : (data.contributions || []);
-        
+
         if (!Array.isArray(contributions)) {
             throw new Error('Invalid response format: expected contributions array');
         }
 
         if (contributions.length === 0) {
-            tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="5" class="px-6 py-4 text-center text-gray-500">No records found</td></tr>';
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="5" class="px-6 py-4 text-center text-text-secondary">No records found</td></tr>';
         } else {
             contributions.forEach(row => {
                 uniqueNames.add(row.contributor);
 
                 const tr = document.createElement('tr');
-                tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600';
+                tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-hover';
 
                 const isContrib = row.contribution_type === 'CONTRIBUTION';
                 const typeBadge = isContrib
-                    ? '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-300">DEPOSIT</span>'
-                    : '<span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-300">WITHDRAWAL</span>';
+                    ? '<span class="bg-theme-success-bg/20 text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded">DEPOSIT</span>'
+                    : '<span class="bg-theme-error-bg/20 text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded">WITHDRAWAL</span>';
 
                 const dateStr = new Date(row.timestamp).toLocaleDateString();
 
                 tr.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap">${escapeHtmlForContributions(dateStr)}</td>
-                    <td class="px-6 py-4 font-medium">${escapeHtmlForContributions(row.fund)}</td>
-                    <td class="px-6 py-4">${escapeHtmlForContributions(row.contributor)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-text-secondary">${escapeHtmlForContributions(dateStr)}</td>
+                    <td class="px-6 py-4 font-medium text-text-primary">${escapeHtmlForContributions(row.fund)}</td>
+                    <td class="px-6 py-4 text-text-primary">${escapeHtmlForContributions(row.contributor)}</td>
                     <td class="px-6 py-4">${typeBadge}</td>
-                    <td class="px-6 py-4 text-right font-mono ${isContrib ? 'text-green-600' : 'text-red-600'}">$${row.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td class="px-6 py-4 text-right font-mono ${isContrib ? 'text-theme-success-text' : 'text-theme-error-text'}">$${row.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -217,7 +217,7 @@ async function fetchHistory(): Promise<void> {
     } catch (error) {
         console.error('[Contributions] Error fetching history:', error);
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        tbody.innerHTML = `<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="5" class="px-6 py-4 text-center text-red-500">Error loading history: ${escapeHtmlForContributions(errorMsg)}</td></tr>`;
+        tbody.innerHTML = `<tr class="bg-dashboard-surface border-b border-border"><td colspan="5" class="px-6 py-4 text-center text-theme-error-text">Error loading history: ${escapeHtmlForContributions(errorMsg)}</td></tr>`;
     }
 }
 
@@ -226,36 +226,36 @@ async function fetchSummary(): Promise<void> {
     const tbody = document.getElementById('summary-table-body');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="5" class="px-6 py-4 text-center">Loading summary...</td></tr>';
+    tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="5" class="px-6 py-4 text-center text-text-secondary">Loading summary...</td></tr>';
 
     try {
         const response = await fetch('/api/admin/contributions/summary', { credentials: 'include' });
-        
+
         if (!response.ok) {
-            const errorData: ApiResponse = await response.json().catch(() => ({ 
-                error: `HTTP ${response.status}: ${response.statusText}` 
+            const errorData: ApiResponse = await response.json().catch(() => ({
+                error: `HTTP ${response.status}: ${response.statusText}`
             }));
             throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data: SummaryResponse = await response.json();
         const summary = data.summary || [];
 
         tbody.innerHTML = '';
 
         if (summary.length === 0) {
-            tbody.innerHTML = '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="5" class="px-6 py-4 text-center text-gray-500">No data</td></tr>';
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="5" class="px-6 py-4 text-center text-text-secondary">No data</td></tr>';
         } else {
             summary.forEach(row => {
                 const tr = document.createElement('tr');
-                tr.className = 'bg-white border-b dark:bg-gray-800 dark:border-gray-700';
+                tr.className = 'bg-dashboard-surface border-b border-border';
 
                 tr.innerHTML = `
-                    <td class="px-6 py-4 font-bold text-gray-900 dark:text-white">${escapeHtmlForContributions(row.contributor)}</td>
-                    <td class="px-6 py-4">${escapeHtmlForContributions(row.fund)}</td>
-                    <td class="px-6 py-4 text-right text-green-600">$${row.contribution.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                    <td class="px-6 py-4 text-right text-red-600">$${row.withdrawal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                    <td class="px-6 py-4 text-right font-bold">$${row.net.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td class="px-6 py-4 font-bold text-text-primary">${escapeHtmlForContributions(row.contributor)}</td>
+                    <td class="px-6 py-4 text-text-secondary">${escapeHtmlForContributions(row.fund)}</td>
+                    <td class="px-6 py-4 text-right text-theme-success-text">$${row.contribution.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td class="px-6 py-4 text-right text-theme-error-text">$${row.withdrawal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td class="px-6 py-4 text-right font-bold text-text-primary">$${row.net.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                  `;
                 tbody.appendChild(tr);
             });
@@ -263,7 +263,7 @@ async function fetchSummary(): Promise<void> {
     } catch (error) {
         console.error('[Contributions] Error fetching summary:', error);
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        tbody.innerHTML = `<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700"><td colspan="5" class="px-6 py-4 text-center text-red-500">Error loading summary: ${escapeHtmlForContributions(errorMsg)}</td></tr>`;
+        tbody.innerHTML = `<tr class="bg-dashboard-surface border-b border-border"><td colspan="5" class="px-6 py-4 text-center text-theme-error-text">Error loading summary: ${escapeHtmlForContributions(errorMsg)}</td></tr>`;
     }
 }
 
@@ -337,8 +337,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!tabElement) return;
 
         tabElement.addEventListener('click', () => {
-            const activeClasses = ['text-blue-600', 'border-blue-600', 'dark:text-blue-500', 'dark:border-blue-500'];
-            const inactiveClasses = ['hover:text-gray-600', 'hover:border-gray-300', 'dark:hover:text-gray-300', 'border-transparent'];
+            const activeClasses = ['text-accent', 'border-accent'];
+            const inactiveClasses = ['hover:text-text-primary', 'hover:border-border', 'border-transparent'];
 
             tabs.forEach(t => {
                 const b = document.getElementById(t.id);

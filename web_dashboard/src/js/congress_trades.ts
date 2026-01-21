@@ -157,15 +157,15 @@ class TickerCellRenderer implements AgGridCellRenderer {
         this.eGui.style.display = 'flex';
         this.eGui.style.alignItems = 'center';
         this.eGui.style.gap = '6px';
-        
+
         if (params.value && params.value !== 'N/A') {
             const ticker = params.value;
             const logoUrl = params.data?._logo_url;
-            
+
             // Check cache first - skip if we know this ticker doesn't have a logo
             const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
             const cacheKey = cleanTicker.toUpperCase();
-            
+
             // Add logo image if available and not in failed cache
             if (logoUrl && !failedLogoCache.has(cacheKey)) {
                 const img = document.createElement('img');
@@ -178,7 +178,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 img.style.flexShrink = '0';
                 // Handle image load errors gracefully - try fallback
                 let fallbackAttempted = false;
-                img.onerror = function() {
+                img.onerror = function () {
                     if (fallbackAttempted) {
                         // Already tried fallback, add to cache and hide
                         failedLogoCache.add(cacheKey);
@@ -186,10 +186,10 @@ class TickerCellRenderer implements AgGridCellRenderer {
                         img.onerror = null;
                         return;
                     }
-                    
+
                     // Mark that we've attempted fallback
                     fallbackAttempted = true;
-                    
+
                     // Try Yahoo Finance as fallback if Parqet fails
                     const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
@@ -203,11 +203,11 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 };
                 this.eGui.appendChild(img);
             }
-            
+
             // Add ticker text
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
-            tickerSpan.style.color = '#1f77b4';
+            tickerSpan.style.color = 'var(--accent-color)';
             tickerSpan.style.fontWeight = 'bold';
             tickerSpan.style.textDecoration = 'underline';
             tickerSpan.style.cursor = 'pointer';
@@ -240,14 +240,14 @@ class PartyCellRenderer implements AgGridCellRenderer {
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('span');
         const value = params.value || '';
-        
+
         // Color based on party
         const partyLower = value.toLowerCase();
         let displayText = '';
         let color = '';
-        
+
         if (partyLower.includes('democrat') || partyLower === 'd') {
-            color = '#2563eb'; // Blue
+            color = 'var(--theme-info-text)'; // Blue
             if (this.emojiOnly) {
                 displayText = '🔵';
             } else if (this.useEmoji) {
@@ -256,7 +256,7 @@ class PartyCellRenderer implements AgGridCellRenderer {
                 displayText = value || 'N/A';
             }
         } else if (partyLower.includes('republican') || partyLower === 'r') {
-            color = '#dc2626'; // Red
+            color = 'var(--theme-error-text)'; // Red
             if (this.emojiOnly) {
                 displayText = '🔴';
             } else if (this.useEmoji) {
@@ -265,7 +265,7 @@ class PartyCellRenderer implements AgGridCellRenderer {
                 displayText = value || 'N/A';
             }
         } else if (partyLower.includes('independent') || partyLower === 'i') {
-            color = '#7c3aed'; // Purple
+            color = 'var(--theme-warning-text)'; // Purple -> mapped to Warning (or we could use semantic class)
             if (this.emojiOnly) {
                 displayText = '🟣';
             } else if (this.useEmoji) {
@@ -276,7 +276,7 @@ class PartyCellRenderer implements AgGridCellRenderer {
         } else {
             displayText = value || 'N/A';
         }
-        
+
         this.eGui.innerText = displayText;
         if (color) {
             this.eGui.style.color = color;
@@ -302,12 +302,12 @@ class TypeCellRenderer implements AgGridCellRenderer {
         this.eGui = document.createElement('span');
         const value = params.value || '';
         const typeLower = value.toLowerCase();
-        
+
         let displayText = '';
         let color = '';
-        
+
         if (typeLower === 'purchase' || typeLower === 'buy') {
-            color = '#16a34a'; // Green
+            color = 'var(--theme-success-text)'; // Green
             if (this.emojiOnly) {
                 displayText = '📈';
             } else if (this.useEmoji) {
@@ -316,7 +316,7 @@ class TypeCellRenderer implements AgGridCellRenderer {
                 displayText = value || 'N/A';
             }
         } else if (typeLower === 'sale' || typeLower === 'sell') {
-            color = '#dc2626'; // Red
+            color = 'var(--theme-error-text)'; // Red
             if (this.emojiOnly) {
                 displayText = '📉';
             } else if (this.useEmoji) {
@@ -327,7 +327,7 @@ class TypeCellRenderer implements AgGridCellRenderer {
         } else {
             displayText = value || 'N/A';
         }
-        
+
         this.eGui.innerText = displayText;
         if (color) {
             this.eGui.style.color = color;
@@ -356,20 +356,20 @@ class AmountCellRenderer implements AgGridCellRenderer {
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('span');
         const value = params.value || '';
-        
+
         if (!value || value === 'N/A') {
             this.eGui.innerText = 'N/A';
             return;
         }
-        
+
         // Parse amount range to determine emoji
         const amountStr = value.toLowerCase();
-        
+
         // Extract numeric values from amount string
         // Format is usually "$1,001 - $15,000" or "$15,001 - $50,000" etc.
         // Also handle "Over $1,000,000" format
         let maxValue: number | null = null;
-        
+
         if (amountStr.includes('over') || amountStr.includes('>')) {
             // Handle "Over $1,000,000" format - extract the number
             const overMatch = amountStr.match(/\$?([\d,]+)/);
@@ -386,7 +386,7 @@ class AmountCellRenderer implements AgGridCellRenderer {
                 maxValue = parseInt(maxValueStr, 10);
             }
         }
-        
+
         if (maxValue !== null && !isNaN(maxValue)) {
             if (maxValue <= 15000) {
                 this.eGui.innerText = '💰'; // 1 moneybag
@@ -434,7 +434,7 @@ class ChamberCellRenderer implements AgGridCellRenderer {
 // State cell renderer - converts 2-letter abbreviations to full state names
 class StateCellRenderer implements AgGridCellRenderer {
     private eGui!: HTMLElement;
-    
+
     // US State abbreviations to full names mapping
     private stateMap: Record<string, string> = {
         'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
@@ -455,12 +455,12 @@ class StateCellRenderer implements AgGridCellRenderer {
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('span');
         const value = params.value || '';
-        
+
         if (!value || value === 'N/A') {
             this.eGui.innerText = 'N/A';
             return;
         }
-        
+
         // Convert abbreviation to full name if it's a 2-letter code
         const valueUpper = value.toUpperCase().trim();
         if (valueUpper.length === 2 && this.stateMap[valueUpper]) {
@@ -483,12 +483,12 @@ class ScoreCellRenderer implements AgGridCellRenderer {
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('span');
         const value = params.value || '';
-        
+
         if (!value || value === 'N/A' || value.includes('⚪')) {
             this.eGui.innerText = value || 'N/A';
             return;
         }
-        
+
         // Parse the score from the display string (format: "🔴 0.90" or "🟡 0.50" etc.)
         const scoreMatch = value.match(/([\d.]+)/);
         if (scoreMatch) {
@@ -547,7 +547,7 @@ function onSelectionChanged(): void {
     const selectedRows = gridApi.getSelectedRows();
     const analyzeButton = document.getElementById('analyze-selected-btn') as HTMLButtonElement | null;
     const selectedCountEl = document.getElementById('selected-count');
-    
+
     // Update analyze button visibility and count
     if (analyzeButton && selectedCountEl) {
         if (selectedRows && selectedRows.length > 0) {
@@ -559,7 +559,7 @@ function onSelectionChanged(): void {
             selectedCountEl.textContent = '0';
         }
     }
-    
+
     if (selectedRows && selectedRows.length > 0) {
         // Show reasoning for first selected row (single row view)
         if (selectedRows.length === 1) {
@@ -615,13 +615,13 @@ function onSelectionChanged(): void {
 // Analyze selected trades
 async function analyzeSelectedTrades(): Promise<void> {
     if (!gridApi) return;
-    
+
     const selectedRows = gridApi.getSelectedRows();
     if (!selectedRows || selectedRows.length === 0) {
         alert('Please select at least one trade to analyze');
         return;
     }
-    
+
     // Extract trade IDs from selected rows
     const tradeIds: number[] = [];
     for (const row of selectedRows) {
@@ -629,18 +629,18 @@ async function analyzeSelectedTrades(): Promise<void> {
             tradeIds.push(row._trade_id);
         }
     }
-    
+
     if (tradeIds.length === 0) {
         alert('Could not extract trade IDs from selected rows');
         return;
     }
-    
+
     const analyzeButton = document.getElementById('analyze-selected-btn') as HTMLButtonElement | null;
     if (analyzeButton) {
         analyzeButton.disabled = true;
         analyzeButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Analyzing...';
     }
-    
+
     try {
         const response = await fetch('/api/congress_trades/analyze', {
             method: 'POST',
@@ -650,25 +650,25 @@ async function analyzeSelectedTrades(): Promise<void> {
             credentials: 'include',
             body: JSON.stringify({ trade_ids: tradeIds })
         });
-        
+
         const result = await response.json();
-        
+
         if (!response.ok) {
             throw new Error(result.error || 'Analysis failed');
         }
-        
+
         // Show success message
         const message = result.message || `Successfully analyzed ${result.processed || tradeIds.length} trade(s)`;
         alert(`✅ ${message}`);
-        
+
         // Refresh the page to show updated analysis
         window.location.reload();
-        
+
     } catch (error) {
         console.error('Error analyzing trades:', error);
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         alert(`❌ Failed to analyze trades: ${errorMsg}`);
-        
+
         if (analyzeButton) {
             analyzeButton.disabled = false;
             analyzeButton.innerHTML = '<i class="fas fa-brain mr-2"></i>Analyze Selected (<span id="selected-count">0</span>)';
@@ -1098,15 +1098,15 @@ async function reanalyzeSelectedTrades(): Promise<void> {
         alert('Grid not initialized');
         return;
     }
-    
+
     // Get selected trades (only rows with checkboxes checked)
     const selectedRows = gridApi.getSelectedRows() as CongressTrade[];
-    
+
     if (selectedRows.length === 0) {
         alert('Please select at least one trade to re-analyze');
         return;
     }
-    
+
     // Extract trade IDs from selected rows
     const tradeIds: number[] = [];
     for (const row of selectedRows) {
@@ -1114,19 +1114,19 @@ async function reanalyzeSelectedTrades(): Promise<void> {
             tradeIds.push(row._trade_id);
         }
     }
-    
+
     if (tradeIds.length === 0) {
         alert('Could not extract trade IDs from selected rows');
         return;
     }
-    
+
     try {
         const button = document.querySelector('button[onclick="reanalyzeSelectedTrades()"]') as HTMLButtonElement;
         if (button) {
             button.disabled = true;
             button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Re-Analyzing...';
         }
-        
+
         // Call the analysis API
         const response = await fetch('/api/congress_trades/analyze', {
             method: 'POST',
@@ -1136,27 +1136,27 @@ async function reanalyzeSelectedTrades(): Promise<void> {
             credentials: 'include',
             body: JSON.stringify({ trade_ids: tradeIds })
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const result = await response.json();
-        
+
         if (!result.success) {
             throw new Error(result.error || 'Analysis failed');
         }
-        
+
         const message = result.message || `Successfully re-analyzed ${result.processed || tradeIds.length} trade(s)`;
         alert(`✅ ${message}. Refreshing...`);
-        
+
         // Refresh the page to show updated data
         window.location.reload();
-        
+
     } catch (error) {
         console.error('Failed to re-analyze trades:', error);
         alert(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        
+
         // Restore button
         const button = document.querySelector('button[onclick="reanalyzeSelectedTrades()"]') as HTMLButtonElement;
         if (button) {

@@ -32,12 +32,12 @@
 
 {% block content %}
 <!-- Ticker Search -->
-<div class="bg-white rounded-lg shadow-md p-6 mb-6">
-    <label for="ticker-select" class="block text-sm font-medium text-gray-700 mb-2">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <label for="ticker-select" class="block text-sm font-medium text-text-primary mb-2">
         Search Ticker
     </label>
     <select id="ticker-select"
-        class="w-full md:w-1/3 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        class="w-full md:w-1/3 px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
         <option value="">Select ticker symbol...</option>
     </select>
 </div>
@@ -46,75 +46,85 @@
 <div id="loading-spinner" class="loading-spinner hidden"></div>
 
 <!-- Error Message -->
-<div id="error-message" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6 hidden">
+<div id="error-message"
+    class="bg-theme-error-bg border border-theme-error-text text-theme-error-text px-4 py-3 rounded mb-6 hidden">
     <p id="error-text"></p>
 </div>
 
 <!-- Placeholder Message -->
-<div id="placeholder-message" class="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-6">
+<div id="placeholder-message"
+    class="bg-theme-info-bg border border-theme-info-text text-theme-info-text px-4 py-3 rounded mb-6">
     <p>Enter a ticker symbol above to view detailed information.</p>
 </div>
 
 <!-- Basic Info Section -->
-<div id="basic-info-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
+<div id="basic-info-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
     <div class="flex items-center gap-4 mb-4">
-        <img id="ticker-logo" src="" alt="" class="hidden w-24 h-24 object-contain rounded-lg border border-gray-200 dark:border-gray-700 flex-shrink-0" onerror="this.style.display='none';">
+        <img id="ticker-logo" src="" alt=""
+            class="hidden w-24 h-24 object-contain rounded-lg border border-border flex-shrink-0"
+            onerror="this.style.display='none';">
         <div>
-            <h2 id="company-name" class="text-2xl font-bold"></h2>
-            <div id="ticker-symbol" class="text-lg text-gray-600 dark:text-gray-400 font-mono"></div>
+            <h2 id="company-name" class="text-2xl font-bold text-text-primary"></h2>
+            <div id="ticker-symbol" class="text-lg text-text-secondary font-mono"></div>
         </div>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-            <div class="text-sm text-gray-600">Sector</div>
-            <div id="sector" class="text-xl font-semibold">N/A</div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">Sector</div>
+            <div id="sector" class="text-xl font-semibold text-text-primary">N/A</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-            <div class="text-sm text-gray-600">Industry</div>
-            <div id="industry" class="text-xl font-semibold">N/A</div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">Industry</div>
+            <div id="industry" class="text-xl font-semibold text-text-primary">N/A</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-            <div class="text-sm text-gray-600">Currency</div>
-            <div id="currency" class="text-xl font-semibold">N/A</div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">Currency</div>
+            <div id="currency" class="text-xl font-semibold text-text-primary">N/A</div>
         </div>
     </div>
-    <div id="exchange-info" class="mt-4 text-sm text-gray-600"></div>
+    <div id="exchange-info" class="mt-4 text-sm text-text-secondary"></div>
 </div>
 
 <!-- External Links Section -->
-<div id="external-links-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-bold mb-4">🔗 External Links</h2>
+<div id="external-links-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">🔗 External Links</h2>
     <div id="external-links-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <!-- Links populated by JavaScript -->
     </div>
 </div>
 
 <!-- Portfolio Data Section -->
-<div id="portfolio-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-bold mb-4">💼 Portfolio Data</h2>
+<div id="portfolio-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">💼 Portfolio Data</h2>
 
     <!-- Current Positions -->
     <div id="positions-container" class="mb-6">
-        <h3 class="text-lg font-semibold mb-3">Current Positions</h3>
+        <h3 class="text-lg font-semibold mb-3 text-text-primary">Current Positions</h3>
         <div class="overflow-x-auto">
-            <table id="positions-table" class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
+            <table id="positions-table" class="min-w-full divide-y divide-border">
+                <thead class="bg-dashboard-background">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Fund</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Shares</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Price</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Cost Basis</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             P&L</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Date</th>
                     </tr>
                 </thead>
-                <tbody id="positions-tbody" class="bg-white divide-y divide-gray-200">
+                <tbody id="positions-tbody" class="bg-dashboard-surface divide-y divide-border">
                     <!-- Populated by JavaScript -->
                 </tbody>
             </table>
@@ -123,26 +133,32 @@
 
     <!-- Trade History -->
     <div id="trades-container">
-        <h3 class="text-lg font-semibold mb-3">Recent Trade History</h3>
+        <h3 class="text-lg font-semibold mb-3 text-text-primary">Recent Trade History</h3>
         <div class="overflow-x-auto">
-            <table id="trades-table" class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
+            <table id="trades-table" class="min-w-full divide-y divide-border">
+                <thead class="bg-dashboard-background">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Date</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Action</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Shares</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Price</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Fund</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Reason</th>
                     </tr>
                 </thead>
-                <tbody id="trades-tbody" class="bg-white divide-y divide-gray-200">
+                <tbody id="trades-tbody" class="bg-dashboard-surface divide-y divide-border">
                     <!-- Populated by JavaScript -->
                 </tbody>
             </table>
@@ -151,24 +167,26 @@
 </div>
 
 <!-- Price History Chart Section -->
-<div id="chart-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
+<div id="chart-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
     <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold">📈 Price History</h2>
+        <h2 class="text-xl font-bold text-text-primary">📈 Price History</h2>
         <div class="flex items-center gap-4">
-            <select id="chart-range-selector" class="px-3 py-1 border rounded text-sm">
+            <select id="chart-range-selector"
+                class="px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary">
                 <option value="3m">3 Months</option>
                 <option value="6m">6 Months</option>
                 <option value="1y">1 Year</option>
                 <option value="2y">2 Years</option>
                 <option value="5y">5 Years</option>
             </select>
-            <label class="flex items-center">
-                <input type="checkbox" id="solid-lines-checkbox" class="mr-2">
+            <label class="flex items-center text-text-secondary">
+                <input type="checkbox" id="solid-lines-checkbox"
+                    class="mr-2 rounded border-border bg-dashboard-background text-accent focus:ring-accent">
                 <span class="text-sm">📱 Solid Lines Only (for mobile)</span>
             </label>
         </div>
     </div>
-    <div class="mb-2 text-sm text-gray-500 md:hidden">
+    <div class="mb-2 text-sm text-text-secondary md:hidden">
         💡 Tip: Rotate your device for better viewing
     </div>
     <div id="chart-loading" class="hidden min-h-[200px] flex items-center justify-center">
@@ -176,56 +194,62 @@
     </div>
     <div id="chart-container" class="overflow-x-auto"></div>
     <div id="chart-metrics" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-            <div class="text-sm text-gray-600">First Price</div>
-            <div id="first-price" class="text-xl font-semibold">-</div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">First Price</div>
+            <div id="first-price" class="text-xl font-semibold text-text-primary">-</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-            <div class="text-sm text-gray-600">Last Price</div>
-            <div id="last-price" class="text-xl font-semibold">-</div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">Last Price</div>
+            <div id="last-price" class="text-xl font-semibold text-text-primary">-</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-            <div class="text-sm text-gray-600">Change (3M)</div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">Change (3M)</div>
             <div id="price-change" class="text-xl font-semibold">-</div>
         </div>
     </div>
 </div>
 
 <!-- Research Articles Section -->
-<div id="research-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-bold mb-4">📚 Research Articles</h2>
-    <p id="research-count" class="text-sm text-gray-600 mb-4"></p>
+<div id="research-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">📚 Research Articles</h2>
+    <p id="research-count" class="text-sm text-text-secondary mb-4"></p>
     <div id="research-articles-list">
         <!-- Populated by JavaScript -->
     </div>
 </div>
 
 <!-- Social Sentiment Section -->
-<div id="sentiment-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-bold mb-4">💬 Social Sentiment</h2>
+<div id="sentiment-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">💬 Social Sentiment</h2>
 
     <!-- Latest Metrics -->
     <div id="sentiment-metrics-container" class="mb-6">
-        <h3 class="text-lg font-semibold mb-3">Latest Metrics</h3>
+        <h3 class="text-lg font-semibold mb-3 text-text-primary">Latest Metrics</h3>
         <div class="overflow-x-auto">
-            <table id="sentiment-table" class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
+            <table id="sentiment-table" class="min-w-full divide-y divide-border">
+                <thead class="bg-dashboard-background">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Platform</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Sentiment</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Score</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Volume</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Bull/Bear Ratio</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Last Updated</th>
                     </tr>
                 </thead>
-                <tbody id="sentiment-tbody" class="bg-white divide-y divide-gray-200">
+                <tbody id="sentiment-tbody" class="bg-dashboard-surface divide-y divide-border">
                     <!-- Populated by JavaScript -->
                 </tbody>
             </table>
@@ -234,7 +258,7 @@
 
     <!-- Alerts -->
     <div id="sentiment-alerts-container">
-        <h3 class="text-lg font-semibold mb-3">Recent Alerts (Last 24 Hours)</h3>
+        <h3 class="text-lg font-semibold mb-3 text-text-primary">Recent Alerts (Last 24 Hours)</h3>
         <div id="sentiment-alerts-list">
             <!-- Populated by JavaScript -->
         </div>
@@ -242,28 +266,28 @@
 </div>
 
 <!-- Congress Trades Section -->
-<div id="congress-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6 dark:bg-gray-800 dark:border dark:border-gray-700">
-    <h2 class="text-xl font-bold mb-4 dark:text-white">🏛️ Congress Trades</h2>
-    <p id="congress-count" class="text-sm text-gray-600 dark:text-gray-400 mb-4"></p>
+<div id="congress-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">🏛️ Congress Trades</h2>
+    <p id="congress-count" class="text-sm text-text-secondary mb-4"></p>
     <div class="overflow-x-auto">
-        <table id="congress-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead class="bg-gray-50 dark:bg-gray-700">
+        <table id="congress-table" class="min-w-full divide-y divide-border">
+            <thead class="bg-dashboard-background">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                         Date</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                         Politician</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                         Chamber</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                         Type</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                         Amount</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                         Party</th>
                 </tr>
             </thead>
-            <tbody id="congress-tbody" class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+            <tbody id="congress-tbody" class="bg-dashboard-surface divide-y divide-border">
                 <!-- Populated by JavaScript -->
             </tbody>
         </table>
@@ -271,118 +295,119 @@
 </div>
 
 <!-- Watchlist Status Section -->
-<div id="watchlist-section" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-bold mb-4">📋 Watchlist Status</h2>
+<div id="watchlist-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">📋 Watchlist Status</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-            <div class="text-sm text-gray-600">Status</div>
-            <div id="watchlist-status" class="text-xl font-semibold">-</div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">Status</div>
+            <div id="watchlist-status" class="text-xl font-semibold text-text-primary">-</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-            <div class="text-sm text-gray-600">Priority Tier</div>
-            <div id="watchlist-tier" class="text-xl font-semibold">-</div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">Priority Tier</div>
+            <div id="watchlist-tier" class="text-xl font-semibold text-text-primary">-</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-            <div class="text-sm text-gray-600">Source</div>
-            <div id="watchlist-source" class="text-xl font-semibold">-</div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">Source</div>
+            <div id="watchlist-source" class="text-xl font-semibold text-text-primary">-</div>
         </div>
     </div>
 </div>
 
 <!-- Technical Signals Section -->
-<div id="signals-section" class="hidden bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+<div id="signals-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
-            <h2 class="text-xl font-bold">📊 Technical Signals</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Last updated: <span id="signals-last-updated">-</span></p>
+            <h2 class="text-xl font-bold text-text-primary">📊 Technical Signals</h2>
+            <p class="text-xs text-text-secondary">Last updated: <span id="signals-last-updated">-</span></p>
         </div>
         <div class="flex items-center gap-2">
-            <span id="signals-status" class="text-sm text-gray-500 dark:text-gray-400"></span>
+            <span id="signals-status" class="text-sm text-text-secondary"></span>
             <button id="signals-refresh-btn" type="button"
-                class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-500 font-medium rounded-lg text-sm px-4 py-2 inline-flex items-center">
+                class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-4 py-2 inline-flex items-center">
                 <i class="fas fa-sync-alt mr-2"></i>Refresh
             </button>
         </div>
     </div>
 
-    <div id="signals-loading" class="hidden text-sm text-gray-500 dark:text-gray-400 mb-4">
+    <div id="signals-loading" class="hidden text-sm text-text-secondary mb-4">
         <div class="inline-flex items-center gap-2">
-            <div class="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+            <div class="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent"></div>
             <span>Calculating signals...</span>
         </div>
     </div>
-    
+
     <!-- Overall Signal -->
     <div class="mb-6">
         <div class="flex items-center gap-4 mb-4">
-            <div class="text-sm text-gray-600 dark:text-gray-400">Overall Signal</div>
+            <div class="text-sm text-text-secondary">Overall Signal</div>
             <div id="overall-signal-badge" class="px-4 py-2 rounded-lg font-semibold">-</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">Confidence: <span id="signal-confidence">-</span></div>
+            <div class="text-sm text-text-secondary">Confidence: <span id="signal-confidence">-</span></div>
         </div>
     </div>
-    
+
     <!-- Structure Signal -->
     <div class="mb-6">
-        <h3 class="text-lg font-semibold mb-3">Structure Signal</h3>
+        <h3 class="text-lg font-semibold mb-3 text-text-primary">Structure Signal</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div class="text-sm text-gray-600 dark:text-gray-400">Trend</div>
-                <div id="structure-trend" class="text-xl font-semibold">-</div>
+            <div class="bg-dashboard-background p-4 rounded-lg">
+                <div class="text-sm text-text-secondary">Trend</div>
+                <div id="structure-trend" class="text-xl font-semibold text-text-primary">-</div>
             </div>
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div class="text-sm text-gray-600 dark:text-gray-400">Pullback</div>
-                <div id="structure-pullback" class="text-xl font-semibold">-</div>
+            <div class="bg-dashboard-background p-4 rounded-lg">
+                <div class="text-sm text-text-secondary">Pullback</div>
+                <div id="structure-pullback" class="text-xl font-semibold text-text-primary">-</div>
             </div>
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div class="text-sm text-gray-600 dark:text-gray-400">Breakout</div>
-                <div id="structure-breakout" class="text-xl font-semibold">-</div>
+            <div class="bg-dashboard-background p-4 rounded-lg">
+                <div class="text-sm text-text-secondary">Breakout</div>
+                <div id="structure-breakout" class="text-xl font-semibold text-text-primary">-</div>
             </div>
         </div>
     </div>
-    
+
     <!-- Timing Signal -->
     <div class="mb-6">
-        <h3 class="text-lg font-semibold mb-3">Timing Signal</h3>
+        <h3 class="text-lg font-semibold mb-3 text-text-primary">Timing Signal</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div class="text-sm text-gray-600 dark:text-gray-400">Volume</div>
-                <div id="timing-volume" class="text-xl font-semibold">-</div>
+            <div class="bg-dashboard-background p-4 rounded-lg">
+                <div class="text-sm text-text-secondary">Volume</div>
+                <div id="timing-volume" class="text-xl font-semibold text-text-primary">-</div>
             </div>
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div class="text-sm text-gray-600 dark:text-gray-400">RSI</div>
-                <div id="timing-rsi" class="text-xl font-semibold">-</div>
+            <div class="bg-dashboard-background p-4 rounded-lg">
+                <div class="text-sm text-text-secondary">RSI</div>
+                <div id="timing-rsi" class="text-xl font-semibold text-text-primary">-</div>
             </div>
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div class="text-sm text-gray-600 dark:text-gray-400">CCI</div>
-                <div id="timing-cci" class="text-xl font-semibold">-</div>
+            <div class="bg-dashboard-background p-4 rounded-lg">
+                <div class="text-sm text-text-secondary">CCI</div>
+                <div id="timing-cci" class="text-xl font-semibold text-text-primary">-</div>
             </div>
         </div>
     </div>
-    
+
     <!-- Fear & Risk Signal -->
     <div>
-        <h3 class="text-lg font-semibold mb-3">Fear & Risk</h3>
+        <h3 class="text-lg font-semibold mb-3 text-text-primary">Fear & Risk</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div class="text-sm text-gray-600 dark:text-gray-400">Fear Level</div>
-                <div id="fear-level" class="text-xl font-semibold">-</div>
+            <div class="bg-dashboard-background p-4 rounded-lg">
+                <div class="text-sm text-text-secondary">Fear Level</div>
+                <div id="fear-level" class="text-xl font-semibold text-text-primary">-</div>
             </div>
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div class="text-sm text-gray-600 dark:text-gray-400">Risk Score</div>
-                <div id="risk-score" class="text-xl font-semibold">-</div>
+            <div class="bg-dashboard-background p-4 rounded-lg">
+                <div class="text-sm text-text-secondary">Risk Score</div>
+                <div id="risk-score" class="text-xl font-semibold text-text-primary">-</div>
             </div>
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div class="text-sm text-gray-600 dark:text-gray-400">Recommendation</div>
-                <div id="risk-recommendation" class="text-xl font-semibold">-</div>
+            <div class="bg-dashboard-background p-4 rounded-lg">
+                <div class="text-sm text-text-secondary">Recommendation</div>
+                <div id="risk-recommendation" class="text-xl font-semibold text-text-primary">-</div>
             </div>
         </div>
     </div>
 
     <!-- AI Explanation -->
     <div class="mt-6">
-        <h3 class="text-lg font-semibold mb-3">AI Insight</h3>
-        <div id="signals-explanation" class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">
-            <span class="text-gray-500 dark:text-gray-400">Use Refresh to generate an AI explanation.</span>
+        <h3 class="text-lg font-semibold mb-3 text-text-primary">AI Insight</h3>
+        <div id="signals-explanation"
+            class="bg-dashboard-background p-4 rounded-lg text-sm text-text-secondary whitespace-pre-line">
+            <span class="text-text-tertiary">Use Refresh to generate an AI explanation.</span>
         </div>
     </div>
 </div>

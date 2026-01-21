@@ -14,17 +14,17 @@
     </div>
 
     <!-- Funds Table Section -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-            <h2 class="text-lg font-semibold text-gray-900">All Funds</h2>
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border">
+        <div class="px-6 py-4 border-b border-border flex justify-between items-center">
+            <h2 class="text-lg font-semibold text-text-primary">All Funds</h2>
             <button data-modal-target="create-fund-modal" data-modal-toggle="create-fund-modal"
-                class="text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">
+                class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">
                 <i class="fas fa-plus mr-2"></i>New Fund
             </button>
         </div>
         <div class="relative overflow-x-auto">
-            <table class="w-full text-sm text-left text-gray-500">
-                <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+            <table class="w-full text-sm text-left text-text-secondary">
+                <thead class="text-xs text-text-primary uppercase bg-dashboard-background">
                     <tr>
                         <th scope="col" class="px-6 py-3">Fund Name</th>
                         <th scope="col" class="px-6 py-3">Type</th>
@@ -36,7 +36,7 @@
                 </thead>
                 <tbody id="funds-table-body">
                     <!-- Populated by JS -->
-                    <tr class="bg-white border-b hover:bg-gray-50">
+                    <tr class="bg-dashboard-surface border-b border-border hover:bg-dashboard-background">
                         <td colspan="6" class="px-6 py-4 text-center">Loading funds...</td>
                     </tr>
                 </tbody>
@@ -47,31 +47,31 @@
     <!-- Maintenance Section -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Refresh Ticker Metadata -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <i class="fas fa-sync-alt mr-2 text-blue-500"></i> Refresh Ticker Metadata
+        <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+            <h3 class="text-lg font-semibold text-text-primary mb-4 flex items-center">
+                <i class="fas fa-sync-alt mr-2 text-accent"></i> Refresh Ticker Metadata
             </h3>
             <div class="space-y-4">
                 <div class="grid grid-cols-3 gap-2">
                     <div class="col-span-2">
-                        <label for="refresh-ticker" class="block mb-2 text-sm font-medium text-gray-900">Ticker
+                        <label for="refresh-ticker" class="block mb-2 text-sm font-medium text-text-primary">Ticker
                             Symbol</label>
                         <input type="text" id="refresh-ticker"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                            class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
                             placeholder="e.g. AAPL">
                     </div>
                     <div>
                         <label for="refresh-currency"
-                            class="block mb-2 text-sm font-medium text-gray-900">Currency</label>
+                            class="block mb-2 text-sm font-medium text-text-primary">Currency</label>
                         <select id="refresh-currency"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                            class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                             <option value="USD">USD</option>
                             <option value="CAD">CAD</option>
                         </select>
                     </div>
                 </div>
                 <button onclick="refreshTickerMetadata()"
-                    class="w-full text-blue-700 hover:text-white border border-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center mr-2 mb-2">
+                    class="w-full text-accent hover:text-white border border-accent hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 text-center mr-2 mb-2">
                     Fetch & Update
                 </button>
                 <div id="refresh-result" class="hidden p-4 mb-4 text-sm rounded-lg" role="alert"></div>
@@ -79,20 +79,20 @@
         </div>
 
         <!-- Rebuild Portfolio -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <i class="fas fa-wrench mr-2 text-orange-500"></i> Rebuild Portfolio
+        <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+            <h3 class="text-lg font-semibold text-text-primary mb-4 flex items-center">
+                <i class="fas fa-wrench mr-2 text-theme-warning-text"></i> Rebuild Portfolio
             </h3>
-            <p class="text-sm text-gray-500 mb-4">Regenerates portfolio positions from the trade log.</p>
+            <p class="text-sm text-text-secondary mb-4">Regenerates portfolio positions from the trade log.</p>
             <div class="space-y-4">
-                <label for="rebuild-fund-select" class="block mb-2 text-sm font-medium text-gray-900">Select
+                <label for="rebuild-fund-select" class="block mb-2 text-sm font-medium text-text-primary">Select
                     Fund</label>
                 <select id="rebuild-fund-select"
-                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                     <!-- Populated by JS -->
                 </select>
                 <button onclick="rebuildPortfolio()"
-                    class="w-full focus:outline-none text-white bg-orange-500 hover:bg-orange-600 focus:ring-4 focus:ring-orange-300 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2">
+                    class="w-full focus:outline-none text-theme-warning-text hover:text-white border border-theme-warning-text hover:bg-theme-warning-text focus:ring-4 focus:ring-theme-warning-text/30 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2">
                     Start Rebuild Job
                 </button>
             </div>
@@ -104,9 +104,9 @@
 <div id="create-fund-modal" tabindex="-1" aria-hidden="true"
     class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-md max-h-full">
-        <div class="relative bg-white rounded-lg shadow">
+        <div class="relative bg-dashboard-surface rounded-lg shadow">
             <button type="button"
-                class="absolute top-3 right-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ml-auto inline-flex justify-center items-center"
+                class="absolute top-3 right-2.5 text-text-secondary bg-transparent hover:bg-dashboard-background hover:text-text-primary rounded-lg text-sm w-8 h-8 ml-auto inline-flex justify-center items-center"
                 data-modal-hide="create-fund-modal">
                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none"
                     viewBox="0 0 14 14">
@@ -116,26 +116,27 @@
                 <span class="sr-only">Close modal</span>
             </button>
             <div class="px-6 py-6 lg:px-8">
-                <h3 class="mb-4 text-xl font-medium text-gray-900">Create New Fund</h3>
+                <h3 class="mb-4 text-xl font-medium text-text-primary">Create New Fund</h3>
                 <form class="space-y-6" action="#" onsubmit="createFund(event)">
                     <div>
-                        <label for="new-fund-name" class="block mb-2 text-sm font-medium text-gray-900">Fund
+                        <label for="new-fund-name" class="block mb-2 text-sm font-medium text-text-primary">Fund
                             Name</label>
                         <input type="text" name="name" id="new-fund-name"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                            class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
                             placeholder="My New Fund" required>
                     </div>
                     <div>
                         <label for="new-fund-desc"
-                            class="block mb-2 text-sm font-medium text-gray-900">Description</label>
+                            class="block mb-2 text-sm font-medium text-text-primary">Description</label>
                         <input type="text" name="description" id="new-fund-desc"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                            class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label for="new-fund-type" class="block mb-2 text-sm font-medium text-gray-900">Type</label>
+                            <label for="new-fund-type"
+                                class="block mb-2 text-sm font-medium text-text-primary">Type</label>
                             <select name="fund_type" id="new-fund-type"
-                                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                                 <option value="investment">Investment</option>
                                 <option value="retirement">Retirement</option>
                                 <option value="tfsa">TFSA</option>
@@ -145,16 +146,16 @@
                         </div>
                         <div>
                             <label for="new-fund-currency"
-                                class="block mb-2 text-sm font-medium text-gray-900">Currency</label>
+                                class="block mb-2 text-sm font-medium text-text-primary">Currency</label>
                             <select name="currency" id="new-fund-currency"
-                                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                                 <option value="CAD">CAD</option>
                                 <option value="USD">USD</option>
                             </select>
                         </div>
                     </div>
                     <button type="submit"
-                        class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center">Create
+                        class="w-full text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 text-center">Create
                         Fund</button>
                 </form>
             </div>
@@ -166,9 +167,9 @@
 <div id="edit-fund-modal" tabindex="-1" aria-hidden="true"
     class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-md max-h-full">
-        <div class="relative bg-white rounded-lg shadow">
+        <div class="relative bg-dashboard-surface rounded-lg shadow">
             <button type="button"
-                class="absolute top-3 right-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ml-auto inline-flex justify-center items-center"
+                class="absolute top-3 right-2.5 text-text-secondary bg-transparent hover:bg-dashboard-background hover:text-text-primary rounded-lg text-sm w-8 h-8 ml-auto inline-flex justify-center items-center"
                 data-modal-hide="edit-fund-modal">
                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none"
                     viewBox="0 0 14 14">
@@ -178,28 +179,28 @@
                 <span class="sr-only">Close modal</span>
             </button>
             <div class="px-6 py-6 lg:px-8">
-                <h3 class="mb-4 text-xl font-medium text-gray-900">Edit Fund</h3>
+                <h3 class="mb-4 text-xl font-medium text-text-primary">Edit Fund</h3>
                 <form class="space-y-6" action="#" onsubmit="updateFund(event)">
                     <input type="hidden" id="edit-fund-original-name">
                     <div>
-                        <label for="edit-fund-name" class="block mb-2 text-sm font-medium text-gray-900">Fund Name
+                        <label for="edit-fund-name" class="block mb-2 text-sm font-medium text-text-primary">Fund Name
                             (Rename)</label>
                         <input type="text" id="edit-fund-name"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                            class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
                             required>
                     </div>
                     <div>
                         <label for="edit-fund-desc"
-                            class="block mb-2 text-sm font-medium text-gray-900">Description</label>
+                            class="block mb-2 text-sm font-medium text-text-primary">Description</label>
                         <input type="text" id="edit-fund-desc"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                            class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label for="edit-fund-type"
-                                class="block mb-2 text-sm font-medium text-gray-900">Type</label>
+                                class="block mb-2 text-sm font-medium text-text-primary">Type</label>
                             <select id="edit-fund-type"
-                                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                                 <option value="investment">Investment</option>
                                 <option value="retirement">Retirement</option>
                                 <option value="tfsa">TFSA</option>
@@ -209,28 +210,28 @@
                         </div>
                         <div>
                             <label for="edit-fund-currency"
-                                class="block mb-2 text-sm font-medium text-gray-900">Currency</label>
+                                class="block mb-2 text-sm font-medium text-text-primary">Currency</label>
                             <select id="edit-fund-currency"
-                                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                                 <option value="CAD">CAD</option>
                                 <option value="USD">USD</option>
                             </select>
                         </div>
                     </div>
                     <button type="submit"
-                        class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center">Save
+                        class="w-full text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5 text-center">Save
                         Changes</button>
 
-                    <div class="border-t pt-4 mt-4">
+                    <div class="border-t border-border pt-4 mt-4">
                         <button type="button" onclick="showDeleteConfirm()"
-                            class="w-full text-red-600 hover:text-white border border-red-600 hover:bg-red-600 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center">
+                            class="w-full text-theme-error-text hover:text-white border border-theme-error-text hover:bg-theme-error-bg focus:ring-4 focus:outline-none focus:ring-theme-error-bg/30 font-medium rounded-lg text-sm px-5 py-2.5 text-center">
                             Delete Fund
                         </button>
                         <div id="delete-confirm-area"
-                            class="hidden mt-4 p-4 border border-red-200 bg-red-50 rounded-lg">
-                            <p class="text-sm text-red-800 mb-2">Type the fund name to confirm deletion:</p>
+                            class="hidden mt-4 p-4 border border-theme-error-text/30 bg-theme-error-bg/10 rounded-lg">
+                            <p class="text-sm text-theme-error-text mb-2">Type the fund name to confirm deletion:</p>
                             <input type="text" id="delete-confirm-input"
-                                class="bg-white border border-red-300 text-gray-900 text-sm rounded-lg block w-full p-2.5 mb-2"
+                                class="bg-dashboard-background border border-theme-error-text text-text-primary text-sm rounded-lg block w-full p-2.5 mb-2"
                                 placeholder="Fund Name">
                             <button type="button" onclick="confirmDeleteFund()"
                                 class="w-full text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center">

@@ -22,52 +22,53 @@
 <div id="content-status">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <!-- Database Status -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 status-card">
-            <h3 class="text-lg font-semibold text-gray-900 mb-2">Database Connection</h3>
+        <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 status-card">
+            <h3 class="text-lg font-semibold text-text-primary mb-2">Database Connection</h3>
             <div id="status-db" class="flex items-center">
-                <div class="animate-pulse bg-gray-200 h-6 w-24 rounded"></div>
+                <div class="animate-pulse bg-dashboard-background h-6 w-24 rounded"></div>
             </div>
-            <p class="text-xs text-gray-500 mt-2">Supabase Connectivity</p>
+            <p class="text-xs text-text-secondary mt-2">Supabase Connectivity</p>
         </div>
 
         <!-- Postgres Status -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 status-card">
-            <h3 class="text-lg font-semibold text-gray-900 mb-2">Research Repository</h3>
+        <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 status-card">
+            <h3 class="text-lg font-semibold text-text-primary mb-2">Research Repository</h3>
             <div id="status-postgres" class="flex items-center">
-                <div class="animate-pulse bg-gray-200 h-6 w-24 rounded"></div>
+                <div class="animate-pulse bg-dashboard-background h-6 w-24 rounded"></div>
             </div>
-            <div id="stats-postgres" class="text-sm mt-2 space-y-1 text-gray-600"></div>
+            <div id="stats-postgres" class="text-sm mt-2 space-y-1 text-text-secondary"></div>
         </div>
 
         <!-- Exchange Rates -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 status-card">
-            <h3 class="text-lg font-semibold text-gray-900 mb-2">Exchange Rates</h3>
+        <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 status-card">
+            <h3 class="text-lg font-semibold text-text-primary mb-2">Exchange Rates</h3>
             <div id="status-rates">
-                <div class="animate-pulse bg-gray-200 h-6 w-24 rounded"></div>
+                <div class="animate-pulse bg-dashboard-background h-6 w-24 rounded"></div>
             </div>
-            <p class="text-xs text-gray-500 mt-2">USD/CAD Rate</p>
+            <p class="text-xs text-text-secondary mt-2">USD/CAD Rate</p>
         </div>
     </div>
 
     <!-- Cache Management -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Cache Management</h3>
-        <p class="text-sm text-gray-600 mb-4">Reset all system caches and increment the cache version to force fresh data retrieval.</p>
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
+        <h3 class="text-lg font-semibold text-text-primary mb-4">Cache Management</h3>
+        <p class="text-sm text-text-secondary mb-4">Reset all system caches and increment the cache version to force
+            fresh data retrieval.</p>
         <div class="flex items-center space-x-4">
             <button id="reset-cache-btn" onclick="resetSystemCache()"
-                class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center transition-colors">
                 <i class="fas fa-trash-alt mr-2"></i> Reset System Cache
             </button>
-            <div id="cache-status" class="text-sm text-gray-600"></div>
+            <div id="cache-status" class="text-sm text-text-secondary"></div>
         </div>
     </div>
 
     <!-- Recent Jobs -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Recent Scheduler Jobs</h3>
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+        <h3 class="text-lg font-semibold text-text-primary mb-4">Recent Scheduler Jobs</h3>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left text-gray-500">
-                <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+            <table class="w-full text-sm text-left text-text-secondary">
+                <thead class="text-xs text-text-secondary uppercase bg-dashboard-background">
                     <tr>
                         <th class="px-6 py-3">Job Name</th>
                         <th class="px-6 py-3">Status</th>
@@ -86,9 +87,8 @@
 </div>
 
 <!-- Deployment Info Banner -->
-<div id="deployment-info"
-    class="bg-blue-50 dark:bg-gray-800 border border-blue-200 dark:border-gray-700 rounded-lg p-3 mb-6 text-center">
-    <span class="text-xs text-gray-500 dark:text-gray-400">Loading deployment info...</span>
+<div id="deployment-info" class="bg-dashboard-background border border-border rounded-lg p-3 mb-6 text-center">
+    <span class="text-xs text-text-secondary">Loading deployment info...</span>
 </div>
 
 {% endblock %}

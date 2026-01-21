@@ -341,14 +341,14 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
 
     if (companyName) companyName.textContent = basicInfo.company_name || 'N/A';
     if (tickerSymbol) tickerSymbol.textContent = basicInfo.ticker || '';
-    
+
     // Display logo if available (bigger size for ticker details page)
     if (tickerLogo && basicInfo.logo_url) {
         tickerLogo.src = basicInfo.logo_url;
         tickerLogo.alt = `${basicInfo.ticker || ''} logo`;
         tickerLogo.classList.remove('hidden');
         // Handle image load errors gracefully - try fallback
-        tickerLogo.onerror = function() {
+        tickerLogo.onerror = function () {
             // Try Yahoo Finance as fallback if Parqet fails
             const ticker = basicInfo.ticker || '';
             const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
@@ -362,7 +362,7 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
     } else if (tickerLogo) {
         tickerLogo.classList.add('hidden');
     }
-    
+
     if (sector) sector.textContent = basicInfo.sector || 'N/A';
     if (industry) industry.textContent = basicInfo.industry || 'N/A';
     if (currency) currency.textContent = basicInfo.currency || 'USD';
@@ -447,12 +447,12 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
             Object.values(latestTickerPositions).forEach(pos => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${pos.fund || 'N/A'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatNumber(pos.shares || 0, 2)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatCurrency(pos.price || 0)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatCurrency(pos.cost_basis || 0)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm ${(pos.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}">${formatCurrency(pos.pnl || 0)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(pos.date)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${pos.fund || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatNumber(pos.shares || 0, 2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatCurrency(pos.price || 0)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatCurrency(pos.cost_basis || 0)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm ${(pos.pnl || 0) >= 0 ? 'text-theme-success-text' : 'text-theme-error-text'}">${formatCurrency(pos.pnl || 0)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${formatDate(pos.date)}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -474,12 +474,12 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
             portfolioData.trades.slice(0, 20).forEach(trade => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatDate(trade.date)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.action || 'N/A'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatNumber(trade.shares || 0, 2)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatCurrency(trade.price || 0)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${trade.fund || 'N/A'}</td>
-                    <td class="px-6 py-4 text-sm text-gray-500">${(trade.reason || 'N/A').substring(0, 50)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatDate(trade.date)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${trade.action || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatNumber(trade.shares || 0, 2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatCurrency(trade.price || 0)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${trade.fund || 'N/A'}</td>
+                    <td class="px-6 py-4 text-sm text-text-secondary">${(trade.reason || 'N/A').substring(0, 50)}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -641,7 +641,7 @@ async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Pr
             if (lastPriceEl) lastPriceEl.textContent = formatCurrency(lastPrice);
             if (changeEl) {
                 changeEl.textContent = `${priceChangePct >= 0 ? '+' : ''}${priceChangePct.toFixed(2)}%`;
-                changeEl.className = `text-xl font-semibold ${priceChangePct >= 0 ? 'text-green-600' : 'text-red-600'}`;
+                changeEl.className = `text-xl font-semibold ${priceChangePct >= 0 ? 'text-theme-success-text' : 'text-theme-error-text'}`;
             }
         }
     } catch (error) {
@@ -685,22 +685,22 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
 
         articleDiv.innerHTML = `
             <details class="cursor-pointer">
-                <summary class="font-semibold text-blue-600 hover:text-blue-800">${title}</summary>
+                <summary class="font-semibold text-accent hover:text-accent-hover">${title}</summary>
                 <div class="mt-2 pl-4">
-                    <div id="${summaryId}-short" class="text-gray-700 mb-2">${shortSummary}</div>
+                    <div id="${summaryId}-short" class="text-text-primary mb-2">${shortSummary}</div>
                     ${isLongSummary ? `
-                        <div id="${summaryId}-full" class="hidden text-gray-700 mb-2 whitespace-pre-wrap">${summary}</div>
-                        <button onclick="window.toggleSummary('${summaryId}')" class="text-blue-600 hover:text-blue-800 text-sm font-medium mb-2">
+                        <div id="${summaryId}-full" class="hidden text-text-primary mb-2 whitespace-pre-wrap">${summary}</div>
+                        <button onclick="window.toggleSummary('${summaryId}')" class="text-accent hover:text-accent-hover text-sm font-medium mb-2">
                             <span id="${summaryId}-toggle">Show Full Summary</span>
                         </button>
                     ` : ''}
-                    <div class="flex justify-between items-center text-sm text-gray-500">
+                    <div class="flex justify-between items-center text-sm text-text-secondary">
                         <div>
                             <span>Source: ${source}</span>
                             ${publishedAt ? `<span class="ml-4">Published: ${publishedAt}</span>` : ''}
                             ${sentiment !== 'N/A' ? `<span class="ml-4">Sentiment: ${sentiment}</span>` : ''}
                         </div>
-                        <a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">Read Full Article →</a>
+                        <a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover">Read Full Article →</a>
                     </div>
                 </div>
             </details>
@@ -729,12 +729,12 @@ function renderSocialSentiment(sentiment: SocialSentiment): void {
             sentiment.latest_metrics.forEach(metric => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(metric.platform || 'N/A').charAt(0).toUpperCase() + (metric.platform || '').slice(1)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${metric.sentiment_label || 'N/A'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(metric.sentiment_score || 0).toFixed(2)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${metric.volume || 0}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${metric.bull_bear_ratio !== null && metric.bull_bear_ratio !== undefined ? metric.bull_bear_ratio.toFixed(2) : 'N/A'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(metric.created_at)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${(metric.platform || 'N/A').charAt(0).toUpperCase() + (metric.platform || '').slice(1)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${metric.sentiment_label || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${(metric.sentiment_score || 0).toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${metric.volume || 0}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${metric.bull_bear_ratio !== null && metric.bull_bear_ratio !== undefined ? metric.bull_bear_ratio.toFixed(2) : 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${formatDate(metric.created_at)}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -759,13 +759,13 @@ function renderSocialSentiment(sentiment: SocialSentiment): void {
                 const sentimentLabel = alert.sentiment_label || 'N/A';
                 const score = (alert.sentiment_score || 0).toFixed(2);
 
-                let alertClass = 'bg-blue-100 border-blue-400 text-blue-700';
+                let alertClass = 'bg-theme-info-bg border-theme-info-text text-theme-info-text';
                 if (sentimentLabel === 'EUPHORIC') {
-                    alertClass = 'bg-green-100 border-green-400 text-green-700';
+                    alertClass = 'bg-theme-success-bg border-theme-success-text text-theme-success-text';
                 } else if (sentimentLabel === 'FEARFUL') {
-                    alertClass = 'bg-red-100 border-red-400 text-red-700';
+                    alertClass = 'bg-theme-error-bg border-theme-error-text text-theme-error-text';
                 } else if (sentimentLabel === 'BULLISH') {
-                    alertClass = 'bg-blue-100 border-blue-400 text-blue-700';
+                    alertClass = 'bg-theme-info-bg border-theme-info-text text-theme-info-text';
                 }
 
                 alertDiv.className = `border px-4 py-3 rounded mb-2 ${alertClass}`;
@@ -887,11 +887,11 @@ function renderSignals(signals: SignalAnalysis): void {
     const confidence = signals.confidence || 0;
     const badgeEl = document.getElementById('overall-signal-badge');
     const confidenceEl = document.getElementById('signal-confidence');
-    
+
     if (badgeEl) {
         let badgeClass = 'px-4 py-2 rounded-lg font-semibold ';
         let badgeText = overallSignal;
-        
+
         switch (overallSignal) {
             case 'BUY':
                 badgeClass += 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
@@ -905,11 +905,11 @@ function renderSignals(signals: SignalAnalysis): void {
             default:
                 badgeClass += 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
         }
-        
+
         badgeEl.className = badgeClass;
         badgeEl.textContent = badgeText;
     }
-    
+
     if (confidenceEl) {
         confidenceEl.textContent = `${(confidence * 100).toFixed(0)}%`;
     }
@@ -925,7 +925,7 @@ function renderSignals(signals: SignalAnalysis): void {
     const trendEl = document.getElementById('structure-trend');
     const pullbackEl = document.getElementById('structure-pullback');
     const breakoutEl = document.getElementById('structure-breakout');
-    
+
     if (trendEl) trendEl.textContent = structure.trend || 'N/A';
     if (pullbackEl) pullbackEl.textContent = structure.pullback ? '✅ Yes' : '❌ No';
     if (breakoutEl) breakoutEl.textContent = structure.breakout ? '✅ Yes' : '❌ No';
@@ -935,7 +935,7 @@ function renderSignals(signals: SignalAnalysis): void {
     const volumeEl = document.getElementById('timing-volume');
     const rsiEl = document.getElementById('timing-rsi');
     const cciEl = document.getElementById('timing-cci');
-    
+
     if (volumeEl) {
         volumeEl.textContent = timing.volume_ok ? '✅ OK' : '❌ Low';
     }
@@ -955,7 +955,7 @@ function renderSignals(signals: SignalAnalysis): void {
     const fearLevelEl = document.getElementById('fear-level');
     const riskScoreEl = document.getElementById('risk-score');
     const recommendationEl = document.getElementById('risk-recommendation');
-    
+
     if (fearLevelEl) {
         const fearLevel = fearRisk.fear_level || 'LOW';
         let fearClass = 'text-xl font-semibold ';
@@ -975,12 +975,12 @@ function renderSignals(signals: SignalAnalysis): void {
         fearLevelEl.className = fearClass;
         fearLevelEl.textContent = fearLevel;
     }
-    
+
     if (riskScoreEl) {
         const riskScore = fearRisk.risk_score || 0;
         riskScoreEl.textContent = `${riskScore.toFixed(1)}/100`;
     }
-    
+
     if (recommendationEl) {
         const recommendation = fearRisk.recommendation || 'SAFE';
         let recClass = 'text-xl font-semibold ';

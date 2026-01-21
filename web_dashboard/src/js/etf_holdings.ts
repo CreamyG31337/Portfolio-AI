@@ -61,7 +61,7 @@ class TickerCellRenderer {
             // Check cache first - skip if we know this ticker doesn't have a logo
             const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
             const cacheKey = cleanTicker.toUpperCase();
-            
+
             // Add logo image if available and not in failed cache
             if (logoUrl && !failedLogoCache.has(cacheKey)) {
                 const img = document.createElement('img');
@@ -82,10 +82,10 @@ class TickerCellRenderer {
                         img.onerror = null;
                         return;
                     }
-                    
+
                     // Mark that we've attempted fallback
                     fallbackAttempted = true;
-                    
+
                     // Try Yahoo Finance as fallback if Parqet fails
                     const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
@@ -103,11 +103,8 @@ class TickerCellRenderer {
             // Add ticker text
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
-            // Theme-aware color: blue for light mode, lighter blue for dark mode
-            tickerSpan.style.color = isDarkMode() ? '#60a5fa' : '#1f77b4';
-            tickerSpan.style.fontWeight = 'bold';
-            tickerSpan.style.textDecoration = 'underline';
-            tickerSpan.style.cursor = 'pointer';
+            // Theme-aware color using Tailwind classes
+            tickerSpan.className = 'text-accent hover:text-accent-hover font-bold underline cursor-pointer';
             tickerSpan.addEventListener('click', function (e) {
                 e.stopPropagation();
                 if (ticker && ticker !== 'N/A') {
@@ -185,7 +182,7 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 maxWidth: 110,
                 sortable: true,
                 valueFormatter: (params: any) => params.value > 0 ? "✓" : "—",
-                cellStyle: (params: any) => params.value > 0 ? { color: '#2d5a3d', fontWeight: 'bold' } : null
+                cellClass: (params: any) => params.value > 0 ? 'text-theme-success-text font-bold' : ''
             },
             {
                 field: 'user_shares',
@@ -249,14 +246,7 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 maxWidth: 100,
                 sortable: true,
                 valueFormatter: (params: any) => params.value > 0 ? "✓" : "—",
-                cellStyle: (params: any) => {
-                    if (params.value > 0) {
-                        return isDarkMode()
-                            ? { color: '#86efac', fontWeight: 'bold' }
-                            : { color: '#2d5a3d', fontWeight: 'bold' };
-                    }
-                    return null;
-                }
+                cellClass: (params: any) => params.value > 0 ? 'text-theme-success-text font-bold' : ''
             },
             {
                 field: 'user_shares',
@@ -280,18 +270,10 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                     if (params.value === 'SELL') return '🔴 SELL';
                     return params.value;
                 },
-                cellStyle: (params: any) => {
-                    if (params.value === 'BUY') {
-                        return isDarkMode()
-                            ? { backgroundColor: '#1a4d2e', color: '#86efac', fontWeight: 'bold', textAlign: 'center' }
-                            : { backgroundColor: '#d4edda', color: '#155724', fontWeight: 'bold', textAlign: 'center' };
-                    }
-                    if (params.value === 'SELL') {
-                        return isDarkMode()
-                            ? { backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 'bold', textAlign: 'center' }
-                            : { backgroundColor: '#f8d7da', color: '#721c24', fontWeight: 'bold', textAlign: 'center' };
-                    }
-                    return { textAlign: 'center' };
+                cellClass: (params: any) => {
+                    if (params.value === 'BUY') return 'text-theme-success-text font-bold text-center';
+                    if (params.value === 'SELL') return 'text-theme-error-text font-bold text-center';
+                    return 'text-center';
                 }
             },
             {
@@ -302,18 +284,10 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 maxWidth: 130,
                 sortable: true,
                 valueFormatter: (params: any) => (params.value > 0 ? '+' : '') + params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }),
-                cellStyle: (params: any) => {
-                    if (params.value > 0) {
-                        return isDarkMode()
-                            ? { color: '#86efac', fontWeight: 'bold' }
-                            : { color: '#155724', fontWeight: 'bold' };
-                    }
-                    if (params.value < 0) {
-                        return isDarkMode()
-                            ? { color: '#fca5a5', fontWeight: 'bold' }
-                            : { color: '#721c24', fontWeight: 'bold' };
-                    }
-                    return null;
+                cellClass: (params: any) => {
+                    if (params.value > 0) return 'text-theme-success-text font-bold';
+                    if (params.value < 0) return 'text-theme-error-text font-bold';
+                    return '';
                 }
             },
             {
@@ -365,43 +339,16 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
             : '<span style="padding: 20px; font-size: 14px; color: #666;">📭 No holdings data available. This ETF may not have data for the selected date.</span>',
 
         // Row styling: light backgrounds for BUY/SELL, gold highlight for positions we own
-        getRowStyle: (params: any) => {
-            const htmlElement = document.documentElement;
-            const theme = htmlElement.getAttribute('data-theme') || 'system';
-            let isDark = false;
+        // Row styling using semantic classes
+        rowClassRules: {
+            // Priority 1: If we own it, use warning/info background (Gold/Amber)
+            'bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400': (params: any) => params.data && params.data.user_shares > 0,
 
-            if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
-                isDark = true;
-            } else if (theme === 'system') {
-                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                    isDark = true;
-                }
-            }
+            // Priority 2: BUY = Success background
+            'bg-theme-success-bg/30': (params: any) => params.data && !params.data.user_shares && params.data.action === 'BUY',
 
-            const weOwnThis = params.data.user_shares > 0;
-            const action = params.data.action;
-
-            // Priority 1: If we own it, use gold/amber highlighting
-            if (weOwnThis) {
-                return isDark
-                    ? { backgroundColor: '#78350f', borderLeft: '3px solid #fbbf24' }  // Dark amber with gold border
-                    : { backgroundColor: '#fef3c7', borderLeft: '3px solid #f59e0b' }; // Light amber with orange border
-            }
-
-            // Priority 2: Light background based on action (BUY = green, SELL = red)
-            if (action === 'BUY') {
-                return isDark
-                    ? { backgroundColor: '#14532d' }  // Very dark green
-                    : { backgroundColor: '#f0fdf4' }; // Very light green
-            }
-
-            if (action === 'SELL') {
-                return isDark
-                    ? { backgroundColor: '#450a0a' }  // Very dark red
-                    : { backgroundColor: '#fef2f2' }; // Very light red
-            }
-
-            return null;
+            // Priority 3: SELL = Error background
+            'bg-theme-error-bg/30': (params: any) => params.data && !params.data.user_shares && params.data.action === 'SELL'
         }
     };
 

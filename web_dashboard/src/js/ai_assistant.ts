@@ -563,21 +563,21 @@ class AIAssistant {
             }
         } else {
             drawer.classList.remove('drawer-overlay');
-                if (isOpen) {
-                    drawer.classList.add('drawer-open');
-                    drawer.classList.remove('drawer-closed');
-                    if (backdrop) backdrop.classList.add('hidden');
-                    if (chatColumn) {
-                        chatColumn.style.flex = '';
-                    }
-                } else {
-                    drawer.classList.add('drawer-closed');
-                    drawer.classList.remove('drawer-open');
-                    if (backdrop) backdrop.classList.add('hidden');
-                    if (chatColumn) {
-                        chatColumn.style.flex = '';
-                    }
+            if (isOpen) {
+                drawer.classList.add('drawer-open');
+                drawer.classList.remove('drawer-closed');
+                if (backdrop) backdrop.classList.add('hidden');
+                if (chatColumn) {
+                    chatColumn.style.flex = '';
                 }
+            } else {
+                drawer.classList.add('drawer-closed');
+                drawer.classList.remove('drawer-open');
+                if (backdrop) backdrop.classList.add('hidden');
+                if (chatColumn) {
+                    chatColumn.style.flex = '';
+                }
+            }
         }
     }
 
@@ -1404,7 +1404,7 @@ class AIAssistant {
             const avatarDiv = document.createElement('div');
             avatarDiv.className = 'flex-shrink-0';
             const avatar = document.createElement('div');
-            avatar.className = 'w-8 h-8 rounded-full bg-gray-300 dark:bg-dashboard-surface-alt flex items-center justify-center text-text-secondary text-sm font-semibold';
+            avatar.className = 'w-8 h-8 rounded-full bg-dashboard-surface-alt flex items-center justify-center text-text-secondary text-sm font-semibold';
             avatar.textContent = 'AI';
             avatarDiv.appendChild(avatar);
 
@@ -1412,7 +1412,7 @@ class AIAssistant {
             bubbleContainer.className = 'flex-1';
 
             const bubble = document.createElement('div');
-            bubble.className = 'message-bubble bg-gray-100 dark:bg-dashboard-surface-alt text-text-primary rounded-lg rounded-bl-sm px-4 py-3 shadow-sm';
+            bubble.className = 'message-bubble bg-dashboard-surface-alt text-text-primary rounded-lg rounded-bl-sm px-4 py-3 shadow-sm';
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content leading-relaxed [&>p]:my-2 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0';
@@ -1445,7 +1445,7 @@ class AIAssistant {
             // Check if this is an error message
             if (content.includes('Error:') || content.includes('error:') || content.includes('❌')) {
                 // Update bubble styling for error
-                bubble.className = 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-800 rounded-lg px-4 py-3 shadow-sm';
+                bubble.className = 'bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg px-4 py-3 shadow-sm';
                 if (role === 'user') {
                     bubble.className += ' rounded-br-sm';
                 } else {
@@ -1731,9 +1731,9 @@ class AIAssistant {
         setTimeout(() => {
             const messageDiv = document.getElementById(errorId);
             if (messageDiv) {
-                const bubble = messageDiv.querySelector('.bg-gray-100, .dark\\:bg-gray-700, .bg-blue-600, .bg-accent') as HTMLElement | null;
+                const bubble = messageDiv.querySelector('.bg-dashboard-surface-alt, .bg-accent') as HTMLElement | null;
                 if (bubble) {
-                    bubble.className = 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-800 rounded-lg rounded-bl-sm px-4 py-3 shadow-sm';
+                    bubble.className = 'bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg rounded-bl-sm px-4 py-3 shadow-sm';
                 }
             }
         }, 10);
@@ -1757,14 +1757,14 @@ class AIAssistant {
         if (!chatMessages) return;
 
         const resultsDiv = document.createElement('div');
-        resultsDiv.className = 'mb-4 border rounded-lg border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-950/50';
+        resultsDiv.className = 'mb-4 border rounded-lg border-theme-info-text/30 bg-theme-info-bg/10';
 
         const header = document.createElement('div');
-        header.className = 'p-3 cursor-pointer rounded-t-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors';
-        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-blue-800 dark:text-blue-300">🔍 Search Results (${searchData.results.length} found)</span><span class="text-blue-600 dark:text-blue-400 text-sm">Click to expand ▼</span></div>`;
+        header.className = 'p-3 cursor-pointer rounded-t-lg hover:bg-theme-info-bg/20 transition-colors';
+        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-theme-info-text">🔍 Search Results (${searchData.results.length} found)</span><span class="text-theme-info-text text-sm">Click to expand ▼</span></div>`;
 
         const content = document.createElement('div');
-        content.className = 'hidden p-3 border-t border-blue-300 dark:border-blue-600 space-y-2';
+        content.className = 'hidden p-3 border-t border-theme-info-text/30 space-y-2';
 
         const maxResults = Math.min(5, searchData.results.length);
         searchData.results.slice(0, maxResults).forEach((result: any, idx: number) => {
@@ -1773,7 +1773,7 @@ class AIAssistant {
             const title = result.title || 'Untitled';
             const url = result.url || '#';
             const snippet = result.content || result.snippet || '';
-            resultItem.innerHTML = `<div class="font-semibold text-sm mb-1"><a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">${idx + 1}. ${title}</a></div>${snippet ? `<div class="text-xs text-gray-600 dark:text-gray-400">${snippet.substring(0, 200)}...</div>` : ''}`;
+            resultItem.innerHTML = `<div class="font-semibold text-sm mb-1"><a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">${idx + 1}. ${title}</a></div>${snippet ? `<div class="text-xs text-text-secondary">${snippet.substring(0, 200)}...</div>` : ''}`;
             content.appendChild(resultItem);
         });
 
@@ -1796,14 +1796,14 @@ class AIAssistant {
         if (!chatMessages) return;
 
         const articlesDiv = document.createElement('div');
-        articlesDiv.className = 'mb-4 border rounded-lg border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-950/50';
+        articlesDiv.className = 'mb-4 border rounded-lg border-accent/30 bg-accent/10';
 
         const header = document.createElement('div');
-        header.className = 'p-3 cursor-pointer rounded-t-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors';
-        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-purple-800 dark:text-purple-300">🧠 Research Articles (${articles.length} found)</span><span class="text-purple-600 dark:text-purple-400 text-sm">Click to expand ▼</span></div>`;
+        header.className = 'p-3 cursor-pointer rounded-t-lg hover:bg-accent/20 transition-colors';
+        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-accent">🧠 Research Articles (${articles.length} found)</span><span class="text-accent text-sm">Click to expand ▼</span></div>`;
 
         const content = document.createElement('div');
-        content.className = 'hidden p-3 border-t border-purple-300 dark:border-purple-600 space-y-2';
+        content.className = 'hidden p-3 border-t border-accent/30 space-y-2';
 
         articles.forEach((article: any, idx: number) => {
             const articleItem = document.createElement('div');
@@ -1817,9 +1817,9 @@ class AIAssistant {
             // Create clickable link - prefer local research page, fallback to source URL
             let titleHtml = title;
             if (articleId) {
-                titleHtml = `<a href="/research?highlight=${articleId}" class="text-purple-700 dark:text-purple-300 hover:underline">${title}</a>`;
+                titleHtml = `<a href="/research?highlight=${articleId}" class="text-accent hover:underline">${title}</a>`;
             } else if (sourceUrl) {
-                titleHtml = `<a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" class="text-purple-700 dark:text-purple-300 hover:underline">${title}</a>`;
+                titleHtml = `<a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">${title}</a>`;
             }
 
             articleItem.innerHTML = `<div class="font-semibold text-sm mb-1">${idx + 1}. ${titleHtml} <span class="text-xs text-text-tertiary">(${(similarity * 100).toFixed(0)}% match)</span></div>${summary ? `<div class="text-xs text-text-secondary">${summary.substring(0, 200)}...</div>` : ''}`;

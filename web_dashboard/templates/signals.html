@@ -14,14 +14,14 @@
 
 {% block content %}
 {% if error %}
-<div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 dark:bg-red-900/20 dark:border-red-800">
+<div class="bg-theme-error-bg border border-theme-error-text rounded-lg p-4 mb-6">
     <div class="flex">
         <div class="flex-shrink-0">
-            <i class="fas fa-exclamation-triangle text-red-400"></i>
+            <i class="fas fa-exclamation-triangle text-theme-error-text"></i>
         </div>
         <div class="ml-3">
-            <h3 class="text-sm font-medium text-red-800 dark:text-red-100">{{ error }}</h3>
-            <div class="mt-2 text-sm text-red-700 dark:text-red-200">
+            <h3 class="text-sm font-medium text-theme-error-text">{{ error }}</h3>
+            <div class="mt-2 text-sm text-theme-error-text">
                 <p>{{ error_message }}</p>
             </div>
         </div>
@@ -30,82 +30,120 @@
 {% else %}
 
 <!-- Description -->
-<div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 dark:bg-blue-900/20 dark:border-blue-800">
-    <p class="text-sm text-blue-800 dark:text-blue-100">
-        <strong>Monitor Technical Signals</strong> by analyzing trend structure, timing indicators, and fear/risk metrics
-        for watchlist tickers. Signals are generated using moving averages, RSI, CCI, volatility analysis, and drawdown calculations.
+<!-- Description -->
+<div class="bg-theme-info-bg border border-theme-info-text rounded-lg p-4 mb-6">
+    <p class="text-sm text-theme-info-text">
+        <strong>Monitor Technical Signals</strong> by analyzing trend structure, timing indicators, and fear/risk
+        metrics
+        for watchlist tickers. Signals are generated using moving averages, RSI, CCI, volatility analysis, and drawdown
+        calculations.
     </p>
-    <p class="text-xs text-blue-600 dark:text-blue-200 mt-2">
-        <em>Signals are calculated every 4 hours by the automated scheduler, or on-demand when viewing ticker details.</em>
+    <p class="text-xs text-theme-info-text mt-2">
+        <em>Signals are calculated every 4 hours by the automated scheduler, or on-demand when viewing ticker
+            details.</em>
     </p>
 </div>
 
+<!-- Signals Legend -->
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <div class="flex items-center gap-2 mb-4">
+        <h2 class="text-lg font-semibold text-text-primary">How To Read Signals</h2>
+        <button type="button" data-tooltip-target="signals-legend-tooltip"
+            class="text-text-tertiary hover:text-text-primary">
+            <i class="fas fa-info-circle"></i>
+        </button>
+        <div id="signals-legend-tooltip" role="tooltip"
+            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-sm opacity-0 tooltip dark:bg-gray-700">
+            Signals combine trend structure, timing momentum, and risk filters.
+            <div class="tooltip-arrow" data-popper-arrow></div>
+        </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="font-semibold text-text-primary mb-1">Overall Signal</div>
+            <div class="text-sm text-text-secondary">BUY/SELL/WATCH/HOLD summary with confidence.</div>
+        </div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="font-semibold text-text-primary mb-1">Structure</div>
+            <div class="text-sm text-text-secondary">Trend, pullback, and breakout based on moving averages.</div>
+        </div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="font-semibold text-text-primary mb-1">Timing</div>
+            <div class="text-sm text-text-secondary">Volume vs average plus RSI/CCI momentum filters.</div>
+        </div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="font-semibold text-text-primary mb-1">Fear & Risk</div>
+            <div class="text-sm text-text-secondary">Volatility spikes, drawdowns, and anomaly checks.</div>
+        </div>
+    </div>
+</div>
+
 <!-- Refresh Button -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:border-gray-700">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
     <div class="flex items-center justify-between">
         <div>
-            <h2 class="text-lg font-semibold dark:text-white">Data Refresh</h2>
-            <p class="text-sm text-gray-600 dark:text-gray-400">Last updated: <span id="last-updated">{{
+            <h2 class="text-lg font-semibold text-text-primary">Data Refresh</h2>
+            <p class="text-sm text-text-secondary">Last updated: <span id="last-updated">{{
                     newest_timestamp|default('Loading...') }}</span></p>
         </div>
         <button type="button" id="refresh-btn" onclick="refreshData()"
-            class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-500 font-medium rounded-lg text-sm px-5 py-2.5">
+            class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-5 py-2.5">
             <i class="fas fa-sync-alt mr-2"></i>Refresh
         </button>
     </div>
 </div>
 
 <!-- Summary Metrics -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
-    <h2 class="text-xl font-bold mb-4">Summary</h2>
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">Summary</h2>
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900 dark:text-gray-100" id="signals-total">0</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">Total Tickers</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-2xl font-bold text-text-primary" id="signals-total">0</div>
+            <div class="text-sm text-text-secondary">Total Tickers</div>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-green-600 dark:text-green-400" id="signals-buy">0</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">BUY Signals</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-2xl font-bold text-theme-success-text" id="signals-buy">0</div>
+            <div class="text-sm text-text-secondary">BUY Signals</div>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-red-600 dark:text-red-400" id="signals-sell">0</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">SELL Signals</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-2xl font-bold text-theme-error-text" id="signals-sell">0</div>
+            <div class="text-sm text-text-secondary">SELL Signals</div>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400" id="signals-watch">0</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">WATCH Signals</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-2xl font-bold text-theme-warning-text" id="signals-watch">0</div>
+            <div class="text-sm text-text-secondary">WATCH Signals</div>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-600 dark:text-gray-400" id="signals-hold">0</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">HOLD Signals</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-2xl font-bold text-text-secondary" id="signals-hold">0</div>
+            <div class="text-sm text-text-secondary">HOLD Signals</div>
         </div>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-green-600 dark:text-green-400" id="fear-low">0</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">Low Fear</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-2xl font-bold text-theme-success-text" id="fear-low">0</div>
+            <div class="text-sm text-text-secondary">Low Fear</div>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400" id="fear-moderate">0</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">Moderate Fear</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-2xl font-bold text-theme-warning-text" id="fear-moderate">0</div>
+            <div class="text-sm text-text-secondary">Moderate Fear</div>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-orange-600 dark:text-orange-400" id="fear-high">0</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">High Fear</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-2xl font-bold text-orange-500" id="fear-high">0</div>
+            <div class="text-sm text-text-secondary">High Fear</div>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div class="text-2xl font-bold text-red-600 dark:text-red-400" id="fear-extreme">0</div>
-            <div class="text-sm text-gray-600 dark:text-gray-400">Extreme Fear</div>
+        <div class="bg-dashboard-background rounded-lg p-4">
+            <div class="text-2xl font-bold text-theme-error-text" id="fear-extreme">0</div>
+            <div class="text-sm text-text-secondary">Extreme Fear</div>
         </div>
     </div>
 </div>
 
 <!-- Signals Table -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
     <div class="flex items-center gap-2 mb-4">
-        <h2 class="text-xl font-bold">Watchlist Signals</h2>
+        <h2 class="text-xl font-bold text-text-primary">Watchlist Signals</h2>
         <button type="button" data-tooltip-target="signals-help-tooltip"
-            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            class="text-text-tertiary hover:text-text-primary">
             <i class="fas fa-info-circle"></i>
         </button>
         <div id="signals-help-tooltip" role="tooltip"
@@ -114,10 +152,10 @@
             <div class="tooltip-arrow" data-popper-arrow></div>
         </div>
     </div>
-    
+
     <div id="signals-loading" class="text-center py-8">
-        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Loading signals...</p>
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+        <p class="mt-2 text-sm text-text-secondary">Loading signals...</p>
     </div>
 
     <div id="signals-content" class="hidden">
@@ -126,7 +164,8 @@
 
     <div id="signals-empty" class="hidden">
         <div class="text-center py-8">
-            <p class="text-sm text-blue-800 dark:text-blue-100">📭 No signals available yet. Signals will appear after the scheduler runs.</p>
+            <p class="text-sm text-theme-info-text">📭 No signals available yet. Signals will appear after
+                the scheduler runs.</p>
         </div>
     </div>
 </div>
@@ -137,9 +176,9 @@
 <div id="signals-detail-modal" tabindex="-1" aria-hidden="true"
     class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-3xl max-h-full">
-        <div class="relative bg-white rounded-lg shadow dark:bg-gray-800">
+        <div class="relative bg-dashboard-surface rounded-lg shadow">
             <button type="button"
-                class="absolute top-3 right-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ml-auto inline-flex justify-center items-center dark:hover:bg-gray-700 dark:hover:text-white"
+                class="absolute top-3 right-2.5 text-text-tertiary bg-transparent hover:bg-dashboard-surface-alt hover:text-text-primary rounded-lg text-sm w-8 h-8 ml-auto inline-flex justify-center items-center"
                 data-modal-hide="signals-detail-modal">
                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none"
                     viewBox="0 0 14 14">
@@ -151,27 +190,27 @@
             <div class="px-6 py-6">
                 <div class="flex items-center justify-between gap-4 mb-4">
                     <div>
-                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                        <h3 class="text-xl font-semibold text-text-primary">
                             <span id="signals-modal-ticker">Ticker</span> Signals
                         </h3>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                        <p class="text-xs text-text-secondary">
                             Last updated: <span id="signals-modal-updated">-</span>
                         </p>
                     </div>
                     <button id="signals-modal-refresh" type="button"
-                        class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-500 font-medium rounded-lg text-sm px-4 py-2 inline-flex items-center">
+                        class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent font-medium rounded-lg text-sm px-4 py-2 inline-flex items-center">
                         <i class="fas fa-sync-alt mr-2"></i>Regenerate
                     </button>
                 </div>
 
-                <div id="signals-modal-status" class="text-sm text-gray-500 dark:text-gray-400 mb-4"></div>
+                <div id="signals-modal-status" class="text-sm text-text-secondary mb-4"></div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                    <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="flex items-center gap-2">
-                            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Overall Signal</h4>
+                            <h4 class="text-sm font-semibold text-text-primary">Overall Signal</h4>
                             <button type="button" data-tooltip-target="overall-signal-tooltip"
-                                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                class="text-text-tertiary hover:text-text-primary">
                                 <i class="fas fa-circle-info"></i>
                             </button>
                             <div id="overall-signal-tooltip" role="tooltip"
@@ -181,15 +220,15 @@
                             </div>
                         </div>
                         <div id="signals-modal-overall" class="text-lg font-semibold mt-2">-</div>
-                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                        <div class="text-xs text-text-secondary">
                             Confidence: <span id="signals-modal-confidence">-</span>
                         </div>
                     </div>
-                    <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                    <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="flex items-center gap-2">
-                            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Fear & Risk</h4>
+                            <h4 class="text-sm font-semibold text-text-primary">Fear & Risk</h4>
                             <button type="button" data-tooltip-target="fear-risk-tooltip"
-                                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                class="text-text-tertiary hover:text-text-primary">
                                 <i class="fas fa-circle-info"></i>
                             </button>
                             <div id="fear-risk-tooltip" role="tooltip"
@@ -198,21 +237,21 @@
                                 <div class="tooltip-arrow" data-popper-arrow></div>
                             </div>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300 mt-2">
+                        <div class="text-sm text-text-secondary mt-2">
                             Level: <span id="signals-modal-fear">-</span>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300">
+                        <div class="text-sm text-text-secondary">
                             Risk score: <span id="signals-modal-risk">-</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                    <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="flex items-center gap-2">
-                            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Structure</h4>
+                            <h4 class="text-sm font-semibold text-text-primary">Structure</h4>
                             <button type="button" data-tooltip-target="structure-tooltip"
-                                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                class="text-text-tertiary hover:text-text-primary">
                                 <i class="fas fa-circle-info"></i>
                             </button>
                             <div id="structure-tooltip" role="tooltip"
@@ -221,21 +260,21 @@
                                 <div class="tooltip-arrow" data-popper-arrow></div>
                             </div>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300 mt-2">
+                        <div class="text-sm text-text-secondary mt-2">
                             Trend: <span id="signals-modal-trend">-</span>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300">
+                        <div class="text-sm text-text-secondary">
                             Pullback: <span id="signals-modal-pullback">-</span>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300">
+                        <div class="text-sm text-text-secondary">
                             Breakout: <span id="signals-modal-breakout">-</span>
                         </div>
                     </div>
-                    <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                    <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="flex items-center gap-2">
-                            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Timing</h4>
+                            <h4 class="text-sm font-semibold text-text-primary">Timing</h4>
                             <button type="button" data-tooltip-target="timing-tooltip"
-                                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                class="text-text-tertiary hover:text-text-primary">
                                 <i class="fas fa-circle-info"></i>
                             </button>
                             <div id="timing-tooltip" role="tooltip"
@@ -244,23 +283,23 @@
                                 <div class="tooltip-arrow" data-popper-arrow></div>
                             </div>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300 mt-2">
+                        <div class="text-sm text-text-secondary mt-2">
                             Volume: <span id="signals-modal-volume">-</span>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300">
+                        <div class="text-sm text-text-secondary">
                             RSI: <span id="signals-modal-rsi">-</span>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300">
+                        <div class="text-sm text-text-secondary">
                             CCI: <span id="signals-modal-cci">-</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div class="bg-dashboard-background p-4 rounded-lg">
                     <div class="flex items-center gap-2 mb-2">
-                        <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">AI Explanation</h4>
+                        <h4 class="text-sm font-semibold text-text-primary">AI Explanation</h4>
                         <button type="button" data-tooltip-target="ai-explanation-tooltip"
-                            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                            class="text-text-tertiary hover:text-text-primary">
                             <i class="fas fa-circle-info"></i>
                         </button>
                         <div id="ai-explanation-tooltip" role="tooltip"
@@ -269,7 +308,7 @@
                             <div class="tooltip-arrow" data-popper-arrow></div>
                         </div>
                     </div>
-                    <div id="signals-modal-explanation" class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">
+                    <div id="signals-modal-explanation" class="text-sm text-text-secondary whitespace-pre-line">
                         Select Regenerate to create an AI explanation.
                     </div>
                 </div>

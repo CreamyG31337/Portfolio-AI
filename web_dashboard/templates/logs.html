@@ -12,30 +12,35 @@
         font-size: 0.875rem;
         padding: 0.5rem;
         border-bottom: 1px solid var(--border-color);
+        color: var(--text-secondary);
     }
 
     .log-line:hover {
-        background-color: var(--log-line-hover);
+        background-color: var(--bg-hover);
     }
 
     .log-container {
         max-height: 70vh;
         overflow-y: auto;
-        background: var(--code-bg);
-        border: 1px solid var(--code-border);
+        background: var(--bg-code-block);
+        border: 1px solid var(--border-color);
         border-radius: 0.5rem;
     }
+
     .tab-button {
         transition: all 0.2s;
         cursor: pointer;
     }
+
     .tab-button.active {
-        color: var(--primary-color, #2563eb);
-        border-bottom-color: var(--primary-color, #2563eb);
+        color: var(--color-accent);
+        border-bottom-color: var(--color-accent);
     }
+
     .tab-content {
         display: none;
     }
+
     .tab-content.active {
         display: block;
     }
@@ -44,12 +49,14 @@
 
 {% block content %}
 <!-- Tabs -->
-<div class="mb-6 border-b border-gray-200">
+<div class="mb-6 border-b border-border">
     <nav class="flex space-x-8" aria-label="Tabs">
-        <button id="tab-application" class="tab-button active border-b-2 border-blue-500 py-4 px-1 text-sm font-medium text-blue-600">
+        <button id="tab-application"
+            class="tab-button active border-b-2 border-accent py-4 px-1 text-sm font-medium text-accent">
             📋 Application Logs
         </button>
-        <button id="tab-ollama" class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+        <button id="tab-ollama"
+            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border">
             🤖 Ollama Logs
         </button>
     </nav>
@@ -57,155 +64,158 @@
 
 <!-- Application Logs Tab Content -->
 <div id="tab-content-application" class="tab-content active">
-<!-- Controls -->
-<div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Level Filter</label>
-            <select id="level-filter"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="All">All Levels</option>
-                <option value="INFO + ERROR" selected>INFO + ERROR</option>
-                <option value="DEBUG">DEBUG</option>
-                <option value="PERF">PERF</option>
-                <option value="INFO">INFO</option>
-                <option value="WARNING">WARNING</option>
-                <option value="ERROR">ERROR</option>
-            </select>
+    <!-- Controls -->
+    <!-- Controls -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-text-primary mb-2">Level Filter</label>
+                <select id="level-filter"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
+                    <option value="All">All Levels</option>
+                    <option value="INFO + ERROR" selected>INFO + ERROR</option>
+                    <option value="DEBUG">DEBUG</option>
+                    <option value="PERF">PERF</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="ERROR">ERROR</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-text-primary mb-2">Show</label>
+                <select id="limit-select"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                </select>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-text-primary mb-2">Search</label>
+                <input type="text" id="search-input" placeholder="Filter by text..."
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
+            </div>
+            <div class="flex items-end space-x-2">
+                <button id="refresh-btn"
+                    class="flex-1 bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200">
+                    <i class="fas fa-sync-alt mr-2"></i>Refresh
+                </button>
+                <button id="clear-btn"
+                    class="flex-1 bg-theme-error-bg text-theme-error-text border border-theme-error-text px-4 py-2 rounded-md hover:bg-theme-error-bg/80 transition duration-200">
+                    <i class="fas fa-trash mr-2"></i>Clear
+                </button>
+            </div>
         </div>
-        <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Show</label>
-            <select id="limit-select"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="50">50</option>
-                <option value="100" selected>100</option>
-                <option value="200">200</option>
-                <option value="500">500</option>
-                <option value="1000">1000</option>
-            </select>
-        </div>
-        <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
-            <input type="text" id="search-input" placeholder="Filter by text..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <div class="flex items-end space-x-2">
-            <button id="refresh-btn"
-                class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition duration-200">
-                <i class="fas fa-sync-alt mr-2"></i>Refresh
-            </button>
-            <button id="clear-btn"
-                class="flex-1 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition duration-200">
-                <i class="fas fa-trash mr-2"></i>Clear
-            </button>
+        <div class="mt-4 flex items-center">
+            <label class="inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="auto-refresh" class="form-checkbox h-5 w-5 text-accent">
+                <span class="ml-2 text-sm text-text-secondary">Auto-refresh every 5s</span>
+            </label>
         </div>
     </div>
-    <div class="mt-4 flex items-center">
-        <label class="inline-flex items-center cursor-pointer">
-            <input type="checkbox" id="auto-refresh" class="form-checkbox h-5 w-5 text-blue-600">
-            <span class="ml-2 text-sm text-gray-700">Auto-refresh every 5s</span>
-        </label>
-    </div>
-</div>
 
-<!-- Stats -->
-<div class="bg-white rounded-lg shadow-lg p-4 mb-6">
-    <div class="flex items-center justify-between">
-        <div id="stats-text" class="text-sm text-gray-600">Loading...</div>
-        <div id="pagination-controls" class="flex items-center space-x-2">
-            <button id="prev-btn"
-                class="px-3 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                <i class="fas fa-chevron-left"></i> Previous
-            </button>
-            <span id="page-info" class="text-sm text-gray-600">Page 1 of 1</span>
-            <button id="next-btn"
-                class="px-3 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                Next <i class="fas fa-chevron-right"></i>
-            </button>
+    <!-- Stats -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-4 mb-6">
+        <div class="flex items-center justify-between">
+            <div id="stats-text" class="text-sm text-text-secondary">Loading...</div>
+            <div id="pagination-controls" class="flex items-center space-x-2">
+                <button id="prev-btn"
+                    class="px-3 py-1 bg-dashboard-background text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fas fa-chevron-left"></i> Previous
+                </button>
+                <span id="page-info" class="text-sm text-text-secondary">Page 1 of 1</span>
+                <button id="next-btn"
+                    class="px-3 py-1 bg-dashboard-background text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
         </div>
     </div>
-</div>
 
-<!-- Logs Display -->
-<div class="bg-white rounded-lg shadow-lg p-6">
-    <div id="loading" class="text-center py-8 text-gray-500">
-        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-        <p>Loading logs...</p>
+    <!-- Logs Display -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+        <div id="loading" class="text-center py-8 text-text-secondary">
+            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+            <p>Loading logs...</p>
+        </div>
+        <div id="logs-container" class="log-container hidden"></div>
+        <div id="error-message" class="hidden text-center py-8 text-theme-error-text">
+            <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
+            <pre id="error-text"
+                class="text-left bg-theme-error-bg/10 p-4 rounded border border-theme-error-text/30 overflow-auto max-h-96 whitespace-pre-wrap font-mono text-sm"></pre>
+        </div>
     </div>
-    <div id="logs-container" class="log-container hidden"></div>
-    <div id="error-message" class="hidden text-center py-8 text-red-500">
-        <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
-        <pre id="error-text" class="text-left bg-red-50 p-4 rounded border border-red-200 overflow-auto max-h-96 whitespace-pre-wrap font-mono text-sm"></pre>
-    </div>
-</div>
 </div>
 
 <!-- Ollama Logs Tab Content -->
 <div id="tab-content-ollama" class="tab-content">
-<!-- Controls -->
-<div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Show</label>
-            <select id="limit-select-ollama"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="50">50</option>
-                <option value="100" selected>100</option>
-                <option value="200">200</option>
-                <option value="500">500</option>
-                <option value="1000">1000</option>
-            </select>
+    <!-- Controls -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-text-primary mb-2">Show</label>
+                <select id="limit-select-ollama"
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                </select>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-text-primary mb-2">Search</label>
+                <input type="text" id="search-input-ollama" placeholder="Filter by text..."
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
+            </div>
+            <div class="flex items-end">
+                <button id="refresh-btn-ollama"
+                    class="w-full bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover transition duration-200">
+                    <i class="fas fa-sync-alt mr-2"></i>Refresh
+                </button>
+            </div>
         </div>
-        <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
-            <input type="text" id="search-input-ollama" placeholder="Filter by text..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <div class="flex items-end">
-            <button id="refresh-btn-ollama"
-                class="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition duration-200">
-                <i class="fas fa-sync-alt mr-2"></i>Refresh
-            </button>
+        <div class="mt-4 flex items-center">
+            <label class="inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="auto-refresh-ollama" class="form-checkbox h-5 w-5 text-accent">
+                <span class="ml-2 text-sm text-text-secondary">Auto-refresh every 5s</span>
+            </label>
         </div>
     </div>
-    <div class="mt-4 flex items-center">
-        <label class="inline-flex items-center cursor-pointer">
-            <input type="checkbox" id="auto-refresh-ollama" class="form-checkbox h-5 w-5 text-blue-600">
-            <span class="ml-2 text-sm text-gray-700">Auto-refresh every 5s</span>
-        </label>
-    </div>
-</div>
 
-<!-- Stats -->
-<div class="bg-white rounded-lg shadow-lg p-4 mb-6">
-    <div class="flex items-center justify-between">
-        <div id="stats-text-ollama" class="text-sm text-gray-600">Loading...</div>
-        <div id="pagination-controls-ollama" class="flex items-center space-x-2">
-            <button id="prev-btn-ollama"
-                class="px-3 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                <i class="fas fa-chevron-left"></i> Previous
-            </button>
-            <span id="page-info-ollama" class="text-sm text-gray-600">Page 1 of 1</span>
-            <button id="next-btn-ollama"
-                class="px-3 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                Next <i class="fas fa-chevron-right"></i>
-            </button>
+    <!-- Stats -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-4 mb-6">
+        <div class="flex items-center justify-between">
+            <div id="stats-text-ollama" class="text-sm text-text-secondary">Loading...</div>
+            <div id="pagination-controls-ollama" class="flex items-center space-x-2">
+                <button id="prev-btn-ollama"
+                    class="px-3 py-1 bg-dashboard-background text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fas fa-chevron-left"></i> Previous
+                </button>
+                <span id="page-info-ollama" class="text-sm text-text-secondary">Page 1 of 1</span>
+                <button id="next-btn-ollama"
+                    class="px-3 py-1 bg-dashboard-background text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
         </div>
     </div>
-</div>
 
-<!-- Logs Display -->
-<div class="bg-white rounded-lg shadow-lg p-6">
-    <div id="loading-ollama" class="text-center py-8 text-gray-500">
-        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-        <p>Loading logs...</p>
+    <!-- Logs Display -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+        <div id="loading-ollama" class="text-center py-8 text-text-secondary">
+            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+            <p>Loading logs...</p>
+        </div>
+        <div id="logs-container-ollama" class="log-container hidden"></div>
+        <div id="error-message-ollama" class="hidden text-center py-8 text-theme-error-text">
+            <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
+            <pre id="error-text-ollama"
+                class="text-left bg-theme-error-bg/10 p-4 rounded border border-theme-error-text/30 overflow-auto max-h-96 whitespace-pre-wrap font-mono text-sm"></pre>
+        </div>
     </div>
-    <div id="logs-container-ollama" class="log-container hidden"></div>
-    <div id="error-message-ollama" class="hidden text-center py-8 text-red-500">
-        <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
-        <pre id="error-text-ollama" class="text-left bg-red-50 p-4 rounded border border-red-200 overflow-auto max-h-96 whitespace-pre-wrap font-mono text-sm"></pre>
-    </div>
-</div>
 </div>
 {% endblock %}
 
@@ -240,10 +250,10 @@
             // Add timeout to prevent hanging
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-            
+
             let response;
             try {
-                response = await fetch(url, { 
+                response = await fetch(url, {
                     credentials: 'include',
                     signal: controller.signal
                 });
@@ -255,11 +265,11 @@
                 }
                 throw fetchError;
             }
-            
+
             // Check if response is JSON before parsing
             const contentType = response.headers.get('content-type');
             const isJson = contentType && contentType.includes('application/json');
-            
+
             let data;
             if (isJson) {
                 data = await response.json();
@@ -268,7 +278,7 @@
                 const text = await response.text();
                 throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
             }
-            
+
             if (!response.ok) {
                 // Show full error with traceback
                 let errorMsg = `HTTP ${response.status}: ${data.error || 'Failed to fetch logs'}`;
@@ -313,10 +323,10 @@
             // Add timeout to prevent hanging
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-            
+
             let response;
             try {
-                response = await fetch(url, { 
+                response = await fetch(url, {
                     credentials: 'include',
                     signal: controller.signal
                 });
@@ -328,11 +338,11 @@
                 }
                 throw fetchError;
             }
-            
+
             // Check if response is JSON before parsing
             const contentType = response.headers.get('content-type');
             const isJson = contentType && contentType.includes('application/json');
-            
+
             let data;
             if (isJson) {
                 data = await response.json();
@@ -341,7 +351,7 @@
                 const text = await response.text();
                 throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
             }
-            
+
             if (!response.ok) {
                 // Show full error with traceback
                 let errorMsg = `HTTP ${response.status}: ${data.error || 'Failed to fetch Ollama logs'}`;
@@ -353,16 +363,16 @@
                 }
                 throw new Error(errorMsg);
             }
-            
+
             if (data.error) {
                 document.getElementById('loading-ollama').classList.add('hidden');
                 document.getElementById('error-message-ollama').classList.remove('hidden');
                 document.getElementById('error-text-ollama').textContent = data.error;
                 return;
             }
-            
+
             console.log('[Ollama Logs] Received data:', { logs: data.logs?.length || 0, total: data.total, page: data.page });
-            
+
             displayOllamaLogs(data);
 
             document.getElementById('loading-ollama').classList.add('hidden');
@@ -387,7 +397,7 @@
         container.innerHTML = '';
 
         if (!data.logs || data.logs.length === 0) {
-            container.innerHTML = '<div class="text-center py-8 text-gray-500">No logs found matching the filters</div>';
+            container.innerHTML = '<div class="text-center py-8 text-text-secondary">No logs found matching the filters</div>';
             return;
         }
 
@@ -418,7 +428,7 @@
         container.innerHTML = '';
 
         if (!data.logs || data.logs.length === 0) {
-            container.innerHTML = '<div class="text-center py-8 text-gray-500">No logs found matching the filters</div>';
+            container.innerHTML = '<div class="text-center py-8 text-text-secondary">No logs found matching the filters</div>';
             return;
         }
 
@@ -427,10 +437,10 @@
             line.className = 'log-line log-INFO';
 
             // Ollama logs may not have timestamps, so just show the message
-            const displayText = log.timestamp 
+            const displayText = log.timestamp
                 ? `${log.timestamp} | ${log.message}`
                 : log.message;
-            
+
             line.textContent = `ℹ️ ${displayText}`;
             container.appendChild(line);
         });
@@ -495,23 +505,23 @@
 
     function switchTab(tabName) {
         currentTab = tabName;
-        
+
         // Update tab buttons
         document.querySelectorAll('.tab-button').forEach(btn => {
-            btn.classList.remove('active', 'border-blue-500', 'text-blue-600');
-            btn.classList.add('border-transparent', 'text-gray-500');
+            btn.classList.remove('active', 'border-accent', 'text-accent');
+            btn.classList.add('border-transparent', 'text-text-secondary');
         });
-        
+
         // Update tab content
         document.querySelectorAll('.tab-content').forEach(content => {
             content.classList.remove('active');
         });
-        
+
         if (tabName === 'application') {
-            document.getElementById('tab-application').classList.add('active', 'border-blue-500', 'text-blue-600');
+            document.getElementById('tab-application').classList.add('active', 'border-accent', 'text-accent');
             document.getElementById('tab-content-application').classList.add('active');
         } else {
-            document.getElementById('tab-ollama').classList.add('active', 'border-blue-500', 'text-blue-600');
+            document.getElementById('tab-ollama').classList.add('active', 'border-accent', 'text-accent');
             document.getElementById('tab-content-ollama').classList.add('active');
             // Load Ollama logs when switching to that tab
             fetchOllamaLogs();
@@ -606,4 +616,3 @@
     fetchLogs();
 </script>
 {% endblock %}
-

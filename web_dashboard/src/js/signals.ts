@@ -90,10 +90,7 @@ class TickerCellRenderer {
 
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
-            tickerSpan.style.color = '#1f77b4';
-            tickerSpan.style.fontWeight = 'bold';
-            tickerSpan.style.textDecoration = 'underline';
-            tickerSpan.style.cursor = 'pointer';
+            tickerSpan.className = 'text-accent hover:text-accent-hover font-bold underline cursor-pointer';
             tickerSpan.addEventListener('click', function (e: Event) {
                 e.stopPropagation();
                 window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
@@ -112,7 +109,7 @@ class TickerCellRenderer {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     loadSignalsData(refreshKey);
-    
+
     // Set up refresh button
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) {
@@ -134,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function refreshData(): void {
     refreshKey = Date.now();
     loadSignalsData(refreshKey);
-    
+
     // Update last updated time
     const lastUpdated = document.getElementById('last-updated');
     if (lastUpdated) {
@@ -183,8 +180,8 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             cellRenderer: (params: any) => {
                 const val = !!params.value;
                 const badgeClass = val
-                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                    : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+                    ? 'bg-dashboard-surface-alt text-theme-success-text border border-theme-success-text'
+                    : 'bg-dashboard-surface-alt text-text-secondary border border-border';
                 return `<span class="px-2 py-1 rounded text-xs font-semibold ${badgeClass}">${val ? 'Yes' : 'No'}</span>`;
             }
         },
@@ -194,19 +191,19 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             width: 100,
             cellRenderer: (params: any) => {
                 const signal = params.value || 'HOLD';
-                let badgeClass = 'px-2 py-1 rounded text-xs font-semibold ';
+                let badgeClass = 'px-2 py-1 rounded text-xs font-semibold border ';
                 switch (signal) {
                     case 'BUY':
-                        badgeClass += 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+                        badgeClass += 'bg-theme-success-bg text-theme-success-text border-theme-success-text';
                         break;
                     case 'SELL':
-                        badgeClass += 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+                        badgeClass += 'bg-theme-error-bg text-theme-error-text border-theme-error-text';
                         break;
                     case 'WATCH':
-                        badgeClass += 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+                        badgeClass += 'bg-theme-warning-bg text-theme-warning-text border-theme-warning-text';
                         break;
                     default:
-                        badgeClass += 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+                        badgeClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
                 }
                 return `<span class="${badgeClass}">${signal}</span>`;
             }
@@ -222,11 +219,11 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             cellStyle: (params: any) => {
                 const val = params.value || 0;
                 if (val >= 0.7) {
-                    return { color: '#16a34a' }; // green
+                    return { color: 'var(--color-success-text)', fontWeight: 'bold' }; // green
                 } else if (val >= 0.5) {
-                    return { color: '#ca8a04' }; // yellow
+                    return { color: 'var(--color-warning-text)', fontWeight: 'bold' }; // yellow
                 } else {
-                    return { color: '#dc2626' }; // red
+                    return { color: 'var(--color-error-text)', fontWeight: 'bold' }; // red
                 }
             }
         },
@@ -239,16 +236,16 @@ function initializeSignalsGrid(data: SignalRow[]): void {
                 let textClass = 'font-semibold ';
                 switch (level) {
                     case 'EXTREME':
-                        textClass += 'text-red-600 dark:text-red-400';
+                        textClass += 'text-theme-error-text';
                         break;
                     case 'HIGH':
-                        textClass += 'text-orange-600 dark:text-orange-400';
+                        textClass += 'text-orange-500';
                         break;
                     case 'MODERATE':
-                        textClass += 'text-yellow-600 dark:text-yellow-400';
+                        textClass += 'text-theme-warning-text';
                         break;
                     default:
-                        textClass += 'text-green-600 dark:text-green-400';
+                        textClass += 'text-theme-success-text';
                 }
                 return `<span class="${textClass}">${level}</span>`;
             }
@@ -264,13 +261,13 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             cellStyle: (params: any) => {
                 const val = params.value || 0;
                 if (val >= 70) {
-                    return { color: '#dc2626' }; // red
+                    return { color: 'var(--color-error-text)', fontWeight: 'bold' }; // red
                 } else if (val >= 50) {
-                    return { color: '#ea580c' }; // orange
+                    return { color: 'orange', fontWeight: 'bold' }; // orange
                 } else if (val >= 30) {
-                    return { color: '#ca8a04' }; // yellow
+                    return { color: 'var(--color-warning-text)', fontWeight: 'bold' }; // yellow
                 } else {
-                    return { color: '#16a34a' }; // green
+                    return { color: 'var(--color-success-text)', fontWeight: 'bold' }; // green
                 }
             }
         },
@@ -283,13 +280,13 @@ function initializeSignalsGrid(data: SignalRow[]): void {
                 let textClass = 'font-semibold ';
                 switch (trend) {
                     case 'UPTREND':
-                        textClass += 'text-green-600 dark:text-green-400';
+                        textClass += 'text-theme-success-text';
                         break;
                     case 'DOWNTREND':
-                        textClass += 'text-red-600 dark:text-red-400';
+                        textClass += 'text-theme-error-text';
                         break;
                     default:
-                        textClass += 'text-gray-600 dark:text-gray-400';
+                        textClass += 'text-text-secondary';
                 }
                 return `<span class="${textClass}">${trend}</span>`;
             }
@@ -329,8 +326,8 @@ function initializeSignalsGrid(data: SignalRow[]): void {
 
     // Check if dark mode is enabled
     const isDark = document.documentElement.classList.contains('dark') ||
-                   (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    
+        (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
     if (isDark) {
         gridDiv.classList.add('ag-theme-alpine-dark');
     }
