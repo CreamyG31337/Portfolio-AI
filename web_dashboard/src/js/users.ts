@@ -838,8 +838,8 @@ async function handleUpdateEmail(): Promise<void> {
         const result: ApiResponse = await response.json();
 
         if (response.ok && result.success) {
-            elements.updateEmailResult.className = 'mt-4 bg-green-50 border border-green-200 rounded-lg p-4';
-            elements.updateEmailResult.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-2"></i><span class="text-green-700">✅ ${result.message || 'Email updated'}</span>`;
+            elements.updateEmailResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+            elements.updateEmailResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${result.message || 'Email updated'}</span>`;
             elements.updateEmailResult.classList.remove('hidden');
 
             // Clear form
@@ -852,14 +852,14 @@ async function handleUpdateEmail(): Promise<void> {
             fetchUsers();
             fetchContributors();
         } else {
-            elements.updateEmailResult.className = 'mt-4 bg-red-50 border border-red-200 rounded-lg p-4';
-            elements.updateEmailResult.innerHTML = `<i class="fas fa-exclamation-circle text-red-500 mr-2"></i><span class="text-red-700">❌ ${result.error || 'Failed to update email'}</span>`;
+            elements.updateEmailResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+            elements.updateEmailResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${result.error || 'Failed to update email'}</span>`;
             elements.updateEmailResult.classList.remove('hidden');
         }
     } catch (error) {
         if (!elements.updateEmailResult) return;
-        elements.updateEmailResult.className = 'mt-4 bg-red-50 border border-red-200 rounded-lg p-4';
-        elements.updateEmailResult.innerHTML = `<i class="fas fa-exclamation-circle text-red-500 mr-2"></i><span class="text-red-700">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
+        elements.updateEmailResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+        elements.updateEmailResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
         elements.updateEmailResult.classList.remove('hidden');
     }
 }
@@ -875,19 +875,19 @@ function renderUnregisteredContributors(): void {
         const contribution = contrib.total_contribution ? `$${parseFloat(String(contrib.total_contribution)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00';
 
         return `
-            <div class="bg-dashboard-background rounded-lg p-4 flex items-center justify-between border border-border">
+            <div class="bg-dashboard-surface-alt rounded-lg p-4 flex items-center justify-between border border-border">
                 <div class="flex-1">
                     <h4 class="font-semibold text-text-primary">${escapeHtmlForUsers(contrib.contributor)}</h4>
                     <p class="text-sm text-text-secondary">${escapeHtmlForUsers(email)}</p>
-                    <p class="text-xs text-text-tertiary mt-1">Funds: ${escapeHtmlForUsers(fundsStr)} | Contribution: ${contribution}</p>
+                    <p class="text-xs text-text-secondary mt-1">Funds: ${escapeHtmlForUsers(fundsStr)} | Contribution: ${contribution}</p>
                 </div>
                 <div>
                     ${hasEmail
-                ? `<button class="send-invite-btn bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm" 
+                ? `<button class="send-invite-btn bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-hover text-sm shadow-sm" 
                                  data-email="${escapeHtmlForUsers(contrib.email || '')}">
                             <i class="fas fa-envelope mr-1"></i>Send Invite
                           </button>`
-                : `<span class="text-yellow-600 text-sm">⚠️ Add email to invite</span>`}
+                : `<span class="text-theme-warning-text text-sm">⚠️ Add email to invite</span>`}
                 </div>
             </div>
         `;
@@ -973,8 +973,8 @@ async function handleGrantAccess(): Promise<void> {
         const data: ApiResponse = await response.json();
 
         if (response.ok && data.success) {
-            elements.grantAccessResult.className = 'mt-4 bg-green-50 border border-green-200 rounded-lg p-4';
-            elements.grantAccessResult.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-2"></i><span class="text-green-700">✅ ${data.message || 'Access granted'}</span>`;
+            elements.grantAccessResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+            elements.grantAccessResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${data.message || 'Access granted'}</span>`;
             elements.grantAccessResult.classList.remove('hidden');
 
             // Clear form
@@ -985,14 +985,14 @@ async function handleGrantAccess(): Promise<void> {
             // Refresh access records
             fetchAccessRecords();
         } else {
-            elements.grantAccessResult.className = 'mt-4 bg-red-50 border border-red-200 rounded-lg p-4';
-            elements.grantAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-red-500 mr-2"></i><span class="text-red-700">❌ ${data.error || data.message || 'Failed to grant access'}</span>`;
+            elements.grantAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+            elements.grantAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${data.error || data.message || 'Failed to grant access'}</span>`;
             elements.grantAccessResult.classList.remove('hidden');
         }
     } catch (error) {
         if (!elements.grantAccessResult) return;
-        elements.grantAccessResult.className = 'mt-4 bg-red-50 border border-red-200 rounded-lg p-4';
-        elements.grantAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-red-500 mr-2"></i><span class="text-red-700">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
+        elements.grantAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+        elements.grantAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
         elements.grantAccessResult.classList.remove('hidden');
     }
 }
@@ -1010,7 +1010,7 @@ function renderAccessTable(): void {
             <td class="px-6 py-4 whitespace-nowrap text-sm">
                 <span class="px-2 py-1 text-xs font-semibold rounded-full bg-theme-info-bg text-theme-info-text border border-theme-info-text/20">${escapeHtmlForUsers(access.access_level)}</span>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-tertiary">${escapeHtmlForUsers(access.granted || '')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${escapeHtmlForUsers(access.granted || '')}</td>
         </tr>
     `).join('');
 
@@ -1046,8 +1046,8 @@ async function handleRevokeAccess(): Promise<void> {
         const data: ApiResponse = await response.json();
 
         if (response.ok && data.success) {
-            elements.revokeAccessResult.className = 'mt-4 bg-green-50 border border-green-200 rounded-lg p-4';
-            elements.revokeAccessResult.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-2"></i><span class="text-green-700">✅ ${data.message || 'Access revoked'}</span>`;
+            elements.revokeAccessResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+            elements.revokeAccessResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${data.message || 'Access revoked'}</span>`;
             elements.revokeAccessResult.classList.remove('hidden');
 
             // Clear form
@@ -1057,14 +1057,14 @@ async function handleRevokeAccess(): Promise<void> {
             // Refresh access records
             fetchAccessRecords();
         } else {
-            elements.revokeAccessResult.className = 'mt-4 bg-red-50 border border-red-200 rounded-lg p-4';
-            elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-red-500 mr-2"></i><span class="text-red-700">❌ ${data.error || data.message || 'Failed to revoke access'}</span>`;
+            elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+            elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${data.error || data.message || 'Failed to revoke access'}</span>`;
             elements.revokeAccessResult.classList.remove('hidden');
         }
     } catch (error) {
         if (!elements.revokeAccessResult) return;
-        elements.revokeAccessResult.className = 'mt-4 bg-red-50 border border-red-200 rounded-lg p-4';
-        elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-red-500 mr-2"></i><span class="text-red-700">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
+        elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+        elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
         elements.revokeAccessResult.classList.remove('hidden');
     }
 }
@@ -1080,10 +1080,10 @@ function showToast(message: string, type: 'success' | 'error' | 'warning' | 'inf
     }
 
     const toast = document.createElement('div');
-    const borderColor = type === 'error' ? 'border-red-500' :
-        type === 'warning' ? 'border-yellow-500' :
-            type === 'info' ? 'border-blue-500' :
-                'border-green-500';
+    const borderColor = type === 'error' ? 'border-theme-error-text' :
+        type === 'warning' ? 'border-theme-warning-text' :
+            type === 'info' ? 'border-theme-info-text' :
+                'border-theme-success-text';
 
     const icon = type === 'error' ? '❌' :
         type === 'warning' ? '⚠️' :
@@ -1096,7 +1096,7 @@ function showToast(message: string, type: 'success' | 'error' | 'warning' | 'inf
             <span class="text-lg">${icon}</span>
             <span>${escapeHtmlForUsers(message)}</span>
         </div>
-        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-transparent text-text-tertiary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-accent p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8" aria-label="Close">
+        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-transparent text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-accent p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8" aria-label="Close">
             <span class="sr-only">Close</span>
             <svg class="w-3 h-3" aria-true="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
