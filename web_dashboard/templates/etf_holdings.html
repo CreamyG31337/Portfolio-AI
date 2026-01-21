@@ -70,10 +70,9 @@
                 </label>
                 <div class="flex gap-1">
                     <!-- Previous Date Button -->
-                    <button type="button" onclick="navigateToDate('{{ prev_date }}')" {% if not prev_date %}disabled{%
-                        endif %}
+                    <button type="button" {% if prev_date %}onclick="navigateToDate('{{ prev_date }}')"{% else %}disabled{% endif %}
                         class="px-3 py-2 text-sm border border-border rounded-lg hover:bg-dashboard-background disabled:opacity-50 disabled:cursor-not-allowed text-text-primary"
-                        title="Previous data date ({{ prev_date }} or newer)">
+                        {% if prev_date %}title="Previous data date: {{ prev_date }}"{% else %}title="No previous date available"{% endif %}>
                         <i class="fas fa-chevron-left"></i>
                     </button>
 
@@ -83,10 +82,9 @@
                         onchange="updateFilters()" onkeydown="handleDateKeyboard(event)">
 
                     <!-- Next Date Button -->
-                    <button type="button" onclick="navigateToDate('{{ next_date }}')" {% if not next_date %}disabled{%
-                        endif %}
+                    <button type="button" {% if next_date %}onclick="navigateToDate('{{ next_date }}')"{% else %}disabled{% endif %}
                         class="px-3 py-2 text-sm border border-border rounded-lg hover:bg-dashboard-background disabled:opacity-50 disabled:cursor-not-allowed text-text-primary"
-                        title="Next data date ({{ next_date }} or earlier)">
+                        {% if next_date %}title="Next data date: {{ next_date }}"{% else %}title="No next date available"{% endif %}>
                         <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
@@ -184,11 +182,11 @@
                 <input type="hidden" name="fund" id="fund-input" value="{{ current_fund }}">
             </div>
 
-            <!-- Refresh Button -->
+            <!-- Apply Filters Button -->
             <div class="flex items-end">
-                <button type="button" onclick="updateFilters(true)"
+                <button type="button" onclick="updateFilters()"
                     class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 w-full text-center transition-colors duration-200">
-                    <i class="fas fa-sync-alt mr-2"></i>Refresh Data
+                    <i class="fas fa-filter mr-2"></i>Apply Filters
                 </button>
             </div>
         </div>
@@ -294,13 +292,18 @@
 <script>
     // Date navigation functions
     function navigateToDate(newDate) {
-        if (!newDate || newDate === 'None') return;
+        if (!newDate || newDate === 'None' || newDate === '') {
+            console.warn('navigateToDate called with invalid date:', newDate);
+            return;
+        }
 
         const form = document.getElementById('filters-form');
         const dateInput = document.querySelector('input[name="date"]');
-        if (dateInput) {
+        if (dateInput && form) {
             dateInput.value = newDate;
             form.submit();
+        } else {
+            console.error('Could not find form or date input');
         }
     }
 

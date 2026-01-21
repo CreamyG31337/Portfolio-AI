@@ -439,7 +439,8 @@ a:focus,
 a:focus-visible,
 [role="button"]:focus,
 [role="button"]:focus-visible {
-    outline: none !important;
+    outline: 2px solid var(--color-accent) !important;
+    outline-offset: 2px !important;
     box-shadow: 0 0 0 4px var(--color-accent-ring) !important;
 }
 

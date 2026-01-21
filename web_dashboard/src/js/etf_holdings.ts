@@ -463,20 +463,10 @@ function updateEtfGridTheme(): void {
     }
 };
 
-// Update Filters function
-(window as any).updateFilters = function (shouldRefresh = false) {
+// Update Filters function - submits the form to apply filters
+(window as any).updateFilters = function () {
     const form = document.getElementById('filters-form') as HTMLFormElement;
     // Ensure hidden input is up to date (though handleFundSelection updates it)
-
-    if (shouldRefresh) {
-        // Add refresh key
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'refresh_key';
-        input.value = Math.floor(Math.random() * 1000).toString();
-        form.appendChild(input);
-    }
-
     form.submit();
 };
 
