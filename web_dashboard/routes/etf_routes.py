@@ -351,6 +351,9 @@ def get_holdings_changes(
                 curr_df['action'] = 'BUY'  # Mark as BUY so they appear in changes view
         
         curr_df = curr_df.rename(columns={'shares_held': 'current_shares'})
+        # Ensure date is set for merged rows (outer merge can introduce NaN dates)
+        if as_of_date:
+            curr_df['date'] = as_of_date.isoformat()
         
         # Note: We show ALL changes on the web page (not just "significant" ones)
         # The MIN_SHARE_CHANGE and MIN_PERCENT_CHANGE thresholds are used by the job
@@ -632,6 +635,8 @@ def etf_holdings():
             'share_change': 0,
             'percent_change': 0
         })
+        # Replace any remaining NaN values (e.g., date/holding_name) with None for valid JSON
+        changes_df = changes_df.where(pd.notna(changes_df), None)
         
         # Add formatted columns for easier JS display? 
         # Actually AgGrid can handle formatting, but pre-formatting in Python is sometimes easier 

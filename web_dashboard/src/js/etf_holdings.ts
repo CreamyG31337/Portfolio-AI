@@ -356,9 +356,9 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
     // gridColumnApi is deprecated in v31 - column API methods are now on the main grid API
     gridColumnApi = null; // Keep for compatibility but don't use
 
-    const fallbackTable = document.getElementById("etf-holdings-fallback");
-    if (fallbackTable) {
-        fallbackTable.classList.add("hidden");
+    const spinner = document.getElementById("latest-changes-loading");
+    if (spinner) {
+        spinner.classList.add("hidden");
     }
 
     // Auto-size columns to fit container
@@ -483,12 +483,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const configElement = document.getElementById('etf-holdings-config');
     if (configElement) {
         try {
+            const spinner = document.getElementById("latest-changes-loading");
+            if (spinner) {
+                spinner.classList.remove("hidden");
+                spinner.classList.add("flex");
+            }
             const config = JSON.parse(configElement.textContent || '{}');
             if (config.holdingsData) {
                 initializeEtfGrid(config.holdingsData, config.viewMode || 'holdings');
             }
         } catch (err) {
             console.error('[EtfHoldings] Failed to auto-init:', err);
+        }
+    }
+
+    const gridDiv = document.getElementById("etf-holdings-grid");
+    if (!(window as any).agGrid || !gridApi) {
+        if (gridDiv) {
+            gridDiv.classList.remove("hidden");
+        }
+        const spinner = document.getElementById("latest-changes-loading");
+        if (spinner) {
+            spinner.classList.add("hidden");
         }
     }
 
