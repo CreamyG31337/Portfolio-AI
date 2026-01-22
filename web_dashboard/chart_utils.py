@@ -1697,7 +1697,7 @@ def create_ticker_price_chart(
             
             try:
                 trade_date = pd.to_datetime(trade_date_str).normalize()
-                result = find_closest_price_date(trade_date, trade_df['date'], date_to_price)
+                result = find_closest_price_date(trade_date, trade_df['date'], date_to_price, max_days=30)
                 if not result:
                     continue
                 closest_date, y_value = result
@@ -1761,7 +1761,7 @@ def create_ticker_price_chart(
             
             try:
                 trade_date = pd.to_datetime(trade_date_str).normalize()
-                result = find_closest_price_date(trade_date, trade_df['date'], date_to_price)
+                result = find_closest_price_date(trade_date, trade_df['date'], date_to_price, max_days=7)
                 if not result:
                     continue
                 closest_date, y_value = result
@@ -1814,7 +1814,7 @@ def create_ticker_price_chart(
             
             try:
                 trade_date = pd.to_datetime(trade_date_str).normalize()
-                result = find_closest_price_date(trade_date, trade_df['date'], date_to_price)
+                result = find_closest_price_date(trade_date, trade_df['date'], date_to_price, max_days=7)
                 if not result:
                     continue
                 closest_date, y_value = result
