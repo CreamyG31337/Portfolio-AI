@@ -226,9 +226,13 @@
                                 <th class="px-4 py-2">ETF</th>
                                 <th class="px-4 py-2">Ticker</th>
                                 <th class="px-4 py-2">Name</th>
+                                <th class="px-4 py-2">We Hold</th>
+                                <th class="px-4 py-2">Our Shares</th>
                                 <th class="px-4 py-2">Action</th>
-                                <th class="px-4 py-2">Change</th>
+                                <th class="px-4 py-2">Δ Shares</th>
                                 <th class="px-4 py-2">% Change</th>
+                                <th class="px-4 py-2">Prev Shares</th>
+                                <th class="px-4 py-2">New Shares</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -238,9 +242,23 @@
                                 <td class="px-4 py-2">{{ row.etf_ticker }}</td>
                                 <td class="px-4 py-2 font-semibold">{{ row.holding_ticker }}</td>
                                 <td class="px-4 py-2">{{ row.holding_name }}</td>
-                                <td class="px-4 py-2">{{ row.action }}</td>
-                                <td class="px-4 py-2">{{ row.share_change }}</td>
-                                <td class="px-4 py-2">{{ row.percent_change }}</td>
+                                <td class="px-4 py-2">{% if row.user_shares > 0 %}✓{% else %}—{% endif %}</td>
+                                <td class="px-4 py-2">{% if row.user_shares > 0 %}{{ row.user_shares }}{% else %}—{% endif %}</td>
+                                <td class="px-4 py-2">
+                                    {% if row.action == 'BUY' %}
+                                        <span class="text-theme-success-text font-bold">🟢 BUY</span>
+                                    {% elif row.action == 'SELL' %}
+                                        <span class="text-theme-error-text font-bold">🔴 SELL</span>
+                                    {% else %}
+                                        {{ row.action }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-2 font-mono {% if row.share_change > 0 %}text-theme-success-text{% elif row.share_change < 0 %}text-theme-error-text{% endif %}">
+                                    {{ row.share_change }}
+                                </td>
+                                <td class="px-4 py-2">{{ "%.2f"|format(row.percent_change) }}%</td>
+                                <td class="px-4 py-2 font-mono">{{ row.previous_shares }}</td>
+                                <td class="px-4 py-2 font-mono">{{ row.current_shares }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -258,6 +276,8 @@
                                 <th class="px-4 py-2">ETF</th>
                                 <th class="px-4 py-2">Ticker</th>
                                 <th class="px-4 py-2">Name</th>
+                                <th class="px-4 py-2">We Hold</th>
+                                <th class="px-4 py-2">Our Shares</th>
                                 <th class="px-4 py-2">Shares</th>
                                 <th class="px-4 py-2">Weight %</th>
                             </tr>
@@ -269,8 +289,10 @@
                                 <td class="px-4 py-2">{{ row.etf_ticker }}</td>
                                 <td class="px-4 py-2 font-semibold">{{ row.holding_ticker }}</td>
                                 <td class="px-4 py-2">{{ row.holding_name }}</td>
-                                <td class="px-4 py-2">{{ row.current_shares }}</td>
-                                <td class="px-4 py-2">{{ row.weight_percent }}</td>
+                                <td class="px-4 py-2">{% if row.user_shares > 0 %}✓{% else %}—{% endif %}</td>
+                                <td class="px-4 py-2">{% if row.user_shares > 0 %}{{ row.user_shares }}{% else %}—{% endif %}</td>
+                                <td class="px-4 py-2 font-mono">{{ row.current_shares }}</td>
+                                <td class="px-4 py-2">{{ "%.2f"|format(row.weight_percent) }}%</td>
                             </tr>
                             {% endfor %}
                         </tbody>

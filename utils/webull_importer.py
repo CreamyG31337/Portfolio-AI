@@ -309,10 +309,41 @@ class WebullImporter:
         portfolio_data = self._load_portfolio_data()
         trade_log_data = self._load_trade_log_data()
         
+        # Create a set of existing trades for idempotency
+        # Key: (Date, Ticker, Shares, Price)
+        existing_trades = set()
+        for entry in trade_log_data:
+            try:
+                # Format: Date, Ticker, Shares, Price, Cost Basis, PnL, Reason, Currency
+                # We normalize to string representation to be safe.
+                key = (
+                    entry.get("Date", "").strip(),
+                    entry.get("Ticker", "").strip(),
+                    str(float(entry.get("Shares", "0"))),  # Normalize number format
+                    str(float(entry.get("Price", "0")))    # Normalize number format
+                )
+                existing_trades.add(key)
+            except (ValueError, TypeError):
+                continue
+
         for trade in trades:
             try:
                 # Add to trade log
                 trade_log_entry = self._create_trade_log_entry(trade)
+
+                # Check if exists
+                entry_key = (
+                    trade_log_entry["Date"].strip(),
+                    trade_log_entry["Ticker"].strip(),
+                    str(float(trade_log_entry["Shares"])),
+                    str(float(trade_log_entry["Price"]))
+                )
+
+                if entry_key in existing_trades:
+                    # Duplicate found
+                    # We count it as skipped but don't consider it an error
+                    continue
+
                 trade_log_data.append(trade_log_entry)
                 trade_log_entries += 1
                 
@@ -322,6 +353,8 @@ class WebullImporter:
                     portfolio_updates += 1
                 
                 trades_imported += 1
+                # Add to local set to catch duplicates within the same batch
+                existing_trades.add(entry_key)
                 
             except Exception as e:
                 print_warning(f"Failed to import trade {trade['symbol']} {trade['action']}: {e}")
