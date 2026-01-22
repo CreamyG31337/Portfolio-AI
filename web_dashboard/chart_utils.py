@@ -1532,7 +1532,8 @@ def create_ticker_price_chart(
     market: str = 'us',
     congress_trades: Optional[List[Dict[str, Any]]] = None,
     user_trades: Optional[List[Dict[str, Any]]] = None,
-    etf_trades: Optional[List[Dict[str, Any]]] = None
+    etf_trades: Optional[List[Dict[str, Any]]] = None,
+    trade_price_df: Optional[pd.DataFrame] = None
 ) -> go.Figure:
     """Create a price history chart for an individual ticker with benchmark comparisons.
     
@@ -1547,6 +1548,7 @@ def create_ticker_price_chart(
         congress_trades: Optional list of congress trade dictionaries to display as markers
         user_trades: Optional list of user trade dictionaries (from trade_log) to display as markers
         etf_trades: Optional list of ETF trade dictionaries (from get_etf_holding_trades) to display as markers
+        trade_price_df: Optional full-resolution price DataFrame to align trade markers
         
     Returns:
         Plotly Figure object
@@ -1571,6 +1573,15 @@ def create_ticker_price_chart(
 
     # Adjust dates to market close time (13:00 PST) for proper alignment with weekend shading
     df = _adjust_to_market_close(df, 'date')
+
+    # Use full-resolution data for trade marker alignment if provided
+    if trade_price_df is not None and not trade_price_df.empty:
+        trade_df = trade_price_df.sort_values('date').copy()
+        trade_df['date'] = pd.to_datetime(trade_df['date'])
+        trade_df = _filter_trading_days(trade_df, 'date', market=market)
+        trade_df = _adjust_to_market_close(trade_df, 'date')
+    else:
+        trade_df = df
     
     # Calculate return percentage for label (from baseline 100)
     if len(df) > 1:
@@ -1675,10 +1686,10 @@ def create_ticker_price_chart(
         return (closest_date, y_value) if y_value is not None else None
     
     # Create date lookup for price values (used by both congress and user trades)
-    date_to_price = dict(zip(df['date'], df['normalized'])) if len(df) > 0 else {}
+    date_to_price = dict(zip(trade_df['date'], trade_df['normalized'])) if len(trade_df) > 0 else {}
     
     # Add user trades markers if provided (larger markers, different colors)
-    if user_trades and len(df) > 0:
+    if user_trades and len(trade_df) > 0:
         for trade in user_trades:
             trade_date_str = trade.get('date')
             if not trade_date_str:
@@ -1686,7 +1697,7 @@ def create_ticker_price_chart(
             
             try:
                 trade_date = pd.to_datetime(trade_date_str).normalize()
-                result = find_closest_price_date(trade_date, df['date'], date_to_price)
+                result = find_closest_price_date(trade_date, trade_df['date'], date_to_price)
                 if not result:
                     continue
                 closest_date, y_value = result
@@ -1742,7 +1753,7 @@ def create_ticker_price_chart(
                 continue
     
     # Add congress trades markers if provided (smaller markers, muted colors)
-    if congress_trades and len(df) > 0:
+    if congress_trades and len(trade_df) > 0:
         for trade in congress_trades:
             trade_date_str = trade.get('transaction_date')
             if not trade_date_str:
@@ -1750,7 +1761,7 @@ def create_ticker_price_chart(
             
             try:
                 trade_date = pd.to_datetime(trade_date_str).normalize()
-                result = find_closest_price_date(trade_date, df['date'], date_to_price)
+                result = find_closest_price_date(trade_date, trade_df['date'], date_to_price)
                 if not result:
                     continue
                 closest_date, y_value = result
@@ -1795,7 +1806,7 @@ def create_ticker_price_chart(
                 continue
     
     # Add ETF trades markers if provided (hexagon markers, muted blue/orange colors)
-    if etf_trades and len(df) > 0:
+    if etf_trades and len(trade_df) > 0:
         for trade in etf_trades:
             trade_date_str = trade.get('trade_date')
             if not trade_date_str:
@@ -1803,7 +1814,7 @@ def create_ticker_price_chart(
             
             try:
                 trade_date = pd.to_datetime(trade_date_str).normalize()
-                result = find_closest_price_date(trade_date, df['date'], date_to_price)
+                result = find_closest_price_date(trade_date, trade_df['date'], date_to_price)
                 if not result:
                     continue
                 closest_date, y_value = result
@@ -1832,9 +1843,15 @@ def create_ticker_price_chart(
                     color = '#a3a3a3'  # Gray for unknown
                     symbol = 'hexagon'
                 
-                # Format shares for display
-                shares_display = f"{abs(shares_change):,.0f}" if abs(shares_change) >= 1 else f"{abs(shares_change):,.4f}"
+                # Format shares for display with +/- sign for clarity
+                if shares_change >= 1 or shares_change <= -1:
+                    shares_display = f"{shares_change:+,.0f}"  # +50,000 or -50,000
+                else:
+                    shares_display = f"{shares_change:+,.4f}"  # +0.5000 or -0.5000
                 shares_after_display = f"{shares_after:,.0f}" if shares_after >= 1 else f"{shares_after:,.4f}"
+                
+                # Action text for clarity
+                action_text = "Added" if trade_type == 'Purchase' else "Reduced"
                 
                 fig.add_trace(go.Scatter(
                     x=[closest_date],
@@ -1847,11 +1864,10 @@ def create_ticker_price_chart(
                         symbol=symbol,
                         line=dict(width=1, color='white')
                     ),
-                    hovertemplate=f'<b>ETF {trade_type}</b><br>' +
+                    hovertemplate=f'<b>{etf_ticker} {action_text}</b><br>' +
                                 f'Date: {trade_date_str}<br>' +
-                                f'ETF: {etf_ticker}<br>' +
-                                f'Shares Change: {shares_display}<br>' +
-                                f'Holdings After: {shares_after_display}<extra></extra>',
+                                f'Shares: {shares_display}<br>' +
+                                f'Now Holds: {shares_after_display}<extra></extra>',
                     showlegend=False,
                     legendgroup='etf_trades'
                 ))

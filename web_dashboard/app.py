@@ -3068,6 +3068,9 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
             }
         })
     
+    # Preserve full-resolution data for trade marker alignment
+    full_price_df = price_df.copy()
+
     # Downsample to maintain ~90 data points
     from chart_utils import downsample_price_data
     price_df = downsample_price_data(price_df, range_days)
@@ -3149,7 +3152,8 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
         theme='light',  # Base theme, will be overridden
         congress_trades=congress_trades,
         user_trades=user_trades,
-        etf_trades=etf_trades
+        etf_trades=etf_trades,
+        trade_price_df=full_price_df
     )
     
     # Serialize with numpy array conversion for proper JSON encoding
