@@ -1378,56 +1378,84 @@ async function fetchActivity(): Promise<void> {
                 // Company name (or empty string)
                 const companyName = row.company_name || '';
 
-                // Generate logo HTML with fallback
+                // Create logo image programmatically (like AG Grid renderer) to ensure error handler is attached before load
                 const logoUrl = row._logo_url || '';
                 const cleanTicker = row.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
                 const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
-                // Escape ticker for use in HTML attributes
-                const escapedTicker = row.ticker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                const escapedCleanTicker = cleanTicker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                const escapedLogoUrl = (logoUrl || placeholder).replace(/"/g, '&quot;');
-                // Use data attributes and event listener instead of inline onerror to avoid XSS
-                const logoHtml = `<img src="${escapedLogoUrl}" alt="${escapedTicker}" data-ticker="${escapedCleanTicker}" data-placeholder="${placeholder}" class="inline-block w-6 h-6 mr-2 object-contain rounded activity-logo" style="vertical-align: middle;" />`;
-
-                tr.innerHTML = `
-                     <td class="px-6 py-4 whitespace-nowrap">${row.date}</td>
-                     <td class="px-6 py-4 font-bold text-blue-600 dark:text-blue-400">
-                         ${logoHtml}<a href="/ticker?ticker=${escapedTicker}" class="hover:underline">${row.ticker}</a>
-                     </td>
-                     <td class="px-6 py-4 text-gray-700 dark:text-gray-300">${companyName}</td>
-                     <td class="px-6 py-4">${actionBadge}</td>
-                     <td class="px-6 py-4 text-right">${sharesFormatted}</td>
-                     <td class="px-6 py-4 text-right format-currency">${formatMoney(row.price)}</td>
-                     <td class="px-6 py-4 text-right format-currency font-medium">${formatMoney(displayAmount)}</td>
-                `;
-                tbody.appendChild(tr);
                 
-                // Add error handler for logo image (after appending to DOM)
-                const logoImg = tr.querySelector('.activity-logo') as HTMLImageElement;
-                if (logoImg) {
-                    let fallbackAttempted = false;
-                    logoImg.addEventListener('error', function() {
-                        if (fallbackAttempted) {
-                            this.src = placeholder;
-                            this.onerror = null;
-                            return;
-                        }
-                        fallbackAttempted = true;
-                        const ticker = this.getAttribute('data-ticker');
-                        if (ticker) {
-                            const fallback = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
-                            if (this.src !== fallback) {
-                                this.src = fallback;
-                            } else {
-                                this.src = placeholder;
-                                this.onerror = null;
-                            }
-                        } else {
-                            this.src = placeholder;
-                            this.onerror = null;
-                        }
-                    });
+                // Create image element and set up error handler before setting src
+                const logoImg = document.createElement('img');
+                logoImg.className = 'inline-block w-6 h-6 mr-2 object-contain rounded';
+                logoImg.style.verticalAlign = 'middle';
+                logoImg.alt = row.ticker;
+                
+                // Set up error handler BEFORE setting src
+                let fallbackAttempted = false;
+                logoImg.onerror = function() {
+                    if (fallbackAttempted) {
+                        this.src = placeholder;
+                        this.onerror = null;
+                        return;
+                    }
+                    fallbackAttempted = true;
+                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
+                    if (this.src !== yahooUrl) {
+                        this.src = yahooUrl;
+                    } else {
+                        this.src = placeholder;
+                        this.onerror = null;
+                    }
+                };
+                
+                // Now set the src (error handler is already attached)
+                if (logoUrl) {
+                    logoImg.src = logoUrl;
+                } else {
+                    logoImg.src = placeholder;
                 }
+
+                // Build table row using DOM methods for better control
+                const dateCell = document.createElement('td');
+                dateCell.className = 'px-6 py-4 whitespace-nowrap';
+                dateCell.textContent = row.date;
+                tr.appendChild(dateCell);
+                
+                const tickerCell = document.createElement('td');
+                tickerCell.className = 'px-6 py-4 font-bold text-blue-600 dark:text-blue-400';
+                tickerCell.appendChild(logoImg);
+                const tickerLink = document.createElement('a');
+                tickerLink.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
+                tickerLink.className = 'hover:underline';
+                tickerLink.textContent = row.ticker;
+                tickerCell.appendChild(tickerLink);
+                tr.appendChild(tickerCell);
+                
+                const companyCell = document.createElement('td');
+                companyCell.className = 'px-6 py-4 text-gray-700 dark:text-gray-300';
+                companyCell.textContent = companyName;
+                tr.appendChild(companyCell);
+                
+                const actionCell = document.createElement('td');
+                actionCell.className = 'px-6 py-4';
+                actionCell.innerHTML = actionBadge;
+                tr.appendChild(actionCell);
+                
+                const sharesCell = document.createElement('td');
+                sharesCell.className = 'px-6 py-4 text-right';
+                sharesCell.textContent = sharesFormatted;
+                tr.appendChild(sharesCell);
+                
+                const priceCell = document.createElement('td');
+                priceCell.className = 'px-6 py-4 text-right format-currency';
+                priceCell.textContent = formatMoney(row.price);
+                tr.appendChild(priceCell);
+                
+                const amountCell = document.createElement('td');
+                amountCell.className = 'px-6 py-4 text-right format-currency font-medium';
+                amountCell.textContent = formatMoney(displayAmount);
+                tr.appendChild(amountCell);
+                
+                tbody.appendChild(tr);
             });
         }
         hideSpinner('activity-table-spinner');
@@ -1893,58 +1921,87 @@ function renderMovers(data: MoversData): void {
             const fiveDayColor = getPnlColor(item.five_day_pnl);
             const totalColor = getPnlColor(item.total_pnl);
 
-            // Generate logo HTML with fallback
+            // Create logo image programmatically (like AG Grid renderer) to ensure error handler is attached before load
             const logoUrl = item._logo_url || '';
             const cleanTicker = item.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
             const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
-            // Escape ticker for use in HTML attributes
             const escapedTicker = item.ticker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-            const escapedCleanTicker = cleanTicker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-            const escapedLogoUrl = (logoUrl || placeholder).replace(/"/g, '&quot;');
             const escapedCompanyName = (item.company_name || item.ticker).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-            // Use data attributes and event listener instead of inline onerror to avoid XSS
-            const logoHtml = `<img src="${escapedLogoUrl}" alt="${escapedTicker}" data-ticker="${escapedCleanTicker}" data-placeholder="${placeholder}" class="inline-block w-6 h-6 mr-2 object-contain rounded movers-logo" style="vertical-align: middle;" />`;
+            
+            // Create image element and set up error handler before setting src
+            const logoImg = document.createElement('img');
+            logoImg.className = 'inline-block w-6 h-6 mr-2 object-contain rounded';
+            logoImg.style.verticalAlign = 'middle';
+            logoImg.alt = item.ticker;
+            
+            // Set up error handler BEFORE setting src
+            let fallbackAttempted = false;
+            logoImg.onerror = function() {
+                if (fallbackAttempted) {
+                    this.src = placeholder;
+                    this.onerror = null;
+                    return;
+                }
+                fallbackAttempted = true;
+                const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
+                if (this.src !== yahooUrl) {
+                    this.src = yahooUrl;
+                } else {
+                    this.src = placeholder;
+                    this.onerror = null;
+                }
+            };
+            
+            // Now set the src (error handler is already attached)
+            if (logoUrl) {
+                logoImg.src = logoUrl;
+            } else {
+                logoImg.src = placeholder;
+            }
 
             // Use font-mono for numerical columns to ensure alignment
-            tr.innerHTML = `
-                <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">
-                    ${logoHtml}<a href="/ticker?ticker=${escapedTicker}" class="hover:underline">${item.ticker}</a>
-                </td>
-                <td class="px-4 py-3 truncate max-w-[150px]" title="${escapedCompanyName}">${item.company_name || item.ticker}</td>
-                <td class="px-4 py-3 text-right font-mono ${dayColor}">${formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency)}</td>
-                <td class="px-4 py-3 text-right font-mono ${fiveDayColor}">${formatMergedPnl(item.five_day_pnl, item.five_day_pnl_pct, data.display_currency)}</td>
-                <td class="px-4 py-3 text-right font-mono ${totalColor}">${formatMergedPnl(item.total_pnl, item.total_return_pct, data.display_currency)}</td>
-                <td class="px-4 py-3 text-right font-mono">${formatMoney(item.current_price || 0, data.display_currency)}</td>
-                <td class="px-4 py-3 text-right font-mono font-medium">${formatMoney(item.market_value || 0, data.display_currency)}</td>
-            `;
-            tbody.appendChild(tr);
+            const tickerCell = document.createElement('td');
+            tickerCell.className = 'px-4 py-3 font-bold text-blue-600 dark:text-blue-400';
+            tickerCell.appendChild(logoImg);
+            const tickerLink = document.createElement('a');
+            tickerLink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;
+            tickerLink.className = 'hover:underline';
+            tickerLink.textContent = item.ticker;
+            tickerCell.appendChild(tickerLink);
+            tr.appendChild(tickerCell);
             
-            // Add error handler for logo image (after appending to DOM)
-            const logoImg = tr.querySelector('.movers-logo') as HTMLImageElement;
-            if (logoImg) {
-                let fallbackAttempted = false;
-                logoImg.addEventListener('error', function() {
-                    if (fallbackAttempted) {
-                        this.src = placeholder;
-                        this.onerror = null;
-                        return;
-                    }
-                    fallbackAttempted = true;
-                    const ticker = this.getAttribute('data-ticker');
-                    if (ticker) {
-                        const fallback = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
-                        if (this.src !== fallback) {
-                            this.src = fallback;
-                        } else {
-                            this.src = placeholder;
-                            this.onerror = null;
-                        }
-                    } else {
-                        this.src = placeholder;
-                        this.onerror = null;
-                    }
-                });
-            }
+            const companyCell = document.createElement('td');
+            companyCell.className = 'px-4 py-3 truncate max-w-[150px]';
+            companyCell.title = item.company_name || item.ticker;
+            companyCell.textContent = item.company_name || item.ticker;
+            tr.appendChild(companyCell);
+            
+            const dayPnlCell = document.createElement('td');
+            dayPnlCell.className = `px-4 py-3 text-right font-mono ${dayColor}`;
+            dayPnlCell.textContent = formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency);
+            tr.appendChild(dayPnlCell);
+            
+            const fiveDayPnlCell = document.createElement('td');
+            fiveDayPnlCell.className = `px-4 py-3 text-right font-mono ${fiveDayColor}`;
+            fiveDayPnlCell.textContent = formatMergedPnl(item.five_day_pnl, item.five_day_pnl_pct, data.display_currency);
+            tr.appendChild(fiveDayPnlCell);
+            
+            const totalPnlCell = document.createElement('td');
+            totalPnlCell.className = `px-4 py-3 text-right font-mono ${totalColor}`;
+            totalPnlCell.textContent = formatMergedPnl(item.total_pnl, item.total_return_pct, data.display_currency);
+            tr.appendChild(totalPnlCell);
+            
+            const priceCell = document.createElement('td');
+            priceCell.className = 'px-4 py-3 text-right font-mono';
+            priceCell.textContent = formatMoney(item.current_price || 0, data.display_currency);
+            tr.appendChild(priceCell);
+            
+            const valueCell = document.createElement('td');
+            valueCell.className = 'px-4 py-3 text-right font-mono font-medium';
+            valueCell.textContent = formatMoney(item.market_value || 0, data.display_currency);
+            tr.appendChild(valueCell);
+            
+            tbody.appendChild(tr);
         });
     };
 
