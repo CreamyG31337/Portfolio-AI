@@ -341,6 +341,7 @@ class WebullImporter:
 
                 if entry_key in existing_trades:
                     # Duplicate found
+                    logger.info(f"Skipping duplicate trade: {trade['symbol']} {trade['action']} {trade['quantity']} @ {trade['price']}")
                     # We count it as skipped but don't consider it an error
                     continue
 
