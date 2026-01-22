@@ -363,10 +363,14 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
 
     // Auto-size columns to fit container
     if (gridApi) {
-        // Function to resize columns
+        // Function to auto-size columns to content (fallback to fit if unavailable)
         const resizeColumns = () => {
-            if (gridApi) {
-                // Fit all columns to available width
+            if (!gridApi) {
+                return;
+            }
+            if (typeof gridApi.autoSizeAllColumns === "function") {
+                gridApi.autoSizeAllColumns(false);
+            } else if (typeof gridApi.sizeColumnsToFit === "function") {
                 gridApi.sizeColumnsToFit();
             }
         };
