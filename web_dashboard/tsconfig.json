@@ -18,5 +18,5 @@
   },
   "include": ["src/js/**/*"],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.spec.ts"],
-  "_comment": "⚠️ IMPORTANT: Edit TypeScript files in src/js/, not the compiled output in static/js/. See src/js/README.md for details."
+  "_comment": "IMPORTANT: Edit TypeScript files in src/js/, not the compiled output in static/js/. See src/js/README.md for details."
 }

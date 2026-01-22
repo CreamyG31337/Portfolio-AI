@@ -2,7 +2,7 @@
  * Dashboard V2 - Matches dashboard.html template
  * Uses /api/dashboard/* endpoints
  * 
- * ⚠️ IMPORTANT: This is a TypeScript SOURCE file.
+ * IMPORTANT: This is a TypeScript SOURCE file.
  * - Edit this file: web_dashboard/src/js/dashboard.ts
  * - Compiled output: web_dashboard/static/js/dashboard.js (auto-generated)
  * - DO NOT edit the compiled .js file - it will be overwritten on build
