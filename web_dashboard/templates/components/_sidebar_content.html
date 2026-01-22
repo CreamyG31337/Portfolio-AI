@@ -22,7 +22,7 @@
         <ul class="space-y-1">
             {% if navigation_links %}
             <li>
-                <a href="/dashboard"
+                <a href="/dashboard" {% if current_page == 'dashboard' %}aria-current="page"{% endif %}
                     class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'dashboard' %}bg-dashboard-surface-alt text-accent{% endif %}">
                     <span class="mr-3 text-lg flex-shrink-0">📈</span>
                     <span class="sidebar-text whitespace-nowrap overflow-hidden">Dashboard</span>
@@ -31,7 +31,7 @@
             {% for link in navigation_links %}
             {% if link.show %}
             <li>
-                <a href="{{ link.url }}"
+                <a href="{{ link.url }}" {% if link.active %}aria-current="page"{% endif %}
                     class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if link.active %}bg-theme-info-bg text-theme-info-text{% endif %}">
                     <span class="mr-3 text-lg flex-shrink-0">{{ link.icon }}</span>
                     <span class="sidebar-text whitespace-nowrap overflow-hidden">{{ link.name }}</span>
@@ -87,7 +87,7 @@
             </div>
             <ul class="space-y-1">
                 <li>
-                    <a href="/admin/scheduler"
+                    <a href="/admin/scheduler" {% if current_page == 'admin_scheduler' %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_scheduler' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🔨</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Jobs Scheduler</span>
@@ -101,63 +101,63 @@
                     </a>
                 </li>
                 <li>
-                    <a href="/admin/users"
+                    <a href="/admin/users" {% if current_page == 'admin_users' %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_users' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">👥</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">User Management</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/admin/contributors"
+                    <a href="/admin/contributors" {% if current_page == 'admin_contributors' %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_contributors' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">👤</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Contributors</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/admin/funds"
+                    <a href="/admin/funds" {% if current_page == 'admin_funds' %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_funds' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🏦</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Fund Management</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/admin/trade-entry"
+                    <a href="/admin/trade-entry" {% if current_page == 'admin_trade_entry' %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_trade_entry' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">📈</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Trade Entry</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/admin/contributions"
+                    <a href="/admin/contributions" {% if current_page == 'admin_contributions' %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_contributions' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">💰</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Contributions</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/admin/ai-settings"
+                    <a href="/admin/ai-settings" {% if current_page == 'admin_ai_settings' %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_ai_settings' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🤖</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">AI Settings</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/admin/system"
+                    <a href="/admin/system" {% if current_page == 'admin_system' %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_system' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🖥️</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">System Monitor</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/logs"
+                    <a href="/logs" {% if current_page == 'admin_logs' %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_logs' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">📜</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Logs</span>
                     </a>
                 </li>
                 <li>
-                    <a href="{{ url_for('dev_home') }}"
+                    <a href="{{ url_for('dev_home') }}" {% if current_page in ['dev_home', 'sql_interface'] %}aria-current="page"{% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page in ['dev_home', 'sql_interface'] %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🛠️</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Developer Tools</span>
