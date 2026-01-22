@@ -487,6 +487,77 @@ function initExchangeRateControls(): void {
 // Global cache of tickers that don't have logos (to avoid repeated 404s)
 const failedLogoCache = new Set<string>();
 
+/**
+ * Creates a logo image element with fallback handling.
+ * 
+ * @param ticker - The ticker symbol
+ * @param logoUrl - The primary logo URL (from API)
+ * @param options - Optional configuration
+ * @returns HTMLImageElement configured with error handling and fallback logic
+ */
+function createLogoElement(
+    ticker: string,
+    logoUrl: string,
+    options?: {
+        className?: string;
+        size?: number;
+    }
+): HTMLImageElement {
+    const className = options?.className || 'inline-block w-6 h-6 mr-2 object-contain rounded';
+    const size = options?.size || 24;
+    const placeholder = `data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"%3E%3C/svg%3E`;
+    
+    // Clean ticker for fallback lookup (remove spaces and exchange suffixes)
+    const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+    const cacheKey = cleanTicker.toUpperCase();
+    
+    // Create image element
+    const img = document.createElement('img');
+    img.className = className;
+    img.style.verticalAlign = 'middle';
+    img.alt = ticker;
+    
+    // Set up error handler BEFORE setting src
+    let fallbackAttempted = false;
+    img.onerror = function () {
+        if (fallbackAttempted) {
+            // Already tried fallback, use transparent placeholder for alignment
+            this.src = placeholder;
+            this.onerror = null;
+            failedLogoCache.add(cacheKey);
+            return;
+        }
+        
+        // Mark that we've attempted fallback
+        fallbackAttempted = true;
+        
+        // Try Yahoo Finance fallback
+        const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
+        if (this.src !== yahooUrl) {
+            this.src = yahooUrl;
+        } else {
+            // Same URL, use transparent placeholder for alignment
+            this.src = placeholder;
+            this.onerror = null;
+            failedLogoCache.add(cacheKey);
+        }
+    };
+    
+    // Set the src (error handler is already attached)
+    if (logoUrl && !failedLogoCache.has(cacheKey)) {
+        img.src = logoUrl;
+    } else if (!failedLogoCache.has(cacheKey)) {
+        // No logo URL provided, try Yahoo Finance directly
+        img.src = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
+    } else {
+        // Known to fail, use placeholder immediately
+        img.src = placeholder;
+        img.onerror = null;
+    }
+    
+    return img;
+}
+
 // Update AG Grid theme class based on current theme
 // Ticker cell renderer - makes ticker clickable
 interface AgGridCellRendererParams {
@@ -1378,41 +1449,8 @@ async function fetchActivity(): Promise<void> {
                 // Company name (or empty string)
                 const companyName = row.company_name || '';
 
-                // Create logo image programmatically (like AG Grid renderer) to ensure error handler is attached before load
-                const logoUrl = row._logo_url || '';
-                const cleanTicker = row.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
-                const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
-
-                // Create image element and set up error handler before setting src
-                const logoImg = document.createElement('img');
-                logoImg.className = 'inline-block w-6 h-6 mr-2 object-contain rounded';
-                logoImg.style.verticalAlign = 'middle';
-                logoImg.alt = row.ticker;
-
-                // Set up error handler BEFORE setting src
-                let fallbackAttempted = false;
-                logoImg.onerror = function () {
-                    if (fallbackAttempted) {
-                        this.src = placeholder;
-                        this.onerror = null;
-                        return;
-                    }
-                    fallbackAttempted = true;
-                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
-                    if (this.src !== yahooUrl) {
-                        this.src = yahooUrl;
-                    } else {
-                        this.src = placeholder;
-                        this.onerror = null;
-                    }
-                };
-
-                // Now set the src (error handler is already attached)
-                if (logoUrl) {
-                    logoImg.src = logoUrl;
-                } else {
-                    logoImg.src = placeholder;
-                }
+                // Create logo image using shared helper function
+                const logoImg = createLogoElement(row.ticker, row._logo_url || '');
 
                 // Build table row using DOM methods for better control
                 const dateCell = document.createElement('td');
@@ -1635,43 +1673,10 @@ function renderDividends(data: DividendData): void {
                 tickerCell.className = 'px-4 py-2 text-blue-600 dark:text-blue-400 font-bold cursor-pointer hover:underline';
                 tickerCell.style.cursor = 'pointer';
 
-                // Generate logo HTML with fallback
+                // Create logo image using shared helper function (always create for consistent alignment)
                 const logoUrl = (row as any)._logo_url || '';
-                const baseTicker = row.ticker.replace(/\.(TO|V|CN|TSX|TSXV)$/i, '');
-                if (logoUrl) {
-                    const img = document.createElement('img');
-                    img.src = logoUrl;
-                    img.alt = row.ticker;
-                    img.className = 'inline-block w-6 h-6 mr-2 object-contain rounded';
-                    img.style.verticalAlign = 'middle';
-                    let fallbackAttempted = false;
-                    img.onerror = function () {
-                        if (fallbackAttempted) {
-                            // Already tried fallback, use transparent placeholder for alignment
-                            // Use a transparent 24x24 SVG placeholder to maintain spacing
-                            img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
-                            img.alt = '';
-                            img.onerror = null;
-                            return;
-                        }
-
-                        // Mark that we've attempted fallback
-                        fallbackAttempted = true;
-
-                        // Clean ticker for fallback: remove spaces
-                        const cleanTicker = baseTicker.replace(/\s+/g, '');
-                        const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
-                        if (img.src !== yahooUrl) {
-                            img.src = yahooUrl;
-                        } else {
-                            // Same URL, use transparent placeholder for alignment
-                            img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
-                            img.alt = '';
-                            img.onerror = null;
-                        }
-                    };
-                    tickerCell.appendChild(img);
-                }
+                const img = createLogoElement(row.ticker, logoUrl);
+                tickerCell.appendChild(img);
 
                 const tickerLink = document.createElement('a');
                 tickerLink.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
@@ -1921,43 +1926,10 @@ function renderMovers(data: MoversData): void {
             const fiveDayColor = getPnlColor(item.five_day_pnl);
             const totalColor = getPnlColor(item.total_pnl);
 
-            // Create logo image programmatically (like AG Grid renderer) to ensure error handler is attached before load
-            const logoUrl = item._logo_url || '';
-            const cleanTicker = item.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
-            const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+            // Create logo image using shared helper function
+            const logoImg = createLogoElement(item.ticker, item._logo_url || '');
             const escapedTicker = item.ticker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             const escapedCompanyName = (item.company_name || item.ticker).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-
-            // Create image element and set up error handler before setting src
-            const logoImg = document.createElement('img');
-            logoImg.className = 'inline-block w-6 h-6 mr-2 object-contain rounded';
-            logoImg.style.verticalAlign = 'middle';
-            logoImg.alt = item.ticker;
-
-            // Set up error handler BEFORE setting src
-            let fallbackAttempted = false;
-            logoImg.onerror = function () {
-                if (fallbackAttempted) {
-                    this.src = placeholder;
-                    this.onerror = null;
-                    return;
-                }
-                fallbackAttempted = true;
-                const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
-                if (this.src !== yahooUrl) {
-                    this.src = yahooUrl;
-                } else {
-                    this.src = placeholder;
-                    this.onerror = null;
-                }
-            };
-
-            // Now set the src (error handler is already attached)
-            if (logoUrl) {
-                logoImg.src = logoUrl;
-            } else {
-                logoImg.src = placeholder;
-            }
 
             // Use font-mono for numerical columns to ensure alignment
             const tickerCell = document.createElement('td');

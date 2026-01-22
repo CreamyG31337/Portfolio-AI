@@ -23,6 +23,7 @@ from flask_data_utils import (
     calculate_portfolio_value_over_time_flask as calculate_portfolio_value_over_time,
     get_biggest_movers_flask as get_biggest_movers
 )
+from web_dashboard.utils.logo_utils import get_ticker_logo_urls
 
 logger = logging.getLogger(__name__)
 
@@ -882,7 +883,6 @@ def get_holdings_data():
         logo_urls_map = {}
         if unique_tickers:
             try:
-                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
                 logo_urls_map = get_ticker_logo_urls(unique_tickers)
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
@@ -1008,7 +1008,6 @@ def get_recent_activity():
         logo_urls_map = {}
         if unique_tickers:
             try:
-                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
                 logo_urls_map = get_ticker_logo_urls(unique_tickers)
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
@@ -1120,7 +1119,6 @@ def get_dividend_data():
         logo_urls_map = {}
         if unique_tickers:
             try:
-                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
                 logo_urls_map = get_ticker_logo_urls(unique_tickers)
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
@@ -1428,7 +1426,6 @@ def get_movers_data():
         unique_tickers = list(set(all_tickers))
         if unique_tickers:
             try:
-                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
                 logo_urls_map = get_ticker_logo_urls(unique_tickers)
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
