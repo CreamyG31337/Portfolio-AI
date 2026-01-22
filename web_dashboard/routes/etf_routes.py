@@ -520,9 +520,6 @@ def etf_holdings():
     # For specific ETF, we want dates for that ETF only
     available_dates = get_available_dates(db_client, selected_etf if selected_etf != "All ETFs" else None)
     
-    # DEBUG: Log navigation data
-    logger.warning(f"DATE NAV DEBUG: as_of_date={as_of_date}, available_dates count={len(available_dates) if available_dates else 0}, first 5={available_dates[:5] if available_dates else []}")
-    
     # Calculate previous and next dates AFTER we have as_of_date from data fetching
     if as_of_date and available_dates:
         # Convert available_dates to date objects if they're strings

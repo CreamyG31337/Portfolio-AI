@@ -42,10 +42,56 @@
     </p>
 </div>
 
+<!-- Summary Stats (Always visible when stats exist) -->
+{% if stats %}
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="bg-dashboard-background rounded-lg p-3">
+            <div class="text-xs text-text-secondary uppercase font-bold">Data Date</div>
+            <div class="text-lg font-bold text-text-primary">{{ as_of_date or current_date }}</div>
+        </div>
+        <div class="bg-dashboard-background rounded-lg p-3">
+            <div class="text-xs text-text-secondary uppercase font-bold">Total Changes</div>
+            <div class="text-lg font-bold text-text-primary">{{ stats.total_changes }}</div>
+        </div>
+        <div class="bg-theme-success-bg rounded-lg p-3 border-l-4 border-theme-success-text">
+            <div class="text-xs text-theme-success-text uppercase font-bold">Bullish (BUY)</div>
+            <div class="text-lg font-bold text-theme-success-text">{{ stats.bullish_count }}</div>
+        </div>
+        <div class="bg-theme-error-bg rounded-lg p-3 border-l-4 border-theme-error-text">
+            <div class="text-xs text-theme-error-text uppercase font-bold">Bearish (SELL)</div>
+            <div class="text-lg font-bold text-theme-error-text">{{ stats.bearish_count }}</div>
+        </div>
+        <div class="bg-dashboard-background rounded-lg p-3">
+            <div class="text-xs text-text-secondary uppercase font-bold">ETFs Tracked</div>
+            <div class="text-lg font-bold text-text-primary">{{ stats.total_etfs }}</div>
+        </div>
+    </div>
+    {% if stats.largest_buy or stats.largest_sell %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-border">
+        {% if stats.largest_buy %}
+        <div class="text-sm text-text-primary">
+            <span class="text-theme-success-text font-bold">🟢 Largest Buy:</span>
+            {{ stats.largest_buy.ticker }} ({{ stats.largest_buy.etf }})
+            <span class="font-mono bg-theme-success-bg px-1 rounded text-theme-success-text">+{{ stats.largest_buy.change | int }}</span> shares
+        </div>
+        {% endif %}
+        {% if stats.largest_sell %}
+        <div class="text-sm text-text-primary">
+            <span class="text-theme-error-text font-bold">🔴 Largest Sell:</span>
+            {{ stats.largest_sell.ticker }} ({{ stats.largest_sell.etf }})
+            <span class="font-mono bg-theme-error-bg px-1 rounded text-theme-error-text">{{ stats.largest_sell.change | int }}</span> shares
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
 <!-- Filters -->
 <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
     <form id="filters-form" action="/etf_holdings" method="GET" class="space-y-4">
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <!-- ETF Filter -->
             <div>
                 <label class="block mb-2 text-sm font-medium text-text-primary">ETF</label>
@@ -169,26 +215,12 @@
                             </label>
                             {% endfor %}
                         </div>
-                        <div class="p-2 border-t border-border flex justify-end">
-                            <button type="button"
-                                class="text-xs text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 px-3 py-1 rounded transition-colors duration-200"
-                                onclick="updateFilters()">
-                                Apply
-                            </button>
-                        </div>
                     </div>
                 </div>
                 <!-- Hidden input to store selected funds for form submit -->
                 <input type="hidden" name="fund" id="fund-input" value="{{ current_fund }}">
             </div>
 
-            <!-- Apply Filters Button -->
-            <div class="flex items-end">
-                <button type="button" onclick="updateFilters()"
-                    class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 w-full text-center transition-colors duration-200">
-                    <i class="fas fa-filter mr-2"></i>Apply Filters
-                </button>
-            </div>
         </div>
     </form>
 </div>
@@ -203,58 +235,6 @@
             current_etf }}</h4>
         <p class="text-xs text-theme-success-text/80">Held in: {{ etf_ownership.funds }}</p>
     </div>
-</div>
-{% endif %}
-
-<!-- Summary Stats (Only for Changes View) -->
-{% if view_mode == 'changes' and stats %}
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
-    <h2 class="text-xl font-bold mb-4 text-text-primary">📊 Summary Statistics</h2>
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div class="bg-dashboard-background rounded-lg p-4">
-            <div class="text-xs text-text-secondary uppercase font-bold">Latest Update</div>
-            <div class="text-lg font-bold text-text-primary">{{ current_date }}</div>
-        </div>
-        <div class="bg-dashboard-background rounded-lg p-4">
-            <div class="text-xs text-text-secondary uppercase font-bold">Total Changes</div>
-            <div class="text-lg font-bold text-text-primary">{{ stats.total_changes }}</div>
-        </div>
-        <div class="bg-theme-success-bg rounded-lg p-4 border-l-4 border-theme-success-text">
-            <div class="text-xs text-theme-success-text uppercase font-bold">Bullish (BUY)</div>
-            <div class="text-lg font-bold text-theme-success-text">{{ stats.bullish_count }}</div>
-        </div>
-        <div class="bg-theme-error-bg rounded-lg p-4 border-l-4 border-theme-error-text">
-            <div class="text-xs text-theme-error-text uppercase font-bold">Bearish (SELL)</div>
-            <div class="text-lg font-bold text-theme-error-text">{{ stats.bearish_count }}</div>
-        </div>
-        <div class="bg-dashboard-background rounded-lg p-4">
-            <div class="text-xs text-text-secondary uppercase font-bold">ETFs Tracked</div>
-            <div class="text-lg font-bold text-text-primary">{{ stats.total_etfs }}</div>
-        </div>
-    </div>
-
-    {% if stats.largest_buy or stats.largest_sell %}
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-border">
-        {% if stats.largest_buy %}
-        <div class="text-sm text-text-primary">
-            <span class="text-theme-success-text font-bold">🟢 Largest Buy:</span>
-            {{ stats.largest_buy.ticker }} ({{ stats.largest_buy.etf }})
-            <span class="font-mono bg-theme-success-bg px-1 rounded text-theme-success-text">+{{
-                stats.largest_buy.change | int
-                }}</span> shares
-        </div>
-        {% endif %}
-        {% if stats.largest_sell %}
-        <div class="text-sm text-text-primary">
-            <span class="text-theme-error-text font-bold">🔴 Largest Sell:</span>
-            {{ stats.largest_sell.ticker }} ({{ stats.largest_sell.etf }})
-            <span class="font-mono bg-theme-error-bg px-1 rounded text-theme-error-text">{{ stats.largest_sell.change |
-                int
-                }}</span> shares
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
 </div>
 {% endif %}
 

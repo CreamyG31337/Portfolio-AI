@@ -461,6 +461,9 @@ function updateEtfGridTheme(): void {
             if (hiddenInput) hiddenInput.value = selected.join(',');
         }
     }
+    
+    // Auto-submit the form when fund selection changes
+    (window as any).updateFilters();
 };
 
 // Update Filters function - submits the form to apply filters
