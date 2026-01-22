@@ -497,7 +497,7 @@
 <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
 <script>
     // Pass initial data from backend if needed, or just let JS fetch it
-    const INITIAL_FUND = "{{ initial_fund }}";
+    const INITIAL_FUND = {{ initial_fund|tojson }};
     console.log('[Dashboard] Script block loaded, INITIAL_FUND:', INITIAL_FUND);
 
     function toggleDividendLog(btn) {

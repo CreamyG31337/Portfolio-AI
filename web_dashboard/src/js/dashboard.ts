@@ -728,11 +728,7 @@ function initGrid(): void {
             autoHeaderHeight: true
         },
         rowData: [],
-        animateRows: true,
-        // Default sort by weight descending (matching console app)
-        sortModel: [
-            { field: 'weight', sort: 'desc' }
-        ]
+        animateRows: true
     };
 
     // agGrid is loaded from CDN and available globally
@@ -760,6 +756,14 @@ function initGrid(): void {
             const gridApi = agGrid.createGrid(gridEl, gridOptions);
             if (gridApi && typeof gridApi.setRowData === 'function') {
                 state.gridApi = gridApi;
+                // Set default sort by weight descending (matching console app)
+                // AG Grid v31+ uses applyColumnState instead of sortModel
+                if (typeof gridApi.applyColumnState === 'function') {
+                    gridApi.applyColumnState({
+                        state: [{ colId: 'weight', sort: 'desc' }],
+                        defaultState: { sort: null }
+                    });
+                }
                 console.log('[Dashboard] AG Grid initialized with createGrid()', {
                     has_api: !!state.gridApi,
                     has_setRowData: typeof state.gridApi.setRowData === 'function',
@@ -1378,12 +1382,17 @@ async function fetchActivity(): Promise<void> {
                 const logoUrl = row._logo_url || '';
                 const cleanTicker = row.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
                 const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
-                const logoHtml = `<img src="${logoUrl || placeholder}" alt="${row.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.src='${placeholder}';}}else{this.src='${placeholder}';}" />`;
+                // Escape ticker for use in HTML attributes
+                const escapedTicker = row.ticker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                const escapedCleanTicker = cleanTicker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                const escapedLogoUrl = (logoUrl || placeholder).replace(/"/g, '&quot;');
+                // Use data attributes and event listener instead of inline onerror to avoid XSS
+                const logoHtml = `<img src="${escapedLogoUrl}" alt="${escapedTicker}" data-ticker="${escapedCleanTicker}" data-placeholder="${placeholder}" class="inline-block w-6 h-6 mr-2 object-contain rounded activity-logo" style="vertical-align: middle;" />`;
 
                 tr.innerHTML = `
                      <td class="px-6 py-4 whitespace-nowrap">${row.date}</td>
                      <td class="px-6 py-4 font-bold text-blue-600 dark:text-blue-400">
-                         ${logoHtml}<a href="/ticker?ticker=${row.ticker}" class="hover:underline">${row.ticker}</a>
+                         ${logoHtml}<a href="/ticker?ticker=${escapedTicker}" class="hover:underline">${row.ticker}</a>
                      </td>
                      <td class="px-6 py-4 text-gray-700 dark:text-gray-300">${companyName}</td>
                      <td class="px-6 py-4">${actionBadge}</td>
@@ -1392,6 +1401,33 @@ async function fetchActivity(): Promise<void> {
                      <td class="px-6 py-4 text-right format-currency font-medium">${formatMoney(displayAmount)}</td>
                 `;
                 tbody.appendChild(tr);
+                
+                // Add error handler for logo image (after appending to DOM)
+                const logoImg = tr.querySelector('.activity-logo') as HTMLImageElement;
+                if (logoImg) {
+                    let fallbackAttempted = false;
+                    logoImg.addEventListener('error', function() {
+                        if (fallbackAttempted) {
+                            this.src = placeholder;
+                            this.onerror = null;
+                            return;
+                        }
+                        fallbackAttempted = true;
+                        const ticker = this.getAttribute('data-ticker');
+                        if (ticker) {
+                            const fallback = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+                            if (this.src !== fallback) {
+                                this.src = fallback;
+                            } else {
+                                this.src = placeholder;
+                                this.onerror = null;
+                            }
+                        } else {
+                            this.src = placeholder;
+                            this.onerror = null;
+                        }
+                    });
+                }
             });
         }
         hideSpinner('activity-table-spinner');
@@ -1861,14 +1897,20 @@ function renderMovers(data: MoversData): void {
             const logoUrl = item._logo_url || '';
             const cleanTicker = item.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
             const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
-            const logoHtml = `<img src="${logoUrl || placeholder}" alt="${item.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.src='${placeholder}';}}else{this.src='${placeholder}';}" />`;
+            // Escape ticker for use in HTML attributes
+            const escapedTicker = item.ticker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const escapedCleanTicker = cleanTicker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const escapedLogoUrl = (logoUrl || placeholder).replace(/"/g, '&quot;');
+            const escapedCompanyName = (item.company_name || item.ticker).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            // Use data attributes and event listener instead of inline onerror to avoid XSS
+            const logoHtml = `<img src="${escapedLogoUrl}" alt="${escapedTicker}" data-ticker="${escapedCleanTicker}" data-placeholder="${placeholder}" class="inline-block w-6 h-6 mr-2 object-contain rounded movers-logo" style="vertical-align: middle;" />`;
 
             // Use font-mono for numerical columns to ensure alignment
             tr.innerHTML = `
                 <td class="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">
-                    ${logoHtml}<a href="/ticker?ticker=${item.ticker}" class="hover:underline">${item.ticker}</a>
+                    ${logoHtml}<a href="/ticker?ticker=${escapedTicker}" class="hover:underline">${item.ticker}</a>
                 </td>
-                <td class="px-4 py-3 truncate max-w-[150px]" title="${item.company_name || item.ticker}">${item.company_name || item.ticker}</td>
+                <td class="px-4 py-3 truncate max-w-[150px]" title="${escapedCompanyName}">${item.company_name || item.ticker}</td>
                 <td class="px-4 py-3 text-right font-mono ${dayColor}">${formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency)}</td>
                 <td class="px-4 py-3 text-right font-mono ${fiveDayColor}">${formatMergedPnl(item.five_day_pnl, item.five_day_pnl_pct, data.display_currency)}</td>
                 <td class="px-4 py-3 text-right font-mono ${totalColor}">${formatMergedPnl(item.total_pnl, item.total_return_pct, data.display_currency)}</td>
@@ -1876,6 +1918,33 @@ function renderMovers(data: MoversData): void {
                 <td class="px-4 py-3 text-right font-mono font-medium">${formatMoney(item.market_value || 0, data.display_currency)}</td>
             `;
             tbody.appendChild(tr);
+            
+            // Add error handler for logo image (after appending to DOM)
+            const logoImg = tr.querySelector('.movers-logo') as HTMLImageElement;
+            if (logoImg) {
+                let fallbackAttempted = false;
+                logoImg.addEventListener('error', function() {
+                    if (fallbackAttempted) {
+                        this.src = placeholder;
+                        this.onerror = null;
+                        return;
+                    }
+                    fallbackAttempted = true;
+                    const ticker = this.getAttribute('data-ticker');
+                    if (ticker) {
+                        const fallback = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+                        if (this.src !== fallback) {
+                            this.src = fallback;
+                        } else {
+                            this.src = placeholder;
+                            this.onerror = null;
+                        }
+                    } else {
+                        this.src = placeholder;
+                        this.onerror = null;
+                    }
+                });
+            }
         });
     };
 
