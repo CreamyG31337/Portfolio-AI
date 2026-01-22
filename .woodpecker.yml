@@ -73,7 +73,7 @@ steps:
       - pip install --quiet --upgrade pip
       - pip install --quiet -r requirements.txt
       - pip install --quiet ruff mypy
-      - echo Running Ruff linter (core application files only)
+      - echo "Running Ruff linter (core application files only)"
       - |
         set +e
         ruff check portfolio/ financial/ utils/ tests/ web_dashboard/app.py web_dashboard/settings.py web_dashboard/routes/ web_dashboard/signals/ --exclude web_dashboard/scripts --exclude web_dashboard/debug --exclude web_dashboard/test_files --exclude web_dashboard/scheduler --exclude web_dashboard/pages --exclude web_dashboard/schema --output-format=concise
