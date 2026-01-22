@@ -52,7 +52,7 @@ RUN echo "=== TypeScript Compilation Starting ===" && \
     echo "=== Full TypeScript Error Output ===" && \
     exit 1) && \
     echo "=== TypeScript Compilation Successful ===" && \
-    ls -lh static/js/settings.js static/js/theme.js static/js/chart_theme_utils.js static/js/congress_trades.js static/js/ticker_details.js static/js/ai_assistant.js static/js/jobs.js static/js/system.js || \
+    ls -lh static/js/dashboard.js static/js/settings.js static/js/theme.js static/js/chart_theme_utils.js static/js/congress_trades.js static/js/ticker_details.js static/js/ai_assistant.js static/js/jobs.js static/js/system.js || \
     (echo "ERROR: TypeScript build failed - output files not found" && exit 1)
 
 # Stage 2: Python app
