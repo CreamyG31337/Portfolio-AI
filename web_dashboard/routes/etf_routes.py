@@ -286,6 +286,7 @@ def get_holdings_changes(
             curr_df['share_change'] = curr_df['shares_held']  # All shares are "new"
             curr_df['percent_change'] = 100.0  # 100% change (new position)
             curr_df['action'] = 'BUY'  # Mark as BUY so they appear in changes view
+            # Date is already set from the database query - don't overwrite it
         else:
             date_groups = {}
             for etf, prev_date in prev_dates_by_etf.items():
@@ -349,10 +350,22 @@ def get_holdings_changes(
                 curr_df['share_change'] = curr_df['shares_held']  # All shares are "new"
                 curr_df['percent_change'] = 100.0  # 100% change (new position)
                 curr_df['action'] = 'BUY'  # Mark as BUY so they appear in changes view
+                # Date is already set from the database query - don't overwrite it
         
         curr_df = curr_df.rename(columns={'shares_held': 'current_shares'})
-        # Ensure date is set for merged rows (outer merge can introduce NaN dates)
-        if as_of_date:
+        # Ensure date is set for ALL rows - use the actual date from the holdings data
+        # The date column from the database query contains the actual date when each holding was recorded
+        # Outer merge can introduce NaN dates for rows that only existed in previous holdings (sold positions)
+        # In that case, fill with as_of_date (the date we observed they were sold)
+        if 'date' in curr_df.columns:
+            # Fill any NaN dates (from outer merge) with as_of_date
+            if curr_df['date'].isna().any() and as_of_date:
+                curr_df['date'] = curr_df['date'].fillna(as_of_date.isoformat())
+            # If all dates are NaN (shouldn't happen, but handle gracefully)
+            elif curr_df['date'].isna().all() and as_of_date:
+                curr_df['date'] = as_of_date.isoformat()
+        elif as_of_date:
+            # No date column at all (shouldn't happen, but handle gracefully)
             curr_df['date'] = as_of_date.isoformat()
         
         # Note: We show ALL changes on the web page (not just "significant" ones)

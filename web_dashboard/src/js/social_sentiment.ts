@@ -23,19 +23,15 @@ interface AgGridApi {
     getSelectedNodes(): AgGridNode[];
     sizeColumnsToFit(): void;
     setGridOption(option: string, value: any): void;
+    getColumnApi?: () => AgGridColumnApi;
 }
 
 interface AgGridColumnApi {
     // Column API methods if needed
 }
 
-interface AgGridGrid {
-    api: AgGridApi;
-    columnApi: AgGridColumnApi;
-}
-
 interface AgGridGlobal {
-    Grid: new (element: HTMLElement, options: AgGridOptions) => AgGridGrid;
+    createGrid: (element: HTMLElement, options: AgGridOptions) => AgGridApi;
 }
 
 interface AgGridOptions {
@@ -351,8 +347,7 @@ function initializeWatchlistGrid(data: WatchlistTicker[]): void {
     };
 
     const agGrid = (window as any).agGrid as AgGridGlobal;
-    const gridInstance = new agGrid.Grid(gridDiv, gridOptions);
-    watchlistGridApi = gridInstance.api;
+    watchlistGridApi = agGrid.createGrid(gridDiv, gridOptions);
 
     setTimeout(() => {
         autoSizeGridColumns(watchlistGridApi);
@@ -518,8 +513,7 @@ function initializeSentimentGrid(data: SentimentRow[]): void {
     };
 
     const agGrid = (window as any).agGrid as AgGridGlobal;
-    const gridInstance = new agGrid.Grid(gridDiv, gridOptions);
-    sentimentGridApi = gridInstance.api;
+    sentimentGridApi = agGrid.createGrid(gridDiv, gridOptions);
 
     setTimeout(() => {
         autoSizeGridColumns(sentimentGridApi);

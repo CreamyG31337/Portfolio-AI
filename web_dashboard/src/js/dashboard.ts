@@ -778,57 +778,11 @@ function initGrid(): void {
         }
     }
 
-    // Fallback to deprecated new Grid() constructor (v30 and earlier)
-    // This is the pattern used in congress_trades.ts which works
-    if (agGrid.Grid) {
-        console.log('[Dashboard] createGrid() not available or failed, falling back to new Grid()...');
-        try {
-            const gridInstance = new agGrid.Grid(gridEl, gridOptions);
-            console.log('[Dashboard] Grid instance created:', {
-                gridInstance,
-                has_api: !!gridInstance.api,
-                api_type: typeof gridInstance.api,
-                api_keys: gridInstance.api ? Object.keys(gridInstance.api).slice(0, 10) : []
-            });
-
-            // In v30, the API is on gridInstance.api
-            // In v31, createGrid returns the API directly
-            if (gridInstance && gridInstance.api) {
-                state.gridApi = gridInstance.api;
-                console.log('[Dashboard] AG Grid initialized with new Grid() (deprecated)', {
-                    has_api: !!state.gridApi,
-                    has_setRowData: typeof state.gridApi.setRowData === 'function',
-                    warning: 'Using deprecated new Grid() - consider upgrading to createGrid()'
-                });
-            } else {
-                // Try waiting a bit for the API to be available (sometimes it's set asynchronously)
-                setTimeout(() => {
-                    if (gridInstance && gridInstance.api) {
-                        state.gridApi = gridInstance.api;
-                        console.log('[Dashboard] Grid API available after delay:', {
-                            has_api: !!state.gridApi,
-                            has_setRowData: typeof state.gridApi.setRowData === 'function'
-                        });
-                    } else {
-                        console.error('[Dashboard] Grid instance created but API still not available after delay:', {
-                            gridInstance,
-                            has_api: gridInstance && !!gridInstance.api,
-                            gridInstance_keys: gridInstance ? Object.keys(gridInstance) : []
-                        });
-                    }
-                }, 100);
-            }
-        } catch (gridError) {
-            console.error('[Dashboard] Error creating grid with new Grid():', gridError);
-        }
-    } else {
-        console.error('[Dashboard] AG Grid API not found', {
-            agGrid_available: typeof agGrid !== 'undefined',
-            agGrid_keys: agGrid ? Object.keys(agGrid) : [],
-            has_createGrid: typeof agGrid.createGrid === 'function',
-            has_Grid: typeof agGrid.Grid !== 'undefined'
-        });
-    }
+    console.error('[Dashboard] AG Grid createGrid() not available', {
+        agGrid_available: typeof agGrid !== 'undefined',
+        agGrid_keys: agGrid ? Object.keys(agGrid) : [],
+        has_createGrid: typeof agGrid.createGrid === 'function'
+    });
 }
 
 async function refreshDashboard(): Promise<void> {

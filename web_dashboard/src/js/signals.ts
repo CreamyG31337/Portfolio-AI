@@ -354,9 +354,12 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         gridDiv.classList.add('ag-theme-alpine-dark');
     }
 
-    const gridInstance = new (window as any).agGrid.Grid(gridDiv, gridOptions);
-    signalsGridApi = gridInstance.api;
-    signalsGridColumnApi = gridInstance.columnApi;
+    const gridApiInstance = (window as any).agGrid.createGrid(gridDiv, gridOptions);
+    signalsGridApi = gridApiInstance;
+    signalsGridColumnApi =
+        typeof gridApiInstance.getColumnApi === "function"
+            ? gridApiInstance.getColumnApi()
+            : (gridApiInstance.columnApi ?? null);
 
     if (signalsGridApi && signalsGridColumnApi) {
         signalsGridApi.addEventListener('firstDataRendered', () => {

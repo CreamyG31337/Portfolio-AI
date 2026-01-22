@@ -27,6 +27,7 @@ interface AgGridApi {
     showLoadingOverlay(): void;
     hideOverlay(): void;
     applyTransaction(transaction: { add: CongressTrade[] }): void;
+    getColumnApi?: () => AgGridColumnApi;
 }
 
 interface AgGridColumnApi {
@@ -35,13 +36,8 @@ interface AgGridColumnApi {
     autoSizeColumns(colIds: string[], skipHeader?: boolean): void;
 }
 
-interface AgGridGrid {
-    api: AgGridApi;
-    columnApi: AgGridColumnApi;
-}
-
 interface AgGridGlobal {
-    Grid: new (element: HTMLElement, options: AgGridOptions) => AgGridGrid;
+    createGrid: (element: HTMLElement, options: AgGridOptions) => AgGridApi;
 }
 
 interface AgGridOptions {
@@ -902,9 +898,12 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     };
 
     // Create grid
-    const gridInstance = new window.agGrid.Grid(gridDiv, gridOptions);
-    gridApi = gridInstance.api;
-    gridColumnApi = gridInstance.columnApi;
+    const gridApiInstance = window.agGrid.createGrid(gridDiv, gridOptions);
+    gridApi = gridApiInstance;
+    gridColumnApi =
+        typeof gridApiInstance.getColumnApi === "function"
+            ? gridApiInstance.getColumnApi()
+            : ((gridApiInstance as any).columnApi ?? null);
     gridDiv.setAttribute('data-initialized', 'true');
 
     // Auto-size columns based on content
