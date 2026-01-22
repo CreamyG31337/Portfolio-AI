@@ -488,14 +488,15 @@ def get_ticker_info(
             """
             sentiment_data = postgres_client.execute_query(query, (ticker_upper,))
             
-            # Get extreme alerts (last 24 hours)
+            # Get extreme alerts (last 24 hours) - deduplicated by platform and sentiment_label
             query_alerts = """
-                SELECT ticker, platform, sentiment_label, sentiment_score, created_at
+                SELECT DISTINCT ON (platform, sentiment_label)
+                    ticker, platform, sentiment_label, sentiment_score, created_at
                 FROM social_metrics
                 WHERE ticker = %s
                   AND sentiment_label IN ('EUPHORIC', 'FEARFUL', 'BULLISH')
                   AND created_at > NOW() - INTERVAL '24 hours'
-                ORDER BY created_at DESC
+                ORDER BY platform, sentiment_label, created_at DESC
                 LIMIT 10
             """
             alerts = postgres_client.execute_query(query_alerts, (ticker_upper,))

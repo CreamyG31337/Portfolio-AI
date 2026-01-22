@@ -58,35 +58,55 @@ class TickerCellRenderer {
             const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
             const cacheKey = cleanTicker.toUpperCase();
 
-            if (logoUrl && !failedLogoCache.has(cacheKey)) {
-                const img = document.createElement('img');
+            // Always add logo image (or transparent placeholder) for consistent alignment
+            const img = document.createElement('img');
+            img.style.width = '24px';
+            img.style.height = '24px';
+            img.style.objectFit = 'contain';
+            img.style.borderRadius = '4px';
+            img.style.flexShrink = '0';
+
+            // Check if logo is already known to fail
+            if (failedLogoCache.has(cacheKey) || !logoUrl) {
+                // Use transparent placeholder for consistent spacing
+                img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                img.alt = '';
+            } else {
+                // Try to load logo
                 img.src = logoUrl;
                 img.alt = ticker;
-                img.style.width = '24px';
-                img.style.height = '24px';
-                img.style.objectFit = 'contain';
-                img.style.borderRadius = '4px';
-                img.style.flexShrink = '0';
+
+                // Handle image load errors gracefully - try fallback
                 let fallbackAttempted = false;
                 img.onerror = function () {
                     if (fallbackAttempted) {
+                        // Already tried fallback, use transparent placeholder for alignment
                         failedLogoCache.add(cacheKey);
-                        img.style.display = 'none';
+                        // Use a transparent 24x24 SVG placeholder to maintain spacing
+                        img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                        img.alt = '';
                         img.onerror = null;
                         return;
                     }
+
+                    // Mark that we've attempted fallback
                     fallbackAttempted = true;
+
+                    // Try Yahoo Finance as fallback if Parqet fails
                     const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
                         img.src = yahooUrl;
                     } else {
+                        // Same URL, use transparent placeholder for alignment
                         failedLogoCache.add(cacheKey);
-                        img.style.display = 'none';
+                        img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                        img.alt = '';
                         img.onerror = null;
                     }
                 };
-                this.eGui.appendChild(img);
             }
+            this.eGui.appendChild(img);
+
 
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
@@ -309,7 +329,9 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         defaultColDef: {
             sortable: true,
             filter: true,
-            resizable: true
+            resizable: true,
+            wrapHeaderText: true,
+            autoHeaderHeight: true
         },
         pagination: true,
         paginationPageSize: 50,
@@ -341,16 +363,6 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             setTimeout(() => {
                 autoSizeSignalsColumns();
             }, 300);
-        });
-
-        let resizeTimeout: number | null = null;
-        window.addEventListener('resize', () => {
-            if (resizeTimeout) {
-                clearTimeout(resizeTimeout);
-            }
-            resizeTimeout = window.setTimeout(() => {
-                autoSizeSignalsColumns();
-            }, 150);
         });
     }
 }

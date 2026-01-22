@@ -139,6 +139,11 @@ interface ErrorResponse {
 let currentTicker: string = '';
 let tickerList: string[] = [];
 
+// Congress trades pagination state
+let allCongressTrades: CongressTickerTrade[] = [];
+let congressTradesCurrentPage: number = 0;
+const congressTradesPerPage: number = 25;
+
 // Initialize page on load
 document.addEventListener('DOMContentLoaded', function (): void {
     // Get ticker from URL query parameter
@@ -343,48 +348,53 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
     if (tickerSymbol) tickerSymbol.textContent = basicInfo.ticker || '';
 
     // Display logo if available (larger size for ticker details page - 160px)
-    if (tickerLogo && basicInfo.logo_url) {
-        // Use higher resolution for larger display (size=256 instead of 64)
-        const largeLogoUrl = basicInfo.logo_url.replace('size=64', 'size=256');
+    if (tickerLogo) {
         const ticker = basicInfo.ticker || '';
-        
+        const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="256" height="256"%3E%3C/svg%3E';
+
         // Clear any existing error handlers and reset state
         tickerLogo.onerror = null;
         tickerLogo.onload = null;
-        
+
         // Set alt text
         tickerLogo.alt = `${ticker} logo`;
-        
-        // Handle image load errors gracefully - try fallback (matches dashboard pattern)
-        let fallbackAttempted = false;
-        tickerLogo.onerror = function () {
-            if (fallbackAttempted) {
-                // Already tried fallback, hide the image
-                tickerLogo.classList.add('hidden');
-                tickerLogo.onerror = null;
-                return;
-            }
 
-            // Mark that we've attempted fallback
-            fallbackAttempted = true;
+        if (basicInfo.logo_url) {
+            // Use higher resolution for larger display (size=256 instead of 64)
+            const largeLogoUrl = basicInfo.logo_url.replace('size=64', 'size=256');
 
-            // Try Yahoo Finance as fallback if Parqet fails
-            const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
-            if (tickerLogo.src !== yahooUrl) {
-                tickerLogo.src = yahooUrl;
-            } else {
-                // Same URL, hide immediately
-                tickerLogo.classList.add('hidden');
-                tickerLogo.onerror = null;
-            }
-        };
-        
-        // Set src AFTER error handler is attached - this is key!
-        // Also remove hidden class so image can load
-        tickerLogo.classList.remove('hidden');
-        tickerLogo.src = largeLogoUrl;
-    } else if (tickerLogo) {
-        tickerLogo.classList.add('hidden');
+            // Handle image load errors gracefully - try fallback (matches dashboard pattern)
+            let fallbackAttempted = false;
+            tickerLogo.onerror = function () {
+                if (fallbackAttempted) {
+                    // Already tried fallback, use transparent placeholder
+                    tickerLogo.src = placeholder;
+                    tickerLogo.onerror = null;
+                    return;
+                }
+
+                // Mark that we've attempted fallback
+                fallbackAttempted = true;
+
+                // Try Yahoo Finance as fallback if Parqet fails
+                const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
+                if (tickerLogo.src !== yahooUrl) {
+                    tickerLogo.src = yahooUrl;
+                } else {
+                    // Same URL, use placeholder
+                    tickerLogo.src = placeholder;
+                    tickerLogo.onerror = null;
+                }
+            };
+
+            // Set src AFTER error handler is attached
+            tickerLogo.classList.remove('hidden');
+            tickerLogo.src = largeLogoUrl;
+        } else {
+            // No logo URL provided, show placeholder
+            tickerLogo.classList.remove('hidden');
+            tickerLogo.src = placeholder;
+        }
     }
 
     if (sector) sector.textContent = basicInfo.sector || 'N/A';
@@ -428,8 +438,18 @@ async function renderExternalLinks(basicInfo: BasicInfo): Promise<void> {
             link.href = url;
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
-            link.className = 'block p-2 no-underline text-inherit rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors';
-            link.textContent = name;
+            link.className = 'flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-text-primary bg-dashboard-background border border-border rounded-lg hover:bg-dashboard-hover hover:text-accent hover:border-accent transition-colors duration-200';
+
+            // Create icon element
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-external-link-alt text-xs text-text-tertiary';
+
+            // Create text span
+            const text = document.createElement('span');
+            text.textContent = name;
+
+            link.appendChild(text);
+            link.appendChild(icon);
             grid.appendChild(link);
         });
 
@@ -812,21 +832,45 @@ function renderCongressTickerTrades(trades: CongressTickerTrade[]): void {
         return;
     }
 
+    // Store all trades for pagination
+    allCongressTrades = trades;
+    congressTradesCurrentPage = 0;
+
     const section = document.getElementById('congress-section');
     if (!section) return;
 
     section.classList.remove('hidden');
 
+    // Render the current page
+    renderCongressTradesPage();
+}
+
+// Render congress trades for current page
+function renderCongressTradesPage(): void {
+    if (!allCongressTrades || allCongressTrades.length === 0) {
+        return;
+    }
+
     const countEl = document.getElementById('congress-count');
-    if (countEl) countEl.textContent = `Found ${trades.length} trades by politicians`;
+    if (countEl) {
+        const totalPages = Math.ceil(allCongressTrades.length / congressTradesPerPage);
+        const start = (congressTradesCurrentPage * congressTradesPerPage) + 1;
+        const end = Math.min((congressTradesCurrentPage + 1) * congressTradesPerPage, allCongressTrades.length);
+        countEl.textContent = `Found ${allCongressTrades.length} trades by politicians (Showing ${start}-${end} of ${allCongressTrades.length})`;
+    }
 
     const tbody = document.getElementById('congress-tbody');
     if (!tbody) return;
 
     tbody.innerHTML = '';
 
-    // Show all trades (no limit since we're fetching all historical trades)
-    trades.forEach(trade => {
+    // Calculate pagination
+    const startIndex = congressTradesCurrentPage * congressTradesPerPage;
+    const endIndex = Math.min(startIndex + congressTradesPerPage, allCongressTrades.length);
+    const pageTrades = allCongressTrades.slice(startIndex, endIndex);
+
+    // Render trades for current page
+    pageTrades.forEach(trade => {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${formatDate(trade.transaction_date)}</td>
@@ -838,6 +882,130 @@ function renderCongressTickerTrades(trades: CongressTickerTrade[]): void {
         `;
         tbody.appendChild(row);
     });
+
+    // Render pagination controls
+    renderCongressTradesPagination();
+}
+
+// Render pagination controls for congress trades
+function renderCongressTradesPagination(): void {
+    const container = document.getElementById('congress-pagination');
+    if (!container) return;
+
+    const totalPages = Math.ceil(allCongressTrades.length / congressTradesPerPage);
+
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = '';
+
+    // Previous button
+    const prevLi = document.createElement('li');
+    prevLi.innerHTML = `
+        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${congressTradesCurrentPage === 0 ? 'pointer-events-none opacity-50' : ''}">
+            <span class="sr-only">Previous</span>
+            <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
+            </svg>
+        </a>
+    `;
+    prevLi.onclick = (e) => {
+        e.preventDefault();
+        if (congressTradesCurrentPage > 0) {
+            congressTradesCurrentPage--;
+            renderCongressTradesPage();
+        }
+    };
+    container.appendChild(prevLi);
+
+    // Page numbers
+    const maxVisiblePages = 7;
+    let startPage = Math.max(0, congressTradesCurrentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages - 1, startPage + maxVisiblePages - 1);
+
+    // Adjust start if we're near the end
+    if (endPage - startPage < maxVisiblePages - 1) {
+        startPage = Math.max(0, endPage - maxVisiblePages + 1);
+    }
+
+    // First page
+    if (startPage > 0) {
+        const firstLi = document.createElement('li');
+        firstLi.innerHTML = `
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary">1</a>
+        `;
+        firstLi.onclick = (e) => {
+            e.preventDefault();
+            congressTradesCurrentPage = 0;
+            renderCongressTradesPage();
+        };
+        container.appendChild(firstLi);
+
+        if (startPage > 1) {
+            const ellipsisLi = document.createElement('li');
+            ellipsisLi.innerHTML = `
+                <span class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">...</span>
+            `;
+            container.appendChild(ellipsisLi);
+        }
+    }
+
+    // Page number buttons
+    for (let i = startPage; i <= endPage; i++) {
+        const pageLi = document.createElement('li');
+        pageLi.innerHTML = `
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary ${i === congressTradesCurrentPage ? 'bg-accent text-white' : ''}">${i + 1}</a>
+        `;
+        pageLi.onclick = (e) => {
+            e.preventDefault();
+            congressTradesCurrentPage = i;
+            renderCongressTradesPage();
+        };
+        container.appendChild(pageLi);
+    }
+
+    // Last page
+    if (endPage < totalPages - 1) {
+        if (endPage < totalPages - 2) {
+            const ellipsisLi = document.createElement('li');
+            ellipsisLi.innerHTML = `
+                <span class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">...</span>
+            `;
+            container.appendChild(ellipsisLi);
+        }
+
+        const lastLi = document.createElement('li');
+        lastLi.innerHTML = `
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary">${totalPages}</a>
+        `;
+        lastLi.onclick = (e) => {
+            e.preventDefault();
+            congressTradesCurrentPage = totalPages - 1;
+            renderCongressTradesPage();
+        };
+        container.appendChild(lastLi);
+    }
+
+    // Next button
+    const nextLi = document.createElement('li');
+    nextLi.innerHTML = `
+        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${congressTradesCurrentPage >= totalPages - 1 ? 'pointer-events-none opacity-50' : ''}">
+            <span class="sr-only">Next</span>
+            <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 9 4-4-4-4"/>
+            </svg>
+        </a>
+    `;
+    nextLi.onclick = (e) => {
+        e.preventDefault();
+        if (congressTradesCurrentPage < totalPages - 1) {
+            congressTradesCurrentPage++;
+            renderCongressTradesPage();
+        }
+    };
+    container.appendChild(nextLi);
 }
 
 // Render watchlist status
@@ -924,7 +1092,7 @@ function renderSignals(signals: SignalAnalysis): void {
                 badgeClass += 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
                 break;
             case 'WATCH':
-                badgeClass += 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+                badgeClass += 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
                 break;
             default:
                 badgeClass += 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';

@@ -516,23 +516,33 @@ class TickerCellRenderer implements AgGridCellRenderer {
             const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
             const cacheKey = cleanTicker.toUpperCase();
 
-            // Add logo image if available and not in failed cache
-            if (logoUrl && !failedLogoCache.has(cacheKey)) {
-                const img = document.createElement('img');
+            // Always add logo image (or transparent placeholder) for consistent alignment
+            const img = document.createElement('img');
+            img.style.width = '24px';
+            img.style.height = '24px';
+            img.style.objectFit = 'contain';
+            img.style.borderRadius = '4px';
+            img.style.flexShrink = '0';
+
+            // Check if logo is already known to fail
+            if (failedLogoCache.has(cacheKey) || !logoUrl) {
+                // Use transparent placeholder for consistent spacing
+                img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                img.alt = '';
+            } else {
+                // Try to load logo
                 img.src = logoUrl;
                 img.alt = ticker;
-                img.style.width = '24px';
-                img.style.height = '24px';
-                img.style.objectFit = 'contain';
-                img.style.borderRadius = '4px';
-                img.style.flexShrink = '0';
+
                 // Handle image load errors gracefully - try fallback
                 let fallbackAttempted = false;
                 img.onerror = function () {
                     if (fallbackAttempted) {
-                        // Already tried fallback, add to cache and hide
+                        // Already tried fallback, use transparent placeholder for alignment
                         failedLogoCache.add(cacheKey);
-                        img.style.display = 'none';
+                        // Use a transparent 24x24 SVG placeholder to maintain spacing
+                        img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                        img.alt = '';
                         img.onerror = null;
                         return;
                     }
@@ -545,14 +555,16 @@ class TickerCellRenderer implements AgGridCellRenderer {
                     if (img.src !== yahooUrl) {
                         img.src = yahooUrl;
                     } else {
-                        // Same URL, add to cache and hide immediately
+                        // Same URL, use transparent placeholder for alignment
                         failedLogoCache.add(cacheKey);
-                        img.style.display = 'none';
+                        img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                        img.alt = '';
                         img.onerror = null;
                     }
                 };
-                this.eGui.appendChild(img);
             }
+
+            this.eGui.appendChild(img);
 
             // Add ticker text
             const tickerSpan = document.createElement('span');
@@ -711,7 +723,9 @@ function initGrid(): void {
         defaultColDef: {
             sortable: true,
             filter: true,
-            resizable: true
+            resizable: true,
+            wrapHeaderText: true,
+            autoHeaderHeight: true
         },
         rowData: [],
         animateRows: true,
@@ -1409,9 +1423,8 @@ async function fetchActivity(): Promise<void> {
                 // Generate logo HTML with fallback
                 const logoUrl = row._logo_url || '';
                 const cleanTicker = row.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
-                const logoHtml = logoUrl
-                    ? `<img src="${logoUrl}" alt="${row.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.style.display='none';}}else{this.style.display='none';}" />`
-                    : '';
+                const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                const logoHtml = `<img src="${logoUrl || placeholder}" alt="${row.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.src='${placeholder}';}}else{this.src='${placeholder}';}" />`;
 
                 tr.innerHTML = `
                      <td class="px-6 py-4 whitespace-nowrap">${row.date}</td>
@@ -1616,8 +1629,10 @@ function renderDividends(data: DividendData): void {
                     let fallbackAttempted = false;
                     img.onerror = function () {
                         if (fallbackAttempted) {
-                            // Already tried fallback, hide the image
-                            img.style.display = 'none';
+                            // Already tried fallback, use transparent placeholder for alignment
+                            // Use a transparent 24x24 SVG placeholder to maintain spacing
+                            img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                            img.alt = '';
                             img.onerror = null;
                             return;
                         }
@@ -1631,8 +1646,9 @@ function renderDividends(data: DividendData): void {
                         if (img.src !== yahooUrl) {
                             img.src = yahooUrl;
                         } else {
-                            // Same URL, hide immediately
-                            img.style.display = 'none';
+                            // Same URL, use transparent placeholder for alignment
+                            img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                            img.alt = '';
                             img.onerror = null;
                         }
                     };
@@ -1890,9 +1906,8 @@ function renderMovers(data: MoversData): void {
             // Generate logo HTML with fallback
             const logoUrl = item._logo_url || '';
             const cleanTicker = item.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
-            const logoHtml = logoUrl
-                ? `<img src="${logoUrl}" alt="${item.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.style.display='none';}}else{this.style.display='none';}" />`
-                : '';
+            const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+            const logoHtml = `<img src="${logoUrl || placeholder}" alt="${item.ticker}" class="inline-block w-6 h-6 mr-2 object-contain rounded" style="vertical-align: middle;" onerror="this.onerror=null; const fallback='https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png'; if(this.src!==fallback){this.src=fallback;this.onerror=function(){this.src='${placeholder}';}}else{this.src='${placeholder}';}" />`;
 
             // Use font-mono for numerical columns to ensure alignment
             tr.innerHTML = `
