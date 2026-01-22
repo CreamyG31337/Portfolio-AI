@@ -348,12 +348,18 @@ def api_admin_grant_admin():
         if not user_email:
             return jsonify({"error": "User email required"}), 400
         
+        # Use service role key for admin operations
+        service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")
+        if not service_key:
+            logger.error("Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+            return jsonify({"error": "Server configuration error"}), 500
+
         import requests
         response = requests.post(
             f"{os.getenv('SUPABASE_URL')}/rest/v1/rpc/grant_admin_role",
             headers={
-                "apikey": os.getenv("SUPABASE_ANON_KEY"),
-                "Authorization": f"Bearer {os.getenv('SUPABASE_ANON_KEY')}",
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
                 "Content-Type": "application/json"
             },
             json={"user_email": user_email}
@@ -392,12 +398,18 @@ def api_admin_revoke_admin():
         if not user_email:
             return jsonify({"error": "User email required"}), 400
         
+        # Use service role key for admin operations
+        service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")
+        if not service_key:
+            logger.error("Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+            return jsonify({"error": "Server configuration error"}), 500
+
         import requests
         response = requests.post(
             f"{os.getenv('SUPABASE_URL')}/rest/v1/rpc/revoke_admin_role",
             headers={
-                "apikey": os.getenv("SUPABASE_ANON_KEY"),
-                "Authorization": f"Bearer {os.getenv('SUPABASE_ANON_KEY')}",
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
                 "Content-Type": "application/json"
             },
             json={"user_email": user_email}
@@ -436,12 +448,18 @@ def api_admin_delete_user():
         if not user_email:
             return jsonify({"error": "User email required"}), 400
         
+        # Use service role key for admin operations
+        service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")
+        if not service_key:
+            logger.error("Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+            return jsonify({"error": "Server configuration error"}), 500
+
         import requests
         response = requests.post(
             f"{os.getenv('SUPABASE_URL')}/rest/v1/rpc/delete_user_safe",
             headers={
-                "apikey": os.getenv("SUPABASE_ANON_KEY"),
-                "Authorization": f"Bearer {os.getenv('SUPABASE_ANON_KEY')}",
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
                 "Content-Type": "application/json"
             },
             json={"user_email": user_email}
