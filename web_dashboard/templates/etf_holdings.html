@@ -215,6 +215,74 @@
         {% endif %}
     </div>
     <div id="etf-holdings-grid" class="ag-theme-alpine h-[600px] w-full"></div>
+    <div id="etf-holdings-fallback" class="mt-4">
+        {% if holdings_data and holdings_data|length > 0 %}
+            {% if view_mode == 'changes' %}
+                <div class="overflow-x-auto border border-border rounded-lg">
+                    <table class="min-w-full text-sm text-left text-text-primary">
+                        <thead class="bg-dashboard-background text-xs uppercase text-text-secondary">
+                            <tr>
+                                <th class="px-4 py-2">Date</th>
+                                <th class="px-4 py-2">ETF</th>
+                                <th class="px-4 py-2">Ticker</th>
+                                <th class="px-4 py-2">Name</th>
+                                <th class="px-4 py-2">Action</th>
+                                <th class="px-4 py-2">Change</th>
+                                <th class="px-4 py-2">% Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in holdings_data[:50] %}
+                            <tr class="border-t border-border">
+                                <td class="px-4 py-2">{{ row.date }}</td>
+                                <td class="px-4 py-2">{{ row.etf_ticker }}</td>
+                                <td class="px-4 py-2 font-semibold">{{ row.holding_ticker }}</td>
+                                <td class="px-4 py-2">{{ row.holding_name }}</td>
+                                <td class="px-4 py-2">{{ row.action }}</td>
+                                <td class="px-4 py-2">{{ row.share_change }}</td>
+                                <td class="px-4 py-2">{{ row.percent_change }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-xs text-text-secondary mt-2">
+                    Showing first {{ holdings_data|length if holdings_data|length < 50 else 50 }} rows.
+                </p>
+            {% else %}
+                <div class="overflow-x-auto border border-border rounded-lg">
+                    <table class="min-w-full text-sm text-left text-text-primary">
+                        <thead class="bg-dashboard-background text-xs uppercase text-text-secondary">
+                            <tr>
+                                <th class="px-4 py-2">Date</th>
+                                <th class="px-4 py-2">ETF</th>
+                                <th class="px-4 py-2">Ticker</th>
+                                <th class="px-4 py-2">Name</th>
+                                <th class="px-4 py-2">Shares</th>
+                                <th class="px-4 py-2">Weight %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in holdings_data[:50] %}
+                            <tr class="border-t border-border">
+                                <td class="px-4 py-2">{{ row.date }}</td>
+                                <td class="px-4 py-2">{{ row.etf_ticker }}</td>
+                                <td class="px-4 py-2 font-semibold">{{ row.holding_ticker }}</td>
+                                <td class="px-4 py-2">{{ row.holding_name }}</td>
+                                <td class="px-4 py-2">{{ row.current_shares }}</td>
+                                <td class="px-4 py-2">{{ row.weight_percent }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="text-center text-text-secondary py-6 border border-border rounded-lg">
+                No data available for the selected filters.
+            </div>
+        {% endif %}
+    </div>
 </div>
 
 {% endblock %}

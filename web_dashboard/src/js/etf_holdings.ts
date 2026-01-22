@@ -356,6 +356,11 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
     // gridColumnApi is deprecated in v31 - column API methods are now on the main grid API
     gridColumnApi = null; // Keep for compatibility but don't use
 
+    const fallbackTable = document.getElementById("etf-holdings-fallback");
+    if (fallbackTable) {
+        fallbackTable.classList.add("hidden");
+    }
+
     // Auto-size columns to fit container
     if (gridApi) {
         // Function to resize columns
