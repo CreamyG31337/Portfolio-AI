@@ -1382,16 +1382,16 @@ async function fetchActivity(): Promise<void> {
                 const logoUrl = row._logo_url || '';
                 const cleanTicker = row.ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
                 const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
-                
+
                 // Create image element and set up error handler before setting src
                 const logoImg = document.createElement('img');
                 logoImg.className = 'inline-block w-6 h-6 mr-2 object-contain rounded';
                 logoImg.style.verticalAlign = 'middle';
                 logoImg.alt = row.ticker;
-                
+
                 // Set up error handler BEFORE setting src
                 let fallbackAttempted = false;
-                logoImg.onerror = function() {
+                logoImg.onerror = function () {
                     if (fallbackAttempted) {
                         this.src = placeholder;
                         this.onerror = null;
@@ -1406,7 +1406,7 @@ async function fetchActivity(): Promise<void> {
                         this.onerror = null;
                     }
                 };
-                
+
                 // Now set the src (error handler is already attached)
                 if (logoUrl) {
                     logoImg.src = logoUrl;
@@ -1419,7 +1419,7 @@ async function fetchActivity(): Promise<void> {
                 dateCell.className = 'px-6 py-4 whitespace-nowrap';
                 dateCell.textContent = row.date;
                 tr.appendChild(dateCell);
-                
+
                 const tickerCell = document.createElement('td');
                 tickerCell.className = 'px-6 py-4 font-bold text-blue-600 dark:text-blue-400';
                 tickerCell.appendChild(logoImg);
@@ -1429,32 +1429,32 @@ async function fetchActivity(): Promise<void> {
                 tickerLink.textContent = row.ticker;
                 tickerCell.appendChild(tickerLink);
                 tr.appendChild(tickerCell);
-                
+
                 const companyCell = document.createElement('td');
                 companyCell.className = 'px-6 py-4 text-gray-700 dark:text-gray-300';
                 companyCell.textContent = companyName;
                 tr.appendChild(companyCell);
-                
+
                 const actionCell = document.createElement('td');
                 actionCell.className = 'px-6 py-4';
                 actionCell.innerHTML = actionBadge;
                 tr.appendChild(actionCell);
-                
+
                 const sharesCell = document.createElement('td');
                 sharesCell.className = 'px-6 py-4 text-right';
                 sharesCell.textContent = sharesFormatted;
                 tr.appendChild(sharesCell);
-                
+
                 const priceCell = document.createElement('td');
                 priceCell.className = 'px-6 py-4 text-right format-currency';
                 priceCell.textContent = formatMoney(row.price);
                 tr.appendChild(priceCell);
-                
+
                 const amountCell = document.createElement('td');
                 amountCell.className = 'px-6 py-4 text-right format-currency font-medium';
                 amountCell.textContent = formatMoney(displayAmount);
                 tr.appendChild(amountCell);
-                
+
                 tbody.appendChild(tr);
             });
         }
@@ -1927,16 +1927,16 @@ function renderMovers(data: MoversData): void {
             const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
             const escapedTicker = item.ticker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             const escapedCompanyName = (item.company_name || item.ticker).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-            
+
             // Create image element and set up error handler before setting src
             const logoImg = document.createElement('img');
             logoImg.className = 'inline-block w-6 h-6 mr-2 object-contain rounded';
             logoImg.style.verticalAlign = 'middle';
             logoImg.alt = item.ticker;
-            
+
             // Set up error handler BEFORE setting src
             let fallbackAttempted = false;
-            logoImg.onerror = function() {
+            logoImg.onerror = function () {
                 if (fallbackAttempted) {
                     this.src = placeholder;
                     this.onerror = null;
@@ -1951,7 +1951,7 @@ function renderMovers(data: MoversData): void {
                     this.onerror = null;
                 }
             };
-            
+
             // Now set the src (error handler is already attached)
             if (logoUrl) {
                 logoImg.src = logoUrl;
@@ -1969,38 +1969,38 @@ function renderMovers(data: MoversData): void {
             tickerLink.textContent = item.ticker;
             tickerCell.appendChild(tickerLink);
             tr.appendChild(tickerCell);
-            
+
             const companyCell = document.createElement('td');
             companyCell.className = 'px-4 py-3 truncate max-w-[150px]';
             companyCell.title = item.company_name || item.ticker;
             companyCell.textContent = item.company_name || item.ticker;
             tr.appendChild(companyCell);
-            
+
             const dayPnlCell = document.createElement('td');
             dayPnlCell.className = `px-4 py-3 text-right font-mono ${dayColor}`;
             dayPnlCell.textContent = formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency);
             tr.appendChild(dayPnlCell);
-            
+
             const fiveDayPnlCell = document.createElement('td');
             fiveDayPnlCell.className = `px-4 py-3 text-right font-mono ${fiveDayColor}`;
             fiveDayPnlCell.textContent = formatMergedPnl(item.five_day_pnl, item.five_day_pnl_pct, data.display_currency);
             tr.appendChild(fiveDayPnlCell);
-            
+
             const totalPnlCell = document.createElement('td');
             totalPnlCell.className = `px-4 py-3 text-right font-mono ${totalColor}`;
             totalPnlCell.textContent = formatMergedPnl(item.total_pnl, item.total_return_pct, data.display_currency);
             tr.appendChild(totalPnlCell);
-            
+
             const priceCell = document.createElement('td');
             priceCell.className = 'px-4 py-3 text-right font-mono';
             priceCell.textContent = formatMoney(item.current_price || 0, data.display_currency);
             tr.appendChild(priceCell);
-            
+
             const valueCell = document.createElement('td');
             valueCell.className = 'px-4 py-3 text-right font-mono font-medium';
             valueCell.textContent = formatMoney(item.market_value || 0, data.display_currency);
             tr.appendChild(valueCell);
-            
+
             tbody.appendChild(tr);
         });
     };
@@ -2489,3 +2489,4 @@ if (typeof window !== 'undefined') {
     (window as any).refreshDashboard = refreshDashboard;
     console.log('[Dashboard] refreshDashboard function exposed globally');
 }
+// Force rebuild: Fix missing logos by updating backend API

@@ -1002,6 +1002,16 @@ def get_recent_activity():
         if trades_df.empty:
             logger.warning(f"[Dashboard API] No trades found for activity - fund={fund}")
             return jsonify({"data": []})
+            
+        # Batch fetch logo URLs
+        unique_tickers = trades_df['ticker'].dropna().unique().tolist()
+        logo_urls_map = {}
+        if unique_tickers:
+            try:
+                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
+                logo_urls_map = get_ticker_logo_urls(unique_tickers)
+            except Exception as e:
+                logger.warning(f"Error fetching logo URLs: {e}")
         
         def infer_action(reason):
             """Infer action type from reason field (matching Streamlit logic)"""
@@ -1053,6 +1063,9 @@ def get_recent_activity():
             
             display_amount = calculate_display_amount(row, action)
             
+            # Get logo URL from map
+            logo_url = logo_urls_map.get(ticker)
+            
             data.append({
                 "date": date_str,
                 "ticker": ticker,
@@ -1063,7 +1076,8 @@ def get_recent_activity():
                 "price": price,
                 "pnl": float(pnl) if pnl is not None and not pd.isna(pnl) else None,
                 "amount": abs(float(row.get('amount', 0))),
-                "display_amount": display_amount
+                "display_amount": display_amount,
+                "_logo_url": logo_url
             })
             
         processing_time = time.time() - start_time
@@ -1100,6 +1114,17 @@ def get_dividend_data():
         dividend_list = fetch_dividend_log_flask(days_lookback=365, fund=fund)
         
         logger.info(f"[Dividend API] Fetched {len(dividend_list)} dividend records")
+
+        # Batch fetch logo URLs
+        unique_tickers = list(set(row.get('ticker') for row in dividend_list if row.get('ticker')))
+        logo_urls_map = {}
+        if unique_tickers:
+            try:
+                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
+                logo_urls_map = get_ticker_logo_urls(unique_tickers)
+            except Exception as e:
+                logger.warning(f"Error fetching logo URLs: {e}")
+
         
         # Prepare Log (for table) - already sorted by pay_date desc from query
         # Extract company_name from nested securities object (same as get_trade_log does)
@@ -1117,6 +1142,9 @@ def get_dividend_data():
             company_name = None
             if 'securities' in row and row['securities']:
                 company_name = row['securities'].get('company_name')
+
+            # Get logo URL from map
+            logo_url = logo_urls_map.get(ticker)
             
             log_data.append({
                 "date": pay_date if isinstance(pay_date, str) else str(pay_date),
@@ -1127,7 +1155,8 @@ def get_dividend_data():
                 "tax": gross_amt - net_amt,
                 "shares": reinvested,
                 "drip_price": drip_price,
-                "type": "DRIP" if reinvested > 0 else "CASH"
+                "type": "DRIP" if reinvested > 0 else "CASH",
+                "_logo_url": logo_url
             })
         
         logger.debug(f"[Dividend API] Processed {len(log_data)} records into log_data")
@@ -1354,7 +1383,7 @@ def get_movers_data():
         
         movers = get_biggest_movers(positions_df, display_currency, limit=limit)
         
-        def df_to_list(df):
+        def df_to_list(df, logo_map=None):
             if df.empty:
                 return []
             result = []
@@ -1363,6 +1392,9 @@ def get_movers_data():
                     "ticker": row.get('ticker', ''),
                     "company_name": row.get('company_name', row.get('ticker', '')),
                 }
+                if logo_map:
+                    item["_logo_url"] = logo_map.get(item["ticker"])
+
                 if 'daily_pnl_pct' in row:
                     item["daily_pnl_pct"] = float(row['daily_pnl_pct']) if pd.notna(row['daily_pnl_pct']) else None
                 elif 'return_pct' in row:
@@ -1384,8 +1416,26 @@ def get_movers_data():
                 result.append(item)
             return result
         
-        gainers = df_to_list(movers['gainers'])
-        losers = df_to_list(movers['losers'])
+        # Collect all tickers for logo fetching
+        all_tickers = []
+        if not movers['gainers'].empty:
+            all_tickers.extend(movers['gainers']['ticker'].dropna().unique().tolist())
+        if not movers['losers'].empty:
+            all_tickers.extend(movers['losers']['ticker'].dropna().unique().tolist())
+        
+        # Batch fetch logo URLs
+        logo_urls_map = {}
+        unique_tickers = list(set(all_tickers))
+        if unique_tickers:
+            try:
+                from web_dashboard.utils.logo_utils import get_ticker_logo_urls
+                logo_urls_map = get_ticker_logo_urls(unique_tickers)
+            except Exception as e:
+                logger.warning(f"Error fetching logo URLs: {e}")
+
+        gainers = df_to_list(movers['gainers'], logo_urls_map)
+        losers = df_to_list(movers['losers'], logo_urls_map)
+
         
         processing_time = time.time() - start_time
         logger.info(f"[Dashboard API] Movers data prepared - {len(gainers)} gainers, {len(losers)} losers, processing_time={processing_time:.3f}s")
