@@ -36,18 +36,23 @@ def get_ticker_logo_url(ticker: str) -> Optional[str]:
     if not ticker or ticker == 'N/A':
         return None
     
-    # Clean ticker (remove spaces and exchange suffixes for logo lookup)
+    # Clean ticker (remove spaces, but keep exchange suffixes for Parqet)
+    # Parqet requires the full ticker with suffix for Canadian tickers (e.g., DRX.TO)
+    # but also works with base ticker for US tickers (e.g., AAPL)
     clean_ticker = ticker.upper().strip().replace(' ', '')  # Remove spaces (e.g., "SYM UQ" -> "SYMUQ")
-    # Remove common exchange suffixes for logo lookup
-    # Logos are usually available for base ticker
-    # Handle Canadian tickers: XMA.TO -> XMA, NXT.V -> NXT, etc.
+    
+    # For Parqet: Use full ticker (with suffix if present)
+    # Testing shows Parqet needs full ticker for Canadian exchanges (DRX.TO works, DRX doesn't)
+    # But also works fine with US tickers without suffix (AAPL works)
+    parqet_ticker = clean_ticker
+    
+    # For Yahoo Finance fallback: Try base ticker (Yahoo typically doesn't have Canadian tickers with suffix)
+    # Extract base ticker for Yahoo fallback
     if '.' in clean_ticker:
-        # Split on last dot to handle multi-part suffixes
         parts = clean_ticker.rsplit('.', 1)
         if len(parts) == 2 and parts[1] in ('TO', 'V', 'CN', 'TSX', 'TSXV', 'NE', 'NEO'):
             base_ticker = parts[0]
         else:
-            # Not a recognized exchange suffix, use full ticker
             base_ticker = clean_ticker
     else:
         base_ticker = clean_ticker
@@ -55,12 +60,13 @@ def get_ticker_logo_url(ticker: str) -> Optional[str]:
     # PRIMARY: Parqet Logos API - free, no auth required, good coverage
     # Using size=64 for smaller file sizes (5-10KB vs 10-15KB for 100x100)
     # Stable URL pattern - no cache-busting, browser will cache effectively
-    parqet_url = f"https://assets.parqet.com/logos/symbol/{base_ticker}?format=png&size=64"
+    # IMPORTANT: Parqet requires full ticker with suffix for Canadian tickers (e.g., DRX.TO)
+    parqet_url = f"https://assets.parqet.com/logos/symbol/{parqet_ticker}?format=png&size=64"
     
     # FALLBACK: Yahoo Finance logo (via yimg.com) - also free
     # Format: https://logo.clearbit.com/{domain} or yahoo's internal logo service
     # Yahoo uses: https://s.yimg.com/cv/apiv2/default/images/logos/{ticker}.png
-    # Stable URL - browser caching will handle this
+    # Note: Yahoo typically uses base ticker (without suffix) for both US and Canadian
     yahoo_url = f"https://s.yimg.com/cv/apiv2/default/images/logos/{base_ticker}.png"
     
     # Return Parqet as primary (browser will handle 404s gracefully)
