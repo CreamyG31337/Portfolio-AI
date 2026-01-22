@@ -518,35 +518,56 @@ def etf_holdings():
         else:
             logger.info(f"Found {len(changes_df)} changes before filtering (date={selected_date}, as_of_date={as_of_date})")
         
-        # Filter out HOLD actions by default in changes view (only show actual changes)
-        # The checkbox "Show changes only" is checked by default - hide HOLD unless user unchecks it
-        if not changes_df.empty and changes_only:
-            # Hide HOLD actions (show only actual changes)
-            before_filter = len(changes_df)
-            changes_df = changes_df[changes_df['action'] != 'HOLD'].copy()
-            after_filter = len(changes_df)
-            if before_filter != after_filter:
-                logger.debug(f"Filtered out {before_filter - after_filter} HOLD actions, {after_filter} changes remaining")
-        
-        # Apply change type filter for changes view
-        if not changes_df.empty and change_type_filter != 'ALL':
-            if change_type_filter == 'NEW':
-                # New positions: BUY where previous_shares = 0
-                changes_df = changes_df[(changes_df['action'] == 'BUY') & (changes_df['previous_shares'] == 0)]
-            elif change_type_filter == 'SOLD':
-                # Sold positions: current_shares = 0 (completely sold)
-                changes_df = changes_df[changes_df['current_shares'] == 0]
-            elif change_type_filter == 'BUY':
-                # All buy actions (including new)
-                changes_df = changes_df[changes_df['action'] == 'BUY']
-            elif change_type_filter == 'SELL':
-                # All sell actions (including fully sold)
-                changes_df = changes_df[changes_df['action'] == 'SELL']
+        def apply_changes_filters(df: pd.DataFrame) -> pd.DataFrame:
+            if df.empty:
+                return df
+
+            # Filter out HOLD actions by default in changes view (only show actual changes)
+            # The checkbox "Show changes only" is checked by default - hide HOLD unless user unchecks it
+            if changes_only:
+                before_filter = len(df)
+                df = df[df['action'] != 'HOLD'].copy()
+                after_filter = len(df)
+                if before_filter != after_filter:
+                    logger.debug(f"Filtered out {before_filter - after_filter} HOLD actions, {after_filter} changes remaining")
+
+            # Apply change type filter for changes view
+            if change_type_filter != 'ALL':
+                if change_type_filter == 'NEW':
+                    # New positions: BUY where previous_shares = 0
+                    df = df[(df['action'] == 'BUY') & (df['previous_shares'] == 0)]
+                elif change_type_filter == 'SOLD':
+                    # Sold positions: current_shares = 0 (completely sold)
+                    df = df[df['current_shares'] == 0]
+                elif change_type_filter == 'BUY':
+                    # All buy actions (including new)
+                    df = df[df['action'] == 'BUY']
+                elif change_type_filter == 'SELL':
+                    # All sell actions (including fully sold)
+                    df = df[df['action'] == 'SELL']
+
+            return df
+
+        changes_df = apply_changes_filters(changes_df)
     
     # Get all available dates for navigation AFTER we have as_of_date
     # For "All ETFs", we want all dates across all ETFs (pass None)
     # For specific ETF, we want dates for that ETF only
     available_dates = get_available_dates(db_client, selected_etf if selected_etf != "All ETFs" else None)
+
+    # Fallback: if no changes found, try recent dates to ensure table shows data
+    if view_mode == "changes" and changes_df.empty and available_dates:
+        fallback_window = 7
+        fallback_dates = [d for d in available_dates if isinstance(d, date)]
+        for candidate_date in fallback_dates[:fallback_window]:
+            if candidate_date == selected_date:
+                continue
+            fallback_df, fallback_as_of = get_holdings_changes(db_client, candidate_date, None, selected_fund)
+            fallback_df = apply_changes_filters(fallback_df)
+            if not fallback_df.empty:
+                changes_df = fallback_df
+                as_of_date = fallback_as_of
+                break
     
     # Calculate previous and next dates AFTER we have as_of_date from data fetching
     if as_of_date and available_dates:

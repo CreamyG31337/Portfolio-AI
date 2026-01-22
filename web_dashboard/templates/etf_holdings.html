@@ -14,14 +14,6 @@
 
 {% block content %}
 
-<!-- Loading Overlay -->
-<div id="loading-overlay" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
-    <div class="bg-dashboard-surface rounded-lg p-6 flex flex-col items-center shadow-xl">
-        <div class="animate-spin rounded-full h-12 w-12 border-4 border-accent border-t-transparent mb-4"></div>
-        <p class="text-text-primary font-medium">Loading ETF data...</p>
-    </div>
-</div>
-
 {% if error %}
 <div class="bg-theme-error-bg border border-theme-error-text rounded-lg p-4 mb-6">
     <div class="flex">
@@ -211,6 +203,10 @@
             Latest Changes
             {% endif %}
         </h2>
+        <div id="latest-changes-loading" class="hidden items-center gap-2 text-sm text-text-secondary">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>Loading...</span>
+        </div>
         {% if as_of_date %}
         <div class="text-sm text-text-secondary">
             <i class="fas fa-calendar-check mr-1"></i>
@@ -233,12 +229,12 @@
 </script>
 
 <script>
-    // Show loading overlay
+    // Show loading spinner in Latest Changes section
     function showLoading() {
-        const overlay = document.getElementById('loading-overlay');
-        if (overlay) {
-            overlay.classList.remove('hidden');
-            overlay.classList.add('flex');
+        const spinner = document.getElementById('latest-changes-loading');
+        if (spinner) {
+            spinner.classList.remove('hidden');
+            spinner.classList.add('flex');
         }
     }
     
