@@ -3095,6 +3095,47 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
         logger.warning(f"Error fetching congress trades for chart: {e}")
         # Continue without congress trades if there's an error
     
+    # Fetch user trades for this ticker within the chart date range
+    user_trades = []
+    try:
+        start_date = (date.today() - timedelta(days=range_days)).isoformat()
+        end_date = date.today().isoformat()
+        
+        trade_result = supabase_client.supabase.table("trade_log")\
+            .select("*")\
+            .eq("ticker", ticker)\
+            .gte("date", start_date)\
+            .lte("date", end_date)\
+            .order("date", desc=True)\
+            .execute()
+        
+        if trade_result.data:
+            user_trades = trade_result.data
+    except Exception as e:
+        logger.warning(f"Error fetching user trades for chart: {e}")
+        # Continue without user trades if there's an error
+    
+    # Fetch ETF trades for this ticker within the chart date range
+    etf_trades = []
+    try:
+        start_date = (date.today() - timedelta(days=range_days)).isoformat()
+        end_date = date.today().isoformat()
+        
+        etf_result = supabase_client.supabase.rpc(
+            'get_etf_holding_trades',
+            {
+                'p_holding_ticker': ticker,
+                'p_start_date': start_date,
+                'p_end_date': end_date
+            }
+        ).execute()
+        
+        if etf_result.data:
+            etf_trades = etf_result.data
+    except Exception as e:
+        logger.warning(f"Error fetching ETF trades for chart: {e}")
+        # Continue without ETF trades if there's an error
+    
     # Create chart WITHOUT template - theme applied post-cache
     # Using theme=None tells create_ticker_price_chart to skip template embedding
     from chart_utils import create_ticker_price_chart
@@ -3106,7 +3147,9 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
         show_weekend_shading=True,
         use_solid_lines=use_solid,
         theme='light',  # Base theme, will be overridden
-        congress_trades=congress_trades  # NEW parameter
+        congress_trades=congress_trades,
+        user_trades=user_trades,
+        etf_trades=etf_trades
     )
     
     # Serialize with numpy array conversion for proper JSON encoding

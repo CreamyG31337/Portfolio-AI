@@ -74,6 +74,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/update_updated_at_column.sql
 \i functions/user_has_contributor_access.sql
 \i functions/user_has_fund_access.sql
+\i functions/get_etf_holding_trades.sql
 
 -- VIEWS
 \i views/congress_trades_enriched.sql

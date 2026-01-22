@@ -18,3 +18,5 @@ CREATE TABLE etf_holdings_log (
 CREATE INDEX idx_etf_holdings_date ON etf_holdings_log (date);
 CREATE INDEX idx_etf_holdings_etf ON etf_holdings_log (etf_ticker, date);
 CREATE INDEX idx_etf_holdings_ticker ON etf_holdings_log (holding_ticker);
+-- Composite index for "holding ticker over time" queries (used by get_etf_holding_trades)
+CREATE INDEX idx_ehl_holding_date ON etf_holdings_log (holding_ticker, date) INCLUDE (etf_ticker, shares_held);

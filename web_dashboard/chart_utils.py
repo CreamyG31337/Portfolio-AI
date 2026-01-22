@@ -1530,7 +1530,9 @@ def create_ticker_price_chart(
     use_solid_lines: bool = False,
     theme: str = 'system',
     market: str = 'us',
-    congress_trades: Optional[List[Dict[str, Any]]] = None
+    congress_trades: Optional[List[Dict[str, Any]]] = None,
+    user_trades: Optional[List[Dict[str, Any]]] = None,
+    etf_trades: Optional[List[Dict[str, Any]]] = None
 ) -> go.Figure:
     """Create a price history chart for an individual ticker with benchmark comparisons.
     
@@ -1543,6 +1545,8 @@ def create_ticker_price_chart(
         theme: User theme preference ('dark', 'light', or 'system'). Defaults to 'system'.
               Use 'dark' for dark mode, 'light' for light mode, or 'system' to default to light.
         congress_trades: Optional list of congress trade dictionaries to display as markers
+        user_trades: Optional list of user trade dictionaries (from trade_log) to display as markers
+        etf_trades: Optional list of ETF trade dictionaries (from get_etf_holding_trades) to display as markers
         
     Returns:
         Plotly Figure object
@@ -1654,62 +1658,129 @@ def create_ticker_price_chart(
         benchmark_total_time = time.time() - benchmark_start
         logger.info(f"⏱️ create_ticker_price_chart - All benchmarks: {benchmark_total_time:.2f}s")
     
-    # Add congress trades markers if provided
-    if congress_trades and len(df) > 0:
-        # Create date lookup for price values
-        date_to_price = dict(zip(df['date'], df['normalized']))
+    # Helper function to find closest price date
+    def find_closest_price_date(trade_date, df_dates, date_to_price, max_days=7):
+        """Find closest price date and return (closest_date, y_value) or None if too far."""
+        def date_diff(date_val):
+            date_normalized = pd.to_datetime(date_val).normalize()
+            return abs((date_normalized - trade_date).total_seconds())
         
+        closest_date = min(df_dates, key=date_diff)
+        closest_date_normalized = pd.to_datetime(closest_date).normalize()
+        days_diff = abs((closest_date_normalized - trade_date).days)
+        if days_diff > max_days:
+            return None
+        
+        y_value = date_to_price.get(closest_date, None)
+        return (closest_date, y_value) if y_value is not None else None
+    
+    # Create date lookup for price values (used by both congress and user trades)
+    date_to_price = dict(zip(df['date'], df['normalized'])) if len(df) > 0 else {}
+    
+    # Add user trades markers if provided (larger markers, different colors)
+    if user_trades and len(df) > 0:
+        for trade in user_trades:
+            trade_date_str = trade.get('date')
+            if not trade_date_str:
+                continue
+            
+            try:
+                trade_date = pd.to_datetime(trade_date_str).normalize()
+                result = find_closest_price_date(trade_date, df['date'], date_to_price)
+                if not result:
+                    continue
+                closest_date, y_value = result
+                
+                shares = float(trade.get('shares', 0))
+                reason = trade.get('reason', '').upper()
+                price = trade.get('price', 0)
+                fund = trade.get('fund', 'Unknown')
+                
+                # Determine trade type: DRIP/Dividend vs Buy vs Sell
+                is_dividend = 'DRIP' in reason or 'DIVIDEND' in reason
+                is_buy = shares > 0
+                
+                if is_dividend:
+                    color = '#9333ea'  # Purple for dividends
+                    symbol = 'star'
+                    trade_label = 'DRIP' if 'DRIP' in reason else 'Dividend'
+                    marker_size = 14
+                elif is_buy:
+                    color = '#16a34a'  # Bright green for user buys
+                    symbol = 'triangle-up'
+                    trade_label = 'Buy'
+                    marker_size = 16
+                else:
+                    color = '#dc2626'  # Bright red for user sells
+                    symbol = 'triangle-down'
+                    trade_label = 'Sell'
+                    marker_size = 16
+                
+                # Format date for display
+                display_date = pd.to_datetime(trade_date_str).strftime('%Y-%m-%d')
+                
+                fig.add_trace(go.Scatter(
+                    x=[closest_date],
+                    y=[y_value],
+                    mode='markers',
+                    name=f"My {trade_label}",
+                    marker=dict(
+                        size=marker_size,
+                        color=color,
+                        symbol=symbol,
+                        line=dict(width=2, color='white')
+                    ),
+                    hovertemplate=f'<b>My {trade_label}</b><br>' +
+                                f'Date: {display_date}<br>' +
+                                f'Shares: {abs(shares):,.4f}<br>' +
+                                f'Price: ${price:,.2f}<br>' +
+                                f'Fund: {fund}<extra></extra>',
+                    showlegend=False,
+                    legendgroup='user_trades'
+                ))
+            except Exception:
+                continue
+    
+    # Add congress trades markers if provided (smaller markers, muted colors)
+    if congress_trades and len(df) > 0:
         for trade in congress_trades:
             trade_date_str = trade.get('transaction_date')
             if not trade_date_str:
                 continue
             
             try:
-                # Parse and align trade date
                 trade_date = pd.to_datetime(trade_date_str).normalize()
-                
-                # Find closest price date (in case trade date doesn't match exactly)
-                # Convert df dates to normalized for comparison
-                def date_diff(date_val):
-                    date_normalized = pd.to_datetime(date_val).normalize()
-                    return abs((date_normalized - trade_date).total_seconds())
-                
-                closest_date = min(df['date'], key=date_diff)
-                closest_date_normalized = pd.to_datetime(closest_date).normalize()
-                days_diff = abs((closest_date_normalized - trade_date).days)
-                if days_diff > 7:  # Skip if more than 7 days away
+                result = find_closest_price_date(trade_date, df['date'], date_to_price)
+                if not result:
                     continue
-                
-                # Get price at that date
-                y_value = date_to_price.get(closest_date, df['normalized'].iloc[-1])
+                closest_date, y_value = result
                 
                 trade_type = trade.get('type', 'Unknown')
                 politician = trade.get('politician', 'Unknown')
                 amount = trade.get('amount', 'N/A')
                 chamber = trade.get('chamber', '')
                 
-                # Color based on trade type
+                # Muted colors for congress trades (smaller, less prominent)
                 if trade_type == 'Purchase':
-                    color = '#2ca02c'  # Green
-                    symbol = 'triangle-up'
+                    color = '#86efac'  # Light green (muted)
+                    symbol = 'diamond'
                 elif trade_type == 'Sale':
-                    color = '#d62728'  # Red
-                    symbol = 'triangle-down'
+                    color = '#fca5a5'  # Light red (muted)
+                    symbol = 'diamond'
                 else:
-                    color = '#9467bd'  # Purple
+                    color = '#c4b5fd'  # Light purple (muted)
                     symbol = 'diamond'
                 
-                # Add scatter marker
                 fig.add_trace(go.Scatter(
                     x=[closest_date],
                     y=[y_value],
                     mode='markers',
                     name=f"Congress {trade_type}",
                     marker=dict(
-                        size=12,
+                        size=10,  # Smaller than user trades
                         color=color,
                         symbol=symbol,
-                        line=dict(width=2, color='white')
+                        line=dict(width=1, color='#666666')
                     ),
                     hovertemplate=f'<b>Congress Trade</b><br>' +
                                 f'Date: {trade_date_str}<br>' +
@@ -1717,11 +1788,74 @@ def create_ticker_price_chart(
                                 f'Politician: {politician}<br>' +
                                 f'Chamber: {chamber}<br>' +
                                 f'Amount: {amount}<extra></extra>',
-                    showlegend=False,  # Don't clutter legend, just show on hover
+                    showlegend=False,
                     legendgroup='congress_trades'
                 ))
-            except Exception as e:
-                # Skip trades with invalid dates
+            except Exception:
+                continue
+    
+    # Add ETF trades markers if provided (hexagon markers, muted blue/orange colors)
+    if etf_trades and len(df) > 0:
+        for trade in etf_trades:
+            trade_date_str = trade.get('trade_date')
+            if not trade_date_str:
+                continue
+            
+            try:
+                trade_date = pd.to_datetime(trade_date_str).normalize()
+                result = find_closest_price_date(trade_date, df['date'], date_to_price)
+                if not result:
+                    continue
+                closest_date, y_value = result
+                
+                trade_type = trade.get('trade_type', 'Unknown')
+                etf_ticker = trade.get('etf_ticker', 'Unknown')
+                shares_change = trade.get('shares_change', 0)
+                shares_after = trade.get('shares_after', 0)
+                
+                # Convert numeric types from Postgres (may be Decimal strings)
+                try:
+                    shares_change = float(shares_change) if shares_change else 0
+                    shares_after = float(shares_after) if shares_after else 0
+                except (TypeError, ValueError):
+                    shares_change = 0
+                    shares_after = 0
+                
+                # Color scheme for ETF trades (distinct from user and congress trades)
+                if trade_type == 'Purchase':
+                    color = '#3b82f6'  # Blue for ETF buys
+                    symbol = 'hexagon'
+                elif trade_type == 'Sale':
+                    color = '#f97316'  # Orange for ETF sells
+                    symbol = 'hexagon'
+                else:
+                    color = '#a3a3a3'  # Gray for unknown
+                    symbol = 'hexagon'
+                
+                # Format shares for display
+                shares_display = f"{abs(shares_change):,.0f}" if abs(shares_change) >= 1 else f"{abs(shares_change):,.4f}"
+                shares_after_display = f"{shares_after:,.0f}" if shares_after >= 1 else f"{shares_after:,.4f}"
+                
+                fig.add_trace(go.Scatter(
+                    x=[closest_date],
+                    y=[y_value],
+                    mode='markers',
+                    name=f"ETF {trade_type}",
+                    marker=dict(
+                        size=12,  # Medium size (between user trades and congress trades)
+                        color=color,
+                        symbol=symbol,
+                        line=dict(width=1, color='white')
+                    ),
+                    hovertemplate=f'<b>ETF {trade_type}</b><br>' +
+                                f'Date: {trade_date_str}<br>' +
+                                f'ETF: {etf_ticker}<br>' +
+                                f'Shares Change: {shares_display}<br>' +
+                                f'Holdings After: {shares_after_display}<extra></extra>',
+                    showlegend=False,
+                    legendgroup='etf_trades'
+                ))
+            except Exception:
                 continue
     
     # Get theme configuration (ensure theme is never None)
