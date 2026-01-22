@@ -108,8 +108,7 @@ class TickerCellRenderer {
             tickerSpan.addEventListener('click', function (e) {
                 e.stopPropagation();
                 if (ticker && ticker !== 'N/A') {
-                    // Link to Streamlit page for now
-                    window.location.href = `/pages/ticker_details?ticker=${encodeURIComponent(ticker)}`;
+                    window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
                 }
             });
             this.eGui.appendChild(tickerSpan);
@@ -338,17 +337,16 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
             ? '<span style="padding: 20px; font-size: 14px; color: #666;">📭 No changes found for the selected date and filters. Try selecting a different date or change type.</span>'
             : '<span style="padding: 20px; font-size: 14px; color: #666;">📭 No holdings data available. This ETF may not have data for the selected date.</span>',
 
-        // Row styling: light backgrounds for BUY/SELL, gold highlight for positions we own
-        // Row styling using semantic classes
+        // Row styling: light backgrounds for BUY/SELL, border highlight for positions we own
         rowClassRules: {
-            // Priority 1: If we own it, use warning/info background (Gold/Amber)
-            'bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400': (params: any) => params.data && params.data.user_shares > 0,
+            // BUY = Success background
+            'bg-theme-success-bg/30': (params: any) => params.data && params.data.action === 'BUY',
 
-            // Priority 2: BUY = Success background
-            'bg-theme-success-bg/30': (params: any) => params.data && !params.data.user_shares && params.data.action === 'BUY',
+            // SELL = Error background
+            'bg-theme-error-bg/30': (params: any) => params.data && params.data.action === 'SELL',
 
-            // Priority 3: SELL = Error background
-            'bg-theme-error-bg/30': (params: any) => params.data && !params.data.user_shares && params.data.action === 'SELL'
+            // If we own it, add a subtle border highlight (without overriding buy/sell background)
+            'border-l-4 border-yellow-400': (params: any) => params.data && params.data.user_shares > 0
         }
     };
 
