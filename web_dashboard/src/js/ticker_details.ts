@@ -79,6 +79,15 @@ interface CongressTickerTrade {
     party?: string;
 }
 
+interface EtfHoldingTrade {
+    trade_date?: string;
+    etf_ticker?: string;
+    holding_ticker?: string;
+    trade_type?: string;
+    shares_change?: number;
+    shares_after?: number;
+}
+
 interface WatchlistStatus {
     is_active?: boolean;
     priority_tier?: string;
@@ -621,6 +630,9 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
 
         // Load price history for metrics
         loadPriceHistoryMetrics(ticker, range);
+
+        // Load ETF holding trades for table
+        loadEtfTrades(ticker, range);
     } catch (error) {
         console.error('Error loading chart:', error);
         // Hide loading indicator
@@ -632,6 +644,67 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
         const chartSection = document.getElementById('chart-section');
         if (chartSection) chartSection.classList.add('hidden');
     }
+}
+
+// Load ETF holding trades for table
+async function loadEtfTrades(ticker: string, range: string = '3m'): Promise<void> {
+    try {
+        const response = await fetch(`/api/v2/ticker/etf-trades?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}`, {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to load ETF trades (${response.status})`);
+        }
+
+        const data = await response.json();
+        renderEtfTrades((data && data.data) ? data.data : []);
+    } catch (error) {
+        console.error('Error loading ETF trades:', error);
+        renderEtfTrades([]);
+    }
+}
+
+function renderEtfTrades(trades: EtfHoldingTrade[]): void {
+    const section = document.getElementById('etf-trades-section');
+    const tbody = document.getElementById('etf-trades-tbody');
+    const emptyState = document.getElementById('etf-trades-empty');
+    const countEl = document.getElementById('etf-trades-count');
+
+    if (!section || !tbody || !emptyState || !countEl) return;
+
+    tbody.innerHTML = '';
+    const hasTrades = Array.isArray(trades) && trades.length > 0;
+
+    if (!hasTrades) {
+        section.classList.remove('hidden');
+        emptyState.classList.remove('hidden');
+        countEl.textContent = '0 records';
+        return;
+    }
+
+    emptyState.classList.add('hidden');
+    section.classList.remove('hidden');
+    countEl.textContent = `${trades.length} record${trades.length === 1 ? '' : 's'}`;
+
+    trades.forEach(trade => {
+        const row = document.createElement('tr');
+        const change = Number(trade.shares_change ?? 0);
+        const after = Number(trade.shares_after ?? 0);
+        const changeDecimals = Math.abs(change) >= 1 ? 0 : 4;
+        const afterDecimals = Math.abs(after) >= 1 ? 0 : 4;
+        const changeText = change >= 0 ? `+${formatNumber(change, changeDecimals)}` : formatNumber(change, changeDecimals);
+        const tradeType = trade.trade_type || 'N/A';
+
+        row.innerHTML = `
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatDate(trade.trade_date)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${trade.etf_ticker || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${tradeType}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">${changeText}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">${formatNumber(after, afterDecimals)}</td>
+        `;
+        tbody.appendChild(row);
+    });
 }
 
 // Load price history for metrics
@@ -1319,6 +1392,7 @@ function hideAllSections(): void {
         'external-links-section',
         'portfolio-section',
         'chart-section',
+        'etf-trades-section',
         'research-section',
         'sentiment-section',
         'congress-section',

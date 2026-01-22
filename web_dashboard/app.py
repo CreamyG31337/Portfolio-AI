@@ -3226,6 +3226,41 @@ def _get_ticker_chart_cached(ticker: str, use_solid: bool, user_is_admin: bool, 
     # Return as JSON string
     return json.dumps(chart_data)
 
+@cache_data(ttl=300)
+def _get_ticker_etf_trades_cached(ticker: str, user_is_admin: bool, auth_token: Optional[str], range: str = '3m'):
+    """Get ETF holding trades for a ticker within a date range (300s TTL)."""
+    from supabase_client import SupabaseClient
+
+    if user_is_admin:
+        supabase_client = SupabaseClient(use_service_role=True)
+    else:
+        supabase_client = SupabaseClient(user_token=auth_token) if auth_token else None
+
+    if not supabase_client:
+        raise ValueError("Unable to connect to database")
+
+    range_days = {
+        '3m': 90,
+        '6m': 180,
+        '1y': 365,
+        '2y': 730,
+        '5y': 1825
+    }.get(range, 90)
+
+    start_date = (date.today() - timedelta(days=range_days)).isoformat()
+    end_date = date.today().isoformat()
+
+    result = supabase_client.supabase.rpc(
+        'get_etf_holding_trades',
+        {
+            'p_holding_ticker': ticker,
+            'p_start_date': start_date,
+            'p_end_date': end_date
+        }
+    ).execute()
+
+    return result.data or []
+
 @app.route('/api/v2/ticker/chart')
 @require_auth
 def api_ticker_chart():
@@ -3254,6 +3289,35 @@ def api_ticker_chart():
         return Response(chart_json, mimetype='application/json')
     except Exception as e:
         logger.error(f"Error generating chart for {ticker}: {e}", exc_info=True)
+        import traceback
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "type": type(e).__name__
+        }), 500
+
+@app.route('/api/v2/ticker/etf-trades')
+@require_auth
+def api_ticker_etf_trades():
+    """Get ETF holding trades for a ticker (range-aware)."""
+    try:
+        from auth import is_admin
+
+        ticker = request.args.get('ticker', '').upper().strip()
+        if not ticker:
+            return jsonify({"error": "Ticker symbol is required"}), 400
+
+        chart_range = request.args.get('range', '3m').strip().lower()
+        if chart_range not in ['3m', '6m', '1y', '2y', '5y']:
+            chart_range = '3m'
+
+        user_is_admin = is_admin()
+        auth_token = request.cookies.get('auth_token')
+
+        trades = _get_ticker_etf_trades_cached(ticker, user_is_admin, auth_token, chart_range)
+        return jsonify({"data": trades})
+    except Exception as e:
+        logger.error(f"Error fetching ETF trades for {ticker}: {e}", exc_info=True)
         import traceback
         return jsonify({
             "error": str(e),

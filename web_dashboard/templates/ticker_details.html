@@ -208,6 +208,38 @@
     </div>
 </div>
 
+<!-- ETF Holding Trades Section -->
+<div id="etf-trades-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold text-text-primary">ETF Holding Trades</h2>
+        <p id="etf-trades-count" class="text-sm text-text-secondary"></p>
+    </div>
+    <div class="overflow-x-auto">
+        <table id="etf-trades-table" class="min-w-full divide-y divide-border">
+            <thead class="bg-dashboard-background">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Date</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        ETF</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Trade Type</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Shares Change</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Shares After</th>
+                </tr>
+            </thead>
+            <tbody id="etf-trades-tbody" class="bg-dashboard-surface divide-y divide-border">
+                <!-- Populated by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+    <p id="etf-trades-empty" class="hidden mt-4 text-sm text-text-secondary">
+        No ETF holding trades found for this range.
+    </p>
+</div>
+
 <!-- Research Articles Section -->
 <div id="research-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
     <h2 class="text-xl font-bold mb-4 text-text-primary">📚 Research Articles</h2>
