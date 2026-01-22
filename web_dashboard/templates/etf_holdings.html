@@ -70,9 +70,9 @@
                 </label>
                 <div class="flex gap-1">
                     <!-- Previous Date Button -->
-                    <button type="button" {% if prev_date %}onclick="navigateToDate('{{ prev_date }}')"{% else %}disabled{% endif %}
-                        class="px-3 py-2 text-sm border border-border rounded-lg hover:bg-dashboard-background disabled:opacity-50 disabled:cursor-not-allowed text-text-primary"
-                        {% if prev_date %}title="Previous data date: {{ prev_date }}"{% else %}title="No previous date available"{% endif %}>
+                    <button type="button" onclick="navigateDateByDays(-1)"
+                        class="px-3 py-2 text-sm border border-border rounded-lg hover:bg-dashboard-background text-text-primary"
+                        title="Previous day">
                         <i class="fas fa-chevron-left"></i>
                     </button>
 
@@ -82,9 +82,9 @@
                         onchange="updateFilters()" onkeydown="handleDateKeyboard(event)">
 
                     <!-- Next Date Button -->
-                    <button type="button" {% if next_date %}onclick="navigateToDate('{{ next_date }}')"{% else %}disabled{% endif %}
-                        class="px-3 py-2 text-sm border border-border rounded-lg hover:bg-dashboard-background disabled:opacity-50 disabled:cursor-not-allowed text-text-primary"
-                        {% if next_date %}title="Next data date: {{ next_date }}"{% else %}title="No next date available"{% endif %}>
+                    <button type="button" onclick="navigateDateByDays(1)"
+                        class="px-3 py-2 text-sm border border-border rounded-lg hover:bg-dashboard-background text-text-primary"
+                        title="Next day">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
@@ -307,21 +307,56 @@
         }
     }
 
+    function navigateDateByDays(dayOffset) {
+        const form = document.getElementById('filters-form');
+        const dateInput = document.querySelector('input[name="date"]');
+        if (!dateInput || !form) {
+            console.error('Could not find form or date input');
+            return;
+        }
+
+        const currentValue = dateInput.value;
+        if (!currentValue) {
+            console.warn('No current date value to adjust');
+            return;
+        }
+
+        const currentDate = new Date(`${currentValue}T00:00:00`);
+        if (Number.isNaN(currentDate.getTime())) {
+            console.warn('Invalid current date:', currentValue);
+            return;
+        }
+
+        const nextDate = new Date(currentDate);
+        nextDate.setDate(nextDate.getDate() + dayOffset);
+
+        const maxAttr = dateInput.getAttribute('max');
+        if (maxAttr) {
+            const maxDate = new Date(`${maxAttr}T00:00:00`);
+            if (!Number.isNaN(maxDate.getTime()) && nextDate > maxDate) {
+                return;
+            }
+        }
+
+        const formatted = nextDate.toISOString().slice(0, 10);
+        dateInput.value = formatted;
+        form.submit();
+    }
+
     function handleDateKeyboard(event) {
-        // Arrow Up = go to previous (newer) date
-        // Arrow Down = go to next (older) date
+        // Arrow Left/Up = previous day, Arrow Right/Down = next day
         if (event.key === 'ArrowUp') {
             event.preventDefault();
-            const prevBtn = document.querySelector('button[onclick*="prev_date"]');
-            if (prevBtn && !prevBtn.disabled) {
-                prevBtn.click();
-            }
+            navigateDateByDays(-1);
         } else if (event.key === 'ArrowDown') {
             event.preventDefault();
-            const nextBtn = document.querySelector('button[onclick*="next_date"]');
-            if (nextBtn && !nextBtn.disabled) {
-                nextBtn.click();
-            }
+            navigateDateByDays(1);
+        } else if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            navigateDateByDays(-1);
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            navigateDateByDays(1);
         }
     }
     

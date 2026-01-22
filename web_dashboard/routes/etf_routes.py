@@ -235,9 +235,23 @@ def get_holdings_changes(
         tickers_to_check = curr_df['etf_ticker'].unique().tolist()
         
         # Find latest previous date for each ETF
-        hist_res = db_client.supabase.table("etf_holdings_log").select("etf_ticker, date").lt("date", as_of_date_str).in_("etf_ticker", tickers_to_check).order("date", desc=True).execute()
-        
-        if not hist_res.data:
+        # NOTE: We must avoid the 1,000-row default limit from PostgREST.
+        # Querying etf_holdings_log directly returns one row per holding,
+        # which easily truncates the result set and drops ETFs. Instead, fetch
+        # the latest previous date per ETF with a small per-ETF query.
+        prev_dates_by_etf: Dict[str, str] = {}
+        for etf in tickers_to_check:
+            prev_res = db_client.supabase.table("etf_holdings_log") \
+                .select("date") \
+                .eq("etf_ticker", etf) \
+                .lt("date", as_of_date_str) \
+                .order("date", desc=True) \
+                .limit(1) \
+                .execute()
+            if prev_res.data and prev_res.data[0].get("date"):
+                prev_dates_by_etf[etf] = prev_res.data[0]["date"]
+
+        if not prev_dates_by_etf:
             # No previous data - all holdings are "new" (first time seeing them)
             # Mark as BUY (new positions) instead of HOLD so they show up in changes view
             curr_df['previous_shares'] = 0
@@ -245,16 +259,12 @@ def get_holdings_changes(
             curr_df['percent_change'] = 100.0  # 100% change (new position)
             curr_df['action'] = 'BUY'  # Mark as BUY so they appear in changes view
         else:
-            hist_df = pd.DataFrame(hist_res.data)
-            latest_prev = hist_df.groupby('etf_ticker')['date'].max().reset_index()
-            
-            date_groups = latest_prev.groupby('date')['etf_ticker'].apply(list).reset_index()
-            
+            date_groups = {}
+            for etf, prev_date in prev_dates_by_etf.items():
+                date_groups.setdefault(prev_date, []).append(etf)
+
             prev_holdings_list = []
-            for _, date_row in date_groups.iterrows():
-                batch_date = date_row['date']
-                batch_etfs = date_row['etf_ticker']
-                
+            for batch_date, batch_etfs in date_groups.items():
                 # Use pagination to fetch all holdings (for ETFs with >1000 holdings like IWM)
                 page_size = 1000
                 offset = 0
@@ -262,50 +272,50 @@ def get_holdings_changes(
                     p_res = db_client.supabase.table("etf_holdings_log").select(
                         "etf_ticker, holding_ticker, shares_held"
                     ).eq("date", batch_date).in_("etf_ticker", batch_etfs).range(offset, offset + page_size - 1).execute()
-                    
+
                     if not p_res.data:
                         break
-                    
+
                     prev_holdings_list.extend(p_res.data)
-                    
+
                     # If we got fewer than page_size, we've reached the end
                     if len(p_res.data) < page_size:
                         break
-                    
+
                     offset += page_size
-            
+
             if prev_holdings_list:
                 prev_df = pd.DataFrame(prev_holdings_list)
                 prev_df = prev_df.rename(columns={'shares_held': 'previous_shares'})
-                
+
                 merged_df = curr_df.merge(
-                    prev_df, 
-                    on=['etf_ticker', 'holding_ticker'], 
+                    prev_df,
+                    on=['etf_ticker', 'holding_ticker'],
                     how='outer'
                 )
-                
+
                 merged_df['shares_held'] = merged_df['shares_held'].fillna(0)
                 merged_df['previous_shares'] = merged_df['previous_shares'].fillna(0)
-                
+
                 merged_df['share_change'] = merged_df['shares_held'] - merged_df['previous_shares']
-                
+
                 def calc_pct(row):
                     if row['previous_shares'] > 0:
                         return (row['share_change'] / row['previous_shares']) * 100
                     return 0
-                
+
                 merged_df['percent_change'] = merged_df.apply(calc_pct, axis=1)
-                
+
                 def determine_action(row):
                     if row['previous_shares'] == 0 and row['shares_held'] > 0: return 'BUY'
                     if row['shares_held'] > row['previous_shares']: return 'BUY'
                     if row['shares_held'] < row['previous_shares']: return 'SELL'
                     return 'HOLD'
-                
+
                 merged_df['action'] = merged_df.apply(determine_action, axis=1)
                 curr_df = merged_df
             else:
-                # No previous holdings found (even though hist_res had data, no actual holdings)
+                # No previous holdings found (even though prev_dates_by_etf had data, no actual holdings)
                 # Mark all as new positions (BUY)
                 curr_df['previous_shares'] = 0
                 curr_df['share_change'] = curr_df['shares_held']  # All shares are "new"
@@ -368,31 +378,38 @@ def get_holdings_changes(
                 curr_df = curr_df[~curr_df['etf_ticker'].isin(etfs_to_remove)].copy()
         
         # User overlap
-        max_date_res = db_client.supabase.table("portfolio_positions").select("date").order("date", desc=True).limit(1).execute()
-        if max_date_res.data:
-            max_date = max_date_res.data[0]['date']
-            user_pos_query = db_client.supabase.table("portfolio_positions").select("ticker, quantity, fund").eq("date", max_date).gt("quantity", 0)
-            
-            if fund_filter and fund_filter != "All Funds":
-                # Handle multi-select
-                if ',' in fund_filter:
-                    fund_list = fund_filter.split(',')
-                    user_pos_query = user_pos_query.in_("fund", fund_list)
-                else:
-                    user_pos_query = user_pos_query.eq("fund", fund_filter)
+        try:
+            max_date_res = db_client.supabase.table("portfolio_positions").select("date").order("date", desc=True).limit(1).execute()
+            if max_date_res.data:
+                max_date = max_date_res.data[0]['date']
+                user_pos_query = db_client.supabase.table("portfolio_positions") \
+                    .select("ticker, shares, fund") \
+                    .eq("date", max_date) \
+                    .gt("shares", 0)
 
-            user_pos_res = user_pos_query.execute()
-            
-            if user_pos_res.data:
-                user_df = pd.DataFrame(user_pos_res.data)
-                user_agg = user_df.groupby('ticker')['quantity'].sum().reset_index()
-                user_agg = user_agg.rename(columns={'quantity': 'user_shares'})
-                
-                curr_df = curr_df.merge(user_agg, left_on='holding_ticker', right_on='ticker', how='left').drop(columns=['ticker'])
-                curr_df['user_shares'] = curr_df['user_shares'].fillna(0)
+                if fund_filter and fund_filter != "All Funds":
+                    # Handle multi-select
+                    if ',' in fund_filter:
+                        fund_list = fund_filter.split(',')
+                        user_pos_query = user_pos_query.in_("fund", fund_list)
+                    else:
+                        user_pos_query = user_pos_query.eq("fund", fund_filter)
+
+                user_pos_res = user_pos_query.execute()
+
+                if user_pos_res.data:
+                    user_df = pd.DataFrame(user_pos_res.data)
+                    user_agg = user_df.groupby('ticker')['shares'].sum().reset_index()
+                    user_agg = user_agg.rename(columns={'shares': 'user_shares'})
+
+                    curr_df = curr_df.merge(user_agg, left_on='holding_ticker', right_on='ticker', how='left').drop(columns=['ticker'])
+                    curr_df['user_shares'] = curr_df['user_shares'].fillna(0)
+                else:
+                    curr_df['user_shares'] = 0
             else:
                 curr_df['user_shares'] = 0
-        else:
+        except Exception as e:
+            logger.warning(f"Error fetching user overlap data: {e}")
             curr_df['user_shares'] = 0
             
         return curr_df, as_of_date
@@ -502,6 +519,9 @@ def etf_holdings():
     # For "All ETFs", we want all dates across all ETFs (pass None)
     # For specific ETF, we want dates for that ETF only
     available_dates = get_available_dates(db_client, selected_etf if selected_etf != "All ETFs" else None)
+    
+    # DEBUG: Log navigation data
+    logger.warning(f"DATE NAV DEBUG: as_of_date={as_of_date}, available_dates count={len(available_dates) if available_dates else 0}, first 5={available_dates[:5] if available_dates else []}")
     
     # Calculate previous and next dates AFTER we have as_of_date from data fetching
     if as_of_date and available_dates:
