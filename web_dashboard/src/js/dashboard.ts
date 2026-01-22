@@ -164,7 +164,7 @@ interface Fund {
 // Global state
 const state = {
     currentFund: typeof window !== 'undefined' && window.INITIAL_FUND ? window.INITIAL_FUND : '',
-    timeRange: 'ALL' as '1M' | '3M' | '6M' | '1Y' | 'ALL',
+    timeRange: 'ALL' as '1M' | '3M' | 'ALL',
     useSolidLines: false, // Solid lines checkbox state
     charts: {} as Record<string, any>, // Charts now use Plotly (no longer ApexCharts)
     gridApi: null as any, // AG Grid API
@@ -361,7 +361,7 @@ function initTimeRangeControls(): void {
             target.setAttribute('aria-pressed', 'true');
 
             // Update State
-            const range = target.dataset.range as '1M' | '3M' | '6M' | '1Y' | 'ALL';
+            const range = target.dataset.range as '1M' | '3M' | 'ALL';
             if (range) {
                 state.timeRange = range;
                 console.log('[Dashboard] Time range changed to:', state.timeRange);
