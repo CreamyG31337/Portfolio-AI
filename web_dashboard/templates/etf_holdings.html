@@ -91,7 +91,7 @@
 <!-- Filters -->
 <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
     <form id="filters-form" action="/etf_holdings" method="GET" class="space-y-4">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <!-- ETF Filter -->
             <div>
                 <label class="block mb-2 text-sm font-medium text-text-primary">ETF</label>
@@ -174,51 +174,6 @@
                         <span>Show changes only (hide HOLD)</span>
                     </label>
                 </div>
-            </div>
-
-            <!-- Fund Filter (Multi-select) -->
-            <div>
-                <label class="block mb-2 text-sm font-medium text-text-primary">Holdings Filter</label>
-                <div class="relative group">
-                    <button type="button" id="fund-dropdown-button" data-dropdown-toggle="fund-dropdown-menu"
-                        class="w-full bg-dashboard-background border border-border text-text-primary py-2 px-3 rounded-lg text-sm text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-accent"
-                        aria-haspopup="true" aria-expanded="false">
-                        <span id="fund-select-label">
-                            {% if current_fund and current_fund != 'All Funds' and current_fund != '' %}
-                            {{ current_fund }}
-                            {% else %}
-                            All Funds (Show All)
-                            {% endif %}
-                        </span>
-                        <i class="fas fa-chevron-down text-xs text-text-secondary"></i>
-                    </button>
-
-                    <div id="fund-dropdown-menu"
-                        class="hidden absolute z-10 w-full bg-dashboard-surface border border-border rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto">
-                        <div class="p-2 border-b border-border">
-                            <label class="flex items-center p-1 rounded hover:bg-dashboard-background cursor-pointer">
-                                <input type="checkbox"
-                                    class="fund-checkbox rounded text-accent focus:ring-accent mr-2 bg-dashboard-background border-border"
-                                    value="All Funds" {% if not current_fund or current_fund=='All Funds' %}checked{%
-                                    endif %} onchange="handleFundSelection(this)">
-                                <span class="text-sm font-medium text-text-primary">All Funds</span>
-                            </label>
-                        </div>
-                        <div class="p-2 space-y-1">
-                            {% for fund in available_funds %}
-                            <label class="flex items-center p-1 rounded hover:bg-dashboard-background cursor-pointer">
-                                <input type="checkbox"
-                                    class="fund-checkbox rounded text-accent focus:ring-accent mr-2 bg-dashboard-background border-border"
-                                    value="{{ fund }}" {% if current_fund and fund in current_fund and current_fund
-                                    !='All Funds' %}checked{% endif %} onchange="handleFundSelection(this)">
-                                <span class="text-sm text-text-primary">{{ fund }}</span>
-                            </label>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-                <!-- Hidden input to store selected funds for form submit -->
-                <input type="hidden" name="fund" id="fund-input" value="{{ current_fund }}">
             </div>
 
         </div>

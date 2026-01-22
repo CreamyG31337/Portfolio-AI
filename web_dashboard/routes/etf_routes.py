@@ -42,16 +42,30 @@ def get_available_dates(db_client, etf_ticker: Optional[str] = None) -> List[dat
     if db_client is None:
         return []
     try:
-        query = db_client.supabase.table("etf_holdings_log").select("date")
-        if etf_ticker and etf_ticker != "All ETFs":
-            query = query.eq("etf_ticker", etf_ticker)
-        
-        result = query.order("date", desc=True).execute()
-        if not result.data:
+        dates_raw = []
+        page_size = 1000
+        offset = 0
+
+        while True:
+            query = db_client.supabase.table("etf_holdings_log").select("date")
+            if etf_ticker and etf_ticker != "All ETFs":
+                query = query.eq("etf_ticker", etf_ticker)
+
+            result = query.order("date", desc=True).range(offset, offset + page_size - 1).execute()
+            if not result.data:
+                break
+
+            dates_raw.extend(result.data)
+
+            if len(result.data) < page_size:
+                break
+            offset += page_size
+
+        if not dates_raw:
             return []
-        
+
         # Get unique dates and sort descending
-        dates = sorted(list(set([datetime.strptime(row['date'], '%Y-%m-%d').date() for row in result.data])), reverse=True)
+        dates = sorted(list(set([datetime.strptime(row['date'], '%Y-%m-%d').date() for row in dates_raw])), reverse=True)
         return dates
     except Exception as e:
         logger.error(f"Error fetching available dates: {e}")
@@ -103,11 +117,25 @@ def get_available_etfs(db_client) -> List[Dict[str, str]]:
     if db_client is None:
         return []
     try:
-        holdings_res = db_client.supabase.table("etf_holdings_log").select("etf_ticker").execute()
-        if not holdings_res.data:
+        all_rows = []
+        page_size = 1000
+        offset = 0
+        while True:
+            holdings_res = db_client.supabase.table("etf_holdings_log") \
+                .select("etf_ticker") \
+                .range(offset, offset + page_size - 1) \
+                .execute()
+            if not holdings_res.data:
+                break
+            all_rows.extend(holdings_res.data)
+            if len(holdings_res.data) < page_size:
+                break
+            offset += page_size
+
+        if not all_rows:
             return []
-        
-        tickers = sorted(list(set(row['etf_ticker'] for row in holdings_res.data)))
+
+        tickers = sorted(list(set(row['etf_ticker'] for row in all_rows if row.get('etf_ticker'))))
         
         securities_res = db_client.supabase.table("securities").select("ticker, company_name").in_("ticker", tickers).execute()
         names_map = {row['ticker']: row['company_name'] for row in securities_res.data}
