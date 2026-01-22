@@ -349,9 +349,9 @@ def api_admin_grant_admin():
             return jsonify({"error": "User email required"}), 400
         
         # Use service role key for admin operations
-        service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")
+        service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         if not service_key:
-            logger.error("Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+            logger.error("Missing SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY")
             return jsonify({"error": "Server configuration error"}), 500
 
         import requests
@@ -399,9 +399,9 @@ def api_admin_revoke_admin():
             return jsonify({"error": "User email required"}), 400
         
         # Use service role key for admin operations
-        service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")
+        service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         if not service_key:
-            logger.error("Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+            logger.error("Missing SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY")
             return jsonify({"error": "Server configuration error"}), 500
 
         import requests
@@ -449,9 +449,9 @@ def api_admin_delete_user():
             return jsonify({"error": "User email required"}), 400
         
         # Use service role key for admin operations
-        service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")
+        service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         if not service_key:
-            logger.error("Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY")
+            logger.error("Missing SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY")
             return jsonify({"error": "Server configuration error"}), 500
 
         import requests
