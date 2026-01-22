@@ -14,6 +14,14 @@
 
 {% block content %}
 
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+    <div class="bg-dashboard-surface rounded-lg p-6 flex flex-col items-center shadow-xl">
+        <div class="animate-spin rounded-full h-12 w-12 border-4 border-accent border-t-transparent mb-4"></div>
+        <p class="text-text-primary font-medium">Loading ETF data...</p>
+    </div>
+</div>
+
 {% if error %}
 <div class="bg-theme-error-bg border border-theme-error-text rounded-lg p-4 mb-6">
     <div class="flex">
@@ -225,6 +233,15 @@
 </script>
 
 <script>
+    // Show loading overlay
+    function showLoading() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+        }
+    }
+    
     // Date navigation functions
     function navigateToDate(newDate) {
         if (!newDate || newDate === 'None' || newDate === '') {
@@ -236,6 +253,7 @@
         const dateInput = document.querySelector('input[name="date"]');
         if (dateInput && form) {
             dateInput.value = newDate;
+            showLoading();
             form.submit();
         } else {
             console.error('Could not find form or date input');
@@ -275,6 +293,7 @@
 
         const formatted = nextDate.toISOString().slice(0, 10);
         dateInput.value = formatted;
+        showLoading();
         form.submit();
     }
 
@@ -308,6 +327,7 @@
     function updateFilters() {
         const form = document.getElementById('filters-form');
         if (form) {
+            showLoading();
             form.submit();
         }
     }

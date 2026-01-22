@@ -647,9 +647,9 @@ def etf_holdings():
     else:
         data_json = []
 
-    # 6. Summary Stats (for Changes View)
+    # 6. Summary Stats (always calculate when data exists)
     stats = {}
-    if view_mode == "changes" and not changes_df.empty:
+    if not changes_df.empty:
         significant = changes_df[changes_df['action'] != 'HOLD']
         bullish = significant[significant['action'] == 'BUY']
         bearish = significant[significant['action'] == 'SELL']
