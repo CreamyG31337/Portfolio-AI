@@ -21,7 +21,8 @@ from flask_data_utils import (
     get_investor_count_flask as get_investor_count,
     get_first_trade_dates_flask as get_first_trade_dates,
     calculate_portfolio_value_over_time_flask as calculate_portfolio_value_over_time,
-    get_biggest_movers_flask as get_biggest_movers
+    get_biggest_movers_flask as get_biggest_movers,
+    get_portfolio_start_date_flask as get_portfolio_start_date
 )
 
 logger = logging.getLogger(__name__)
@@ -216,11 +217,16 @@ def get_dashboard_summary():
         first_trade_date = None
         try:
             logger.debug(f"[Dashboard API] Fetching first trade date for fund={fund}")
-            trades_df = get_trade_log(fund=fund, limit=None)
-            if not trades_df.empty and 'date' in trades_df.columns:
-                first_trade_date = pd.to_datetime(trades_df['date']).min()
-                if pd.notna(first_trade_date):
-                    first_trade_date = first_trade_date.strftime('%Y-%m-%d')
+            # Use optimized query to get start date without fetching entire trade log
+            first_trade_date = get_portfolio_start_date(fund)
+
+            # Ensure proper formatting (YYYY-MM-DD)
+            if first_trade_date:
+                 if 'T' in first_trade_date:
+                     first_trade_date = first_trade_date.split('T')[0]
+                 # Ensure it's a string
+                 first_trade_date = str(first_trade_date)
+
             logger.debug(f"[Dashboard API] First trade date: {first_trade_date}")
         except Exception as e:
             logger.warning(f"[Dashboard API] Could not get first trade date: {e}")

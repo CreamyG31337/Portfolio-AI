@@ -783,25 +783,63 @@ def get_investor_count_flask(fund: Optional[str] = None) -> int:
         return 0
 
 
+@cache_data(ttl=3600)  # Cache for 1 hour, start date rarely changes
+def get_portfolio_start_date_flask(fund: Optional[str] = None) -> Optional[str]:
+    """Get the date of the very first trade (efficiently)"""
+    client = get_supabase_client_flask()
+    if not client:
+        return None
+
+    try:
+        query = client.supabase.table("trade_log").select("date")
+        if fund:
+            query = query.eq("fund", fund)
+
+        # Order by date ASC to get the oldest, limit 1
+        result = query.order("date", desc=False).limit(1).execute()
+
+        if result.data and len(result.data) > 0:
+            return result.data[0]['date']
+
+        return None
+    except Exception as e:
+        logger.error(f"Error getting portfolio start date (Flask): {e}", exc_info=True)
+        return None
+
+
 @cache_data(ttl=300)
 def get_first_trade_dates_flask(fund: Optional[str] = None) -> Dict[str, datetime]:
     """Get first trade dates (Flask version)"""
-    # Simply reuse trade log fetching which is efficient enough
+    client = get_supabase_client_flask()
+    if not client:
+        return {}
+
     try:
-        trades_df = get_trade_log_flask(limit=5000, fund=fund) # reasonable limit
-        if trades_df.empty:
+        # Optimized: Only fetch ticker and date columns, avoiding massive join and payload
+        query = client.supabase.table("trade_log").select("ticker, date")
+        if fund:
+            query = query.eq("fund", fund)
+
+        # Limit to 5000 most recent trades (approximate coverage)
+        # Fetching 5000 rows of just 2 columns is very light compared to 5000 rows of ALL columns + joined securities
+        result = query.order("date", desc=True).limit(5000).execute()
+
+        if not result.data:
             return {}
             
+        df = pd.DataFrame(result.data)
+        if df.empty or 'date' not in df.columns or 'ticker' not in df.columns:
+            return {}
+
+        # Convert to datetime if not already
+        df['date'] = pd.to_datetime(df['date'])
+
         # Group by ticker and find min date
-        if 'date' in trades_df.columns and 'ticker' in trades_df.columns:
-            # Convert to datetime if not already
-            trades_df['date'] = pd.to_datetime(trades_df['date'])
-            first_dates = trades_df.groupby('ticker')['date'].min().to_dict()
-            return first_dates
+        first_dates = df.groupby('ticker')['date'].min().to_dict()
+        return first_dates
             
-        return {}
     except Exception as e:
-        logger.error(f"Error getting first trade dates (Flask): {e}")
+        logger.error(f"Error getting first trade dates (Flask): {e}", exc_info=True)
         return {}
 
 
