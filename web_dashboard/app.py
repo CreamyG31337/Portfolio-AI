@@ -3032,41 +3032,44 @@ def get_ticker_analysis(ticker: str):
 @app.route('/api/v2/ticker/<ticker>/reanalyze', methods=['POST'])
 @require_auth
 def request_ticker_reanalysis(ticker: str):
-    """Queue a manual re-analysis request for a ticker."""
+    """Run a manual re-analysis for a ticker."""
     try:
         from flask_auth_utils import get_user_email_flask
         from ai_skip_list_manager import AISkipListManager
         from supabase_client import SupabaseClient
+        from postgres_client import PostgresClient
+        from ollama_client import get_ollama_client
+        from ticker_analysis_service import TickerAnalysisService
+        from user_preferences import get_user_ai_model
         
         ticker_upper = ticker.upper().strip()
         user_email = get_user_email_flask() or 'anonymous'
         
-        # Get Supabase client
+        # Initialize clients
         supabase = SupabaseClient(use_service_role=True)
+        postgres = PostgresClient()
+        ollama = get_ollama_client()
+        if not ollama:
+            return jsonify({'error': 'Ollama is not accessible. Please ensure Ollama is running.'}), 503
         
         # Remove from skip list if present
         skip_manager = AISkipListManager(supabase)
         skip_manager.remove_from_skip_list(ticker_upper)
         
-        # Add to queue with highest priority
-        supabase.supabase.table('ai_analysis_queue') \
-            .insert({
-                'analysis_type': 'ticker',
-                'target_key': ticker_upper,
-                'priority': 1000,  # Manual requests get highest priority
-                'status': 'pending'
-            }) \
-            .execute()
+        # Run analysis immediately using user's preferred model
+        preferred_model = get_user_ai_model()
+        service = TickerAnalysisService(ollama, supabase, postgres, skip_manager)
+        service.analyze_ticker(ticker_upper, requested_by=user_email, model_override=preferred_model)
         
-        logger.info(f"Queued manual re-analysis for {ticker_upper} by {user_email}")
+        logger.info(f"Completed manual re-analysis for {ticker_upper} by {user_email}")
         
         return jsonify({
-            'status': 'queued',
-            'message': f'Re-analysis queued for {ticker_upper}. Results will appear shortly.'
+            'status': 'completed',
+            'message': f'Re-analysis completed for {ticker_upper}.'
         })
         
     except Exception as e:
-        logger.error(f"Error queueing re-analysis for {ticker}: {e}", exc_info=True)
+        logger.error(f"Error running re-analysis for {ticker}: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @cache_data(ttl=300)

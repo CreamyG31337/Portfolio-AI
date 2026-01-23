@@ -1558,11 +1558,8 @@ async function requestReanalysis(ticker: string): Promise<void> {
 
         if (response.ok) {
             const data = await response.json();
-            showToast(data.message || 'Re-analysis queued. Refresh in a few minutes.', 'success');
-            // Refresh analysis after a delay
-            setTimeout(() => {
-                loadTickerAnalysis(ticker);
-            }, 5000);
+            showToast(data.message || 'Re-analysis completed.', 'success');
+            loadTickerAnalysis(ticker);
         } else {
             const errorData = await response.json();
             showToast(errorData.error || 'Failed to queue re-analysis', 'error');

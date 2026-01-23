@@ -98,6 +98,24 @@ class TickerAnalysisService:
         except Exception as e:
             logger.warning(f"Error checking recent analysis for {ticker}: {e}")
             return False
+
+    def _resolve_analysis_model(self, model_override: Optional[str]) -> str:
+        """Resolve which model to use for analysis."""
+        if model_override:
+            try:
+                from webai_wrapper import is_webai_model
+                if is_webai_model(model_override) or model_override.startswith("glm-"):
+                    logger.warning(
+                        "Model %s is not supported for ticker analysis; falling back to default",
+                        model_override
+                    )
+                    return get_summarizing_model()
+            except Exception as e:
+                logger.warning("Failed to validate model override %s: %s", model_override, e)
+                return get_summarizing_model()
+            return model_override
+
+        return get_summarizing_model()
     
     def _get_fundamentals(self, ticker: str) -> Optional[Dict]:
         """Get fundamentals from securities table.
@@ -654,7 +672,12 @@ class TickerAnalysisService:
         
         return "\n\n---\n\n".join(sections) if sections else "No data available for this ticker."
     
-    def analyze_ticker(self, ticker: str, requested_by: Optional[str] = None) -> Optional[Dict]:
+    def analyze_ticker(
+        self,
+        ticker: str,
+        requested_by: Optional[str] = None,
+        model_override: Optional[str] = None
+    ) -> Optional[Dict]:
         """Run full analysis on a ticker.
         
         Args:
@@ -682,7 +705,7 @@ class TickerAnalysisService:
                 return None
             
             # Analyze with LLM
-            model = get_summarizing_model()
+            model = self._resolve_analysis_model(model_override)
             system_prompt = "You are a financial analyst. Return ONLY valid JSON with the exact fields specified."
             
             full_response = ""
@@ -703,7 +726,7 @@ class TickerAnalysisService:
                 return None
             
             # Save analysis
-            self._save_analysis(ticker_upper, data, context, response, requested_by)
+            self._save_analysis(ticker_upper, data, context, response, requested_by, model)
             
             return response
             
@@ -713,7 +736,15 @@ class TickerAnalysisService:
             self.skip_list.record_failure(ticker_upper, str(e))
             raise
     
-    def _save_analysis(self, ticker: str, data: Dict, context: str, response: Dict, requested_by: Optional[str]):
+    def _save_analysis(
+        self,
+        ticker: str,
+        data: Dict,
+        context: str,
+        response: Dict,
+        requested_by: Optional[str],
+        model_used: str
+    ):
         """Save analysis to ticker_analysis table.
         
         Args:
@@ -820,7 +851,7 @@ class TickerAnalysisService:
                 congress_count,
                 articles_count,
                 embedding,
-                get_summarizing_model(),
+                model_used,
                 requested_by
             ))
             
