@@ -113,6 +113,10 @@ def ticker_analysis_job() -> None:
             service.analyze_ticker(ticker)
             processed += 1
             
+            # Mark manual request complete if this was a manual request (priority >= 1000)
+            if priority >= 1000:
+                service.mark_manual_request_complete(ticker, success=True)
+            
             # Log progress every 10 tickers
             if processed % 10 == 0:
                 elapsed_min = elapsed / 60
@@ -120,6 +124,9 @@ def ticker_analysis_job() -> None:
             
         except Exception as e:
             logger.error(f"Failed to analyze {ticker}: {e}", exc_info=True)
+            # Mark manual request as failed if this was a manual request
+            if priority >= 1000:
+                service.mark_manual_request_complete(ticker, success=False, error_message=str(e)[:500])
             # Skip list manager handles repeated failures
             failed += 1
     

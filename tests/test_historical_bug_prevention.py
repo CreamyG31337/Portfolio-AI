@@ -323,12 +323,12 @@ class TestWebDashboardBugPrevention(unittest.TestCase):
         """Test that Plotly version is properly specified."""
         # Mock HTML template content
         html_content = """
-        <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/plotly.js@2.27.0/dist/plotly.min.js"></script>
         """
         
         # Should not contain plotly-latest
         self.assertNotIn("plotly-latest", html_content)
-        self.assertIn("plotly-2.27.0", html_content)
+        self.assertIn("plotly.js@2.27.0", html_content)
 
 
 class TestEmojiUnicodeBugPrevention(unittest.TestCase):

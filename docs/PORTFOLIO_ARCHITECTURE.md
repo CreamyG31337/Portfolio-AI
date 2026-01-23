@@ -81,16 +81,22 @@ The system automatically:
 ## Implementation Details
 
 ### Repository Pattern
-- `BaseRepository`: Abstract interface
-- `CSVRepository`: Local CSV file storage
-- `SupabaseRepository`: Cloud database storage
-- `SupabaseDualWriteRepository`: Both CSV and Supabase
+- `BaseRepository`: Abstract interface defining standard operations
+- `CSVRepository`: Local CSV file storage implementation
+- `SupabaseRepository`: Cloud database storage implementation
+- `DualWriteRepository`: Writes to both CSV and Supabase (CSV read source)
+- `SupabaseDualWriteRepository`: Writes to both (Supabase read source)
 
-**CRITICAL RULE: Always use repository interface, never access files directly**
+**Design Principles:**
+- **Factory Pattern**: Use `data.repositories.repository_factory.get_repository()` to instantiate
+- **Interface Segregation**: All repositories implement standard methods (`get_portfolio_data`, `save_trade`)
+- **Dependency Injection**: Repositories are injected into services, never hardcoded
+
+**Usage:**
 - ✅ Use `repository.get_portfolio_data()` to read data
 - ✅ Use `repository.save_portfolio_snapshot()` to write data
 - ❌ Never use `pd.read_csv()` or direct file access
-- This ensures code works with all backends (CSV, Supabase, etc.)
+- This ensures application logic remains decoupled from storage implementation
 
 ### Snapshot Creation
 - **Today's trades**: Update snapshot immediately

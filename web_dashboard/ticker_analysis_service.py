@@ -31,6 +31,14 @@ from ai_context_builder import (
 )
 from settings import get_summarizing_model
 
+# Try importing yfinance for price data
+try:
+    import yfinance as yf
+    HAS_YFINANCE = True
+except ImportError:
+    HAS_YFINANCE = False
+    yf = None
+
 logger = logging.getLogger(__name__)
 
 # Helper to extract JSON from text
@@ -83,7 +91,7 @@ class TickerAnalysisService:
             result = self.postgres.execute_query("""
                 SELECT 1 FROM ticker_analysis 
                 WHERE ticker = %s 
-                AND updated_at > NOW() - INTERVAL '%s hours'
+                AND updated_at > NOW() - make_interval(hours => %s)
                 LIMIT 1
             """, (ticker.upper(), self.SKIP_IF_ANALYZED_WITHIN_HOURS))
             return len(result) > 0
@@ -196,9 +204,8 @@ class TickerAnalysisService:
                 SELECT id, title, url, summary, source, published_at, fetched_at,
                        relevance_score, sentiment, sentiment_score, article_type
                 FROM research_articles
-                WHERE tickers @> ARRAY[%s]::text[]
-                   OR ticker = %s
-                AND fetched_at >= %s
+                WHERE (tickers @> ARRAY[%s]::text[] OR ticker = %s)
+                  AND fetched_at >= %s
                 ORDER BY fetched_at DESC
                 LIMIT %s
             """, (ticker.upper(), ticker.upper(), start_str, self.MAX_RESEARCH_ARTICLES))
@@ -250,6 +257,122 @@ class TickerAnalysisService:
             logger.warning(f"Error fetching social sentiment for {ticker}: {e}")
             return {'latest_metrics': [], 'alerts': []}
     
+    def _get_price_data(self, ticker: str, days: int = 90) -> Optional[Dict]:
+        """Get OHLCV price data and compute key metrics.
+        
+        Args:
+            ticker: Ticker symbol
+            days: Number of days of history
+            
+        Returns:
+            Dict with price metrics or None
+        """
+        if not HAS_YFINANCE:
+            logger.warning("yfinance not available, skipping price data")
+            return None
+        
+        try:
+            ticker_upper = ticker.upper().strip()
+            logger.info(f"Fetching price data for {ticker_upper} (last {days} days)")
+            
+            ticker_obj = yf.Ticker(ticker_upper)
+            
+            # Get historical data
+            hist = ticker_obj.history(period=f"{days}d", auto_adjust=False)
+            
+            if hist.empty:
+                logger.warning(f"No price data available for {ticker_upper}")
+                return None
+            
+            # Current price info
+            current_price = float(hist['Close'].iloc[-1])
+            current_volume = int(hist['Volume'].iloc[-1])
+            
+            # Period highs/lows
+            period_high = float(hist['High'].max())
+            period_low = float(hist['Low'].min())
+            period_high_date = hist['High'].idxmax().strftime('%Y-%m-%d')
+            period_low_date = hist['Low'].idxmin().strftime('%Y-%m-%d')
+            
+            # Price changes
+            if len(hist) >= 2:
+                prev_close = float(hist['Close'].iloc[-2])
+                daily_change = current_price - prev_close
+                daily_change_pct = (daily_change / prev_close) * 100 if prev_close > 0 else 0
+            else:
+                daily_change = 0
+                daily_change_pct = 0
+            
+            # Period change (from start)
+            start_price = float(hist['Close'].iloc[0])
+            period_change = current_price - start_price
+            period_change_pct = (period_change / start_price) * 100 if start_price > 0 else 0
+            
+            # Distance from highs/lows
+            pct_from_high = ((current_price - period_high) / period_high) * 100 if period_high > 0 else 0
+            pct_from_low = ((current_price - period_low) / period_low) * 100 if period_low > 0 else 0
+            
+            # Volume analysis
+            avg_volume = int(hist['Volume'].mean())
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Recent OHLCV data (last 10 days for context)
+            recent_data = []
+            for idx in hist.tail(10).itertuples():
+                recent_data.append({
+                    'date': idx.Index.strftime('%Y-%m-%d'),
+                    'open': round(float(idx.Open), 2),
+                    'high': round(float(idx.High), 2),
+                    'low': round(float(idx.Low), 2),
+                    'close': round(float(idx.Close), 2),
+                    'volume': int(idx.Volume)
+                })
+            
+            # Try to get 52-week data for broader context
+            try:
+                hist_52w = ticker_obj.history(period="1y", auto_adjust=False)
+                if not hist_52w.empty:
+                    high_52w = float(hist_52w['High'].max())
+                    low_52w = float(hist_52w['Low'].min())
+                    pct_from_52w_high = ((current_price - high_52w) / high_52w) * 100
+                    pct_from_52w_low = ((current_price - low_52w) / low_52w) * 100
+                else:
+                    high_52w = period_high
+                    low_52w = period_low
+                    pct_from_52w_high = pct_from_high
+                    pct_from_52w_low = pct_from_low
+            except Exception:
+                high_52w = period_high
+                low_52w = period_low
+                pct_from_52w_high = pct_from_high
+                pct_from_52w_low = pct_from_low
+            
+            return {
+                'current_price': round(current_price, 2),
+                'daily_change': round(daily_change, 2),
+                'daily_change_pct': round(daily_change_pct, 2),
+                'period_days': days,
+                'period_change_pct': round(period_change_pct, 2),
+                'period_high': round(period_high, 2),
+                'period_high_date': period_high_date,
+                'period_low': round(period_low, 2),
+                'period_low_date': period_low_date,
+                'pct_from_period_high': round(pct_from_high, 2),
+                'pct_from_period_low': round(pct_from_low, 2),
+                'high_52w': round(high_52w, 2),
+                'low_52w': round(low_52w, 2),
+                'pct_from_52w_high': round(pct_from_52w_high, 2),
+                'pct_from_52w_low': round(pct_from_52w_low, 2),
+                'current_volume': current_volume,
+                'avg_volume': avg_volume,
+                'volume_ratio': round(volume_ratio, 2),
+                'recent_ohlcv': recent_data
+            }
+            
+        except Exception as e:
+            logger.warning(f"Error fetching price data for {ticker}: {e}")
+            return None
+    
     def gather_ticker_data(self, ticker: str) -> Dict:
         """Gather 3 months of data from all sources.
         
@@ -269,12 +392,64 @@ class TickerAnalysisService:
             'start_date': start_date,
             'end_date': end_date,
             'fundamentals': self._get_fundamentals(ticker),
+            'price_data': self._get_price_data(ticker, self.LOOKBACK_DAYS),
             'etf_changes': self._get_etf_changes(ticker, start_date),
             'congress_trades': self._get_congress_trades(ticker, start_date),
             'signals': self._get_latest_signals(ticker),
             'research_articles': self._get_research_articles(ticker, start_date),
             'social_sentiment': self._get_social_sentiment(ticker, start_date),
         }
+    
+    def _format_price_data(self, price_data: Optional[Dict]) -> str:
+        """Format price data as tables for LLM context.
+        
+        Args:
+            price_data: Price metrics dictionary or None
+            
+        Returns:
+            Formatted string with price summary and recent OHLCV
+        """
+        if not price_data:
+            return ""
+        
+        lines = ["[ Price Data & Technical Context ]"]
+        
+        # Summary metrics
+        lines.append("")
+        lines.append("Current Price Metrics:")
+        lines.append(f"  Current Price: ${price_data.get('current_price', 0):.2f}")
+        lines.append(f"  Daily Change: {price_data.get('daily_change_pct', 0):+.2f}%")
+        lines.append(f"  {price_data.get('period_days', 90)}-Day Change: {price_data.get('period_change_pct', 0):+.2f}%")
+        lines.append("")
+        lines.append("Price Range ({} days):".format(price_data.get('period_days', 90)))
+        lines.append(f"  Period High: ${price_data.get('period_high', 0):.2f} ({price_data.get('period_high_date', 'N/A')})")
+        lines.append(f"  Period Low: ${price_data.get('period_low', 0):.2f} ({price_data.get('period_low_date', 'N/A')})")
+        lines.append(f"  From Period High: {price_data.get('pct_from_period_high', 0):.1f}%")
+        lines.append(f"  From Period Low: {price_data.get('pct_from_period_low', 0):+.1f}%")
+        lines.append("")
+        lines.append("52-Week Range:")
+        lines.append(f"  52-Week High: ${price_data.get('high_52w', 0):.2f} ({price_data.get('pct_from_52w_high', 0):.1f}% from current)")
+        lines.append(f"  52-Week Low: ${price_data.get('low_52w', 0):.2f} ({price_data.get('pct_from_52w_low', 0):+.1f}% from current)")
+        lines.append("")
+        lines.append("Volume Analysis:")
+        lines.append(f"  Current Volume: {price_data.get('current_volume', 0):,}")
+        lines.append(f"  Avg Volume: {price_data.get('avg_volume', 0):,}")
+        lines.append(f"  Volume Ratio: {price_data.get('volume_ratio', 1.0):.2f}x average")
+        
+        # Recent OHLCV table
+        recent = price_data.get('recent_ohlcv', [])
+        if recent:
+            lines.append("")
+            lines.append("Recent Price Action (Last 10 Days):")
+            lines.append("Date       | Open    | High    | Low     | Close   | Volume")
+            lines.append("-----------|---------|---------|---------|---------|------------")
+            for day in recent:
+                lines.append(
+                    f"{day['date']} | ${day['open']:7.2f} | ${day['high']:7.2f} | "
+                    f"${day['low']:7.2f} | ${day['close']:7.2f} | {day['volume']:,}"
+                )
+        
+        return "\n".join(lines)
     
     def _format_etf_changes(self, changes: List[Dict]) -> str:
         """Format ETF changes as table.
@@ -405,7 +580,7 @@ class TickerAnalysisService:
             for m in metrics[:5]:
                 platform = m.get('platform', 'N/A')
                 label = m.get('sentiment_label', 'N/A')
-                score = m.get('sentiment_score', 0)
+                score = m.get('sentiment_score') or 0
                 lines.append(f"  {platform}: {label} (score: {score:.2f})")
         
         alerts = sentiment.get('alerts', [])
@@ -450,6 +625,10 @@ class TickerAnalysisService:
             
             lines.append(f"{ticker:10} | {sector:19} | {industry:25} | {country:8} | {market_cap:12} | {pe_ratio:6} | {dividend_yield:6} | {high_52w:10} | {low_52w:10}")
             sections.append("\n".join(lines))
+        
+        # Price data (OHLCV and metrics)
+        if data.get('price_data'):
+            sections.append(self._format_price_data(data['price_data']))
         
         # ETF changes
         if data.get('etf_changes'):
@@ -565,18 +744,26 @@ class TickerAnalysisService:
             congress_count = len(data.get('congress_trades', []))
             articles_count = len(data.get('research_articles', []))
             
+            # Prepare key_levels as JSON string for JSONB column
+            key_levels = response.get('key_levels')
+            key_levels_json = json.dumps(key_levels) if key_levels else None
+            
             # Insert or update
             query = """
                 INSERT INTO ticker_analysis (
                     ticker, analysis_type, analysis_date, data_start_date, data_end_date,
                     sentiment, sentiment_score, confidence_score, themes, summary,
                     analysis_text, reasoning, input_context,
+                    stance, timeframe, entry_zone, target_price, stop_loss,
+                    key_levels, catalysts, risks, invalidation,
                     etf_changes_count, congress_trades_count, research_articles_count,
                     embedding, model_used, requested_by
                 ) VALUES (
                     %s, 'standard', %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s::jsonb, %s, %s, %s,
                     %s, %s, %s,
                     %s::vector, %s, %s
                 )
@@ -590,6 +777,15 @@ class TickerAnalysisService:
                     analysis_text = EXCLUDED.analysis_text,
                     reasoning = EXCLUDED.reasoning,
                     input_context = EXCLUDED.input_context,
+                    stance = EXCLUDED.stance,
+                    timeframe = EXCLUDED.timeframe,
+                    entry_zone = EXCLUDED.entry_zone,
+                    target_price = EXCLUDED.target_price,
+                    stop_loss = EXCLUDED.stop_loss,
+                    key_levels = EXCLUDED.key_levels,
+                    catalysts = EXCLUDED.catalysts,
+                    risks = EXCLUDED.risks,
+                    invalidation = EXCLUDED.invalidation,
                     etf_changes_count = EXCLUDED.etf_changes_count,
                     congress_trades_count = EXCLUDED.congress_trades_count,
                     research_articles_count = EXCLUDED.research_articles_count,
@@ -611,6 +807,15 @@ class TickerAnalysisService:
                 response.get('analysis_text'),
                 response.get('reasoning'),
                 context,  # input_context for debug panel
+                response.get('stance'),
+                response.get('timeframe'),
+                response.get('entry_zone'),
+                response.get('target_price'),
+                response.get('stop_loss'),
+                key_levels_json,
+                response.get('catalysts', []),
+                response.get('risks', []),
+                response.get('invalidation'),
                 etf_count,
                 congress_count,
                 articles_count,
@@ -632,18 +837,25 @@ class TickerAnalysisService:
             List of (ticker, priority) tuples.
             Priority: manual=1000, holdings=100, watched=10
         """
-        tickers = []
+        seen: set[str] = set()
+        tickers: List[Tuple[str, int]] = []
         
         # 1. Manual requests (highest priority) - from queue
+        # Store queue IDs so we can mark them complete after processing
+        self._pending_manual_queue_ids: List[int] = []
         try:
             manual_result = self.supabase.supabase.table('ai_analysis_queue') \
-                .select('target_key') \
+                .select('id, target_key') \
                 .eq('analysis_type', 'ticker') \
                 .eq('status', 'pending') \
                 .gte('priority', 1000) \
                 .execute()
-            manual_tickers = [row['target_key'] for row in manual_result.data or []]
-            tickers.extend([(t, 1000) for t in manual_tickers])
+            for row in manual_result.data or []:
+                ticker = row['target_key']
+                if ticker and ticker not in seen:
+                    seen.add(ticker)
+                    tickers.append((ticker, 1000))
+                    self._pending_manual_queue_ids.append(row['id'])
         except Exception as e:
             logger.warning(f"Error fetching manual requests: {e}")
         
@@ -652,8 +864,11 @@ class TickerAnalysisService:
             holdings_result = self.supabase.supabase.table('portfolio_positions') \
                 .select('ticker') \
                 .execute()
-            holdings_tickers = list(set([row['ticker'] for row in holdings_result.data or [] if row.get('ticker')]))
-            tickers.extend([(t, 100) for t in holdings_tickers if t not in [x[0] for x in tickers]])
+            for row in holdings_result.data or []:
+                ticker = row.get('ticker')
+                if ticker and ticker not in seen:
+                    seen.add(ticker)
+                    tickers.append((ticker, 100))
         except Exception as e:
             logger.warning(f"Error fetching holdings: {e}")
         
@@ -663,8 +878,11 @@ class TickerAnalysisService:
                 .select('ticker') \
                 .eq('is_active', True) \
                 .execute()
-            watched_tickers = [row['ticker'] for row in watched_result.data or [] if row.get('ticker')]
-            tickers.extend([(t, 10) for t in watched_tickers if t not in [x[0] for x in tickers]])
+            for row in watched_result.data or []:
+                ticker = row.get('ticker')
+                if ticker and ticker not in seen:
+                    seen.add(ticker)
+                    tickers.append((ticker, 10))
         except Exception as e:
             logger.warning(f"Error fetching watched tickers: {e}")
         
@@ -676,3 +894,29 @@ class TickerAnalysisService:
         
         # Sort by priority descending
         return sorted(filtered, key=lambda x: -x[1])
+    
+    def mark_manual_request_complete(self, ticker: str, success: bool = True, error_message: Optional[str] = None) -> None:
+        """Mark a manual queue request as complete or failed.
+        
+        Args:
+            ticker: Ticker symbol that was processed
+            success: Whether analysis succeeded
+            error_message: Error message if failed
+        """
+        try:
+            status = 'completed' if success else 'failed'
+            update_data = {
+                'status': status,
+                'processed_at': datetime.now(timezone.utc).isoformat()
+            }
+            if error_message:
+                update_data['error_message'] = error_message
+            
+            self.supabase.supabase.table('ai_analysis_queue') \
+                .update(update_data) \
+                .eq('analysis_type', 'ticker') \
+                .eq('target_key', ticker.upper()) \
+                .eq('status', 'pending') \
+                .execute()
+        except Exception as e:
+            logger.warning(f"Error marking manual request complete for {ticker}: {e}")

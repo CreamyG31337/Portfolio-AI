@@ -20,9 +20,20 @@ CREATE TABLE ticker_analysis (
     sentiment_score NUMERIC(3, 2) CHECK (sentiment_score >= -1.0 AND sentiment_score <= 1.0),
     confidence_score NUMERIC(3, 2) CHECK (confidence_score >= 0.0 AND confidence_score <= 1.0),
     themes TEXT[],                      -- ["semiconductors", "AI chips", "accumulation"]
-    summary TEXT,                       -- 1-2 sentence summary
+    summary TEXT,                       -- 1-2 sentence actionable summary
     analysis_text TEXT,                 -- Full analysis (shown to user)
     reasoning TEXT,                     -- Internal reasoning (for debugging)
+    
+    -- Actionable Trading Fields (added 2025-01)
+    stance VARCHAR(10) CHECK (stance IN ('BUY', 'SELL', 'HOLD', 'AVOID')),
+    timeframe VARCHAR(20) CHECK (timeframe IN ('day_trade', 'swing', 'position')),
+    entry_zone VARCHAR(50),             -- e.g., "$45-47"
+    target_price VARCHAR(20),           -- e.g., "$52"
+    stop_loss VARCHAR(20),              -- e.g., "$42"
+    key_levels JSONB,                   -- {"support": ["$45", "$42"], "resistance": ["$50", "$55"]}
+    catalysts TEXT[],                   -- ["earnings next week", "FDA approval pending"]
+    risks TEXT[],                       -- ["high valuation", "sector rotation risk"]
+    invalidation TEXT,                  -- What would invalidate this thesis
     
     -- Debug: What data was sent to AI
     input_context TEXT,                 -- The actual text sent to LLM (shown in debug panel)

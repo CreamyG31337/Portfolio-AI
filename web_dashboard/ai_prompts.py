@@ -246,18 +246,37 @@ TICKER_ANALYSIS_PROMPT = """You are a financial analyst reviewing data for {tick
 {context}
 
 ## Task
-Provide a comprehensive analysis of this ticker based on the available data.
-Consider: institutional activity (ETF flows), congressional trading patterns,
-technical signals, and any research mentions.
+Provide a comprehensive, ACTIONABLE analysis of this ticker based on the available data.
+
+Analyze:
+1. **Price Action**: Current trend, key support/resistance levels from the OHLCV data
+2. **Institutional Activity**: ETF accumulation/distribution patterns
+3. **Smart Money Signals**: Congressional trading activity and timing
+4. **Catalysts**: Upcoming events, news themes, or triggers from research articles
+5. **Sentiment**: Social sentiment trends and extreme readings
+
+Based on this analysis, provide a trading stance with specific levels.
 
 Return JSON only:
 {{
     "sentiment": "BULLISH|BEARISH|NEUTRAL|MIXED",
     "sentiment_score": -1.0 to 1.0,
     "confidence_score": 0.0 to 1.0,
+    "stance": "BUY|SELL|HOLD|AVOID",
+    "timeframe": "day_trade|swing|position",
+    "entry_zone": "price range for entry (e.g., '$45-47') or null if HOLD/AVOID",
+    "target_price": "price target or null",
+    "stop_loss": "stop loss level or null",
+    "key_levels": {{
+        "support": ["$X", "$Y"],
+        "resistance": ["$A", "$B"]
+    }},
+    "catalysts": ["catalyst 1", "catalyst 2"],
+    "risks": ["risk 1", "risk 2"],
+    "invalidation": "What would invalidate this thesis",
     "themes": ["key theme 1", "key theme 2"],
-    "summary": "1-2 sentence summary",
-    "analysis_text": "3-5 paragraph detailed analysis",
+    "summary": "1-2 sentence actionable summary (e.g., 'BUY on pullback to $45 support, targeting $52')",
+    "analysis_text": "3-5 paragraph detailed analysis with evidence from the data",
     "reasoning": "Internal reasoning for this assessment"
 }}"""
 

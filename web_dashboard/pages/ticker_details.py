@@ -505,6 +505,61 @@ try:
                 st.metric("Last Price", f"${last_price:.2f}")
             with col3:
                 st.metric(change_label, f"{price_change_pct:+.2f}%")
+        
+        # OHLCV Table (Recent Price Action)
+        with st.expander("📊 Recent OHLCV Data (Last 10 Trading Days)", expanded=False):
+            try:
+                import yfinance as yf
+                ticker_obj = yf.Ticker(current_ticker)
+                hist = ticker_obj.history(period="1mo", auto_adjust=False)
+                
+                if not hist.empty:
+                    # Get last 10 trading days
+                    recent_hist = hist.tail(10).copy()
+                    recent_hist = recent_hist.reset_index()
+                    recent_hist['Date'] = recent_hist['Date'].dt.strftime('%Y-%m-%d')
+                    
+                    # Format the data
+                    ohlcv_df = pd.DataFrame({
+                        'Date': recent_hist['Date'],
+                        'Open': recent_hist['Open'].apply(lambda x: f"${x:.2f}"),
+                        'High': recent_hist['High'].apply(lambda x: f"${x:.2f}"),
+                        'Low': recent_hist['Low'].apply(lambda x: f"${x:.2f}"),
+                        'Close': recent_hist['Close'].apply(lambda x: f"${x:.2f}"),
+                        'Volume': recent_hist['Volume'].apply(lambda x: f"{int(x):,}"),
+                        'Change': ((recent_hist['Close'] - recent_hist['Open']) / recent_hist['Open'] * 100).apply(lambda x: f"{x:+.2f}%")
+                    })
+                    
+                    # Reverse to show most recent first
+                    ohlcv_df = ohlcv_df.iloc[::-1].reset_index(drop=True)
+                    
+                    st.dataframe(ohlcv_df, use_container_width=True, hide_index=True)
+                    
+                    # Add 52-week context
+                    try:
+                        hist_52w = ticker_obj.history(period="1y", auto_adjust=False)
+                        if not hist_52w.empty:
+                            high_52w = hist_52w['High'].max()
+                            low_52w = hist_52w['Low'].min()
+                            current = hist['Close'].iloc[-1]
+                            pct_from_high = ((current - high_52w) / high_52w) * 100
+                            pct_from_low = ((current - low_52w) / low_52w) * 100
+                            
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("52W High", f"${high_52w:.2f}")
+                            with col2:
+                                st.metric("52W Low", f"${low_52w:.2f}")
+                            with col3:
+                                st.metric("From 52W High", f"{pct_from_high:.1f}%")
+                            with col4:
+                                st.metric("From 52W Low", f"{pct_from_low:+.1f}%")
+                    except Exception:
+                        pass
+                else:
+                    st.info("No OHLCV data available from Yahoo Finance")
+            except Exception as e:
+                st.warning(f"Could not fetch OHLCV data: {e}")
     else:
         st.info(f"⚠️ No price history data available for {current_ticker}. This may be because:")
         st.markdown("""

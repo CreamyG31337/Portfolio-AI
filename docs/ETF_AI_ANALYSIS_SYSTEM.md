@@ -30,12 +30,13 @@ This system uses LLMs to analyze ETF holdings changes and individual tickers, ge
 
 The ticker analysis gathers data from:
 
-1. **ETF Changes** (max 50): All ETFs that bought/sold this ticker
-2. **Congress Trades** (max 30): Politician transactions
-3. **Technical Signals**: Buy/sell signals from signal analysis
-4. **Fundamentals**: Company financials from `securities` table
-5. **Research Articles** (max 10): Articles mentioning the ticker
-6. **Social Sentiment**: StockTwits/Reddit sentiment metrics
+1. **Price Data** (via yfinance): OHLCV, 52-week range, volume metrics, recent price action
+2. **ETF Changes** (max 50): All ETFs that bought/sold this ticker
+3. **Congress Trades** (max 30): Politician transactions
+4. **Technical Signals**: Buy/sell signals from signal analysis
+5. **Fundamentals**: Company financials from `securities` table
+6. **Research Articles** (max 10): Articles mentioning the ticker
+7. **Social Sentiment**: StockTwits/Reddit sentiment metrics
 
 **Time Window**: 90 days (3 months) lookback period
 
@@ -72,10 +73,11 @@ The ticker analysis gathers data from:
 
 ### Ticker Analysis Prompt
 
-**Style**: Structured JSON output with comprehensive analysis
+**Style**: Structured JSON output with **actionable trading analysis**
 
 **Input Context**:
 - Pre-formatted tables of all data sources (ETF changes, congress trades, signals, fundamentals, articles, sentiment)
+- **Price data** including OHLCV, 52-week range, and volume metrics (added 2025-01)
 - Formatted similar to AI context builder (no LLM tools - all data pre-fetched)
 
 **Output Format** (JSON):
@@ -84,14 +86,26 @@ The ticker analysis gathers data from:
     "sentiment": "BULLISH|BEARISH|NEUTRAL|MIXED",
     "sentiment_score": -1.0 to 1.0,
     "confidence_score": 0.0 to 1.0,
+    "stance": "BUY|SELL|HOLD|AVOID",
+    "timeframe": "day_trade|swing|position",
+    "entry_zone": "$45-47 or null",
+    "target_price": "$52 or null",
+    "stop_loss": "$42 or null",
+    "key_levels": {
+        "support": ["$45", "$42"],
+        "resistance": ["$50", "$55"]
+    },
+    "catalysts": ["catalyst 1", "catalyst 2"],
+    "risks": ["risk 1", "risk 2"],
+    "invalidation": "What would invalidate this thesis",
     "themes": ["key theme 1", "key theme 2"],
-    "summary": "1-2 sentence summary",
-    "analysis_text": "3-5 paragraph detailed analysis",
+    "summary": "1-2 sentence actionable summary",
+    "analysis_text": "3-5 paragraph detailed analysis with evidence",
     "reasoning": "Internal reasoning for this assessment"
 }
 ```
 
-**Key Task**: Provide comprehensive analysis considering institutional activity, congressional trading, technical signals, and research mentions.
+**Key Task**: Provide **actionable** analysis with trading stance, price levels, catalysts, and risks based on institutional activity, congressional trading, price action, and research mentions.
 
 ---
 
