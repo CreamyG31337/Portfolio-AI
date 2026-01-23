@@ -278,10 +278,10 @@ async function updateSchedulerBadge(): Promise<void> {
 
         if (data.scheduler_running) {
             badge.textContent = 'Running';
-            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-green-800 bg-green-100 rounded-full dark:bg-green-900 dark:text-green-300 sidebar-badge';
+            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-success-text bg-theme-success-bg rounded-full sidebar-badge';
         } else {
             badge.textContent = 'Stopped';
-            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-red-800 bg-red-100 rounded-full dark:bg-red-900 dark:text-red-300 sidebar-badge';
+            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-error-text bg-theme-error-bg rounded-full sidebar-badge';
         }
     } catch (error) {
         // Silently fail - badge will show server-rendered status
