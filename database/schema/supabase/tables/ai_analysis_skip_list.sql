@@ -25,4 +25,4 @@ CREATE INDEX idx_skip_list_last_failed ON ai_analysis_skip_list (last_failed_at 
 -- Comments
 COMMENT ON TABLE ai_analysis_skip_list IS 'Tracks tickers that failed analysis and should be skipped. Shown in admin UI with clickable links to ticker details page.';
 COMMENT ON COLUMN ai_analysis_skip_list.skip_until IS 'NULL = skip forever, or date to retry after';
-COMMENT ON COLUMN ai_analysis_skip_list.added_by IS "'system' for auto-added after failures, or admin email for manual additions";
+COMMENT ON COLUMN ai_analysis_skip_list.added_by IS $$'system' for auto-added after failures, or admin email for manual additions$$;

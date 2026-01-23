@@ -14,7 +14,13 @@ import time
 from datetime import datetime, timezone
 from typing import List, Tuple
 
-from scheduler.scheduler_core import log_job_execution
+# Import log_job_execution if available (optional for standalone testing)
+try:
+    from scheduler.scheduler_core import log_job_execution
+except ImportError:
+    # Fallback for standalone testing
+    def log_job_execution(job_id, success, message="", duration_ms=0):
+        logger.info(f"Job {job_id}: {'SUCCESS' if success else 'FAILED'} - {message} ({duration_ms}ms)")
 from supabase_client import SupabaseClient
 from postgres_client import PostgresClient
 from ollama_client import get_ollama_client

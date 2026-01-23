@@ -16,8 +16,23 @@ from datetime import datetime, timezone
 from supabase_client import SupabaseClient
 from ollama_client import OllamaClient
 from research_repository import ResearchRepository
-from scheduler.jobs_etf_watchtower import ETF_NAMES
 from settings import get_summarizing_model
+
+# ETF Names (copied from scheduler.jobs_etf_watchtower to avoid circular import)
+ETF_NAMES = {
+    "ARKK": "ARK Innovation ETF",
+    "ARKQ": "ARK Autonomous Technology & Robotics ETF",
+    "ARKW": "ARK Next Generation Internet ETF",
+    "ARKG": "ARK Genomic Revolution ETF",
+    "ARKF": "ARK Fintech Innovation ETF",
+    "ARKX": "ARK Space Exploration & Innovation ETF",
+    "IZRL": "ARK Israel Innovative Technology ETF",
+    "PRNT": "The 3D Printing ETF",
+    "IVV": "iShares Core S&P 500 ETF",
+    "IWM": "iShares Russell 2000 ETF",
+    "IWC": "iShares Micro-Cap ETF",
+    "IWO": "iShares Russell 2000 Growth ETF",
+}
 
 logger = logging.getLogger(__name__)
 

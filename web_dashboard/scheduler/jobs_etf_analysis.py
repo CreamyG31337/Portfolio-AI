@@ -13,7 +13,13 @@ import time
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
 
-from scheduler.scheduler_core import log_job_execution
+# Import log_job_execution if available (optional for standalone testing)
+try:
+    from scheduler.scheduler_core import log_job_execution
+except ImportError:
+    # Fallback for standalone testing
+    def log_job_execution(job_id, success, message="", duration_ms=0):
+        logger.info(f"Job {job_id}: {'SUCCESS' if success else 'FAILED'} - {message} ({duration_ms}ms)")
 from supabase_client import SupabaseClient
 from ollama_client import get_ollama_client
 from postgres_client import PostgresClient
@@ -52,11 +58,12 @@ def queue_todays_etf_analysis():
         
         # Get all ETFs with changes today
         result = db.supabase.from_('etf_holdings_changes') \
-            .select('etf_ticker', distinct=True) \
+            .select('etf_ticker') \
             .eq('date', today_str) \
             .execute()
         
-        etf_tickers = [row['etf_ticker'] for row in result.data or []]
+        # Get distinct tickers
+        etf_tickers = list(set([row['etf_ticker'] for row in result.data or []]))
         
         if not etf_tickers:
             logger.info("No ETF changes found for today")
