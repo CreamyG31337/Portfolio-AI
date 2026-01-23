@@ -166,6 +166,7 @@ const state = {
     currentFund: typeof window !== 'undefined' && window.INITIAL_FUND ? window.INITIAL_FUND : '',
     timeRange: 'ALL' as '1M' | '3M' | 'ALL',
     useSolidLines: false, // Solid lines checkbox state
+    pnlChartView: 'top_bottom' as 'top_bottom' | 'winners' | 'losers',
     charts: {} as Record<string, any>, // Charts now use Plotly (no longer ApexCharts)
     gridApi: null as any, // AG Grid API
     // Individual holdings state
@@ -234,6 +235,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
     initSolidLinesCheckbox();
     initIndividualHoldingsControls();
     initExchangeRateControls();
+    initPnlChartControls();
     initGrid(); // Initialize empty grid
     initThemeSync(); // Initialize theme synchronization
 
@@ -481,6 +483,40 @@ function initExchangeRateControls(): void {
         localStorage.setItem('inverse_exchange_rate', String(checkbox.checked));
         // Refresh exchange rate display
         fetchExchangeRateData();
+    });
+}
+
+function initPnlChartControls(): void {
+    const buttons = document.querySelectorAll<HTMLButtonElement>('.pnl-view-btn');
+    if (!buttons.length) {
+        return;
+    }
+
+    buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const view = button.getAttribute('data-pnl-view') || 'top_bottom';
+            if (view === state.pnlChartView) {
+                return;
+            }
+            state.pnlChartView = view as 'top_bottom' | 'winners' | 'losers';
+            updatePnlChartViewButtons();
+            loadPnlChart(state.currentFund);
+        });
+    });
+
+    updatePnlChartViewButtons();
+}
+
+function updatePnlChartViewButtons(): void {
+    const buttons = document.querySelectorAll<HTMLButtonElement>('.pnl-view-btn');
+    buttons.forEach((button) => {
+        const view = button.getAttribute('data-pnl-view') || 'top_bottom';
+        const isActive = view === state.pnlChartView;
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        button.classList.toggle('ring-2', isActive);
+        button.classList.toggle('ring-accent', isActive);
+        button.classList.toggle('z-10', isActive);
+        button.classList.toggle('text-accent', isActive);
     });
 }
 
@@ -1489,7 +1525,20 @@ async function fetchActivity(): Promise<void> {
                 tr.appendChild(priceCell);
 
                 const amountCell = document.createElement('td');
-                amountCell.className = 'px-6 py-4 text-right format-currency font-medium';
+                // Color coding: green for BUY/DRIP, green for SELL profit, red for SELL loss
+                let amountColorClass = '';
+                if (row.action === 'BUY' || row.action === 'DRIP') {
+                    // Purchases are always green
+                    amountColorClass = 'text-theme-success-text';
+                } else if (row.action === 'SELL') {
+                    // For sells, display_amount is P&L: green if profit, red if loss
+                    if (displayAmount > 0) {
+                        amountColorClass = 'text-theme-success-text';
+                    } else if (displayAmount < 0) {
+                        amountColorClass = 'text-theme-error-text';
+                    }
+                }
+                amountCell.className = `px-6 py-4 text-right format-currency font-medium ${amountColorClass}`;
                 amountCell.textContent = formatMoney(displayAmount);
                 tr.appendChild(amountCell);
 
@@ -1906,8 +1955,8 @@ function renderMovers(data: MoversData): void {
     const getPnlColor = (val: number | null | undefined) => {
         if (val == null) return '';
         return val > 0
-            ? 'text-theme-success-text font-bold'
-            : (val < 0 ? 'text-theme-error-text font-bold' : '');
+            ? 'text-green-600 dark:text-green-400 font-bold'
+            : (val < 0 ? 'text-red-600 dark:text-red-400 font-bold' : '');
     };
 
     const renderTable = (tbody: HTMLElement, items: MoverItem[], isGainer: boolean) => {
@@ -2396,9 +2445,10 @@ async function loadPnlChart(fund: string): Promise<void> {
     const theme = getEffectiveTheme();
 
     const startTime = performance.now();
-    const url = `/api/dashboard/charts/pnl?fund=${encodeURIComponent(fund || '')}&theme=${encodeURIComponent(theme)}`;
+    const view = state.pnlChartView || 'top_bottom';
+    const url = `/api/dashboard/charts/pnl?fund=${encodeURIComponent(fund || '')}&theme=${encodeURIComponent(theme)}&view=${encodeURIComponent(view)}`;
 
-    console.log('[Dashboard] Loading P&L chart:', { fund, theme, url });
+    console.log('[Dashboard] Loading P&L chart:', { fund, theme, view, url });
 
     try {
         showSpinner('pnl-chart-spinner');

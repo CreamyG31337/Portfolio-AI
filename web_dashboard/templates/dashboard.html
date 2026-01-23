@@ -364,8 +364,25 @@
 
     <!-- P&L by Position Chart -->
     <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm mb-6">
-        <h3 class="text-lg font-bold text-text-primary mb-4">P&L by Position</h3>
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 class="text-lg font-bold text-text-primary">P&L by Position</h3>
+            <div class="inline-flex rounded-md shadow-sm" role="group" aria-label="P&L chart view">
+                <button type="button" data-pnl-view="top_bottom" aria-pressed="true"
+                    class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
+                    Top/Bottom 20
+                </button>
+                <button type="button" data-pnl-view="winners" aria-pressed="false"
+                    class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border-t border-b border-border hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
+                    Winners 40
+                </button>
+                <button type="button" data-pnl-view="losers" aria-pressed="false"
+                    class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
+                    Losers 40
+                </button>
+            </div>
+        </div>
         <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+            ?? Default view shows the top 20 winners and bottom 20 losers. Use the toggle to switch to 40 winners or 40 losers.
             💡 <strong>Winning positions with gains</strong> show overlay bars (green unrealized + gold dividends).
             <strong>Winning positions with losses offset by dividends</strong> show red bar below axis (loss) + gold bar
             above axis (dividends) at the same position.

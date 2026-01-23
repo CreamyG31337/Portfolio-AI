@@ -741,7 +741,13 @@ def create_performance_by_fund_chart(funds_data: Dict[str, float], display_curre
 
 
 @log_execution_time()
-def create_pnl_chart(positions_df: pd.DataFrame, fund_name: Optional[str] = None, display_currency: Optional[str] = None, dividend_data: Optional[list] = None) -> go.Figure:
+def create_pnl_chart(
+    positions_df: pd.DataFrame,
+    fund_name: Optional[str] = None,
+    display_currency: Optional[str] = None,
+    dividend_data: Optional[list] = None,
+    view: str = "top_bottom",
+) -> go.Figure:
     """Create a bar chart showing P&L by position (unrealized + dividends)
     
     Visualization logic:
@@ -803,12 +809,22 @@ def create_pnl_chart(positions_df: pd.DataFrame, fund_name: Optional[str] = None
     
     # Sort by total P&L
     df = df.sort_values('total_pnl', ascending=False)
-    
-    # Limit to top/bottom 20 for readability
-    if len(df) > 40:
-        top = df.head(20)
-        bottom = df.tail(20)
-        df = pd.concat([top, bottom]).sort_values('total_pnl', ascending=False)
+
+    chart_view = (view or "top_bottom").strip().lower()
+    allowed_views = {"top_bottom", "winners", "losers"}
+    if chart_view not in allowed_views:
+        chart_view = "top_bottom"
+
+    if chart_view == "winners":
+        df = df[df['total_pnl'] >= 0].head(40)
+    elif chart_view == "losers":
+        df = df[df['total_pnl'] < 0].sort_values('total_pnl', ascending=True).head(40)
+    else:
+        # Limit to top/bottom 20 for readability
+        if len(df) > 40:
+            top = df.head(20)
+            bottom = df.tail(20)
+            df = pd.concat([top, bottom]).sort_values('total_pnl', ascending=False)
     
     # Split data by TOTAL P&L (not unrealized):
     # 1. Positive total P&L -> winners (green or red+gold)
