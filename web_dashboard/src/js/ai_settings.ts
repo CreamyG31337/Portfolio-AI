@@ -49,6 +49,24 @@ interface BlacklistResponse {
     error?: string;
 }
 
+interface SkipListEntry {
+    id?: string;
+    ticker: string;
+    reason?: string;
+    first_failed_at?: string;
+    last_failed_at?: string;
+    failure_count?: number;
+    skip_until?: string | null;
+    added_by?: string;
+    notes?: string;
+}
+
+interface SkipListResponse {
+    success?: boolean;
+    skip_list?: SkipListEntry[];
+    error?: string;
+}
+
 interface ContainerStatus {
     success: boolean;
     container_found?: boolean;
@@ -77,6 +95,8 @@ const saveSettingsBtn = document.getElementById('save-settings-btn');
 const addDomainInput = document.getElementById('add-domain-input') as HTMLInputElement | null;
 const addDomainBtn = document.getElementById('add-domain-btn');
 const blacklistTableBody = document.getElementById('blacklist-table-body');
+const skipListTableBody = document.getElementById('skip-list-table-body');
+const refreshSkipListBtn = document.getElementById('refresh-skip-list-btn');
 
 const webaiIndicator = document.getElementById('webai-indicator');
 const webaiMessage = document.getElementById('webai-message');
@@ -1243,5 +1263,107 @@ document.addEventListener('DOMContentLoaded', async () => {
         radio.addEventListener('change', toggleCookieMethod);
     });
 
+    // Skip list
+    if (refreshSkipListBtn) {
+        refreshSkipListBtn.addEventListener('click', loadSkipList);
+        console.log('[DEBUG] refreshSkipListBtn listener added');
+    }
+
+    // Load skip list on page load
+    loadSkipList();
+
     console.log('[DEBUG] AI Settings initialization complete');
 });
+
+// Skip List Functions
+async function loadSkipList(): Promise<void> {
+    if (!skipListTableBody) return;
+
+    try {
+        const response = await fetch('/api/admin/ai/skip-list', {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result: SkipListResponse = await response.json();
+
+        if (result.success && result.skip_list) {
+            renderSkipList(result.skip_list);
+        } else {
+            skipListTableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-text-secondary">No skipped tickers</td></tr>';
+        }
+    } catch (error) {
+        console.error('Error loading skip list:', error);
+        if (skipListTableBody) {
+            skipListTableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">Error loading skip list</td></tr>';
+        }
+    }
+}
+
+function renderSkipList(skipList: SkipListEntry[]): void {
+    if (!skipListTableBody) return;
+
+    if (skipList.length === 0) {
+        skipListTableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-text-secondary">No skipped tickers</td></tr>';
+        return;
+    }
+
+    skipListTableBody.innerHTML = skipList.map(entry => {
+        const ticker = entry.ticker || 'N/A';
+        const reason = entry.reason || 'No reason provided';
+        const failureCount = entry.failure_count || 0;
+        const lastFailed = entry.last_failed_at ? new Date(entry.last_failed_at).toLocaleDateString() : 'N/A';
+        const skipUntil = entry.skip_until ? new Date(entry.skip_until).toLocaleDateString() : 'Forever';
+        const addedBy = entry.added_by || 'system';
+
+        return `
+            <tr class="bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt">
+                <td class="px-6 py-4">
+                    <a href="/ticker?ticker=${encodeURIComponent(ticker)}" 
+                       class="font-medium text-accent hover:text-accent-hover hover:underline">
+                        ${escapeHtml(ticker)}
+                    </a>
+                </td>
+                <td class="px-6 py-4 text-text-primary">${escapeHtml(reason.substring(0, 100))}${reason.length > 100 ? '...' : ''}</td>
+                <td class="px-6 py-4 text-text-primary">${failureCount}</td>
+                <td class="px-6 py-4 text-text-primary">${lastFailed}</td>
+                <td class="px-6 py-4 text-right">
+                    <button onclick="removeFromSkipList('${escapeHtml(ticker)}')" 
+                            class="px-3 py-1 text-sm text-theme-success-text bg-transparent border border-theme-success-text rounded-lg hover:bg-theme-success-bg/10">
+                        Remove
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function removeFromSkipList(ticker: string): Promise<void> {
+    if (!confirm(`Remove ${ticker} from skip list? It will be eligible for analysis again.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/admin/ai/skip-list/${encodeURIComponent(ticker)}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            showToastForAI(`${ticker} removed from skip list`, 'success');
+            loadSkipList();
+        } else {
+            const result = await response.json();
+            showToastForAI(result.error || 'Failed to remove from skip list', 'error');
+        }
+    } catch (error) {
+        console.error('Error removing from skip list:', error);
+        showToastForAI('Error removing from skip list', 'error');
+    }
+}
+
+// Make removeFromSkipList available globally
+(window as any).removeFromSkipList = removeFromSkipList;

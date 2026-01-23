@@ -1402,3 +1402,109 @@ class ResearchRepository:
         except Exception as e:
             logger.error(f"❌ Error getting article count: {e}")
             return 0
+    
+    def search_ticker_analyses(self, query_embedding: List[float], limit: int = 10) -> List[Dict[str, Any]]:
+        """Search ticker analyses by semantic similarity.
+        
+        Args:
+            query_embedding: Query vector embedding (list of 768 floats)
+            limit: Maximum number of results
+            
+        Returns:
+            List of ticker analysis dictionaries with similarity scores
+        """
+        try:
+            if not query_embedding or len(query_embedding) != 768:
+                logger.warning("Invalid embedding dimensions for ticker analysis search")
+                return []
+            
+            # Convert to PostgreSQL vector format
+            embedding_str = "[" + ",".join(str(float(x)) for x in query_embedding) + "]"
+            
+            query = """
+                SELECT 
+                    ticker, analysis_type, analysis_date, data_start_date, data_end_date,
+                    sentiment, sentiment_score, confidence_score, themes, summary,
+                    analysis_text, reasoning,
+                    etf_changes_count, congress_trades_count, research_articles_count,
+                    created_at, updated_at, model_used,
+                    1 - (embedding <=> %s::vector) as similarity
+                FROM ticker_analysis
+                WHERE embedding IS NOT NULL
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+            """
+            
+            results = self.client.execute_query(query, (embedding_str, embedding_str, limit))
+            
+            # Process datetime fields
+            for result in results:
+                if result.get('analysis_date'):
+                    result['analysis_date'] = self._parse_datetime(result['analysis_date'])
+                if result.get('data_start_date'):
+                    result['data_start_date'] = self._parse_datetime(result['data_start_date'])
+                if result.get('data_end_date'):
+                    result['data_end_date'] = self._parse_datetime(result['data_end_date'])
+                if result.get('created_at'):
+                    result['created_at'] = self._parse_datetime(result['created_at'])
+                if result.get('updated_at'):
+                    result['updated_at'] = self._parse_datetime(result['updated_at'])
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"❌ Error searching ticker analyses: {e}")
+            return []
+    
+    def get_latest_ticker_analysis(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """Get most recent analysis for a ticker.
+        
+        Args:
+            ticker: Ticker symbol
+            
+        Returns:
+            Latest ticker analysis dictionary or None
+        """
+        try:
+            query = """
+                SELECT * FROM ticker_analysis
+                WHERE ticker = %s
+                ORDER BY analysis_date DESC, updated_at DESC
+                LIMIT 1
+            """
+            
+            results = self.client.execute_query(query, (ticker.upper(),))
+            
+            if results:
+                result = results[0]
+                # Process datetime fields
+                if result.get('analysis_date'):
+                    result['analysis_date'] = self._parse_datetime(result['analysis_date'])
+                if result.get('data_start_date'):
+                    result['data_start_date'] = self._parse_datetime(result['data_start_date'])
+                if result.get('data_end_date'):
+                    result['data_end_date'] = self._parse_datetime(result['data_end_date'])
+                if result.get('created_at'):
+                    result['created_at'] = self._parse_datetime(result['created_at'])
+                if result.get('updated_at'):
+                    result['updated_at'] = self._parse_datetime(result['updated_at'])
+                return result
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting latest ticker analysis for {ticker}: {e}")
+            return None
+    
+    def _parse_datetime(self, dt_value: Any) -> Optional[datetime]:
+        """Parse datetime value from database result."""
+        if not dt_value:
+            return None
+        if isinstance(dt_value, datetime):
+            return dt_value
+        if isinstance(dt_value, str):
+            try:
+                return datetime.fromisoformat(dt_value.replace('Z', '+00:00'))
+            except:
+                return None
+        return None

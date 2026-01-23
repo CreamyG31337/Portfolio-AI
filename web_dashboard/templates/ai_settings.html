@@ -216,6 +216,39 @@
         </div>
     </div>
 
+    <!-- AI Analysis Skip List -->
+    <div class="mt-6 p-6 bg-dashboard-surface border border-border rounded-lg shadow-sm">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h2 class="text-xl font-bold tracking-tight text-text-primary">🚫 AI Analysis Skip List</h2>
+                <p class="text-sm text-text-secondary mt-1">Tickers that failed analysis and are being skipped. Click ticker to view details.</p>
+            </div>
+            <button id="refresh-skip-list-btn"
+                class="px-3 py-2 text-sm font-medium text-center text-accent bg-transparent border border-accent rounded-lg hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 transition-colors duration-200">
+                🔄 Refresh
+            </button>
+        </div>
+
+        <div class="relative overflow-x-auto max-h-[400px]">
+            <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0">
+                    <tr>
+                        <th scope="col" class="px-6 py-3">Ticker</th>
+                        <th scope="col" class="px-6 py-3">Reason</th>
+                        <th scope="col" class="px-6 py-3">Failures</th>
+                        <th scope="col" class="px-6 py-3">Last Failed</th>
+                        <th scope="col" class="px-6 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="skip-list-table-body">
+                    <tr>
+                        <td colspan="5" class="px-6 py-4 text-center text-text-secondary">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- GLM 4.7 (Zhipu) API Key Management -->
     <div class="mt-6 p-6 bg-dashboard-surface border border-border rounded-lg shadow-sm">
         <h2 class="mb-4 text-xl font-bold tracking-tight text-text-primary">🔑 GLM 4.7 (Zhipu) API Key</h2>

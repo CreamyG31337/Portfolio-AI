@@ -2988,6 +2988,47 @@ def api_ticker_info():
             "type": type(e).__name__
         }), 500
 
+@app.route('/api/v2/ticker/<ticker>/analysis', methods=['GET'])
+@require_auth
+def get_ticker_analysis(ticker: str):
+    """Get latest AI analysis for a ticker."""
+    try:
+        from postgres_client import PostgresClient
+        
+        ticker_upper = ticker.upper().strip()
+        postgres = PostgresClient()
+        
+        # Get latest analysis
+        result = postgres.execute_query("""
+            SELECT 
+                ticker, analysis_type, analysis_date, data_start_date, data_end_date,
+                sentiment, sentiment_score, confidence_score, themes, summary,
+                analysis_text, reasoning, input_context,
+                etf_changes_count, congress_trades_count, research_articles_count,
+                created_at, updated_at, model_used, requested_by
+            FROM ticker_analysis
+            WHERE ticker = %s
+            ORDER BY analysis_date DESC
+            LIMIT 1
+        """, (ticker_upper,))
+        
+        if result:
+            analysis = result[0]
+            # Convert themes array to list if it's a string
+            if isinstance(analysis.get('themes'), str):
+                import json
+                try:
+                    analysis['themes'] = json.loads(analysis['themes'])
+                except:
+                    analysis['themes'] = []
+            return jsonify(analysis)
+        else:
+            return jsonify(None)
+        
+    except Exception as e:
+        logger.error(f"Error fetching ticker analysis for {ticker}: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/v2/ticker/<ticker>/reanalyze', methods=['POST'])
 @require_auth
 def request_ticker_reanalysis(ticker: str):

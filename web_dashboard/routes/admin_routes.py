@@ -2235,6 +2235,43 @@ def ai_settings_page():
                              user_theme='system',
                              **nav_context)
 
+@admin_bp.route('/api/admin/ai/skip-list')
+@require_admin
+def api_ai_skip_list():
+    """Get AI analysis skip list."""
+    try:
+        from ai_skip_list_manager import AISkipListManager
+        from supabase_client import SupabaseClient
+        
+        supabase = SupabaseClient(use_service_role=True)
+        skip_manager = AISkipListManager(supabase)
+        
+        skip_list = skip_manager.get_skip_list()
+        return jsonify({'success': True, 'skip_list': skip_list})
+        
+    except Exception as e:
+        logger.error(f"Error fetching skip list: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@admin_bp.route('/api/admin/ai/skip-list/<ticker>', methods=['DELETE'])
+@require_admin
+def api_remove_from_skip_list(ticker: str):
+    """Remove a ticker from skip list."""
+    try:
+        from ai_skip_list_manager import AISkipListManager
+        from supabase_client import SupabaseClient
+        
+        ticker_upper = ticker.upper().strip()
+        supabase = SupabaseClient(use_service_role=True)
+        skip_manager = AISkipListManager(supabase)
+        
+        skip_manager.remove_from_skip_list(ticker_upper)
+        return jsonify({'success': True, 'message': f'{ticker_upper} removed from skip list'})
+        
+    except Exception as e:
+        logger.error(f"Error removing {ticker} from skip list: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @admin_bp.route('/api/admin/ai/status')
 @require_admin
 def api_ai_status():

@@ -94,6 +94,29 @@ interface WatchlistStatus {
     source?: string;
 }
 
+interface TickerAnalysis {
+    ticker?: string;
+    analysis_type?: string;
+    analysis_date?: string;
+    data_start_date?: string;
+    data_end_date?: string;
+    sentiment?: string;
+    sentiment_score?: number;
+    confidence_score?: number;
+    themes?: string[];
+    summary?: string;
+    analysis_text?: string;
+    reasoning?: string;
+    input_context?: string;
+    etf_changes_count?: number;
+    congress_trades_count?: number;
+    research_articles_count?: number;
+    created_at?: string;
+    updated_at?: string;
+    model_used?: string;
+    requested_by?: string;
+}
+
 interface SignalAnalysis {
     ticker?: string;
     structure?: {
@@ -317,6 +340,9 @@ async function loadTickerData(ticker: string): Promise<void> {
 
         // Load signals
         await loadSignals(ticker);
+
+        // Load AI analysis
+        await loadTickerAnalysis(ticker);
 
         // Load and render chart
         const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
@@ -1372,6 +1398,208 @@ function toggleSummary(summaryId: string): void {
     }
 }
 
+// Load and render ticker AI analysis
+async function loadTickerAnalysis(ticker: string): Promise<void> {
+    try {
+        const response = await fetch(`/api/v2/ticker/${ticker}/analysis`, {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                // No analysis available yet
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const analysis: TickerAnalysis | null = await response.json();
+        if (analysis) {
+            renderTickerAnalysis(analysis, ticker);
+        }
+    } catch (error) {
+        console.error('Error loading ticker analysis:', error);
+        // Don't show error to user - analysis is optional
+    }
+}
+
+// Render ticker AI analysis
+function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
+    const section = document.getElementById('ai-analysis-section');
+    if (!section) return;
+
+    section.classList.remove('hidden');
+
+    const content = document.getElementById('ai-analysis-content');
+    if (!content) return;
+
+    // Format dates
+    const analysisDate = formatDate(analysis.analysis_date);
+    const updatedAt = formatDate(analysis.updated_at);
+    const dataStart = formatDate(analysis.data_start_date);
+    const dataEnd = formatDate(analysis.data_end_date);
+
+    // Sentiment badge color
+    const sentiment = analysis.sentiment || 'NEUTRAL';
+    let sentimentColor = 'bg-gray-500';
+    if (sentiment === 'BULLISH') sentimentColor = 'bg-green-500';
+    else if (sentiment === 'BEARISH') sentimentColor = 'bg-red-500';
+    else if (sentiment === 'MIXED') sentimentColor = 'bg-yellow-500';
+
+    // Themes
+    const themes = analysis.themes || [];
+    const themesHtml = themes.length > 0
+        ? themes.map(t => `<span class="px-2 py-1 bg-dashboard-background rounded text-sm text-text-primary">${escapeHtml(t)}</span>`).join(' ')
+        : '<span class="text-text-secondary">None identified</span>';
+
+    content.innerHTML = `
+        <div class="space-y-4">
+            <!-- Summary -->
+            ${analysis.summary ? `
+                <div class="bg-dashboard-background p-4 rounded-lg border border-border">
+                    <h3 class="font-semibold mb-2 text-text-primary">Summary</h3>
+                    <p class="text-text-primary">${escapeHtml(analysis.summary)}</p>
+                </div>
+            ` : ''}
+
+            <!-- Analysis Text -->
+            ${analysis.analysis_text ? `
+                <div class="bg-dashboard-background p-4 rounded-lg border border-border">
+                    <h3 class="font-semibold mb-2 text-text-primary">Full Analysis</h3>
+                    <div class="text-text-primary whitespace-pre-wrap">${escapeHtml(analysis.analysis_text)}</div>
+                </div>
+            ` : ''}
+
+            <!-- Metadata -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                    <div class="text-text-secondary">Sentiment</div>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="px-2 py-1 ${sentimentColor} text-white rounded text-xs">${sentiment}</span>
+                        ${analysis.sentiment_score !== null && analysis.sentiment_score !== undefined
+                            ? `<span class="text-text-primary">${(analysis.sentiment_score * 100).toFixed(0)}%</span>`
+                            : ''}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-text-secondary">Confidence</div>
+                    <div class="text-text-primary mt-1">
+                        ${analysis.confidence_score !== null && analysis.confidence_score !== undefined
+                            ? `${(analysis.confidence_score * 100).toFixed(0)}%`
+                            : 'N/A'}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-text-secondary">Analysis Date</div>
+                    <div class="text-text-primary mt-1">${analysisDate || 'N/A'}</div>
+                </div>
+                <div>
+                    <div class="text-text-secondary">Data Period</div>
+                    <div class="text-text-primary mt-1">${dataStart} to ${dataEnd}</div>
+                </div>
+            </div>
+
+            <!-- Themes -->
+            <div>
+                <div class="text-text-secondary text-sm mb-2">Key Themes</div>
+                <div class="flex flex-wrap gap-2">${themesHtml}</div>
+            </div>
+
+            <!-- Data Sources -->
+            <div class="text-sm text-text-secondary">
+                <div>Data sources: ${analysis.etf_changes_count || 0} ETF changes, ${analysis.congress_trades_count || 0} congress trades, ${analysis.research_articles_count || 0} articles</div>
+                ${updatedAt ? `<div class="mt-1">Last updated: ${updatedAt}</div>` : ''}
+                ${analysis.requested_by ? `<div class="mt-1">Requested by: ${escapeHtml(analysis.requested_by)}</div>` : ''}
+            </div>
+        </div>
+    `;
+
+    // Render debug panel if input_context exists
+    if (analysis.input_context) {
+        renderDebugPanel(analysis.input_context);
+    }
+
+    // Setup re-analyze button
+    const reanalyzeBtn = document.getElementById('reanalyze-btn');
+    if (reanalyzeBtn) {
+        reanalyzeBtn.onclick = () => requestReanalysis(ticker);
+    }
+}
+
+// Render debug panel with AI input context
+function renderDebugPanel(inputContext: string): void {
+    const container = document.getElementById('ai-debug-container');
+    if (!container) return;
+
+    container.innerHTML = `
+        <details class="border border-gray-200 dark:border-gray-700 rounded-lg">
+            <summary class="cursor-pointer p-3 bg-gray-50 dark:bg-gray-800 rounded-t-lg text-sm font-medium text-text-primary">
+                🔍 Debug: AI Input Context (click to expand)
+            </summary>
+            <pre class="p-4 bg-gray-100 dark:bg-gray-900 text-xs overflow-auto max-h-96 whitespace-pre-wrap text-text-primary">${escapeHtml(inputContext)}</pre>
+        </details>
+    `;
+}
+
+// Request re-analysis
+async function requestReanalysis(ticker: string): Promise<void> {
+    const btn = document.getElementById('reanalyze-btn') as HTMLButtonElement;
+    if (!btn) return;
+
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Queuing...';
+
+    try {
+        const response = await fetch(`/api/v2/ticker/${ticker}/reanalyze`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            showToast(data.message || 'Re-analysis queued. Refresh in a few minutes.', 'success');
+            // Refresh analysis after a delay
+            setTimeout(() => {
+                loadTickerAnalysis(ticker);
+            }, 5000);
+        } else {
+            const errorData = await response.json();
+            showToast(errorData.error || 'Failed to queue re-analysis', 'error');
+        }
+    } catch (error) {
+        console.error('Error requesting re-analysis:', error);
+        showToast('Failed to queue re-analysis', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText || '🔄 Re-Analyze';
+    }
+}
+
+// Helper to escape HTML
+function escapeHtml(text: string | null | undefined): string {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Helper to show toast notifications
+function showToast(message: string, type: 'success' | 'error' | 'info' = 'info'): void {
+    // Simple toast implementation - you can enhance this
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 ${
+        type === 'success' ? 'bg-green-500 text-white' :
+        type === 'error' ? 'bg-red-500 text-white' :
+        'bg-blue-500 text-white'
+    }`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.remove();
+    }, 5000);
+}
+
 // Make toggleSummary available globally
 (window as any).toggleSummary = toggleSummary;
 
@@ -1397,7 +1625,8 @@ function hideAllSections(): void {
         'sentiment-section',
         'congress-section',
         'watchlist-section',
-        'signals-section'
+        'signals-section',
+        'ai-analysis-section'
     ];
 
     sections.forEach(id => {

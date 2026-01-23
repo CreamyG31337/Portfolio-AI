@@ -35,6 +35,22 @@ def ticker_analysis_job() -> None:
     start_time = time.time()
     max_duration = 2 * 60 * 60  # 2 hours
     
+    # Check if job is already running (prevents concurrent execution)
+    try:
+        supabase_check = SupabaseClient(use_service_role=True)
+        running_check = supabase_check.supabase.table('job_executions') \
+            .select('id') \
+            .eq('job_name', job_id) \
+            .eq('status', 'running') \
+            .execute()
+        
+        if running_check.data:
+            logger.info(f"⏸️  Job {job_id} is already running. Skipping to prevent concurrent execution.")
+            return
+    except Exception as e:
+        logger.warning(f"Could not check if job is running: {e}")
+        # Continue anyway - better to run twice than fail silently
+    
     try:
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
         target_date = datetime.now(timezone.utc).date()
@@ -81,7 +97,7 @@ def ticker_analysis_job() -> None:
     processed = 0
     failed = 0
     
-    for ticker, priority in tickers:
+    for ticker, priority in tickers::
         # Check time limit
         elapsed = time.time() - start_time
         if elapsed > max_duration:
