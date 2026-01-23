@@ -33,13 +33,54 @@
         </div>
     </div>
 
-    <!-- Jobs Grid -->
-    <div id="jobs-container" class="grid grid-cols-1 gap-6">
-        <!-- Loading Skeleton -->
-        <div class="animate-pulse space-y-4">
-            <div class="h-32 bg-dashboard-surface rounded-lg border border-border"></div>
-            <div class="h-32 bg-dashboard-surface rounded-lg border border-border"></div>
-            <div class="h-32 bg-dashboard-surface rounded-lg border border-border"></div>
+    <!-- Tab Navigation -->
+    <div class="mb-6 flex border-b border-border">
+        <button id="tab-jobs"
+            class="px-6 py-2 text-sm font-medium border-b-2 border-accent text-accent transform transition-colors duration-200">
+            <i class="fas fa-list mr-2"></i>Jobs List
+        </button>
+        <button id="tab-timeline"
+            class="px-6 py-2 text-sm font-medium border-b-2 border-transparent text-text-secondary hover:text-text-primary hover:border-text-secondary transform transition-colors duration-200">
+            <i class="fas fa-clock mr-2"></i>Daily Schedule
+        </button>
+    </div>
+
+    <!-- Jobs Grid View -->
+    <div id="view-jobs" class="animate-fade-in">
+        <div id="jobs-container" class="grid grid-cols-1 gap-6">
+            <!-- Loading Skeleton -->
+            <div class="animate-pulse space-y-4">
+                <div class="h-32 bg-dashboard-surface rounded-lg border border-border"></div>
+                <div class="h-32 bg-dashboard-surface rounded-lg border border-border"></div>
+                <div class="h-32 bg-dashboard-surface rounded-lg border border-border"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timeline View -->
+    <div id="view-timeline" class="hidden animate-fade-in">
+        <div class="bg-dashboard-surface rounded-lg border border-border p-6">
+            <h3 class="text-lg font-bold text-text-primary mb-4">Daily Schedule</h3>
+
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <!-- Main Timeline (24h) -->
+                <div class="col-span-1 lg:col-span-3">
+                    <div id="timeline-container" class="relative pl-8 border-l border-border/50 py-2 space-y-8">
+                        <!-- Timeline items will be injected here -->
+                    </div>
+                </div>
+
+                <!-- Side Panel: Frequent/Recurring Jobs -->
+                <div class="col-span-1">
+                    <div class="bg-dashboard-background rounded-lg p-4 border border-border">
+                        <h4 class="text-sm font-semibold text-text-primary mb-3 uppercase tracking-wider text-xs">
+                            Recurring / Frequent</h4>
+                        <div id="frequent-jobs-container" class="space-y-3">
+                            <!-- Frequent items injected here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
