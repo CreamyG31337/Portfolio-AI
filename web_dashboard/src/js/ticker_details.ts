@@ -1548,7 +1548,7 @@ async function requestReanalysis(ticker: string): Promise<void> {
 
     const originalText = btn.textContent;
     btn.disabled = true;
-    btn.textContent = 'Queuing...';
+    btn.textContent = 'Re-analyzing...';
 
     try {
         const response = await fetch(`/api/v2/ticker/${ticker}/reanalyze`, {

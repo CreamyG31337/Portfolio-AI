@@ -539,10 +539,10 @@ class TickerAnalysisService:
         lines = ["[ Technical Signals ]"]
         
         overall = signals.get('overall_signal', 'N/A')
-        confidence = signals.get('confidence', 0)
-        structure = signals.get('structure', {})
-        timing = signals.get('timing', {})
-        fear = signals.get('fear', {})
+        confidence = signals.get('confidence_score', signals.get('confidence', 0))
+        structure = signals.get('structure_signal', signals.get('structure', {}))
+        timing = signals.get('timing_signal', signals.get('timing', {}))
+        fear = signals.get('fear_risk_signal', signals.get('fear', {}))
         
         lines.append(f"Overall Signal: {overall} (Confidence: {confidence:.0%})")
         lines.append(f"Structure - Trend: {structure.get('trend', 'N/A')}, Pullback: {structure.get('pullback', 'N/A')}, Breakout: {structure.get('breakout', 'N/A')}")
@@ -597,7 +597,7 @@ class TickerAnalysisService:
             lines.append("Latest Metrics:")
             for m in metrics[:5]:
                 platform = m.get('platform', 'N/A')
-                label = m.get('sentiment_label', 'N/A')
+                label = m.get('sentiment_label') or 'N/A'
                 score = m.get('sentiment_score') or 0
                 lines.append(f"  {platform}: {label} (score: {score:.2f})")
         
@@ -632,16 +632,30 @@ class TickerAnalysisService:
                 "-----------|---------------------|---------------------------|----------|--------------|--------|--------|------------|----------"
             ]
             ticker = data['ticker']
-            sector = fund.get('sector', 'N/A') or 'N/A'
-            industry = fund.get('industry', 'N/A') or 'N/A'
-            country = fund.get('country', 'N/A') or 'N/A'
+            sector = str(fund.get('sector', 'N/A') or 'N/A')
+            industry = str(fund.get('industry', 'N/A') or 'N/A')
+            country = str(fund.get('country', 'N/A') or 'N/A')
             market_cap = fund.get('market_cap', 'N/A') or 'N/A'
             pe_ratio = fund.get('trailing_pe', fund.get('pe_ratio', 'N/A')) or 'N/A'
             dividend_yield = fund.get('dividend_yield', 'N/A') or 'N/A'
             high_52w = fund.get('fifty_two_week_high', fund.get('high_52w', 'N/A')) or 'N/A'
             low_52w = fund.get('fifty_two_week_low', fund.get('low_52w', 'N/A')) or 'N/A'
-            
-            lines.append(f"{ticker:10} | {sector:19} | {industry:25} | {country:8} | {market_cap:12} | {pe_ratio:6} | {dividend_yield:6} | {high_52w:10} | {low_52w:10}")
+
+            # Align columns with fixed widths
+            sector_trunc = (sector[:20] if len(sector) > 20 else sector).ljust(20)
+            industry_trunc = (industry[:25] if len(industry) > 25 else industry).ljust(25)
+            country_trunc = (country[:8] if len(country) > 8 else country).ljust(8)
+            market_cap_trunc = (str(market_cap)[:12] if market_cap != 'N/A' else "N/A").ljust(12)
+            pe_trunc = (str(pe_ratio)[:6] if pe_ratio != 'N/A' else "N/A").ljust(6)
+            div_trunc = (str(dividend_yield)[:6] if dividend_yield != 'N/A' else "N/A").ljust(6)
+            high_trunc = (str(high_52w)[:10] if high_52w != 'N/A' else "N/A").ljust(10)
+            low_trunc = (str(low_52w)[:10] if low_52w != 'N/A' else "N/A").ljust(10)
+            ticker_padded = ticker.ljust(10)
+
+            lines.append(
+                f"{ticker_padded} | {sector_trunc} | {industry_trunc} | {country_trunc} | "
+                f"{market_cap_trunc} | {pe_trunc} | {div_trunc} | {high_trunc} | {low_trunc}"
+            )
             sections.append("\n".join(lines))
         
         # Price data (OHLCV and metrics)
