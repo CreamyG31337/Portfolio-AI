@@ -131,7 +131,50 @@ class TickerAnalysisService:
                 .select('*') \
                 .eq('ticker', ticker.upper()) \
                 .execute()
-            return result.data[0] if result.data else None
+            if not result.data:
+                return None
+
+            fundamentals = result.data[0]
+            missing_fields = [
+                fundamentals.get('trailing_pe'),
+                fundamentals.get('dividend_yield'),
+                fundamentals.get('fifty_two_week_high'),
+                fundamentals.get('fifty_two_week_low')
+            ]
+            if any(value is None for value in missing_fields) and HAS_YFINANCE:
+                try:
+                    ticker_upper = ticker.upper().strip()
+                    ticker_obj = yf.Ticker(ticker_upper)
+                    info = ticker_obj.info or {}
+
+                    updates = {}
+                    trailing_pe = info.get('trailingPE')
+                    dividend_yield = info.get('dividendYield')
+                    high_52w = info.get('fiftyTwoWeekHigh')
+                    low_52w = info.get('fiftyTwoWeekLow')
+
+                    if trailing_pe is not None:
+                        updates['trailing_pe'] = float(trailing_pe)
+                        fundamentals['trailing_pe'] = float(trailing_pe)
+                    if dividend_yield is not None:
+                        updates['dividend_yield'] = float(dividend_yield)
+                        fundamentals['dividend_yield'] = float(dividend_yield)
+                    if high_52w is not None:
+                        updates['fifty_two_week_high'] = float(high_52w)
+                        fundamentals['fifty_two_week_high'] = float(high_52w)
+                    if low_52w is not None:
+                        updates['fifty_two_week_low'] = float(low_52w)
+                        fundamentals['fifty_two_week_low'] = float(low_52w)
+
+                    if updates:
+                        self.supabase.supabase.table('securities') \
+                            .update(updates) \
+                            .eq('ticker', ticker_upper) \
+                            .execute()
+                except Exception as e:
+                    logger.warning(f"Error refreshing fundamentals for {ticker}: {e}")
+
+            return fundamentals
         except Exception as e:
             logger.warning(f"Error fetching fundamentals for {ticker}: {e}")
             return None
@@ -543,11 +586,28 @@ class TickerAnalysisService:
         structure = signals.get('structure_signal', signals.get('structure', {}))
         timing = signals.get('timing_signal', signals.get('timing', {}))
         fear = signals.get('fear_risk_signal', signals.get('fear', {}))
-        
+
+        trend = structure.get('trend', 'N/A')
+        pullback = structure.get('pullback', 'N/A')
+        breakout = structure.get('breakout', 'N/A')
+
+        volume_ok = timing.get('volume_ok')
+        rsi = timing.get('rsi')
+        cci = timing.get('cci')
+
+        volume_str = "N/A" if volume_ok is None else ("OK" if volume_ok else "Low")
+        rsi_str = "N/A" if rsi is None else f"{rsi:.1f}"
+        cci_str = "N/A" if cci is None else f"{cci:.1f}"
+
+        fear_level = fear.get('fear_level', 'N/A')
+        risk_score = fear.get('risk_score')
+        recommendation = fear.get('recommendation', 'N/A')
+        risk_score_str = "N/A" if risk_score is None else f"{risk_score:.1f}/100"
+
         lines.append(f"Overall Signal: {overall} (Confidence: {confidence:.0%})")
-        lines.append(f"Structure - Trend: {structure.get('trend', 'N/A')}, Pullback: {structure.get('pullback', 'N/A')}, Breakout: {structure.get('breakout', 'N/A')}")
-        lines.append(f"Timing - Entry: {timing.get('entry', 'N/A')}, Exit: {timing.get('exit', 'N/A')}")
-        lines.append(f"Fear Level: {fear.get('level', 'N/A')}")
+        lines.append(f"Structure - Trend: {trend}, Pullback: {pullback}, Breakout: {breakout}")
+        lines.append(f"Timing - Volume: {volume_str}, RSI: {rsi_str}, CCI: {cci_str}")
+        lines.append(f"Fear & Risk - Level: {fear_level}, Score: {risk_score_str}, Rec: {recommendation}")
         
         return "\n".join(lines)
     
