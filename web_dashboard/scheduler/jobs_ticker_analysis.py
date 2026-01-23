@@ -97,7 +97,7 @@ def ticker_analysis_job() -> None:
     processed = 0
     failed = 0
     
-    for ticker, priority in tickers::
+    for ticker, priority in tickers:
         # Check time limit
         elapsed = time.time() - start_time
         if elapsed > max_duration:
