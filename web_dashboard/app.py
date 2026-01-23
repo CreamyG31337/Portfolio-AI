@@ -109,6 +109,22 @@ def add_security_headers(response):
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+    # Content Security Policy (CSP)
+    # Allows scripts/styles from self and trusted CDNs
+    # 'unsafe-inline' and 'unsafe-eval' are required for current template/library architecture
+    # but restricting domains still provides significant security benefit over no CSP
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
+        "img-src 'self' data: https://assets.parqet.com https://s.yimg.com; "
+        "connect-src 'self'; "
+        "frame-ancestors 'self';"
+    )
+    response.headers['Content-Security-Policy'] = csp
+
     return response
 
 # Configure CORS to allow credentials from Vercel deployment

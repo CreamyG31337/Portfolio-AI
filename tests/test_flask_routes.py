@@ -31,6 +31,17 @@ def test_api_metrics_structure(client):
     assert response.status_code in [200, 302, 401, 404]
 
 
+def test_csp_header_present(client):
+    """Test that Content-Security-Policy header is present in responses."""
+    response = client.get('/')
+    # Should contain CSP header even on redirect
+    assert 'Content-Security-Policy' in response.headers
+    csp = response.headers['Content-Security-Policy']
+    assert "default-src 'self'" in csp
+    assert "script-src 'self'" in csp
+    assert "https://cdn.jsdelivr.net" in csp
+
+
 def test_logs_debug_requires_admin_non_admin_denied(client):
     """Test that /logs/debug denies access to non-admin users (Security Regression Test)."""
     # Mock authentication - user is authenticated but not admin
