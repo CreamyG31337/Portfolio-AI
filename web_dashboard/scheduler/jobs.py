@@ -345,6 +345,26 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             }
         }
     },
+    'etf_group_analysis': {
+        'name': 'ETF Group AI Analysis',
+        'description': 'Analyze daily ETF holdings changes as groups using AI',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '🔬',
+        'cron_triggers': [
+            {'hour': 21, 'minute': 0, 'timezone': 'America/New_York'}  # 9 PM EST
+        ]
+    },
+    'ticker_analysis': {
+        'name': 'Ticker AI Analysis',
+        'description': 'Analyze tickers with 3-month multi-source data. Holdings first, then watched tickers. 2-hour max.',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '🧠',
+        'cron_triggers': [
+            {'hour': 22, 'minute': 0, 'timezone': 'America/New_York'}  # 10 PM EST
+        ]
+    },
     'etf_watchtower': {
         'name': 'ETF Watchtower',
         'description': 'Track daily ETF holdings changes (ARK, iShares) to detect institutional accumulation/distribution',
@@ -1134,6 +1154,54 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: etf_watchtower (daily at 8:00 PM EST)")
+    
+    # ETF Group Analysis - Daily at 9:00 PM EST (after ETF Watchtower)
+    if AVAILABLE_JOBS.get('etf_group_analysis', {}).get('enabled_by_default', True):
+        from scheduler.jobs_etf_analysis import etf_group_analysis_job
+        
+        config = AVAILABLE_JOBS['etf_group_analysis']
+        triggers = config.get('cron_triggers', [{'hour': 21, 'minute': 0, 'timezone': 'America/New_York'}])
+        trigger_config = triggers[0]
+        
+        scheduler.add_job(
+            etf_group_analysis_job,
+            trigger=CronTrigger(
+                hour=trigger_config['hour'],
+                minute=trigger_config['minute'],
+                timezone=trigger_config.get('timezone', 'America/New_York')
+            ),
+            id='etf_group_analysis',
+            name=f"{get_job_icon('etf_group_analysis')} ETF Group AI Analysis",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600  # 1 hour grace period
+        )
+        logger.info("Registered job: etf_group_analysis (daily at 9:00 PM EST)")
+    
+    # Ticker Analysis - Daily at 10:00 PM EST (2-hour max, resumable)
+    if AVAILABLE_JOBS.get('ticker_analysis', {}).get('enabled_by_default', True):
+        from scheduler.jobs_ticker_analysis import ticker_analysis_job
+        
+        config = AVAILABLE_JOBS['ticker_analysis']
+        triggers = config.get('cron_triggers', [{'hour': 22, 'minute': 0, 'timezone': 'America/New_York'}])
+        trigger_config = triggers[0]
+        
+        scheduler.add_job(
+            ticker_analysis_job,
+            trigger=CronTrigger(
+                hour=trigger_config['hour'],
+                minute=trigger_config['minute'],
+                timezone=trigger_config.get('timezone', 'America/New_York')
+            ),
+            id='ticker_analysis',
+            name=f"{get_job_icon('ticker_analysis')} Ticker AI Analysis",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600  # 1 hour grace period
+        )
+        logger.info("Registered job: ticker_analysis (daily at 10:00 PM EST, 2-hour max)")
     
     # Securities Metadata Refresh - Daily at 1:00 AM EST (low priority, off-peak)
     if AVAILABLE_JOBS.get('refresh_securities_metadata', {}).get('enabled_by_default', True):

@@ -208,3 +208,55 @@ def build_analysis_prompt(
     
     return "\n".join(prompt_parts)
 
+
+# ETF Group Analysis Prompt
+ETF_GROUP_ANALYSIS_PROMPT = """You are analyzing daily holdings changes for {etf_name} ({etf_ticker}) on {date}.
+
+## Changes Summary
+- Total changes: {change_count}
+
+## Changes Data
+{changes_table}
+
+## Task
+Analyze these changes as a GROUP to identify:
+1. **Overall Pattern**: Is this accumulation, distribution, sector rotation, or mixed activity?
+2. **Key Themes**: What sectors/industries are being bought or sold?
+3. **Notable Changes**: Highlight the 3-5 most significant moves
+4. **Sentiment**: BULLISH, BEARISH, NEUTRAL, or MIXED
+
+Return JSON only:
+{{
+    "pattern": "accumulation|distribution|rotation|mixed|rebalancing",
+    "sentiment": "BULLISH|BEARISH|NEUTRAL|MIXED",
+    "sentiment_score": 0.0 to 1.0,
+    "themes": ["theme1", "theme2"],
+    "summary": "1-2 sentence summary",
+    "analysis": "Full analysis paragraph",
+    "notable_changes": [
+        {{"ticker": "XYZ", "action": "BUY", "reason": "why notable"}}
+    ]
+}}"""
+
+# Ticker Analysis Prompt
+TICKER_ANALYSIS_PROMPT = """You are a financial analyst reviewing data for {ticker}.
+
+## Available Data
+{context}
+
+## Task
+Provide a comprehensive analysis of this ticker based on the available data.
+Consider: institutional activity (ETF flows), congressional trading patterns,
+technical signals, and any research mentions.
+
+Return JSON only:
+{{
+    "sentiment": "BULLISH|BEARISH|NEUTRAL|MIXED",
+    "sentiment_score": -1.0 to 1.0,
+    "confidence_score": 0.0 to 1.0,
+    "themes": ["key theme 1", "key theme 2"],
+    "summary": "1-2 sentence summary",
+    "analysis_text": "3-5 paragraph detailed analysis",
+    "reasoning": "Internal reasoning for this assessment"
+}}"""
+

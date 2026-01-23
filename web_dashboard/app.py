@@ -2988,6 +2988,46 @@ def api_ticker_info():
             "type": type(e).__name__
         }), 500
 
+@app.route('/api/v2/ticker/<ticker>/reanalyze', methods=['POST'])
+@require_auth
+def request_ticker_reanalysis(ticker: str):
+    """Queue a manual re-analysis request for a ticker."""
+    try:
+        from flask_auth_utils import get_user_email_flask
+        from ai_skip_list_manager import AISkipListManager
+        from supabase_client import SupabaseClient
+        
+        ticker_upper = ticker.upper().strip()
+        user_email = get_user_email_flask() or 'anonymous'
+        
+        # Get Supabase client
+        supabase = SupabaseClient(use_service_role=True)
+        
+        # Remove from skip list if present
+        skip_manager = AISkipListManager(supabase)
+        skip_manager.remove_from_skip_list(ticker_upper)
+        
+        # Add to queue with highest priority
+        supabase.supabase.table('ai_analysis_queue') \
+            .insert({
+                'analysis_type': 'ticker',
+                'target_key': ticker_upper,
+                'priority': 1000,  # Manual requests get highest priority
+                'status': 'pending'
+            }) \
+            .execute()
+        
+        logger.info(f"Queued manual re-analysis for {ticker_upper} by {user_email}")
+        
+        return jsonify({
+            'status': 'queued',
+            'message': f'Re-analysis queued for {ticker_upper}. Results will appear shortly.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error queueing re-analysis for {ticker}: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 @cache_data(ttl=300)
 def _get_ticker_price_history_cached(ticker: str, days: int, user_is_admin: bool, auth_token: Optional[str]):
     """Get ticker price history with caching (300s TTL)"""
