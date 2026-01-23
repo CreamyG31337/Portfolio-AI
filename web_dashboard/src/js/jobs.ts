@@ -84,7 +84,7 @@ interface JobsDOMElements {
 // State
 let isSchedulerRunning = false;
 let jobs: Job[] = [];
-let refreshInterval: ReturnType<typeof setInterval> | null = null;
+let refreshInterval: ReturnType<typeof setTimeout> | null = null;
 let autoRefresh = true;
 let consecutiveErrors = 0;
 let maxBackoffDelay = 10000; // Max 10 seconds between retries
@@ -181,21 +181,40 @@ document.addEventListener('DOMContentLoaded', (): void => {
         (window as any).refreshJobs = fetchStatus;
         console.log('[Jobs] refreshJobs function exposed globally for onclick handlers');
     }
+
+    // ⚡ Bolt Optimization: Resume polling when tab becomes visible
+    // This prevents unnecessary API calls when the user is not looking at the page
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && autoRefresh) {
+            console.log('[Jobs] Tab visible, resuming auto-refresh');
+            // Fetch immediately to give user fresh data, then restart the loop
+            fetchStatus().finally(() => {
+                startAutoRefresh();
+            });
+        }
+    });
 });
 
 function startAutoRefresh(): void {
     console.log('[Jobs] Starting auto-refresh with adaptive backoff');
     if (refreshInterval) {
-        clearInterval(refreshInterval);
+        clearTimeout(refreshInterval);
     }
 
     // Use a function that adjusts delay based on errors
     const scheduleNextRefresh = () => {
         if (refreshInterval) {
-            clearInterval(refreshInterval);
+            clearTimeout(refreshInterval);
         }
 
         if (!autoRefresh) {
+            return;
+        }
+
+        // ⚡ Bolt Optimization: Pause polling when hidden
+        // This saves server resources and client battery/CPU
+        if (document.hidden) {
+            console.log('[Jobs] Tab hidden, pausing auto-refresh');
             return;
         }
 
@@ -203,12 +222,15 @@ function startAutoRefresh(): void {
         console.log(`[Jobs] Scheduling next refresh in ${delay}ms (errors: ${consecutiveErrors})`);
 
         refreshInterval = setTimeout(() => {
-            if (autoRefresh) {
+            // Check autoRefresh and visibility again before firing
+            if (autoRefresh && !document.hidden) {
                 console.log('[Jobs] Auto-refresh triggered');
                 fetchStatus().finally(() => {
                     // Schedule next refresh after this one completes
                     scheduleNextRefresh();
                 });
+            } else if (document.hidden) {
+                console.log('[Jobs] Tab hidden during timeout, pausing');
             }
         }, delay);
     };
