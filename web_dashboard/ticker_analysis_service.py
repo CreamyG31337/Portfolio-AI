@@ -618,10 +618,10 @@ class TickerAnalysisService:
             industry = fund.get('industry', 'N/A') or 'N/A'
             country = fund.get('country', 'N/A') or 'N/A'
             market_cap = fund.get('market_cap', 'N/A') or 'N/A'
-            pe_ratio = fund.get('pe_ratio', 'N/A') or 'N/A'
+            pe_ratio = fund.get('trailing_pe', fund.get('pe_ratio', 'N/A')) or 'N/A'
             dividend_yield = fund.get('dividend_yield', 'N/A') or 'N/A'
-            high_52w = fund.get('high_52w', 'N/A') or 'N/A'
-            low_52w = fund.get('low_52w', 'N/A') or 'N/A'
+            high_52w = fund.get('fifty_two_week_high', fund.get('high_52w', 'N/A')) or 'N/A'
+            low_52w = fund.get('fifty_two_week_low', fund.get('low_52w', 'N/A')) or 'N/A'
             
             lines.append(f"{ticker:10} | {sector:19} | {industry:25} | {country:8} | {market_cap:12} | {pe_ratio:6} | {dividend_yield:6} | {high_52w:10} | {low_52w:10}")
             sections.append("\n".join(lines))
