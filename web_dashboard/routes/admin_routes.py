@@ -2297,13 +2297,13 @@ def etf_metadata_page():
 @admin_bp.route('/api/admin/etf-metadata')
 @require_admin
 def api_get_etf_metadata():
-    """Get all securities with ETF metadata (fund_description)"""
+    """Get all securities so user can add/edit ETF metadata"""
     try:
         from flask_auth_utils import can_modify_data_flask
         
         client = SupabaseClient(use_service_role=True)
         
-        # Query securities table directly - get all securities with fund_description set
+        # Query securities table directly - get all securities
         # Use pagination to handle cases where there are more than 1000 rows
         all_securities = []
         batch_size = 1000
@@ -2312,7 +2312,6 @@ def api_get_etf_metadata():
         while True:
             result = client.supabase.table('securities') \
                 .select('ticker, company_name, fund_description') \
-                .not_.is_('fund_description', 'null') \
                 .order('ticker') \
                 .range(offset, offset + batch_size - 1) \
                 .execute()
