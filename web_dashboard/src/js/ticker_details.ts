@@ -1407,7 +1407,8 @@ async function loadTickerAnalysis(ticker: string): Promise<void> {
 
         if (!response.ok) {
             if (response.status === 404) {
-                // No analysis available yet
+                // No analysis available yet - show blank section with reanalyze button
+                renderEmptyAnalysis(ticker);
                 return;
             }
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -1416,10 +1417,46 @@ async function loadTickerAnalysis(ticker: string): Promise<void> {
         const analysis: TickerAnalysis | null = await response.json();
         if (analysis) {
             renderTickerAnalysis(analysis, ticker);
+        } else {
+            // Analysis is null - show blank section
+            renderEmptyAnalysis(ticker);
         }
     } catch (error) {
         console.error('Error loading ticker analysis:', error);
-        // Don't show error to user - analysis is optional
+        // Show blank section even on error so user can still reanalyze
+        renderEmptyAnalysis(ticker);
+    }
+}
+
+// Render empty analysis state (no analysis available yet)
+function renderEmptyAnalysis(ticker: string): void {
+    const section = document.getElementById('ai-analysis-section');
+    if (!section) return;
+
+    section.classList.remove('hidden');
+
+    const content = document.getElementById('ai-analysis-content');
+    if (!content) return;
+
+    // Clear debug container
+    const debugContainer = document.getElementById('ai-debug-container');
+    if (debugContainer) {
+        debugContainer.innerHTML = '';
+    }
+
+    // Show empty state message
+    content.innerHTML = `
+        <div class="bg-dashboard-background p-6 rounded-lg border border-border text-center">
+            <p class="text-text-secondary mb-4">No AI analysis available for this ticker yet.</p>
+            <p class="text-sm text-text-tertiary">Click the "Re-Analyze" button above to generate an analysis.</p>
+        </div>
+    `;
+
+    // Setup re-analyze button
+    const reanalyzeBtn = document.getElementById('reanalyze-btn') as HTMLButtonElement | null;
+    if (reanalyzeBtn) {
+        reanalyzeBtn.onclick = () => requestReanalysis(ticker);
+        reanalyzeBtn.disabled = false;
     }
 }
 

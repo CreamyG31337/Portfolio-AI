@@ -725,6 +725,7 @@ def get_pnl_chart():
     Query Parameters:
         fund (str): Fund name (optional)
         theme (str): Chart theme - 'dark', 'light', 'midnight-tokyo', 'abyss' (optional)
+        view (str): Chart view - 'top_bottom', 'winners', or 'losers' (default: 'top_bottom')
         
     Returns:
         JSON response with Plotly chart data:
@@ -744,6 +745,9 @@ def get_pnl_chart():
         fund = None
     
     client_theme = request.args.get('theme', '').strip().lower()
+    chart_view = request.args.get('view', 'top_bottom').strip().lower()
+    if chart_view not in {'top_bottom', 'winners', 'losers'}:
+        chart_view = 'top_bottom'
     display_currency = get_user_currency() or 'CAD'
     
     logger.info(f"[Dashboard API] /api/dashboard/charts/pnl called - fund={fund}, currency={display_currency}")

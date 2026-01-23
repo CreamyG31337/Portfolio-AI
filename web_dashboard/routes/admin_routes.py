@@ -2297,37 +2297,47 @@ def etf_metadata_page():
 @admin_bp.route('/api/admin/etf-metadata')
 @require_admin
 def api_get_etf_metadata():
-    """Get all ETFs with their metadata"""
+    """Get all securities with ETF metadata (fund_description)"""
     try:
         from flask_auth_utils import can_modify_data_flask
         
         client = SupabaseClient(use_service_role=True)
         
-        # Get all ETFs (tickers that appear in etf_holdings_log)
-        holdings_result = client.supabase.table('etf_holdings_log') \
-            .select('etf_ticker') \
-            .execute()
+        # Query securities table directly - get all securities with fund_description set
+        # Use pagination to handle cases where there are more than 1000 rows
+        all_securities = []
+        batch_size = 1000
+        offset = 0
         
-        etf_tickers = sorted(list(set([row['etf_ticker'] for row in holdings_result.data or []])))
+        while True:
+            result = client.supabase.table('securities') \
+                .select('ticker, company_name, fund_description') \
+                .not_.is_('fund_description', 'null') \
+                .order('ticker') \
+                .range(offset, offset + batch_size - 1) \
+                .execute()
+            
+            if not result.data:
+                break
+            
+            all_securities.extend(result.data)
+            
+            # If we got fewer rows than batch_size, we're done
+            if len(result.data) < batch_size:
+                break
+            
+            offset += batch_size
+            
+            # Safety break to prevent infinite loops
+            if offset > 50000:
+                logger.warning("Reached 50,000 row safety limit in api_get_etf_metadata pagination")
+                break
         
-        if not etf_tickers:
-            return jsonify({'success': True, 'etfs': []})
-        
-        # Get securities data for these ETFs
-        securities_result = client.supabase.table('securities') \
-            .select('ticker, company_name, fund_description') \
-            .in_('ticker', etf_tickers) \
-            .execute()
-        
-        # Create a map
-        securities_map = {row['ticker']: row for row in securities_result.data or []}
-        
-        # Build response with all ETFs
+        # Build response
         etfs = []
-        for ticker in etf_tickers:
-            sec = securities_map.get(ticker, {})
+        for sec in all_securities:
             etfs.append({
-                'ticker': ticker,
+                'ticker': sec.get('ticker'),
                 'company_name': sec.get('company_name'),
                 'fund_description': sec.get('fund_description')
             })

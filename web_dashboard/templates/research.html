@@ -229,7 +229,7 @@
                     <!-- Tickers -->
                     <div class="flex flex-wrap gap-1 justify-end max-w-xs">
                         {% for ticker in article.tickers|default([]) %}
-                        <a href="/research?ticker={{ ticker }}"
+                        <a href="/ticker?ticker={{ ticker }}"
                             class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2 py-0.5 rounded border border-theme-info-text hover:bg-theme-info-bg/80">
                             ${{ ticker }}
                         </a>
