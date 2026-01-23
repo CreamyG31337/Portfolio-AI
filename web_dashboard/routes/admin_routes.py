@@ -2272,6 +2272,117 @@ def api_remove_from_skip_list(ticker: str):
         logger.error(f"Error removing {ticker} from skip list: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# ETF Metadata Management Routes
+@admin_bp.route('/admin/etf-metadata')
+@require_admin
+def etf_metadata_page():
+    """ETF Metadata management page"""
+    try:
+        from flask_auth_utils import get_user_email_flask
+        from user_preferences import get_user_theme
+        from app import get_navigation_context
+        
+        user_email = get_user_email_flask()
+        user_theme = get_user_theme() or 'system'
+        nav_context = get_navigation_context(current_page='admin_etf_metadata')
+        
+        return render_template('etf_metadata.html', 
+                             user_email=user_email,
+                             user_theme=user_theme,
+                             **nav_context)
+    except Exception as e:
+        logger.error(f"Error rendering ETF metadata page: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/admin/etf-metadata')
+@require_admin
+def api_get_etf_metadata():
+    """Get all ETFs with their metadata"""
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        
+        client = SupabaseClient(use_service_role=True)
+        
+        # Get all ETFs (tickers that appear in etf_holdings_log)
+        holdings_result = client.supabase.table('etf_holdings_log') \
+            .select('etf_ticker') \
+            .execute()
+        
+        etf_tickers = sorted(list(set([row['etf_ticker'] for row in holdings_result.data or []])))
+        
+        if not etf_tickers:
+            return jsonify({'success': True, 'etfs': []})
+        
+        # Get securities data for these ETFs
+        securities_result = client.supabase.table('securities') \
+            .select('ticker, company_name, fund_description') \
+            .in_('ticker', etf_tickers) \
+            .execute()
+        
+        # Create a map
+        securities_map = {row['ticker']: row for row in securities_result.data or []}
+        
+        # Build response with all ETFs
+        etfs = []
+        for ticker in etf_tickers:
+            sec = securities_map.get(ticker, {})
+            etfs.append({
+                'ticker': ticker,
+                'company_name': sec.get('company_name'),
+                'fund_description': sec.get('fund_description')
+            })
+        
+        return jsonify({'success': True, 'etfs': etfs})
+        
+    except Exception as e:
+        logger.error(f"Error fetching ETF metadata: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@admin_bp.route('/api/admin/etf-metadata/<ticker>', methods=['PUT'])
+@require_admin
+def api_update_etf_metadata(ticker: str):
+    """Update ETF metadata"""
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot modify ETF metadata"}), 403
+        
+        data = request.get_json()
+        fund_description = data.get('fund_description', '').strip() or None
+        
+        ticker_upper = ticker.upper().strip()
+        client = SupabaseClient(use_service_role=True)
+        
+        # Check if security exists
+        check_result = client.supabase.table('securities') \
+            .select('ticker') \
+            .eq('ticker', ticker_upper) \
+            .execute()
+        
+        if not check_result.data:
+            # Create security entry if it doesn't exist
+            client.supabase.table('securities') \
+                .insert({
+                    'ticker': ticker_upper,
+                    'fund_description': fund_description
+                }) \
+                .execute()
+        else:
+            # Update existing
+            client.supabase.table('securities') \
+                .update({
+                    'fund_description': fund_description
+                }) \
+                .eq('ticker', ticker_upper) \
+                .execute()
+        
+        return jsonify({'success': True, 'message': f'Updated metadata for {ticker_upper}'})
+        
+    except Exception as e:
+        logger.error(f"Error updating ETF metadata for {ticker}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @admin_bp.route('/api/admin/ai/status')
 @require_admin
 def api_ai_status():

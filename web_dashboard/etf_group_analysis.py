@@ -121,6 +121,28 @@ class ETFGroupAnalysisService:
         
         return "\n".join(lines)
     
+    def get_etf_metadata(self, etf_ticker: str) -> Optional[str]:
+        """Get ETF metadata (fund description) from securities table.
+        
+        Args:
+            etf_ticker: ETF ticker symbol
+            
+        Returns:
+            Fund description text or None
+        """
+        try:
+            result = self.supabase.supabase.table('securities') \
+                .select('fund_description') \
+                .eq('ticker', etf_ticker.upper()) \
+                .execute()
+            
+            if result.data and result.data[0].get('fund_description'):
+                return result.data[0].get('fund_description')
+            return None
+        except Exception as e:
+            logger.warning(f"Error fetching ETF metadata for {etf_ticker}: {e}")
+            return None
+    
     def analyze_group(self, etf_ticker: str, date: datetime) -> Optional[Dict]:
         """Analyze all changes for an ETF on a date.
         
@@ -141,6 +163,15 @@ class ETFGroupAnalysisService:
         # Format changes for LLM
         changes_table = self.format_changes_for_llm(changes)
         
+        # Get ETF metadata
+        fund_description = self.get_etf_metadata(etf_ticker)
+        
+        # Format metadata for prompt (preserve line breaks)
+        etf_context = ""
+        if fund_description:
+            etf_context = "\n\n## ETF Fund Information\n"
+            etf_context += f"{fund_description}\n"
+        
         # Get prompt from ai_prompts
         try:
             from ai_prompts import ETF_GROUP_ANALYSIS_PROMPT
@@ -149,7 +180,8 @@ class ETFGroupAnalysisService:
                 etf_name=ETF_NAMES.get(etf_ticker, etf_ticker),
                 date=date.strftime('%Y-%m-%d'),
                 change_count=len(changes),
-                changes_table=changes_table
+                changes_table=changes_table,
+                etf_context=etf_context
             )
         except ImportError:
             logger.error("ETF_GROUP_ANALYSIS_PROMPT not found in ai_prompts.py")

@@ -211,7 +211,7 @@ def build_analysis_prompt(
 
 # ETF Group Analysis Prompt
 ETF_GROUP_ANALYSIS_PROMPT = """You are analyzing daily holdings changes for {etf_name} ({etf_ticker}) on {date}.
-
+{etf_context}
 ## Changes Summary
 - Total changes: {change_count}
 
@@ -224,6 +224,7 @@ Analyze these changes as a GROUP to identify:
 2. **Key Themes**: What sectors/industries are being bought or sold?
 3. **Notable Changes**: Highlight the 3-5 most significant moves
 4. **Sentiment**: BULLISH, BEARISH, NEUTRAL, or MIXED
+5. **Alignment**: How do these changes align with the ETF's stated investment objective and strategy?
 
 Return JSON only:
 {{

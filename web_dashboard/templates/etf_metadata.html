@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}ETF Metadata - Admin Dashboard{% endblock %}
+{% block page_title %}📊 ETF Metadata Management{% endblock %}
+{% block page_subtitle %}Edit fund objectives and descriptions for AI analysis{% endblock %}
+
+{% block content %}
+<!-- PAGE: etf_metadata.html | ID: admin_etf_metadata -->
+<div class="px-4 py-6">
+    <div class="mb-6">
+        <p class="text-sm text-text-secondary">
+            Manage ETF fund objectives and descriptions. This information helps the AI better understand 
+            ETF investment strategies when analyzing holdings changes.
+        </p>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading-state" class="text-center py-8">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+        <p class="mt-2 text-text-secondary">Loading ETFs...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="error-state" class="hidden bg-theme-error-bg border border-theme-error-text text-theme-error-text px-4 py-3 rounded mb-6">
+        <p id="error-message"></p>
+    </div>
+
+    <!-- ETF List -->
+    <div id="etf-list" class="hidden space-y-4">
+        <!-- Populated by JavaScript -->
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/etf_metadata.js"></script>
+{% endblock %}
