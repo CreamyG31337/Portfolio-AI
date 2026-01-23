@@ -702,19 +702,18 @@ class TickerAnalysisService:
             low_52w = fund.get('fifty_two_week_low', fund.get('low_52w', 'N/A')) or 'N/A'
 
             # Align columns with fixed widths
-            sector_trunc = (sector[:20] if len(sector) > 20 else sector).ljust(20)
-            industry_trunc = (industry[:25] if len(industry) > 25 else industry).ljust(25)
-            country_trunc = (country[:8] if len(country) > 8 else country).ljust(8)
-            market_cap_trunc = (str(market_cap)[:12] if market_cap != 'N/A' else "N/A").ljust(12)
-            pe_trunc = (str(pe_ratio)[:6] if pe_ratio != 'N/A' else "N/A").ljust(6)
-            div_trunc = (str(dividend_yield)[:6] if dividend_yield != 'N/A' else "N/A").ljust(6)
-            high_trunc = (str(high_52w)[:10] if high_52w != 'N/A' else "N/A").ljust(10)
-            low_trunc = (str(low_52w)[:10] if low_52w != 'N/A' else "N/A").ljust(10)
-            ticker_padded = ticker.ljust(10)
+            sector_trunc = (sector[:20] if len(sector) > 20 else sector)
+            industry_trunc = (industry[:25] if len(industry) > 25 else industry)
+            country_trunc = (country[:8] if len(country) > 8 else country)
+            market_cap_trunc = (str(market_cap)[:12] if market_cap != "N/A" else "N/A")
+            pe_trunc = (str(pe_ratio)[:6] if pe_ratio != "N/A" else "N/A")
+            div_trunc = (str(dividend_yield)[:6] if dividend_yield != "N/A" else "N/A")
+            high_trunc = (str(high_52w)[:10] if high_52w != "N/A" else "N/A")
+            low_trunc = (str(low_52w)[:10] if low_52w != "N/A" else "N/A")
 
             lines.append(
-                f"{ticker_padded} | {sector_trunc} | {industry_trunc} | {country_trunc} | "
-                f"{market_cap_trunc} | {pe_trunc} | {div_trunc} | {high_trunc} | {low_trunc}"
+                f"{ticker:<10} | {sector_trunc:<20} | {industry_trunc:<25} | {country_trunc:<8} | "
+                f"{market_cap_trunc:>12} | {pe_trunc:>6} | {div_trunc:>6} | {high_trunc:>10} | {low_trunc:>10}"
             )
             sections.append("\n".join(lines))
         

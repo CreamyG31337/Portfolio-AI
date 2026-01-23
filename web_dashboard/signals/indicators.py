@@ -77,8 +77,12 @@ def calculate_cci(
             logger.warning(f"Columns {missing_cols} not found in DataFrame")
             return pd.Series(dtype=float)
         
+        high = pd.to_numeric(df[high_col], errors="coerce")
+        low = pd.to_numeric(df[low_col], errors="coerce")
+        close = pd.to_numeric(df[close_col], errors="coerce")
+
         # Typical Price
-        tp = (df[high_col] + df[low_col] + df[close_col]) / 3
+        tp = (high + low + close) / 3
         
         # Simple Moving Average of TP
         tp_sma = tp.rolling(window=period).mean()
