@@ -116,11 +116,11 @@ def add_security_headers(response):
     # but restricting domains still provides significant security benefit over no CSP
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://static.cloudflareinsights.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
         "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
         "img-src 'self' data: https://assets.parqet.com https://s.yimg.com; "
-        "connect-src 'self'; "
+        "connect-src 'self' https://cdn.jsdelivr.net; "
         "frame-ancestors 'self';"
     )
     response.headers['Content-Security-Policy'] = csp
