@@ -338,10 +338,14 @@ def api_ai_preview_context():
 @ai_bp.route('/api/v2/ai/models', methods=['GET'])
 @require_auth
 def api_ai_models():
-    """Get available AI models"""
+    """Get available AI models with user's preferred default"""
     try:
         formatted_models = _get_formatted_ai_models()
-        return jsonify({"models": formatted_models})
+        default_model = get_user_ai_model()
+        return jsonify({
+            "models": formatted_models,
+            "default_model": default_model
+        })
     except Exception as e:
         logger.error(f"Error fetching AI models: {e}")
         return jsonify({"error": str(e)}), 500

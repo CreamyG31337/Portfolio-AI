@@ -582,12 +582,17 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     
     # Filter out non-stock tickers (cash, futures, derivatives)
     before_filter = len(significant)
-    significant = significant[significant['ticker'].apply(is_stock_ticker)]
+    significant = significant[significant['ticker'].apply(is_stock_ticker)].copy()
     filtered_out = before_filter - len(significant)
-    
+
     if filtered_out > 0:
         logger.info(f"🔍 {etf_ticker}: Filtered out {filtered_out} non-stock changes (cash/futures/derivatives)")
-    
+
+    # Early return if all changes were filtered out
+    if len(significant) == 0:
+        logger.info(f"📊 {etf_ticker}: No significant stock changes after filtering")
+        return []
+
     # Detect and filter systematic adjustments (e.g., expense ratio deductions)
     # Systematic adjustments affect all holdings by approximately the same percentage
     # This is NOT trading activity - it's administrative adjustments like fee deductions

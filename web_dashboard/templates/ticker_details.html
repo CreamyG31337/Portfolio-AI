@@ -403,7 +403,14 @@
             <h2 class="text-xl font-bold text-text-primary">📊 Technical Signals</h2>
             <p class="text-xs text-text-secondary">Last updated: <span id="signals-last-updated">-</span></p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-2">
+                <label for="signals-model-select" class="text-xs font-medium text-text-secondary">Model</label>
+                <select id="signals-model-select"
+                    class="bg-dashboard-background border border-border text-text-primary text-xs rounded-lg focus:ring-accent focus:border-accent px-2 py-1 min-w-[180px]">
+                    <option value="">Loading models...</option>
+                </select>
+            </div>
             <span id="signals-status" class="text-sm text-text-secondary"></span>
             <button id="signals-refresh-btn" type="button"
                 class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 inline-flex items-center transition-colors duration-200">
