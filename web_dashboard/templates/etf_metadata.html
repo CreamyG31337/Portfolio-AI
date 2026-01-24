@@ -70,20 +70,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<style>
-    /* Custom glow animation to draw attention to unsaved changes. */
-    @keyframes save-glow {
-        0%, 100% {
-            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.0);
-        }
-        50% {
-            box-shadow: 0 0 0.75rem 0.2rem rgba(59, 130, 246, 0.45);
-        }
-    }
-
-    .save-glow {
-        animation: save-glow 1.6s ease-in-out infinite;
-    }
-</style>
 <script type="module" src="/assets/js/etf_metadata.js"></script>
 {% endblock %}

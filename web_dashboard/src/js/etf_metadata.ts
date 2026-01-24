@@ -178,7 +178,7 @@ function renderSecurities(securities: SecurityMetadata[], mode: SecurityMode, qu
                         ${companyName ? `<p class="text-sm text-text-secondary">${companyName}</p>` : ""}
                     </div>
                     <button data-save-button="${ticker}" onclick="saveSecurityMetadata('${ticker}')"
-                        class="inline-flex items-center justify-center text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent/50 font-medium rounded-lg text-sm px-5 py-2.5">
+                        class="inline-flex items-center justify-center text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
                         <i class="fas fa-floppy-disk mr-2"></i>Save
                     </button>
                 </div>
@@ -222,7 +222,9 @@ function wireDirtyTracking(): void {
 function updateSaveButtonState(ticker: string, isDirty: boolean): void {
     const button = document.querySelector<HTMLButtonElement>(`[data-save-button="${ticker}"]`);
     if (!button) return;
-    button.classList.toggle("save-glow", isDirty);
+    button.classList.toggle("animate-pulse", isDirty);
+    button.classList.toggle("ring-2", isDirty);
+    button.classList.toggle("ring-accent/40", isDirty);
 }
 
 function escapeForTextarea(text: string): string {
