@@ -333,8 +333,9 @@ def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str) -> Optional[p
     try:
         logger.info(f"📥 Downloading {etf_ticker} holdings from Global X...")
         
-        # Global X uses date in filename: YYYYMMDD format
-        today = datetime.now(timezone.utc)
+        # Global X uses date in filename: YYYYMMDD format (US market time, not UTC)
+        # Use local time to match their file naming convention
+        today = datetime.now()
         date_str = today.strftime('%Y%m%d')
         csv_url = csv_url_template.format(date=date_str)
         

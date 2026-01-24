@@ -2881,6 +2881,17 @@ def _get_all_tickers_cached():
         logger.error(f"Error fetching ticker list in _get_all_tickers_cached: {e}", exc_info=True)
         return []
 
+
+def _normalize_fund_param(fund: Optional[str]) -> Optional[str]:
+    if not fund:
+        return None
+    fund_value = str(fund).strip()
+    if not fund_value:
+        return None
+    if fund_value.lower() in ("all", "all funds"):
+        return None
+    return fund_value
+
 @app.route('/api/v2/ticker/list')
 @require_auth
 def api_ticker_list():
@@ -2898,7 +2909,12 @@ def api_ticker_list():
         }), 500
 
 @cache_data(ttl=300)
-def _get_ticker_info_cached(ticker: str, user_is_admin: bool, auth_token: Optional[str]):
+def _get_ticker_info_cached(
+    ticker: str,
+    user_is_admin: bool,
+    auth_token: Optional[str],
+    fund: Optional[str]
+):
     """Get ticker info with caching (300s TTL)"""
     from postgres_client import PostgresClient
     from supabase_client import SupabaseClient
@@ -2921,7 +2937,7 @@ def _get_ticker_info_cached(ticker: str, user_is_admin: bool, auth_token: Option
     
     # Get ticker info
     from ticker_utils import get_ticker_info
-    return get_ticker_info(ticker, supabase_client, postgres_client)
+    return get_ticker_info(ticker, supabase_client, postgres_client, fund=fund)
 
 @app.route('/api/v2/ticker/info')
 @require_auth
@@ -2936,13 +2952,15 @@ def api_ticker_info():
         if not ticker:
             return jsonify({"error": "Ticker symbol is required"}), 400
         
+        fund = _normalize_fund_param(request.args.get('fund'))
+        
         # Check if user is admin
         user_is_admin = is_admin()
         auth_token = request.cookies.get('auth_token')
         
         # Get ticker info (cached)
         try:
-            ticker_data = _get_ticker_info_cached(ticker, user_is_admin, auth_token)
+            ticker_data = _get_ticker_info_cached(ticker, user_is_admin, auth_token, fund)
         except RecursionError:
             # Handle recursion errors specifically from cache pickling issues
             logger.error(f"RecursionError fetching ticker info for {ticker}", exc_info=True)
@@ -3034,6 +3052,33 @@ def get_ticker_analysis(ticker: str):
         logger.error(f"Error fetching ticker analysis for {ticker}: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/v2/ticker/<ticker>/analysis-context', methods=['GET'])
+@require_auth
+def get_ticker_analysis_context(ticker: str):
+    """Build AI analysis context preview from current ticker data."""
+    try:
+        from ai_skip_list_manager import AISkipListManager
+        from postgres_client import PostgresClient
+        from supabase_client import SupabaseClient
+        from ticker_analysis_service import TickerAnalysisService
+
+        ticker_upper = ticker.upper().strip()
+        supabase = SupabaseClient(use_service_role=True)
+        postgres = PostgresClient()
+        skip_manager = AISkipListManager(supabase)
+
+        service = TickerAnalysisService(None, supabase, postgres, skip_manager)
+        data = service.gather_ticker_data(ticker_upper)
+        context = service.format_ticker_context(data)
+
+        return jsonify({
+            'ticker': ticker_upper,
+            'context': context
+        })
+    except Exception as e:
+        logger.error(f"Error building ticker analysis context for {ticker}: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/v2/ticker/<ticker>/reanalyze', methods=['POST'])
 @require_auth
 def request_ticker_reanalysis(ticker: str):
@@ -3078,7 +3123,13 @@ def request_ticker_reanalysis(ticker: str):
         return jsonify({'error': str(e)}), 500
 
 @cache_data(ttl=300)
-def _get_ticker_price_history_cached(ticker: str, days: int, user_is_admin: bool, auth_token: Optional[str]):
+def _get_ticker_price_history_cached(
+    ticker: str,
+    days: int,
+    user_is_admin: bool,
+    auth_token: Optional[str],
+    fund: Optional[str]
+):
     """Get ticker price history with caching (300s TTL)"""
     from supabase_client import SupabaseClient
     
@@ -3091,7 +3142,7 @@ def _get_ticker_price_history_cached(ticker: str, days: int, user_is_admin: bool
         raise ValueError("Unable to connect to database")
     
     from ticker_utils import get_ticker_price_history
-    return get_ticker_price_history(ticker, supabase_client, days=days)
+    return get_ticker_price_history(ticker, supabase_client, days=days, fund=fund)
 
 @app.route('/api/v2/ticker/price-history')
 @require_auth
@@ -3105,11 +3156,12 @@ def api_ticker_price_history():
             return jsonify({"error": "Ticker symbol is required"}), 400
         
         days = int(request.args.get('days', 90))
+        fund = _normalize_fund_param(request.args.get('fund'))
         user_is_admin = is_admin()
         auth_token = request.cookies.get('auth_token')
         
         # Get price history (cached)
-        price_df = _get_ticker_price_history_cached(ticker, days, user_is_admin, auth_token)
+        price_df = _get_ticker_price_history_cached(ticker, days, user_is_admin, auth_token, fund)
         
         # Convert DataFrame to JSON
         if price_df.empty:
@@ -3131,7 +3183,14 @@ def api_ticker_price_history():
         }), 500
 
 @cache_data(ttl=300)
-def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: bool, auth_token: Optional[str], range: str = '3m'):
+def _get_ticker_chart_data_cached(
+    ticker: str,
+    use_solid: bool,
+    user_is_admin: bool,
+    auth_token: Optional[str],
+    fund: Optional[str],
+    range: str = '3m'
+):
     """Get ticker chart data with caching (300s TTL) - theme applied separately"""
     from supabase_client import SupabaseClient
     
@@ -3153,7 +3212,7 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
     }.get(range, 90)
     
     from ticker_utils import get_ticker_price_history
-    price_df = get_ticker_price_history(ticker, supabase_client, days=range_days)
+    price_df = get_ticker_price_history(ticker, supabase_client, days=range_days, fund=fund)
     
     if price_df.empty:
         # Return empty chart data structure instead of raising error
@@ -3209,13 +3268,14 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
         start_date = (date.today() - timedelta(days=range_days)).isoformat()
         end_date = date.today().isoformat()
         
-        trade_result = supabase_client.supabase.table("trade_log")\
+        trade_query = supabase_client.supabase.table("trade_log")\
             .select("*")\
             .eq("ticker", ticker)\
             .gte("date", start_date)\
-            .lte("date", end_date)\
-            .order("date", desc=True)\
-            .execute()
+            .lte("date", end_date)
+        if fund:
+            trade_query = trade_query.eq("fund", fund)
+        trade_result = trade_query.order("date", desc=True).execute()
         
         if trade_result.data:
             user_trades = trade_result.data
@@ -3266,12 +3326,20 @@ def _get_ticker_chart_data_cached(ticker: str, use_solid: bool, user_is_admin: b
     return serialize_plotly_figure(fig)
 
 
-def _get_ticker_chart_cached(ticker: str, use_solid: bool, user_is_admin: bool, auth_token: Optional[str], theme: Optional[str] = None, range: str = '3m'):
+def _get_ticker_chart_cached(
+    ticker: str,
+    use_solid: bool,
+    user_is_admin: bool,
+    auth_token: Optional[str],
+    fund: Optional[str],
+    theme: Optional[str] = None,
+    range: str = '3m'
+):
     """Get ticker chart with theme applied dynamically (not cached per theme)"""
     import json
     
     # Get cached chart data (without theme)
-    chart_json_str = _get_ticker_chart_data_cached(ticker, use_solid, user_is_admin, auth_token, range)
+    chart_json_str = _get_ticker_chart_data_cached(ticker, use_solid, user_is_admin, auth_token, fund, range)
     
     # Parse the JSON
     chart_data = json.loads(chart_json_str)
@@ -3378,6 +3446,7 @@ def api_ticker_chart():
             return jsonify({"error": "Ticker symbol is required"}), 400
         
         use_solid = request.args.get('use_solid', 'false').lower() == 'true'
+        fund = _normalize_fund_param(request.args.get('fund'))
         # Get theme from request (client detects actual page theme)
         client_theme = request.args.get('theme', '').strip().lower()
         # Get range from request (default: 3m)
@@ -3390,7 +3459,15 @@ def api_ticker_chart():
         auth_token = request.cookies.get('auth_token')
         
         # Get chart (cached) - use client theme if valid, otherwise fall back to user preference
-        chart_json = _get_ticker_chart_cached(ticker, use_solid, user_is_admin, auth_token, theme=client_theme if client_theme in ['dark', 'light'] else None, range=chart_range)
+        chart_json = _get_ticker_chart_cached(
+            ticker,
+            use_solid,
+            user_is_admin,
+            auth_token,
+            fund,
+            theme=client_theme if client_theme in ['dark', 'light'] else None,
+            range=chart_range
+        )
         return Response(chart_json, mimetype='application/json')
     except Exception as e:
         logger.error(f"Error generating chart for {ticker}: {e}", exc_info=True)

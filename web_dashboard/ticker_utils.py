@@ -28,6 +28,18 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _normalize_fund_filter(fund: Optional[str]) -> Optional[str]:
+    """Normalize fund filter values from requests/UI."""
+    if not fund:
+        return None
+    fund_value = str(fund).strip()
+    if not fund_value:
+        return None
+    if fund_value.lower() in ("all", "all funds"):
+        return None
+    return fund_value
+
+
 def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[str]:
     """
     Aggregate unique tickers from all relevant database tables.
@@ -175,7 +187,8 @@ def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[s
 def get_ticker_info(
     ticker: str,
     supabase_client=None,
-    postgres_client=None
+    postgres_client=None,
+    fund: Optional[str] = None
 ) -> Dict[str, Any]:
     """Get comprehensive ticker information from all databases.
     
@@ -189,6 +202,7 @@ def get_ticker_info(
             positions, trades, congress data, and watchlist
         postgres_client: Optional PostgresClient instance for accessing research
             articles and social sentiment metrics
+        fund: Optional fund name to filter portfolio data (positions/trades)
         
     Returns:
         Dictionary with the following structure:
@@ -439,24 +453,26 @@ def get_ticker_info(
         except Exception as e:
             logger.warning(f"Error re-fetching data for {ticker_upper}: {e}")
     
+    fund_filter = _normalize_fund_filter(fund)
+
     # 2. Get portfolio data (positions and trades)
     if supabase_client:
         try:
             # Get current positions
-            pos_result = supabase_client.supabase.table("portfolio_positions")\
+            pos_query = supabase_client.supabase.table("portfolio_positions")\
                 .select("*")\
-                .eq("ticker", ticker_upper)\
-                .order("date", desc=True)\
-                .limit(100)\
-                .execute()
+                .eq("ticker", ticker_upper)
+            if fund_filter:
+                pos_query = pos_query.eq("fund", fund_filter)
+            pos_result = pos_query.order("date", desc=True).limit(100).execute()
             
             # Get trade history
-            trade_result = supabase_client.supabase.table("trade_log")\
+            trade_query = supabase_client.supabase.table("trade_log")\
                 .select("*")\
-                .eq("ticker", ticker_upper)\
-                .order("date", desc=True)\
-                .limit(100)\
-                .execute()
+                .eq("ticker", ticker_upper)
+            if fund_filter:
+                trade_query = trade_query.eq("fund", fund_filter)
+            trade_result = trade_query.order("date", desc=True).limit(100).execute()
             
             if pos_result.data or trade_result.data:
                 result['portfolio_data'] = {
@@ -565,7 +581,8 @@ def get_ticker_info(
 def get_ticker_price_history(
     ticker: str,
     supabase_client=None,
-    days: int = 90
+    days: int = 90,
+    fund: Optional[str] = None
 ) -> pd.DataFrame:
     """Get historical price data for a ticker from portfolio_positions or yfinance.
     
@@ -576,6 +593,7 @@ def get_ticker_price_history(
         ticker: Ticker symbol (e.g., "AAPL")
         supabase_client: Optional SupabaseClient instance
         days: Number of days to look back (default: 90 for 3 months)
+        fund: Optional fund name to filter portfolio data
         
     Returns:
         DataFrame with columns: date, price, normalized (baseline 100)
@@ -583,6 +601,7 @@ def get_ticker_price_history(
     """
     ticker_upper = ticker.upper().strip()
     result_df = pd.DataFrame()
+    fund_filter = _normalize_fund_filter(fund)
     
     # Calculate date range
     end_date = datetime.now(timezone.utc)
@@ -591,12 +610,13 @@ def get_ticker_price_history(
     # Try portfolio_positions first
     if supabase_client:
         try:
-            pos_result = supabase_client.supabase.table("portfolio_positions")\
+            pos_query = supabase_client.supabase.table("portfolio_positions")\
                 .select("date, price")\
                 .eq("ticker", ticker_upper)\
-                .gte("date", start_date.isoformat())\
-                .order("date")\
-                .execute()
+                .gte("date", start_date.isoformat())
+            if fund_filter:
+                pos_query = pos_query.eq("fund", fund_filter)
+            pos_result = pos_query.order("date").execute()
             
             if pos_result.data and len(pos_result.data) >= 10:
                 # We have enough data from portfolio_positions
