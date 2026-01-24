@@ -522,7 +522,7 @@ def api_admin_send_invite():
         })
         
         if response:
-            return jsonify({"success": True, "message": "Invite sent to your email"}), 200
+            return jsonify({"success": True, "message": f"Invite sent to {user_email}"}), 200
         else:
             return jsonify({"error": "Failed to send invite"}), 500
     except Exception as e:

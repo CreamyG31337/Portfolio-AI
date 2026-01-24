@@ -9,7 +9,7 @@ Provides signal analysis for individual tickers and watchlist overview.
 
 from flask import Blueprint, render_template, request, jsonify
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Any
 import sys
 from pathlib import Path
@@ -229,15 +229,90 @@ def signals_page():
 # API Routes
 # ============================================================================
 
+def _is_signal_fresh(analysis_date_str: str) -> bool:
+    """Check if a stored signal analysis is still fresh.
+    
+    Signals are considered fresh if analyzed after the last market close.
+    For simplicity, consider signals less than 6 hours old as fresh during market hours,
+    or from the same trading day after hours.
+    """
+    try:
+        # Parse the stored analysis date
+        if analysis_date_str.endswith('Z'):
+            analysis_date_str = analysis_date_str[:-1] + '+00:00'
+        analysis_date = datetime.fromisoformat(analysis_date_str)
+        if analysis_date.tzinfo is None:
+            analysis_date = analysis_date.replace(tzinfo=timezone.utc)
+        
+        now = datetime.now(timezone.utc)
+        age = now - analysis_date
+        
+        # If analyzed within the last 6 hours, consider fresh
+        if age < timedelta(hours=6):
+            return True
+        
+        # If analyzed today and it's after market close (after 21:00 UTC / 4pm ET), still fresh
+        if analysis_date.date() == now.date() and now.hour >= 21:
+            return True
+            
+        return False
+    except Exception as e:
+        logger.warning(f"Error checking signal freshness: {e}")
+        return False
+
+
 @signals_bp.route('/api/signals/analyze/<ticker>')
 @require_auth
 def api_analyze_ticker(ticker: str):
-    """Analyze a single ticker and return signals"""
+    """Analyze a single ticker and return signals.
+    
+    First checks for a recent stored analysis. If one exists and is fresh
+    (from the current trading session), returns it immediately.
+    Otherwise generates fresh signals, stores them, and returns.
+    """
     try:
         ticker = ticker.upper().strip()
         include_ai = request.args.get('include_ai', '0') == '1'
+        force_refresh = request.args.get('force', '0') == '1'
         
-        # Fetch price data
+        supabase_client = get_supabase_client()
+        
+        # Check for recent stored analysis (unless force refresh requested)
+        if not force_refresh and supabase_client:
+            try:
+                result = supabase_client.supabase.table("signal_analysis")\
+                    .select("*")\
+                    .eq("ticker", ticker)\
+                    .order("analysis_date", desc=True)\
+                    .limit(1)\
+                    .execute()
+                
+                if result.data and len(result.data) > 0:
+                    stored = result.data[0]
+                    analysis_date = stored.get('analysis_date', '')
+                    
+                    if _is_signal_fresh(analysis_date):
+                        # Return stored analysis
+                        signals = {
+                            'ticker': ticker,
+                            'analysis_date': analysis_date,
+                            'structure': stored.get('structure_signal', {}),
+                            'timing': stored.get('timing_signal', {}),
+                            'fear_risk': stored.get('fear_risk_signal', {}),
+                            'overall_signal': stored.get('overall_signal', 'HOLD'),
+                            'confidence': stored.get('confidence_score', 0.0),
+                            'explanation': stored.get('explanation'),
+                            'from_cache': True
+                        }
+                        logger.debug(f"Returning cached signal analysis for {ticker}")
+                        return jsonify({
+                            'success': True,
+                            'data': signals
+                        })
+            except Exception as e:
+                logger.warning(f"Error checking stored signals for {ticker}: {e}")
+        
+        # Fetch price data and generate fresh analysis
         data_fetcher = MarketDataFetcher()
         price_data = data_fetcher.fetch_price_data(ticker, period="6mo")
         
@@ -250,14 +325,36 @@ def api_analyze_ticker(ticker: str):
         # Generate signals
         signal_engine = SignalEngine()
         signals = signal_engine.evaluate(ticker, price_data.df)
+        analysis_date = datetime.now(timezone.utc)
+        signals['analysis_date'] = analysis_date.isoformat()
 
         # Optional AI explanation (on-demand)
+        explanation = None
         if include_ai:
             from web_dashboard.signals.ai_explainer import generate_signal_explanation
             explanation = generate_signal_explanation(ticker, signals)
             if explanation:
                 signals['explanation'] = explanation
         
+        # Store the analysis in database
+        if supabase_client:
+            try:
+                supabase_client.supabase.table("signal_analysis").upsert({
+                    'ticker': ticker,
+                    'analysis_date': analysis_date.isoformat(),
+                    'structure_signal': signals.get('structure', {}),
+                    'timing_signal': signals.get('timing', {}),
+                    'fear_risk_signal': signals.get('fear_risk', {}),
+                    'overall_signal': signals.get('overall_signal', 'HOLD'),
+                    'confidence_score': signals.get('confidence', 0.0),
+                    'explanation': explanation
+                }, on_conflict='ticker,analysis_date').execute()
+                logger.debug(f"Stored signal analysis for {ticker}")
+            except Exception as e:
+                # Log but don't fail - still return the analysis
+                logger.warning(f"Failed to store signal analysis for {ticker}: {e}")
+        
+        signals['from_cache'] = False
         return jsonify({
             'success': True,
             'data': signals

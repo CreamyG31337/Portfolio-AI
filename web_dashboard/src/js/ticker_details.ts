@@ -1271,7 +1271,7 @@ async function loadSignals(ticker: string, forceRefresh: boolean = false): Promi
         if (section) section.classList.remove('hidden');
         const updatedEl = document.getElementById('signals-last-updated');
         if (updatedEl) updatedEl.textContent = '-';
-        setSignalsLoading(true, forceRefresh ? 'Refreshing signals...' : 'Loading signals...');
+        setSignalsLoading(true, forceRefresh ? 'Analyzing signals...' : 'Loading signals...');
         const aiParam = forceRefresh ? 'include_ai=1' : 'include_ai=0';
         const response = await fetch(`/api/signals/analyze/${ticker}?${aiParam}`, {
             credentials: 'include'

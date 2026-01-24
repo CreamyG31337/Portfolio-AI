@@ -712,6 +712,10 @@ async function showRemoveFundDialog(email: string): Promise<void> {
 }
 
 async function sendInvite(email: string): Promise<void> {
+    if (!confirm(`Send invite email to ${email}?`)) {
+        return;
+    }
+
     try {
         const response = await fetch('/api/admin/users/send-invite', {
             method: 'POST',
