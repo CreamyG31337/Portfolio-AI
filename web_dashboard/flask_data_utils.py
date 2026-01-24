@@ -678,6 +678,8 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
             
             # Keep only needed columns
             cols_to_keep = ['ticker', 'date', 'performance_index', 'return_pct', 'daily_pnl_pct', 'sector', 'industry', 'currency']
+            holdings_performance.append(ticker_df[cols_to_keep])
+        
         if not holdings_performance:
             return pd.DataFrame()
         

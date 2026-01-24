@@ -2125,12 +2125,72 @@ function renderPerformanceChart(data: PerformanceChartData): void {
     // Streamlit doesn't modify the layout at all - it just passes the figure through
     // Use the layout directly without any modifications
     try {
+        // Create custom fullscreen button
+        const fullscreenButton = {
+            name: 'fullscreen',
+            title: 'Fullscreen',
+            icon: {
+                'width': 857.1,
+                'height': 1000,
+                'path': 'M214.3 0h428.6v214.3H214.3V0zm0 642.9h428.6v357.1H214.3V642.9zM642.9 0h214.3v214.3H642.9V0zm0 642.9h214.3v357.1H642.9V642.9z',
+                'transform': 'matrix(1 0 0 1 0 0)'
+            },
+            click: function(gd: any) {
+                const chartContainer = document.getElementById('performance-chart');
+                if (!chartContainer) return;
+
+                // Check if already in fullscreen
+                if (document.fullscreenElement || (document as any).webkitFullscreenElement || 
+                    (document as any).mozFullScreenElement || (document as any).msFullscreenElement) {
+                    // Exit fullscreen
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if ((document as any).webkitExitFullscreen) {
+                        (document as any).webkitExitFullscreen();
+                    } else if ((document as any).mozCancelFullScreen) {
+                        (document as any).mozCancelFullScreen();
+                    } else if ((document as any).msExitFullscreen) {
+                        (document as any).msExitFullscreen();
+                    }
+                } else {
+                    // Enter fullscreen
+                    if (chartContainer.requestFullscreen) {
+                        chartContainer.requestFullscreen();
+                    } else if ((chartContainer as any).webkitRequestFullscreen) {
+                        (chartContainer as any).webkitRequestFullscreen();
+                    } else if ((chartContainer as any).mozRequestFullScreen) {
+                        (chartContainer as any).mozRequestFullScreen();
+                    } else if ((chartContainer as any).msRequestFullscreen) {
+                        (chartContainer as any).msRequestFullscreen();
+                    }
+                }
+            }
+        };
+
         Plotly.newPlot('performance-chart', data.data, data.layout, {
             responsive: true,  // Equivalent to use_container_width=True in Streamlit
             displayModeBar: true,
-            modeBarButtonsToRemove: ['pan2d', 'lasso2d']
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d'],
+            modeBarButtonsToAdd: [fullscreenButton]
         });
-        console.log('[Dashboard] Performance chart rendered with Plotly');
+
+        // Handle fullscreen change to resize chart
+        const handleFullscreenChange = () => {
+            setTimeout(() => {
+                const Plotly = (window as any).Plotly;
+                if (Plotly) {
+                    Plotly.Plots.resize('performance-chart');
+                }
+            }, 100);
+        };
+
+        // Add event listeners for fullscreen changes (cross-browser support)
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+        console.log('[Dashboard] Performance chart rendered with Plotly (fullscreen enabled)');
     } catch (error) {
         console.error('[Dashboard] Error rendering Plotly chart:', error);
         chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error rendering chart</p></div>';
