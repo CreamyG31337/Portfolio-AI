@@ -630,67 +630,59 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
         # Normalize to date-only (midnight) for consistent charting
         df['date'] = pd.to_datetime(df['date']).dt.normalize()
         
-        # Calculate performance index per ticker (baseline 100) and return percentages
-        holdings_performance = []
+        # Sort by ticker and date
+        df.sort_values(['ticker', 'date'], inplace=True)
         
-        for ticker in df['ticker'].unique():
-            ticker_df = df[df['ticker'] == ticker].copy()
-            ticker_df = ticker_df.sort_values('date')
+        # Group by ticker
+        grouped = df.groupby('ticker')
+
+        # Calculate baseline value (first total_value) for each ticker
+        df['baseline_value'] = grouped['total_value'].transform('first').astype(float)
+
+        # Filter out 0 baselines (equivalent to skip in loop)
+        df = df[df['baseline_value'] != 0].copy()
+
+        # Re-group after filtering
+        grouped = df.groupby('ticker')
+
+        # Calculate performance index
+        df['performance_index'] = (df['total_value'].astype(float) / df['baseline_value']) * 100
+
+        # Calculate last value for each ticker to compute total return pct
+        df['last_value'] = grouped['total_value'].transform('last').astype(float)
+        df['return_pct'] = ((df['last_value'] / df['baseline_value']) - 1) * 100
+
+        # Calculate daily P&L percentage (diff of performance_index)
+        df['daily_pnl_pct'] = grouped['performance_index'].diff()
+
+        # Metadata backfilling - use first non-null value per ticker
+        if 'sector' in df.columns:
+            df['sector'] = grouped['sector'].transform('first')
+        else:
+            df['sector'] = None
             
-            if len(ticker_df) < 1:
-                continue
+        if 'industry' in df.columns:
+            df['industry'] = grouped['industry'].transform('first')
+        else:
+            df['industry'] = None
             
-            # Use first date's total_value as baseline
-            baseline_value = float(ticker_df['total_value'].iloc[0])
+        if 'currency' in df.columns:
+            # FillNa with 'USD' then take first to emulate original behavior
+            # (Note: transform('first') skips NaNs by default, so we just need to handle the case where all are NaN)
+            df['currency'] = grouped['currency'].transform('first').fillna('USD')
+        else:
+            df['currency'] = 'USD'
             
-            if baseline_value == 0:
-                continue  # Skip if no valid baseline
-            
-            # Calculate performance index
-            ticker_df['performance_index'] = (ticker_df['total_value'].astype(float) / baseline_value) * 100
-            
-            # Calculate total return percentage (from baseline to last value)
-            last_value = float(ticker_df['total_value'].iloc[-1])
-            return_pct = ((last_value / baseline_value) - 1) * 100
-            ticker_df['return_pct'] = return_pct
-            
-            # Calculate daily P&L percentage
-            ticker_df['daily_pnl_pct'] = ticker_df['performance_index'].diff()
-            
-            # Get metadata (sector, industry, currency) - use first non-null value
-            if 'sector' in ticker_df.columns:
-                sector_val = ticker_df['sector'].dropna().iloc[0] if not ticker_df['sector'].dropna().empty else None
-                ticker_df['sector'] = sector_val
-            else:
-                ticker_df['sector'] = None
-                
-            if 'industry' in ticker_df.columns:
-                industry_val = ticker_df['industry'].dropna().iloc[0] if not ticker_df['industry'].dropna().empty else None
-                ticker_df['industry'] = industry_val
-            else:
-                ticker_df['industry'] = None
-                
-            if 'currency' in ticker_df.columns:
-                currency_val = ticker_df['currency'].dropna().iloc[0] if not ticker_df['currency'].dropna().empty else 'USD'
-                ticker_df['currency'] = currency_val
-            else:
-                ticker_df['currency'] = 'USD'
-            
-            # Keep only needed columns
-            cols_to_keep = ['ticker', 'date', 'performance_index', 'return_pct', 'daily_pnl_pct', 'sector', 'industry', 'currency']
-            holdings_performance.append(ticker_df[cols_to_keep])
-        
-        if not holdings_performance:
-            return pd.DataFrame()
-        
-        result_df = pd.concat(holdings_performance, ignore_index=True)
+        # Select columns
+        cols_to_keep = ['ticker', 'date', 'performance_index', 'return_pct', 'daily_pnl_pct', 'sector', 'industry', 'currency']
         
         # If days > 0, filter to the last N unique dates
+        # Note: We filter dates AFTER calculations to preserve baseline correctness
         if days > 0:
-            unique_dates = sorted(result_df['date'].unique(), reverse=True)[:days]
-            result_df = result_df[result_df['date'].isin(unique_dates)]
+            unique_dates = sorted(df['date'].unique(), reverse=True)[:days]
+            df = df[df['date'].isin(unique_dates)]
         
-        return result_df
+        return df[cols_to_keep].reset_index(drop=True)
         
     except Exception as e:
         logger.error(f"Error fetching individual holdings (Flask): {e}", exc_info=True)
