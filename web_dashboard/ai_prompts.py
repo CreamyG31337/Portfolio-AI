@@ -265,8 +265,8 @@ Return JSON only:
     "stance": "BUY|SELL|HOLD|AVOID",
     "timeframe": "day_trade|swing|position",
     "entry_zone": "price range for entry (e.g., '$45-47') or null if HOLD/AVOID",
-    "target_price": "price target or null",
-    "stop_loss": "stop loss level or null",
+    "target_price": "price target (e.g., '$52' or '$145-$150', max 50 chars) or null",
+    "stop_loss": "stop loss level (e.g., '$42' or '$130-$135', max 50 chars) or null",
     "key_levels": {{
         "support": ["$X", "$Y"],
         "resistance": ["$A", "$B"]

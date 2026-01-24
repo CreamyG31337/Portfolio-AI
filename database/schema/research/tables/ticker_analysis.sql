@@ -28,8 +28,8 @@ CREATE TABLE ticker_analysis (
     stance VARCHAR(10) CHECK (stance IN ('BUY', 'SELL', 'HOLD', 'AVOID')),
     timeframe VARCHAR(20) CHECK (timeframe IN ('day_trade', 'swing', 'position')),
     entry_zone VARCHAR(50),             -- e.g., "$45-47"
-    target_price VARCHAR(20),           -- e.g., "$52"
-    stop_loss VARCHAR(20),              -- e.g., "$42"
+    target_price VARCHAR(50),           -- e.g., "$52" or "$142.50 - $150.00"
+    stop_loss VARCHAR(50),              -- e.g., "$42" or "$130 - $135"
     key_levels JSONB,                   -- {"support": ["$45", "$42"], "resistance": ["$50", "$55"]}
     catalysts TEXT[],                   -- ["earnings next week", "FDA approval pending"]
     risks TEXT[],                       -- ["high valuation", "sector rotation risk"]

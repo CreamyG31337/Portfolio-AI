@@ -1,0 +1,33 @@
+# ============================================================
+# Caddy Configuration Snippet for Mandrel
+# ============================================================
+# Add this to your existing Caddyfile to enable HTTPS access
+# to Mandrel MCP Server.
+#
+# Replace 'mandrel.your-domain.com' with your actual subdomain.
+# ============================================================
+
+mandrel.your-domain.com {
+    # Reverse proxy to Mandrel MCP Server
+    reverse_proxy localhost:8080
+    
+    # Optional: Add basic authentication for security
+    # basicauth {
+    #     username $2a$14$hashed_password_here
+    # }
+    
+    # Optional: Rate limiting
+    # rate_limit {
+    #     zone mandrel {
+    #         key {remote_host}
+    #         events 100
+    #         window 1m
+    #     }
+    # }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/mandrel.log
+        format json
+    }
+}

@@ -475,27 +475,27 @@ class TickerAnalysisService:
         
         lines = ["[ Price Data & Technical Context ]"]
         
-        # Summary metrics
+        # Summary metrics - use "or 0" pattern to handle None values
         lines.append("")
         lines.append("Current Price Metrics:")
-        lines.append(f"  Current Price: ${price_data.get('current_price', 0):.2f}")
-        lines.append(f"  Daily Change: {price_data.get('daily_change_pct', 0):+.2f}%")
-        lines.append(f"  {price_data.get('period_days', 90)}-Day Change: {price_data.get('period_change_pct', 0):+.2f}%")
+        lines.append(f"  Current Price: ${price_data.get('current_price') or 0:.2f}")
+        lines.append(f"  Daily Change: {price_data.get('daily_change_pct') or 0:+.2f}%")
+        lines.append(f"  {price_data.get('period_days') or 90}-Day Change: {price_data.get('period_change_pct') or 0:+.2f}%")
         lines.append("")
-        lines.append("Price Range ({} days):".format(price_data.get('period_days', 90)))
-        lines.append(f"  Period High: ${price_data.get('period_high', 0):.2f} ({price_data.get('period_high_date', 'N/A')})")
-        lines.append(f"  Period Low: ${price_data.get('period_low', 0):.2f} ({price_data.get('period_low_date', 'N/A')})")
-        lines.append(f"  From Period High: {price_data.get('pct_from_period_high', 0):.1f}%")
-        lines.append(f"  From Period Low: {price_data.get('pct_from_period_low', 0):+.1f}%")
+        lines.append("Price Range ({} days):".format(price_data.get('period_days') or 90))
+        lines.append(f"  Period High: ${price_data.get('period_high') or 0:.2f} ({price_data.get('period_high_date') or 'N/A'})")
+        lines.append(f"  Period Low: ${price_data.get('period_low') or 0:.2f} ({price_data.get('period_low_date') or 'N/A'})")
+        lines.append(f"  From Period High: {price_data.get('pct_from_period_high') or 0:.1f}%")
+        lines.append(f"  From Period Low: {price_data.get('pct_from_period_low') or 0:+.1f}%")
         lines.append("")
         lines.append("52-Week Range:")
-        lines.append(f"  52-Week High: ${price_data.get('high_52w', 0):.2f} ({price_data.get('pct_from_52w_high', 0):.1f}% from current)")
-        lines.append(f"  52-Week Low: ${price_data.get('low_52w', 0):.2f} ({price_data.get('pct_from_52w_low', 0):+.1f}% from current)")
+        lines.append(f"  52-Week High: ${price_data.get('high_52w') or 0:.2f} ({price_data.get('pct_from_52w_high') or 0:.1f}% from current)")
+        lines.append(f"  52-Week Low: ${price_data.get('low_52w') or 0:.2f} ({price_data.get('pct_from_52w_low') or 0:+.1f}% from current)")
         lines.append("")
         lines.append("Volume Analysis:")
-        lines.append(f"  Current Volume: {price_data.get('current_volume', 0):,}")
-        lines.append(f"  Avg Volume: {price_data.get('avg_volume', 0):,}")
-        lines.append(f"  Volume Ratio: {price_data.get('volume_ratio', 1.0):.2f}x average")
+        lines.append(f"  Current Volume: {price_data.get('current_volume') or 0:,}")
+        lines.append(f"  Avg Volume: {price_data.get('avg_volume') or 0:,}")
+        lines.append(f"  Volume Ratio: {price_data.get('volume_ratio') or 1.0:.2f}x average")
         
         # Recent OHLCV table
         recent = price_data.get('recent_ohlcv', [])
@@ -531,11 +531,11 @@ class TickerAnalysisService:
         ]
         
         for c in changes[:self.MAX_ETF_CHANGES]:
-            date = c.get('date', 'N/A')
-            etf = c.get('etf_ticker', 'N/A')
-            action = c.get('action', 'N/A')
-            share_change = c.get('share_change', 0)
-            percent_change = c.get('percent_change', 0)
+            date = c.get('date') or 'N/A'
+            etf = c.get('etf_ticker') or 'N/A'
+            action = c.get('action') or 'N/A'
+            share_change = c.get('share_change') or 0
+            percent_change = c.get('percent_change') or 0
             lines.append(f"{date} | {etf:4} | {action:6} | {share_change:15,} | {percent_change:8.1f}%")
         
         return "\n".join(lines)
@@ -581,15 +581,17 @@ class TickerAnalysisService:
         
         lines = ["[ Technical Signals ]"]
         
-        overall = signals.get('overall_signal', 'N/A')
-        confidence = signals.get('confidence_score', signals.get('confidence', 0))
-        structure = signals.get('structure_signal', signals.get('structure', {}))
-        timing = signals.get('timing_signal', signals.get('timing', {}))
-        fear = signals.get('fear_risk_signal', signals.get('fear', {}))
+        overall = signals.get('overall_signal') or 'N/A'
+        confidence = signals.get('confidence_score') or signals.get('confidence') or 0
+        structure = signals.get('structure_signal') or signals.get('structure') or {}
+        timing = signals.get('timing_signal') or signals.get('timing') or {}
+        fear = signals.get('fear_risk_signal') or signals.get('fear') or {}
 
-        trend = structure.get('trend', 'N/A')
-        pullback = structure.get('pullback', 'N/A')
-        breakout = structure.get('breakout', 'N/A')
+        trend = structure.get('trend') or 'N/A'
+        pullback_val = structure.get('pullback')
+        pullback = 'N/A' if pullback_val is None else pullback_val
+        breakout_val = structure.get('breakout')
+        breakout = 'N/A' if breakout_val is None else breakout_val
 
         volume_ok = timing.get('volume_ok')
         rsi = timing.get('rsi')
@@ -599,9 +601,9 @@ class TickerAnalysisService:
         rsi_str = "N/A" if rsi is None else f"{rsi:.1f}"
         cci_str = "N/A" if cci is None else f"{cci:.1f}"
 
-        fear_level = fear.get('fear_level', 'N/A')
+        fear_level = fear.get('fear_level') or 'N/A'
         risk_score = fear.get('risk_score')
-        recommendation = fear.get('recommendation', 'N/A')
+        recommendation = fear.get('recommendation') or 'N/A'
         risk_score_str = "N/A" if risk_score is None else f"{risk_score:.1f}/100"
 
         lines.append(f"Overall Signal: {overall} (Confidence: {confidence:.0%})")
