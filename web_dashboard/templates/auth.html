@@ -251,6 +251,14 @@
             });
             forms[name].classList.remove('hidden');
             document.getElementById('message').classList.add('hidden');
+
+            // Move focus to the first input of the new form for accessibility
+            const formContainer = forms[name];
+            const firstInput = formContainer.querySelector('input:not([type="hidden"]), textarea');
+            if (firstInput) {
+                // Small timeout ensures the element is fully visible/interactive before focusing
+                setTimeout(() => firstInput.focus(), 50);
+            }
         }
 
         document.getElementById('show-register').addEventListener('click', () => showForm('register'));
@@ -333,9 +341,12 @@
 
         // Magic Link Handler
         document.getElementById('magic-link-btn').addEventListener('click', async function (e) {
-            const email = document.getElementById('login-email').value;
+            const emailInput = document.getElementById('login-email');
+            const email = emailInput.value;
+
             if (!email) {
                 showMessage('Please enter your email address first', 'error');
+                emailInput.focus();
                 return;
             }
 
