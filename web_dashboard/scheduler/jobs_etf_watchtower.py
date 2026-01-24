@@ -292,13 +292,12 @@ def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFrame
         df.columns = cols
         
         # Map SPDR columns to standard schema
+        # Note: 'Identifier' is NOT renamed because it creates duplicate 'ticker' columns
         column_mapping = {
             'Ticker': 'ticker',
             'Name': 'name',
-            'Identifier': 'ticker',  # Sometimes SPDR uses 'Identifier'
             'Weight': 'weight_percent',
-            'Shares': 'shares',
-            'Quantity': 'shares',
+            'Shares Held': 'shares',
         }
         
         df = df.rename(columns=column_mapping)

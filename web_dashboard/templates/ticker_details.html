@@ -67,7 +67,7 @@
             <div id="ticker-symbol" class="text-2xl text-text-secondary font-mono mt-2"></div>
         </div>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-dashboard-background p-4 rounded-lg">
             <div class="text-sm text-text-secondary">Sector</div>
             <div id="sector" class="text-xl font-semibold text-text-primary">N/A</div>
@@ -79,6 +79,10 @@
         <div class="bg-dashboard-background p-4 rounded-lg">
             <div class="text-sm text-text-secondary">Currency</div>
             <div id="currency" class="text-xl font-semibold text-text-primary">N/A</div>
+        </div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div class="text-sm text-text-secondary">Trailing P/E</div>
+            <div id="pe-ratio" class="text-xl font-semibold text-text-primary">N/A</div>
         </div>
     </div>
     <div id="exchange-info" class="mt-4 text-sm text-text-secondary"></div>
@@ -442,11 +446,27 @@
                 <div id="timing-volume" class="text-xl font-semibold text-text-primary">-</div>
             </div>
             <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary">RSI</div>
+                <div class="text-sm text-text-secondary flex items-center gap-1">
+                    RSI
+                    <div class="group relative inline-block">
+                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                        <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            Rel. Strength Index (0-100). >70 overbought, <30 oversold. Momentum indicator.
+                        </div>
+                    </div>
+                </div>
                 <div id="timing-rsi" class="text-xl font-semibold text-text-primary">-</div>
             </div>
             <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary">CCI</div>
+                <div class="text-sm text-text-secondary flex items-center gap-1">
+                    CCI
+                    <div class="group relative inline-block">
+                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                        <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            Commodity Channel Index. >100 overbought, <-100 oversold. Measures deviation from avg.
+                        </div>
+                    </div>
+                </div>
                 <div id="timing-cci" class="text-xl font-semibold text-text-primary">-</div>
             </div>
         </div>

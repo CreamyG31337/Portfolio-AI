@@ -379,6 +379,9 @@ def get_ticker_info(
                     info.get('fullExchangeName')
                 )
                 
+                # Trailing P/E
+                trailing_pe = info.get('trailingPE')
+                
                 # Get company description from yfinance
                 company_description = (
                     info.get('longBusinessSummary') or 
@@ -394,6 +397,7 @@ def get_ticker_info(
                     'industry': industry if industry else None,
                     'currency': currency,
                     'exchange': exchange if exchange else None,
+                    'trailing_pe': trailing_pe,
                     'description': company_description.strip() if company_description else None
                 }
                 
@@ -421,8 +425,8 @@ def get_ticker_info(
         except Exception as e:
             logger.warning(f"Error fetching from yfinance for {ticker_upper}: {e}")
     
-    # If we have basic_info but it's incomplete (None values for sector/industry), try to enrich from yfinance
-    if result['basic_info'] and (result['basic_info'].get('sector') is None or result['basic_info'].get('industry') is None):
+    # If we have basic_info but it's incomplete (None values for sector/industry/pe), try to enrich from yfinance
+    if result['basic_info'] and (result['basic_info'].get('sector') is None or result['basic_info'].get('industry') is None or result['basic_info'].get('trailing_pe') is None):
         try:
             import yfinance as yf
             logger.info(f"Re-fetching {ticker_upper} from yfinance due to incomplete data")
@@ -434,20 +438,29 @@ def get_ticker_info(
                 # Try to get missing fields
                 sector = result['basic_info'].get('sector') or info.get('sector') or info.get('sectorDisp') or info.get('sectorKey')
                 industry = result['basic_info'].get('industry') or info.get('industry') or info.get('industryDisp') or info.get('industryKey')
+                trailing_pe = result['basic_info'].get('trailingPE') or info.get('trailingPE')
                 
                 # Update if we got new data
-                if sector or industry:
-                    result['basic_info']['sector'] = sector
-                    result['basic_info']['industry'] = industry
+                if sector or industry or trailing_pe:
+                    updates = {}
+                    if sector:
+                        result['basic_info']['sector'] = sector
+                        updates['sector'] = sector
+                    if industry:
+                        result['basic_info']['industry'] = industry
+                        updates['industry'] = industry
+                    if trailing_pe:
+                        result['basic_info']['trailing_pe'] = trailing_pe
+                        updates['trailing_pe'] = trailing_pe
                     
                     # Update database
-                    if supabase_client:
+                    if supabase_client and updates:
                         try:
                             supabase_client.supabase.table("securities")\
-                                .update({'sector': sector, 'industry': industry})\
+                                .update(updates)\
                                 .eq('ticker', ticker_upper)\
                                 .execute()
-                            logger.info(f"Updated {ticker_upper} with sector/industry from yfinance")
+                            logger.info(f"Updated {ticker_upper} with enriched data from yfinance: {list(updates.keys())}")
                         except Exception as update_error:
                             logger.warning(f"Could not update {ticker_upper}: {update_error}")
         except Exception as e:

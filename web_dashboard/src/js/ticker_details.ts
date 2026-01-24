@@ -323,9 +323,22 @@ function initModelSelect(): void {
     select.addEventListener('change', () => {
         selectedModel = select.value;
         updateContextUsage();
+        saveModelPreference(selectedModel);
     });
 
     loadModelOptions();
+}
+
+function saveModelPreference(model: string): void {
+    if (!model) return;
+
+    fetch('/api/settings/ai_model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: model })
+    }).catch((err: Error) => {
+        console.error('Error saving model preference:', err);
+    });
 }
 
 async function loadModelOptions(): Promise<void> {
@@ -536,6 +549,20 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
     if (industry) industry.textContent = basicInfo.industry || 'N/A';
     if (currency) currency.textContent = basicInfo.currency || 'USD';
 
+    if (sector) sector.textContent = basicInfo.sector || 'N/A';
+    if (industry) industry.textContent = basicInfo.industry || 'N/A';
+    if (currency) currency.textContent = basicInfo.currency || 'USD';
+
+    // P/E Ratio
+    const peRatio = document.getElementById('pe-ratio');
+    if (peRatio) {
+        if (basicInfo.trailing_pe && basicInfo.trailing_pe > 0) {
+            peRatio.textContent = basicInfo.trailing_pe.toFixed(2);
+        } else {
+            peRatio.textContent = 'N/A';
+        }
+    }
+
     if (exchangeInfo) {
         if (basicInfo.exchange && basicInfo.exchange !== 'N/A') {
             exchangeInfo.textContent = `Exchange: ${basicInfo.exchange}`;
@@ -548,7 +575,7 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
     // Display company/fund description if available
     const descriptionContainer = document.getElementById('company-description-container');
     const descriptionElement = document.getElementById('company-description');
-    
+
     if (descriptionContainer && descriptionElement) {
         if (basicInfo.description && basicInfo.description.trim()) {
             descriptionElement.textContent = basicInfo.description.trim();
@@ -1705,16 +1732,16 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
                     <div class="flex items-center gap-2 mt-1">
                         <span class="px-2 py-1 ${sentimentColor} text-white rounded text-xs">${sentiment}</span>
                         ${analysis.sentiment_score !== null && analysis.sentiment_score !== undefined
-                            ? `<span class="text-text-primary">${(analysis.sentiment_score * 100).toFixed(0)}%</span>`
-                            : ''}
+            ? `<span class="text-text-primary">${(analysis.sentiment_score * 100).toFixed(0)}%</span>`
+            : ''}
                     </div>
                 </div>
                 <div>
                     <div class="text-text-secondary">Confidence</div>
                     <div class="text-text-primary mt-1">
                         ${analysis.confidence_score !== null && analysis.confidence_score !== undefined
-                            ? `${(analysis.confidence_score * 100).toFixed(0)}%`
-                            : 'N/A'}
+            ? `${(analysis.confidence_score * 100).toFixed(0)}%`
+            : 'N/A'}
                     </div>
                 </div>
                 <div>
@@ -1830,11 +1857,10 @@ function escapeHtml(text: string | null | undefined): string {
 function showToast(message: string, type: 'success' | 'error' | 'info' = 'info'): void {
     // Simple toast implementation - you can enhance this
     const toast = document.createElement('div');
-    toast.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 ${
-        type === 'success' ? 'bg-green-500 text-white' :
-        type === 'error' ? 'bg-red-500 text-white' :
-        'bg-blue-500 text-white'
-    }`;
+    toast.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 ${type === 'success' ? 'bg-green-500 text-white' :
+            type === 'error' ? 'bg-red-500 text-white' :
+                'bg-blue-500 text-white'
+        }`;
     toast.textContent = message;
     document.body.appendChild(toast);
     setTimeout(() => {
