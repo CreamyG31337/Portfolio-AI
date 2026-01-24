@@ -440,15 +440,44 @@
         <h3 class="text-lg font-semibold mb-3 text-text-primary">Structure Signal</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary">Trend</div>
+                <div class="text-sm text-text-secondary flex items-center gap-1">
+                    Trend
+                    <div class="group relative inline-block">
+                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                        <div
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            Primary market direction (Bullish/Bearish). Determined by price action relative to moving
+                            averages.
+                        </div>
+                    </div>
+                </div>
                 <div id="structure-trend" class="text-xl font-semibold text-text-primary">-</div>
             </div>
             <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary">Pullback</div>
+                <div class="text-sm text-text-secondary flex items-center gap-1">
+                    Pullback
+                    <div class="group relative inline-block">
+                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                        <div
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            Indicates if price has retreated from recent highs. Can signal a buying opportunity in
+                            uptrends.
+                        </div>
+                    </div>
+                </div>
                 <div id="structure-pullback" class="text-xl font-semibold text-text-primary">-</div>
             </div>
             <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary">Breakout</div>
+                <div class="text-sm text-text-secondary flex items-center gap-1">
+                    Breakout
+                    <div class="group relative inline-block">
+                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                        <div
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            Detects if price is breaking key resistance levels, often creating momentum.
+                        </div>
+                    </div>
+                </div>
                 <div id="structure-breakout" class="text-xl font-semibold text-text-primary">-</div>
             </div>
         </div>
@@ -459,7 +488,16 @@
         <h3 class="text-lg font-semibold mb-3 text-text-primary">Timing Signal</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary">Volume</div>
+                <div class="text-sm text-text-secondary flex items-center gap-1">
+                    Volume
+                    <div class="group relative inline-block">
+                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                        <div
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            Total shares traded today relative to average. High relative volume confirms trends.
+                        </div>
+                    </div>
+                </div>
                 <div id="timing-volume" class="text-xl font-semibold text-text-primary">-</div>
             </div>
             <div class="bg-dashboard-background p-4 rounded-lg">
@@ -495,15 +533,43 @@
                 <h3 class="text-lg font-semibold mb-3 text-text-primary">Fear & Risk</h3>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div class="bg-dashboard-background p-4 rounded-lg">
-                        <div class="text-sm text-text-secondary">Fear Level</div>
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Fear Level
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div
+                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Sentiment gauge. 'Extreme Fear' can be a buy signal, 'Extreme Greed' a sell signal.
+                                </div>
+                            </div>
+                        </div>
                         <div id="fear-level" class="text-xl font-semibold text-text-primary">-</div>
                     </div>
                     <div class="bg-dashboard-background p-4 rounded-lg">
-                        <div class="text-sm text-text-secondary">Risk Score</div>
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Risk Score
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div
+                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Composite risk metric (0-10). Higher score indicates higher volatility/downside
+                                    risk.
+                                </div>
+                            </div>
+                        </div>
                         <div id="risk-score" class="text-xl font-semibold text-text-primary">-</div>
                     </div>
                     <div class="bg-dashboard-background p-4 rounded-lg">
-                        <div class="text-sm text-text-secondary">Recommendation</div>
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Recommendation
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div
+                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Aggregated trading suggestion (Buy/Sell/Hold) based on all technical factors.
+                                </div>
+                            </div>
+                        </div>
                         <div id="risk-recommendation" class="text-xl font-semibold text-text-primary">-</div>
                     </div>
                 </div>
@@ -520,12 +586,12 @@
         </div>
         {% endblock %}
 
-{% block extra_scripts %}
-<script>
-    window.tickerDetailsConfig = {
-        defaultModel: {{ default_model | tojson | safe if default_model else '""' }},
-        modelConfig: {{ model_config | tojson | safe if model_config else '{}' }}
+        {% block extra_scripts %}
+        <script>
+            window.tickerDetailsConfig = {
+                defaultModel: {{ default_model | tojson | safe if default_model else '""' }},
+            modelConfig: { { model_config | tojson | safe if model_config else '{}' } }
     };
-</script>
-<script type="module" src="/assets/js/ticker_details.js"></script>
-{% endblock %}
+        </script>
+        <script type="module" src="/assets/js/ticker_details.js"></script>
+        {% endblock %}

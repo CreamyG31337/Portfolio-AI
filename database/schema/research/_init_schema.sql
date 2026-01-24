@@ -122,3 +122,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/vector_to_halfvec.sql
 \i functions/vector_to_sparsevec.sql
 \i functions/vector_typmod_in.sql
+
+-- CUSTOM FUNCTIONS (ETF)
+\i functions/get_etf_holding_trades.sql
+
+-- VIEWS
+\i views/etf_holdings_changes.sql

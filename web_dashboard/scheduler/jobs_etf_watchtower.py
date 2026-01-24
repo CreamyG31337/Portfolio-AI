@@ -58,6 +58,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from supabase_client import SupabaseClient
 from research_repository import ResearchRepository
+from postgres_client import PostgresClient
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,9 @@ ETF_CONFIGS = {
     "IWM": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund" },
     "IWC": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239716/ishares-microcap-etf/1467271812596.ajax?fileType=csv&fileName=IWC_holdings&dataType=fund" },
     "IWO": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239709/ishares-russell-2000-growth-etf/1467271812596.ajax?fileType=csv&fileName=IWO_holdings&dataType=fund" },
+    "SOXX": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239705/ishares-phlx-semiconductor-sector-index-fund/1467271812596.ajax?fileType=csv&fileName=SOXX_holdings&dataType=fund" },
+    "ICLN": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239738/ishares-global-clean-energy-etf/1467271812596.ajax?fileType=csv&fileName=ICLN_holdings&dataType=fund" },
+    "IBB": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239699/ishares-nasdaq-biotechnology-etf/1467271812596.ajax?fileType=csv&fileName=IBB_holdings&dataType=fund" },
     
     # SPDR (State Street) - Excel format
     "XBI": { "provider": "SPDR", "url": "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xbi.xlsx" },
@@ -93,6 +97,24 @@ ETF_CONFIGS = {
     # Global X - Date-based CSV URLs (updated daily)
     "BOTZ": { "provider": "Global X", "url": "https://assets.globalxetfs.com/funds/holdings/botz_full-holdings_{date}.csv" },
     "LIT": { "provider": "Global X", "url": "https://assets.globalxetfs.com/funds/holdings/lit_full-holdings_{date}.csv" },
+    "BUG": { "provider": "Global X", "url": "https://assets.globalxetfs.com/funds/holdings/bug_full-holdings_{date}.csv" },
+    "FINX": { "provider": "Global X", "url": "https://assets.globalxetfs.com/funds/holdings/finx_full-holdings_{date}.csv" },
+    
+    # Direxion - Direct CSV (non-leveraged thematic)
+    "MOON": { "provider": "Direxion", "url": "https://www.direxion.com/holdings/MOON.csv" },
+    
+    # VanEck - Direct XLSX download via /downloads/holdings endpoint
+    "SMH": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/semiconductor-etf-smh/downloads/holdings" },
+    "DAPP": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/digital-transformation-etf-dapp/downloads/holdings" },
+    "BBH": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/biotech-etf-bbh/downloads/holdings" },
+    "BUZZ": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/social-sentiment-etf-buzz/downloads/holdings" },
+    "IBOT": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/robotics-etf-ibot/downloads/holdings" },
+    "MOAT": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/morningstar-wide-moat-etf-moat/downloads/holdings" },
+    "PPH": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/pharmaceutical-etf-pph/downloads/holdings" },
+    "RTH": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/retail-etf-rth/downloads/holdings" },
+    "SMHX": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/fabless-semiconductor-etf-smhx/downloads/holdings" },
+    "SMOT": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/morningstar-smid-moat-etf-smot/downloads/holdings" },
+    "OIH": { "provider": "VanEck", "url": "https://www.vaneck.com/us/en/investments/oil-services-etf-oih/downloads/holdings" },
 }
 
 # ETF Names for metadata
@@ -109,9 +131,26 @@ ETF_NAMES = {
     "IWM": "iShares Russell 2000 ETF",
     "IWC": "iShares Micro-Cap ETF",
     "IWO": "iShares Russell 2000 Growth ETF",
+    "SOXX": "iShares Semiconductor ETF",
+    "ICLN": "iShares Global Clean Energy ETF",
+    "IBB": "iShares Biotechnology ETF",
     "XBI": "SPDR S&P Biotech ETF",
     "BOTZ": "Global X Robotics & Artificial Intelligence ETF",
     "LIT": "Global X Lithium & Battery Tech ETF",
+    "BUG": "Global X Cybersecurity ETF",
+    "FINX": "Global X FinTech ETF",
+    "MOON": "Direxion Moonshot Innovators ETF",
+    "SMH": "VanEck Semiconductor ETF",
+    "DAPP": "VanEck Digital Transformation ETF",
+    "BBH": "VanEck Biotech ETF",
+    "BUZZ": "VanEck Social Sentiment ETF",
+    "IBOT": "VanEck Robotics ETF",
+    "MOAT": "VanEck Morningstar Wide Moat ETF",
+    "PPH": "VanEck Pharmaceutical ETF",
+    "RTH": "VanEck Retail ETF",
+    "SMHX": "VanEck Fabless Semiconductor ETF",
+    "SMOT": "VanEck Morningstar SMID Moat ETF",
+    "OIH": "VanEck Oil Services ETF",
 }
 
 # Thresholds for "significant" changes
@@ -338,18 +377,33 @@ def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str) -> Optional[p
     try:
         logger.info(f"📥 Downloading {etf_ticker} holdings from Global X...")
         
-        # Global X uses date in filename: YYYYMMDD format (US market time, not UTC)
-        # Use local time to match their file naming convention
-        today = datetime.now()
-        date_str = today.strftime('%Y%m%d')
-        csv_url = csv_url_template.format(date=date_str)
-        
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         }
         
-        response = requests.get(csv_url, timeout=30, headers=headers)
-        response.raise_for_status()
+        # Global X uses date in filename: YYYYMMDD format (US market time, not UTC)
+        # Try today first, then fall back to previous days (files may not be published on weekends/holidays)
+        today = datetime.now()
+        response = None
+        
+        for days_back in range(5):  # Try up to 5 days back
+            check_date = today - timedelta(days=days_back)
+            date_str = check_date.strftime('%Y%m%d')
+            csv_url = csv_url_template.format(date=date_str)
+            
+            try:
+                response = requests.get(csv_url, timeout=30, headers=headers)
+                if response.status_code == 200:
+                    logger.info(f"📄 Found {etf_ticker} holdings file for {date_str}")
+                    break
+                else:
+                    logger.debug(f"No file for {date_str} (HTTP {response.status_code})")
+            except requests.exceptions.RequestException:
+                continue
+        
+        if response is None or response.status_code != 200:
+            logger.error(f"❌ Could not find {etf_ticker} holdings file in last 5 days")
+            return None
         
         # Global X CSVs have 2 header rows (title, date, then column headers)
         from io import StringIO
@@ -479,11 +533,203 @@ def fetch_ark_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFrame]:
         return None
 
 
-def get_previous_holdings(db: SupabaseClient, etf_ticker: str, date: datetime) -> pd.DataFrame:
-    """Fetch latest available previous holdings from database.
+def fetch_direxion_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFrame]:
+    """Download and parse Direxion ETF holdings CSV.
+    
+    Direxion CSVs have a specific format:
+    - Line 1: Fund name
+    - Line 2: Ticker
+    - Line 3: Shares outstanding info
+    - Lines 4-5: Empty
+    - Line 6: Header row
+    - Lines 7+: Data
     
     Args:
-        db: Database client
+        etf_ticker: ETF ticker symbol
+        csv_url: Direct CSV URL
+        
+    Returns:
+        DataFrame with columns: [ticker, name, shares, weight_percent]
+    """
+    try:
+        logger.info(f"📥 Downloading {etf_ticker} holdings from Direxion...")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
+        
+        response = requests.get(csv_url, timeout=30, headers=headers)
+        response.raise_for_status()
+        
+        from io import StringIO
+        # Direxion CSV has 5 metadata rows before the header (including blank lines)
+        df = pd.read_csv(StringIO(response.text), skiprows=5)
+        df.columns = df.columns.str.strip()
+        
+        # Map Direxion columns to standard schema
+        # Columns: TradeDate, AccountTicker, StockTicker, SecurityDescription, Shares, Price, MarketValue, Cusip, HoldingsPercent
+        column_mapping = {
+            'StockTicker': 'ticker',
+            'SecurityDescription': 'name',
+            'Shares': 'shares',
+            'HoldingsPercent': 'weight_percent',
+            'MarketValue': 'market_value',
+        }
+        
+        df = df.rename(columns=column_mapping)
+        
+        if 'ticker' not in df.columns:
+            logger.error(f"❌ Direxion CSV missing ticker column. Found: {df.columns.tolist()}")
+            return None
+        
+        # Clean data
+        df = df[df['ticker'].notna()]
+        df = df[df['ticker'] != '']
+        df['ticker'] = df['ticker'].astype(str).str.upper().str.strip()
+        
+        # Filter to valid stock tickers only (exclude cash, futures, etc.)
+        df = df[df['ticker'].apply(is_stock_ticker)]
+        
+        # Convert numeric columns
+        if 'shares' in df.columns:
+            df['shares'] = pd.to_numeric(df['shares'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+        if 'weight_percent' in df.columns:
+            # HoldingsPercent is already in percentage form (e.g., 2.36 = 2.36%)
+            df['weight_percent'] = pd.to_numeric(df['weight_percent'], errors='coerce').fillna(0)
+        
+        logger.info(f"✅ Parsed {len(df)} holdings for {etf_ticker}")
+        return df
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Failed to download {etf_ticker} Direxion CSV: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Error parsing {etf_ticker} Direxion CSV: {e}", exc_info=True)
+        return None
+
+
+def fetch_vaneck_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFrame]:
+    """Download and parse VanEck ETF holdings from direct XLSX download.
+    
+    VanEck provides direct XLSX downloads at /downloads/holdings endpoints.
+    
+    Args:
+        etf_ticker: ETF ticker symbol
+        xlsx_url: Direct XLSX download URL
+        
+    Returns:
+        DataFrame with columns: [ticker, name, shares, weight_percent]
+    """
+    try:
+        logger.info(f"📥 Downloading {etf_ticker} holdings from VanEck...")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+            'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
+        
+        response = requests.get(xlsx_url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        # Verify we got an Excel file
+        content_type = response.headers.get('Content-Type', '')
+        is_excel = (
+            'spreadsheet' in content_type or 
+            'octet-stream' in content_type or
+            response.content[:4] == b'PK\x03\x04'  # XLSX magic bytes
+        )
+        
+        if not is_excel:
+            logger.error(f"❌ VanEck returned non-Excel content for {etf_ticker}: {content_type}")
+            return None
+        
+        # Parse XLSX
+        from io import BytesIO
+        
+        # VanEck XLSX format:
+        # Row 0: Title "Daily Holdings (%) MM/DD/YYYY"
+        # Row 1: Empty
+        # Row 2: Headers (Number, Ticker, Holding Name, Identifier, Shares, Asset Class, Market Value, Notional Value, % of Net Assets)
+        # Row 3+: Data
+        
+        # Read without header first to find the header row
+        df_raw = pd.read_excel(BytesIO(response.content), header=None)
+        
+        # Find the header row (contains "Ticker")
+        header_row_idx = None
+        for idx in range(min(10, len(df_raw))):
+            row_values = [str(v).lower() for v in df_raw.iloc[idx].values if pd.notna(v)]
+            if any('ticker' in v for v in row_values):
+                header_row_idx = idx
+                break
+        
+        if header_row_idx is None:
+            logger.error(f"❌ Could not find header row in VanEck XLSX for {etf_ticker}")
+            return None
+        
+        # Re-read with correct header
+        df = pd.read_excel(BytesIO(response.content), header=header_row_idx)
+        df.columns = df.columns.astype(str).str.strip()
+        
+        # Map columns to standard schema
+        column_mapping = {}
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'ticker' in col_lower and 'stock' not in col_lower:
+                column_mapping[col] = 'ticker'
+            elif 'holding name' in col_lower:
+                column_mapping[col] = 'name'
+            elif '% of net' in col_lower or 'net assets' in col_lower:
+                column_mapping[col] = 'weight_percent'
+            elif col_lower == 'shares':
+                column_mapping[col] = 'shares'
+        
+        df = df.rename(columns=column_mapping)
+        
+        if 'ticker' not in df.columns:
+            logger.error(f"❌ VanEck XLSX missing ticker column. Found: {df.columns.tolist()}")
+            return None
+        
+        # Clean data
+        df = df[df['ticker'].notna()]
+        df = df[df['ticker'] != '']
+        
+        # Clean ticker (VanEck uses "NVDA US" format - extract just ticker)
+        df['ticker'] = df['ticker'].astype(str).str.split().str[0].str.upper().str.strip()
+        
+        # Filter to valid stock tickers only
+        df = df[df['ticker'].apply(is_stock_ticker)]
+        
+        # Convert numeric columns
+        if 'shares' in df.columns:
+            df['shares'] = pd.to_numeric(
+                df['shares'].astype(str).str.replace(',', '').str.replace('$', ''),
+                errors='coerce'
+            ).fillna(0)
+        if 'weight_percent' in df.columns:
+            # Remove % sign and convert
+            df['weight_percent'] = pd.to_numeric(
+                df['weight_percent'].astype(str).str.replace('%', '').str.strip(),
+                errors='coerce'
+            ).fillna(0)
+        
+        logger.info(f"✅ Parsed {len(df)} holdings for {etf_ticker}")
+        return df
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Failed to download {etf_ticker} VanEck XLSX: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Error parsing {etf_ticker} VanEck XLSX: {e}", exc_info=True)
+        return None
+
+
+def get_previous_holdings(pc: PostgresClient, etf_ticker: str, date: datetime) -> pd.DataFrame:
+    """Fetch latest available previous holdings from Research DB.
+    
+    Args:
+        pc: PostgresClient for research database
         etf_ticker: ETF ticker
         date: Current processing date
         
@@ -494,46 +740,31 @@ def get_previous_holdings(db: SupabaseClient, etf_ticker: str, date: datetime) -
     
     try:
         # 1. Find latest date before today
-        date_res = db.supabase.table('etf_holdings_log') \
-            .select('date') \
-            .eq('etf_ticker', etf_ticker) \
-            .lt('date', date_str) \
-            .order('date', desc=True) \
-            .limit(1) \
-            .execute()
+        date_res = pc.execute_query("""
+            SELECT date FROM etf_holdings_log
+            WHERE etf_ticker = %s AND date < %s
+            ORDER BY date DESC
+            LIMIT 1
+        """, (etf_ticker, date_str))
 
-        if not date_res.data:
+        if not date_res:
             logger.info(f"ℹ️  No previous history found for {etf_ticker} before {date_str}")
             return pd.DataFrame(columns=['ticker', 'shares', 'weight_percent'])
 
-        previous_date = date_res.data[0]['date']
+        previous_date = date_res[0]['date']
         logger.info(f"Comparing {etf_ticker} against latest snapshot: {previous_date}")
 
-        # 2. Fetch holdings for that date (with pagination to handle large ETFs like IWM)
-        all_data = []
-        page_size = 1000
-        offset = 0
+        # 2. Fetch holdings for that date
+        result = pc.execute_query("""
+            SELECT holding_ticker, shares_held, weight_percent
+            FROM etf_holdings_log
+            WHERE etf_ticker = %s AND date = %s
+        """, (etf_ticker, previous_date))
         
-        while True:
-            result = db.supabase.table('etf_holdings_log').select(
-                'holding_ticker, shares_held, weight_percent'
-            ).eq('etf_ticker', etf_ticker).eq('date', previous_date).range(offset, offset + page_size - 1).execute()
-            
-            if not result.data:
-                break
-            
-            all_data.extend(result.data)
-            
-            # If we got fewer than page_size, we've reached the end
-            if len(result.data) < page_size:
-                break
-            
-            offset += page_size
-        
-        if not all_data:
+        if not result:
             return pd.DataFrame(columns=['ticker', 'shares', 'weight_percent'])
         
-        df = pd.DataFrame(all_data)
+        df = pd.DataFrame(result)
         # Rename to match expected schema
         df = df.rename(columns={
             'holding_ticker': 'ticker',
@@ -628,11 +859,11 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     return significant.to_dict('records')
 
 
-def save_holdings_snapshot(db: SupabaseClient, etf_ticker: str, holdings: pd.DataFrame, date: datetime):
-    """Save today's holdings snapshot to database.
+def save_holdings_snapshot(pc: PostgresClient, etf_ticker: str, holdings: pd.DataFrame, date: datetime):
+    """Save today's holdings snapshot to Research DB.
     
     Args:
-        db: Database client
+        pc: PostgresClient for research database
         etf_ticker: ETF ticker
         holdings: Holdings DataFrame
         date: Snapshot date
@@ -672,19 +903,14 @@ def save_holdings_snapshot(db: SupabaseClient, etf_ticker: str, holdings: pd.Dat
     # Prepare records
     records = []
     for _, row in aggregated.iterrows():
-        record = {
-            'date': date_str,
-            'etf_ticker': etf_ticker,
-            'holding_ticker': row['ticker'],
-            'holding_name': str(row.get('name', '')) if pd.notna(row.get('name')) else '',
-        }
-        
-        # Add numeric fields (already cleaned of NaN)
-        if row.get('shares', 0) > 0:
-            record['shares_held'] = float(row['shares'])
-        if row.get('weight_percent', 0) > 0:
-            record['weight_percent'] = float(row['weight_percent'])
-            
+        record = (
+            date_str,
+            etf_ticker,
+            row['ticker'],
+            str(row.get('name', '')) if pd.notna(row.get('name')) else '',
+            float(row['shares']) if row.get('shares', 0) > 0 else None,
+            float(row['weight_percent']) if row.get('weight_percent', 0) > 0 else None,
+        )
         records.append(record)
     
     skipped_count = len(holdings) - duplicates_before
@@ -695,15 +921,30 @@ def save_holdings_snapshot(db: SupabaseClient, etf_ticker: str, holdings: pd.Dat
         logger.error(f"❌ No valid records to save for {etf_ticker}")
         return
     
-    # Batch upsert with error handling
+    # Batch upsert with error handling using PostgresClient
     try:
-        # Supabase has a limit on batch size, split into chunks of 1000
-        batch_size = 1000
-        for i in range(0, len(records), batch_size):
-            batch = records[i:i + batch_size]
-            db.supabase.table('etf_holdings_log').upsert(batch).execute()
-            if len(records) > batch_size:
-                logger.debug(f"  Saved batch {i//batch_size + 1} ({len(batch)} records)")
+        batch_size = 500
+        with pc.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            for i in range(0, len(records), batch_size):
+                batch = records[i:i + batch_size]
+                
+                # Use executemany with ON CONFLICT for upsert
+                cursor.executemany("""
+                    INSERT INTO etf_holdings_log 
+                    (date, etf_ticker, holding_ticker, holding_name, shares_held, weight_percent)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (date, etf_ticker, holding_ticker) DO UPDATE SET
+                        holding_name = EXCLUDED.holding_name,
+                        shares_held = EXCLUDED.shares_held,
+                        weight_percent = EXCLUDED.weight_percent
+                """, batch)
+                
+                if len(records) > batch_size:
+                    logger.debug(f"  Saved batch {i//batch_size + 1} ({len(batch)} records)")
+            
+            conn.commit()
         
         logger.info(f"💾 Saved {len(records)} holdings for {etf_ticker} on {date_str}")
     except Exception as e:
@@ -839,7 +1080,8 @@ def etf_watchtower_job():
     
     logger.info("🏛️ Starting ETF Watchtower Job...")
     
-    db = SupabaseClient(use_service_role=True)  # Use service role for writes
+    db = SupabaseClient(use_service_role=True)  # Use service role for securities metadata
+    pc = PostgresClient()  # Research DB for etf_holdings_log
     repo = ResearchRepository()
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     
@@ -863,6 +1105,10 @@ def etf_watchtower_job():
                     today_holdings = fetch_spdr_holdings(etf_ticker, config['url'])
                 elif config['provider'] == 'Global X':
                     today_holdings = fetch_globalx_holdings(etf_ticker, config['url'])
+                elif config['provider'] == 'Direxion':
+                    today_holdings = fetch_direxion_holdings(etf_ticker, config['url'])
+                elif config['provider'] == 'VanEck':
+                    today_holdings = fetch_vaneck_holdings(etf_ticker, config['url'])
                 else:
                     logger.warning(f"⚠️ Provider {config['provider']} not yet implemented")
                     continue
@@ -871,8 +1117,8 @@ def etf_watchtower_job():
                     logger.warning(f"⚠️ No holdings data for {etf_ticker}, skipping")
                     continue
                 
-                # 2. Get yesterday's holdings
-                yesterday_holdings = get_previous_holdings(db, etf_ticker, today)
+                # 2. Get yesterday's holdings (from Research DB)
+                yesterday_holdings = get_previous_holdings(pc, etf_ticker, today)
                 
                 # 3. Calculate diff and generate article (only if we have previous data)
                 if not yesterday_holdings.empty:
@@ -895,9 +1141,9 @@ def etf_watchtower_job():
                 # 4. Upsert ETF metadata (the ETF itself)
                 upsert_etf_metadata(db, etf_ticker, config['provider'])
                 
-                # 5. Upsert holdings metadata & Save snapshot
+                # 5. Upsert holdings metadata (to Supabase) & Save snapshot (to Research DB)
                 upsert_securities_metadata(db, today_holdings, config['provider'])
-                save_holdings_snapshot(db, etf_ticker, today_holdings, today)
+                save_holdings_snapshot(pc, etf_ticker, today_holdings, today)
                 
                 successful_etfs.append(etf_ticker)
                 logger.info(f"✅ {etf_ticker} processed successfully")

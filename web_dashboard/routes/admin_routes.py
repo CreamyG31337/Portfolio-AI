@@ -19,6 +19,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from auth import require_admin
 from supabase_client import SupabaseClient
+from postgres_client import PostgresClient
 from flask_cache_utils import cache_data
 from dashboard_config import (
     WEBAI_COOKIES_PATH,
@@ -2275,33 +2276,15 @@ def api_remove_from_skip_list(ticker: str):
 # Security Metadata Management Routes
 @cache_data(ttl=300)
 def _get_cached_etf_tickers():
-    """Get distinct ETF tickers from the holdings log (cached)."""
+    """Get distinct ETF tickers from the holdings log in Research DB (cached)."""
     try:
-        client = SupabaseClient(use_service_role=True)
-        tickers = set()
-        page_size = 1000
-        offset = 0
-
-        while True:
-            result = client.supabase.table("etf_holdings_log") \
-                .select("etf_ticker") \
-                .order("etf_ticker") \
-                .range(offset, offset + page_size - 1) \
-                .execute()
-
-            if not result.data:
-                break
-
-            tickers.update(row.get("etf_ticker") for row in result.data if row.get("etf_ticker"))
-
-            if len(result.data) < page_size:
-                break
-
-            offset += page_size
-            if offset > 200000:
-                logger.warning("Reached 200,000 row safety limit in _get_cached_etf_tickers")
-                break
-
+        pc = PostgresClient()
+        result = pc.execute_query("""
+            SELECT DISTINCT etf_ticker FROM etf_holdings_log
+            ORDER BY etf_ticker
+        """)
+        
+        tickers = set(row.get("etf_ticker") for row in result if row.get("etf_ticker"))
         return tickers
     except Exception as e:
         logger.error(f"Error fetching ETF tickers: {e}", exc_info=True)

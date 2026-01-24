@@ -3295,23 +3295,21 @@ def _get_ticker_chart_data_cached(
         logger.warning(f"Error fetching user trades for chart: {e}")
         # Continue without user trades if there's an error
     
-    # Fetch ETF trades for this ticker within the chart date range
+    # Fetch ETF trades for this ticker within the chart date range (from Research DB)
     etf_trades = []
     try:
+        from postgres_client import PostgresClient
+        pc = PostgresClient()
+        
         start_date = (date.today() - timedelta(days=range_days)).isoformat()
         end_date = date.today().isoformat()
         
-        etf_result = supabase_client.supabase.rpc(
-            'get_etf_holding_trades',
-            {
-                'p_holding_ticker': ticker,
-                'p_start_date': start_date,
-                'p_end_date': end_date
-            }
-        ).execute()
+        etf_result = pc.execute_query("""
+            SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
+        """, (ticker, start_date, end_date))
         
-        if etf_result.data:
-            etf_trades = etf_result.data
+        if etf_result:
+            etf_trades = etf_result
     except Exception as e:
         logger.warning(f"Error fetching ETF trades for chart: {e}")
         # Continue without ETF trades if there's an error
@@ -3413,16 +3411,11 @@ def _get_ticker_chart_cached(
 
 @cache_data(ttl=300)
 def _get_ticker_etf_trades_cached(ticker: str, user_is_admin: bool, auth_token: Optional[str], range: str = '3m'):
-    """Get ETF holding trades for a ticker within a date range (300s TTL)."""
-    from supabase_client import SupabaseClient
-
-    if user_is_admin:
-        supabase_client = SupabaseClient(use_service_role=True)
-    else:
-        supabase_client = SupabaseClient(user_token=auth_token) if auth_token else None
-
-    if not supabase_client:
-        raise ValueError("Unable to connect to database")
+    """Get ETF holding trades for a ticker within a date range (300s TTL).
+    
+    Data is fetched from Research DB (not Supabase).
+    """
+    from postgres_client import PostgresClient
 
     range_days = {
         '3m': 90,
@@ -3435,16 +3428,12 @@ def _get_ticker_etf_trades_cached(ticker: str, user_is_admin: bool, auth_token: 
     start_date = (date.today() - timedelta(days=range_days)).isoformat()
     end_date = date.today().isoformat()
 
-    result = supabase_client.supabase.rpc(
-        'get_etf_holding_trades',
-        {
-            'p_holding_ticker': ticker,
-            'p_start_date': start_date,
-            'p_end_date': end_date
-        }
-    ).execute()
+    pc = PostgresClient()
+    result = pc.execute_query("""
+        SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
+    """, (ticker, start_date, end_date))
 
-    return result.data or []
+    return result or []
 
 @app.route('/api/v2/ticker/chart')
 @require_auth
