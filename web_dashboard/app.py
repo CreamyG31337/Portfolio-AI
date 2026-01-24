@@ -1218,38 +1218,42 @@ def auth_debug():
     session_token = request.cookies.get('session_token')
     refresh_token = request.cookies.get('refresh_token')
     
-    def decode_token(token):
+    def decode_token_safe(token):
         if not token:
             return None
         try:
             parts = token.split('.')
             if len(parts) < 2:
-                return {"error": "Invalid JWT format"}
+                return {"valid": False, "error": "Invalid JWT format"}
             payload = parts[1]
             payload += '=' * (4 - len(payload) % 4)
             decoded = base64.urlsafe_b64decode(payload)
             data = json_lib.loads(decoded)
-            # Add human-readable expiry info
+            # Only return expiry status, not the payload
             exp = data.get('exp', 0)
+            is_expired = False
             if exp:
                 now = int(time.time())
-                data['_exp_human'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(exp))
-                data['_expired'] = exp < now
-                data['_seconds_until_expiry'] = exp - now
-            return data
+                is_expired = exp < now
+
+            return {
+                "valid": True,
+                "expired": is_expired,
+                "has_exp": bool(exp)
+            }
         except Exception as e:
-            return {"error": str(e)}
+            return {"valid": False, "error": str(e)}
     
     return jsonify({
         "auth_token": {
             "present": bool(auth_token),
             "length": len(auth_token) if auth_token else 0,
-            "decoded": decode_token(auth_token)
+            "status": decode_token_safe(auth_token)
         },
         "session_token": {
             "present": bool(session_token),
             "length": len(session_token) if session_token else 0,
-            "decoded": decode_token(session_token)
+            "status": decode_token_safe(session_token)
         },
         "refresh_token": {
             "present": bool(refresh_token),
@@ -1391,6 +1395,7 @@ def login():
         return jsonify({"error": "Login failed", "message": str(e), "traceback": traceback.format_exc()}), 500
 
 @app.route('/api/debug/cookies')
+@require_admin
 def debug_cookies():
     """Debug endpoint to inspect cookies received by the server"""
     # Use same is_production logic as login route
@@ -1508,6 +1513,7 @@ def debug_refresh_attempt():
         })
 
 @app.route('/api/debug/auth')
+@require_admin
 def debug_auth():
     """Debug endpoint to test auth validation logic"""
     from flask_auth_utils import refresh_token_if_needed_flask, get_auth_token, get_refresh_token
