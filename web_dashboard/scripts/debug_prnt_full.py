@@ -15,11 +15,11 @@ original_configs = ETF_CONFIGS.copy()
 ETF_CONFIGS.clear()
 ETF_CONFIGS['PRNT'] = original_configs['PRNT']
 
-print("🚀 Running Watchtower Job for ONLY PRNT...")
+print("Running Watchtower Job for ONLY PRNT...")
 try:
     etf_watchtower_job()
-    print("✅ Job completed")
+    print("Job completed")
 except Exception as e:
-    print(f"❌ Job failed: {e}")
+    print(f"Job failed: {e}")
     import traceback
     traceback.print_exc()
