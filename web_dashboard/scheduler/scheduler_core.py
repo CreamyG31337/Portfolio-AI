@@ -1303,7 +1303,9 @@ def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
         'is_running': is_running,
         'running_since': running_since,
         'last_error': last_error,
-        'recent_logs': get_job_logs(job.id, limit=5)
+        'last_error': last_error,
+        'recent_logs': get_job_logs(job.id, limit=5),
+        'trigger_details': _get_trigger_details(job.trigger)
     }
 
 
@@ -1480,6 +1482,62 @@ def _format_trigger_readable(trigger: Any) -> str:
         return trigger_str
 
 
+def _get_trigger_details(trigger: Any) -> Dict[str, Any]:
+    """Get structured trigger details for UI rendering.
+    
+    Args:
+        trigger: APScheduler trigger object
+        
+    Returns:
+        Dictionary with type and details
+    """
+    if trigger is None:
+        return {'type': 'manual'}
+    
+    trigger_type = type(trigger).__name__
+    
+    if trigger_type == 'CronTrigger':
+        hour = getattr(trigger, 'hour', None)
+        minute = getattr(trigger, 'minute', None)
+        day_of_week = getattr(trigger, 'day_of_week', None)
+        timezone_obj = getattr(trigger, 'timezone', None)
+        
+        # Convert timezone-aware object to string if possible
+        timezone_str = str(timezone_obj) if timezone_obj else None
+        
+        # Convert fields to simpler types for JSON serialization
+        # Handle cases where hour/minute might be expressions
+        return {
+            'type': 'cron',
+            'cron_params': {
+                'hour': str(hour),
+                'minute': str(minute),
+                'day_of_week': str(day_of_week) if day_of_week else None,
+                'timezone': timezone_str
+            }
+        }
+        
+    elif trigger_type == 'IntervalTrigger':
+        interval = getattr(trigger, 'interval', None)
+        seconds = 0
+        if isinstance(interval, timedelta):
+            seconds = interval.total_seconds()
+            
+        return {
+            'type': 'interval',
+            'interval_seconds': seconds
+        }
+        
+    elif trigger_type == 'DateTrigger':
+        run_date = getattr(trigger, 'run_date', None)
+        return {
+            'type': 'date',
+            'run_date': run_date.isoformat() if run_date else None
+        }
+    
+    return {'type': 'unknown', 'raw': str(trigger)}
+
+
 def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
     """Get status of all scheduled jobs using batched database queries for performance.
     
@@ -1574,7 +1632,8 @@ def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
             'recent_logs': [],
             'scheduler_stopped': scheduler_stopped,  # Flag to help frontend show appropriate message
             'has_schedule': has_schedule,  # Flag to show if job has a schedule
-            'parameters': AVAILABLE_JOBS.get(job.id, {}).get('parameters', {})  # Expose parameters for frontend UI
+            'parameters': AVAILABLE_JOBS.get(job.id, {}).get('parameters', {}),  # Expose parameters for frontend UI
+            'trigger_details': _get_trigger_details(job.trigger)
         }
     
     # Batch query 1: Get all running jobs

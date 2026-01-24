@@ -323,6 +323,15 @@ class SupabaseClient:
                         if market_cap:
                             metadata['market_cap'] = str(market_cap)
                         
+                        # Get company description (longBusinessSummary) - store in description column
+                        company_description = (
+                            info.get('longBusinessSummary') or 
+                            info.get('longDescription') or 
+                            info.get('description')
+                        )
+                        if company_description:
+                            metadata['description'] = company_description.strip()
+                        
                         logger.debug(f"Fetched metadata for {ticker}: {metadata.get('company_name')}, sector={metadata.get('sector')}, industry={metadata.get('industry')}")
                     else:
                         logger.warning(f"No yfinance info available for {ticker}")

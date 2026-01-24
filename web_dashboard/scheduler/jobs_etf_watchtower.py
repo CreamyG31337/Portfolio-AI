@@ -8,6 +8,8 @@ Detects institutional accumulation/distribution ("The Diff Engine").
 Supported ETFs:
 - iShares: IVV, IWM, IWC, IWO
 - ARK: ARKK, ARKQ, ARKW, ARKG, ARKF, ARKX, IZRL, PRNT
+- SPDR: XBI
+- Global X: BOTZ, LIT
 
 Change Detection:
 - Detects significant changes in holdings (MIN_SHARE_CHANGE or MIN_PERCENT_CHANGE)
@@ -84,6 +86,13 @@ ETF_CONFIGS = {
     "IWM": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund" },
     "IWC": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239716/ishares-microcap-etf/1467271812596.ajax?fileType=csv&fileName=IWC_holdings&dataType=fund" },
     "IWO": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239709/ishares-russell-2000-growth-etf/1467271812596.ajax?fileType=csv&fileName=IWO_holdings&dataType=fund" },
+    
+    # SPDR (State Street) - Excel format
+    "XBI": { "provider": "SPDR", "url": "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xbi.xlsx" },
+    
+    # Global X - Date-based CSV URLs (updated daily)
+    "BOTZ": { "provider": "Global X", "url": "https://assets.globalxetfs.com/funds/holdings/botz_full-holdings_{date}.csv" },
+    "LIT": { "provider": "Global X", "url": "https://assets.globalxetfs.com/funds/holdings/lit_full-holdings_{date}.csv" },
 }
 
 # ETF Names for metadata
@@ -100,6 +109,9 @@ ETF_NAMES = {
     "IWM": "iShares Russell 2000 ETF",
     "IWC": "iShares Micro-Cap ETF",
     "IWO": "iShares Russell 2000 Growth ETF",
+    "XBI": "SPDR S&P Biotech ETF",
+    "BOTZ": "Global X Robotics & Artificial Intelligence ETF",
+    "LIT": "Global X Lithium & Battery Tech ETF",
 }
 
 # Thresholds for "significant" changes
@@ -243,6 +255,142 @@ def fetch_ishares_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFra
 
     except Exception as e:
         logger.error(f"❌ Error parsing {etf_ticker} iShares CSV: {e}", exc_info=True)
+        return None
+
+
+def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFrame]:
+    """Download and parse SPDR ETF holdings Excel file.
+    
+    Args:
+        etf_ticker: ETF ticker symbol
+        xlsx_url: Direct Excel URL
+        
+    Returns:
+        DataFrame with columns: [ticker, name, shares, weight_percent]
+    """
+    try:
+        logger.info(f"📥 Downloading {etf_ticker} holdings from SPDR...")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
+        
+        response = requests.get(xlsx_url, timeout=30, headers=headers)
+        response.raise_for_status()
+        
+        from io import BytesIO
+        # SPDR Excel files have 4-5 metadata rows at the top
+        df = pd.read_excel(BytesIO(response.content), engine='openpyxl', skiprows=4)
+        
+        # Clean column names and deduplicate (SPDR files sometimes have duplicate columns)
+        df.columns = df.columns.str.strip()
+        
+        # Deduplicate column names by adding _1, _2, etc. to duplicates
+        cols = pd.Series(df.columns)
+        for dup in cols[cols.duplicated()].unique():
+            cols[cols[cols == dup].index.values.tolist()] = [dup + '_' + str(i) if i != 0 else dup for i in range(sum(cols == dup))]
+        df.columns = cols
+        
+        # Map SPDR columns to standard schema
+        column_mapping = {
+            'Ticker': 'ticker',
+            'Name': 'name',
+            'Identifier': 'ticker',  # Sometimes SPDR uses 'Identifier'
+            'Weight': 'weight_percent',
+            'Shares': 'shares',
+            'Quantity': 'shares',
+        }
+        
+        df = df.rename(columns=column_mapping)
+        
+        if 'ticker' not in df.columns:
+            logger.error(f"❌ SPDR Excel missing ticker column. Found: {df.columns.tolist()}")
+            return None
+            
+        # Clean data
+        df = df[df['ticker'].notna()]
+        df = df[df['ticker'] != '']
+        df['ticker'] = df['ticker'].astype(str).str.upper().str.strip()
+        
+        # Convert numeric columns
+        if 'shares' in df.columns:
+            df['shares'] = pd.to_numeric(df['shares'], errors='coerce').fillna(0)
+        if 'weight_percent' in df.columns:
+            df['weight_percent'] = pd.to_numeric(df['weight_percent'], errors='coerce').fillna(0)
+        
+        logger.info(f"✅ Parsed {len(df)} holdings for {etf_ticker}")
+        return df
+        
+    except Exception as e:
+        logger.error(f"❌ Error parsing {etf_ticker} SPDR Excel: {e}", exc_info=True)
+        return None
+
+
+def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str) -> Optional[pd.DataFrame]:
+    """Download and parse Global X ETF holdings CSV.
+    
+    Args:
+        etf_ticker: ETF ticker symbol
+        csv_url_template: URL template with {date} placeholder
+        
+    Returns:
+        DataFrame with columns: [ticker, name, shares, weight_percent]
+    """
+    try:
+        logger.info(f"📥 Downloading {etf_ticker} holdings from Global X...")
+        
+        # Global X uses date in filename: YYYYMMDD format (US market time, not UTC)
+        # Use local time to match their file naming convention
+        today = datetime.now()
+        date_str = today.strftime('%Y%m%d')
+        csv_url = csv_url_template.format(date=date_str)
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
+        
+        response = requests.get(csv_url, timeout=30, headers=headers)
+        response.raise_for_status()
+        
+        # Global X CSVs have 2 header rows (title, date, then column headers)
+        from io import StringIO
+        df = pd.read_csv(StringIO(response.text), skiprows=2)
+        
+        # Clean column names
+        df.columns = df.columns.str.strip()
+        
+        # Map Global X columns to standard schema
+        column_mapping = {
+            'Ticker': 'ticker',
+            'Name': 'name',
+            'Shares Held': 'shares',
+            'Market Value ($)': 'market_value',
+            '% of Net Assets': 'weight_percent',
+        }
+        
+        df = df.rename(columns=column_mapping)
+        
+        if 'ticker' not in df.columns:
+            logger.error(f"❌ Global X CSV missing ticker column. Found: {df.columns.tolist()}")
+            return None
+            
+        # Clean data
+        df = df[df['ticker'].notna()]
+        df = df[df['ticker'] != '']
+        df['ticker'] = df['ticker'].astype(str).str.upper().str.strip()
+        
+        # Convert numeric columns (remove commas)
+        if 'shares' in df.columns:
+            df['shares'] = df['shares'].astype(str).str.replace(',', '').str.strip()
+            df['shares'] = pd.to_numeric(df['shares'], errors='coerce').fillna(0)
+        if 'weight_percent' in df.columns:
+            df['weight_percent'] = pd.to_numeric(df['weight_percent'], errors='coerce').fillna(0)
+        
+        logger.info(f"✅ Parsed {len(df)} holdings for {etf_ticker}")
+        return df
+        
+    except Exception as e:
+        logger.error(f"❌ Error parsing {etf_ticker} Global X CSV: {e}", exc_info=True)
         return None
 
 
@@ -707,6 +855,10 @@ def etf_watchtower_job():
                     today_holdings = fetch_ark_holdings(etf_ticker, config['url'])
                 elif config['provider'] == 'iShares':
                     today_holdings = fetch_ishares_holdings(etf_ticker, config['url'])
+                elif config['provider'] == 'SPDR':
+                    today_holdings = fetch_spdr_holdings(etf_ticker, config['url'])
+                elif config['provider'] == 'Global X':
+                    today_holdings = fetch_globalx_holdings(etf_ticker, config['url'])
                 else:
                     logger.warning(f"⚠️ Provider {config['provider']} not yet implemented")
                     continue

@@ -14,7 +14,8 @@ CREATE TABLE securities (
     trailing_pe NUMERIC,
     dividend_yield NUMERIC,
     fifty_two_week_high NUMERIC,
-    fifty_two_week_low NUMERIC
+    fifty_two_week_low NUMERIC,
+    description TEXT
 ,
     PRIMARY KEY (ticker)
 );

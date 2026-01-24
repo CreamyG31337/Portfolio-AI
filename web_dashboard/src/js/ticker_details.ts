@@ -13,6 +13,7 @@ interface BasicInfo {
     currency?: string;
     exchange?: string;
     logo_url?: string;
+    description?: string;  // Company description for stocks, fund description for ETFs
 }
 
 interface TickerPosition {
@@ -117,6 +118,11 @@ interface TickerAnalysis {
     requested_by?: string;
 }
 
+interface TickerAnalysisContextResponse {
+    ticker?: string;
+    context?: string;
+}
+
 interface SignalAnalysis {
     ticker?: string;
     structure?: {
@@ -170,6 +176,30 @@ interface ErrorResponse {
 
 let currentTicker: string = '';
 let tickerList: string[] = [];
+let selectedModel: string = '';
+let contextCharCount: number = 0;
+const tickerDetailsConfig = (window as any).tickerDetailsConfig || {};
+const modelConfig = tickerDetailsConfig.modelConfig || {};
+selectedModel = tickerDetailsConfig.defaultModel || '';
+
+function getSelectedFund(): string | null {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlFund = urlParams.get('fund');
+    const selector = document.getElementById('global-fund-select') as HTMLSelectElement | null;
+    const rawFund = urlFund || (selector ? selector.value : '');
+
+    if (!rawFund) return null;
+    const normalized = rawFund.trim();
+    if (!normalized || normalized.toLowerCase() === 'all') return null;
+    return normalized;
+}
+
+function appendFundParam(url: string): string {
+    const fund = getSelectedFund();
+    if (!fund) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}fund=${encodeURIComponent(fund)}`;
+}
 
 // Congress trades pagination state
 let allCongressTrades: CongressTickerTrade[] = [];
@@ -237,12 +267,24 @@ document.addEventListener('DOMContentLoaded', function (): void {
             }
         });
     }
+
+    initModelSelect();
+
+    // Reload ticker data when global fund selector changes
+    window.addEventListener('fundChanged', () => {
+        if (currentTicker) {
+            loadTickerData(currentTicker);
+        } else {
+            loadTickerList();
+            showPlaceholder();
+        }
+    });
 });
 
 // Load ticker list for dropdown
 async function loadTickerList(): Promise<void> {
     try {
-        const response = await fetch('/api/v2/ticker/list', {
+        const response = await fetch(appendFundParam('/api/v2/ticker/list'), {
             credentials: 'include'
         });
 
@@ -271,6 +313,61 @@ async function loadTickerList(): Promise<void> {
         });
     } catch (error) {
         console.error('Error loading ticker list:', error);
+    }
+}
+
+function initModelSelect(): void {
+    const select = document.getElementById('ticker-model-select') as HTMLSelectElement | null;
+    if (!select) return;
+
+    select.addEventListener('change', () => {
+        selectedModel = select.value;
+        updateContextUsage();
+    });
+
+    loadModelOptions();
+}
+
+async function loadModelOptions(): Promise<void> {
+    const select = document.getElementById('ticker-model-select') as HTMLSelectElement | null;
+    if (!select) return;
+
+    try {
+        const response = await fetch('/api/v2/ai/models', {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to load AI models');
+        }
+
+        const data = await response.json();
+        const models = data.models || [];
+
+        select.innerHTML = '';
+        if (!Array.isArray(models) || models.length === 0) {
+            select.innerHTML = '<option value="">No models available</option>';
+            return;
+        }
+
+        models.forEach((model: { id: string; name: string; type?: string }) => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name;
+            select.appendChild(option);
+        });
+
+        if (selectedModel) {
+            select.value = selectedModel;
+        } else if (select.options.length > 0) {
+            select.value = select.options[0].value;
+            selectedModel = select.value;
+        }
+
+        updateContextUsage();
+    } catch (error) {
+        console.error('Error loading AI models:', error);
+        select.innerHTML = '<option value="">Error loading models</option>';
     }
 }
 
@@ -304,9 +401,11 @@ async function loadTickerData(ticker: string): Promise<void> {
     showLoading();
     hideTickerError();
     hidePlaceholder();
+    contextCharCount = 0;
+    updateContextUsage();
 
     try {
-        const response = await fetch(`/api/v2/ticker/info?ticker=${encodeURIComponent(ticker)}`, {
+        const response = await fetch(appendFundParam(`/api/v2/ticker/info?ticker=${encodeURIComponent(ticker)}`), {
             credentials: 'include'
         });
 
@@ -343,6 +442,7 @@ async function loadTickerData(ticker: string): Promise<void> {
 
         // Load AI analysis
         await loadTickerAnalysis(ticker);
+        await loadTickerAnalysisContext(ticker);
 
         // Load and render chart
         const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
@@ -444,6 +544,19 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
             exchangeInfo.style.display = 'none';
         }
     }
+
+    // Display company/fund description if available
+    const descriptionContainer = document.getElementById('company-description-container');
+    const descriptionElement = document.getElementById('company-description');
+    
+    if (descriptionContainer && descriptionElement) {
+        if (basicInfo.description && basicInfo.description.trim()) {
+            descriptionElement.textContent = basicInfo.description.trim();
+            descriptionContainer.classList.remove('hidden');
+        } else {
+            descriptionContainer.classList.add('hidden');
+        }
+    }
 }
 
 // Render external links
@@ -454,7 +567,7 @@ async function renderExternalLinks(basicInfo: BasicInfo): Promise<void> {
 
     try {
         const exchange = basicInfo.exchange || null;
-        const response = await fetch(`/api/v2/ticker/external-links?ticker=${encodeURIComponent(basicInfo.ticker)}${exchange ? `&exchange=${encodeURIComponent(exchange)}` : ''}`, {
+        const response = await fetch(appendFundParam(`/api/v2/ticker/external-links?ticker=${encodeURIComponent(basicInfo.ticker)}${exchange ? `&exchange=${encodeURIComponent(exchange)}` : ''}`), {
             credentials: 'include'
         });
 
@@ -609,7 +722,7 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
 
         console.log('Detected theme:', theme, 'from data-theme:', dataTheme);
 
-        const response = await fetch(`/api/v2/ticker/chart?ticker=${encodeURIComponent(ticker)}&use_solid=${useSolid}&theme=${encodeURIComponent(theme)}&range=${encodeURIComponent(range)}`, {
+        const response = await fetch(appendFundParam(`/api/v2/ticker/chart?ticker=${encodeURIComponent(ticker)}&use_solid=${useSolid}&theme=${encodeURIComponent(theme)}&range=${encodeURIComponent(range)}`), {
             credentials: 'include'
         });
 
@@ -675,7 +788,7 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
 // Load ETF holding trades for table
 async function loadEtfTrades(ticker: string, range: string = '3m'): Promise<void> {
     try {
-        const response = await fetch(`/api/v2/ticker/etf-trades?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}`, {
+        const response = await fetch(appendFundParam(`/api/v2/ticker/etf-trades?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}`), {
             credentials: 'include'
         });
 
@@ -759,7 +872,7 @@ async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Pr
             changeLabelEl.textContent = rangeLabels[range] || 'Change (3M)';
         }
 
-        const response = await fetch(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&days=${days}`, {
+        const response = await fetch(appendFundParam(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&days=${days}`), {
             credentials: 'include'
         });
 
@@ -1327,6 +1440,45 @@ function setSignalsLoading(isLoading: boolean, message: string): void {
     }
 }
 
+function updateContextUsage(): void {
+    const usageEl = document.getElementById('ticker-context-usage');
+    if (!usageEl) return;
+
+    const maxTokens = getMaxTokensForModel(selectedModel);
+    const usedTokens = estimateTokens(contextCharCount);
+    const percentage = maxTokens > 0 ? Math.min(100, Math.round((usedTokens / maxTokens) * 100)) : 0;
+
+    usageEl.textContent = maxTokens > 0
+        ? `Context: ${usedTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${percentage}%)`
+        : `Context: ${usedTokens.toLocaleString()} tokens`;
+}
+
+function estimateTokens(charCount: number): number {
+    return Math.ceil(charCount / 4);
+}
+
+function getMaxTokensForModel(modelName: string): number {
+    if (!modelName) {
+        return modelConfig?.default_config?.num_ctx || 0;
+    }
+
+    if (modelName.startsWith('glm-')) {
+        if (modelName.includes('flash')) {
+            return 1000000;
+        }
+        if (modelName.includes('pro')) {
+            return 2000000;
+        }
+        return 1000000;
+    }
+
+    if (modelConfig?.models && modelConfig.models[modelName]?.num_ctx) {
+        return modelConfig.models[modelName].num_ctx;
+    }
+
+    return modelConfig?.default_config?.num_ctx || 0;
+}
+
 // Utility functions
 function formatDate(dateStr?: string): string {
     if (!dateStr) return 'N/A';
@@ -1438,11 +1590,10 @@ function renderEmptyAnalysis(ticker: string): void {
     const content = document.getElementById('ai-analysis-content');
     if (!content) return;
 
-    // Clear debug container
-    const debugContainer = document.getElementById('ai-debug-container');
-    if (debugContainer) {
-        debugContainer.innerHTML = '';
-    }
+    renderDebugPanelMessage(
+        'Loading AI context preview...',
+        '🧠 AI Context Preview (click to expand)'
+    );
 
     // Show empty state message
     content.innerHTML = `
@@ -1457,6 +1608,46 @@ function renderEmptyAnalysis(ticker: string): void {
     if (reanalyzeBtn) {
         reanalyzeBtn.onclick = () => requestReanalysis(ticker);
         reanalyzeBtn.disabled = false;
+    }
+}
+
+async function loadTickerAnalysisContext(ticker: string): Promise<void> {
+    try {
+        const response = await fetch(`/api/v2/ticker/${ticker}/analysis-context`, {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            renderDebugPanelMessage(
+                'Unable to load AI context preview.',
+                '🧠 AI Context Preview (click to expand)'
+            );
+            contextCharCount = 0;
+            updateContextUsage();
+            return;
+        }
+
+        const data: TickerAnalysisContextResponse = await response.json();
+        const context = data.context ? data.context.trim() : '';
+        contextCharCount = context.length;
+
+        if (context) {
+            renderDebugPanel(context, '🧠 AI Context Preview (click to expand)');
+        } else {
+            renderDebugPanelMessage(
+                'No context data available for this ticker yet.',
+                '🧠 AI Context Preview (click to expand)'
+            );
+        }
+        updateContextUsage();
+    } catch (error) {
+        console.error('Error loading ticker analysis context:', error);
+        renderDebugPanelMessage(
+            'Unable to load AI context preview.',
+            '🧠 AI Context Preview (click to expand)'
+        );
+        contextCharCount = 0;
+        updateContextUsage();
     }
 }
 
@@ -1551,11 +1742,6 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
         </div>
     `;
 
-    // Render debug panel if input_context exists
-    if (analysis.input_context) {
-        renderDebugPanel(analysis.input_context);
-    }
-
     // Setup re-analyze button
     const reanalyzeBtn = document.getElementById('reanalyze-btn');
     if (reanalyzeBtn) {
@@ -1564,16 +1750,32 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
 }
 
 // Render debug panel with AI input context
-function renderDebugPanel(inputContext: string): void {
+function renderDebugPanel(inputContext: string, title: string = '🔍 Debug: AI Input Context (click to expand)'): void {
     const container = document.getElementById('ai-debug-container');
     if (!container) return;
 
     container.innerHTML = `
         <details class="border border-gray-200 dark:border-gray-700 rounded-lg">
             <summary class="cursor-pointer p-3 bg-gray-50 dark:bg-gray-800 rounded-t-lg text-sm font-medium text-text-primary">
-                🔍 Debug: AI Input Context (click to expand)
+                ${escapeHtml(title)}
             </summary>
             <pre class="p-4 bg-gray-100 dark:bg-gray-900 text-xs overflow-auto max-h-96 whitespace-pre-wrap text-text-primary">${escapeHtml(inputContext)}</pre>
+        </details>
+    `;
+}
+
+function renderDebugPanelMessage(message: string, title: string): void {
+    const container = document.getElementById('ai-debug-container');
+    if (!container) return;
+
+    container.innerHTML = `
+        <details class="border border-gray-200 dark:border-gray-700 rounded-lg">
+            <summary class="cursor-pointer p-3 bg-gray-50 dark:bg-gray-800 rounded-t-lg text-sm font-medium text-text-primary">
+                ${escapeHtml(title)}
+            </summary>
+            <div class="p-4 bg-gray-100 dark:bg-gray-900 text-xs text-text-secondary">
+                ${escapeHtml(message)}
+            </div>
         </details>
     `;
 }
@@ -1590,7 +1792,13 @@ async function requestReanalysis(ticker: string): Promise<void> {
     try {
         const response = await fetch(`/api/v2/ticker/${ticker}/reanalyze`, {
             method: 'POST',
-            credentials: 'include'
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: selectedModel || undefined
+            })
         });
 
         if (response.ok) {

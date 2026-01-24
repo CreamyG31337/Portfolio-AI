@@ -14,7 +14,7 @@
 
     <div class="h-full px-3 pb-4 pt-24 overflow-y-auto bg-dashboard-surface transition-all duration-300">
         <div class="mb-4 mt-2 sidebar-content">
-            <h2 class="text-lg font-bold text-text-primary px-2 whitespace-nowrap overflow-hidden sidebar-text">
+            <h2 id="sidebar-label" class="text-lg font-bold text-text-primary px-2 whitespace-nowrap overflow-hidden sidebar-text">
                 Navigation</h2>
         </div>
 
@@ -143,10 +143,10 @@
                     </a>
                 </li>
                 <li>
-                    <a href="/admin/etf-metadata" {% if current_page == 'admin_etf_metadata' %}aria-current="page"{% endif %}
-                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_etf_metadata' %}bg-dashboard-surface-alt text-accent{% endif %}">
+                    <a href="/admin/security-metadata" {% if current_page == 'admin_security_metadata' %}aria-current="page"{% endif %}
+                        class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_security_metadata' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">📊</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">ETF Metadata</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Security Metadata</span>
                     </a>
                 </li>
                 <li>

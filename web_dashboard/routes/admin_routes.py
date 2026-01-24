@@ -7,7 +7,7 @@ Flask routes for admin user management, contributors, and contributor access.
 Migrated from app.py to follow the blueprint pattern.
 """
 
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for
 import logging
 import os
 import sys
@@ -2272,126 +2272,199 @@ def api_remove_from_skip_list(ticker: str):
         logger.error(f"Error removing {ticker} from skip list: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# ETF Metadata Management Routes
-@admin_bp.route('/admin/etf-metadata')
+# Security Metadata Management Routes
+@cache_data(ttl=300)
+def _get_cached_etf_tickers():
+    """Get distinct ETF tickers from the holdings log (cached)."""
+    try:
+        client = SupabaseClient(use_service_role=True)
+        tickers = set()
+        page_size = 1000
+        offset = 0
+
+        while True:
+            result = client.supabase.table("etf_holdings_log") \
+                .select("etf_ticker") \
+                .order("etf_ticker") \
+                .range(offset, offset + page_size - 1) \
+                .execute()
+
+            if not result.data:
+                break
+
+            tickers.update(row.get("etf_ticker") for row in result.data if row.get("etf_ticker"))
+
+            if len(result.data) < page_size:
+                break
+
+            offset += page_size
+            if offset > 200000:
+                logger.warning("Reached 200,000 row safety limit in _get_cached_etf_tickers")
+                break
+
+        return tickers
+    except Exception as e:
+        logger.error(f"Error fetching ETF tickers: {e}", exc_info=True)
+        return set()
+
+def _build_securities_query(client, query_text: str):
+    query_builder = client.supabase.table("securities") \
+        .select("ticker, company_name, description")
+
+    if query_text:
+        safe_query = query_text.replace("%", "").replace(",", "")
+        ilike = f"%{safe_query}%"
+        query_builder = query_builder.or_(
+            f"ticker.ilike.{ilike},company_name.ilike.{ilike},description.ilike.{ilike}"
+        )
+
+    return query_builder
+
+def _normalize_security_mode(mode: str) -> str:
+    normalized = (mode or "etf").strip().lower()
+    if normalized in ("etfs", "etf"):
+        return "etf"
+    if normalized in ("stocks", "stock"):
+        return "stock"
+    return "etf"
+
+@admin_bp.route('/admin/security-metadata')
 @require_admin
-def etf_metadata_page():
-    """ETF Metadata management page"""
+def security_metadata_page():
+    """Security Metadata management page."""
     try:
         from flask_auth_utils import get_user_email_flask
         from user_preferences import get_user_theme
         from app import get_navigation_context
-        
+
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
-        nav_context = get_navigation_context(current_page='admin_etf_metadata')
-        
-        return render_template('etf_metadata.html', 
-                             user_email=user_email,
-                             user_theme=user_theme,
-                             **nav_context)
+        user_theme = get_user_theme() or "system"
+        nav_context = get_navigation_context(current_page="admin_security_metadata")
+
+        return render_template(
+            "etf_metadata.html",
+            user_email=user_email,
+            user_theme=user_theme,
+            **nav_context
+        )
     except Exception as e:
-        logger.error(f"Error rendering ETF metadata page: {e}", exc_info=True)
+        logger.error(f"Error rendering security metadata page: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/admin/etf-metadata')
+@require_admin
+def etf_metadata_page():
+    """Redirect legacy ETF metadata page to the new security metadata page."""
+    return redirect(url_for("admin.security_metadata_page"))
+
+@admin_bp.route('/api/admin/security-metadata')
+@require_admin
+def api_get_security_metadata():
+    """Get ETF or stock securities for metadata updates."""
+    try:
+        client = SupabaseClient(use_service_role=True)
+        mode = _normalize_security_mode(request.args.get("mode", "etf"))
+        query_text = (request.args.get("q") or "").strip()
+        limit = min(max(int(request.args.get("limit", 200)), 1), 1000)
+
+        etf_tickers = _get_cached_etf_tickers()
+
+        query_builder = _build_securities_query(client, query_text).order("ticker")
+
+        securities = []
+        if mode == "etf":
+            if etf_tickers:
+                result = query_builder.in_("ticker", list(etf_tickers)) \
+                    .limit(limit) \
+                    .execute()
+                securities = result.data or []
+        else:
+            page_size = max(limit, 200)
+            offset = 0
+            while len(securities) < limit:
+                result = query_builder.range(offset, offset + page_size - 1).execute()
+                if not result.data:
+                    break
+                filtered = [row for row in result.data if row.get("ticker") not in etf_tickers]
+                securities.extend(filtered)
+                if len(result.data) < page_size:
+                    break
+                offset += page_size
+                if offset > 50000:
+                    logger.warning("Reached 50,000 row safety limit in api_get_security_metadata")
+                    break
+            securities = securities[:limit]
+
+        return jsonify({
+            "success": True,
+            "securities": [
+                {
+                    "ticker": sec.get("ticker"),
+                    "company_name": sec.get("company_name"),
+                    "description": sec.get("description")
+                } for sec in securities
+            ],
+            "mode": mode,
+            "query": query_text,
+            "limit": limit,
+            "count": len(securities)
+        })
+    except Exception as e:
+        logger.error(f"Error fetching security metadata: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @admin_bp.route('/api/admin/etf-metadata')
 @require_admin
 def api_get_etf_metadata():
-    """Get all securities with ETF metadata (fund_description)"""
+    """Legacy endpoint for ETF metadata (defaults to ETF mode)."""
+    return api_get_security_metadata()
+
+@admin_bp.route('/api/admin/security-metadata/<ticker>', methods=['PUT'])
+@require_admin
+def api_update_security_metadata(ticker: str):
+    """Update security metadata."""
     try:
         from flask_auth_utils import can_modify_data_flask
-        
+
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot modify security metadata"}), 403
+
+        data = request.get_json()
+        description = (data.get("description", "") if data else "").strip() or None
+
+        ticker_upper = ticker.upper().strip()
         client = SupabaseClient(use_service_role=True)
-        
-        # Query securities table directly - get all securities with fund_description set
-        # Use pagination to handle cases where there are more than 1000 rows
-        all_securities = []
-        batch_size = 1000
-        offset = 0
-        
-        while True:
-            result = client.supabase.table('securities') \
-                .select('ticker, company_name, fund_description') \
-                .not_.is_('fund_description', 'null') \
-                .order('ticker') \
-                .range(offset, offset + batch_size - 1) \
+
+        check_result = client.supabase.table("securities") \
+            .select("ticker") \
+            .eq("ticker", ticker_upper) \
+            .execute()
+
+        if not check_result.data:
+            client.supabase.table("securities") \
+                .insert({
+                    "ticker": ticker_upper,
+                    "description": description
+                }) \
                 .execute()
-            
-            if not result.data:
-                break
-            
-            all_securities.extend(result.data)
-            
-            # If we got fewer rows than batch_size, we're done
-            if len(result.data) < batch_size:
-                break
-            
-            offset += batch_size
-            
-            # Safety break to prevent infinite loops
-            if offset > 50000:
-                logger.warning("Reached 50,000 row safety limit in api_get_etf_metadata pagination")
-                break
-        
-        # Build response
-        etfs = []
-        for sec in all_securities:
-            etfs.append({
-                'ticker': sec.get('ticker'),
-                'company_name': sec.get('company_name'),
-                'fund_description': sec.get('fund_description')
-            })
-        
-        return jsonify({'success': True, 'etfs': etfs})
-        
+        else:
+            client.supabase.table("securities") \
+                .update({
+                    "description": description
+                }) \
+                .eq("ticker", ticker_upper) \
+                .execute()
+
+        return jsonify({"success": True, "message": f"Updated metadata for {ticker_upper}"})
     except Exception as e:
-        logger.error(f"Error fetching ETF metadata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Error updating security metadata for {ticker}: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @admin_bp.route('/api/admin/etf-metadata/<ticker>', methods=['PUT'])
 @require_admin
 def api_update_etf_metadata(ticker: str):
-    """Update ETF metadata"""
-    try:
-        from flask_auth_utils import can_modify_data_flask
-        
-        if not can_modify_data_flask():
-            return jsonify({"error": "Read-only admin cannot modify ETF metadata"}), 403
-        
-        data = request.get_json()
-        fund_description = data.get('fund_description', '').strip() or None
-        
-        ticker_upper = ticker.upper().strip()
-        client = SupabaseClient(use_service_role=True)
-        
-        # Check if security exists
-        check_result = client.supabase.table('securities') \
-            .select('ticker') \
-            .eq('ticker', ticker_upper) \
-            .execute()
-        
-        if not check_result.data:
-            # Create security entry if it doesn't exist
-            client.supabase.table('securities') \
-                .insert({
-                    'ticker': ticker_upper,
-                    'fund_description': fund_description
-                }) \
-                .execute()
-        else:
-            # Update existing
-            client.supabase.table('securities') \
-                .update({
-                    'fund_description': fund_description
-                }) \
-                .eq('ticker', ticker_upper) \
-                .execute()
-        
-        return jsonify({'success': True, 'message': f'Updated metadata for {ticker_upper}'})
-        
-    except Exception as e:
-        logger.error(f"Error updating ETF metadata for {ticker}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+    """Legacy endpoint for updating ETF metadata."""
+    return api_update_security_metadata(ticker)
 
 @admin_bp.route('/api/admin/ai/status')
 @require_admin

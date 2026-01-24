@@ -122,22 +122,25 @@ class ETFGroupAnalysisService:
         return "\n".join(lines)
     
     def get_etf_metadata(self, etf_ticker: str) -> Optional[str]:
-        """Get ETF metadata (fund description) from securities table.
+        """Get security metadata (description) from securities table.
+        
+        Note: description column stores ETF fund descriptions for ETFs
+        and company business descriptions for stocks.
         
         Args:
             etf_ticker: ETF ticker symbol
             
         Returns:
-            Fund description text or None
+            Fund description text (for ETFs) or company description (for stocks), or None
         """
         try:
             result = self.supabase.supabase.table('securities') \
-                .select('fund_description') \
+                .select('description') \
                 .eq('ticker', etf_ticker.upper()) \
                 .execute()
             
-            if result.data and result.data[0].get('fund_description'):
-                return result.data[0].get('fund_description')
+            if result.data and result.data[0].get('description'):
+                return result.data[0].get('description')
             return None
         except Exception as e:
             logger.warning(f"Error fetching ETF metadata for {etf_ticker}: {e}")
@@ -164,13 +167,16 @@ class ETFGroupAnalysisService:
         changes_table = self.format_changes_for_llm(changes)
         
         # Get ETF metadata
-        fund_description = self.get_etf_metadata(etf_ticker)
+        description = self.get_etf_metadata(etf_ticker)
         
         # Format metadata for prompt (preserve line breaks)
         etf_context = ""
-        if fund_description:
+        if description:
             etf_context = "\n\n## ETF Fund Information\n"
-            etf_context += f"{fund_description}\n"
+            etf_context += f"{description}\n"
+        else:
+            logger.warning(f"ETF metadata missing for {etf_ticker}; using fallback description.")
+            etf_context = "\n\n## ETF Fund Information\nNo description available.\n"
         
         # Get prompt from ai_prompts
         try:

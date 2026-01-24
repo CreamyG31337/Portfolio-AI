@@ -28,6 +28,18 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _normalize_fund_filter(fund: Optional[str]) -> Optional[str]:
+    """Normalize fund filter values from requests/UI."""
+    if not fund:
+        return None
+    fund_value = str(fund).strip()
+    if not fund_value:
+        return None
+    if fund_value.lower() in ("all", "all funds"):
+        return None
+    return fund_value
+
+
 def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[str]:
     """
     Aggregate unique tickers from all relevant database tables.
@@ -175,7 +187,8 @@ def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[s
 def get_ticker_info(
     ticker: str,
     supabase_client=None,
-    postgres_client=None
+    postgres_client=None,
+    fund: Optional[str] = None
 ) -> Dict[str, Any]:
     """Get comprehensive ticker information from all databases.
     
@@ -189,6 +202,7 @@ def get_ticker_info(
             positions, trades, congress data, and watchlist
         postgres_client: Optional PostgresClient instance for accessing research
             articles and social sentiment metrics
+        fund: Optional fund name to filter portfolio data (positions/trades)
         
     Returns:
         Dictionary with the following structure:
@@ -202,7 +216,8 @@ def get_ticker_info(
                     'sector': str,
                     'industry': str,
                     'currency': str,  # 'USD', 'CAD', etc.
-                    'exchange': str   # 'NASDAQ', 'NYSE', 'TSX', etc.
+                    'exchange': str,   # 'NASDAQ', 'NYSE', 'TSX', etc.
+                    'description': str  # Company business description (or ETF fund description)
                 }
             'portfolio_data': dict | None,
                 {
@@ -308,6 +323,17 @@ def get_ticker_info(
                         result['basic_info']['logo_url'] = logo_url
                 except Exception as e:
                     logger.warning(f"Error fetching logo URL for {ticker_upper}: {e}")
+                
+                # If no description exists, try to fetch it (async, won't block)
+                if not result['basic_info'].get('description'):
+                    try:
+                        from web_dashboard.utils.company_description import ensure_company_description
+                        description = ensure_company_description(ticker_upper, supabase_client, force_refresh=False)
+                        if description:
+                            result['basic_info']['description'] = description
+                    except Exception as e:
+                        logger.debug(f"Could not fetch company description for {ticker_upper}: {e}")
+                
                 result['found'] = True
         except Exception as e:
             logger.warning(f"Error fetching basic info for {ticker_upper}: {e}")
@@ -353,6 +379,13 @@ def get_ticker_info(
                     info.get('fullExchangeName')
                 )
                 
+                # Get company description from yfinance
+                company_description = (
+                    info.get('longBusinessSummary') or 
+                    info.get('longDescription') or 
+                    info.get('description')
+                )
+                
                 # Create basic_info structure from yfinance data
                 result['basic_info'] = {
                     'ticker': ticker_upper,
@@ -360,7 +393,8 @@ def get_ticker_info(
                     'sector': sector if sector else None,
                     'industry': industry if industry else None,
                     'currency': currency,
-                    'exchange': exchange if exchange else None
+                    'exchange': exchange if exchange else None,
+                    'description': company_description.strip() if company_description else None
                 }
                 
                 # Add logo URL
@@ -419,24 +453,26 @@ def get_ticker_info(
         except Exception as e:
             logger.warning(f"Error re-fetching data for {ticker_upper}: {e}")
     
+    fund_filter = _normalize_fund_filter(fund)
+
     # 2. Get portfolio data (positions and trades)
     if supabase_client:
         try:
             # Get current positions
-            pos_result = supabase_client.supabase.table("portfolio_positions")\
+            pos_query = supabase_client.supabase.table("portfolio_positions")\
                 .select("*")\
-                .eq("ticker", ticker_upper)\
-                .order("date", desc=True)\
-                .limit(100)\
-                .execute()
+                .eq("ticker", ticker_upper)
+            if fund_filter:
+                pos_query = pos_query.eq("fund", fund_filter)
+            pos_result = pos_query.order("date", desc=True).limit(100).execute()
             
             # Get trade history
-            trade_result = supabase_client.supabase.table("trade_log")\
+            trade_query = supabase_client.supabase.table("trade_log")\
                 .select("*")\
-                .eq("ticker", ticker_upper)\
-                .order("date", desc=True)\
-                .limit(100)\
-                .execute()
+                .eq("ticker", ticker_upper)
+            if fund_filter:
+                trade_query = trade_query.eq("fund", fund_filter)
+            trade_result = trade_query.order("date", desc=True).limit(100).execute()
             
             if pos_result.data or trade_result.data:
                 result['portfolio_data'] = {
@@ -545,7 +581,8 @@ def get_ticker_info(
 def get_ticker_price_history(
     ticker: str,
     supabase_client=None,
-    days: int = 90
+    days: int = 90,
+    fund: Optional[str] = None
 ) -> pd.DataFrame:
     """Get historical price data for a ticker from portfolio_positions or yfinance.
     
@@ -556,6 +593,7 @@ def get_ticker_price_history(
         ticker: Ticker symbol (e.g., "AAPL")
         supabase_client: Optional SupabaseClient instance
         days: Number of days to look back (default: 90 for 3 months)
+        fund: Optional fund name to filter portfolio data
         
     Returns:
         DataFrame with columns: date, price, normalized (baseline 100)
@@ -563,6 +601,7 @@ def get_ticker_price_history(
     """
     ticker_upper = ticker.upper().strip()
     result_df = pd.DataFrame()
+    fund_filter = _normalize_fund_filter(fund)
     
     # Calculate date range
     end_date = datetime.now(timezone.utc)
@@ -571,12 +610,13 @@ def get_ticker_price_history(
     # Try portfolio_positions first
     if supabase_client:
         try:
-            pos_result = supabase_client.supabase.table("portfolio_positions")\
+            pos_query = supabase_client.supabase.table("portfolio_positions")\
                 .select("date, price")\
                 .eq("ticker", ticker_upper)\
-                .gte("date", start_date.isoformat())\
-                .order("date")\
-                .execute()
+                .gte("date", start_date.isoformat())
+            if fund_filter:
+                pos_query = pos_query.eq("fund", fund_filter)
+            pos_result = pos_query.order("date").execute()
             
             if pos_result.data and len(pos_result.data) >= 10:
                 # We have enough data from portfolio_positions
@@ -747,11 +787,9 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
     else:
         links['MarketWatch'] = f"https://www.marketwatch.com/investing/stock/{base_ticker}"
     
-    # StockTwits - supports full ticker with suffix for Canadian stocks
-    if is_canadian:
-        links['StockTwits'] = f"https://stocktwits.com/symbol/{ticker_upper}"
-    else:
-        links['StockTwits'] = f"https://stocktwits.com/symbol/{base_ticker}"
+    # StockTwits - uses base ticker (without .TO/.V suffix) for all stocks including Canadian
+    # StockTwits doesn't support .TO/.V suffixes, so we use the base ticker
+    links['StockTwits'] = f"https://stocktwits.com/symbol/{base_ticker}"
     
     # Reddit (wallstreetbets search) - use full ticker for better search results
     links['Reddit (WSB)'] = f"https://www.reddit.com/r/wallstreetbets/search/?q={ticker_upper}&restrict_sr=1"
