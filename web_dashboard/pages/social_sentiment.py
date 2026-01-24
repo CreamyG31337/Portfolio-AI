@@ -741,7 +741,13 @@ try:
             if platform_raw and ticker and ticker != 'N/A':
                 platform_lower = platform_raw.lower()
                 if platform_lower == 'stocktwits':
-                    platform_display = f"[{platform_raw.upper()}](https://stocktwits.com/symbol/{ticker})"
+                    # StockTwits doesn't support .TO/.V suffixes - use base ticker
+                    base_ticker = ticker.upper()
+                    for suffix in ['.TO', '.V', '.CN', '.NE', '.TSX']:
+                        if base_ticker.endswith(suffix):
+                            base_ticker = base_ticker[:-len(suffix)]
+                            break
+                    platform_display = f"[{platform_raw.upper()}](https://stocktwits.com/symbol/{base_ticker})"
                 elif platform_lower == 'reddit':
                     platform_display = f"[{platform_raw.upper()}](https://www.reddit.com/search/?q=%24{ticker})"
 

@@ -623,24 +623,23 @@ class TickerAnalysisService:
         if not articles:
             return ""
         
+        article_count = len(articles)
+        display_count = min(article_count, 10)
         lines = [
-            f"[ Research Articles (Last 3 Months) - {len(articles)} articles ]",
-            "Title                                                        | Source          | Date       | Sentiment",
-            "------------------------------------------------------------|-----------------|------------|----------"
+            f"[ Research Articles (Last 3 Months) - {display_count} of {article_count} articles ]",
+            "Title | Source | Date | Sentiment",
+            "-----|--------|------|----------"
         ]
         
-        for a in articles[:self.MAX_RESEARCH_ARTICLES]:
-            title = (a.get('title', 'N/A') or 'N/A')[:60]
-            source = (a.get('source', 'N/A') or 'N/A')[:15]
+        for a in articles[:10]:
+            title = (a.get('title', 'N/A') or 'N/A')
+            source = (a.get('source', 'N/A') or 'N/A')
             date = str(a.get('published_at', a.get('fetched_at', 'N/A')))[:10]
             sentiment = a.get('sentiment', 'N/A') or 'N/A'
-            lines.append(f"{title:60} | {source:15} | {date} | {sentiment}")
+            lines.append(f"{title} | {source} | {date} | {sentiment}")
             summary = (a.get('summary') or '').strip()
             if summary:
                 summary = " ".join(summary.split())
-                max_summary_len = 280
-                if len(summary) > max_summary_len:
-                    summary = summary[:max_summary_len].rsplit(' ', 1)[0] + '...'
                 lines.append(f"  Summary: {summary}")
 
         return "\n".join(lines)

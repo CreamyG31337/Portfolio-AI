@@ -282,8 +282,14 @@ def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFrame
         # SPDR Excel files have 4-5 metadata rows at the top
         df = pd.read_excel(BytesIO(response.content), engine='openpyxl', skiprows=4)
         
-        # Clean column names
+        # Clean column names and deduplicate (SPDR files sometimes have duplicate columns)
         df.columns = df.columns.str.strip()
+        
+        # Deduplicate column names by adding _1, _2, etc. to duplicates
+        cols = pd.Series(df.columns)
+        for dup in cols[cols.duplicated()].unique():
+            cols[cols[cols == dup].index.values.tolist()] = [dup + '_' + str(i) if i != 0 else dup for i in range(sum(cols == dup))]
+        df.columns = cols
         
         # Map SPDR columns to standard schema
         column_mapping = {

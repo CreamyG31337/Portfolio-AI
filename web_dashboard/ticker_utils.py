@@ -787,11 +787,9 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
     else:
         links['MarketWatch'] = f"https://www.marketwatch.com/investing/stock/{base_ticker}"
     
-    # StockTwits - supports full ticker with suffix for Canadian stocks
-    if is_canadian:
-        links['StockTwits'] = f"https://stocktwits.com/symbol/{ticker_upper}"
-    else:
-        links['StockTwits'] = f"https://stocktwits.com/symbol/{base_ticker}"
+    # StockTwits - uses base ticker (without .TO/.V suffix) for all stocks including Canadian
+    # StockTwits doesn't support .TO/.V suffixes, so we use the base ticker
+    links['StockTwits'] = f"https://stocktwits.com/symbol/{base_ticker}"
     
     # Reddit (wallstreetbets search) - use full ticker for better search results
     links['Reddit (WSB)'] = f"https://www.reddit.com/r/wallstreetbets/search/?q={ticker_upper}&restrict_sr=1"
