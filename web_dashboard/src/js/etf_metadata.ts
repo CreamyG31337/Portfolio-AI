@@ -178,7 +178,7 @@ function renderSecurities(securities: SecurityMetadata[], mode: SecurityMode, qu
                         ${companyName ? `<p class="text-sm text-text-secondary">${companyName}</p>` : ""}
                     </div>
                     <button data-save-button="${ticker}" onclick="saveSecurityMetadata('${ticker}')"
-                        class="inline-flex items-center justify-center text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
+                        class="inline-flex items-center justify-center text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200 ring-offset-2 ring-offset-dashboard-surface">
                         <i class="fas fa-floppy-disk mr-2"></i>Save
                     </button>
                 </div>
@@ -223,8 +223,11 @@ function updateSaveButtonState(ticker: string, isDirty: boolean): void {
     const button = document.querySelector<HTMLButtonElement>(`[data-save-button="${ticker}"]`);
     if (!button) return;
     button.classList.toggle("animate-pulse", isDirty);
-    button.classList.toggle("ring-2", isDirty);
-    button.classList.toggle("ring-accent/40", isDirty);
+    button.classList.toggle("ring-4", isDirty);
+    button.classList.toggle("ring-amber-400/80", isDirty);
+    button.classList.toggle("bg-amber-400/15", isDirty);
+    button.classList.toggle("text-amber-200", isDirty);
+    button.classList.toggle("border-amber-400/70", isDirty);
 }
 
 function escapeForTextarea(text: string): string {
