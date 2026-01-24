@@ -34,11 +34,11 @@
                     placeholder="Search ticker, name, or description" />
             </div>
             <button id="search-button"
-                class="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover">
+                class="inline-flex items-center justify-center text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent/50 font-medium rounded-lg text-sm px-5 py-2.5">
                 <i class="fas fa-magnifying-glass mr-2"></i>Search
             </button>
             <button id="clear-button"
-                class="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text-secondary hover:text-text-primary">
+                class="inline-flex items-center justify-center text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
                 <i class="fas fa-xmark mr-2"></i>Clear
             </button>
         </div>
@@ -70,5 +70,20 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<style>
+    /* Custom glow animation to draw attention to unsaved changes. */
+    @keyframes save-glow {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.0);
+        }
+        50% {
+            box-shadow: 0 0 0.75rem 0.2rem rgba(59, 130, 246, 0.45);
+        }
+    }
+
+    .save-glow {
+        animation: save-glow 1.6s ease-in-out infinite;
+    }
+</style>
 <script type="module" src="/assets/js/etf_metadata.js"></script>
 {% endblock %}

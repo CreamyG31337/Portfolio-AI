@@ -2309,13 +2309,13 @@ def _get_cached_etf_tickers():
 
 def _build_securities_query(client, query_text: str):
     query_builder = client.supabase.table("securities") \
-        .select("ticker, company_name, fund_description")
+        .select("ticker, company_name, description")
 
     if query_text:
         safe_query = query_text.replace("%", "").replace(",", "")
         ilike = f"%{safe_query}%"
         query_builder = query_builder.or_(
-            f"ticker.ilike.{ilike},company_name.ilike.{ilike},fund_description.ilike.{ilike}"
+            f"ticker.ilike.{ilike},company_name.ilike.{ilike},description.ilike.{ilike}"
         )
 
     return query_builder
@@ -2401,7 +2401,7 @@ def api_get_security_metadata():
                 {
                     "ticker": sec.get("ticker"),
                     "company_name": sec.get("company_name"),
-                    "fund_description": sec.get("fund_description")
+                    "description": sec.get("description")
                 } for sec in securities
             ],
             "mode": mode,
@@ -2430,7 +2430,7 @@ def api_update_security_metadata(ticker: str):
             return jsonify({"error": "Read-only admin cannot modify security metadata"}), 403
 
         data = request.get_json()
-        fund_description = (data.get("fund_description", "") if data else "").strip() or None
+        description = (data.get("description", "") if data else "").strip() or None
 
         ticker_upper = ticker.upper().strip()
         client = SupabaseClient(use_service_role=True)
@@ -2444,13 +2444,13 @@ def api_update_security_metadata(ticker: str):
             client.supabase.table("securities") \
                 .insert({
                     "ticker": ticker_upper,
-                    "fund_description": fund_description
+                    "description": description
                 }) \
                 .execute()
         else:
             client.supabase.table("securities") \
                 .update({
-                    "fund_description": fund_description
+                    "description": description
                 }) \
                 .eq("ticker", ticker_upper) \
                 .execute()

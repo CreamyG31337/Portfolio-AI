@@ -202,7 +202,8 @@ def get_ticker_info(
                     'sector': str,
                     'industry': str,
                     'currency': str,  # 'USD', 'CAD', etc.
-                    'exchange': str   # 'NASDAQ', 'NYSE', 'TSX', etc.
+                    'exchange': str,   # 'NASDAQ', 'NYSE', 'TSX', etc.
+                    'description': str  # Company business description (or ETF fund description)
                 }
             'portfolio_data': dict | None,
                 {
@@ -308,6 +309,17 @@ def get_ticker_info(
                         result['basic_info']['logo_url'] = logo_url
                 except Exception as e:
                     logger.warning(f"Error fetching logo URL for {ticker_upper}: {e}")
+                
+                # If no description exists, try to fetch it (async, won't block)
+                if not result['basic_info'].get('description'):
+                    try:
+                        from web_dashboard.utils.company_description import ensure_company_description
+                        description = ensure_company_description(ticker_upper, supabase_client, force_refresh=False)
+                        if description:
+                            result['basic_info']['description'] = description
+                    except Exception as e:
+                        logger.debug(f"Could not fetch company description for {ticker_upper}: {e}")
+                
                 result['found'] = True
         except Exception as e:
             logger.warning(f"Error fetching basic info for {ticker_upper}: {e}")
@@ -353,6 +365,13 @@ def get_ticker_info(
                     info.get('fullExchangeName')
                 )
                 
+                # Get company description from yfinance
+                company_description = (
+                    info.get('longBusinessSummary') or 
+                    info.get('longDescription') or 
+                    info.get('description')
+                )
+                
                 # Create basic_info structure from yfinance data
                 result['basic_info'] = {
                     'ticker': ticker_upper,
@@ -360,7 +379,8 @@ def get_ticker_info(
                     'sector': sector if sector else None,
                     'industry': industry if industry else None,
                     'currency': currency,
-                    'exchange': exchange if exchange else None
+                    'exchange': exchange if exchange else None,
+                    'description': company_description.strip() if company_description else None
                 }
                 
                 # Add logo URL

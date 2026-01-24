@@ -13,6 +13,7 @@ interface BasicInfo {
     currency?: string;
     exchange?: string;
     logo_url?: string;
+    description?: string;  // Company description for stocks, fund description for ETFs
 }
 
 interface TickerPosition {
@@ -442,6 +443,19 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
             exchangeInfo.style.display = 'block';
         } else {
             exchangeInfo.style.display = 'none';
+        }
+    }
+
+    // Display company/fund description if available
+    const descriptionContainer = document.getElementById('company-description-container');
+    const descriptionElement = document.getElementById('company-description');
+    
+    if (descriptionContainer && descriptionElement) {
+        if (basicInfo.description && basicInfo.description.trim()) {
+            descriptionElement.textContent = basicInfo.description.trim();
+            descriptionContainer.classList.remove('hidden');
+        } else {
+            descriptionContainer.classList.add('hidden');
         }
     }
 }

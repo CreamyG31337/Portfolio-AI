@@ -5,7 +5,7 @@ type SecurityMode = "etf" | "stock";
 interface SecurityMetadata {
     ticker: string;
     company_name?: string;
-    fund_description?: string;
+    description?: string;
 }
 
 interface SecurityMetadataResponse {
@@ -35,6 +35,7 @@ const modeToggleButtons = Array.from(document.querySelectorAll<HTMLButtonElement
 let currentMode: SecurityMode = "etf";
 let currentQuery = "";
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
+const dirtyTickers = new Set<string>();
 
 // Load securities on page load
 document.addEventListener("DOMContentLoaded", async () => {
@@ -167,7 +168,7 @@ function renderSecurities(securities: SecurityMetadata[], mode: SecurityMode, qu
     securityList.innerHTML = securities.map(security => {
         const ticker = escapeHtml(security.ticker);
         const companyName = escapeHtml(security.company_name || "");
-        const description = escapeForTextarea(security.fund_description || "");
+        const description = escapeForTextarea(security.description || "");
 
         return `
             <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
@@ -176,8 +177,8 @@ function renderSecurities(securities: SecurityMetadata[], mode: SecurityMode, qu
                         <h3 class="text-lg font-bold text-text-primary">${ticker}</h3>
                         ${companyName ? `<p class="text-sm text-text-secondary">${companyName}</p>` : ""}
                     </div>
-                    <button onclick="saveSecurityMetadata('${ticker}')"
-                        class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-accent hover:bg-accent-hover rounded-lg transition-colors">
+                    <button data-save-button="${ticker}" onclick="saveSecurityMetadata('${ticker}')"
+                        class="inline-flex items-center justify-center text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent/50 font-medium rounded-lg text-sm px-5 py-2.5">
                         <i class="fas fa-floppy-disk mr-2"></i>Save
                     </button>
                 </div>
@@ -189,7 +190,7 @@ function renderSecurities(securities: SecurityMetadata[], mode: SecurityMode, qu
                     <p class="text-xs text-text-secondary mb-2">
                         ${helperText}
                     </p>
-                    <textarea id="description-${ticker}"
+                    <textarea id="description-${ticker}" data-description-input="${ticker}"
                         rows="8"
                         class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-lg text-text-primary font-mono text-sm whitespace-pre-wrap"
                         placeholder="${placeholderText}">${description}</textarea>
@@ -198,7 +199,30 @@ function renderSecurities(securities: SecurityMetadata[], mode: SecurityMode, qu
         `;
     }).join("");
 
+    wireDirtyTracking();
     securityList.classList.remove("hidden");
+}
+
+function wireDirtyTracking(): void {
+    if (!securityList) return;
+
+    const inputs = Array.from(
+        securityList.querySelectorAll<HTMLTextAreaElement>("[data-description-input]")
+    );
+    inputs.forEach(input => {
+        const ticker = input.dataset.descriptionInput;
+        if (!ticker) return;
+        input.addEventListener("input", () => {
+            dirtyTickers.add(ticker);
+            updateSaveButtonState(ticker, true);
+        });
+    });
+}
+
+function updateSaveButtonState(ticker: string, isDirty: boolean): void {
+    const button = document.querySelector<HTMLButtonElement>(`[data-save-button="${ticker}"]`);
+    if (!button) return;
+    button.classList.toggle("save-glow", isDirty);
 }
 
 function escapeForTextarea(text: string): string {
@@ -216,7 +240,7 @@ async function saveSecurityMetadata(ticker: string): Promise<void> {
         return;
     }
 
-    const fund_description = descriptionEl.value;
+    const description = descriptionEl.value;
 
     try {
         const response = await fetch(`/api/admin/security-metadata/${encodeURIComponent(ticker)}`, {
@@ -226,11 +250,13 @@ async function saveSecurityMetadata(ticker: string): Promise<void> {
             },
             credentials: "include",
             body: JSON.stringify({
-                fund_description
+                description
             })
         });
 
         if (response.ok) {
+            dirtyTickers.delete(ticker);
+            updateSaveButtonState(ticker, false);
             showToast(`Saved metadata for ${ticker}`, "success");
         } else {
             const result = await response.json();
