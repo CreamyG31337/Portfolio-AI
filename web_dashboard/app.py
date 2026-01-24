@@ -1723,8 +1723,10 @@ def register():
 @app.route('/api/auth/logout', methods=['GET', 'POST'])
 def logout():
     """Handle user logout"""
-    response = jsonify({"message": "Logged out successfully"})
     is_production = request.host != 'localhost:5000' and not request.host.startswith('127.0.0.1')
+    
+    # Create redirect response to auth page
+    response = redirect(url_for('auth_page'))
     
     # Clear session_token (Flask login)
     response.set_cookie(
@@ -1732,7 +1734,8 @@ def logout():
         '', 
         expires=0,
         secure=is_production,
-        samesite='Lax'
+        samesite='Lax',
+        path='/'
     )
     
     # Clear auth_token (Streamlit login) to prevent auto-login loop
@@ -1741,7 +1744,8 @@ def logout():
         '', 
         expires=0,
         secure=is_production,
-        samesite='Lax'
+        samesite='Lax',
+        path='/'
     )
     
     # Clear refresh_token
@@ -1750,7 +1754,8 @@ def logout():
         '', 
         expires=0,
         secure=is_production,
-        samesite='Lax'
+        samesite='Lax',
+        path='/'
     )
     
     return response
