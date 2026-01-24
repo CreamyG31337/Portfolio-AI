@@ -81,12 +81,22 @@
             <div id="currency" class="text-xl font-semibold text-text-primary">N/A</div>
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">
-            <div class="text-sm text-text-secondary">Trailing P/E</div>
+            <div class="text-sm text-text-secondary flex items-center gap-1">
+                Trailing P/E
+                <div class="group relative inline-block">
+                    <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                    <div
+                        class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                        Price-to-Earnings Ratio. A valuation ratio of a company's current share price compared to its
+                        per-share earnings.
+                    </div>
+                </div>
+            </div>
             <div id="pe-ratio" class="text-xl font-semibold text-text-primary">N/A</div>
         </div>
     </div>
     <div id="exchange-info" class="mt-4 text-sm text-text-secondary"></div>
-    
+
     <!-- Company Description -->
     <div id="company-description-container" class="mt-6 hidden">
         <h3 class="text-lg font-semibold mb-3 text-text-primary">About</h3>
@@ -273,7 +283,7 @@
             </div>
             <span id="ticker-context-usage" class="text-xs text-text-secondary">Context: -</span>
             <button id="reanalyze-btn"
-                    class="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed">
+                class="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 🔄 Re-Analyze
             </button>
         </div>
@@ -450,64 +460,65 @@
                     RSI
                     <div class="group relative inline-block">
                         <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                        <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                            Rel. Strength Index (0-100). >70 overbought, <30 oversold. Momentum indicator.
+                        <div
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            Rel. Strength Index (0-100). >70 overbought, <30 oversold. Momentum indicator. </div>
                         </div>
                     </div>
+                    <div id="timing-rsi" class="text-xl font-semibold text-text-primary">-</div>
                 </div>
-                <div id="timing-rsi" class="text-xl font-semibold text-text-primary">-</div>
-            </div>
-            <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary flex items-center gap-1">
-                    CCI
-                    <div class="group relative inline-block">
-                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                        <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                            Commodity Channel Index. >100 overbought, <-100 oversold. Measures deviation from avg.
+                <div class="bg-dashboard-background p-4 rounded-lg">
+                    <div class="text-sm text-text-secondary flex items-center gap-1">
+                        CCI
+                        <div class="group relative inline-block">
+                            <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                            <div
+                                class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                Commodity Channel Index. >100 overbought, <-100 oversold. Measures deviation from avg.
+                                    </div>
+                            </div>
                         </div>
+                        <div id="timing-cci" class="text-xl font-semibold text-text-primary">-</div>
                     </div>
                 </div>
-                <div id="timing-cci" class="text-xl font-semibold text-text-primary">-</div>
+            </div>
+
+            <!-- Fear & Risk Signal -->
+            <div>
+                <h3 class="text-lg font-semibold mb-3 text-text-primary">Fear & Risk</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary">Fear Level</div>
+                        <div id="fear-level" class="text-xl font-semibold text-text-primary">-</div>
+                    </div>
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary">Risk Score</div>
+                        <div id="risk-score" class="text-xl font-semibold text-text-primary">-</div>
+                    </div>
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary">Recommendation</div>
+                        <div id="risk-recommendation" class="text-xl font-semibold text-text-primary">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Explanation -->
+            <div class="mt-6">
+                <h3 class="text-lg font-semibold mb-3 text-text-primary">AI Insight</h3>
+                <div id="signals-explanation"
+                    class="bg-dashboard-background p-4 rounded-lg text-sm text-text-secondary whitespace-pre-line">
+                    <span class="text-text-tertiary">Use Refresh to generate an AI explanation.</span>
+                </div>
             </div>
         </div>
-    </div>
+        {% endblock %}
 
-    <!-- Fear & Risk Signal -->
-    <div>
-        <h3 class="text-lg font-semibold mb-3 text-text-primary">Fear & Risk</h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary">Fear Level</div>
-                <div id="fear-level" class="text-xl font-semibold text-text-primary">-</div>
-            </div>
-            <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary">Risk Score</div>
-                <div id="risk-score" class="text-xl font-semibold text-text-primary">-</div>
-            </div>
-            <div class="bg-dashboard-background p-4 rounded-lg">
-                <div class="text-sm text-text-secondary">Recommendation</div>
-                <div id="risk-recommendation" class="text-xl font-semibold text-text-primary">-</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- AI Explanation -->
-    <div class="mt-6">
-        <h3 class="text-lg font-semibold mb-3 text-text-primary">AI Insight</h3>
-        <div id="signals-explanation"
-            class="bg-dashboard-background p-4 rounded-lg text-sm text-text-secondary whitespace-pre-line">
-            <span class="text-text-tertiary">Use Refresh to generate an AI explanation.</span>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-    window.tickerDetailsConfig = {
-        defaultModel: {{ default_model|tojson|safe if default_model else '""' }},
-        modelConfig: {{ model_config|tojson|safe if model_config else '{}' }}
+        {% block extra_scripts %}
+        <script>
+            window.tickerDetailsConfig = {
+                defaultModel: {{ default_model | tojson | safe if default_model else '""' }},
+            modelConfig: { { model_config | tojson | safe if model_config else '{}' } }
     };
-</script>
-<script type="module" src="/assets/js/ticker_details.js"></script>
-{% endblock %}
+        </script>
+        <script type="module" src="/assets/js/ticker_details.js"></script>
+        {% endblock %}

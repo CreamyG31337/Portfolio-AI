@@ -13,6 +13,7 @@ interface BasicInfo {
     currency?: string;
     exchange?: string;
     logo_url?: string;
+    trailing_pe?: number;
     description?: string;  // Company description for stocks, fund description for ETFs
 }
 
@@ -544,10 +545,6 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
             tickerLogo.src = placeholder;
         }
     }
-
-    if (sector) sector.textContent = basicInfo.sector || 'N/A';
-    if (industry) industry.textContent = basicInfo.industry || 'N/A';
-    if (currency) currency.textContent = basicInfo.currency || 'USD';
 
     if (sector) sector.textContent = basicInfo.sector || 'N/A';
     if (industry) industry.textContent = basicInfo.industry || 'N/A';
@@ -1858,8 +1855,8 @@ function showToast(message: string, type: 'success' | 'error' | 'info' = 'info')
     // Simple toast implementation - you can enhance this
     const toast = document.createElement('div');
     toast.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 ${type === 'success' ? 'bg-green-500 text-white' :
-            type === 'error' ? 'bg-red-500 text-white' :
-                'bg-blue-500 text-white'
+        type === 'error' ? 'bg-red-500 text-white' :
+            'bg-blue-500 text-white'
         }`;
     toast.textContent = message;
     document.body.appendChild(toast);
