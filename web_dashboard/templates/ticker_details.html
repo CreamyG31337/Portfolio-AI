@@ -257,12 +257,22 @@
 
 <!-- AI Analysis Section -->
 <div id="ai-analysis-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
-    <div class="flex justify-between items-center mb-4">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 class="text-xl font-bold text-text-primary">🧠 AI Analysis</h2>
-        <button id="reanalyze-btn" 
-                class="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed">
-            🔄 Re-Analyze
-        </button>
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-2">
+                <label for="ticker-model-select" class="text-xs font-medium text-text-secondary">Model</label>
+                <select id="ticker-model-select"
+                    class="bg-dashboard-background border border-border text-text-primary text-xs rounded-lg focus:ring-accent focus:border-accent px-2 py-1 min-w-[180px]">
+                    <option value="">Loading models...</option>
+                </select>
+            </div>
+            <span id="ticker-context-usage" class="text-xs text-text-secondary">Context: -</span>
+            <button id="reanalyze-btn"
+                    class="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed">
+                🔄 Re-Analyze
+            </button>
+        </div>
     </div>
     <div id="ai-analysis-content">
         <!-- Populated by JavaScript -->
@@ -473,5 +483,11 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script>
+    window.tickerDetailsConfig = {
+        defaultModel: {{ default_model|tojson|safe if default_model else '""' }},
+        modelConfig: {{ model_config|tojson|safe if model_config else '{}' }}
+    };
+</script>
 <script type="module" src="/assets/js/ticker_details.js"></script>
 {% endblock %}

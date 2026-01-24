@@ -176,6 +176,11 @@ interface ErrorResponse {
 
 let currentTicker: string = '';
 let tickerList: string[] = [];
+let selectedModel: string = '';
+let contextCharCount: number = 0;
+const tickerDetailsConfig = (window as any).tickerDetailsConfig || {};
+const modelConfig = tickerDetailsConfig.modelConfig || {};
+selectedModel = tickerDetailsConfig.defaultModel || '';
 
 function getSelectedFund(): string | null {
     const urlParams = new URLSearchParams(window.location.search);
@@ -263,6 +268,8 @@ document.addEventListener('DOMContentLoaded', function (): void {
         });
     }
 
+    initModelSelect();
+
     // Reload ticker data when global fund selector changes
     window.addEventListener('fundChanged', () => {
         if (currentTicker) {
@@ -309,6 +316,61 @@ async function loadTickerList(): Promise<void> {
     }
 }
 
+function initModelSelect(): void {
+    const select = document.getElementById('ticker-model-select') as HTMLSelectElement | null;
+    if (!select) return;
+
+    select.addEventListener('change', () => {
+        selectedModel = select.value;
+        updateContextUsage();
+    });
+
+    loadModelOptions();
+}
+
+async function loadModelOptions(): Promise<void> {
+    const select = document.getElementById('ticker-model-select') as HTMLSelectElement | null;
+    if (!select) return;
+
+    try {
+        const response = await fetch('/api/v2/ai/models', {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to load AI models');
+        }
+
+        const data = await response.json();
+        const models = data.models || [];
+
+        select.innerHTML = '';
+        if (!Array.isArray(models) || models.length === 0) {
+            select.innerHTML = '<option value="">No models available</option>';
+            return;
+        }
+
+        models.forEach((model: { id: string; name: string; type?: string }) => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name;
+            select.appendChild(option);
+        });
+
+        if (selectedModel) {
+            select.value = selectedModel;
+        } else if (select.options.length > 0) {
+            select.value = select.options[0].value;
+            selectedModel = select.value;
+        }
+
+        updateContextUsage();
+    } catch (error) {
+        console.error('Error loading AI models:', error);
+        select.innerHTML = '<option value="">Error loading models</option>';
+    }
+}
+
 // Handle ticker search dropdown change
 function handleTickerSearch(): void {
     const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
@@ -339,6 +401,8 @@ async function loadTickerData(ticker: string): Promise<void> {
     showLoading();
     hideTickerError();
     hidePlaceholder();
+    contextCharCount = 0;
+    updateContextUsage();
 
     try {
         const response = await fetch(appendFundParam(`/api/v2/ticker/info?ticker=${encodeURIComponent(ticker)}`), {
@@ -1376,6 +1440,45 @@ function setSignalsLoading(isLoading: boolean, message: string): void {
     }
 }
 
+function updateContextUsage(): void {
+    const usageEl = document.getElementById('ticker-context-usage');
+    if (!usageEl) return;
+
+    const maxTokens = getMaxTokensForModel(selectedModel);
+    const usedTokens = estimateTokens(contextCharCount);
+    const percentage = maxTokens > 0 ? Math.min(100, Math.round((usedTokens / maxTokens) * 100)) : 0;
+
+    usageEl.textContent = maxTokens > 0
+        ? `Context: ${usedTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${percentage}%)`
+        : `Context: ${usedTokens.toLocaleString()} tokens`;
+}
+
+function estimateTokens(charCount: number): number {
+    return Math.ceil(charCount / 4);
+}
+
+function getMaxTokensForModel(modelName: string): number {
+    if (!modelName) {
+        return modelConfig?.default_config?.num_ctx || 0;
+    }
+
+    if (modelName.startsWith('glm-')) {
+        if (modelName.includes('flash')) {
+            return 1000000;
+        }
+        if (modelName.includes('pro')) {
+            return 2000000;
+        }
+        return 1000000;
+    }
+
+    if (modelConfig?.models && modelConfig.models[modelName]?.num_ctx) {
+        return modelConfig.models[modelName].num_ctx;
+    }
+
+    return modelConfig?.default_config?.num_ctx || 0;
+}
+
 // Utility functions
 function formatDate(dateStr?: string): string {
     if (!dateStr) return 'N/A';
@@ -1519,11 +1622,14 @@ async function loadTickerAnalysisContext(ticker: string): Promise<void> {
                 'Unable to load AI context preview.',
                 '🧠 AI Context Preview (click to expand)'
             );
+            contextCharCount = 0;
+            updateContextUsage();
             return;
         }
 
         const data: TickerAnalysisContextResponse = await response.json();
         const context = data.context ? data.context.trim() : '';
+        contextCharCount = context.length;
 
         if (context) {
             renderDebugPanel(context, '🧠 AI Context Preview (click to expand)');
@@ -1533,12 +1639,15 @@ async function loadTickerAnalysisContext(ticker: string): Promise<void> {
                 '🧠 AI Context Preview (click to expand)'
             );
         }
+        updateContextUsage();
     } catch (error) {
         console.error('Error loading ticker analysis context:', error);
         renderDebugPanelMessage(
             'Unable to load AI context preview.',
             '🧠 AI Context Preview (click to expand)'
         );
+        contextCharCount = 0;
+        updateContextUsage();
     }
 }
 
@@ -1683,7 +1792,13 @@ async function requestReanalysis(ticker: string): Promise<void> {
     try {
         const response = await fetch(`/api/v2/ticker/${ticker}/reanalyze`, {
             method: 'POST',
-            credentials: 'include'
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: selectedModel || undefined
+            })
         });
 
         if (response.ok) {

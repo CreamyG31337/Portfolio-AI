@@ -2849,20 +2849,25 @@ def ticker_details_page():
     """Ticker details page (Flask v2)"""
     try:
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_theme
+        from ollama_client import load_model_config
+        from user_preferences import get_user_ai_model, get_user_theme
         
         user_email = get_user_email_flask()
         ticker = request.args.get('ticker', '').upper().strip()
         user_theme = get_user_theme() or 'system'
+        default_model = get_user_ai_model()
+        model_config = load_model_config()
         
         # Get navigation context
         nav_context = get_navigation_context(current_page='ticker_details')
         
         return render_template('ticker_details.html',
-                             user_email=user_email,
-                             ticker=ticker,
-                             user_theme=user_theme,
-                             **nav_context)
+                               user_email=user_email,
+                               ticker=ticker,
+                               user_theme=user_theme,
+                               default_model=default_model,
+                               model_config=model_config,
+                               **nav_context)
     except Exception as e:
         logger.error(f"Error loading ticker details page: {e}")
         return jsonify({"error": "Failed to load ticker details page"}), 500
@@ -3094,6 +3099,7 @@ def request_ticker_reanalysis(ticker: str):
         
         ticker_upper = ticker.upper().strip()
         user_email = get_user_email_flask() or 'anonymous'
+        request_data = request.get_json(silent=True) or {}
         
         # Initialize clients
         supabase = SupabaseClient(use_service_role=True)
@@ -3107,7 +3113,7 @@ def request_ticker_reanalysis(ticker: str):
         skip_manager.remove_from_skip_list(ticker_upper)
         
         # Run analysis immediately using user's preferred model
-        preferred_model = get_user_ai_model()
+        preferred_model = request_data.get('model') or get_user_ai_model()
         service = TickerAnalysisService(ollama, supabase, postgres, skip_manager)
         service.analyze_ticker(ticker_upper, requested_by=user_email, model_override=preferred_model)
         

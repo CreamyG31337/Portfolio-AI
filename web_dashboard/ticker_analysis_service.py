@@ -625,17 +625,24 @@ class TickerAnalysisService:
         
         lines = [
             f"[ Research Articles (Last 3 Months) - {len(articles)} articles ]",
-            "Title                                    | Source          | Date       | Sentiment",
-            "----------------------------------------|-----------------|------------|----------"
+            "Title                                                        | Source          | Date       | Sentiment",
+            "------------------------------------------------------------|-----------------|------------|----------"
         ]
         
         for a in articles[:self.MAX_RESEARCH_ARTICLES]:
-            title = (a.get('title', 'N/A') or 'N/A')[:38]
+            title = (a.get('title', 'N/A') or 'N/A')[:60]
             source = (a.get('source', 'N/A') or 'N/A')[:15]
             date = str(a.get('published_at', a.get('fetched_at', 'N/A')))[:10]
             sentiment = a.get('sentiment', 'N/A') or 'N/A'
-            lines.append(f"{title:38} | {source:15} | {date} | {sentiment}")
-        
+            lines.append(f"{title:60} | {source:15} | {date} | {sentiment}")
+            summary = (a.get('summary') or '').strip()
+            if summary:
+                summary = " ".join(summary.split())
+                max_summary_len = 280
+                if len(summary) > max_summary_len:
+                    summary = summary[:max_summary_len].rsplit(' ', 1)[0] + '...'
+                lines.append(f"  Summary: {summary}")
+
         return "\n".join(lines)
     
     def _format_social_sentiment(self, sentiment: Dict) -> str:
@@ -686,6 +693,21 @@ class TickerAnalysisService:
         if data.get('fundamentals'):
             # Format fundamentals manually (format_fundamentals_table expects positions DataFrame)
             fund = data['fundamentals']
+            overview_lines = ["[ Company Overview ]"]
+            company_name = fund.get('company_name') or fund.get('name')
+            if company_name:
+                overview_lines.append(f"Name: {company_name}")
+            exchange = fund.get('exchange')
+            if exchange:
+                overview_lines.append(f"Exchange: {exchange}")
+            description = (fund.get('description') or '').strip()
+            if description:
+                max_description_len = 1200
+                if len(description) > max_description_len:
+                    description = description[:max_description_len].rsplit(' ', 1)[0] + '...'
+                overview_lines.append(f"Description: {description}")
+            if len(overview_lines) > 1:
+                sections.append("\n".join(overview_lines))
             lines = [
                 "[ Company Fundamentals ]",
                 "Ticker     | Sector               | Industry                  | Country  | Mkt Cap      | P/E    | Div %  | 52W High   | 52W Low",
