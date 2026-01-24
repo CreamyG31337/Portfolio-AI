@@ -26,7 +26,6 @@ const errorState = document.getElementById("error-state");
 const errorMessage = document.getElementById("error-message");
 const securityList = document.getElementById("security-list");
 const searchInput = document.getElementById("search-input") as HTMLInputElement | null;
-const searchButton = document.getElementById("search-button") as HTMLButtonElement | null;
 const clearButton = document.getElementById("clear-button") as HTMLButtonElement | null;
 const modeHelpText = document.getElementById("mode-help-text");
 const resultsCount = document.getElementById("results-count");
@@ -49,11 +48,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     searchInput?.addEventListener("input", () => {
         queueSearch();
-    });
-
-    searchButton?.addEventListener("click", () => {
-        currentQuery = (searchInput?.value || "").trim();
-        void loadSecurities();
     });
 
     clearButton?.addEventListener("click", () => {
