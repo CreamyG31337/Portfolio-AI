@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """
-"""
 WebAI Cookie-Based Client (Legacy)
 ==================================
 
