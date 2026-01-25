@@ -20,7 +20,7 @@
         <div class="mb-4">
             <label for="timezone-select" class="block text-sm font-medium text-text-secondary mb-2">Select your
                 timezone:</label>
-            <select id="timezone-select" class="w-full px-4 py-2 border rounded-md">
+            <select id="timezone-select" class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                 <option value="America/Los_Angeles">America/Los_Angeles - Pacific Time (US & Canada)</option>
                 <option value="America/Denver">America/Denver - Mountain Time (US & Canada)</option>
                 <option value="America/Chicago">America/Chicago - Central Time (US & Canada)</option>
@@ -55,7 +55,7 @@
         <div class="mb-4">
             <label for="currency-select" class="block text-sm font-medium text-text-secondary mb-2">Select your display
                 currency:</label>
-            <select id="currency-select" class="w-full px-4 py-2 border rounded-md">
+            <select id="currency-select" class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                 <option value="CAD">CAD - Canadian Dollar</option>
                 <option value="USD">USD - US Dollar</option>
             </select>
@@ -79,7 +79,7 @@
         <div class="mb-4">
             <label for="theme-select" class="block text-sm font-medium text-text-secondary mb-2">Select your
                 theme:</label>
-            <select id="theme-select" class="w-full px-4 py-2 border rounded-md">
+            <select id="theme-select" class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                 <option value="system" {% if current_theme=='system' %}selected{% endif %}>System Default</option>
                 <option value="light" {% if current_theme=='light' %}selected{% endif %}>Light Mode</option>
                 <option value="dark" {% if current_theme=='dark' %}selected{% endif %}>Dark Mode</option>
@@ -131,15 +131,15 @@
                 <label for="new-password" class="block text-sm font-medium text-text-secondary mb-2">
                     New Password <span class="text-theme-error-text">*</span>
                 </label>
-                <input type="password" id="new-password" required minlength="6"
-                    class="w-full px-4 py-2 border rounded-md">
+                <input type="password" id="new-password" required minlength="6" autocomplete="new-password" placeholder="••••••••"
+                    class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
             </div>
             <div class="mb-4">
                 <label for="confirm-password" class="block text-sm font-medium text-text-secondary mb-2">
                     Confirm New Password <span class="text-theme-error-text">*</span>
                 </label>
-                <input type="password" id="confirm-password" required minlength="6"
-                    class="w-full px-4 py-2 border rounded-md">
+                <input type="password" id="confirm-password" required minlength="6" autocomplete="new-password" placeholder="••••••••"
+                    class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
             </div>
             <button type="submit" id="change-password-btn"
                 class="px-4 py-2 text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 rounded-lg font-medium transition-colors duration-200">
