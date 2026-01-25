@@ -1,15 +1,18 @@
 # ============================================================
-# Caddy Configuration Snippet for Mandrel
+# Caddy Configuration Snippet for Mandrel (OPTIONAL)
 # ============================================================
-# Add this to your existing Caddyfile to enable HTTPS access
-# to Mandrel MCP Server.
+# NOTE: This is optional - Mandrel is accessed directly on port 8081
+# No Caddyfile changes are required for basic operation.
+#
+# If you want HTTPS access, add this to your existing Caddyfile
+# to enable HTTPS access to Mandrel MCP Server.
 #
 # Replace 'mandrel.your-domain.com' with your actual subdomain.
 # ============================================================
 
 mandrel.your-domain.com {
-    # Reverse proxy to Mandrel MCP Server
-    reverse_proxy localhost:8080
+    # Reverse proxy to Mandrel MCP Server (port 8081, not 8080)
+    reverse_proxy localhost:8081
     
     # Optional: Add basic authentication for security
     # basicauth {
