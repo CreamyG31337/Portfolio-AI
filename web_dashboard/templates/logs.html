@@ -6,45 +6,6 @@
 {% block page_subtitle %}View and filter application logs{% endblock %}
 
 {% block extra_head %}
-<style>
-    .log-line {
-        font-family: 'Courier New', monospace;
-        font-size: 0.875rem;
-        padding: 0.5rem;
-        border-bottom: 1px solid var(--border-color);
-        color: var(--text-secondary);
-    }
-
-    .log-line:hover {
-        background-color: var(--bg-hover);
-    }
-
-    .log-container {
-        max-height: 70vh;
-        overflow-y: auto;
-        background: var(--bg-code-block);
-        border: 1px solid var(--border-color);
-        border-radius: 0.5rem;
-    }
-
-    .tab-button {
-        transition: all 0.2s;
-        cursor: pointer;
-    }
-
-    .tab-button.active {
-        color: var(--color-accent);
-        border-bottom-color: var(--color-accent);
-    }
-
-    .tab-content {
-        display: none;
-    }
-
-    .tab-content.active {
-        display: block;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -52,18 +13,18 @@
 <div class="mb-6 border-b border-border">
     <nav class="flex space-x-8" aria-label="Tabs">
         <button id="tab-application"
-            class="tab-button active border-b-2 border-accent py-4 px-1 text-sm font-medium text-accent">
+            class="transition-colors duration-200 cursor-pointer border-b-2 border-accent py-4 px-1 text-sm font-medium text-accent">
             📋 Application Logs
         </button>
         <button id="tab-ollama"
-            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border">
+            class="transition-colors duration-200 cursor-pointer border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border">
             🤖 Ollama Logs
         </button>
     </nav>
 </div>
 
 <!-- Application Logs Tab Content -->
-<div id="tab-content-application" class="tab-content active">
+<div id="tab-content-application" class="block">
     <!-- Controls -->
     <!-- Controls -->
     <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
@@ -140,7 +101,7 @@
             <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
             <p>Loading logs...</p>
         </div>
-        <div id="logs-container" class="log-container hidden"></div>
+        <div id="logs-container" class="max-h-[70vh] overflow-y-auto bg-dashboard-surface-alt rounded-lg border border-border hidden"></div>
         <div id="error-message" class="hidden text-center py-8 text-theme-error-text">
             <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
             <pre id="error-text"
@@ -150,7 +111,7 @@
 </div>
 
 <!-- Ollama Logs Tab Content -->
-<div id="tab-content-ollama" class="tab-content">
+<div id="tab-content-ollama" class="hidden">
     <!-- Controls -->
     <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -209,7 +170,7 @@
             <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
             <p>Loading logs...</p>
         </div>
-        <div id="logs-container-ollama" class="log-container hidden"></div>
+        <div id="logs-container-ollama" class="max-h-[70vh] overflow-y-auto bg-dashboard-surface-alt rounded-lg border border-border hidden"></div>
         <div id="error-message-ollama" class="hidden text-center py-8 text-theme-error-text">
             <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
             <pre id="error-text-ollama"
@@ -403,7 +364,9 @@
 
         data.logs.forEach(log => {
             const line = document.createElement('div');
-            line.className = `log-line log-${log.level}`;
+            // log-line replacement: font-mono text-sm p-2 border-b border-border text-text-secondary hover:bg-dashboard-surface-alt
+            // Note: hover color adjusted to match theme intent, using surface-hover if available or surface-primary if alt is background
+            line.className = `font-mono text-sm p-2 border-b border-border text-text-secondary hover:brightness-95 dark:hover:brightness-110 cursor-default log-${log.level}`;
 
             const emoji = emojiMap[log.level] || '•';
             const module = log.module.substring(0, 30).padEnd(30, ' ');
@@ -434,7 +397,7 @@
 
         data.logs.forEach(log => {
             const line = document.createElement('div');
-            line.className = 'log-line log-INFO';
+            line.className = 'font-mono text-sm p-2 border-b border-border text-text-secondary hover:brightness-95 dark:hover:brightness-110 cursor-default log-INFO';
 
             // Ollama logs may not have timestamps, so just show the message
             const displayText = log.timestamp
@@ -506,23 +469,41 @@
     function switchTab(tabName) {
         currentTab = tabName;
 
-        // Update tab buttons
-        document.querySelectorAll('.tab-button').forEach(btn => {
-            btn.classList.remove('active', 'border-accent', 'text-accent');
-            btn.classList.add('border-transparent', 'text-text-secondary');
+        // Reset all tabs to inactive state
+        const tabs = ['tab-application', 'tab-ollama'];
+        const contents = ['tab-content-application', 'tab-content-ollama'];
+
+        tabs.forEach(tabId => {
+            const btn = document.getElementById(tabId);
+            if (btn) {
+                btn.classList.remove('border-accent', 'text-accent');
+                btn.classList.add('border-transparent', 'text-text-secondary');
+            }
         });
 
-        // Update tab content
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.remove('active');
+        contents.forEach(contentId => {
+            const el = document.getElementById(contentId);
+            if (el) {
+                el.classList.add('hidden');
+                el.classList.remove('block');
+            }
         });
 
+        // Set active tab
         if (tabName === 'application') {
-            document.getElementById('tab-application').classList.add('active', 'border-accent', 'text-accent');
-            document.getElementById('tab-content-application').classList.add('active');
+            const btn = document.getElementById('tab-application');
+            const content = document.getElementById('tab-content-application');
+            btn.classList.remove('border-transparent', 'text-text-secondary');
+            btn.classList.add('border-accent', 'text-accent');
+            content.classList.remove('hidden');
+            content.classList.add('block');
         } else {
-            document.getElementById('tab-ollama').classList.add('active', 'border-accent', 'text-accent');
-            document.getElementById('tab-content-ollama').classList.add('active');
+            const btn = document.getElementById('tab-ollama');
+            const content = document.getElementById('tab-content-ollama');
+            btn.classList.remove('border-transparent', 'text-text-secondary');
+            btn.classList.add('border-accent', 'text-accent');
+            content.classList.remove('hidden');
+            content.classList.add('block');
             // Load Ollama logs when switching to that tab
             fetchOllamaLogs();
         }

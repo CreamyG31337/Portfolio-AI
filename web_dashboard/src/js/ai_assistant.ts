@@ -544,40 +544,26 @@ class AIAssistant {
     updateDrawerClasses(isOpen: boolean, isMobile: boolean): void {
         const drawer = document.getElementById('ai-drawer');
         const backdrop = document.getElementById('ai-drawer-backdrop');
-        const chatColumn = document.getElementById('chat-column');
 
         if (!drawer) return;
 
-        drawer.classList.remove('drawer-open', 'drawer-closed', 'drawer-overlay');
+        // Toggle unified state classes (Responsive prefixes handle mobile/desktop differences)
+        // Mobile Closed: translate-x-full (hidden off-screen)
+        // Desktop Closed: md:w-0 md:opacity-0 (collapsed)
+        const closedClasses = ['translate-x-full', 'md:w-0', 'md:opacity-0', 'md:pl-0', 'md:border-none', 'md:overflow-hidden'];
 
-        if (isMobile) {
-            drawer.classList.add('drawer-overlay');
-            if (isOpen) {
-                drawer.classList.add('drawer-open');
-                drawer.classList.remove('drawer-closed');
-                if (backdrop) backdrop.classList.remove('hidden');
-            } else {
-                drawer.classList.add('drawer-closed');
-                drawer.classList.remove('drawer-open');
-                if (backdrop) backdrop.classList.add('hidden');
-            }
+        // Mobile Open: translate-x-0 (slide in)
+        // Desktop Open: md:w-80 md:opacity-100 (expanded)
+        const openClasses = ['translate-x-0', 'md:w-80', 'md:opacity-100', 'md:pl-4', 'md:border-l', 'md:border-border'];
+
+        if (isOpen) {
+            drawer.classList.remove(...closedClasses);
+            drawer.classList.add(...openClasses);
+            if (backdrop) backdrop.classList.remove('hidden');
         } else {
-            drawer.classList.remove('drawer-overlay');
-            if (isOpen) {
-                drawer.classList.add('drawer-open');
-                drawer.classList.remove('drawer-closed');
-                if (backdrop) backdrop.classList.add('hidden');
-                if (chatColumn) {
-                    chatColumn.style.flex = '';
-                }
-            } else {
-                drawer.classList.add('drawer-closed');
-                drawer.classList.remove('drawer-open');
-                if (backdrop) backdrop.classList.add('hidden');
-                if (chatColumn) {
-                    chatColumn.style.flex = '';
-                }
-            }
+            drawer.classList.remove(...openClasses);
+            drawer.classList.add(...closedClasses);
+            if (backdrop) backdrop.classList.add('hidden');
         }
     }
 
