@@ -350,3 +350,4 @@ deployment/mandrel/*.local.*
 
 # Cursor MCP local settings (server URLs contain private IPs)
 mcps/mandrel/SERVER_METADATA.json
+.vscode/mcp.json
