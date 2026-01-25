@@ -37,6 +37,7 @@ import requests
 import threading
 from flask_cors import CORS
 from flask_cache_utils import cache_data, cache_resource
+from rate_limiter import rate_limit
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1264,6 +1265,7 @@ def auth_debug():
     })
 
 @app.route('/api/auth/login', methods=['POST'])
+@rate_limit(limit=5, period=60)
 def login():
     """Handle user login"""
     try:
