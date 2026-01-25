@@ -353,7 +353,9 @@ deployment/mandrel/deploy.ps1
 # Cursor MCP local settings (server URLs contain private IPs)
 mcps/mandrel/SERVER_METADATA.json
 # Allow template file
-!mcps/mandrel/SERVER_METADATA.json.example# VS Code MCP local settings (server URLs and tokens)
+!mcps/mandrel/SERVER_METADATA.json.example
+
+# VS Code MCP local settings (server URLs and tokens)
 .vscode/mcp.json
 # Allow template file
 !.vscode/mcp.json.example
