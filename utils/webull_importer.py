@@ -180,29 +180,82 @@ class WebullImporter:
             raise ValueError(f"Row {row_num}: {e}")
     
     def _parse_webull_timestamp(self, timestamp_str: str) -> datetime:
-        """Parse Webull timestamp string.
+        """Parse Webull timestamp string with proper timezone handling.
         
         Args:
             timestamp_str: Timestamp string from Webull (e.g., "09/03/2025 15:49:04 EDT")
             
         Returns:
             Parsed datetime object with timezone info preserved
+            
+        Note:
+            Uses proper timezone handling with zoneinfo library when available,
+            with manual parsing as fallback. Supports EDT, EST, PDT, PST, CDT, CST.
+        """
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            # Fallback for Python < 3.9
+            try:
+                from backports.zoneinfo import ZoneInfo
+            except ImportError:
+                # If zoneinfo not available, use manual parsing as fallback
+                logger.warning("zoneinfo not available, using manual timezone parsing")
+                return self._parse_webull_timestamp_manual(timestamp_str)
+        
+        try:
+            # Try to parse with timezone using zoneinfo
+            # Common Webull timezone formats
+            timezone_map = {
+                "EDT": ZoneInfo("America/New_York"),  # Eastern Daylight Time
+                "EST": ZoneInfo("America/New_York"),  # Eastern Standard Time
+                "PDT": ZoneInfo("America/Los_Angeles"),  # Pacific Daylight Time
+                "PST": ZoneInfo("America/Los_Angeles"),  # Pacific Standard Time
+                "CDT": ZoneInfo("America/Chicago"),  # Central Daylight Time
+                "CST": ZoneInfo("America/Chicago"),  # Central Standard Time
+            }
+            
+            # Extract timezone abbreviation
+            timestamp_clean = timestamp_str
+            tz_info = None
+            
+            for tz_abbr, tz in timezone_map.items():
+                if f" {tz_abbr}" in timestamp_str:
+                    timestamp_clean = timestamp_str.replace(f" {tz_abbr}", "")
+                    tz_info = tz
+                    break
+            
+            # Parse the datetime
+            dt = datetime.strptime(timestamp_clean, "%m/%d/%Y %H:%M:%S")
+            
+            # Add timezone if found
+            if tz_info:
+                dt = dt.replace(tzinfo=tz_info)
+            
+            return dt
+            
+        except Exception as e:
+            # Fallback to manual parsing if zoneinfo parsing fails
+            logger.warning(f"zoneinfo parsing failed for '{timestamp_str}', using manual fallback: {e}")
+            return self._parse_webull_timestamp_manual(timestamp_str)
+    
+    def _parse_webull_timestamp_manual(self, timestamp_str: str) -> datetime:
+        """Manual fallback timestamp parsing (original implementation).
+        
+        This is used when zoneinfo is not available or parsing fails.
         """
         try:
             # Parse the timestamp with timezone
             if " EDT" in timestamp_str:
                 timestamp_clean = timestamp_str.replace(" EDT", "")
                 dt = datetime.strptime(timestamp_clean, "%m/%d/%Y %H:%M:%S")
-                # Add timezone info back
-                return dt.replace(tzinfo=None)  # Keep as naive datetime but preserve the original format
             elif " EST" in timestamp_str:
                 timestamp_clean = timestamp_str.replace(" EST", "")
                 dt = datetime.strptime(timestamp_clean, "%m/%d/%Y %H:%M:%S")
-                return dt.replace(tzinfo=None)
             else:
                 # Fallback for timestamps without timezone
                 return datetime.strptime(timestamp_str, "%m/%d/%Y %H:%M:%S")
-            
+            return dt
         except ValueError as e:
             raise ValueError(f"Invalid timestamp format: {timestamp_str} - {e}")
     
