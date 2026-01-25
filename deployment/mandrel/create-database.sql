@@ -4,7 +4,7 @@
 -- PostgreSQL is running in Docker container (postgres-17.5)
 -- Run this script using docker exec:
 --
---   docker exec -i postgres-17.5 psql -U x7k9pQzW3vT2 -f - < create-database.sql
+--   docker exec -i postgres-17.5 psql -U your_postgres_user -f - < create-database.sql
 --
 -- Or run commands directly:
 --   docker exec postgres-17.5 psql -U your_postgres_user -c "CREATE DATABASE mandrel_dev;"
