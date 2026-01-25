@@ -9,7 +9,7 @@
 
 # Configuration - Fill in your values
 $SSH_KEY = "SSH_KEY_PLACEHOLDER"      # e.g., "C:\Utils\id_rsa"
-$SERVER = "SERVER_PLACEHOLDER"         # e.g., "ts-ubuntu-server"
+$SERVER = "SERVER_PLACEHOLDER"         # e.g., "your-tailscale-server"
 $USER = "USER_PLACEHOLDER"             # e.g., "lance"
 $REMOTE_DIR = "/home/lance/mandrel"
 

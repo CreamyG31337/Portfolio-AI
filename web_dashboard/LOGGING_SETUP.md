@@ -6,7 +6,7 @@ This setup ensures that:
 3.  **Caddy** serves that file so the AI can read it via HTTP.
 
 ## 1. Create Host Directory
-On your server (`ts-ubuntu-server`), create a dedicated folder for Ollama logs:
+On your server, create a dedicated folder for Ollama logs:
 
 ```bash
 mkdir -p ~/ollama-logs

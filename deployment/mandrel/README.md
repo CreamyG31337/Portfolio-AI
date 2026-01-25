@@ -45,9 +45,18 @@ chmod +x setup-mandrel.sh
 
 Add a Woodpecker step to deploy Mandrel (see `.woodpecker.yml` integration below).
 
-### Configure Cursor
+### Configure Your IDE
 
-Update `mcps/mandrel/SERVER_METADATA.json` with server URL: `http://your-server:8081`
+**For Cursor:**
+1. Copy the template: `cp mcps/mandrel/SERVER_METADATA.json.example mcps/mandrel/SERVER_METADATA.json`
+2. Edit `mcps/mandrel/SERVER_METADATA.json` and replace `your-server` with your actual server hostname/IP
+3. **Important:** Use port `8082` (MCP HTTP Bridge), not `8081` (direct REST API)
+4. Restart Cursor to load the MCP server configuration
+
+**For Antigravity/VS Code:**
+- See `deployment/mandrel/ANTIGRAVITY_SETUP.md` for complete setup instructions
+- Configuration format is the same as Cursor
+- **Important:** Use port `8082` (MCP HTTP Bridge) section
 
 ## Files in This Folder
 
@@ -134,7 +143,7 @@ Add to `~/.cursor/mcp.json` (create if doesn't exist):
 {
   "mcpServers": {
     "mandrel": {
-      "url": "http://your-server:8081",
+      "url": "http://your-server:8082",
       "transport": "http"
     }
   }
@@ -157,7 +166,10 @@ Or with HTTPS (if Caddy configured):
 ## Verification
 
 ```bash
-# Test health endpoint
+# Test bridge health endpoint (port 8082)
+curl http://your-server:8082/health
+
+# Test direct Mandrel API (port 8081 - for debugging only)
 curl http://your-server:8081/health
 
 # Check container status
@@ -166,7 +178,12 @@ docker-compose ps
 # View logs
 docker-compose logs -f mandrel-mcp
 
-# List available tools
+# List available tools via bridge (MCP JSON-RPC)
+curl -X POST http://your-server:8082/ \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+
+# List tools via direct Mandrel API (for debugging)
 curl http://your-server:8081/mcp/tools/schemas
 ```
 
@@ -207,7 +224,8 @@ docker exec mandrel-mcp npm run migrate  # Run migrations if needed
 ### How Mandrel Tools Work
 
 **Auto-Discovery via API:**
-- Mandrel exposes `GET /mcp/tools/schemas` at `http://your-server:8081/mcp/tools/schemas`
+- Bridge exposes MCP JSON-RPC endpoint at `http://your-server:8082/`
+- Mandrel exposes `GET /mcp/tools/schemas` at `http://your-server:8081/mcp/tools/schemas` (direct API, not MCP-compliant)
 - Returns complete tool definitions with `inputSchema` for all tools
 - Source of truth: `toolDefinitions.ts` in Mandrel codebase
 - When Watchtower updates Mandrel, new tools automatically available via API
@@ -223,12 +241,12 @@ docker exec mandrel-mcp npm run migrate  # Run migrations if needed
 **Automatic (Watchtower):**
 1. Watchtower detects new Mandrel image
 2. Pulls and restarts container automatically
-3. New tools immediately available via `GET /mcp/tools/schemas`
+3. New tools immediately available via MCP bridge at `http://your-server:8082/`
 4. Cursor can discover new tools via API
 
 **Manual Updates (Optional):**
 - If Mandrel adds new tools, update JSON files in `mcps/mandrel/tools/` for better IDE experience
-- Or create a sync script: `curl http://your-server:8081/mcp/tools/schemas > tools.json`
+- Or create a sync script: `curl -X POST http://your-server:8082/ -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' > tools.json`
 - Update `AGENTS.md` if tool usage patterns change significantly
 
 **Recommended Approach:**
