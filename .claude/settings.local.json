@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(claude mcp list:*)",
+      "Bash(env)",
+      "Bash(where:*)",
+      "Bash(curl:*)"
     ]
   }
 }

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Insider Trades - Portfolio Dashboard{% endblock %}
+{% block page_title %}🏢 Insider Trading Activity{% endblock %}
+{% block page_subtitle %}Corporate insider trades from SEC Form 4 disclosures{% endblock %}
+
+{% block extra_head %}
+<!-- AgGrid Community Edition -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine-dark.css">
+<script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js@2.27.0/dist/plotly.min.js"></script>
+<style>
+    .ag-row.insider-trade-purchase .ag-cell {
+        background-color: rgba(0, 200, 83, 0.08);
+    }
+    .ag-row.insider-trade-sale .ag-cell {
+        background-color: rgba(255, 82, 82, 0.08);
+    }
+    .ag-row.insider-trade-high-value .ag-cell {
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="bg-theme-error-bg/10 border border-theme-error-text/20 rounded-lg p-4 mb-6">
+    <div class="flex">
+        <div class="flex-shrink-0">
+            <i class="fas fa-exclamation-triangle text-theme-error-text"></i>
+        </div>
+        <div class="ml-3">
+            <h3 class="text-sm font-medium text-theme-error-text">{{ error }}</h3>
+            <div class="mt-2 text-sm text-theme-error-text/80">
+                <p>{{ error_message }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+
+<!-- Description -->
+<div class="bg-dashboard-surface border border-border rounded-lg p-4 mb-6">
+    <p class="text-sm text-text-primary">
+        Track corporate insider activity across recent SEC Form 4 disclosures. Purchases highlight bullish conviction,
+        while sales can surface risk or planned liquidity events.
+    </p>
+    <p class="text-xs text-text-secondary mt-2">
+        <em>Data refreshes every 6 hours via the automated scheduler.</em>
+    </p>
+</div>
+
+<!-- Refresh -->
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold text-text-primary">Data Refresh</h2>
+            <p class="text-sm text-text-secondary">Last updated: <span id="last-updated">{{
+                    newest_timestamp|default('Loading...') }}</span></p>
+        </div>
+        <button type="button" onclick="refreshData()"
+            class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent/50 font-medium rounded-lg text-sm px-5 py-2.5">
+            <i class="fas fa-sync-alt mr-2"></i>Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
+    <form id="filters-form" action="/insider_trades" method="GET" class="space-y-4">
+        <input type="hidden" name="refresh_key" value="{{ refresh_key }}">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+                <label class="block mb-2 text-sm font-medium text-text-primary">📅 Date Range</label>
+                <div class="flex items-center gap-2">
+                    <label class="flex items-center text-sm text-text-secondary">
+                        <input type="checkbox" name="use_date_filter" value="true" {% if current_use_date_filter %}checked{% endif %}
+                            class="mr-2" id="use-date-filter">
+                        Enable
+                    </label>
+                </div>
+                <div id="date-range-inputs" class="grid grid-cols-2 gap-2 mt-2 {% if not current_use_date_filter %}hidden{% endif %}">
+                    <input type="date" name="start_date" value="{{ current_start_date }}"
+                        class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent">
+                    <input type="date" name="end_date" value="{{ current_end_date }}"
+                        class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent">
+                </div>
+            </div>
+
+            <div>
+                <label class="block mb-2 text-sm font-medium text-text-primary">🏷️ Tickers</label>
+                <select name="ticker" multiple size="6"
+                    class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent">
+                    {% for ticker in unique_tickers %}
+                    <option value="{{ ticker }}" {% if current_tickers and ticker in current_tickers %}selected{% endif %}>
+                        {{ ticker }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <p class="text-xs text-text-secondary mt-1">Hold Ctrl/Cmd to select multiple.</p>
+            </div>
+
+            <div>
+                <label class="block mb-2 text-sm font-medium text-text-primary">🧾 Transaction Type</label>
+                <select name="type"
+                    class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent">
+                    <option value="All" {% if current_type == 'All' %}selected{% endif %}>All</option>
+                    <option value="Purchase" {% if current_type == 'Purchase' %}selected{% endif %}>Purchase</option>
+                    <option value="Sale" {% if current_type == 'Sale' %}selected{% endif %}>Sale</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block mb-2 text-sm font-medium text-text-primary">👤 Insider Name</label>
+                <input type="text" name="insider_name" list="insider-names" value="{{ current_insider_name }}"
+                    placeholder="Start typing a name..."
+                    class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent">
+                <datalist id="insider-names">
+                    {% for insider in unique_insiders %}
+                    <option value="{{ insider }}"></option>
+                    {% endfor %}
+                </datalist>
+            </div>
+
+            <div>
+                <label class="block mb-2 text-sm font-medium text-text-primary">💰 Min Transaction Value</label>
+                <input type="number" name="min_value" min="0" step="0.01" value="{{ current_min_value }}"
+                    placeholder="0"
+                    class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent">
+            </div>
+
+            <div>
+                <label class="block mb-2 text-sm font-medium text-text-primary">↕️ Sort By</label>
+                <select name="sort_by"
+                    class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent">
+                    <option value="Date" {% if current_sort_by == 'Date' %}selected{% endif %}>Date</option>
+                    <option value="Value" {% if current_sort_by == 'Value' %}selected{% endif %}>Value</option>
+                    <option value="Shares" {% if current_sort_by == 'Shares' %}selected{% endif %}>Shares</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-end pt-4 border-t border-border">
+            <button type="submit"
+                class="text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent/50 font-medium rounded-lg text-sm px-5 py-2.5">
+                <i class="fas fa-filter mr-2"></i>Apply Filters
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Summary Statistics -->
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">📊 Summary Statistics</h2>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="bg-dashboard-surface-alt rounded-lg p-4">
+            <div id="stat-total-trades" class="text-2xl font-bold text-text-primary">0</div>
+            <div class="text-sm text-text-secondary">Total Trades</div>
+        </div>
+        <div class="bg-dashboard-surface-alt rounded-lg p-4">
+            <div id="stat-purchase-volume" class="text-2xl font-bold text-text-primary">$0</div>
+            <div class="text-sm text-text-secondary">Purchase Volume</div>
+        </div>
+        <div class="bg-dashboard-surface-alt rounded-lg p-4">
+            <div id="stat-sale-volume" class="text-2xl font-bold text-text-primary">$0</div>
+            <div class="text-sm text-text-secondary">Sale Volume</div>
+        </div>
+        <div class="bg-dashboard-surface-alt rounded-lg p-4">
+            <div id="stat-most-active" class="text-lg font-bold text-text-primary">-</div>
+            <div class="text-sm text-text-secondary">Most Active Ticker</div>
+        </div>
+        <div class="bg-dashboard-surface-alt rounded-lg p-4">
+            <div id="stat-largest-trade" class="text-lg font-bold text-text-primary">$0</div>
+            <div class="text-sm text-text-secondary">Largest Trade</div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border">
+        <h3 class="text-sm font-semibold text-text-primary mb-3">Daily Transaction Volume</h3>
+        <div id="insider-volume-chart" class="h-[260px]"></div>
+    </div>
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border">
+        <h3 class="text-sm font-semibold text-text-primary mb-3">Top 10 Active Insiders</h3>
+        <div id="insider-top-insiders-chart" class="h-[260px]"></div>
+    </div>
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border">
+        <h3 class="text-sm font-semibold text-text-primary mb-3">Purchase vs Sale Distribution</h3>
+        <div id="insider-type-distribution-chart" class="h-[260px]"></div>
+    </div>
+</div>
+
+<!-- Notable Trades -->
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">⭐ Notable Trades</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+            <h3 class="text-sm font-semibold text-text-primary mb-3">Top 5 Largest Purchases</h3>
+            <div id="notable-purchases" class="space-y-3"></div>
+        </div>
+        <div>
+            <h3 class="text-sm font-semibold text-text-primary mb-3">Top 5 Largest Sales</h3>
+            <div id="notable-sales" class="space-y-3"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Table -->
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold text-text-primary">📋 Insider Trades</h2>
+        <button type="button" onclick="downloadCsv()"
+            class="text-white bg-theme-success-text hover:bg-theme-success-text/80 focus:ring-4 focus:ring-theme-success-text/50 font-medium rounded-lg text-sm px-5 py-2.5">
+            <i class="fas fa-download mr-2"></i>Download CSV
+        </button>
+    </div>
+    <div id="insider-trades-grid" class="ag-theme-alpine h-[540px] w-full"></div>
+    <div id="insider-empty" class="hidden mt-4 bg-theme-info-bg/10 border border-theme-info-text/20 rounded-lg p-4">
+        <p class="text-sm text-theme-info-text">📭 No insider trades found matching the current filters.</p>
+    </div>
+</div>
+
+<script id="insider-trades-config" type="application/json">
+{{ config | tojson }}
+</script>
+<script type="module" src="/assets/js/insider_trades.js"></script>
+
+{% endif %}
+{% endblock %}

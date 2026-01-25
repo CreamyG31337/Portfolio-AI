@@ -1,0 +1,1 @@
+CREATE SEQUENCE insider_trades_id_seq;

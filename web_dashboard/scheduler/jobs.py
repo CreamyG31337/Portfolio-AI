@@ -204,6 +204,13 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '🏛️'
     },
+    'insider_trades': {
+        'name': 'Insider Trade Fetch',
+        'description': 'Fetch corporate insider trading data from external source',
+        'default_interval_minutes': 360,  # 6 hours
+        'enabled_by_default': True,
+        'icon': '🏢'
+    },
     'analyze_congress_trades': {
         'name': 'Congress Trade Analysis',
         'description': 'Calculate conflict scores for unscored congress trades using committee data',
@@ -470,6 +477,11 @@ from scheduler.jobs_congress import (
     scrape_congress_trades_job
 )
 
+# Import insider trades jobs
+from scheduler.jobs_insiders import (
+    fetch_insider_trades_job
+)
+
 # Import opportunity discovery job
 from scheduler.jobs_opportunity import opportunity_discovery_job
 
@@ -522,6 +534,8 @@ __all__ = [
     'analyze_congress_trades_job',
     'rescore_congress_sessions_job',
     'scrape_congress_trades_job',
+    # Insider trades jobs
+    'fetch_insider_trades_job',
     # Opportunity discovery
     'opportunity_discovery_job',
     # Seeking Alpha scraper
@@ -1062,6 +1076,19 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: analyze_congress_trades (every 30 minutes - processes unscored trades)")
+
+    # Insider trades job - every 6 hours
+    if AVAILABLE_JOBS['insider_trades']['enabled_by_default']:
+        scheduler.add_job(
+            fetch_insider_trades_job,
+            trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['insider_trades']['default_interval_minutes']),
+            id='insider_trades_fetch',
+            name=f"{get_job_icon('insider_trades')} Insider Trade Fetch",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: insider_trades_fetch (every 6 hours - scrapes external source)")
     
     # Dividend processing job - daily at 2:00 AM PST
     if AVAILABLE_JOBS['dividend_processing']['enabled_by_default']:

@@ -4218,6 +4218,418 @@ def api_analyze_congress_trades():
         logger.error(f"Error in analyze congress trades API: {e}", exc_info=True)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
+# ============================================================================
+# Insider Trades Routes (Flask v2)
+# ============================================================================
+
+@cache_data(ttl=3600)
+def get_unique_tickers_insider(
+    _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
+) -> List[str]:
+    """Get all unique tickers from insider_trades table (cached 1 hour)."""
+    if _cache_version is None:
+        try:
+            from cache_version import get_cache_version
+            _cache_version = get_cache_version()
+        except ImportError:
+            _cache_version = ""
+
+    try:
+        if _supabase_client is None:
+            return []
+
+        all_tickers = set()
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            result = _supabase_client.supabase.table("insider_trades")\
+                .select("ticker")\
+                .range(offset, offset + batch_size - 1)\
+                .execute()
+
+            if not result.data:
+                break
+
+            for trade in result.data:
+                ticker = trade.get("ticker")
+                if ticker:
+                    all_tickers.add(ticker)
+
+            if len(result.data) < batch_size:
+                break
+
+            offset += batch_size
+
+            if offset > 100000:
+                logger.warning("Reached 100,000 row safety limit in get_unique_tickers_insider pagination")
+                break
+
+        return sorted(list(all_tickers))
+    except Exception as e:
+        logger.error(f"Error fetching insider tickers: {e}", exc_info=True)
+        return []
+
+
+@cache_data(ttl=3600)
+def get_unique_insider_names(
+    _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
+) -> List[str]:
+    """Get all unique insider names from insider_trades table (cached 1 hour)."""
+    if _cache_version is None:
+        try:
+            from cache_version import get_cache_version
+            _cache_version = get_cache_version()
+        except ImportError:
+            _cache_version = ""
+
+    try:
+        if _supabase_client is None:
+            return []
+
+        all_insiders = set()
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            result = _supabase_client.supabase.table("insider_trades")\
+                .select("insider_name")\
+                .range(offset, offset + batch_size - 1)\
+                .execute()
+
+            if not result.data:
+                break
+
+            for trade in result.data:
+                insider_name = trade.get("insider_name")
+                if insider_name:
+                    all_insiders.add(insider_name)
+
+            if len(result.data) < batch_size:
+                break
+
+            offset += batch_size
+
+            if offset > 100000:
+                logger.warning("Reached 100,000 row safety limit in get_unique_insider_names pagination")
+                break
+
+        return sorted(list(all_insiders))
+    except Exception as e:
+        logger.error(f"Error fetching insider names: {e}", exc_info=True)
+        return []
+
+
+@cache_data(ttl=300)
+def get_latest_insider_trade_timestamp(
+    _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
+) -> Optional[str]:
+    """Get the most recent insider trade created_at timestamp (cached 5 min)."""
+    if _cache_version is None:
+        try:
+            from cache_version import get_cache_version
+            _cache_version = get_cache_version()
+        except ImportError:
+            _cache_version = ""
+
+    try:
+        if _supabase_client is None:
+            return None
+
+        result = _supabase_client.supabase.table("insider_trades")\
+            .select("created_at")\
+            .order("created_at", desc=True)\
+            .limit(1)\
+            .execute()
+
+        if result.data:
+            return result.data[0].get("created_at")
+    except Exception as e:
+        logger.warning(f"Error fetching latest insider trade timestamp: {e}")
+
+    return None
+
+
+@cache_data(ttl=21600)
+def get_insider_trades_cached(
+    _supabase_client,
+    refresh_key: int,
+    ticker_filters: Optional[List[str]] = None,
+    type_filter: Optional[str] = None,
+    insider_filter: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    min_value: Optional[float] = None,
+    sort_by: Optional[str] = None,
+    _cache_version: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Get insider trades with filters (cached 6 hours). Fetches ALL matching rows."""
+    if _cache_version is None:
+        try:
+            from cache_version import get_cache_version
+            _cache_version = get_cache_version()
+        except ImportError:
+            _cache_version = ""
+
+    try:
+        if _supabase_client is None:
+            return []
+
+        query = _supabase_client.supabase.table("insider_trades").select(
+            "id, ticker, insider_name, insider_title, company_name, transaction_date, disclosure_date, "
+            "type, shares, price_per_share, value, shares_held_after, percent_change, notes, created_at"
+        )
+
+        if ticker_filters:
+            query = query.in_("ticker", ticker_filters)
+        if type_filter:
+            query = query.eq("type", type_filter)
+        if insider_filter:
+            query = query.ilike("insider_name", f"%{insider_filter}%")
+        if start_date:
+            query = query.gte("transaction_date", start_date)
+        if end_date:
+            query = query.lte("transaction_date", end_date)
+        if min_value is not None:
+            query = query.gte("value", min_value)
+
+        sort_column = "transaction_date"
+        if sort_by == "Value":
+            sort_column = "value"
+        elif sort_by == "Shares":
+            sort_column = "shares"
+
+        query = query.order(sort_column, desc=True)
+
+        all_trades = []
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            result = query.range(offset, offset + batch_size - 1).execute()
+
+            if not result.data:
+                break
+
+            all_trades.extend(result.data)
+
+            if len(result.data) < batch_size:
+                break
+
+            offset += batch_size
+
+            if offset > 100000:
+                logger.warning("Reached 100,000 row safety limit in get_insider_trades_cached pagination")
+                break
+
+        return all_trades
+    except Exception as e:
+        logger.error(f"Error fetching insider trades: {e}", exc_info=True)
+        return []
+
+
+@app.route('/insider_trades')
+@require_auth
+def insider_trades_page():
+    """Insider Trades page (Flask v2)"""
+    try:
+        from flask_auth_utils import get_user_email_flask
+        from flask_data_utils import get_supabase_client_flask
+        from user_preferences import get_user_theme, format_timestamp_in_user_timezone
+        from cache_version import get_cache_version
+        from auth import is_admin
+
+        user_email = get_user_email_flask()
+        user_theme = get_user_theme() or "system"
+
+        refresh_key = int(request.args.get("refresh_key", 0))
+
+        if is_admin():
+            from supabase_client import SupabaseClient
+            supabase_client = SupabaseClient(use_service_role=True)
+        else:
+            supabase_client = get_supabase_client_flask()
+
+        if supabase_client is None:
+            nav_context = get_navigation_context(current_page='insider_trades')
+            return render_template('insider_trades.html',
+                                 user_email=user_email,
+                                 user_theme=user_theme,
+                                 error="Insider Trades Database Unavailable",
+                                 error_message="The insider trades database is not available. Check the logs or contact an administrator.",
+                                 **nav_context)
+
+        cache_version = get_cache_version()
+        unique_tickers = get_unique_tickers_insider(supabase_client, refresh_key, cache_version)
+        unique_insiders = get_unique_insider_names(supabase_client, refresh_key, cache_version)
+
+        # Date filter defaults to last 7 days
+        today = datetime.utcnow().date()
+        default_start = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+        default_end = today.strftime("%Y-%m-%d")
+
+        use_date_filter_param = request.args.get("use_date_filter")
+        has_query_params = len(request.args) > 0
+        if use_date_filter_param is None:
+            use_date_filter = not has_query_params
+        else:
+            use_date_filter = use_date_filter_param == "true"
+
+        start_date = request.args.get("start_date") or default_start
+        end_date = request.args.get("end_date") or default_end
+
+        latest_created_at = get_latest_insider_trade_timestamp(
+            supabase_client, refresh_key, cache_version
+        )
+        if latest_created_at:
+            try:
+                normalized = latest_created_at.replace("Z", "+00:00")
+                parsed = datetime.fromisoformat(normalized)
+                latest_created_at = format_timestamp_in_user_timezone(
+                    parsed.strftime("%Y-%m-%d %H:%M"),
+                    format="%Y-%m-%d %I:%M %p %Z"
+                )
+            except Exception:
+                pass
+
+        nav_context = get_navigation_context(current_page='insider_trades')
+
+        return render_template('insider_trades.html',
+                             user_email=user_email,
+                             user_theme=user_theme,
+                             refresh_key=refresh_key,
+                             unique_tickers=unique_tickers,
+                             unique_insiders=unique_insiders,
+                             newest_timestamp=latest_created_at or "N/A",
+                             current_tickers=request.args.getlist("ticker"),
+                             current_type=request.args.get("type", "All"),
+                             current_insider_name=request.args.get("insider_name", ""),
+                             current_min_value=request.args.get("min_value", ""),
+                             current_sort_by=request.args.get("sort_by", "Date"),
+                             current_use_date_filter=use_date_filter,
+                             current_start_date=start_date,
+                             current_end_date=end_date,
+                             config={
+                                 "lazyLoad": True,
+                                 "defaultStartDate": start_date,
+                                 "defaultEndDate": end_date,
+                                 "defaultUseDateFilter": use_date_filter
+                             },
+                             **nav_context)
+    except Exception as e:
+        logger.error(f"Error in insider trades page: {e}", exc_info=True)
+        nav_context = get_navigation_context(current_page='insider_trades')
+        return render_template('insider_trades.html',
+                             user_email='User',
+                             user_theme='system',
+                             error=str(e),
+                             error_message="An error occurred loading insider trades. Please check the logs.",
+                             **nav_context), 500
+
+
+@app.route('/api/insider_trades/data')
+@require_auth
+def api_insider_trades_data():
+    """API endpoint for insider trades data (JSON) - fetches ALL data at once"""
+    try:
+        from flask_data_utils import get_supabase_client_flask
+        from cache_version import get_cache_version
+        from auth import is_admin
+        from web_dashboard.utils.logo_utils import get_ticker_logo_url
+
+        refresh_key = int(request.args.get("refresh_key", 0))
+
+        if is_admin():
+            from supabase_client import SupabaseClient
+            supabase_client = SupabaseClient(use_service_role=True)
+        else:
+            supabase_client = get_supabase_client_flask()
+
+        if supabase_client is None:
+            return jsonify({"error": "Supabase client unavailable"}), 500
+
+        ticker_filters = [t for t in request.args.getlist("ticker") if t and t != "All"]
+        type_filter = request.args.get("type")
+        type_filter = None if type_filter in (None, "All") else type_filter
+        insider_filter = request.args.get("insider_name")
+        min_value_raw = request.args.get("min_value")
+        sort_by = request.args.get("sort_by", "Date")
+        use_date_filter = request.args.get("use_date_filter") == "true"
+        start_date = request.args.get("start_date") if use_date_filter else None
+        end_date = request.args.get("end_date") if use_date_filter else None
+
+        min_value = None
+        if min_value_raw:
+            try:
+                min_value = float(min_value_raw)
+            except ValueError:
+                min_value = None
+
+        cache_version = get_cache_version()
+        all_trades = get_insider_trades_cached(
+            supabase_client,
+            refresh_key,
+            ticker_filters=ticker_filters or None,
+            type_filter=type_filter,
+            insider_filter=insider_filter or None,
+            start_date=start_date,
+            end_date=end_date,
+            min_value=min_value,
+            sort_by=sort_by,
+            _cache_version=cache_version
+        )
+
+        def _to_float(value: Any) -> Optional[float]:
+            if value is None:
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        def _to_int(value: Any) -> Optional[int]:
+            if value is None:
+                return None
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return None
+
+        formatted_trades = []
+        for trade in all_trades:
+            ticker = trade.get("ticker", "N/A")
+            logo_url = get_ticker_logo_url(ticker) if ticker and ticker != "N/A" else None
+
+            formatted_trades.append({
+                "ticker": ticker,
+                "company_name": trade.get("company_name"),
+                "insider_name": trade.get("insider_name"),
+                "insider_title": trade.get("insider_title"),
+                "transaction_date": trade.get("transaction_date"),
+                "disclosure_date": trade.get("disclosure_date"),
+                "type": trade.get("type"),
+                "shares": _to_int(trade.get("shares")),
+                "price_per_share": _to_float(trade.get("price_per_share")),
+                "value": _to_float(trade.get("value")),
+                "shares_held_after": _to_int(trade.get("shares_held_after")),
+                "percent_change": _to_float(trade.get("percent_change")),
+                "notes": trade.get("notes"),
+                "created_at": trade.get("created_at"),
+                "_logo_url": logo_url
+            })
+
+        return jsonify({
+            "trades": formatted_trades,
+            "has_more": False,
+            "total": len(formatted_trades)
+        })
+    except ValueError as e:
+        logger.error(f"Invalid parameter in insider trades API: {e}", exc_info=True)
+        return jsonify({"error": f"Invalid parameter: {str(e)}"}), 400
+    except Exception as e:
+        logger.error(f"Error in insider trades API: {e}", exc_info=True)
+        return jsonify({"error": "An error occurred while fetching insider trades data. Please check the logs."}), 500
+
 if __name__ == '__main__':
     # Run the app
     # Use port 5001 to avoid conflict with NFT calculator app on port 5000
