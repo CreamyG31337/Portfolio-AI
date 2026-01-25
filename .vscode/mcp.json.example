@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "mandrel": {
+      "url": "http://your-server:8082"
+    },
+    "supabase-mcp-server": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "your-supabase-access-token-here"
+      ],
+      "env": {}
+    }
+  }
+}

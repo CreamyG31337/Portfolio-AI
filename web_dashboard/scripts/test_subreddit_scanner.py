@@ -21,7 +21,7 @@ def list_ollama_models():
     try:
         import requests
         # Assume default URL or get from env
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://ts-ubuntu-server:11434")
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         print(f"📡 Checking Ollama at {base_url}...")
         resp = requests.get(f"{base_url}/api/tags", timeout=5)
         if resp.status_code == 200:

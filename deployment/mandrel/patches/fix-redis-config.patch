@@ -1,0 +1,31 @@
+--- a/src/services/queueManager.ts
++++ b/src/services/queueManager.ts
+@@ -9,7 +9,25 @@
+  * Based on TR004-4 audit findings: Feature flags polling, git tracking, metrics collection
+  */
+ 
+-const REDIS_CONFIG = {
++// Parse REDIS_URL environment variable or default to localhost
++const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
++let redisHost = 'localhost';
++let redisPort = 6379;
++
++try {
++  const redisUrl = new URL(REDIS_URL);
++  redisHost = redisUrl.hostname;
++  redisPort = parseInt(redisUrl.port) || 6379;
++} catch (error) {
++  console.error('⚠️  WARNING: Failed to parse REDIS_URL, using defaults:', error);
++  console.error('   REDIS_URL was:', REDIS_URL);
++}
++
++console.log(`🔧 Redis Configuration: ${redisHost}:${redisPort} (from REDIS_URL: ${REDIS_URL})`);
++
++const REDIS_CONFIG = {
+-  host: 'localhost',
+-  port: 6379,
++  host: redisHost,
++  port: redisPort,
+   maxRetriesPerRequest: null, // Required by BullMQ
+   retryDelayOnFailover: 100,
+   enableReadyCheck: false,

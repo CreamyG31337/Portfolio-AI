@@ -5,6 +5,11 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 {% endif %}
 
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+<link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}"> 
+
+
 <!-- Tailwind CSS - Production build (optimized, tree-shaken) -->
 <link href="/assets/css/tailwind.css?v=2" rel="stylesheet">
 

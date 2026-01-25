@@ -340,6 +340,7 @@ web_dashboard/static/js/*.js.map
 # Mandrel deployment (keep templates, ignore local config)
 deployment/mandrel/.env
 deployment/mandrel/*.local.*
+deployment/mandrel/deploy.ps1
 # Allow templates and scripts for Woodpecker
 !deployment/mandrel/.env.example
 !deployment/mandrel/docker-compose.yml
@@ -347,6 +348,14 @@ deployment/mandrel/*.local.*
 !deployment/mandrel/create-database.sql
 !deployment/mandrel/caddy-snippet.txt
 !deployment/mandrel/README.md
+!deployment/mandrel/deploy.ps1.example
 
 # Cursor MCP local settings (server URLs contain private IPs)
 mcps/mandrel/SERVER_METADATA.json
+# Allow template file
+!mcps/mandrel/SERVER_METADATA.json.example
+
+# VS Code MCP local settings (server URLs and tokens)
+.vscode/mcp.json
+# Allow template file
+!.vscode/mcp.json.example

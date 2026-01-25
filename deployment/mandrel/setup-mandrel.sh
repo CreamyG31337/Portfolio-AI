@@ -10,16 +10,18 @@
 #   ./setup-mandrel.sh
 #
 # Prerequisites:
-#   - PostgreSQL running with pgvector extension available
+#   - PostgreSQL running in Docker container (postgres-17.5)
 #   - Docker and Docker Compose installed
 #   - Git installed
 # ============================================================
 
 set -e  # Exit on error
 
-# Configuration
-MANDREL_DIR="/home/lance/mandrel"
-MANDREL_DB_NAME="mandrel_dev"
+# Configuration (can be overridden by environment variables)
+MANDREL_DIR="${MANDREL_DIR:-/home/lance/mandrel}"
+MANDREL_DB_NAME="${MANDREL_DB_NAME:-mandrel_dev}"
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-postgres-17.5}"
+POSTGRES_USER="${POSTGRES_USER:-postgres}"
 
 echo "=============================================="
 echo "Mandrel MCP Server Setup"
@@ -30,18 +32,24 @@ echo ""
 echo "[Step 1/5] Creating Mandrel database..."
 echo "----------------------------------------------"
 
-# Check if database exists
-if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$MANDREL_DB_NAME"; then
+# Check if database exists (PostgreSQL in Docker)
+# Connect to 'postgres' database first (default database that always exists)
+if docker exec "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d postgres -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw "$MANDREL_DB_NAME"; then
     echo "Database '$MANDREL_DB_NAME' already exists."
 else
     echo "Creating database '$MANDREL_DB_NAME'..."
-    sudo -u postgres psql -c "CREATE DATABASE $MANDREL_DB_NAME;"
+    docker exec "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE $MANDREL_DB_NAME;" || {
+        echo "Error: Failed to create database. Check PostgreSQL container is running."
+        exit 1
+    }
     echo "Database created."
 fi
 
 # Enable pgvector extension
 echo "Enabling pgvector extension..."
-sudo -u postgres psql -d "$MANDREL_DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+docker exec "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$MANDREL_DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS vector;" || {
+    echo "Warning: Failed to enable pgvector. It may already be enabled or not available."
+}
 echo "pgvector extension enabled."
 
 # Step 2: Clone Mandrel repository
@@ -53,10 +61,14 @@ if [ -d "$MANDREL_DIR" ]; then
     echo "Mandrel directory exists. Pulling latest changes..."
     cd "$MANDREL_DIR"
     git pull origin main || echo "Git pull failed, continuing with existing code..."
+    # Pin to specific version if needed (uncomment and set version)
+    # git checkout v0.1.0 || echo "Version tag not found, using main branch"
 else
     echo "Cloning Mandrel repository..."
     git clone https://github.com/RidgetopAi/mandrel.git "$MANDREL_DIR"
     cd "$MANDREL_DIR"
+    # Pin to specific version if needed (uncomment and set version)
+    # git checkout v0.1.0 || echo "Version tag not found, using main branch"
 fi
 
 # Step 3: Copy deployment files
@@ -76,11 +88,14 @@ if [ ! -f "$MANDREL_DIR/.env" ]; then
     echo "Creating .env file..."
     echo "Please enter your PostgreSQL password:"
     read -s POSTGRES_PASSWORD
+    echo "Please enter your PostgreSQL username:"
+    read -r DB_USER
     cat > "$MANDREL_DIR/.env" << EOF
 # Mandrel Database Configuration
-MANDREL_DB_USER=postgres
-MANDREL_DB_NAME=mandrel_dev
-MANDREL_DB_PASSWORD=$POSTGRES_PASSWORD
+# PostgreSQL is in Docker container (${POSTGRES_CONTAINER})
+MANDREL_DB_USER=${DB_USER}
+MANDREL_DB_NAME=${MANDREL_DB_NAME}
+MANDREL_DB_PASSWORD=${POSTGRES_PASSWORD}
 MANDREL_DB_PORT=5432
 EOF
     echo ".env file created."
@@ -132,9 +147,9 @@ docker-compose ps
 echo ""
 echo "Testing health endpoint..."
 sleep 5
-if curl -s http://localhost:8080/health > /dev/null 2>&1; then
+if curl -s http://localhost:8081/health > /dev/null 2>&1; then
     echo "✅ Mandrel MCP Server is healthy!"
-    curl -s http://localhost:8080/health | head -c 200
+    curl -s http://localhost:8081/health | head -c 200
     echo ""
 else
     echo "⚠️  Health check failed. Check logs with: docker-compose logs mandrel-mcp"
@@ -154,14 +169,15 @@ echo "=============================================="
 echo "Setup Complete!"
 echo "=============================================="
 echo ""
-echo "Mandrel MCP Server is running at: http://localhost:8080"
+echo "Mandrel MCP Server is running at: http://localhost:8081"
 echo ""
 echo "Next steps:"
-echo "1. Configure Caddy reverse proxy (optional, for HTTPS)"
-echo "2. Configure Cursor MCP settings to connect"
+echo "1. Update Cursor MCP settings to connect (see README.md)"
+echo "2. Test connection: curl http://localhost:8081/health"
 echo ""
 echo "Useful commands:"
 echo "  View logs:     docker-compose logs -f"
 echo "  Restart:       docker-compose restart"
 echo "  Stop:          docker-compose down"
-echo "  Check health:  curl http://localhost:8080/health"
+echo "  Check health:  curl http://localhost:8081/health"
+echo "  List tools:    curl http://localhost:8081/mcp/tools/schemas"

@@ -491,7 +491,7 @@ The social sentiment system now includes comprehensive AI analysis similar to co
 ### Running AI Analysis
 ```bash
 cd web_dashboard
-python social_sentiment_ai_job.py
+python scheduler/social_sentiment_ai_job.py
 ```
 
 ### Data Retention
@@ -652,3 +652,368 @@ docker-compose -f docker-compose.test.yml up -d
 
 Both databases run simultaneously, matching production structure exactly to prevent join/structure bugs.
 
+## Mandrel MCP Server - Persistent AI Memory
+
+### Overview
+
+Mandrel provides persistent memory infrastructure for AI-assisted development. It stores development context, architectural decisions, and project knowledge across sessions using semantic search (384D vector embeddings).
+
+**What It Does:**
+- Stores development context with semantic search (vector embeddings)
+- Tracks architectural decisions with rationale
+- Manages tasks and project organization
+- Provides cross-session memory for AI assistants
+
+**Deployment:**
+- Runs on Ubuntu server via MCP HTTP Bridge at port `8082`
+- Bridge converts MCP JSON-RPC 2.0 protocol to Mandrel's REST API
+- Built from source with custom Redis patch (see `deployment/mandrel/Dockerfile.mandrel-mcp`)
+- Accessible via HTTP Bridge: Configure server URL in `mcps/mandrel/SERVER_METADATA.json` (gitignored)
+
+**Documentation:**
+- **User Guide:** `deployment/mandrel/USER_GUIDE.md` - Complete usage guide with examples
+- **Deployment:** `deployment/mandrel/README.md` - Setup and deployment instructions
+
+### Tool Discovery
+
+**Auto-Discovery via API:**
+- Mandrel exposes `GET /mcp/tools/schemas` endpoint
+- Returns complete tool definitions with `inputSchema` for all tools
+- Source of truth: `toolDefinitions.ts` in Mandrel codebase
+- Cursor can query this endpoint to discover available tools dynamically
+
+**Cursor Tool Definitions (Optional):**
+- JSON files in `mcps/mandrel/tools/*.json` are for IDE autocomplete/validation
+- These files are optional - Cursor can work with just the API
+- Update them manually if you want better IDE experience for new tools
+
+### Update Workflow
+
+**Important:** Mandrel is built from source (not from a registry image), so Watchtower does **not** auto-update it.
+
+**Manual Updates:**
+1. SSH to server and navigate to Mandrel directory
+2. Pull latest source: `git pull origin main`
+3. Copy updated deployment files if changed
+4. Rebuild container: `docker-compose build`
+5. Restart: `docker-compose up -d`
+6. Run migrations if needed: `docker exec mandrel-mcp npm run migrate`
+
+**After Updates:**
+- New tools immediately available via `GET /mcp/tools/schemas` API
+- Cursor can discover new tools automatically
+- Optionally update JSON files in `mcps/mandrel/tools/` for better IDE autocomplete
+
+### Available Tools
+
+**System Health:**
+- `mandrel_ping` - Test connectivity (call first to verify server is reachable)
+- `mandrel_status` - Get detailed server status and health
+- `mandrel_help` - List all available tools by category
+- `mandrel_explain` - Get detailed help for a specific tool
+- `mandrel_examples` - Get usage examples for a tool
+
+**Context Management:**
+- `context_store` - Store development context with semantic embeddings
+  - Required: `content` (string), `type` (code|decision|error|discussion|planning|completion|milestone|reflections|handoff)
+  - Optional: `tags` (array of strings)
+- `context_search` - Search stored contexts semantically
+  - Required: `query` (string)
+  - Optional: `type`, `tags`, `limit`
+- `context_get_recent` - Get recent contexts (last N items)
+- `context_stats` - Get statistics about stored contexts
+
+**Project Management:**
+- `project_list` - List all projects
+- `project_create` - Create a new project
+- `project_switch` - Switch to a different project
+- `project_current` - Get current project info
+- `project_info` - Get detailed information about a specific project
+
+**Decision Tracking:**
+- `decision_record` - Record an architectural decision
+  - Required: `title`, `description`, `rationale`, `decisionType`, `impactLevel`
+- `decision_search` - Search past decisions
+- `decision_update` - Update a decision (add notes, change status)
+- `decision_stats` - Get statistics about decisions
+
+**Task Management:**
+- `task_create` - Create a task
+  - Required: `title` (string)
+  - Optional: `description`, `status`, `priority`
+- `task_list` - List tasks (optional: filter by status)
+- `task_update` - Update task status/progress
+- `task_details` - Get full details of a specific task
+- `task_bulk_update` - Update multiple tasks atomically with the same changes
+- `task_progress_summary` - Get task progress summary with grouping and completion percentages
+
+**Search & Insights:**
+- `smart_search` - Cross-system semantic search (searches contexts, decisions, tasks)
+- `get_recommendations` - Get AI recommendations based on current context
+- `project_insights` - Get comprehensive project health and insights
+
+### Usage Workflow
+
+**Starting a Session:**
+1. Call `mandrel_ping` to verify connectivity
+2. Call `project_current` to see active project (or `project_switch` to change)
+3. Call `context_get_recent` to see recent context
+4. Call `task_list` to see active tasks
+5. Use `context_search` or `smart_search` to find relevant past information
+
+**During Development:**
+1. Use `context_store` to save important learnings, code patterns, or solutions
+2. Use `decision_record` for architectural choices and design decisions
+3. Use `task_create` and `task_update` to track work progress
+4. Use `context_search` or `smart_search` to recall past information
+
+**Ending a Session:**
+1. Call `context_store` with type "milestone" to summarize session progress
+2. Update task statuses with `task_update`
+
+### Configuration
+
+**Server URL Setup:**
+1. Copy template: `cp mcps/mandrel/SERVER_METADATA.json.example mcps/mandrel/SERVER_METADATA.json`
+2. Edit `mcps/mandrel/SERVER_METADATA.json` and replace `your-server` with your actual server hostname/IP
+3. **Important:** Use port `8082` (MCP HTTP Bridge), not `8081` (direct Mandrel REST API)
+4. Restart Cursor to load the MCP server configuration
+
+**Alternative:** Configure in Cursor Settings → MCP Servers section
+
+**Note:** The actual server URL is stored locally in `mcps/mandrel/SERVER_METADATA.json` (gitignored) or in Cursor's settings, not in the repository.
+
+**MCP HTTP Bridge:**
+- The bridge runs on port `8082` and converts MCP JSON-RPC 2.0 protocol to Mandrel's REST API
+- Bridge is deployed alongside Mandrel in `deployment/mandrel/docker-compose.yml`
+- See `deployment/mandrel/mcp-bridge/README.md` for bridge details
+
+**For Antigravity/VS Code:**
+- See `deployment/mandrel/ANTIGRAVITY_SETUP.md` for complete Antigravity setup instructions
+- Configuration format is the same as Cursor (MCP JSON-RPC over HTTP)
+- **Important:** Use port `8082` (bridge), not `8081` (direct API)
+
+**Deployment:** See `deployment/mandrel/README.md` for full setup instructions
+
+### Build-Time Patches
+
+**Redis Configuration Patch:**
+- Mandrel has a hardcoded Redis `localhost` configuration that breaks in Docker
+- **Solution:** Build-time patch in `deployment/mandrel/patches/apply-redis-patch.py`
+- Patch automatically applies during Docker build (see `Dockerfile.mandrel-mcp`)
+- Build will fail with clear error if patch cannot be applied
+- This patch is required for Mandrel to work in Docker environments
+
+**Patch Details:**
+- Modifies `src/services/queueManager.ts` to read Redis host/port from `REDIS_URL` environment variable
+- Patch is applied during Docker build, not at runtime
+- See `deployment/mandrel/patches/apply-redis-patch.py` for implementation
+
+### When to Update Documentation
+
+- **Tool definitions:** New tools are auto-discovered via API - no code changes needed
+- **JSON files:** Update `mcps/mandrel/tools/*.json` only if you want better IDE autocomplete
+- **AGENTS.md:** Update when tool usage patterns change significantly or new important tools are added
+- **USER_GUIDE.md:** Update when usage workflows or best practices change
+
+## Supabase MCP Server - Database & Project Management
+
+### Overview
+
+The Supabase MCP server connects AI assistants directly to Supabase projects, enabling database operations, schema management, project configuration, and more through natural language commands.
+
+**What It Does:**
+- Executes SQL queries and manages database schema
+- Lists tables, extensions, and migrations
+- Generates TypeScript types from database schema
+- Manages Supabase projects and organizations
+- Deploys Edge Functions
+- Searches Supabase documentation
+- Retrieves logs and debugging information
+- Manages database branches (experimental, paid plans)
+
+**Deployment:**
+- Runs locally via `npx` (STDIO transport)
+- Uses Supabase Personal Access Token (PAT) for authentication
+- No server deployment required - runs as a local process
+- Package: `@supabase/mcp-server-supabase@latest`
+
+**Documentation:**
+- **Official Docs:** https://supabase.com/docs/guides/getting-started/mcp
+- **GitHub:** https://github.com/supabase-community/supabase-mcp
+- **NPM Package:** https://www.npmjs.com/package/@supabase/mcp-server-supabase
+
+### Configuration
+
+**MCP Server Setup:**
+The Supabase MCP server is configured in `C:\Users\cream\.cursor\mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "supabase-mcp-server": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "sbp_50532c868f4e84b74d4c9aebc6d8db5f645d6600"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+**Authentication:**
+- Uses Supabase Personal Access Token (PAT) passed via `--access-token` argument
+- Token provides access to Supabase projects and resources
+- **Security:** Token is stored in local config file (not committed to repo)
+- Token can be generated at: https://supabase.com/dashboard/account/tokens
+
+**For Antigravity/VS Code:**
+- Same configuration format as Cursor
+- Configure in `C:\Users\cream\.gemini\antigravity\mcp_config.json` (or equivalent)
+- Restart Antigravity after configuration changes
+
+### Available Tools (20+ tools)
+
+**Account Management** (when not project-scoped):
+- `list_projects` - Lists all Supabase projects
+- `get_project` - Gets details for a project
+- `create_project` - Creates a new Supabase project
+- `pause_project` - Pauses a project
+- `restore_project` - Restores a project
+- `list_organizations` - Lists all organizations
+- `get_organization` - Gets organization details
+- `get_cost` - Gets cost of new project/branch
+- `confirm_cost` - Confirms understanding of costs
+
+**Database Operations:**
+- `list_tables` - Lists all tables within specified schemas
+- `list_extensions` - Lists all database extensions
+- `list_migrations` - Lists all migrations in database
+- `apply_migration` - Applies SQL migration to database (DDL operations)
+- `execute_sql` - Executes raw SQL queries (DML operations)
+
+**Development Tools:**
+- `get_project_url` - Gets API URL for project
+- `get_publishable_keys` - Gets anonymous API keys (anon + publishable keys)
+- `generate_typescript_types` - Generates TypeScript types from database schema
+
+**Edge Functions:**
+- `list_edge_functions` - Lists all Edge Functions
+- `get_edge_function` - Retrieves Edge Function file contents
+- `deploy_edge_function` - Deploys Edge Function to project
+
+**Debugging:**
+- `get_logs` - Gets logs by service type (api, postgres, edge functions, auth, storage, realtime)
+- `get_advisors` - Gets advisory notices (security vulnerabilities, performance issues)
+
+**Knowledge Base:**
+- `search_docs` - Searches Supabase documentation
+
+**Branching** (Experimental, requires paid plan):
+- `create_branch` - Creates development branch with migrations
+- `list_branches` - Lists all development branches
+- `delete_branch` - Deletes a development branch
+- `merge_branch` - Merges migrations and edge functions to production
+- `reset_branch` - Resets branch migrations to prior version
+- `rebase_branch` - Rebases branch on production to handle migration drift
+
+**Storage** (disabled by default):
+- `list_storage_buckets` - Lists all storage buckets
+- `get_storage_config` - Gets storage configuration
+- `update_storage_config` - Updates storage configuration (paid plan)
+
+### Usage Workflow
+
+**Querying Database:**
+1. Use `list_tables` to see available tables
+2. Use `execute_sql` to run SELECT queries
+3. Use `list_migrations` to see schema history
+4. Use `generate_typescript_types` to get type definitions
+
+**Schema Management:**
+1. Use `apply_migration` for DDL operations (CREATE TABLE, ALTER TABLE, etc.)
+2. Use `list_extensions` to see installed extensions
+3. Use `list_migrations` to track schema changes
+
+**Development:**
+1. Use `get_project_url` and `get_publishable_keys` for API configuration
+2. Use `generate_typescript_types` to sync database types with code
+3. Use `deploy_edge_function` to deploy serverless functions
+
+**Debugging:**
+1. Use `get_logs` to check service logs
+2. Use `get_advisors` to check for security/performance issues
+
+**Documentation:**
+1. Use `search_docs` to find Supabase documentation
+
+### Security Best Practices
+
+**⚠️ CRITICAL SECURITY NOTES:**
+
+1. **Never connect to production data** - Use development/test projects only
+2. **Use read-only mode when possible** - Prevents accidental writes
+3. **Project scoping recommended** - Limit access to specific project
+4. **Review tool calls** - Always review SQL and operations before execution
+5. **Don't expose to customers** - This is a developer tool, not for end users
+
+**Read-Only Mode:**
+- Can be enabled via URL parameter (for hosted version)
+- For local/npx version, ensure proper database permissions
+- Executes queries as read-only Postgres user
+
+**Project Scoping:**
+- Limits access to specific Supabase project
+- Prevents access to other projects in organization
+- Recommended for security
+
+**Feature Groups:**
+- Can disable specific tool groups to reduce attack surface
+- Available groups: `account`, `docs`, `database`, `debugging`, `development`, `functions`, `storage`, `branching`
+
+### Update Workflow
+
+**Automatic Updates:**
+- Uses `@latest` in npx command, so updates automatically on each run
+- No manual update process required
+- New tools become available automatically
+
+**Version Pinning (if needed):**
+- Can pin to specific version: `@supabase/mcp-server-supabase@0.6.1`
+- Check npm for latest version: https://www.npmjs.com/package/@supabase/mcp-server-supabase
+
+### Troubleshooting
+
+**Connection Issues:**
+- Verify `npx` is available in PATH
+- Check access token is valid (generate new one if needed)
+- Verify token has necessary permissions
+
+**Tool Not Found:**
+- Ensure latest version is installed (uses `@latest`)
+- Check tool name matches exactly (case-sensitive)
+- Some tools require paid plans (e.g., branching features)
+
+**SQL Execution Errors:**
+- Review SQL syntax before execution
+- Check database permissions for user
+- Verify table/schema names are correct
+
+### When to Use
+
+**Good Use Cases:**
+- Querying database schema and data
+- Generating TypeScript types from schema
+- Managing database migrations
+- Debugging with logs and advisors
+- Searching Supabase documentation
+- Deploying Edge Functions
+
+**Avoid Using For:**
+- Production data access (use development projects)
+- Customer-facing features (developer tool only)
+- Sensitive data operations without proper security review

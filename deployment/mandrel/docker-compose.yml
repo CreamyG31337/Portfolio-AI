@@ -6,13 +6,13 @@
 # Prerequisites:
 # 1. PostgreSQL with pgvector extension (create mandrel_dev database first)
 # 2. Docker and Docker Compose installed
-# 3. bridge-ipv6 network exists (or remove network config for default)
+# 3. PROD network exists (PostgreSQL container is on this network)
 #
 # Usage:
 #   docker-compose up -d
 #
 # Verify:
-#   curl http://localhost:8080/health
+#   curl http://localhost:8081/health
 
 version: '3.8'
 
@@ -44,11 +44,11 @@ services:
     container_name: mandrel-mcp
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8081:8080"  # Host port 8081 (8080 taken by searxng), container port 8080
     environment:
-      # Database configuration - connects to host PostgreSQL
+      # Database configuration - connects to PostgreSQL container on PROD network
       DATABASE_USER: ${MANDREL_DB_USER:-postgres}
-      DATABASE_HOST: host.docker.internal
+      DATABASE_HOST: postgres-17.5  # Connect via Docker network (PROD)
       DATABASE_NAME: ${MANDREL_DB_NAME:-mandrel_dev}
       DATABASE_PASSWORD: ${MANDREL_DB_PASSWORD}
       DATABASE_PORT: ${MANDREL_DB_PORT:-5432}
@@ -57,19 +57,43 @@ services:
       # Runtime configuration
       NODE_ENV: production
       LOG_LEVEL: info
+      # Embedding configuration - use 384D to match local model and schema
+      EMBEDDING_TARGET_DIMENSIONS: "384"
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - mandrel-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - PROD  # Connect to PROD network to access PostgreSQL container
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # MCP HTTP Bridge - Converts MCP JSON-RPC 2.0 to Mandrel REST API
+  mcp-bridge:
+    build:
+      context: ./mcp-bridge
+      dockerfile: Dockerfile
+    container_name: mandrel-mcp-bridge
+    restart: unless-stopped
+    ports:
+      - "8082:8080"  # Host port 8082, container port 8080
+    environment:
+      - MANDREL_BASE_URL=http://mandrel-mcp:8080
+      - PORT=8080
+    depends_on:
+      - mandrel-mcp
+    networks:
+      - mandrel-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   redis_data:
@@ -78,3 +102,5 @@ volumes:
 networks:
   mandrel-network:
     driver: bridge
+  PROD:
+    external: true  # Use existing PROD network where PostgreSQL container runs

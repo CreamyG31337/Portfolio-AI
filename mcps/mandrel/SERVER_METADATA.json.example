@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mandrel": {
+      "url": "http://your-server:8082",
+      "transport": "http"
+    }
+  }
+}
