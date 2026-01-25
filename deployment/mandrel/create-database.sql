@@ -7,8 +7,8 @@
 --   docker exec -i postgres-17.5 psql -U x7k9pQzW3vT2 -f - < create-database.sql
 --
 -- Or run commands directly:
---   docker exec postgres-17.5 psql -U x7k9pQzW3vT2 -c "CREATE DATABASE mandrel_dev;"
---   docker exec postgres-17.5 psql -U x7k9pQzW3vT2 -d mandrel_dev -c "CREATE EXTENSION IF NOT EXISTS vector;"
+--   docker exec postgres-17.5 psql -U your_postgres_user -c "CREATE DATABASE mandrel_dev;"
+--   docker exec postgres-17.5 psql -U your_postgres_user -d mandrel_dev -c "CREATE EXTENSION IF NOT EXISTS vector;"
 -- ============================================================
 
 -- Create the database
