@@ -9,6 +9,7 @@ These mirror the functionality in streamlit_utils.py but work in Flask context.
 import logging
 from typing import List, Dict, Any, Optional
 import pandas as pd
+import numpy as np
 from datetime import datetime
 
 from supabase_client import SupabaseClient
@@ -295,24 +296,38 @@ def calculate_performance_metrics_flask(fund: Optional[str] = None) -> Dict[str,
                 'total_invested': 0.0
             }
         
-        # Calculate current value and total invested from positions
-        current_value = 0.0
-        total_cost = 0.0
+        # Calculate current value and total invested from positions (Vectorized)
         
-        for _, row in positions_df.iterrows():
-            shares = float(row.get('shares', 0))
-            # Use correct column names from latest_positions view
-            current_price = float(row.get('current_price', row.get('price', 0)))
-            
-            # Current value (shares * current_price, or use market_value directly)
-            position_value = float(row.get('market_value', 0) or 0)
-            if position_value == 0:
-                position_value = shares * current_price
-            current_value += position_value
-            
-            # Cost basis - use cost_basis directly from the view (it's already the total, not per-share)
-            cost_basis = float(row.get('cost_basis', 0) or 0)
-            total_cost += cost_basis
+        # Ensure Series handling for missing values/columns
+        # Using get() on DataFrame returns None if column missing, need fallback
+        shares = positions_df.get('shares', pd.Series(0, index=positions_df.index)).fillna(0).astype(float)
+
+        # Determine price column to use
+        if 'current_price' in positions_df.columns:
+            current_price_series = positions_df['current_price']
+        elif 'price' in positions_df.columns:
+            current_price_series = positions_df['price']
+        else:
+            current_price_series = pd.Series(0, index=positions_df.index)
+
+        current_price = current_price_series.fillna(0).astype(float)
+
+        # Market value handling
+        market_value = positions_df.get('market_value', pd.Series(0, index=positions_df.index)).fillna(0).astype(float)
+
+        # Vectorized calculation: Use market_value if available, else shares * price
+        # Using numpy.where is faster than Series.where or apply
+        calculated_value = shares * current_price
+
+        # Note: If market_value is exactly 0, fallback to calculation (matches original logic)
+        # Original: if position_value == 0: position_value = shares * current_price
+        final_values = np.where(market_value != 0, market_value, calculated_value)
+
+        current_value = float(final_values.sum())
+
+        # Cost basis handling
+        cost_basis = positions_df.get('cost_basis', pd.Series(0, index=positions_df.index)).fillna(0).astype(float)
+        total_cost = float(cost_basis.sum())
         
         # Calculate total return percentage
         total_return_pct = ((current_value - total_cost) / total_cost * 100) if total_cost > 0 else 0.0
@@ -391,7 +406,6 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
             
         import time
         from datetime import datetime, timedelta, timezone
-        import numpy as np
         
         # Calculate date cutoff
         cutoff_date = None
