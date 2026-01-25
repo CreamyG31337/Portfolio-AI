@@ -134,6 +134,9 @@ class WebAICookieClientLegacy:
         """
         Try to discover Gemini's API endpoint by inspecting the main page.
         
+        NOTE: This is a LEGACY/EXPERIMENTAL method that uses regex parsing of HTML.
+        This approach is brittle and may break if the external service changes its frontend.
+        
         Returns:
             API endpoint URL if found, None otherwise
         """
@@ -160,10 +163,22 @@ class WebAICookieClientLegacy:
                     logger.info(f"Found potential API endpoint: {matches[0]}")
                     return matches[0]
             
+            # If no patterns matched, the frontend layout may have changed
+            logger.warning(
+                "⚠️  Could not discover API endpoint using regex patterns. "
+                "The external service's frontend layout may have changed. "
+                "This is a known limitation of the legacy cookie-based client."
+            )
             return None
             
+        except requests.RequestException as e:
+            logger.error(f"Network error while discovering API endpoint: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Failed to discover API endpoint: {e}")
+            logger.error(
+                f"Unexpected error while discovering API endpoint: {e}. "
+                "The external service's frontend layout may have changed."
+            )
             return None
     
     def query(self, prompt: str, model: str = "gemini-pro") -> Optional[str]:

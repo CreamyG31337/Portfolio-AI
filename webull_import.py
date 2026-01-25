@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 
 # Add the project root to the Python path
+# NOTE: This script modifies sys.path to allow importing from utils.
+# This is acceptable for a root-level utility script, but requires running from project root.
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.webull_importer import import_webull_data

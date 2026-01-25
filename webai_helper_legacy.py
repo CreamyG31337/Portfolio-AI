@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 
 # Add web_dashboard to path
+# NOTE: This script modifies sys.path to allow importing from web_dashboard.
+# This is acceptable for a root-level utility script, but requires running from project root.
 project_root = Path(__file__).parent
 web_dashboard_path = project_root / 'web_dashboard'
 
