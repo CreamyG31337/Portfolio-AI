@@ -22,3 +22,18 @@ This provides defense-in-depth through visibility and accountability rather than
 1. Audit all routes starting with `/debug` or containing "debug" in the name.
 2. Use restrictive defaults (deny all) and explicitly grant access only when necessary.
 3. If a debug endpoint is needed for non-admins, ensure it returns sanitized data and no internal stack traces or DB errors.
+
+## 2026-01-25 - Hardcoded Secret Key Fallbacks
+**Sentinel PR:** `sentinel/fix-hardcoded-secrets-fallback-641220019199152828` - MERGED
+**Vulnerability:** The application had hardcoded fallback values for critical secrets (`FLASK_SECRET_KEY` and `JWT_SECRET`) with predictable values like `"your-secret-key-change-this"`. These defaults were used whenever environment variables were not set, allowing attackers who could see the source code to forge session tokens and JWT tokens.
+**Learning:** Hardcoded fallback secrets are a common security anti-pattern. Even if intended only for development, they create a vulnerability if environment variables are not properly configured in production. Predictable secrets visible in source code can be exploited by attackers.
+**Solution Implemented:**
+- Removed all hardcoded fallback secrets
+- Generate cryptographically secure random secrets using `secrets.token_hex(32)` (256 bits of entropy) if environment variables are not set
+- Added warning logs when secrets are auto-generated to alert developers
+- Sessions are invalidated on restart if secrets aren't configured (documented in warnings)
+**Prevention:**
+1. Never use hardcoded fallback secrets - always generate random secrets if env vars aren't set
+2. Use cryptographically secure random generation (Python's `secrets` module)
+3. Log warnings when secrets are auto-generated to ensure proper configuration in production
+4. Document the requirement for environment variables in deployment guides
