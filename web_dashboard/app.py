@@ -56,7 +56,13 @@ app = Flask(__name__,
             template_folder='templates',
             static_folder='static',
             static_url_path='/assets')
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "your-secret-key-change-this")
+
+# Securely handle FLASK_SECRET_KEY
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
+if not app.secret_key:
+    import secrets
+    logger.warning("FLASK_SECRET_KEY not set. Generating a random secret. Sessions will be invalidated on restart.")
+    app.secret_key = secrets.token_hex(32)
 
 # Apply ProxyFix middleware for proper HTTPS detection behind reverse proxy (Nginx/Docker)
 # This makes request.is_secure work correctly when behind a load balancer
@@ -152,7 +158,14 @@ except ImportError:
     cache = None
 
 # Set JWT secret for auth system
-os.environ["JWT_SECRET"] = os.getenv("JWT_SECRET", "your-jwt-secret-change-this")
+jwt_secret = os.getenv("JWT_SECRET")
+if not jwt_secret:
+    import secrets
+    # Only log warning if not already set (avoid duplicate logs if app reloads)
+    if "JWT_SECRET" not in os.environ:
+        logger.warning("JWT_SECRET not set. Generating a random secret. Sessions will be invalidated on restart.")
+    jwt_secret = secrets.token_hex(32)
+    os.environ["JWT_SECRET"] = jwt_secret
 
 # NOTE: CONTEXT_DATA_CACHE removed - now using flask_cache_utils.cache_data() decorator
 # See _get_context_data_packet() function for cached context building
