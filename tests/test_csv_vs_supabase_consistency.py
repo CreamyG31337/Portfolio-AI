@@ -581,17 +581,18 @@ class TestDualWriteConsistency:
     def test_repository_factory_dual_write_creation(self):
         """Test that RepositoryFactory can create dual-write repositories."""
         # Create dual-write repository using factory
-        coordinator = RepositoryFactory.create_dual_write_repository(
+        repository = RepositoryFactory.create_dual_write_repository(
             fund_name=self.test_fund,
             data_directory=str(self.test_data_dir)
         )
         
-        # Verify it's a WriteCoordinator
-        assert isinstance(coordinator, WriteCoordinator)
+        # Verify it's a DualWriteRepository (factory returns DualWriteRepository, not WriteCoordinator)
+        from data.repositories.dual_write_repository import DualWriteRepository
+        assert isinstance(repository, DualWriteRepository)
         
         # Verify it has both repositories
-        assert coordinator.csv_repo is not None
-        assert coordinator.supabase_repo is not None
+        assert repository.csv_repo is not None
+        assert repository.supabase_repo is not None
         
         # Test basic functionality
         test_trade = Trade(
@@ -603,8 +604,15 @@ class TestDualWriteConsistency:
             timestamp=datetime.now(timezone.utc),
         )
         
-        result = coordinator.save_trade(test_trade)
-        assert result.any_successful, "At least one write should succeed"
+        # DualWriteRepository.save_trade() doesn't return a result, it raises on failure
+        # If it succeeds, the trade should be in both repositories
+        repository.save_trade(test_trade)
+        
+        # Verify trade was saved to both repositories
+        csv_trades = repository.csv_repo.get_trade_history()
+        supabase_trades = repository.supabase_repo.get_trade_history()
+        assert len(csv_trades) >= 1, "Trade should be saved to CSV"
+        assert len(supabase_trades) >= 1, "Trade should be saved to Supabase"
 
 
 class TestDataIntegrityValidation:
