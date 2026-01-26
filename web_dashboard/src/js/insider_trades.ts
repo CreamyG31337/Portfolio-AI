@@ -401,12 +401,16 @@ function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
     gridDiv.setAttribute("data-initialized", "true");
 
     if (gridApi && gridColumnApi) {
+        gridApi.addEventListener("gridSizeChanged", () => {
+            gridApi?.sizeColumnsToFit();
+        });
         gridApi.addEventListener("firstDataRendered", () => {
             setTimeout(() => {
                 const columns = gridColumnApi?.getAllDisplayedColumns() || [];
                 const columnIds = columns.map((col: any) => col.getColId()).filter(Boolean);
                 if (columnIds.length > 0) {
                     gridColumnApi?.autoSizeColumns(columnIds, false);
+                    gridApi?.sizeColumnsToFit();
                 }
             }, 300);
         });
@@ -417,6 +421,7 @@ function renderStats(trades: InsiderTrade[]): void {
     let purchaseVolume = 0;
     let saleVolume = 0;
     let largestTrade = 0;
+    const uniqueDates = new Set<string>();
     const tickerCounts = new Map<string, number>();
 
     for (const trade of trades) {
@@ -430,6 +435,13 @@ function renderStats(trades: InsiderTrade[]): void {
 
         if (value > largestTrade) {
             largestTrade = value;
+        }
+
+        if (trade.transaction_date) {
+            const dateKey = trade.transaction_date.split("T")[0];
+            if (dateKey) {
+                uniqueDates.add(dateKey);
+            }
         }
 
         const ticker = getTradeTicker(trade);
@@ -457,6 +469,7 @@ function renderStats(trades: InsiderTrade[]): void {
     setText("stat-total-trades", trades.length.toString());
     setText("stat-purchase-volume", formatCurrency(purchaseVolume, true));
     setText("stat-sale-volume", formatCurrency(saleVolume, true));
+    setText("stat-total-days", formatNumber(uniqueDates.size));
     setText("stat-most-active", mostActiveTicker);
     setText("stat-largest-trade", formatCurrency(largestTrade, true));
 }
@@ -560,7 +573,7 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
     const themeLayout = getPlotlyThemeLayout();
     const layout = {
         ...themeLayout,
-        margin: { l: 140, r: 10, t: 10, b: 30 },
+        margin: { l: 200, r: 10, t: 10, b: 30 },
         xaxis: { ...(themeLayout.xaxis || {}), dtick: 1 },
         yaxis: { ...(themeLayout.yaxis || {}) }
     };

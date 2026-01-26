@@ -153,7 +153,7 @@
 <!-- Summary Statistics -->
 <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
     <h2 class="text-xl font-bold mb-4 text-text-primary">📊 Summary Statistics</h2>
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div class="bg-dashboard-surface-alt rounded-lg p-4">
             <div id="stat-total-trades" class="text-2xl font-bold text-text-primary">0</div>
             <div class="text-sm text-text-secondary">Total Trades</div>
@@ -167,6 +167,10 @@
             <div class="text-sm text-text-secondary">Sale Volume</div>
         </div>
         <div class="bg-dashboard-surface-alt rounded-lg p-4">
+            <div id="stat-total-days" class="text-2xl font-bold text-text-primary">0</div>
+            <div class="text-sm text-text-secondary">Days of Data</div>
+        </div>
+        <div class="bg-dashboard-surface-alt rounded-lg p-4">
             <div id="stat-most-active" class="text-lg font-bold text-text-primary">-</div>
             <div class="text-sm text-text-secondary">Most Active Ticker</div>
         </div>
@@ -178,16 +182,16 @@
 </div>
 
 <!-- Charts -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border">
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border lg:col-span-1">
         <h3 class="text-sm font-semibold text-text-primary mb-3">Daily Transaction Volume</h3>
         <div id="insider-volume-chart" class="h-[260px]"></div>
     </div>
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border lg:col-span-2">
         <h3 class="text-sm font-semibold text-text-primary mb-3">Top 10 Active Insiders</h3>
         <div id="insider-top-insiders-chart" class="h-[260px]"></div>
     </div>
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border lg:col-span-1">
         <h3 class="text-sm font-semibold text-text-primary mb-3">Purchase vs Sale Distribution</h3>
         <div id="insider-type-distribution-chart" class="h-[260px]"></div>
     </div>
