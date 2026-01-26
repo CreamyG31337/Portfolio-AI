@@ -168,6 +168,18 @@ class MockDatabaseRepository(BaseRepository):
             issues.append("Duplicate trade IDs found")
         
         return issues
+    
+    def update_ticker_in_future_snapshots(self, ticker: str, trade_timestamp: datetime) -> None:
+        """Update ticker in future snapshots (mock implementation)."""
+        # For mock repository, just update positions in snapshots after trade timestamp
+        for snapshot in self.portfolios:
+            if snapshot.timestamp > trade_timestamp:
+                # Update positions for this ticker in future snapshots
+                # This is a simplified mock - real implementation would recalculate using FIFO
+                for position in snapshot.positions:
+                    if position.ticker == ticker:
+                        # Mock: just mark as updated
+                        pass
 
 
 class TestDataModelSerialization(unittest.TestCase):

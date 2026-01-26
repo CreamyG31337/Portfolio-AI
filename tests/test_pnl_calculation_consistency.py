@@ -41,13 +41,51 @@ class TestPnLCalculationConsistency:
         import uuid
         self.test_fund = f"TEST_{uuid.uuid4().hex[:8]}"
         
+        # Create fund in Supabase if credentials are available
+        try:
+            from supabase import create_client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                # Create fund
+                supabase.table("funds").insert({
+                    "name": self.test_fund,
+                    "description": "Test fund for PnL consistency tests",
+                    "currency": "CAD",
+                    "fund_type": "investment"
+                }).execute()
+                # Initialize cash balances
+                supabase.table("cash_balances").upsert([
+                    {"fund": self.test_fund, "currency": "CAD", "amount": 0},
+                    {"fund": self.test_fund, "currency": "USD", "amount": 0}
+                ]).execute()
+        except Exception as e:
+            # If Supabase isn't available, tests will skip or fail gracefully
+            pass
+        
         yield
         
-        # Cleanup
+        # Cleanup - try to delete fund from Supabase
+        try:
+            from supabase import create_client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                # Delete fund (cascade will clean up related data)
+                supabase.table("funds").delete().eq("name", self.test_fund).execute()
+        except Exception:
+            # Ignore cleanup errors
+            pass
+        
+        # Cleanup CSV test directory
         if self.test_data_dir.exists():
             try:
                 shutil.rmtree(self.test_data_dir)
-            except PermissionError:
+            except (PermissionError, OSError):
                 # Windows sometimes has permission issues with temp files
                 pass
     
