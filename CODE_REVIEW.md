@@ -1,50 +1,64 @@
-# Code Review for Commit 0e98376
+# Code Review for Commit f44e89d
 
-**Commit:** `0e98376`
+**Commit:** `f44e89d23d465584f91a5557c9e6e96e83694512`
 **Author:** Lance Colton
-**Date:** Today (approx. 1 hour ago)
-**Message:** "Fix syntax error in ticker_analysis_job function by removing extra colon in for loop"
+**Date:** Mon Jan 26 02:36:05 2026 -0800
+**Subject:** style: Adjust insider trades chart layout and improve y-axis settings
 
-## 1. Summary
-The commit message significantly understates the scope of the changes. While it correctly identifies a syntax fix in `web_dashboard/scheduler/jobs_ticker_analysis.py`, the commit also introduces several new files and appears to include a large number of other files (possibly a merge or initial commit context).
+## Overview
+The commit addresses layout issues in the insider trades dashboard, specifically focusing on the "Top 10 Active Insiders" chart and general chart margins. The changes align with the commit message, implementing fixed margins and disabling auto-margins for better control over the presentation of long insider names.
 
-This review focuses on the explicitly changed/added files identified during inspection:
-1.  `web_dashboard/scheduler/jobs_ticker_analysis.py` (The fix)
-2.  `webai_helper_legacy.py` (New script)
-3.  `webull_import.py` (New script)
-4.  `web_dashboard/webai_cookie_client_legacy.py` (New module)
+## Detailed Findings
 
-## 2. Detailed Findings
+### 1. `web_dashboard/src/js/insider_trades.ts`
 
-### A. `web_dashboard/scheduler/jobs_ticker_analysis.py`
-**Status:** ✅ Fixed
--   **Verification:** The syntax error (extra colon in `for` loop) mentioned in the commit message has been resolved. The code `for ticker, priority in tickers:` is syntactically correct.
--   **Quality:** The function structure is sound, with appropriate logging, error handling, and resource management (clients are initialized inside the job).
+#### **Dead Code: Unused `wrapLabel` function**
+In the `renderTopInsidersChart` function, a helper function `wrapLabel` is defined to handle text wrapping for long labels.
 
-### B. `webai_helper_legacy.py`
-**Status:** ⚠️ Needs Improvement
--   **Purpose:** A CLI wrapper for `WebAICookieClientLegacy`.
--   **Issues:**
-    -   **Path Manipulation:** The script modifies `sys.path` to include `web_dashboard`. This makes assumptions about the directory structure.
-    -   **Hardcoded Filenames:** references `webai_cookies.json` directly.
--   **Recommendation:** Move this script into a `scripts/` directory or make it a proper module entry point to avoid root-level clutter and path hacking.
+```typescript
+    const wrapLabel = (label: string, maxLineLength: number, maxLines: number): string => {
+        // ... implementation ...
+    };
 
-### C. `webull_import.py`
-**Status:** ✅ Good
--   **Purpose:** CLI for importing Webull data.
--   **Quality:** Uses `argparse` effectively. Provides a dry-run mode (preview), which is excellent for data import operations. Good user feedback via console output helpers.
--   **Minor Note:** Like the helper above, it modifies `sys.path` to import `utils`. This is acceptable for a root-level utility script but indicates potential for packaging improvements.
+    // Use full names without truncation - let automargin handle sizing
+    const labels = top.map(([name]) => name);
+```
 
-### D. `web_dashboard/webai_cookie_client_legacy.py`
-**Status:** ⚠️ Experimental / Fragile
--   **Purpose:** Interacts with Gemini via browser cookies.
--   **Risks:**
-    -   **Fragility:** The `_discover_api_endpoint` method relies on regex parsing of HTML (`<script>` tags), which will break if the external service changes its frontend code.
-    -   **Hardcoded Endpoints:** The list of `api_endpoints` is hardcoded and may become obsolete.
-    -   **Incomplete Features:** The `_query_via_web_interface` method is a placeholder and notes it requires complex JS execution.
-    -   **Security:** Ensure `webai_cookies.json` is added to `.gitignore` to prevent accidental commit of session credentials. The logs should be monitored to ensure no sensitive cookie data is printed in plain text (current logging seems safe, printing "Loaded cookies from..." without content).
+**Observation:** The `wrapLabel` function is never called. The code explicitly uses `top.map(([name]) => name)` which passes the full name directly.
+**Recommendation:** Remove the `wrapLabel` function to clean up the codebase, or utilize it if the intention was to wrap long names instead of relying on the large left margin.
 
-## 3. Recommendations
-1.  **Commit Hygiene:** Future commits should separate fixes (like the syntax error) from new features (like the WebAI helper). The commit message should accurately reflect *all* changes.
-2.  **Security:** Verify `webai_cookies.json` is in `.gitignore`.
-3.  **Refactoring:** Consider consolidating root-level scripts into a `scripts/` or `bin/` directory.
+#### **Stale Comment / Contradiction**
+The comment immediately following the unused function says:
+```typescript
+    // Use full names without truncation - let automargin handle sizing
+```
+However, the layout configuration explicitly disables `automargin`:
+```typescript
+    yaxis: {
+        ...(themeLayout.yaxis || {}),
+        automargin: false,  // <--- Contradicts comment
+        tickmode: "linear",
+        tickfont: { size: 11 }
+    }
+```
+**Observation:** The comment implies that Plotly's `automargin` feature is relied upon, but the code disables it in favor of a fixed left margin (`margin: { l: 280, ... }`).
+**Recommendation:** Update the comment to reflect the actual strategy (e.g., "// Use full names; relying on fixed left margin of 280px").
+
+#### **Hardcoded Margins**
+The chart layout uses a fixed left margin of `280px`:
+```typescript
+    margin: { l: 280, r: 20, t: 10, b: 30 },
+```
+**Observation:** While this likely accommodates most names, extremely long names might still be cut off.
+**Recommendation:** Verify if `280px` is sufficient for the longest expected data. If `wrapLabel` was intended to solve this, consider reinstating it. Otherwise, this approach is acceptable for a "style adjustment" but less robust than a dynamic solution.
+
+### 2. `web_dashboard/templates/insider_trades.html`
+
+**Observation:** The height of the top insiders chart container was set to `h-[300px]`.
+```html
+<div id="insider-top-insiders-chart" class="h-[300px]"></div>
+```
+**Assessment:** This looks correct and aligns with the goal of improving visibility.
+
+## Summary
+The changes successfully implement the visual style adjustments requested. However, the cleanup of unused code (`wrapLabel`) and updating of comments in `insider_trades.ts` is recommended to maintain code quality.
