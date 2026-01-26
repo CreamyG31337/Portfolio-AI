@@ -4460,7 +4460,6 @@ def insider_trades_page():
                                  **nav_context)
 
         cache_version = get_cache_version()
-        unique_tickers = get_unique_tickers_insider(supabase_client, refresh_key, cache_version)
         unique_insiders = get_unique_insider_names(supabase_client, refresh_key, cache_version)
 
         # Date filter defaults to last 7 days
@@ -4498,10 +4497,10 @@ def insider_trades_page():
                              user_email=user_email,
                              user_theme=user_theme,
                              refresh_key=refresh_key,
-                             unique_tickers=unique_tickers,
                              unique_insiders=unique_insiders,
                              newest_timestamp=latest_created_at or "N/A",
-                             current_tickers=request.args.getlist("ticker"),
+                             current_fund=request.args.get("fund", ""),
+                             current_fund_only=request.args.get("fund_only") == "true",
                              current_type=request.args.get("type", "All"),
                              current_insider_name=request.args.get("insider_name", ""),
                              current_min_value=request.args.get("min_value", ""),
@@ -4557,6 +4556,8 @@ def api_insider_trades_data():
         use_date_filter = request.args.get("use_date_filter") == "true"
         start_date = request.args.get("start_date") if use_date_filter else None
         end_date = request.args.get("end_date") if use_date_filter else None
+        fund_only = request.args.get("fund_only") == "true"
+        selected_fund = request.args.get("fund")
 
         min_value = None
         if min_value_raw:
@@ -4578,6 +4579,22 @@ def api_insider_trades_data():
             sort_by=sort_by,
             _cache_version=cache_version
         )
+
+        if fund_only and selected_fund and selected_fund.lower() != "all":
+            from flask_data_utils import get_current_positions_flask
+
+            positions_df = get_current_positions_flask(fund=selected_fund)
+            if positions_df.empty or "ticker" not in positions_df.columns:
+                all_trades = []
+            else:
+                fund_tickers = {
+                    str(ticker).strip().upper()
+                    for ticker in positions_df["ticker"].dropna().unique()
+                }
+                all_trades = [
+                    trade for trade in all_trades
+                    if str(trade.get("ticker", "")).strip().upper() in fund_tickers
+                ]
 
         def _to_float(value: Any) -> Optional[float]:
             if value is None:

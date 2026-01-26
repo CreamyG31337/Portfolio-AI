@@ -80,7 +80,6 @@ let latestTrades: InsiderTrade[] = [];
 
 const failedLogoCache = new Set<string>();
 const darkThemes = new Set(["dark", "midnight-tokyo", "abyss"]);
-const fundTickerCache = new Map<string, Set<string>>();
 
 function getCurrentTheme(): string {
     const themeManager = (window as any).themeManager;
@@ -283,14 +282,6 @@ function getTradeValue(trade: InsiderTrade): number {
 
 function getTradeTicker(trade: InsiderTrade): string {
     return trade.ticker || "N/A";
-}
-
-function normalizeTicker(value: string | null | undefined): string {
-    if (!value) return "";
-    return value
-        .replace(/\s+/g, "")
-        .replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, "")
-        .toUpperCase();
 }
 
 function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
@@ -671,49 +662,22 @@ function getSelectedFund(): string | null {
     return selected || null;
 }
 
-async function loadFundTickers(fund: string): Promise<Set<string> | null> {
-    const normalizedFund = fund.trim();
-    if (!normalizedFund || normalizedFund.toLowerCase() === "all") {
-        return null;
-    }
-
-    const cached = fundTickerCache.get(normalizedFund);
-    if (cached) {
-        return cached;
-    }
-
-    try {
-        const response = await fetch(`/api/portfolio?fund=${encodeURIComponent(normalizedFund)}`);
-        if (!response.ok) {
-            throw new Error(`Failed to load fund tickers: ${response.status}`);
-        }
-        const payload = await response.json();
-        const positions = Array.isArray(payload?.positions) ? payload.positions : [];
-        const tickers = new Set<string>();
-        for (const position of positions) {
-            const ticker = normalizeTicker(position?.ticker);
-            if (ticker) {
-                tickers.add(ticker);
-            }
-        }
-        fundTickerCache.set(normalizedFund, tickers);
-        return tickers;
-    } catch (error) {
-        console.warn("[InsiderTrades] Failed to load fund tickers:", error);
-        return null;
-    }
-}
-
-function updateNotableFundFilterState(): void {
-    const checkbox = document.getElementById("notable-fund-only") as HTMLInputElement | null;
-    const hint = document.getElementById("notable-fund-hint");
-    const label = document.getElementById("notable-fund-filter");
-    if (!checkbox || !hint || !label) {
-        return;
-    }
+function updateFundFilterState(): void {
+    const checkbox = document.getElementById("fund-only-filter") as HTMLInputElement | null;
+    const hint = document.getElementById("fund-only-filter-hint");
+    const label = document.getElementById("fund-only-filter-label");
+    const hiddenInput = document.getElementById("fund-filter") as HTMLInputElement | null;
 
     const fund = getSelectedFund();
     const enabled = Boolean(fund && fund.toLowerCase() !== "all");
+
+    if (hiddenInput) {
+        hiddenInput.value = fund || "";
+    }
+
+    if (!checkbox || !hint || !label) {
+        return;
+    }
 
     checkbox.disabled = !enabled;
     if (!enabled) {
@@ -739,31 +703,8 @@ function filterRecentTrades(trades: InsiderTrade[]): InsiderTrade[] {
     });
 }
 
-async function applyNotableFilters(trades: InsiderTrade[]): Promise<InsiderTrade[]> {
-    const recentTrades = filterRecentTrades(trades);
-    const checkbox = document.getElementById("notable-fund-only") as HTMLInputElement | null;
-    if (!checkbox?.checked) {
-        return recentTrades;
-    }
-
-    const fund = getSelectedFund();
-    if (!fund || fund.toLowerCase() === "all") {
-        return recentTrades;
-    }
-
-    const fundTickers = await loadFundTickers(fund);
-    if (!fundTickers || fundTickers.size === 0) {
-        return [];
-    }
-
-    return recentTrades.filter((trade) => {
-        const ticker = normalizeTicker(trade.ticker);
-        return ticker ? fundTickers.has(ticker) : false;
-    });
-}
-
 async function renderNotableSection(): Promise<void> {
-    const notableTrades = await applyNotableFilters(latestTrades);
+    const notableTrades = filterRecentTrades(latestTrades);
     renderNotableTrades(
         notableTrades,
         "notable-purchases",
@@ -881,17 +822,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    updateNotableFundFilterState();
-
-    const notableFundOnly = document.getElementById("notable-fund-only") as HTMLInputElement | null;
-    if (notableFundOnly) {
-        notableFundOnly.addEventListener("change", () => {
-            renderNotableSection();
-        });
-    }
+    updateFundFilterState();
 
     window.addEventListener("fundChanged", () => {
-        updateNotableFundFilterState();
-        renderNotableSection();
+        updateFundFilterState();
+        const fundOnly = document.getElementById("fund-only-filter") as HTMLInputElement | null;
+        if (fundOnly?.checked) {
+            fetchTradeData();
+        }
     });
 });
