@@ -197,8 +197,23 @@
 
 <!-- Notable Trades -->
 <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
-    <h2 class="text-xl font-bold mb-4 text-text-primary">⭐ Notable Trades</h2>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+            <h2 class="text-xl font-bold text-text-primary">⭐ Notable Trades</h2>
+            <p class="text-xs text-text-secondary mt-1">Top 5 trades from the last 7 days.</p>
+        </div>
+        <div class="flex flex-col items-start gap-1">
+            <label id="notable-fund-filter" class="flex items-center text-xs text-text-secondary gap-2">
+                <input type="checkbox" id="notable-fund-only"
+                    class="h-4 w-4 rounded border-border bg-dashboard-surface-alt text-accent focus:ring-accent">
+                Only show tickers in selected fund
+            </label>
+            <p id="notable-fund-hint" class="text-xs text-text-secondary/80 hidden">
+                Select a specific fund in the sidebar to enable this filter.
+            </p>
+        </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
         <div>
             <h3 class="text-sm font-semibold text-text-primary mb-3">Top 5 Largest Purchases</h3>
             <div id="notable-purchases" class="space-y-3"></div>

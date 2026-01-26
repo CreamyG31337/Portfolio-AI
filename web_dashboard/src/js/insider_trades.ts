@@ -76,9 +76,11 @@ interface InsiderTradeApiResponse {
 let gridApi: AgGridApi | null = null;
 let gridColumnApi: AgGridColumnApi | null = null;
 let insiderTradesConfig: Record<string, any> = {};
+let latestTrades: InsiderTrade[] = [];
 
 const failedLogoCache = new Set<string>();
 const darkThemes = new Set(["dark", "midnight-tokyo", "abyss"]);
+const fundTickerCache = new Map<string, Set<string>>();
 
 function getCurrentTheme(): string {
     const themeManager = (window as any).themeManager;
@@ -281,6 +283,14 @@ function getTradeValue(trade: InsiderTrade): number {
 
 function getTradeTicker(trade: InsiderTrade): string {
     return trade.ticker || "N/A";
+}
+
+function normalizeTicker(value: string | null | undefined): string {
+    if (!value) return "";
+    return value
+        .replace(/\s+/g, "")
+        .replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, "")
+        .toUpperCase();
 }
 
 function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
@@ -607,7 +617,12 @@ function renderEmptyChart(target: HTMLElement, message: string): void {
     plotly.newPlot(target, data, layout, { displayModeBar: false });
 }
 
-function renderNotableTrades(trades: InsiderTrade[], containerId: string, type: string): void {
+function renderNotableTrades(
+    trades: InsiderTrade[],
+    containerId: string,
+    type: string,
+    emptyMessage: string
+): void {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -621,7 +636,7 @@ function renderNotableTrades(trades: InsiderTrade[], containerId: string, type: 
     if (filtered.length === 0) {
         const empty = document.createElement("div");
         empty.className = "text-sm text-text-secondary";
-        empty.textContent = "No trades found.";
+        empty.textContent = emptyMessage;
         container.appendChild(empty);
         return;
     }
@@ -647,6 +662,120 @@ function renderNotableTrades(trades: InsiderTrade[], containerId: string, type: 
         card.appendChild(details);
         container.appendChild(card);
     }
+}
+
+function getSelectedFund(): string | null {
+    const selector = document.getElementById("global-fund-select") as HTMLSelectElement | null;
+    const urlFund = new URLSearchParams(window.location.search).get("fund");
+    const selected = (selector?.value || urlFund || "").trim();
+    return selected || null;
+}
+
+async function loadFundTickers(fund: string): Promise<Set<string> | null> {
+    const normalizedFund = fund.trim();
+    if (!normalizedFund || normalizedFund.toLowerCase() === "all") {
+        return null;
+    }
+
+    const cached = fundTickerCache.get(normalizedFund);
+    if (cached) {
+        return cached;
+    }
+
+    try {
+        const response = await fetch(`/api/portfolio?fund=${encodeURIComponent(normalizedFund)}`);
+        if (!response.ok) {
+            throw new Error(`Failed to load fund tickers: ${response.status}`);
+        }
+        const payload = await response.json();
+        const positions = Array.isArray(payload?.positions) ? payload.positions : [];
+        const tickers = new Set<string>();
+        for (const position of positions) {
+            const ticker = normalizeTicker(position?.ticker);
+            if (ticker) {
+                tickers.add(ticker);
+            }
+        }
+        fundTickerCache.set(normalizedFund, tickers);
+        return tickers;
+    } catch (error) {
+        console.warn("[InsiderTrades] Failed to load fund tickers:", error);
+        return null;
+    }
+}
+
+function updateNotableFundFilterState(): void {
+    const checkbox = document.getElementById("notable-fund-only") as HTMLInputElement | null;
+    const hint = document.getElementById("notable-fund-hint");
+    const label = document.getElementById("notable-fund-filter");
+    if (!checkbox || !hint || !label) {
+        return;
+    }
+
+    const fund = getSelectedFund();
+    const enabled = Boolean(fund && fund.toLowerCase() !== "all");
+
+    checkbox.disabled = !enabled;
+    if (!enabled) {
+        checkbox.checked = false;
+        hint.classList.remove("hidden");
+        label.classList.add("opacity-60", "cursor-not-allowed");
+    } else {
+        hint.classList.add("hidden");
+        label.classList.remove("opacity-60", "cursor-not-allowed");
+    }
+}
+
+function filterRecentTrades(trades: InsiderTrade[]): InsiderTrade[] {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    cutoff.setHours(0, 0, 0, 0);
+
+    return trades.filter((trade) => {
+        if (!trade.transaction_date) return false;
+        const parsed = new Date(trade.transaction_date);
+        if (Number.isNaN(parsed.getTime())) return false;
+        return parsed >= cutoff;
+    });
+}
+
+async function applyNotableFilters(trades: InsiderTrade[]): Promise<InsiderTrade[]> {
+    const recentTrades = filterRecentTrades(trades);
+    const checkbox = document.getElementById("notable-fund-only") as HTMLInputElement | null;
+    if (!checkbox?.checked) {
+        return recentTrades;
+    }
+
+    const fund = getSelectedFund();
+    if (!fund || fund.toLowerCase() === "all") {
+        return recentTrades;
+    }
+
+    const fundTickers = await loadFundTickers(fund);
+    if (!fundTickers || fundTickers.size === 0) {
+        return [];
+    }
+
+    return recentTrades.filter((trade) => {
+        const ticker = normalizeTicker(trade.ticker);
+        return ticker ? fundTickers.has(ticker) : false;
+    });
+}
+
+async function renderNotableSection(): Promise<void> {
+    const notableTrades = await applyNotableFilters(latestTrades);
+    renderNotableTrades(
+        notableTrades,
+        "notable-purchases",
+        "Purchase",
+        "No notable purchases in the last 7 days."
+    );
+    renderNotableTrades(
+        notableTrades,
+        "notable-sales",
+        "Sale",
+        "No notable sales in the last 7 days."
+    );
 }
 
 function buildSearchParams(): URLSearchParams {
@@ -681,12 +810,12 @@ async function fetchTradeData(): Promise<void> {
         }
 
         const trades = data.trades || [];
+        latestTrades = trades;
 
         initializeInsiderTradesGrid(trades);
         renderStats(trades);
         renderCharts(trades);
-        renderNotableTrades(trades, "notable-purchases", "Purchase");
-        renderNotableTrades(trades, "notable-sales", "Sale");
+        await renderNotableSection();
 
         if (emptyState) {
             if (trades.length === 0) {
@@ -751,4 +880,18 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("[InsiderTrades] Failed to auto-init:", err);
         }
     }
+
+    updateNotableFundFilterState();
+
+    const notableFundOnly = document.getElementById("notable-fund-only") as HTMLInputElement | null;
+    if (notableFundOnly) {
+        notableFundOnly.addEventListener("change", () => {
+            renderNotableSection();
+        });
+    }
+
+    window.addEventListener("fundChanged", () => {
+        updateNotableFundFilterState();
+        renderNotableSection();
+    });
 });
