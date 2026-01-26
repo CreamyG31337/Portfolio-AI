@@ -12,8 +12,9 @@ from pathlib import Path
 
 # Add the project root to the Python path
 # NOTE: This script modifies sys.path to allow importing from utils.
-# This is acceptable for a root-level utility script, but requires running from project root.
-sys.path.insert(0, str(Path(__file__).parent))
+# Since this script is in scripts/, we need to go up one level to get to project root.
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 from utils.webull_importer import import_webull_data
 from display.console_output import print_success, print_error, print_warning, print_info, print_header
@@ -28,13 +29,13 @@ def main():
         epilog="""
 Examples:
   # Preview import without actually importing
-  python webull_import.py webull_data.csv --dry-run
+  python scripts/webull_import.py webull_data.csv --dry-run
   
   # Import into specific fund
-  python webull_import.py webull_data.csv --fund "RRSP Lance Webull"
+  python scripts/webull_import.py webull_data.csv --fund "RRSP Lance Webull"
   
   # Import into active fund
-  python webull_import.py webull_data.csv
+  python scripts/webull_import.py webull_data.csv
         """
     )
     

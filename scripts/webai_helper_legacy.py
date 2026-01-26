@@ -11,8 +11,8 @@ from pathlib import Path
 
 # Add web_dashboard to path
 # NOTE: This script modifies sys.path to allow importing from web_dashboard.
-# This is acceptable for a root-level utility script, but requires running from project root.
-project_root = Path(__file__).parent
+# Since this script is in scripts/, we need to go up one level to get to project root.
+project_root = Path(__file__).parent.parent
 web_dashboard_path = project_root / 'web_dashboard'
 
 if not web_dashboard_path.exists():
@@ -91,7 +91,7 @@ def query_gemini(prompt: str) -> str:
 if __name__ == "__main__":
     # Simple test
     if len(sys.argv) < 2:
-        print("Usage: python gemini_helper.py 'Your query here'")
+        print("Usage: python scripts/webai_helper_legacy.py 'Your query here'")
         sys.exit(1)
     
     query = " ".join(sys.argv[1:])
@@ -105,4 +105,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
-

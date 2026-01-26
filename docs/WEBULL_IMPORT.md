@@ -73,16 +73,16 @@ Use the dedicated import script for batch processing:
 
 ```bash
 # Preview import (dry run)
-python webull_import.py webull_data.csv --dry-run
+python scripts/webull_import.py webull_data.csv --dry-run
 
 # Import into specific fund
-python webull_import.py webull_data.csv --fund "RRSP Lance Webull"
+python scripts/webull_import.py webull_data.csv --fund "RRSP Lance Webull"
 
 # Import into active fund
-python webull_import.py webull_data.csv
+python scripts/webull_import.py webull_data.csv
 
 # List available funds
-python webull_import.py --list-funds
+python scripts/webull_import.py --list-funds
 ```
 
 ### 2. Trading Bot Interface
