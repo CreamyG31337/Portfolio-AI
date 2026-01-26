@@ -393,7 +393,18 @@
 }
 
 /* Theme-aligned form controls (overrides Flowbite defaults). */
-input,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="url"],
+input[type="tel"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="month"],
+input[type="week"],
 select,
 textarea {
     background-color: var(--bg-tertiary);
@@ -402,7 +413,18 @@ textarea {
     transition: all 0.2s ease-in-out;
 }
 
-input:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="search"]:focus,
+input[type="url"]:focus,
+input[type="tel"]:focus,
+input[type="date"]:focus,
+input[type="datetime-local"]:focus,
+input[type="time"]:focus,
+input[type="month"]:focus,
+input[type="week"]:focus,
 select:focus,
 textarea:focus {
     outline: none;
