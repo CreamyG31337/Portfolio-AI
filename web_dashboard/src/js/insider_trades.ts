@@ -618,9 +618,14 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
     const themeLayout = getPlotlyThemeLayout();
     const layout = {
         ...themeLayout,
-        margin: { l: 10, r: 10, t: 10, b: 30 },
+        margin: { l: 280, r: 20, t: 10, b: 30 },
         xaxis: { ...(themeLayout.xaxis || {}), dtick: 1 },
-        yaxis: { ...(themeLayout.yaxis || {}), automargin: true, tickmode: "linear" }
+        yaxis: {
+            ...(themeLayout.yaxis || {}),
+            automargin: false,
+            tickmode: "linear",
+            tickfont: { size: 11 }
+        }
     };
 
     plotly.newPlot(chartEl, data, layout, { displayModeBar: false });

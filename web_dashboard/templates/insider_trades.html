@@ -182,18 +182,20 @@
 </div>
 
 <!-- Charts -->
-<div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border lg:col-span-1">
-        <h3 class="text-sm font-semibold text-text-primary mb-3">Daily Transaction Volume</h3>
-        <div id="insider-volume-chart" class="h-[260px]"></div>
-    </div>
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border lg:col-span-2">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border">
         <h3 class="text-sm font-semibold text-text-primary mb-3">Top 10 Active Insiders</h3>
-        <div id="insider-top-insiders-chart" class="h-[260px]"></div>
+        <div id="insider-top-insiders-chart" class="h-[300px]"></div>
     </div>
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border lg:col-span-1">
-        <h3 class="text-sm font-semibold text-text-primary mb-3">Purchase vs Sale Distribution</h3>
-        <div id="insider-type-distribution-chart" class="h-[260px]"></div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border">
+            <h3 class="text-sm font-semibold text-text-primary mb-3">Daily Transaction Volume</h3>
+            <div id="insider-volume-chart" class="h-[260px]"></div>
+        </div>
+        <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border">
+            <h3 class="text-sm font-semibold text-text-primary mb-3">Purchase vs Sale Distribution</h3>
+            <div id="insider-type-distribution-chart" class="h-[260px]"></div>
+        </div>
     </div>
 </div>
 
