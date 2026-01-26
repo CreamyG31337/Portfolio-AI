@@ -303,14 +303,14 @@ class TestWebDashboardBugPrevention(unittest.TestCase):
     
     def test_fund_dropdown_data_filtering(self):
         """Test that fund dropdown properly filters data."""
-        # Mock fund selection
-        selected_fund = "Project Chimera"
+        # Mock fund selection - use TEST fund instead of production
+        selected_fund = "TEST"
         
         # Mock data filtering
         all_positions = [
-            {'ticker': 'AAPL', 'fund': 'Project Chimera', 'value': 1000},
+            {'ticker': 'AAPL', 'fund': 'TEST', 'value': 1000},
             {'ticker': 'GOOGL', 'fund': 'Other Fund', 'value': 2000},
-            {'ticker': 'MSFT', 'fund': 'Project Chimera', 'value': 1500}
+            {'ticker': 'MSFT', 'fund': 'TEST', 'value': 1500}
         ]
         
         # Filter by selected fund

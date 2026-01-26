@@ -241,7 +241,7 @@ class TestPriceService(unittest.TestCase):
         self.assertEqual(pos.market_value, expected_market_value)
     
     def test_update_positions_fallback_to_existing_price(self):
-        """Test fallback to existing price when fetch fails."""
+        """Test behavior when fetch fails - positions without prices are excluded."""
         # Create position with existing price
         positions = [
             Position(
@@ -266,14 +266,12 @@ class TestPriceService(unittest.TestCase):
             verbose=False
         )
         
-        # Verify fallback worked - position unchanged
-        self.assertEqual(len(updated), 1)
-        pos = updated[0]
-        self.assertEqual(pos.current_price, Decimal('145.00'))
-        self.assertEqual(pos.ticker, 'AAPL')
+        # Verify behavior: positions without prices are excluded (not kept with fallback)
+        # This ensures data integrity - no stale prices will be saved
+        self.assertEqual(len(updated), 0, "Positions without prices should be excluded")
     
     def test_update_positions_no_price_available(self):
-        """Test handling position with no price available."""
+        """Test handling position with no price available - position is excluded."""
         # Create position with no price
         positions = [
             Position(
@@ -296,10 +294,9 @@ class TestPriceService(unittest.TestCase):
             verbose=False
         )
         
-        # Verify position is kept but price is None
-        self.assertEqual(len(updated), 1)
-        pos = updated[0]
-        self.assertIsNone(pos.current_price)
+        # Verify position is excluded (not kept with None price)
+        # This ensures data integrity - no stale prices will be saved
+        self.assertEqual(len(updated), 0, "Positions without prices should be excluded")
     
     def test_update_positions_empty_list(self):
         """Test updating empty position list."""

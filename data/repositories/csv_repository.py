@@ -117,6 +117,16 @@ class CSVRepository(BaseRepository):
             # Work on a copy to avoid modifying the cache
             df = cached_df.copy()
             
+            # Ensure Date column is datetime (in case cache has string dates)
+            if df['Date'].dtype == 'object' or not pd.api.types.is_datetime64_any_dtype(df['Date']):
+                # Re-parse dates if they're strings
+                from utils.timezone_utils import get_trading_timezone
+                trading_tz = get_trading_timezone()
+                parsed_dates = df['Date'].apply(self._parse_csv_timestamp)
+                df['Date'] = pd.to_datetime(parsed_dates.apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if hasattr(x, 'strftime') else str(x)))
+                if not parsed_dates.empty and hasattr(parsed_dates.iloc[0], 'tz'):
+                    df['Date'] = df['Date'].dt.tz_localize(parsed_dates.iloc[0].tz)
+            
             # Filter by date range if provided
             if date_range:
                 start_date, end_date = date_range

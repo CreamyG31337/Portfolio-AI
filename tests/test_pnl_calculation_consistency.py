@@ -387,9 +387,16 @@ class TestPnLCalculationConsistency:
         csv_repo.save_portfolio_snapshot(snapshot)
         supabase_repo.save_portfolio_snapshot(snapshot)
         
-        # Get data from both repositories
-        csv_snapshots = csv_repo.get_portfolio_data()
-        supabase_snapshots = supabase_repo.get_portfolio_data()
+        # Get data from both repositories - use date range to include today
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=1)
+        date_range = (start_date, end_date)
+        
+        csv_snapshots = csv_repo.get_portfolio_data(date_range=date_range)
+        supabase_snapshots = supabase_repo.get_portfolio_data(date_range=date_range)
+        
+        assert len(csv_snapshots) >= 1, "CSV should have the snapshot"
+        assert len(supabase_snapshots) >= 1, "Supabase should have the snapshot"
         
         csv_snapshot = csv_snapshots[-1]
         supabase_snapshot = supabase_snapshots[-1]
@@ -444,9 +451,13 @@ class TestPnLCalculationConsistency:
         # Save using dual-write repository
         dual_repo.save_portfolio_snapshot(snapshot)
         
-        # Get data from both underlying repositories
-        csv_snapshots = dual_repo.csv_repo.get_portfolio_data()
-        supabase_snapshots = dual_repo.supabase_repo.get_portfolio_data()
+        # Get data from both underlying repositories - use date range to include today
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=1)
+        date_range = (start_date, end_date)
+        
+        csv_snapshots = dual_repo.csv_repo.get_portfolio_data(date_range=date_range)
+        supabase_snapshots = dual_repo.supabase_repo.get_portfolio_data(date_range=date_range)
         
         assert len(csv_snapshots) >= 1, "CSV should have the snapshot"
         assert len(supabase_snapshots) >= 1, "Supabase should have the snapshot"
@@ -491,14 +502,48 @@ class TestPnLCalculationDifferences:
         import uuid
         self.test_fund = f"TEST_{uuid.uuid4().hex[:8]}"
         
+        # Create fund in Supabase if credentials are available
+        try:
+            from supabase import create_client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                # Create fund
+                supabase.table("funds").insert({
+                    "name": self.test_fund,
+                    "description": "Test fund for PnL difference tests",
+                    "currency": "CAD",
+                    "fund_type": "investment"
+                }).execute()
+                # Initialize cash balances
+                supabase.table("cash_balances").upsert([
+                    {"fund": self.test_fund, "currency": "CAD", "amount": 0},
+                    {"fund": self.test_fund, "currency": "USD", "amount": 0}
+                ]).execute()
+        except Exception:
+            pass
+        
         yield
         
-        # Cleanup
+        # Cleanup - try to delete fund from Supabase
+        try:
+            from supabase import create_client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                supabase.table("funds").delete().eq("name", self.test_fund).execute()
+        except Exception:
+            pass
+        
+        # Cleanup CSV test directory
         if self.test_data_dir.exists():
             try:
                 shutil.rmtree(self.test_data_dir)
-            except PermissionError:
-                # Windows sometimes has permission issues with temp files
+            except (PermissionError, OSError):
                 pass
     
     def test_document_pnl_calculation_differences(self):
@@ -530,9 +575,16 @@ class TestPnLCalculationDifferences:
         csv_repo.save_portfolio_snapshot(snapshot)
         supabase_repo.save_portfolio_snapshot(snapshot)
         
-        # Retrieve and compare
-        csv_snapshots = csv_repo.get_portfolio_data()
-        supabase_snapshots = supabase_repo.get_portfolio_data()
+        # Retrieve and compare - use date range to include today
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=1)
+        date_range = (start_date, end_date)
+        
+        csv_snapshots = csv_repo.get_portfolio_data(date_range=date_range)
+        supabase_snapshots = supabase_repo.get_portfolio_data(date_range=date_range)
+        
+        assert len(csv_snapshots) >= 1, "CSV should have the snapshot"
+        assert len(supabase_snapshots) >= 1, "Supabase should have the snapshot"
         
         csv_snapshot = csv_snapshots[-1]
         supabase_snapshot = supabase_snapshots[-1]
