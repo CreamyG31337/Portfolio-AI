@@ -21,7 +21,12 @@ class AuthManager:
     def __init__(self):
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_anon_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-        self.jwt_secret = os.getenv("JWT_SECRET", "your-secret-key-change-this")
+
+        self.jwt_secret = os.getenv("JWT_SECRET")
+        if not self.jwt_secret:
+            import secrets
+            logger.warning("AuthManager: JWT_SECRET not set. Generating a random secret. Sessions will be invalidated on restart.")
+            self.jwt_secret = secrets.token_hex(32)
         
         # Debug logging
         if not self.supabase_anon_key:
