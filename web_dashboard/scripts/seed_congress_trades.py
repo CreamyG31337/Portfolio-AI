@@ -19,7 +19,6 @@ import time
 import argparse
 import re
 import json
-import base64
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
@@ -51,9 +50,10 @@ from bs4 import BeautifulSoup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# The website URL (obfuscated)
-# Decodes to the target data source
-BASE_URL = base64.b64decode("aHR0cHM6Ly93d3cuY2FwaXRvbHRyYWRlcy5jb20vdHJhZGVz").decode('utf-8')
+# The website URL (from environment variable)
+BASE_URL = os.getenv("CONGRESS_TRADES_BASE_URL", "")
+if not BASE_URL:
+    raise ValueError("CONGRESS_TRADES_BASE_URL environment variable not set")
 
 # FlareSolverr URL (for bypassing Cloudflare)
 FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "http://localhost:8191")
@@ -769,7 +769,7 @@ def map_trade_to_schema(trade_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     party = extract_party_from_text(combined_text)
         
         # Extract state code
-        state = (politician.get('_stateId') or              # ← FIX 1: Add _stateId (actual field name from Capitol Trades)
+        state = (politician.get('_stateId') or              # ← FIX 1: Add _stateId (actual field name from source)
                  politician.get('state') or 
                  politician.get('stateCode') or 
                  politician.get('stateAbbreviation'))
@@ -927,7 +927,7 @@ def map_trade_to_schema(trade_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         asset_type = 'Stock'
         
         # Extract tooltip/description for notes
-        # Capitol trades may have various description fields
+        # Source may have various description fields
         tooltip = None
         for field in ['tooltip', 'description', 'txDescription', 'comment']:
             if field in trade_data and trade_data[field]:

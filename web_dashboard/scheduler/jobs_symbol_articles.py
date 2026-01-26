@@ -38,7 +38,7 @@ elif sys.path[0] != str(project_root):
 logger = logging.getLogger(__name__)
 
 
-def seeking_alpha_symbol_job() -> None:
+def symbol_article_scraper_job() -> None:
     """Scrape symbol pages for portfolio tickers.
     
     This job:
@@ -48,9 +48,9 @@ def seeking_alpha_symbol_job() -> None:
     4. Validates and filters to real articles
     5. Extracts content using existing extract_article_content()
     6. Detects and handles paywalled articles
-    7. Saves articles to database with article_type="seeking_alpha_symbol"
+    7. Saves articles to database with article_type="symbol_article"
     """
-    job_id = 'seeking_alpha_symbol'
+    job_id = 'symbol_article_scraper'
     start_time = time.time()
     
     try:
@@ -297,7 +297,7 @@ def seeking_alpha_symbol_job() -> None:
                         article_id = research_repo.save_article(
                             tickers=extracted_tickers if extracted_tickers else None,
                             sector=extracted_sector,
-                            article_type="Seeking Alpha Symbol",
+                            article_type="Symbol Article",
                             title=title or f"Symbol Article - {ticker}",
                             url=article_url,
                             summary=summary,

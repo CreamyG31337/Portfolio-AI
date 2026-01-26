@@ -699,7 +699,7 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
     """Generate external links to financial websites for a ticker.
     
     Creates links to major financial data sources including Yahoo Finance,
-    TradingView, Finviz, Seeking Alpha, MarketWatch, StockTwits, Reddit, and
+    TradingView, Finviz, MarketWatch, StockTwits, Reddit, and
     Google Finance. Handles both US and Canadian tickers appropriately.
     
     Args:
@@ -713,7 +713,7 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
             'Yahoo Finance': str,
             'TradingView': str,
             'Finviz': str,
-            'Seeking Alpha': str,
+            'Symbol Research': str,
             'MarketWatch': str,
             'StockTwits': str,
             'Reddit (WSB)': str,
@@ -788,11 +788,14 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
     else:
         links['Finviz'] = f"https://finviz.com/quote.ashx?t={base_ticker}"
     
-    # Seeking Alpha - uses EXCHANGE:TICKER format for Canadian stocks
-    if is_canadian and canadian_exchange:
-        links['Seeking Alpha'] = f"https://seekingalpha.com/symbol/{canadian_exchange}:{base_ticker}"
-    else:
-        links['Seeking Alpha'] = f"https://seekingalpha.com/symbol/{base_ticker}"
+    # Symbol research - uses EXCHANGE:TICKER format for Canadian stocks
+    import os
+    symbol_base_url = os.getenv("SYMBOL_ARTICLE_BASE_URL", "")
+    if symbol_base_url:
+        if is_canadian and canadian_exchange:
+            links['Symbol Research'] = f"{symbol_base_url}/symbol/{canadian_exchange}:{base_ticker}"
+        else:
+            links['Symbol Research'] = f"{symbol_base_url}/symbol/{base_ticker}"
     
     # MarketWatch - uses EXCHANGE:TICKER format for Canadian stocks
     if is_canadian and canadian_exchange:

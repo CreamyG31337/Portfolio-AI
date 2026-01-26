@@ -239,9 +239,9 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '🦊'
     },
-    'seeking_alpha_symbol': {
-        'name': 'Seeking Alpha Symbol Scraper',
-        'description': 'Scrape Seeking Alpha symbol pages for portfolio tickers to extract news articles',
+    'symbol_article_scraper': {
+        'name': 'Symbol Article Scraper',
+        'description': 'Scrape symbol pages for portfolio tickers to extract news articles',
         'default_interval_minutes': 1440,  # Every 24 hours (daily)
         'enabled_by_default': True,
         'icon': '📑'
@@ -315,7 +315,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     },
     'scrape_congress_trades': {
         'name': 'Scrape Congress Trades (Manual)',
-        'description': 'Scrape historical congressional trades from Capitol Trades website (uses FlareSolverr if available)',
+        'description': 'Scrape historical congressional trades from external source (uses FlareSolverr if available)',
         'default_interval_minutes': 0,  # Manual only, no schedule
         'enabled_by_default': False,  # Manual execution only
         'icon': '🕷️',
@@ -486,7 +486,7 @@ from scheduler.jobs_insiders import (
 from scheduler.jobs_opportunity import opportunity_discovery_job
 
 # Import symbol article scraper job
-from scheduler.jobs_symbol_articles import seeking_alpha_symbol_job
+from scheduler.jobs_symbol_articles import symbol_article_scraper_job
 
 # Import dividend processing job
 from scheduler.jobs_dividends import process_dividends_job
@@ -538,8 +538,8 @@ __all__ = [
     'fetch_insider_trades_job',
     # Opportunity discovery
     'opportunity_discovery_job',
-    # Seeking Alpha scraper
-    'seeking_alpha_symbol_job',
+    # Symbol article scraper
+    'symbol_article_scraper_job',
     # Dividend processing
     'process_dividends_job',
     # Watchdog
@@ -897,22 +897,22 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: alpha_research_collect (every 6 hours)")
     
-    # Seeking Alpha Symbol Scraper: Daily at 2:00 AM EST (off-peak, avoids conflicts with 3:00 AM cleanup)
-    if AVAILABLE_JOBS.get('seeking_alpha_symbol', {}).get('enabled_by_default'):
+    # Symbol Article Scraper: Daily at 2:00 AM EST (off-peak, avoids conflicts with 3:00 AM cleanup)
+    if AVAILABLE_JOBS.get('symbol_article_scraper', {}).get('enabled_by_default'):
         scheduler.add_job(
-            seeking_alpha_symbol_job,
+            symbol_article_scraper_job,
             trigger=CronTrigger(
                 hour=2,
                 minute=0,
                 timezone='America/New_York'
             ),
-            id='seeking_alpha_symbol_scrape',
-            name=f"{get_job_icon('seeking_alpha_symbol')} Seeking Alpha Symbol Scraper",
+            id='symbol_article_scraper',
+            name=f"{get_job_icon('symbol_article_scraper')} Symbol Article Scraper",
             replace_existing=True,
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: seeking_alpha_symbol_scrape (daily at 2:00 AM EST)")
+        logger.info("Registered job: symbol_article_scraper (daily at 2:00 AM EST)")
     
     # Benchmark refresh job - every 30 minutes during market hours (weekdays 9:30 AM - 4:00 PM EST)
     if AVAILABLE_JOBS['benchmark_refresh']['enabled_by_default']:

@@ -49,14 +49,14 @@ def test_log_cleanup():
         import traceback
         traceback.print_exc()
 
-def test_seeking_alpha_symbol():
-    """Test seeking_alpha_symbol_scrape job"""
+def test_symbol_article_scraper():
+    """Test symbol_article_scraper job"""
     print("\n" + "="*60)
-    print("TESTING: seeking_alpha_symbol_scrape")
+    print("TESTING: symbol_article_scraper")
     print("="*60)
     try:
-        from scheduler.jobs_symbol_articles import seeking_alpha_symbol_job
-        seeking_alpha_symbol_job()
+        from scheduler.jobs_symbol_articles import symbol_article_scraper_job
+        symbol_article_scraper_job()
         print("✅ Job completed successfully")
     except Exception as e:
         print(f"❌ Job failed: {e}")
@@ -111,7 +111,7 @@ def main():
     
     parser = argparse.ArgumentParser(description='Test jobs that weren\'t logging properly')
     parser.add_argument('--job', choices=[
-        'securities', 'log_cleanup', 'seeking_alpha', 'social_cleanup', 
+        'securities', 'log_cleanup', 'symbol_article_scraper', 'social_cleanup', 
         'dividend', 'benchmark', 'all'
     ], default='all', help='Which job to test (default: all)')
     
@@ -140,7 +140,7 @@ def main():
         test_refresh_securities_metadata()
     elif args.job == 'log_cleanup':
         test_log_cleanup()
-    elif args.job == 'seeking_alpha':
+    elif args.job == 'symbol_article_scraper':
         test_seeking_alpha_symbol()
     elif args.job == 'social_cleanup':
         test_social_metrics_cleanup()

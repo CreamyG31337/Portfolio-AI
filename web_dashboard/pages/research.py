@@ -356,7 +356,7 @@ with st.sidebar:
     # Article type filter
     article_type = st.selectbox(
         "Article Type",
-        ["All", "Market News", "Ticker News", "Earnings", "Opportunity Discovery", "Research Report", "Reddit Discovery", "Alpha Research", "ETF Change", "Seeking Alpha Symbol"],
+        ["All", "Market News", "Ticker News", "Earnings", "Opportunity Discovery", "Research Report", "Reddit Discovery", "Alpha Research", "ETF Change", "Symbol Article"],
         index=0
     )
     article_type_filter = None if article_type == "All" else article_type
@@ -1512,7 +1512,7 @@ try:
                 'Reddit Discovery': '👽',
                 'Alpha Research': '💎',
                 'ETF Change': '📊',
-                'Seeking Alpha Symbol': '📈',
+                'Symbol Article': '📈',
                 # Legacy support (underscores)
                 'market_news': '📰',
                 'ticker_news': '🔍',
@@ -1524,7 +1524,7 @@ try:
                 'reddit_discovery': '👽',
                 'alpha_research': '💎',
                 'etf_change': '📊',
-                'seeking_alpha_symbol': '📈'
+                'symbol_article_scraper': '📈'
             }
             job_icon = job_icon_map.get(article_type, '📄')
             

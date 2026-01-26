@@ -947,9 +947,9 @@ def rescore_congress_sessions_job(limit: int = 1000, batch_size: int = 10, model
 
 
 def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int = 100, max_pages: Optional[int] = None, start_page: int = 1, skip_recent: bool = False) -> None:
-    """Manual job: Scrape congressional trades from Capitol Trades website.
-    
-    This job scrapes historical congressional trading data from capitoltrades.com
+    """Manual job: Scrape congressional trades from external source.
+
+    This job scrapes historical congressional trading data
     using BeautifulSoup and FlareSolverr (if available) to bypass Cloudflare.
     
     Args:

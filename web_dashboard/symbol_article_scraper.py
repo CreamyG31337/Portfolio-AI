@@ -7,7 +7,7 @@ Functions for scraping symbol pages to extract article links from financial news
 
 import logging
 import re
-import base64
+import os
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
@@ -25,13 +25,13 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Base URL for the target site (obfuscated)
-_BASE_URL_ENCODED = "aHR0cHM6Ly9zZWVraW5nYWxwaGEuY29t"
-BASE_URL = base64.b64decode(_BASE_URL_ENCODED).decode('utf-8')
+# Base URL for the target site (from environment variable)
+import os
+_BASE_URL = os.getenv("SYMBOL_ARTICLE_BASE_URL", "")
+BASE_URL = _BASE_URL if _BASE_URL else None
 
-# Domain name for filtering (obfuscated)
-_DOMAIN_ENCODED = "c2Vla2luZ2FscGhhLmNvbQ=="
-_DOMAIN = base64.b64decode(_DOMAIN_ENCODED).decode('utf-8')
+# Domain name for filtering (from environment variable)
+_DOMAIN = os.getenv("SYMBOL_ARTICLE_DOMAIN", "")
 
 # URL patterns that indicate articles
 ARTICLE_URL_PATTERNS = [
@@ -60,13 +60,10 @@ def build_symbol_url(ticker: str, exchange: Optional[str] = None) -> str:
         
     Returns:
         Full URL to the symbol page
-        
-    Examples:
-        >>> build_symbol_url('STLD')
-        'https://.../symbol/STLD'
-        >>> build_symbol_url('ABC', 'TSX')
-        'https://.../symbol/TSX:ABC'
     """
+    if not BASE_URL:
+        raise ValueError("SYMBOL_ARTICLE_BASE_URL environment variable not set")
+    
     if exchange:
         symbol = f"{exchange}:{ticker}"
     else:
@@ -197,7 +194,7 @@ def extract_article_links(html: str, base_url: Optional[str] = None) -> List[str
         
         # Only process URLs from the target site
         parsed = urlparse(href)
-        if parsed.netloc and _DOMAIN not in parsed.netloc:
+        if parsed.netloc and _DOMAIN and _DOMAIN not in parsed.netloc:
             continue
         
         # Validate as article URL

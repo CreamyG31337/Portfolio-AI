@@ -2,8 +2,8 @@
 
 ## Two Data Sources
 
-### 1. Capitol Trades Scraper (Manual - `seed_congress_trades.py`)
-**Source**: Capitol Trades website (uses FlareSolverr to bypass Cloudflare)
+### 1. Congress Trades Scraper (Manual - `seed_congress_trades.py`)
+**Source**: External website (uses FlareSolverr to bypass Cloudflare)
 **Frequency**: Manual runs only
 **Reliability**: ⚠️ May break if website changes
 

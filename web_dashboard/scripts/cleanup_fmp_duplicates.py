@@ -4,7 +4,7 @@ Cleanup FMP Duplicates and NULL Metadata
 ========================================
 
 This script cleans up trades that were imported by the FMP API job before the fix:
-1. Deletes trades with NULL party/state (they're duplicates of Capitol Trades data)
+1. Deletes trades with NULL party/state (they're duplicates of scraper data)
 2. Merges name variations (e.g., "Tim Moore" -> "Timothy Moore")
 
 Run after applying the FMP job fixes to clean up historical bad data.

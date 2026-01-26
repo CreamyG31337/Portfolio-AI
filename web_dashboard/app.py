@@ -4284,6 +4284,92 @@ def get_unique_tickers_insider(
         return []
 
 
+INSIDER_NAME_UPPER_TOKENS = {
+    "LLC",
+    "L.L.C",
+    "L.L.C.",
+    "LLP",
+    "L.L.P",
+    "L.L.P.",
+    "LP",
+    "L.P",
+    "L.P.",
+    "INC",
+    "INC.",
+    "CO",
+    "CO.",
+    "CORP",
+    "CORP.",
+    "LTD",
+    "LTD.",
+    "PLC",
+    "PLC.",
+    "AG",
+    "S.A",
+    "S.A.",
+    "SA",
+    "N.V",
+    "N.V.",
+    "NV",
+    "B.V",
+    "B.V.",
+    "BV",
+    "GMBH",
+    "S.R.L",
+    "S.R.L.",
+    "SRL",
+    "S.P.A",
+    "S.P.A.",
+    "SPA",
+    "PTY",
+    "PTY.",
+    "PTE",
+    "PTE.",
+}
+
+INSIDER_NAME_ROMAN_NUMERALS = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"}
+
+
+def _title_case_insider_word(word: str) -> str:
+    def _title_part(part: str) -> str:
+        if not part:
+            return part
+        return part[0].upper() + part[1:].lower()
+
+    return "-".join("'".join(_title_part(part) for part in segment.split("'")) for segment in word.split("-"))
+
+
+def normalize_insider_name(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return name
+
+    normalized_tokens = []
+    for token in name.strip().split():
+        prefix_match = re.match(r"^[^A-Za-z0-9]*", token)
+        suffix_match = re.match(r"[^A-Za-z0-9]*$", token)
+        prefix = prefix_match.group(0) if prefix_match else ""
+        suffix = suffix_match.group(0) if suffix_match else ""
+        core_start = len(prefix)
+        core_end = len(token) - len(suffix)
+        core = token[core_start:core_end]
+
+        if not core:
+            normalized_tokens.append(token)
+            continue
+
+        core_upper = core.upper()
+        if (core_upper in INSIDER_NAME_UPPER_TOKENS
+                or core_upper in INSIDER_NAME_ROMAN_NUMERALS
+                or re.fullmatch(r"(?:[A-Za-z]\.){1,4}", core)):
+            normalized_core = core_upper
+        else:
+            normalized_core = _title_case_insider_word(core)
+
+        normalized_tokens.append(f"{prefix}{normalized_core}{suffix}")
+
+    return " ".join(normalized_tokens)
+
+
 @cache_data(ttl=3600)
 def get_unique_insider_names(
     _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
@@ -4316,7 +4402,9 @@ def get_unique_insider_names(
             for trade in result.data:
                 insider_name = trade.get("insider_name")
                 if insider_name:
-                    all_insiders.add(insider_name)
+                    normalized_name = normalize_insider_name(insider_name)
+                    if normalized_name:
+                        all_insiders.add(normalized_name)
 
             if len(result.data) < batch_size:
                 break
@@ -4667,11 +4755,12 @@ def api_insider_trades_data():
         for trade in all_trades:
             ticker = trade.get("ticker", "N/A")
             logo_url = get_ticker_logo_url(ticker) if ticker and ticker != "N/A" else None
+            insider_name = normalize_insider_name(trade.get("insider_name"))
 
             formatted_trades.append({
                 "ticker": ticker,
                 "company_name": trade.get("company_name"),
-                "insider_name": trade.get("insider_name"),
+                "insider_name": insider_name,
                 "insider_title": trade.get("insider_title"),
                 "transaction_date": trade.get("transaction_date"),
                 "disclosure_date": trade.get("disclosure_date"),

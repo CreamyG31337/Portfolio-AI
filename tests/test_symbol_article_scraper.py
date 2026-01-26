@@ -39,7 +39,7 @@ class TestSymbolArticleHTMLParsing(unittest.TestCase):
         <body>
             <div class="article-list">
                 <a href="/article/1234567-title-here">Article Title 1</a>
-                <a href="https://seekingalpha.com/article/1234568-another-title">Article Title 2</a>
+                <a href="https://example.com/article/1234568-another-title">Article Title 2</a>
             </div>
             <div class="news-section">
                 <a href="/news/1234569-news-item">News Item 1</a>
@@ -80,7 +80,7 @@ class TestSymbolArticleHTMLParsing(unittest.TestCase):
             if '/article/' in href and '/comments' not in href:
                 # Make absolute if relative
                 if href.startswith('/'):
-                    href = f"https://seekingalpha.com{href}"
+                    href = f"https://example.com{href}"
                 article_urls.append(href)
         
         self.assertGreater(len(article_urls), 0, "Should find article URLs")
@@ -104,7 +104,7 @@ class TestSymbolArticleHTMLParsing(unittest.TestCase):
                 # Exclude if matches excluded patterns
                 if not any(pattern in href for pattern in excluded_patterns):
                     if href.startswith('/'):
-                        href = f"https://seekingalpha.com{href}"
+                        href = f"https://example.com{href}"
                     article_urls.append(href)
         
         # Should not include comment links
@@ -135,16 +135,16 @@ class TestURLValidation(unittest.TestCase):
         """Test URL pattern validation."""
         try:
             valid_urls = [
-                "https://seekingalpha.com/article/1234567-title",
-                "https://seekingalpha.com/news/1234568-item",
-                "https://seekingalpha.com/analysis/1234569-analysis",
+                "https://example.com/article/1234567-title",
+                "https://example.com/news/1234568-item",
+                "https://example.com/analysis/1234569-analysis",
             ]
             
             invalid_urls = [
-                "https://seekingalpha.com/symbol/STLD",
-                "https://seekingalpha.com/article/1234567-title/comments",
-                "https://seekingalpha.com/author/john-doe",
-                "https://seekingalpha.com/",
+                "https://example.com/symbol/STLD",
+                "https://example.com/article/1234567-title/comments",
+                "https://example.com/author/john-doe",
+                "https://example.com/",
             ]
             
             for url in valid_urls:
@@ -189,7 +189,7 @@ class TestFetching(unittest.TestCase):
             <html>
             <body>
                 <a href="/article/1234567-title">Article 1</a>
-                <a href="https://seekingalpha.com/article/1234568-another">Article 2</a>
+                <a href="https://example.com/article/1234568-another">Article 2</a>
                 <a href="/article/1234567-title/comments">Comments</a>
                 <a href="/symbol/STLD">Symbol</a>
             </body>

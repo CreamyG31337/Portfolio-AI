@@ -21,7 +21,7 @@ def alpha_research_job() -> None:
     """Targeted 'Alpha Hunter' job that searches specific high-value domains.
     
     This job:
-    1. Gets specific 'alpha' domains (seekingalpha, thefly, etc.)
+    1. Gets specific 'alpha' domains from configuration
     2. Gets specific 'opportunity' queries
     3. Constructs 'site:' dork queries to find high-quality analysis
     4. Saves articles with article_type="alpha_research"
@@ -95,14 +95,13 @@ def alpha_research_job() -> None:
         logger.info(f"Using {len(domains)} alpha domains and {len(queries)} queries")
         
         # Construct Search Dorks
-        # "site:seekingalpha.com OR site:thefly.com ..."
         site_dork = " OR ".join([f"site:{d}" for d in domains])
         
         # Rotate queries based on hour to avoid hammering
         query_index = datetime.now().hour % len(queries)
         base_query = queries[query_index]
         
-        # Full query: "undervalued microcap stocks (site:seekingalpha.com OR site:thefly.com ...)"
+        # Full query with site restrictions
         final_query = f'{base_query} ({site_dork})'
         
         logger.info(f"🔭 Alpha Query: '{final_query}'")

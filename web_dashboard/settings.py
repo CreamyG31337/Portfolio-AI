@@ -209,44 +209,16 @@ def get_alpha_research_domains() -> list[str]:
     """Get the list of high-value 'alpha' domains for targeted research.
     
     Returns:
-        List of domain strings (e.g., ['seekingalpha.com', 'thefly.com'])
+        List of domain strings from configuration
     """
-    default_domains = [
-        # Original high-quality sources
-        'seekingalpha.com',
-        'thefly.com',
-        'benzinga.com',
-        'tipranks.com',
-        'insidermonkey.com',
-        'marketbeat.com',
-        'zacks.com',
-        'fool.com',
-        'investorplace.com',
-        
-        # Micro-cap specialists (high value)
-        'geoinvesting.com',          # Dedicated micro-cap research
-        'microcapdaily.com',         # Micro-cap focused
-        'smallcappower.com',         # Small-cap specialist
-        
-        # Deep financial data platforms
-        'tikr.com',                  # 100k+ stocks, deep financials
-        'gurufocus.com',             # Value investor focused
-        'stockanalysis.com',         # Comprehensive free data
-        
-        # Screeners & tools
-        'finviz.com',                # Popular screener
-        'stockstotrade.com',         # Penny stock specialist
-        
-        # Premium financial journalism
-        'barrons.com',               # Barron's
-        'investors.com',             # Investor's Business Daily
-        'marketwatch.com',           # MarketWatch
-        
-        # Research & analysis
-        'cabotwealth.com',           # Small-cap research
-        'smallcapvoice.com',         # Small-cap coverage
-        'pennystocks.com'            # Penny stock news
-    ]
+    # Get domains from environment variable (comma-separated)
+    env_domains = os.getenv("ALPHA_RESEARCH_DOMAINS", "")
+    if env_domains:
+        return [d.strip() for d in env_domains.split(",") if d.strip()]
+    
+    # Return empty list by default - domains must be configured via ALPHA_RESEARCH_DOMAINS env var
+    # This prevents exposing website names in the codebase
+    default_domains = []
     
     custom_domains = get_system_setting("alpha_research_domains", default=None)
     

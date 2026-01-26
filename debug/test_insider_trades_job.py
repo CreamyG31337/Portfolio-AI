@@ -3,7 +3,7 @@ Test Insider Trades Job
 ========================
 
 Test script to verify the insider trades job works correctly.
-Run this to test the QuiverQuant scraper without running the full scheduler.
+Run this to test the insider trades scraper without running the full scheduler.
 """
 
 import sys

@@ -11,7 +11,6 @@ import time
 import requests
 import os
 import json
-import base64
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -227,8 +226,14 @@ def fetch_insider_trades_job() -> None:
         errors = 0
 
         # Scrape insider trades page
-        _INSIDER_SOURCE_URL_ENCODED = "aHR0cHM6Ly93d3cucXVpdmVycXVhbnQuY29tL2luc2lkZXJzLw=="
-        url = base64.b64decode(_INSIDER_SOURCE_URL_ENCODED).decode("utf-8")
+        url = os.getenv("INSIDER_TRADES_BASE_URL", "")
+        if not url:
+            duration_ms = int((time.time() - start_time) * 1000)
+            message = "INSIDER_TRADES_BASE_URL environment variable not set"
+            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            logger.error(f"❌ {message}")
+            mark_job_failed('insider_trades', target_date, None, message, duration_ms=duration_ms)
+            return
 
         try:
             logger.info(f"Fetching insider trades from {url}...")
