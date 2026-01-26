@@ -235,6 +235,19 @@ function formatCurrency(value: number | null, compact: boolean = false): string 
     }).format(value);
 }
 
+function formatCurrencyNoCents(value: number | null): string {
+    if (value === null || value === undefined || Number.isNaN(value)) {
+        return "N/A";
+    }
+
+    return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
+
 function formatNumber(value: number | null): string {
     if (value === null || value === undefined || Number.isNaN(value)) {
         return "N/A";
@@ -336,19 +349,22 @@ function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
             field: "shares",
             headerName: "Shares",
             width: 130,
+            cellStyle: { textAlign: "right" },
             valueFormatter: (params) => formatNumber(params.value as number | null)
         },
         {
             field: "price_per_share",
             headerName: "Price/Share",
             width: 140,
+            cellStyle: { textAlign: "right" },
             valueFormatter: (params) => formatCurrency(params.value as number | null)
         },
         {
             field: "value",
             headerName: "Total Value",
             width: 150,
-            valueFormatter: (params) => formatCurrency(getTradeValue(params.data || {}))
+            cellStyle: { textAlign: "right" },
+            valueFormatter: (params) => formatCurrencyNoCents(getTradeValue(params.data || {}))
         },
         {
             field: "disclosure_date",
@@ -672,7 +688,9 @@ function updateFundFilterState(): void {
     const enabled = Boolean(fund && fund.toLowerCase() !== "all");
 
     if (hiddenInput) {
-        hiddenInput.value = fund || "";
+        const shouldDisableFund = !fund || fund.toLowerCase() === "all";
+        hiddenInput.value = shouldDisableFund ? "" : fund;
+        hiddenInput.disabled = shouldDisableFund;
     }
 
     if (!checkbox || !hint || !label) {
@@ -810,6 +828,25 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const filtersForm = document.getElementById("filters-form") as HTMLFormElement | null;
+    const submitFilters = () => {
+        if (filtersForm) {
+            filtersForm.submit();
+        }
+    };
+
+    if (filtersForm) {
+        filtersForm.addEventListener("change", (event) => {
+            const target = event.target as HTMLElement | null;
+            if (target && (target as HTMLInputElement).id === "use-date-filter") {
+                submitFilters();
+                return;
+            }
+            submitFilters();
+        });
+
+    }
+
     const configElement = document.getElementById("insider-trades-config");
     if (configElement) {
         try {
@@ -826,9 +863,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     window.addEventListener("fundChanged", () => {
         updateFundFilterState();
-        const fundOnly = document.getElementById("fund-only-filter") as HTMLInputElement | null;
-        if (fundOnly?.checked) {
-            fetchTradeData();
-        }
+        submitFilters();
     });
 });
