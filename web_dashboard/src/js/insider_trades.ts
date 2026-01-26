@@ -557,13 +557,59 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
         return;
     }
 
-    const labels = top.map(([name]) => name);
+    const wrapLabel = (label: string, maxLineLength: number, maxLines: number): string => {
+        const words = label.split(/\s+/).filter(Boolean);
+        if (words.length === 0) return label;
+
+        const lines: string[] = [];
+        let currentLine = "";
+
+        for (const word of words) {
+            if (!currentLine) {
+                currentLine = word;
+                continue;
+            }
+
+            if (currentLine.length + word.length + 1 <= maxLineLength) {
+                currentLine = `${currentLine} ${word}`;
+                continue;
+            }
+
+            lines.push(currentLine);
+            currentLine = word;
+            if (lines.length === maxLines - 1) {
+                break;
+            }
+        }
+
+        if (lines.length < maxLines && currentLine) {
+            lines.push(currentLine);
+        }
+
+        if (lines.length > maxLines) {
+            lines.length = maxLines;
+        }
+
+        if (lines.length === maxLines && words.length > 0) {
+            const remainingWords = words.slice(lines.join(" ").split(/\s+/).length);
+            if (remainingWords.length > 0) {
+                lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[\s.]+$/, "")}...`;
+            }
+        }
+
+        return lines.join("<br>");
+    };
+
+    const labels = top.map(([name]) => wrapLabel(name, 18, 2));
     const values = top.map(([, count]) => count);
+    const hoverText = top.map(([name]) => name);
 
     const data = [
         {
             x: values,
             y: labels,
+            hovertext: hoverText,
+            hoverinfo: "text+x",
             type: "bar",
             orientation: "h",
             marker: { color: "#64B5F6" }
@@ -573,9 +619,9 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
     const themeLayout = getPlotlyThemeLayout();
     const layout = {
         ...themeLayout,
-        margin: { l: 200, r: 10, t: 10, b: 30 },
+        margin: { l: 220, r: 10, t: 10, b: 30 },
         xaxis: { ...(themeLayout.xaxis || {}), dtick: 1 },
-        yaxis: { ...(themeLayout.yaxis || {}) }
+        yaxis: { ...(themeLayout.yaxis || {}), automargin: true }
     };
 
     plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
