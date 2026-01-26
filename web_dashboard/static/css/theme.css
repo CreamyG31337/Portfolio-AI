@@ -445,3 +445,36 @@ input:-webkit-autofill:active {
     -webkit-text-fill-color: var(--text-primary) !important;
     transition: background-color 5000s ease-in-out 0s;
 }
+
+/* Force theme colors when upstream CSS uses !important (e.g., Flowbite). */
+input[type="text"].bg-dashboard-surface-alt,
+input[type="email"].bg-dashboard-surface-alt,
+input[type="password"].bg-dashboard-surface-alt,
+input[type="number"].bg-dashboard-surface-alt,
+input[type="search"].bg-dashboard-surface-alt,
+input[type="url"].bg-dashboard-surface-alt,
+input[type="tel"].bg-dashboard-surface-alt,
+input[type="date"].bg-dashboard-surface-alt,
+input[type="datetime-local"].bg-dashboard-surface-alt,
+input[type="time"].bg-dashboard-surface-alt,
+input[type="month"].bg-dashboard-surface-alt,
+input[type="week"].bg-dashboard-surface-alt,
+select.bg-dashboard-surface-alt,
+textarea.bg-dashboard-surface-alt {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* Multi-selects can ignore class backgrounds; force theme colors. */
+select[multiple],
+select[size] {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+select[multiple] option,
+select[size] option {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}

@@ -78,6 +78,38 @@ let gridColumnApi: AgGridColumnApi | null = null;
 let insiderTradesConfig: Record<string, any> = {};
 
 const failedLogoCache = new Set<string>();
+const darkThemes = new Set(["dark", "midnight-tokyo", "abyss"]);
+
+function getCurrentTheme(): string {
+    const themeManager = (window as any).themeManager;
+    if (themeManager?.getTheme) {
+        return themeManager.getTheme();
+    }
+    return document.documentElement.getAttribute("data-theme") || "system";
+}
+
+function isDarkTheme(theme: string): boolean {
+    if (theme === "system") {
+        return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    return darkThemes.has(theme);
+}
+
+function applyAgGridTheme(container: HTMLElement): void {
+    const theme = getCurrentTheme();
+    const useDark = isDarkTheme(theme);
+    container.classList.toggle("ag-theme-alpine-dark", useDark);
+    container.classList.toggle("ag-theme-alpine", !useDark);
+}
+
+function getPlotlyThemeLayout(): Record<string, any> {
+    const theme = getCurrentTheme();
+    const utils = (window as any).chartThemeUtils;
+    if (utils?.getPlotlyLayout) {
+        return utils.getPlotlyLayout(theme);
+    }
+    return {};
+}
 
 class TickerCellRenderer {
     private eGui!: HTMLElement;
@@ -257,6 +289,8 @@ function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
         console.error("Insider trades grid element not found");
         return;
     }
+
+    applyAgGridTheme(gridDiv);
 
     if (gridDiv.getAttribute("data-initialized") === "true") {
         if (gridApi) {
@@ -459,11 +493,13 @@ function renderVolumeChart(trades: InsiderTrade[]): void {
         }
     ];
 
+    const themeLayout = getPlotlyThemeLayout();
     const layout = {
+        ...themeLayout,
         barmode: "group",
         margin: { l: 40, r: 10, t: 10, b: 40 },
-        xaxis: { tickangle: -30 },
-        yaxis: { tickprefix: "$" },
+        xaxis: { ...(themeLayout.xaxis || {}), tickangle: -30 },
+        yaxis: { ...(themeLayout.yaxis || {}), tickprefix: "$" },
         legend: { orientation: "h", y: -0.2 }
     };
 
@@ -504,9 +540,12 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
         }
     ];
 
+    const themeLayout = getPlotlyThemeLayout();
     const layout = {
+        ...themeLayout,
         margin: { l: 140, r: 10, t: 10, b: 30 },
-        xaxis: { dtick: 1 }
+        xaxis: { ...(themeLayout.xaxis || {}), dtick: 1 },
+        yaxis: { ...(themeLayout.yaxis || {}) }
     };
 
     plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
@@ -539,7 +578,9 @@ function renderTypeDistributionChart(trades: InsiderTrade[]): void {
         }
     ];
 
+    const themeLayout = getPlotlyThemeLayout();
     const layout = {
+        ...themeLayout,
         margin: { l: 10, r: 10, t: 10, b: 10 },
         showlegend: true
     };
@@ -550,15 +591,17 @@ function renderTypeDistributionChart(trades: InsiderTrade[]): void {
 function renderEmptyChart(target: HTMLElement, message: string): void {
     const plotly = (window as any).Plotly;
     if (!plotly) return;
+    const themeLayout = getPlotlyThemeLayout();
     const data: any[] = [];
     const layout = {
+        ...themeLayout,
         annotations: [{
             text: message,
             showarrow: false,
             font: { size: 12 }
         }],
-        xaxis: { visible: false },
-        yaxis: { visible: false },
+        xaxis: { ...(themeLayout.xaxis || {}), visible: false },
+        yaxis: { ...(themeLayout.yaxis || {}), visible: false },
         margin: { l: 10, r: 10, t: 10, b: 10 }
     };
     plotly.newPlot(target, data, layout, { displayModeBar: false });
@@ -677,6 +720,14 @@ async function fetchTradeData(): Promise<void> {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+    const gridDiv = document.getElementById("insider-trades-grid");
+    const themeManager = (window as any).themeManager;
+    if (gridDiv && themeManager?.addListener) {
+        themeManager.addListener(() => {
+            applyAgGridTheme(gridDiv);
+        });
+    }
+
     const useDateFilter = document.getElementById("use-date-filter") as HTMLInputElement | null;
     const dateRangeInputs = document.getElementById("date-range-inputs");
     if (useDateFilter && dateRangeInputs) {
