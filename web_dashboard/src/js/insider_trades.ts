@@ -722,6 +722,26 @@ async function renderNotableSection(): Promise<void> {
 function buildSearchParams(): URLSearchParams {
     const searchParams = new URLSearchParams(window.location.search);
 
+    // Override with current fund selection from DOM if available
+    const fundInput = document.getElementById("fund-filter") as HTMLInputElement | null;
+    if (fundInput) {
+        if (fundInput.value) {
+            searchParams.set("fund", fundInput.value);
+        } else {
+            searchParams.delete("fund");
+        }
+    }
+
+    // Override with current fund_only selection from DOM if available
+    const fundOnlyCheckbox = document.getElementById("fund-only-filter") as HTMLInputElement | null;
+    if (fundOnlyCheckbox) {
+        if (fundOnlyCheckbox.checked) {
+            searchParams.set("fund_only", "true");
+        } else {
+            searchParams.delete("fund_only");
+        }
+    }
+
     if (!searchParams.has("use_date_filter") && insiderTradesConfig.defaultUseDateFilter) {
         searchParams.set("use_date_filter", "true");
         if (insiderTradesConfig.defaultStartDate && !searchParams.has("start_date")) {
@@ -825,9 +845,12 @@ document.addEventListener("DOMContentLoaded", () => {
     updateFundFilterState();
 
     window.addEventListener("fundChanged", () => {
-        updateFundFilterState();
         const fundOnly = document.getElementById("fund-only-filter") as HTMLInputElement | null;
-        if (fundOnly?.checked) {
+        const wasChecked = fundOnly?.checked;
+
+        updateFundFilterState();
+
+        if (fundOnly?.checked || wasChecked) {
             fetchTradeData();
         }
     });
