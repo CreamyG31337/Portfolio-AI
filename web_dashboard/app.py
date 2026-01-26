@@ -4350,6 +4350,31 @@ def get_latest_insider_trade_timestamp(
     return None
 
 
+@cache_data(ttl=300)
+def get_last_job_success_timestamp(
+    job_id: str, refresh_key: int, _cache_version: Optional[str] = None
+) -> Optional[datetime]:
+    """Get the most recent successful execution timestamp for a scheduler job."""
+    if _cache_version is None:
+        try:
+            from cache_version import get_cache_version
+            _cache_version = get_cache_version()
+        except ImportError:
+            _cache_version = ""
+
+    try:
+        from scheduler.scheduler_core import get_job_logs
+
+        logs = get_job_logs(job_id, limit=10)
+        for log in logs:
+            if log.get("success") and log.get("timestamp"):
+                return log["timestamp"]
+    except Exception as e:
+        logger.warning(f"Error fetching job status for {job_id}: {e}")
+
+    return None
+
+
 @cache_data(ttl=21600)
 def get_insider_trades_cached(
     _supabase_client,
@@ -4491,6 +4516,18 @@ def insider_trades_page():
             except Exception:
                 pass
 
+        last_job_run = get_last_job_success_timestamp(
+            "insider_trades_fetch", refresh_key, cache_version
+        )
+        if last_job_run:
+            try:
+                last_job_run = format_timestamp_in_user_timezone(
+                    last_job_run.strftime("%Y-%m-%d %H:%M"),
+                    format="%Y-%m-%d %I:%M %p %Z"
+                )
+            except Exception:
+                last_job_run = last_job_run.isoformat()
+
         nav_context = get_navigation_context(current_page='insider_trades')
 
         return render_template('insider_trades.html',
@@ -4499,6 +4536,7 @@ def insider_trades_page():
                              refresh_key=refresh_key,
                              unique_insiders=unique_insiders,
                              newest_timestamp=latest_created_at or "N/A",
+                             last_job_run=last_job_run or "N/A",
                              current_fund=request.args.get("fund", ""),
                              current_fund_only=request.args.get("fund_only") == "true",
                              current_type=request.args.get("type", "All"),
