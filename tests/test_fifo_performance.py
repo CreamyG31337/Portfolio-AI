@@ -43,15 +43,26 @@ def mock_supabase_client(fifo_context):
     fifo_context["app_mock"].get_supabase_client.return_value = mock_client
     return mock_client
 
-def test_calculate_fifo_pnl_baseline(benchmark, mock_supabase_client, fifo_context):
+def test_calculate_fifo_pnl_baseline(request, mock_supabase_client, fifo_context):
     """Benchmark the calculate_fifo_pnl function without pre-fetched data (Baseline)."""
+    # Skip if benchmark fixture is not available
+    try:
+        benchmark = request.getfixturevalue('benchmark')
+    except pytest.FixtureLookupError:
+        pytest.skip("pytest-benchmark plugin not installed")
+    
     # This simulates the old behavior where it fetches from DB
     calculate_fifo_pnl = fifo_context["module"].calculate_fifo_pnl
     result = benchmark(calculate_fifo_pnl, "Test Fund", "TEST", 50.0, 30.0)
     assert result == 1000.0
 
-def test_calculate_fifo_pnl_optimized(benchmark, mock_supabase_client, fifo_context):
+def test_calculate_fifo_pnl_optimized(request, mock_supabase_client, fifo_context):
     """Benchmark the calculate_fifo_pnl function WITH pre-fetched data (Optimized)."""
+    # Skip if benchmark fixture is not available
+    try:
+        benchmark = request.getfixturevalue('benchmark')
+    except pytest.FixtureLookupError:
+        pytest.skip("pytest-benchmark plugin not installed")
 
     # Pre-fetch data
     existing_trades = [

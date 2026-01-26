@@ -143,7 +143,7 @@ class TestCalculateDailyPnLFromSnapshots(unittest.TestCase):
 
         snapshots = [
             MockPortfolioSnapshot(
-                timestamp=datetime(2025, 1, 1, 16, 0, 0),
+                timestamp=datetime(2025, 1, 2, 16, 0, 0),  # Jan 2 is a trading day
                 positions=[
                     Position(
                         ticker="GOOGL",
@@ -156,7 +156,7 @@ class TestCalculateDailyPnLFromSnapshots(unittest.TestCase):
                 ]
             ),
             MockPortfolioSnapshot(
-                timestamp=datetime(2025, 1, 2, 16, 0, 0),
+                timestamp=datetime(2025, 1, 3, 16, 0, 0),  # Jan 3 is a trading day
                 positions=[loss_position]
             )
         ]

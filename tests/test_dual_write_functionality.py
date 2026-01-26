@@ -37,7 +37,11 @@ class TestWriteCoordinator:
     def teardown_method(self):
         """Clean up test environment."""
         if self.test_data_dir.exists():
-            shutil.rmtree(self.test_data_dir)
+            try:
+                shutil.rmtree(self.test_data_dir)
+            except (PermissionError, OSError):
+                # On Windows, files might still be locked - ignore cleanup errors
+                pass
     
     def test_write_coordinator_initialization(self):
         """Test WriteCoordinator initializes correctly."""
@@ -211,7 +215,11 @@ class TestRepositoryFactoryDualWrite:
     def teardown_method(self):
         """Clean up test environment."""
         if self.test_data_dir.exists():
-            shutil.rmtree(self.test_data_dir)
+            try:
+                shutil.rmtree(self.test_data_dir)
+            except (PermissionError, OSError):
+                # On Windows, files might still be locked - ignore cleanup errors
+                pass
     
     def test_create_dual_write_repository(self):
         """Test creating dual-write repository with real Supabase credentials."""
@@ -246,7 +254,11 @@ class TestDualWriteIntegration:
     def teardown_method(self):
         """Clean up test environment."""
         if self.test_data_dir.exists():
-            shutil.rmtree(self.test_data_dir)
+            try:
+                shutil.rmtree(self.test_data_dir)
+            except (PermissionError, OSError):
+                # On Windows, files might still be locked - ignore cleanup errors
+                pass
     
     def test_trade_processor_with_dual_write(self):
         """Test FIFOTradeProcessor with dual-write coordinator using real Supabase."""
