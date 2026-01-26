@@ -120,8 +120,14 @@ class TestPnLCalculationConsistency:
         supabase_repo.save_portfolio_snapshot(snapshot)
         
         # Get data from both repositories
-        csv_snapshots = csv_repo.get_portfolio_data()
-        supabase_snapshots = supabase_repo.get_portfolio_data()
+        # Use a date range that includes today to ensure we get the snapshot we just saved
+        from datetime import timedelta
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=1)
+        date_range = (start_date, end_date)
+        
+        csv_snapshots = csv_repo.get_portfolio_data(date_range=date_range)
+        supabase_snapshots = supabase_repo.get_portfolio_data(date_range=date_range)
         
         # Both should have the snapshot
         assert len(csv_snapshots) >= 1, "CSV should have the snapshot"
@@ -203,9 +209,13 @@ class TestPnLCalculationConsistency:
         # Calculate daily P&L using PnLCalculator
         pnl_calculator = PnLCalculator()
         
-        # Get latest snapshots
-        csv_snapshots = csv_repo.get_portfolio_data()
-        supabase_snapshots = supabase_repo.get_portfolio_data()
+        # Get latest snapshots - use date range to include both yesterday and today
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=2)
+        date_range = (start_date, end_date)
+        
+        csv_snapshots = csv_repo.get_portfolio_data(date_range=date_range)
+        supabase_snapshots = supabase_repo.get_portfolio_data(date_range=date_range)
         
         csv_latest = csv_snapshots[-1]
         supabase_latest = supabase_snapshots[-1]
