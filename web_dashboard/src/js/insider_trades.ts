@@ -600,16 +600,15 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
         return lines.join("<br>");
     };
 
-    const labels = top.map(([name]) => wrapLabel(name, 18, 2));
+    // Use full names without truncation - let automargin handle sizing
+    const labels = top.map(([name]) => name);
     const values = top.map(([, count]) => count);
-    const hoverText = top.map(([name]) => name);
 
     const data = [
         {
             x: values,
             y: labels,
-            hovertext: hoverText,
-            hoverinfo: "text+x",
+            hoverinfo: "x+y",
             type: "bar",
             orientation: "h",
             marker: { color: "#64B5F6" }
@@ -619,9 +618,9 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
     const themeLayout = getPlotlyThemeLayout();
     const layout = {
         ...themeLayout,
-        margin: { l: 220, r: 10, t: 10, b: 30 },
+        margin: { l: 10, r: 10, t: 10, b: 30 },
         xaxis: { ...(themeLayout.xaxis || {}), dtick: 1 },
-        yaxis: { ...(themeLayout.yaxis || {}), automargin: true }
+        yaxis: { ...(themeLayout.yaxis || {}), automargin: true, tickmode: "linear" }
     };
 
     plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
