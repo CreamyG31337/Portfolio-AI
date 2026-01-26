@@ -168,3 +168,17 @@ class DualWriteRepository(BaseRepository):
     def validate_data_integrity(self) -> bool:
         """Validate data integrity using CSV repository."""
         return self.csv_repo.validate_data_integrity()
+    
+    def update_ticker_in_future_snapshots(self, ticker: str, trade_timestamp: datetime) -> None:
+        """Update ticker in future snapshots for both CSV and Supabase."""
+        try:
+            # Update CSV (primary)
+            self.csv_repo.update_ticker_in_future_snapshots(ticker, trade_timestamp)
+            logger.info(f"Updated {ticker} in future CSV snapshots")
+            
+            # Update Supabase (backup)
+            self.supabase_repo.update_ticker_in_future_snapshots(ticker, trade_timestamp)
+            logger.info(f"Updated {ticker} in future Supabase snapshots")
+        except Exception as e:
+            logger.error(f"Failed to update {ticker} in future snapshots: {e}")
+            raise RepositoryError(f"Failed to update {ticker} in future snapshots: {e}") from e

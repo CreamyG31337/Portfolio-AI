@@ -232,15 +232,16 @@ class TestRepositoryFactoryDualWrite:
         fund_name = "TEST"
         
         # Execute
-        coordinator = RepositoryFactory.create_dual_write_repository(
+        repository = RepositoryFactory.create_dual_write_repository(
             fund_name=fund_name,
             data_directory=str(self.test_data_dir)
         )
         
-        # Verify
-        assert isinstance(coordinator, WriteCoordinator)
-        assert coordinator.csv_repo is not None
-        assert coordinator.supabase_repo is not None
+        # Verify - should return DualWriteRepository, not WriteCoordinator
+        from data.repositories.dual_write_repository import DualWriteRepository
+        assert isinstance(repository, DualWriteRepository)
+        assert repository.csv_repo is not None
+        assert repository.supabase_repo is not None
 
 
 class TestDualWriteIntegration:

@@ -573,19 +573,18 @@ class SupabaseRepository(BaseRepository):
         logger.warning("Market data retrieval from Supabase not implemented yet")
         return []
     
-    def save_market_data(self, ticker: str, market_data: List[MarketData]) -> None:
+    def save_market_data(self, market_data: MarketData) -> None:
         """Save market data to Supabase.
         
         Args:
-            ticker: Stock ticker symbol
-            market_data: Market data to save
+            market_data: MarketData to save
             
         Raises:
             RepositoryError: If data saving fails
         """
         # This would need a market_data table in Supabase
         # For now, do nothing as market data is typically fetched live
-        logger.warning("Market data saving to Supabase not implemented yet")
+        logger.warning(f"Market data saving to Supabase not implemented yet (ticker: {market_data.ticker})")
     
     def get_recent_trades(self, days: int = 30, limit: int = 100) -> List[Trade]:
         """Get recent trades for easier debugging.
