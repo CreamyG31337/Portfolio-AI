@@ -3,6 +3,8 @@
  * Handles AgGrid initialization, stats, and charts
  */
 
+export {};
+
 interface AgGridParams {
     value: string | number | null;
     data?: InsiderTrade;
@@ -12,7 +14,7 @@ interface AgGridApi {
     sizeColumnsToFit(): void;
     addEventListener(event: string, callback: () => void): void;
     setGridOption(key: string, value: any): void;
-    exportDataAsCsv(params?: { fileName?: string }): void;
+    exportDataAsCsv?(params?: { fileName?: string }): void;
     showLoadingOverlay(): void;
     hideOverlay(): void;
 }
@@ -20,10 +22,6 @@ interface AgGridApi {
 interface AgGridColumnApi {
     getAllDisplayedColumns(): any[];
     autoSizeColumns(colIds: string[], skipHeader?: boolean): void;
-}
-
-interface AgGridGlobal {
-    createGrid: (element: HTMLElement, options: AgGridOptions) => AgGridApi;
 }
 
 interface AgGridOptions {
@@ -73,13 +71,6 @@ interface InsiderTradeApiResponse {
     has_more: boolean;
     total?: number;
     error?: string;
-}
-
-declare global {
-    interface Window {
-        agGrid: AgGridGlobal;
-        Plotly: any;
-    }
 }
 
 let gridApi: AgGridApi | null = null;
@@ -353,7 +344,7 @@ function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
         overlayLoadingTemplate: "<span class='ag-overlay-loading-center'>Loading insider trades...</span>"
     };
 
-    const gridApiInstance = window.agGrid.createGrid(gridDiv, gridOptions);
+    const gridApiInstance = (window as any).agGrid.createGrid(gridDiv, gridOptions as any) as AgGridApi;
     gridApi = gridApiInstance;
     gridColumnApi = (gridApiInstance as any).columnApi ?? null;
     gridDiv.setAttribute("data-initialized", "true");
@@ -427,7 +418,8 @@ function renderCharts(trades: InsiderTrade[]): void {
 
 function renderVolumeChart(trades: InsiderTrade[]): void {
     const chartEl = document.getElementById("insider-volume-chart");
-    if (!chartEl || !window.Plotly) return;
+    const plotly = (window as any).Plotly;
+    if (!chartEl || !plotly) return;
 
     const dailyMap = new Map<string, { purchase: number; sale: number }>();
     for (const trade of trades) {
@@ -475,12 +467,13 @@ function renderVolumeChart(trades: InsiderTrade[]): void {
         legend: { orientation: "h", y: -0.2 }
     };
 
-    window.Plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
+    plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
 }
 
 function renderTopInsidersChart(trades: InsiderTrade[]): void {
     const chartEl = document.getElementById("insider-top-insiders-chart");
-    if (!chartEl || !window.Plotly) return;
+    const plotly = (window as any).Plotly;
+    if (!chartEl || !plotly) return;
 
     const counts = new Map<string, number>();
     for (const trade of trades) {
@@ -516,12 +509,13 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
         xaxis: { dtick: 1 }
     };
 
-    window.Plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
+    plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
 }
 
 function renderTypeDistributionChart(trades: InsiderTrade[]): void {
     const chartEl = document.getElementById("insider-type-distribution-chart");
-    if (!chartEl || !window.Plotly) return;
+    const plotly = (window as any).Plotly;
+    if (!chartEl || !plotly) return;
 
     let purchaseCount = 0;
     let saleCount = 0;
@@ -550,12 +544,13 @@ function renderTypeDistributionChart(trades: InsiderTrade[]): void {
         showlegend: true
     };
 
-    window.Plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
+    plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
 }
 
 function renderEmptyChart(target: HTMLElement, message: string): void {
-    if (!window.Plotly) return;
-    const data = [];
+    const plotly = (window as any).Plotly;
+    if (!plotly) return;
+    const data: any[] = [];
     const layout = {
         annotations: [{
             text: message,
@@ -566,7 +561,7 @@ function renderEmptyChart(target: HTMLElement, message: string): void {
         yaxis: { visible: false },
         margin: { l: 10, r: 10, t: 10, b: 10 }
     };
-    window.Plotly.newPlot(target, data, layout, { displayModeBar: false });
+    plotly.newPlot(target, data, layout, { displayModeBar: false });
 }
 
 function renderNotableTrades(trades: InsiderTrade[], containerId: string, type: string): void {
@@ -673,7 +668,7 @@ async function fetchTradeData(): Promise<void> {
 };
 
 (window as any).downloadCsv = function () {
-    if (!gridApi) {
+    if (!gridApi || !gridApi.exportDataAsCsv) {
         alert("Grid not initialized.");
         return;
     }
