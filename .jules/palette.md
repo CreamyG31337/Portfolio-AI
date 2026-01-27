@@ -17,3 +17,7 @@
 ## 2025-02-18 - Focus Management in Auth Forms
 **Learning:** Switching between forms (e.g., Login/Register) using visibility toggles does not automatically move focus, which disorients keyboard and screen reader users. Programmatically focusing the first input of the new form is essential.
 **Action:** When toggling visibility of major UI sections, always manage focus by finding the first interactive element and focusing it (often requires a small `setTimeout` of ~50ms to ensure the element is rendered and interactive).
+
+## 2025-02-18 - Focus Indicators on Custom Backgrounds
+**Learning:** Interactive elements on custom backgrounds (like gradients or images) often lack visible focus indicators when default outlines are disabled. Standard outlines might be low contrast or hidden.
+**Action:** Always verify focus visibility on custom backgrounds and explicitly add high-contrast focus rings (e.g., `focus:ring-white/50` on dark/gradient headers) when using `focus:outline-none`.
