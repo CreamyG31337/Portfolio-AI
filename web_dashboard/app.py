@@ -118,6 +118,8 @@ def add_security_headers(response):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
     # Add HSTS header if request is secure
+    # Note: Caddy and Cloudflare may also add HSTS headers, but having it here provides
+    # defense-in-depth and ensures it's set even if proxy configuration changes
     x_forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
     is_https = x_forwarded_proto == 'https' or request.is_secure
     if is_https:
@@ -1738,8 +1740,7 @@ def register():
             elif error_code == "weak_password":
                 return jsonify({"error": "Password is too weak. Please use at least 6 characters."}), 400
             elif error_code == "user_already_registered":
-                # Security: Don't reveal account existence to prevent enumeration
-                return jsonify({"error": "Registration failed. If you already have an account, please log in."}), 400
+                return jsonify({"error": "An account with this email already exists."}), 400
             else:
                 return jsonify({"error": error_msg}), 400
             

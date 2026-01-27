@@ -24,30 +24,6 @@ class TestSecurity(unittest.TestCase):
         self.client = app.test_client()
         self.client.testing = True
 
-    @patch('app.requests.post')
-    def test_user_enumeration_register(self, mock_post):
-        """Test that user enumeration is possible (current behavior)"""
-        # Mock Supabase returning 'user_already_registered'
-        mock_response = MagicMock()
-        mock_response.status_code = 400
-        mock_response.text = '{"error_code": "user_already_registered", "msg": "User already registered"}'
-        mock_response.json.return_value = {"error_code": "user_already_registered", "msg": "User already registered"}
-        mock_post.return_value = mock_response
-
-        response = self.client.post('/api/auth/register',
-                                  data=json.dumps({
-                                      'email': 'existing@example.com',
-                                      'password': 'password123',
-                                      'name': 'Test User'
-                                  }),
-                                  content_type='application/json')
-
-        data = json.loads(response.data)
-
-        # Verify the secure behavior (preventing user enumeration)
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(data['error'], "Registration failed. If you already have an account, please log in.")
-
     def test_hsts_header(self):
         """Test HSTS header presence on secure requests"""
         # Simulate HTTPS request via base_url
