@@ -135,28 +135,28 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         }
     },
     'market_research': {
-        'name': 'Market Research Collection',
+        'name': '📚 Market Research Collection',
         'description': 'Scrape and store general market news articles',
         'default_interval_minutes': 360,  # Every 6 hours (but uses cron triggers instead)
         'enabled_by_default': True,
-        'icon': '📰'
+        'icon': '📚'
     },
     'ticker_research': {
-        'name': 'Ticker Research Collection',
+        'name': '🔍 Ticker Research Collection',
         'description': 'Fetch news for specific companies in the portfolio',
         'default_interval_minutes': 360,  # Every 6 hours
         'enabled_by_default': True,
         'icon': '🔍'
     },
     'process_research_reports': {
-        'name': 'Research Report Processing',
+        'name': '📚 Research Report Processing',
         'description': 'Process PDF research reports from Research/ folders, extract text, generate embeddings, and store in database',
         'default_interval_minutes': 60,  # Every hour
         'enabled_by_default': True,
-        'icon': '📄'
+        'icon': '📚'
     },
     'opportunity_discovery': {
-        'name': 'Opportunity Discovery',
+        'name': '🔍 Opportunity Discovery',
         'description': 'Hunt for new investment opportunities using targeted search queries',
         'default_interval_minutes': 720,  # Every 12 hours
         'enabled_by_default': True,
@@ -170,7 +170,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'icon': '📊'
     },
     'social_sentiment': {
-        'name': 'Social Sentiment Tracking',
+        'name': '💬 Social Sentiment Tracking',
         'description': 'Fetch retail hype and sentiment from StockTwits and Reddit',
         'default_interval_minutes': 60,  # Every 60 minutes (1 hour) - job takes 11-24 min, needs buffer
         'enabled_by_default': True,
@@ -184,67 +184,67 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'icon': '🧹'
     },
     'social_sentiment_ai': {
-        'name': 'Social Sentiment AI Analysis',
+        'name': '💬 Social Sentiment AI Analysis',
         'description': 'Extract posts, create sessions, and perform AI analysis on social sentiment data',
         'default_interval_minutes': 60,  # Every hour
         'enabled_by_default': True,
-        'icon': '🤖'
+        'icon': '💬'
     },
     'signal_scan': {
-        'name': 'Technical Signal Scan',
+        'name': '📊 Technical Signal Scan',
         'description': 'Calculate technical signals (trend, timing, fear/risk) for watchlist tickers',
         'default_interval_minutes': 240,  # Every 4 hours
         'enabled_by_default': True,
         'icon': '📊'
     },
     'congress_trades': {
-        'name': 'Congress Trade Fetch',
+        'name': '🏛️ Congress Trade Fetch',
         'description': 'Fetch and analyze congressional stock trades from FMP API',
         'default_interval_minutes': 360,  # 6 hours (but uses cron triggers)
         'enabled_by_default': True,
         'icon': '🏛️'
     },
     'insider_trades': {
-        'name': 'Insider Trade Fetch',
+        'name': '🏢 Insider Trade Fetch',
         'description': 'Fetch corporate insider trading data from external source',
         'default_interval_minutes': 360,  # 6 hours
         'enabled_by_default': True,
         'icon': '🏢'
     },
     'analyze_congress_trades': {
-        'name': 'Congress Trade Analysis',
+        'name': '🏛️ Congress Trade Analysis',
         'description': 'Calculate conflict scores for unscored congress trades using committee data',
         'default_interval_minutes': 30,  # Every 30 minutes
         'enabled_by_default': False,  # DISABLED during session backfill - re-enable after
-        'icon': '🔍'
+        'icon': '🏛️'
     },
     'archive_retry': {
-        'name': 'Archive Retry',
+        'name': '📚 Archive Retry',
         'description': 'Check for archived versions of paywalled articles and process them',
         'default_interval_minutes': 45,  # Every 45 minutes
         'enabled_by_default': True,
-        'icon': '📦'
+        'icon': '📚'
     },
     'rss_feed_ingest': {
-        'name': 'RSS Feed Ingestion',
+        'name': '📚 RSS Feed Ingestion',
         'description': 'Fetch articles from validated RSS feeds (Push strategy)',
         'default_interval_minutes': 180,  # Every 3 hours
         'enabled_by_default': True,
-        'icon': '📡'
+        'icon': '📚'
     },
     'alpha_research': {
-        'name': 'Alpha Hunter',
+        'name': '📚 Alpha Hunter',
         'description': 'Targeted research on high-value alpha domains',
         'default_interval_minutes': 360,  # Every 6 hours
         'enabled_by_default': True,
-        'icon': '🦊'
+        'icon': '📚'
     },
     'symbol_article_scraper': {
-        'name': 'Symbol Article Scraper',
+        'name': '📚 Symbol Article Scraper',
         'description': 'Scrape symbol pages for portfolio tickers to extract news articles',
         'default_interval_minutes': 1440,  # Every 24 hours (daily)
         'enabled_by_default': True,
-        'icon': '📑'
+        'icon': '📚'
     },
     'dividend_processing': {
         'name': 'Dividend Reinvestment Processing',
@@ -353,31 +353,31 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         }
     },
     'etf_group_analysis': {
-        'name': 'ETF Group AI Analysis',
+        'name': '💼 ETF Group AI Analysis',
         'description': 'Analyze daily ETF holdings changes as groups using AI',
         'default_interval_minutes': 1440,
         'enabled_by_default': True,
-        'icon': '🔬',
+        'icon': '💼',
         'cron_triggers': [
             {'hour': 21, 'minute': 0, 'timezone': 'America/New_York'}  # 9 PM EST
         ]
     },
     'ticker_analysis': {
-        'name': 'Ticker AI Analysis',
+        'name': '🔍 Ticker AI Analysis',
         'description': 'Analyze tickers with 3-month multi-source data. Holdings first, then watched tickers. 2-hour max.',
         'default_interval_minutes': 1440,
         'enabled_by_default': True,
-        'icon': '🧠',
+        'icon': '🔍',
         'cron_triggers': [
             {'hour': 22, 'minute': 0, 'timezone': 'America/New_York'}  # 10 PM EST
         ]
     },
     'etf_watchtower': {
-        'name': 'ETF Watchtower',
+        'name': '💼 ETF Watchtower',
         'description': 'Track daily ETF holdings changes (ARK, iShares) to detect institutional accumulation/distribution',
         'default_interval_minutes': 1440,  # Once per day
         'enabled_by_default': True,
-        'icon': '🏛️',
+        'icon': '💼',
         'cron_triggers': [
             {'hour': 20, 'minute': 0, 'timezone': 'America/New_York'}  # 20:00 EST - after ARK publishes
         ]

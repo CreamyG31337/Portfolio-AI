@@ -383,6 +383,7 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
     const gridOptions = {
         columnDefs: columnDefs,
         rowData: holdingsData,
+        domLayout: "autoHeight",
         defaultColDef: {
             editable: false,
             sortable: true,
