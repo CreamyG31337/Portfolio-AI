@@ -77,6 +77,18 @@ def parse_summary_response(raw_response: str) -> Dict[str, Any]:
         if logic_check not in ("DATA_BACKED", "HYPE_DETECTED", "NEUTRAL"):
             logic_check = "NEUTRAL"
 
+        market_relevance = (parsed.get("market_relevance") or "UNKNOWN")
+        if not isinstance(market_relevance, str):
+            market_relevance = str(market_relevance) if market_relevance else "UNKNOWN"
+        market_relevance = market_relevance.strip().upper()
+        if market_relevance not in ("MARKET_RELATED", "NOT_MARKET_RELATED"):
+            market_relevance = "UNKNOWN"
+
+        market_relevance_reason = parsed.get("market_relevance_reason", "")
+        if not isinstance(market_relevance_reason, str):
+            market_relevance_reason = str(market_relevance_reason) if market_relevance_reason else ""
+        market_relevance_reason = market_relevance_reason.strip()
+
         relationships = []
         for rel in (parsed.get("relationships") or []):
             if isinstance(rel, dict):
@@ -98,6 +110,8 @@ def parse_summary_response(raw_response: str) -> Dict[str, Any]:
             "sectors": extract_strings(parsed.get("sectors"), []),
             "key_themes": extract_strings(parsed.get("key_themes"), []),
             "companies": extract_strings(parsed.get("companies"), []),
+            "market_relevance": market_relevance,
+            "market_relevance_reason": market_relevance_reason,
             "relationships": relationships,
         }
     except json.JSONDecodeError as e:
@@ -115,6 +129,8 @@ def parse_summary_response(raw_response: str) -> Dict[str, Any]:
             "sectors": [],
             "key_themes": [],
             "companies": [],
+            "market_relevance": "UNKNOWN",
+            "market_relevance_reason": "",
             "relationships": [],
         }
     except Exception as e:
@@ -131,6 +147,8 @@ def parse_summary_response(raw_response: str) -> Dict[str, Any]:
             "sectors": [],
             "key_themes": [],
             "companies": [],
+            "market_relevance": "UNKNOWN",
+            "market_relevance_reason": "",
             "relationships": [],
         }
 
@@ -170,6 +188,12 @@ CRITICAL CLASSIFICATION RULES:
 2. If the article is primarily reporting official data/metrics → "DATA_BACKED"
 3. If the article is clickbait/rumors → "HYPE_DETECTED"
 4. When in doubt, choose "NEUTRAL" - it's the default for most financial news articles.
+
+MARKET RELEVANCE CHECK:
+Determine whether the article is related to public markets or market-relevant economics.
+- "MARKET_RELATED": The article is about publicly traded companies, stock/credit/crypto markets, ETFs, earnings, IPOs, M&A, SEC/regulatory actions, macroeconomic policy likely to impact markets (rates, inflation, fiscal policy), or industry news tied to listed companies.
+- "NOT_MARKET_RELATED": The article is about unrelated topics (sports, celebrity, weather, local crime, lifestyle, travel, etc.) with no meaningful market/financial relevance.
+If uncertain, choose "MARKET_RELATED".
 
 EXTRACTION REQUIREMENTS:
 1. Generate a comprehensive summary with 5-7+ bullet points covering all key information
@@ -230,7 +254,9 @@ Return your response as a valid JSON object with these exact fields:
   "sectors": ["Sector1", "Sector2"],
   "key_themes": ["theme1", "theme2"],
   "companies": ["Company1", "Company2"],
+  "market_relevance": "MARKET_RELATED" | "NOT_MARKET_RELATED",
+  "market_relevance_reason": "Short reason (1 sentence)",
   "relationships": [{"source": "TICKER1", "target": "TICKER2", "type": "SUPPLIER"}, ...]
 }
 
-If no tickers, sectors, themes, companies, or relationships are found, use empty arrays []. The sentiment and logic_check fields are REQUIRED and must be exactly one of the values listed above. Return ONLY the JSON object, nothing else."""
+If no tickers, sectors, themes, companies, or relationships are found, use empty arrays []. The sentiment, logic_check, and market_relevance fields are REQUIRED and must be exactly one of the values listed above. Return ONLY the JSON object, nothing else."""

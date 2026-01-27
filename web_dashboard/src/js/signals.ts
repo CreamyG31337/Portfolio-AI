@@ -297,16 +297,16 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             minWidth: 120,
             cellRenderer: (params: any) => {
                 const trend = params.value || 'NEUTRAL';
-                let badgeClass = 'px-2 py-1 rounded text-xs font-bold ';
+                let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-medium border ';
                 switch (trend) {
                     case 'UPTREND':
-                        badgeClass += 'text-green-500';
+                        badgeClass += 'bg-theme-success-bg text-theme-success-text border-theme-success-text';
                         break;
                     case 'DOWNTREND':
-                        badgeClass += 'text-red-500';
+                        badgeClass += 'bg-theme-error-bg text-theme-error-text border-theme-error-text';
                         break;
                     default:
-                        badgeClass += 'text-text-secondary';
+                        badgeClass += 'bg-theme-warning-bg text-theme-warning-text border-theme-warning-text';
                 }
                 return `<span class="${badgeClass}">${trend}</span>`;
             }

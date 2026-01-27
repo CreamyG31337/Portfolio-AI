@@ -117,6 +117,7 @@ def opportunity_discovery_job() -> None:
         articles_saved = 0
         articles_skipped = 0
         articles_blacklisted = 0
+        articles_irrelevant = 0
         
         for result in search_results['results']:
             try:
@@ -181,13 +182,33 @@ def opportunity_discovery_job() -> None:
                         # Extract ticker and sector
                         tickers = summary_data.get("tickers", [])
                         sectors = summary_data.get("sectors", [])
-                        
+
+                        extracted_tickers = []
                         if tickers:
-                            extracted_ticker = tickers[0]
+                            from research_utils import validate_ticker_format, normalize_ticker
+                            for t in tickers:
+                                if not validate_ticker_format(t):
+                                    continue
+                                normalized = normalize_ticker(t)
+                                if normalized and normalized not in extracted_tickers:
+                                    extracted_tickers.append(normalized)
+
+                        if extracted_tickers:
+                            extracted_ticker = extracted_tickers[0]
                             logger.info(f"  🎯 Discovered ticker: {extracted_ticker}")
                         
                         if sectors:
                             extracted_sector = sectors[0]
+
+                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                        if not extracted_ticker and market_relevance == "NOT_MARKET_RELATED":
+                            reason = summary_data.get("market_relevance_reason", "")
+                            articles_irrelevant += 1
+                            logger.info(
+                                f"  🚫 Skipping non-market opportunity: {title[:50]}... "
+                                f"Reason: {reason or 'No market relevance detected'}"
+                            )
+                            continue
                     
                     # Generate embedding
                     embedding = ollama_client.generate_embedding(content[:6000])
@@ -267,7 +288,10 @@ def opportunity_discovery_job() -> None:
                 continue
         
         duration_ms = int((time.time() - start_time) * 1000)
-        message = f"Query: '{selected_query[:50]}...' - Processed {articles_processed}: {articles_saved} saved, {articles_skipped} skipped, {articles_blacklisted} blacklisted"
+        message = (
+            f"Query: '{selected_query[:50]}...' - Processed {articles_processed}: {articles_saved} saved, "
+            f"{articles_skipped} skipped, {articles_blacklisted} blacklisted, {articles_irrelevant} non-market"
+        )
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         try:
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)

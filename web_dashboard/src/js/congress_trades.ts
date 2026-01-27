@@ -766,7 +766,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Chamber',
             headerName: '🏛️ Chamber',
-            minWidth: 60,
+            minWidth: 100,
             flex: 0.6,
             sortable: true,
             filter: true,
@@ -775,7 +775,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Party',
             headerName: 'Party',
-            minWidth: 50,
+            minWidth: 80,
             flex: 0.5,
             sortable: true,
             filter: true,
@@ -810,7 +810,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Amount',
             headerName: '💰 Amount',
-            minWidth: 60,
+            minWidth: 110,
             flex: 0.6,
             sortable: true,
             filter: true,
@@ -823,7 +823,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Score',
             headerName: 'Score',
-            minWidth: 100,
+            minWidth: 130,
             flex: 1,
             sortable: true,
             filter: true,
@@ -925,10 +925,11 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
 
         // Wait for grid to be ready before auto-sizing
         gridApi.addEventListener('firstDataRendered', () => {
-            // Small delay to ensure all content is rendered (especially logos)
+            // Delay to ensure all content is rendered (especially logos and emojis)
+            // Longer delay for emoji rendering which can be slower
             setTimeout(() => {
                 autoSizeColumns();
-            }, 300);
+            }, 500);
         });
 
     }
@@ -1058,7 +1059,7 @@ async function fetchTradeData(): Promise<void> {
         // Initialize grid with ALL data
         initializeCongressTradesGrid(newTrades);
 
-        // Auto-size columns after data is loaded (with delay for logos/images to load)
+        // Auto-size columns after data is loaded (with delay for logos/images/emojis to load)
         if (gridColumnApi) {
             setTimeout(() => {
                 if (gridColumnApi) {
@@ -1066,11 +1067,12 @@ async function fetchTradeData(): Promise<void> {
                     if (allColumns && allColumns.length > 0) {
                         const columnIds = allColumns.map((col: any) => col.getColId()).filter(Boolean);
                         if (columnIds.length > 0) {
+                            // Auto-size but respect minWidth constraints
                             gridColumnApi.autoSizeColumns(columnIds, false);
                         }
                     }
                 }
-            }, 500); // Wait for images/logos to load
+            }, 800); // Wait for images/logos/emojis to fully render
         }
 
         // Calculate stats from full dataset

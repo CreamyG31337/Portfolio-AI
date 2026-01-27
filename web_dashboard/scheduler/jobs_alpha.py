@@ -122,6 +122,7 @@ def alpha_research_job() -> None:
         articles_processed = 0
         articles_saved = 0
         articles_skipped = 0
+        articles_irrelevant = 0
         
         # Load blacklist for safety (even though we are targeting specific sites, redundancy is good)
         from settings import get_research_domain_blacklist
@@ -190,6 +191,16 @@ def alpha_research_job() -> None:
                         
                         if sectors:
                             extracted_sector = sectors[0]
+
+                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                        if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
+                            reason = summary_data.get("market_relevance_reason", "")
+                            articles_irrelevant += 1
+                            logger.info(
+                                f"  🚫 Skipping non-market alpha article: {title[:50]}... "
+                                f"Reason: {reason or 'No market relevance detected'}"
+                            )
+                            continue
                     
                     # Generate embedding
                     embedding = ollama_client.generate_embedding(content[:6000])
@@ -230,7 +241,10 @@ def alpha_research_job() -> None:
                 continue
         
         duration_ms = int((time.time() - start_time) * 1000)
-        message = f"Query: '{base_query}' - Processed {articles_processed}: {articles_saved} saved, {articles_skipped} skipped"
+        message = (
+            f"Query: '{base_query}' - Processed {articles_processed}: {articles_saved} saved, "
+            f"{articles_skipped} skipped, {articles_irrelevant} non-market"
+        )
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         try:
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)

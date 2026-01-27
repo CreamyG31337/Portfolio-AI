@@ -147,6 +147,7 @@ def market_research_job() -> None:
         articles_saved = 0
         articles_skipped = 0
         articles_blacklisted = 0
+        articles_irrelevant = 0
         
         # Overall job timeout: 50 minutes (leave buffer before next run)
         MAX_JOB_DURATION = 50 * 60  # 50 minutes in seconds
@@ -321,7 +322,17 @@ def market_research_job() -> None:
                     
                     if not summary:
                         logger.warning(f"Failed to generate summary for {title[:50]}...")
-                    
+
+                    market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                    if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
+                        reason = summary_data.get("market_relevance_reason", "")
+                        articles_irrelevant += 1
+                        logger.info(
+                            f"  🚫 Skipping non-market article: {title[:50]}... "
+                            f"Reason: {reason or 'No market relevance detected'}"
+                        )
+                        continue
+
                     # Generate embedding for semantic search
                     logger.debug(f"Generating embedding for: {title[:50]}...")
                     embedding = ollama_client.generate_embedding(content[:6000])  # Truncate to avoid token limits
@@ -412,7 +423,11 @@ def market_research_job() -> None:
         
         duration_ms = int((time.time() - start_time) * 1000)
         duration_min = duration_ms / 60000
-        message = f"Processed {articles_processed} articles: {articles_saved} saved, {articles_skipped} skipped, {articles_blacklisted} blacklisted"
+        message = (
+            f"Processed {articles_processed} articles: {articles_saved} saved, "
+            f"{articles_skipped} skipped, {articles_blacklisted} blacklisted, "
+            f"{articles_irrelevant} non-market"
+        )
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         mark_job_completed('market_research', target_date, None, [], duration_ms=duration_ms)
         logger.info(f"✅ {message} in {duration_min:.1f} minutes")
@@ -494,6 +509,7 @@ def rss_feed_ingest_job() -> None:
         total_articles_processed = 0
         total_articles_saved = 0
         total_articles_skipped = 0
+        total_articles_irrelevant = 0
         total_junk_filtered = 0  # NEW: Track junk filtering
         feeds_processed = 0
         feeds_failed = 0
@@ -619,6 +635,16 @@ def rss_feed_ingest_job() -> None:
                                 if sectors:
                                     extracted_sector = sectors[0]
                             
+                            market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                            if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
+                                reason = summary_data.get("market_relevance_reason", "")
+                                total_articles_irrelevant += 1
+                                logger.info(
+                                    f"  🚫 Skipping non-market RSS item: {title[:40]}... "
+                                    f"Reason: {reason or 'No market relevance detected'}"
+                                )
+                                continue
+
                             # Generate embedding
                             embedding = ollama_client.generate_embedding(content[:6000])
                         
@@ -714,7 +740,11 @@ def rss_feed_ingest_job() -> None:
                 continue
         
         duration_ms = int((time.time() - start_time) * 1000)
-        message = f"Processed {feeds_processed} feeds: {total_articles_saved} saved, {total_articles_skipped} skipped, {total_junk_filtered} junk filtered"
+        message = (
+            f"Processed {feeds_processed} feeds: {total_articles_saved} saved, "
+            f"{total_articles_skipped} skipped, {total_articles_irrelevant} non-market, "
+            f"{total_junk_filtered} junk filtered"
+        )
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         mark_job_completed('rss_feed_ingest', target_date, None, [], duration_ms=duration_ms)
         logger.info(f"✅ {message}")
