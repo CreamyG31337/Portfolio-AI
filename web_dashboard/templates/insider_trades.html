@@ -196,17 +196,17 @@
 </div>
 
 <!-- Notable Trades -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border min-w-0">
     <div>
         <h2 class="text-xl font-bold text-text-primary">⭐ Notable Trades</h2>
         <p class="text-xs text-text-secondary mt-1">Top 5 trades from the last 7 days.</p>
     </div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-        <div>
+        <div class="min-w-0">
             <h3 class="text-sm font-semibold text-text-primary mb-3">Top 5 Largest Purchases</h3>
             <div id="notable-purchases" class="space-y-3"></div>
         </div>
-        <div>
+        <div class="min-w-0">
             <h3 class="text-sm font-semibold text-text-primary mb-3">Top 5 Largest Sales</h3>
             <div id="notable-sales" class="space-y-3"></div>
         </div>
@@ -214,15 +214,17 @@
 </div>
 
 <!-- Data Table -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
-    <div class="flex items-center justify-between mb-4">
+<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border min-w-0 overflow-hidden">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 class="text-xl font-bold text-text-primary">📋 Insider Trades</h2>
         <button type="button" onclick="downloadCsv()"
             class="text-white bg-theme-success-text hover:bg-theme-success-text/80 focus:ring-4 focus:ring-theme-success-text/50 font-medium rounded-lg text-sm px-5 py-2.5">
             <i class="fas fa-download mr-2"></i>Download CSV
         </button>
     </div>
-    <div id="insider-trades-grid" class="ag-theme-alpine h-[540px] w-full"></div>
+    <div class="overflow-x-auto">
+        <div id="insider-trades-grid" class="ag-theme-alpine h-[540px] w-full min-w-[600px]"></div>
+    </div>
     <div id="insider-empty" class="hidden mt-4 bg-theme-info-bg/10 border border-theme-info-text/20 rounded-lg p-4">
         <p class="text-sm text-theme-info-text">📭 No insider trades found matching the current filters.</p>
     </div>
