@@ -597,8 +597,10 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
         offset = 0
         
         while True:
+            # Optimization: Don't join securities here - fetching sector/industry for 36k+ rows is wasteful
+            # Fetch base data only, then batch fetch securities metadata once for unique tickers
             query = client.supabase.table("portfolio_positions").select(
-                "ticker, date, shares, price, total_value, currency, securities(sector, industry, currency)"
+                "ticker, date, shares, price, total_value, currency"
             )
             
             query = query.eq("fund", fund)
@@ -629,17 +631,59 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
         
         df = pd.DataFrame(all_rows)
         
-        # Flatten nested securities data
-        if 'securities' in df.columns:
-            securities_df = pd.json_normalize(df['securities'])
-            if not securities_df.empty:
-                if 'sector' in securities_df.columns:
-                    df['sector'] = securities_df['sector']
-                if 'industry' in securities_df.columns:
-                    df['industry'] = securities_df['industry']
-                if 'currency' in securities_df.columns:
-                    df['currency'] = securities_df['currency'].fillna(df.get('currency', 'USD'))
-            df = df.drop(columns=['securities'], errors='ignore')
+        # Optimization: Batch fetch security metadata for unique tickers
+        # This reduces payload size significantly (e.g. 1.8MB -> 5KB for 1 year history)
+        unique_tickers = df['ticker'].dropna().unique().tolist()
+        securities_map = {}
+
+        if unique_tickers:
+            try:
+                # Fetch in batches of 100 to avoid URL length limits
+                all_securities = []
+                for i in range(0, len(unique_tickers), 100):
+                    batch = unique_tickers[i:i+100]
+                    sec_result = client.supabase.table("securities")\
+                        .select("ticker, sector, industry, currency")\
+                        .in_("ticker", batch)\
+                        .execute()
+                    if sec_result.data:
+                        all_securities.extend(sec_result.data)
+
+                # Build lookup map
+                for sec in all_securities:
+                    t = sec.get('ticker')
+                    if t:
+                        securities_map[t] = sec
+            except Exception as e:
+                logger.warning(f"Failed to fetch securities metadata: {e}")
+
+        # Merge metadata into DataFrame
+        if securities_map:
+            # Vectorized mapping is faster than apply
+            df['sector'] = df['ticker'].map(lambda x: securities_map.get(x, {}).get('sector'))
+            df['industry'] = df['ticker'].map(lambda x: securities_map.get(x, {}).get('industry'))
+
+            # Handle currency fallback logic (preserve existing behavior)
+            # Original: df['currency'] = securities_df['currency'].fillna(df.get('currency', 'USD'))
+            # Meaning: prefer security currency, fall back to portfolio currency
+
+            # Create a series for security currency
+            sec_currency = df['ticker'].map(lambda x: securities_map.get(x, {}).get('currency'))
+
+            # Update currency column where security currency is available
+            if 'currency' not in df.columns:
+                df['currency'] = 'USD'
+
+            # Use combine_first: sec_currency fills gaps in df['currency']
+            # So securities currency takes precedence
+            df['currency'] = sec_currency.combine_first(df['currency']).fillna('USD')
+        else:
+            df['sector'] = None
+            df['industry'] = None
+            if 'currency' not in df.columns:
+                df['currency'] = 'USD'
+            else:
+                df['currency'] = df['currency'].fillna('USD')
         
         # Normalize to date-only (midnight) for consistent charting
         df['date'] = pd.to_datetime(df['date']).dt.normalize()
