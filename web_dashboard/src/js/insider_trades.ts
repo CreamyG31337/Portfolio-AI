@@ -557,50 +557,7 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
         return;
     }
 
-    const wrapLabel = (label: string, maxLineLength: number, maxLines: number): string => {
-        const words = label.split(/\s+/).filter(Boolean);
-        if (words.length === 0) return label;
-
-        const lines: string[] = [];
-        let currentLine = "";
-
-        for (const word of words) {
-            if (!currentLine) {
-                currentLine = word;
-                continue;
-            }
-
-            if (currentLine.length + word.length + 1 <= maxLineLength) {
-                currentLine = `${currentLine} ${word}`;
-                continue;
-            }
-
-            lines.push(currentLine);
-            currentLine = word;
-            if (lines.length === maxLines - 1) {
-                break;
-            }
-        }
-
-        if (lines.length < maxLines && currentLine) {
-            lines.push(currentLine);
-        }
-
-        if (lines.length > maxLines) {
-            lines.length = maxLines;
-        }
-
-        if (lines.length === maxLines && words.length > 0) {
-            const remainingWords = words.slice(lines.join(" ").split(/\s+/).length);
-            if (remainingWords.length > 0) {
-                lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[\s.]+$/, "")}...`;
-            }
-        }
-
-        return lines.join("<br>");
-    };
-
-    // Use full names without truncation - let automargin handle sizing
+    // Use full names; relying on fixed left margin of 280px for long names
     const labels = top.map(([name]) => name);
     const values = top.map(([, count]) => count);
 
