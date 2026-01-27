@@ -928,4 +928,25 @@ document.addEventListener("DOMContentLoaded", () => {
         updateFundFilterState();
         submitFilters();
     });
+
+    // Resize Plotly charts on window resize
+    let resizeTimeout: number | undefined;
+    window.addEventListener("resize", () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = window.setTimeout(() => {
+            const plotly = (window as any).Plotly;
+            if (!plotly) return;
+            const chartIds = [
+                "insider-top-insiders-chart",
+                "insider-volume-chart",
+                "insider-type-distribution-chart"
+            ];
+            for (const id of chartIds) {
+                const el = document.getElementById(id);
+                if (el && (el as any).data) {
+                    plotly.Plots.resize(el);
+                }
+            }
+        }, 100);
+    });
 });

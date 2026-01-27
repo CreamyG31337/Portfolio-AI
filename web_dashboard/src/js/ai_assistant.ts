@@ -559,10 +559,12 @@ class AIAssistant {
         if (isOpen) {
             drawer.classList.remove(...closedClasses);
             drawer.classList.add(...openClasses);
+            drawer.classList.add('drawer-open'); // Add state tracking class
             if (backdrop) backdrop.classList.remove('hidden');
         } else {
             drawer.classList.remove(...openClasses);
             drawer.classList.add(...closedClasses);
+            drawer.classList.remove('drawer-open'); // Remove state tracking class
             if (backdrop) backdrop.classList.add('hidden');
         }
     }
