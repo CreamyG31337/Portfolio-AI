@@ -296,12 +296,12 @@ function initSchedulerBadge(): void {
 
     updateSchedulerBadge();
 
-    // Poll every 30s when visible (performance optimization), pause when hidden
+    // Poll every 15s when visible (performance optimization), pause when hidden
     setInterval(() => {
         if (!document.hidden) {
             updateSchedulerBadge();
         }
-    }, 30000);
+    }, 15000);
 
     // Update immediately when tab becomes visible
     document.addEventListener('visibilitychange', () => {
