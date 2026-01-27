@@ -527,13 +527,13 @@ function renderVolumeChart(trades: InsiderTrade[]): void {
     const layout = {
         ...themeLayout,
         barmode: "group",
-        margin: { l: 40, r: 10, t: 10, b: 40 },
+        margin: { l: 50, r: 10, t: 10, b: 50 },
         xaxis: { ...(themeLayout.xaxis || {}), tickangle: -30 },
-        yaxis: { ...(themeLayout.yaxis || {}), tickprefix: "$" },
-        legend: { orientation: "h", y: -0.2 }
+        yaxis: { ...(themeLayout.yaxis || {}), tickprefix: "$", automargin: true },
+        legend: { orientation: "h", y: -0.25 }
     };
 
-    plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
+    plotly.newPlot(chartEl, data, layout, { displayModeBar: false, responsive: true });
 }
 
 function renderTopInsidersChart(trades: InsiderTrade[]): void {
@@ -618,17 +618,17 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
     const themeLayout = getPlotlyThemeLayout();
     const layout = {
         ...themeLayout,
-        margin: { l: 280, r: 20, t: 10, b: 30 },
+        margin: { l: 10, r: 20, t: 10, b: 30 },
         xaxis: { ...(themeLayout.xaxis || {}), dtick: 1 },
         yaxis: {
             ...(themeLayout.yaxis || {}),
-            automargin: false,
+            automargin: true,
             tickmode: "linear",
-            tickfont: { size: 11 }
+            tickfont: { size: 10 }
         }
     };
 
-    plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
+    plotly.newPlot(chartEl, data, layout, { displayModeBar: false, responsive: true });
 }
 
 function renderTypeDistributionChart(trades: InsiderTrade[]): void {
@@ -665,7 +665,7 @@ function renderTypeDistributionChart(trades: InsiderTrade[]): void {
         showlegend: true
     };
 
-    plotly.newPlot(chartEl, data, layout, { displayModeBar: false });
+    plotly.newPlot(chartEl, data, layout, { displayModeBar: false, responsive: true });
 }
 
 function renderEmptyChart(target: HTMLElement, message: string): void {
