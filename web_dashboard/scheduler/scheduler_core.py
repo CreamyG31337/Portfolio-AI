@@ -67,7 +67,7 @@ MAX_RESTART_ATTEMPTS = 5
 # IMPORTANT: Use /tmp (ephemeral) instead of logs/ (Docker volume) to prevent persistence across container restarts
 # The logs directory is mounted as a Docker volume, so files there persist and cause false "already running" detection
 _HEARTBEAT_FILE = Path('/tmp') / '.scheduler_heartbeat'
-_HEARTBEAT_INTERVAL = 20  # seconds between heartbeat updates
+_HEARTBEAT_INTERVAL = 15  # seconds between heartbeat updates
 _HEARTBEAT_TIMEOUT = 60  # seconds before considering scheduler dead
 
 # Lock file to prevent multiple processes from starting scheduler simultaneously
