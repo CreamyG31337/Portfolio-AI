@@ -1420,7 +1420,7 @@ class AIAssistant {
             bubbleContainer.className = 'flex flex-col max-w-[80%]';
 
             const bubble = document.createElement('div');
-            bubble.className = 'message-bubble bg-accent text-white rounded-lg rounded-br-sm px-4 py-3 shadow-sm';
+            bubble.className = 'message-bubble bg-dashboard-surface-alt text-text-primary border border-accent/30 rounded-lg rounded-br-sm px-4 py-3 shadow-sm';
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content leading-relaxed text-white';
