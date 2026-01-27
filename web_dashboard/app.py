@@ -4630,6 +4630,7 @@ def insider_trades_page():
                 last_job_run = last_job_run.isoformat()
 
         nav_context = get_navigation_context(current_page='insider_trades')
+        update_timestamp = last_job_run or latest_created_at or "N/A"
 
         return render_template('insider_trades.html',
                              user_email=user_email,
@@ -4638,6 +4639,7 @@ def insider_trades_page():
                              unique_insiders=unique_insiders,
                              newest_timestamp=latest_created_at or "N/A",
                              last_job_run=last_job_run or "N/A",
+                             update_timestamp=update_timestamp,
                              current_fund=request.args.get("fund", ""),
                              current_fund_only=request.args.get("fund_only") == "true",
                              current_type=request.args.get("type", "All"),

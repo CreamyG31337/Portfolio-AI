@@ -178,14 +178,14 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         {
             field: 'ticker',
             headerName: 'Ticker',
-            width: 100,
+            minWidth: 130,
             cellRenderer: TickerCellRenderer,
             pinned: 'left'
         },
         {
             field: 'company_name',
             headerName: 'Company',
-            width: 220,
+            minWidth: 220,
             valueFormatter: (params: any) => {
                 return params.value || 'N/A';
             }
@@ -193,7 +193,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         {
             field: 'analyzed',
             headerName: 'Analyzed',
-            width: 110,
+            minWidth: 110,
             valueFormatter: (params: any) => {
                 return params.value ? 'Yes' : 'No';
             },
@@ -208,7 +208,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         {
             field: 'overall_signal',
             headerName: 'Signal',
-            width: 100,
+            minWidth: 120,
             cellRenderer: (params: any) => {
                 const signal = params.value || 'HOLD';
                 let badgeClass = 'px-3 py-1 rounded-full text-xs font-bold border ';
@@ -231,7 +231,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         {
             field: 'confidence',
             headerName: 'Confidence',
-            width: 120,
+            minWidth: 120,
             valueFormatter: (params: any) => {
                 const val = params.value || 0;
                 return `${(val * 100).toFixed(0)}%`;
@@ -250,7 +250,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         {
             field: 'fear_level',
             headerName: 'Fear Level',
-            width: 130,
+            minWidth: 130,
             cellRenderer: (params: any) => {
                 const level = params.value || 'LOW';
                 let badgeClass = 'px-2 py-1 rounded text-xs font-bold ';
@@ -273,7 +273,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         {
             field: 'risk_score',
             headerName: 'Risk Score',
-            width: 120,
+            minWidth: 120,
             valueFormatter: (params: any) => {
                 const val = params.value || 0;
                 return `${val.toFixed(1)}/100`;
@@ -294,7 +294,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         {
             field: 'trend',
             headerName: 'Trend',
-            width: 120,
+            minWidth: 120,
             cellRenderer: (params: any) => {
                 const trend = params.value || 'NEUTRAL';
                 let badgeClass = 'px-2 py-1 rounded text-xs font-bold ';
@@ -314,7 +314,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         {
             field: 'analysis_date',
             headerName: 'Last Updated',
-            width: 180,
+            minWidth: 180,
             valueFormatter: (params: any) => {
                 if (!params.value) return 'N/A';
                 const date = new Date(params.value);

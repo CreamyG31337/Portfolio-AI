@@ -359,3 +359,4 @@ mcps/mandrel/SERVER_METADATA.json
 .vscode/mcp.json
 # Allow template file
 !.vscode/mcp.json.example
+.claude/settings.local.json
