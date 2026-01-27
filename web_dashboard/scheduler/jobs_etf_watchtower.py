@@ -234,8 +234,54 @@ def is_stock_ticker(ticker: str) -> bool:
     return True
 
 
+def save_raw_etf_file(etf_ticker: str, file_content: bytes, file_extension: str, date: datetime) -> Optional[Path]:
+    """Save raw ETF file for later reprocessing.
+    
+    Files are organized as: logs/etf_raw_data/YYYY-MM-DD/ETF_TICKER.csv (or .xlsx)
+    This directory is mounted as a Docker volume, so files persist across restarts.
+    
+    Args:
+        etf_ticker: ETF ticker symbol
+        file_content: Raw file content (bytes)
+        file_extension: File extension ('.csv' or '.xlsx')
+        date: Date of the data
+        
+    Returns:
+        Path to saved file, or None if save failed
+    """
+    try:
+        # Use logs directory (mounted as Docker volume: /home/lance/trading-dashboard-logs:/app/web_dashboard/logs)
+        log_dir = Path(__file__).parent.parent / 'logs'
+        etf_raw_data_dir = log_dir / 'etf_raw_data'
+        etf_data_dir = etf_raw_data_dir / date.strftime('%Y-%m-%d')
+        etf_data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Check for excessive file accumulation (warn if 365+ days of data)
+        if etf_raw_data_dir.exists():
+            date_dirs = [d for d in etf_raw_data_dir.iterdir() if d.is_dir()]
+            if len(date_dirs) >= 365:
+                logger.warning(
+                    f"⚠️ ETF raw data directory has {len(date_dirs)} date folders (365+ days). "
+                    f"Consider cleaning up old files to save disk space. "
+                    f"Location: {etf_raw_data_dir.relative_to(log_dir)}"
+                )
+        
+        # Save file: ETF_TICKER.csv or ETF_TICKER.xlsx
+        filename = f"{etf_ticker}{file_extension}"
+        file_path = etf_data_dir / filename
+        
+        # Write binary content
+        file_path.write_bytes(file_content)
+        
+        logger.info(f"💾 Saved raw file: {file_path.relative_to(log_dir)}")
+        return file_path
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to save raw file for {etf_ticker}: {e}")
+        return None
 
-def fetch_ishares_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFrame]:
+
+def fetch_ishares_holdings(etf_ticker: str, csv_url: str, date: Optional[datetime] = None) -> Optional[pd.DataFrame]:
     """Download and parse iShares ETF holdings CSV."""
     try:
         logger.info(f"📥 Downloading {etf_ticker} holdings from iShares...")
@@ -247,6 +293,10 @@ def fetch_ishares_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFra
         
         response = requests.get(csv_url, timeout=30, headers=headers)
         response.raise_for_status()
+        
+        # Save raw file for reprocessing
+        save_date = date if date else datetime.now(timezone.utc)
+        save_raw_etf_file(etf_ticker, response.content, '.csv', save_date)
         
         from io import StringIO
         # iShares CSVs often have metadata headers. Look for "Ticker"
@@ -297,12 +347,13 @@ def fetch_ishares_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFra
         return None
 
 
-def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFrame]:
+def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str, date: Optional[datetime] = None) -> Optional[pd.DataFrame]:
     """Download and parse SPDR ETF holdings Excel file.
     
     Args:
         etf_ticker: ETF ticker symbol
         xlsx_url: Direct Excel URL
+        date: Optional date for file organization (defaults to now)
         
     Returns:
         DataFrame with columns: [ticker, name, shares, weight_percent]
@@ -316,6 +367,10 @@ def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFrame
         
         response = requests.get(xlsx_url, timeout=30, headers=headers)
         response.raise_for_status()
+        
+        # Save raw file for reprocessing
+        save_date = date if date else datetime.now(timezone.utc)
+        save_raw_etf_file(etf_ticker, response.content, '.xlsx', save_date)
         
         from io import BytesIO
         # SPDR Excel files have 4-5 metadata rows at the top
@@ -364,12 +419,13 @@ def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFrame
         return None
 
 
-def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str) -> Optional[pd.DataFrame]:
+def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str, date: Optional[datetime] = None) -> Optional[pd.DataFrame]:
     """Download and parse Global X ETF holdings CSV.
     
     Args:
         etf_ticker: ETF ticker symbol
         csv_url_template: URL template with {date} placeholder
+        date: Optional date for file organization (defaults to now)
         
     Returns:
         DataFrame with columns: [ticker, name, shares, weight_percent]
@@ -385,6 +441,7 @@ def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str) -> Optional[p
         # Try today first, then fall back to previous days (files may not be published on weekends/holidays)
         today = datetime.now()
         response = None
+        found_date = None
         
         for days_back in range(5):  # Try up to 5 days back
             check_date = today - timedelta(days=days_back)
@@ -395,6 +452,7 @@ def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str) -> Optional[p
                 response = requests.get(csv_url, timeout=30, headers=headers)
                 if response.status_code == 200:
                     logger.info(f"📄 Found {etf_ticker} holdings file for {date_str}")
+                    found_date = check_date
                     break
                 else:
                     logger.debug(f"No file for {date_str} (HTTP {response.status_code})")
@@ -404,6 +462,10 @@ def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str) -> Optional[p
         if response is None or response.status_code != 200:
             logger.error(f"❌ Could not find {etf_ticker} holdings file in last 5 days")
             return None
+        
+        # Save raw file for reprocessing
+        save_date = date if date else (found_date if found_date else datetime.now(timezone.utc))
+        save_raw_etf_file(etf_ticker, response.content, '.csv', save_date)
         
         # Global X CSVs have 2 header rows (title, date, then column headers)
         from io import StringIO
@@ -447,12 +509,13 @@ def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str) -> Optional[p
         return None
 
 
-def fetch_ark_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFrame]:
+def fetch_ark_holdings(etf_ticker: str, csv_url: str, date: Optional[datetime] = None) -> Optional[pd.DataFrame]:
     """Download and parse ARK ETF holdings CSV.
     
     Args:
         etf_ticker: ETF ticker symbol
         csv_url: Direct CSV URL
+        date: Optional date for file organization (defaults to now)
         
     Returns:
         DataFrame with columns: [ticker, name, shares, weight]
@@ -469,6 +532,10 @@ def fetch_ark_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFrame]:
         
         response = requests.get(csv_url, timeout=30, headers=headers)
         response.raise_for_status()
+        
+        # Save raw file for reprocessing
+        save_date = date if date else datetime.now(timezone.utc)
+        save_raw_etf_file(etf_ticker, response.content, '.csv', save_date)
         
         # ARK CSVs have headers on different rows depending on fund
         # Try reading with pandas auto-detection
@@ -533,7 +600,7 @@ def fetch_ark_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFrame]:
         return None
 
 
-def fetch_direxion_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFrame]:
+def fetch_direxion_holdings(etf_ticker: str, csv_url: str, date: Optional[datetime] = None) -> Optional[pd.DataFrame]:
     """Download and parse Direxion ETF holdings CSV.
     
     Direxion CSVs have a specific format:
@@ -547,6 +614,7 @@ def fetch_direxion_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFr
     Args:
         etf_ticker: ETF ticker symbol
         csv_url: Direct CSV URL
+        date: Optional date for file organization (defaults to now)
         
     Returns:
         DataFrame with columns: [ticker, name, shares, weight_percent]
@@ -560,6 +628,10 @@ def fetch_direxion_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFr
         
         response = requests.get(csv_url, timeout=30, headers=headers)
         response.raise_for_status()
+        
+        # Save raw file for reprocessing
+        save_date = date if date else datetime.now(timezone.utc)
+        save_raw_etf_file(etf_ticker, response.content, '.csv', save_date)
         
         from io import StringIO
         # Direxion CSV has 5 metadata rows before the header (including blank lines)
@@ -608,7 +680,7 @@ def fetch_direxion_holdings(etf_ticker: str, csv_url: str) -> Optional[pd.DataFr
         return None
 
 
-def fetch_vaneck_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFrame]:
+def fetch_vaneck_holdings(etf_ticker: str, xlsx_url: str, date: Optional[datetime] = None) -> Optional[pd.DataFrame]:
     """Download and parse VanEck ETF holdings from direct XLSX download.
     
     VanEck provides direct XLSX downloads at /downloads/holdings endpoints.
@@ -616,6 +688,7 @@ def fetch_vaneck_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFra
     Args:
         etf_ticker: ETF ticker symbol
         xlsx_url: Direct XLSX download URL
+        date: Optional date for file organization (defaults to now)
         
     Returns:
         DataFrame with columns: [ticker, name, shares, weight_percent]
@@ -631,6 +704,10 @@ def fetch_vaneck_holdings(etf_ticker: str, xlsx_url: str) -> Optional[pd.DataFra
         
         response = requests.get(xlsx_url, headers=headers, timeout=30)
         response.raise_for_status()
+        
+        # Save raw file for reprocessing
+        save_date = date if date else datetime.now(timezone.utc)
+        save_raw_etf_file(etf_ticker, response.content, '.xlsx', save_date)
         
         # Verify we got an Excel file
         content_type = response.headers.get('Content-Type', '')
@@ -789,6 +866,12 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     Returns:
         List of dicts with significant changes (filtered to stocks only, excluding systematic adjustments)
     """
+    # Convert shares to float to avoid Decimal/float type mismatch
+    # PostgreSQL returns NUMERIC as Decimal, but pandas operations need float
+    if 'shares' in yesterday.columns:
+        yesterday = yesterday.copy()
+        yesterday['shares'] = pd.to_numeric(yesterday['shares'], errors='coerce').astype(float)
+    
     # Merge on ticker
     merged = today.merge(
         yesterday,
@@ -800,6 +883,10 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     # Fill NaN (new/removed positions)
     merged['shares_now'] = merged['shares_now'].fillna(0)
     merged['shares_prev'] = merged['shares_prev'].fillna(0)
+    
+    # Ensure both are float for arithmetic operations
+    merged['shares_now'] = pd.to_numeric(merged['shares_now'], errors='coerce').astype(float).fillna(0)
+    merged['shares_prev'] = pd.to_numeric(merged['shares_prev'], errors='coerce').astype(float).fillna(0)
     
     # Calculate absolute and percentage change
     merged['share_diff'] = merged['shares_now'] - merged['shares_prev']
@@ -1069,21 +1156,36 @@ def etf_watchtower_job():
     job_id = 'etf_watchtower'
     start_time = __import__('time').time()
     
-    # Import job tracking at the start
-    target_date = datetime.now(timezone.utc).date()
+    logger.info("🏛️ Starting ETF Watchtower Job...")
     
+    # CRITICAL: Use US Eastern timezone for date (not UTC)
+    # Job runs at 8:00 PM EST, which is after market close (4:00 PM EST)
+    # Using UTC would give wrong date (e.g., 8 PM EST = 1 AM UTC next day)
+    # ETF data is for the trading day that just closed, so use EST date
+    try:
+        import pytz
+        et = pytz.timezone('America/New_York')
+        now_et = datetime.now(et)
+        today_et = now_et.date()  # Use ET date, not UTC date
+        # Convert to UTC datetime for database operations (midnight ET = 4-5 AM UTC depending on DST)
+        today = datetime.combine(today_et, datetime.min.time()).replace(tzinfo=et).astimezone(timezone.utc)
+        target_date = today_et  # Use ET date for job tracking
+    except ImportError:
+        # Fallback to UTC if pytz not available (shouldn't happen)
+        logger.warning("⚠️ pytz not available, using UTC date (may cause timezone issues)")
+        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        target_date = datetime.now(timezone.utc).date()
+    
+    # Import job tracking at the start
     try:
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
         mark_job_started(job_id, target_date)
     except Exception as e:
         logger.warning(f"Could not mark job started: {e}")
     
-    logger.info("🏛️ Starting ETF Watchtower Job...")
-    
     db = SupabaseClient(use_service_role=True)  # Use service role for securities metadata
     pc = PostgresClient()  # Research DB for etf_holdings_log
     repo = ResearchRepository()
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     
     total_changes = 0
     successful_etfs = []
@@ -1098,17 +1200,17 @@ def etf_watchtower_job():
                 
                 # 1. Download today's holdings
                 if config['provider'] == 'ARK':
-                    today_holdings = fetch_ark_holdings(etf_ticker, config['url'])
+                    today_holdings = fetch_ark_holdings(etf_ticker, config['url'], today)
                 elif config['provider'] == 'iShares':
-                    today_holdings = fetch_ishares_holdings(etf_ticker, config['url'])
+                    today_holdings = fetch_ishares_holdings(etf_ticker, config['url'], today)
                 elif config['provider'] == 'SPDR':
-                    today_holdings = fetch_spdr_holdings(etf_ticker, config['url'])
+                    today_holdings = fetch_spdr_holdings(etf_ticker, config['url'], today)
                 elif config['provider'] == 'Global X':
-                    today_holdings = fetch_globalx_holdings(etf_ticker, config['url'])
+                    today_holdings = fetch_globalx_holdings(etf_ticker, config['url'], today)
                 elif config['provider'] == 'Direxion':
-                    today_holdings = fetch_direxion_holdings(etf_ticker, config['url'])
+                    today_holdings = fetch_direxion_holdings(etf_ticker, config['url'], today)
                 elif config['provider'] == 'VanEck':
-                    today_holdings = fetch_vaneck_holdings(etf_ticker, config['url'])
+                    today_holdings = fetch_vaneck_holdings(etf_ticker, config['url'], today)
                 else:
                     logger.warning(f"⚠️ Provider {config['provider']} not yet implemented")
                     continue

@@ -275,13 +275,13 @@ def _build_context_from_packet(
     if include_trades and not trades_df.empty:
         context_parts.append(format_trades(trades_df, limit=100))
 
-    if include_insider_trades and insider_trades:
+    if include_insider_trades:
         context_parts.append(format_insider_trades(insider_trades, limit=50))
 
-    if include_congress_trades and congress_trades:
+    if include_congress_trades:
         context_parts.append(format_congress_trades(congress_trades, limit=50))
 
-    if include_etf_trades and etf_trades:
+    if include_etf_trades:
         context_parts.append(format_etf_trades(etf_trades, limit=50))
 
     return "\n\n---\n\n".join(context_parts) if context_parts else "No context data available"

@@ -188,6 +188,9 @@ def get_log_handler() -> InMemoryLogHandler:
     return _log_handler
 
 
+_setup_logging_called = False
+_file_handler = None
+
 def setup_logging(level=logging.INFO):
     """Setup logging with rotating file handler for app modules.
     
@@ -195,9 +198,13 @@ def setup_logging(level=logging.INFO):
     Logs rotate when they reach 10MB, keeping 5 backup files (50MB total).
     Attached only to app-specific loggers, not root logger.
     
+    This function is idempotent - calling it multiple times will reuse
+    the same RotatingFileHandler to avoid spurious rotations.
+    
     Args:
         level: Log level (default: INFO)
     """
+    global _setup_logging_called, _file_handler
     import os
     
     # Ensure logs directory exists
@@ -205,14 +212,20 @@ def setup_logging(level=logging.INFO):
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, 'app.log')
     
-    # Create rotating file handler
-    # Max 10MB per file, keep 5 backups = 50MB total log storage
-    file_handler = RotatingFileHandler(
-        log_file,
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=5,  # Keep 5 rotated files
-        encoding='utf-8'
-    )
+    # Reuse existing handler if already created (prevents spurious rotations)
+    if _setup_logging_called and _file_handler is not None:
+        file_handler = _file_handler
+    else:
+        # Create rotating file handler
+        # Max 10MB per file, keep 5 backups = 50MB total log storage
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=10 * 1024 * 1024,  # 10MB
+            backupCount=5,  # Keep 5 rotated files
+            encoding='utf-8'
+        )
+        _file_handler = file_handler
+        _setup_logging_called = True
     file_handler.setFormatter(PacificTimeFormatter(
         '%(asctime)s | %(levelname)-8s | %(name)-30s | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
@@ -339,7 +352,6 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
     
     log_dir = os.path.join(os.path.dirname(__file__), 'logs')
     log_file = os.path.join(log_dir, 'app.log')
-    log_file_rotated = os.path.join(log_dir, 'app.log.1')
     
     # Get deployment timestamp if needed
     deployment_cutoff = get_deployment_timestamp() if since_deployment else None
@@ -366,24 +378,28 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
     def read_log_file(file_path, is_rotated=False):
         """Read and parse a single log file, returning list of log dicts."""
         if not os.path.exists(file_path):
+            print(f"[LOG_READER] File not found: {file_path}")
             return []
         
         file_logs = []
         
         try:
             file_size = os.path.getsize(file_path)
+            print(f"[LOG_READER] Reading {file_path}: size={file_size}, is_rotated={is_rotated}")
             if file_size == 0:
                 return []
             
             # Read from end of file
             # For rotated file, read entire file (it's already a complete backup)
-            # For current file, read up to 5MB if return_all, or smaller buffer if n is specified
+            # For current file, read up to 20MB if return_all, or smaller buffer if n is specified
             if is_rotated:
                 buffer_size = file_size  # Read entire rotated file
             elif return_all:
-                buffer_size = min(5 * 1024 * 1024, file_size)  # Read up to 5MB for pagination
+                buffer_size = min(20 * 1024 * 1024, file_size)  # Read up to 20MB for pagination
             else:
                 buffer_size = min(n * 3 * 150, 1024 * 1024, file_size)
+            
+            print(f"[LOG_READER] Buffer size: {buffer_size}")
             
             with open(file_path, 'rb') as f:
                 # Seek to position from end
@@ -456,19 +472,25 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
             return []
     
     try:
-        # Read from both files: current (app.log) and most recent rotated backup (app.log.1)
-        # IMPORTANT: We only read 2 files max to avoid performance issues.
-        # RotatingFileHandler keeps 5 backups (app.log.1 through app.log.5),
-        # but older backups (app.log.2+) are handled by cleanup_log_files_job which
-        # deletes rotated backups older than 60 days. We don't need to read them here.
-        # 
+        # Read from all available log files: app.log and app.log.1 through app.log.5
+        # RotatingFileHandler keeps 5 backups
+        print(f"[LOG_READER] log_dir={log_dir}")
+        print(f"[LOG_READER] log_file={log_file}, exists={os.path.exists(log_file)}")
+        
         # Read current file first (newest logs)
         current_logs = read_log_file(log_file, is_rotated=False)
         logs.extend(current_logs)
+        print(f"[LOG_READER] current_logs count: {len(current_logs)}")
         
-        # Read rotated backup if it exists (older logs)
-        rotated_logs = read_log_file(log_file_rotated, is_rotated=True)
-        logs.extend(rotated_logs)
+        # Read ALL rotated backups (app.log.1 through app.log.5)
+        for i in range(1, 6):
+            rotated_file = os.path.join(log_dir, f'app.log.{i}')
+            if os.path.exists(rotated_file):
+                rotated_logs = read_log_file(rotated_file, is_rotated=True)
+                logs.extend(rotated_logs)
+                print(f"[LOG_READER] app.log.{i} count: {len(rotated_logs)}")
+            else:
+                print(f"[LOG_READER] app.log.{i} not found")
         
         # Sort all logs by timestamp (newest first)
         # Current file logs are already newer, but we want chronological order for proper sorting
