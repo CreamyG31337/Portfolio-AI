@@ -99,6 +99,12 @@ interface JobsDOMElements {
     viewTimeline: HTMLElement | null;
     timelineContainer: HTMLElement | null;
     frequentJobsContainer: HTMLElement | null;
+    manualJobsContainer: HTMLElement | null;
+    currentTimeDisplay: HTMLElement | null;
+    nextJobInfo: HTMLElement | null;
+    statScheduled: HTMLElement | null;
+    statCompleted: HTMLElement | null;
+    statRemaining: HTMLElement | null;
 }
 
 // State
@@ -132,7 +138,13 @@ const elements: JobsDOMElements = {
     viewJobs: null,
     viewTimeline: null,
     timelineContainer: null,
-    frequentJobsContainer: null
+    frequentJobsContainer: null,
+    manualJobsContainer: null,
+    currentTimeDisplay: null,
+    nextJobInfo: null,
+    statScheduled: null,
+    statCompleted: null,
+    statRemaining: null
 };
 
 // Initialize DOM elements when DOM is ready
@@ -157,6 +169,12 @@ function initializeDOMElements(): void {
     elements.viewTimeline = document.getElementById('view-timeline');
     elements.timelineContainer = document.getElementById('timeline-container');
     elements.frequentJobsContainer = document.getElementById('frequent-jobs-container');
+    elements.manualJobsContainer = document.getElementById('manual-jobs-container');
+    elements.currentTimeDisplay = document.getElementById('current-time-display');
+    elements.nextJobInfo = document.getElementById('next-job-info');
+    elements.statScheduled = document.getElementById('stat-scheduled');
+    elements.statCompleted = document.getElementById('stat-completed');
+    elements.statRemaining = document.getElementById('stat-remaining');
 
     console.log('[Jobs] DOM elements initialized:', {
         statusContainer: !!elements.statusContainer,
@@ -828,13 +846,21 @@ function renderTimelineView(jobsData: Job[]): void {
         return;
     }
 
+    // Update current time display
+    updateCurrentTimeDisplay();
+
     if (!jobsData || jobsData.length === 0) {
         elements.timelineContainer.innerHTML = `
-            <div class="text-sm text-text-secondary">No scheduled jobs available.</div>
+            <div class="text-sm text-text-secondary py-8 text-center">No scheduled jobs available.</div>
         `;
         elements.frequentJobsContainer.innerHTML = `
-            <div class="text-sm text-text-secondary">No recurring jobs available.</div>
+            <div class="text-sm text-text-secondary">None</div>
         `;
+        if (elements.manualJobsContainer) {
+            elements.manualJobsContainer.innerHTML = `
+                <div class="text-sm text-text-secondary">None</div>
+            `;
+        }
         return;
     }
 
@@ -844,21 +870,30 @@ function renderTimelineView(jobsData: Job[]): void {
         job: Job;
         detail?: string;
         badge?: string;
+        isPast: boolean;
+        isRunning: boolean;
     };
 
     const timelineItems: TimelineItem[] = [];
     const frequentJobs: Job[] = [];
     const manualJobs: Job[] = [];
 
+    // Current time in minutes for comparison
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
     jobsData.forEach(job => {
         const scheduleInfo = extractScheduleInfo(job);
         if (scheduleInfo.kind === 'timeline' && scheduleInfo.timeLabel) {
+            const sortKey = scheduleInfo.sortKey ?? 9999;
             timelineItems.push({
                 timeLabel: scheduleInfo.timeLabel,
-                sortKey: scheduleInfo.sortKey ?? 9999,
+                sortKey,
                 job,
                 detail: scheduleInfo.detail,
-                badge: scheduleInfo.badge
+                badge: scheduleInfo.badge,
+                isPast: sortKey < currentMinutes,
+                isRunning: job.is_running || job.status === 'running'
             });
             return;
         }
@@ -871,61 +906,167 @@ function renderTimelineView(jobsData: Job[]): void {
         frequentJobs.push(job);
     });
 
+    // Render timeline with period groupings
     if (timelineItems.length === 0) {
         elements.timelineContainer.innerHTML = `
-            <div class="text-sm text-text-secondary">No fixed-time jobs found.</div>
+            <div class="text-sm text-text-secondary py-8 text-center">No fixed-time jobs found.</div>
         `;
     } else {
         timelineItems.sort((a, b) => a.sortKey - b.sortKey);
-        elements.timelineContainer.innerHTML = timelineItems.map(item => {
-            const scheduleText = getScheduleText(item.job.trigger || '');
-            const jobName = item.job.name || item.job.id;
+
+        // Group by time period
+        const periods: { name: string; icon: string; range: [number, number]; items: TimelineItem[] }[] = [
+            { name: 'Early Morning', icon: '🌅', range: [0, 360], items: [] },      // 00:00-06:00
+            { name: 'Morning', icon: '☀️', range: [360, 720], items: [] },          // 06:00-12:00
+            { name: 'Afternoon', icon: '🌤️', range: [720, 1080], items: [] },       // 12:00-18:00
+            { name: 'Evening', icon: '🌙', range: [1080, 1440], items: [] }         // 18:00-24:00
+        ];
+
+        timelineItems.forEach(item => {
+            for (const period of periods) {
+                if (item.sortKey >= period.range[0] && item.sortKey < period.range[1]) {
+                    period.items.push(item);
+                    break;
+                }
+            }
+        });
+
+        // Build HTML with period sections
+        let html = '';
+        for (const period of periods) {
+            if (period.items.length === 0) continue;
+
+            const allPast = period.items.every(i => i.isPast);
+            const periodClass = allPast ? 'opacity-60' : '';
+
+            html += `
+                <div class="timeline-period ${periodClass}">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border/30">
+                        <span class="text-base">${period.icon}</span>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">${period.name}</span>
+                        <span class="text-xs text-text-secondary/60">(${period.items.length} job${period.items.length !== 1 ? 's' : ''})</span>
+                    </div>
+                    <div class="relative pl-6 border-l-2 border-border/30 space-y-4">
+                        ${period.items.map(item => renderTimelineItem(item)).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        elements.timelineContainer.innerHTML = html;
+    }
+
+    // Update stats
+    const completedCount = timelineItems.filter(i => i.isPast && !i.isRunning).length;
+    const runningCount = timelineItems.filter(i => i.isRunning).length;
+    const upcomingCount = timelineItems.filter(i => !i.isPast && !i.isRunning).length;
+
+    if (elements.statScheduled) elements.statScheduled.textContent = String(timelineItems.length);
+    if (elements.statCompleted) elements.statCompleted.textContent = String(completedCount);
+    if (elements.statRemaining) elements.statRemaining.textContent = String(upcomingCount + runningCount);
+
+    // Find next upcoming job
+    const nextJob = timelineItems.find(i => !i.isPast && !i.isRunning);
+    if (elements.nextJobInfo && nextJob) {
+        const minutesUntil = nextJob.sortKey - currentMinutes;
+        const timeStr = minutesUntil < 60
+            ? `${minutesUntil} min`
+            : `${Math.floor(minutesUntil / 60)}h ${minutesUntil % 60}m`;
+        elements.nextJobInfo.innerHTML = `
+            <span class="text-text-secondary">Next:</span>
+            <span class="text-text-primary font-medium">${nextJob.job.name || nextJob.job.id}</span>
+            <span class="text-text-secondary">in ${timeStr}</span>
+        `;
+    } else if (elements.nextJobInfo) {
+        elements.nextJobInfo.innerHTML = `<span class="text-text-secondary">No more jobs scheduled today</span>`;
+    }
+
+    // Render interval jobs
+    if (frequentJobs.length === 0) {
+        elements.frequentJobsContainer.innerHTML = `
+            <div class="text-xs text-text-secondary italic">None</div>
+        `;
+    } else {
+        elements.frequentJobsContainer.innerHTML = frequentJobs.map(job => {
+            const scheduleText = getScheduleText(job.trigger || '');
+            const jobName = job.name || job.id;
+            const isRunning = job.is_running || job.status === 'running';
+            const statusDot = isRunning
+                ? '<span class="w-1.5 h-1.5 rounded-full bg-theme-warning-text animate-pulse"></span>'
+                : '<span class="w-1.5 h-1.5 rounded-full bg-theme-success-text/50"></span>';
             return `
-                <div class="relative pl-6">
-                    <div class="absolute -left-2 top-2 w-3 h-3 rounded-full bg-accent"></div>
-                    <div class="flex items-start gap-4">
-                        <div class="w-16 text-sm font-mono text-text-secondary">${item.timeLabel}</div>
-                        <div class="flex-1">
-                            <div class="text-sm font-semibold text-text-primary">${jobName}</div>
-                            <div class="text-xs text-text-secondary">
-                                ${scheduleText}${item.detail ? ` • ${item.detail}` : ''}
-                            </div>
-                        </div>
-                        ${item.badge ? `<span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border border-border text-text-secondary">${item.badge}</span>` : ''}
+                <div class="flex items-start gap-2 py-1.5 border-b border-border/20 last:border-0">
+                    <div class="mt-1.5">${statusDot}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-medium text-text-primary truncate">${jobName}</div>
+                        <div class="text-xs text-text-secondary">${scheduleText || 'Recurring'}</div>
                     </div>
                 </div>
             `;
         }).join('');
     }
 
-    const frequentEntries = frequentJobs.map(job => {
-        const scheduleText = getScheduleText(job.trigger || '');
-        const jobName = job.name || job.id;
-        return `
-            <div class="bg-dashboard-surface rounded-md border border-border px-3 py-2">
-                <div class="text-sm font-semibold text-text-primary">${jobName}</div>
-                <div class="text-xs text-text-secondary mt-1">${scheduleText || 'Recurring schedule'}</div>
-            </div>
-        `;
-    });
-
-    const manualEntries = manualJobs.map(job => {
-        const jobName = job.name || job.id;
-        return `
-            <div class="bg-dashboard-surface rounded-md border border-border px-3 py-2">
-                <div class="text-sm font-semibold text-text-primary">${jobName}</div>
-                <div class="text-xs text-text-secondary mt-1">Manual</div>
-            </div>
-        `;
-    });
-
-    if (frequentEntries.length === 0 && manualEntries.length === 0) {
-        elements.frequentJobsContainer.innerHTML = `
-            <div class="text-sm text-text-secondary">No recurring jobs available.</div>
-        `;
-    } else {
-        elements.frequentJobsContainer.innerHTML = [...frequentEntries, ...manualEntries].join('');
+    // Render manual jobs
+    if (elements.manualJobsContainer) {
+        if (manualJobs.length === 0) {
+            elements.manualJobsContainer.innerHTML = `
+                <div class="text-xs text-text-secondary italic">None</div>
+            `;
+        } else {
+            elements.manualJobsContainer.innerHTML = manualJobs.map(job => {
+                const jobName = job.name || job.id;
+                return `
+                    <div class="flex items-center gap-2 py-1.5 border-b border-border/20 last:border-0">
+                        <span class="w-1.5 h-1.5 rounded-full bg-text-secondary/30"></span>
+                        <span class="text-sm text-text-primary truncate">${jobName}</span>
+                    </div>
+                `;
+            }).join('');
+        }
     }
+}
+
+function renderTimelineItem(item: { timeLabel: string; job: Job; detail?: string; badge?: string; isPast: boolean; isRunning: boolean }): string {
+    const jobName = item.job.name || item.job.id;
+
+    // Determine dot color based on status
+    let dotClass = 'bg-accent'; // upcoming
+    if (item.isRunning) {
+        dotClass = 'bg-theme-warning-text animate-pulse';
+    } else if (item.isPast) {
+        dotClass = 'bg-theme-success-text';
+    }
+
+    const opacityClass = item.isPast && !item.isRunning ? 'opacity-70' : '';
+
+    return `
+        <div class="relative ${opacityClass}">
+            <div class="absolute -left-[19px] top-1 w-2.5 h-2.5 rounded-full ${dotClass} border-2 border-dashboard-surface"></div>
+            <div class="flex items-start gap-3">
+                <div class="w-14 text-sm font-mono text-text-secondary shrink-0">${item.timeLabel}</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-text-primary truncate">${jobName}</span>
+                        ${item.isRunning ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-theme-warning-bg text-theme-warning-text">Running</span>' : ''}
+                        ${item.isPast && !item.isRunning ? '<span class="text-[10px] text-theme-success-text"><i class="fas fa-check"></i></span>' : ''}
+                    </div>
+                    ${item.detail ? `<div class="text-xs text-text-secondary mt-0.5">${item.detail}</div>` : ''}
+                </div>
+                ${item.badge ? `<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-border/50 text-text-secondary/70 shrink-0">${item.badge}</span>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function updateCurrentTimeDisplay(): void {
+    if (!elements.currentTimeDisplay) return;
+
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    elements.currentTimeDisplay.textContent = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
 }
 
 function extractScheduleInfo(job: Job): { kind: 'timeline' | 'frequent' | 'manual'; timeLabel?: string; sortKey?: number; detail?: string; badge?: string } {

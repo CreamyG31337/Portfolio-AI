@@ -1326,12 +1326,15 @@ def main():
             logout_user()
             st.rerun()
     
+    # NOTE: Scheduler start is intentionally disabled here.
+    # Flask initializes the scheduler for production; Streamlit should not duplicate it.
+    # If you run Streamlit without Flask and want scheduler jobs, re-enable _init_scheduler().
     # Initialize scheduler
-    try:
-        _logger.info("Initializing scheduler (post-redirect check)...")
-        _init_scheduler()
-    except Exception as e:
-        _logger.error(f"Failed to initialize scheduler: {e}", exc_info=True)
+    # try:
+    #     _logger.info("Initializing scheduler (post-redirect check)...")
+    #     _init_scheduler()
+    # except Exception as e:
+    #     _logger.error(f"Failed to initialize scheduler: {e}", exc_info=True)
 
 
     # Sidebar - Navigation and Filters

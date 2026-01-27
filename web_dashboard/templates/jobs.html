@@ -59,24 +59,82 @@
 
     <!-- Timeline View -->
     <div id="view-timeline" class="hidden animate-fade-in">
-        <div class="bg-dashboard-surface rounded-lg border border-border p-6">
-            <h3 class="text-lg font-bold text-text-primary mb-4">Daily Schedule</h3>
+        <!-- Current Time Banner -->
+        <div class="mb-4 flex items-center gap-3 text-sm">
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-accent/10 border border-accent/30 rounded-full">
+                <div class="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
+                <span class="text-accent font-medium" id="current-time-display">--:--</span>
+                <span class="text-text-secondary">Local Time</span>
+            </div>
+            <div id="next-job-info" class="text-text-secondary">
+                <!-- "Next: Job Name in X minutes" injected here -->
+            </div>
+        </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                <!-- Main Timeline (24h) -->
-                <div class="col-span-1 lg:col-span-3">
-                    <div id="timeline-container" class="relative pl-8 border-l border-border/50 py-2 space-y-8">
-                        <!-- Timeline items will be injected here -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- Main Timeline (24h) -->
+            <div class="col-span-1 lg:col-span-3">
+                <div class="bg-dashboard-surface rounded-lg border border-border p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-text-primary">Daily Schedule</h3>
+                        <div class="flex items-center gap-2 text-xs text-text-secondary">
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-theme-success-text"></span>Completed</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-accent"></span>Upcoming</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-theme-warning-text"></span>Running</span>
+                        </div>
+                    </div>
+
+                    <!-- Timeline Period Sections -->
+                    <div id="timeline-container" class="space-y-6">
+                        <!-- Timeline items will be injected here with period groupings -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Side Panel -->
+            <div class="col-span-1 space-y-4">
+                <!-- Interval Jobs -->
+                <div class="bg-dashboard-surface rounded-lg p-4 border border-border">
+                    <h4 class="flex items-center gap-2 text-sm font-semibold text-text-primary mb-3">
+                        <i class="fas fa-sync-alt text-accent text-xs"></i>
+                        Interval Jobs
+                    </h4>
+                    <p class="text-xs text-text-secondary mb-3">Run repeatedly throughout the day</p>
+                    <div id="frequent-jobs-container" class="space-y-2">
+                        <!-- Frequent items injected here -->
                     </div>
                 </div>
 
-                <!-- Side Panel: Frequent/Recurring Jobs -->
-                <div class="col-span-1">
-                    <div class="bg-dashboard-background rounded-lg p-4 border border-border">
-                        <h4 class="text-sm font-semibold text-text-primary mb-3 uppercase tracking-wider text-xs">
-                            Recurring / Frequent</h4>
-                        <div id="frequent-jobs-container" class="space-y-3">
-                            <!-- Frequent items injected here -->
+                <!-- Manual Jobs -->
+                <div class="bg-dashboard-surface rounded-lg p-4 border border-border">
+                    <h4 class="flex items-center gap-2 text-sm font-semibold text-text-primary mb-3">
+                        <i class="fas fa-hand-pointer text-text-secondary text-xs"></i>
+                        Manual Jobs
+                    </h4>
+                    <p class="text-xs text-text-secondary mb-3">Run on-demand only</p>
+                    <div id="manual-jobs-container" class="space-y-2">
+                        <!-- Manual items injected here -->
+                    </div>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="bg-dashboard-surface rounded-lg p-4 border border-border">
+                    <h4 class="flex items-center gap-2 text-sm font-semibold text-text-primary mb-3">
+                        <i class="fas fa-chart-pie text-text-secondary text-xs"></i>
+                        Today's Stats
+                    </h4>
+                    <div id="timeline-stats" class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-text-secondary">Scheduled</span>
+                            <span class="text-text-primary font-medium" id="stat-scheduled">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-text-secondary">Completed</span>
+                            <span class="text-theme-success-text font-medium" id="stat-completed">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-text-secondary">Remaining</span>
+                            <span class="text-accent font-medium" id="stat-remaining">0</span>
                         </div>
                     </div>
                 </div>
