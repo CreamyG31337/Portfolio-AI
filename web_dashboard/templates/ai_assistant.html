@@ -5,14 +5,6 @@
 {% block page_subtitle %}Chat with AI about your portfolio{% endblock %}
 
 {% block extra_head %}
-{% endblock %}
-{% extends "base.html" %}
-
-{% block title %}AI Assistant - Portfolio Dashboard{% endblock %}
-{% block page_title %} AI Portfolio Assistant{% endblock %}
-{% block page_subtitle %}Chat with AI about your portfolio{% endblock %}
-
-{% block extra_head %}
 <link href="/assets/css/ai_assistant.css" rel="stylesheet">
 {% endblock %}
 
@@ -36,8 +28,8 @@
     </button>
 
     <!-- Backdrop overlay for mobile drawer (hidden by default) -->
-    <div id="ai-drawer-backdrop"
-        class="hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 md:hidden" aria-hidden="true">
+    <div id="ai-drawer-backdrop" class="hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 md:hidden"
+        aria-hidden="true">
     </div>
 
     <!-- Main layout: Chat (left) and Quick Research (right) -->
