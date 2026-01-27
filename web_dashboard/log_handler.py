@@ -322,6 +322,7 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
     
     Reads from the end of the file to avoid loading the entire file into memory.
     This is much faster for large log files.
+    Now reads from both app.log (current) and app.log.1 (most recent rotated backup).
     
     Args:
         n: Number of recent logs to return (ignored if return_all=True)
@@ -336,117 +337,149 @@ def read_logs_from_file(n=100, level=None, search=None, return_all=False, exclud
     """
     import os
     
-    log_file = os.path.join(os.path.dirname(__file__), 'logs', 'app.log')
-    if not os.path.exists(log_file):
-        return []
+    log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+    log_file = os.path.join(log_dir, 'app.log')
+    log_file_rotated = os.path.join(log_dir, 'app.log.1')
     
     # Get deployment timestamp if needed
     deployment_cutoff = get_deployment_timestamp() if since_deployment else None
         
     logs = []
     
-    try:
-        # Get file size
-        file_size = os.path.getsize(log_file)
-        if file_size == 0:
+    # Pre-process filters (used for both files)
+    exclude_modules_set = set()
+    if exclude_modules:
+        if isinstance(exclude_modules, str):
+            exclude_modules_set.add(exclude_modules)
+        else:
+            exclude_modules_set.update(exclude_modules)
+
+    level_set = None
+    if level:
+        if isinstance(level, list):
+            level_set = set(level)
+        else:
+            level_set = {level}
+
+    search_lower = search.lower() if search else None
+    
+    def read_log_file(file_path, is_rotated=False):
+        """Read and parse a single log file, returning list of log dicts."""
+        if not os.path.exists(file_path):
             return []
         
-        # Read from end of file
-        # Estimate: average log line is ~150 bytes, read enough for n*3 lines (to account for filtering)
-        # But cap at 1MB to avoid memory issues (or 5MB if return_all=True)
-        if return_all:
-            buffer_size = min(5 * 1024 * 1024, file_size)  # Read up to 5MB for pagination
-        else:
-            buffer_size = min(n * 3 * 150, 1024 * 1024, file_size)
+        file_logs = []
         
-        with open(log_file, 'rb') as f:
-            # Seek to position from end
-            f.seek(max(0, file_size - buffer_size))
+        try:
+            file_size = os.path.getsize(file_path)
+            if file_size == 0:
+                return []
             
-            # Read the buffer
-            buffer = f.read().decode('utf-8', errors='ignore')
-            
-            # Split into lines (skip first partial line if we didn't start at beginning)
-            lines = buffer.split('\n')
-            if file_size > buffer_size:
-                lines = lines[1:]  # Skip first partial line
-            
-        # Pre-process exclude_modules to set for faster lookup
-        exclude_modules_set = set()
-        if exclude_modules:
-            if isinstance(exclude_modules, str):
-                exclude_modules_set.add(exclude_modules)
+            # Read from end of file
+            # For rotated file, read entire file (it's already a complete backup)
+            # For current file, read up to 5MB if return_all, or smaller buffer if n is specified
+            if is_rotated:
+                buffer_size = file_size  # Read entire rotated file
+            elif return_all:
+                buffer_size = min(5 * 1024 * 1024, file_size)  # Read up to 5MB for pagination
             else:
-                exclude_modules_set.update(exclude_modules)
-
-        # Pre-process level to set/list
-        level_set = None
-        if level:
-            if isinstance(level, list):
-                level_set = set(level)
-            else:
-                level_set = {level}
-
-        search_lower = search.lower() if search else None
-
-        # Parse lines
-        for line in lines:
-            if not line.strip():
-                continue
+                buffer_size = min(n * 3 * 150, 1024 * 1024, file_size)
+            
+            with open(file_path, 'rb') as f:
+                # Seek to position from end
+                f.seek(max(0, file_size - buffer_size))
                 
-            try:
-                # Expected format: YYYY-MM-DD HH:MM:SS | LEVEL    | module | message
-                parts = line.split(' | ', 3)
-                if len(parts) == 4:
-                    timestamp_str, level_str, module_str, message_str = parts
+                # Read the buffer
+                buffer = f.read().decode('utf-8', errors='ignore')
+                
+                # Split into lines (skip first partial line if we didn't start at beginning)
+                lines = buffer.split('\n')
+                if file_size > buffer_size:
+                    lines = lines[1:]  # Skip first partial line
+            
+            # Parse lines
+            for line in lines:
+                if not line.strip():
+                    continue
                     
-                    # Clean strings
-                    level_clean = level_str.strip()
-                    module_clean = module_str.strip()
-                    message_clean = message_str.strip()
+                try:
+                    # Expected format: YYYY-MM-DD HH:MM:SS | LEVEL    | module | message
+                    parts = line.split(' | ', 3)
+                    if len(parts) == 4:
+                        timestamp_str, level_str, module_str, message_str = parts
+                        
+                        # Clean strings
+                        level_clean = level_str.strip()
+                        module_clean = module_str.strip()
+                        message_clean = message_str.strip()
 
-                    # Apply filters EARLY (before expensive datetime parsing/dict creation)
+                        # Apply filters EARLY (before expensive datetime parsing/dict creation)
 
-                    # 1. Level filter
-                    if level_set and level_clean not in level_set:
-                        continue
-
-                    # 2. Module filter
-                    if exclude_modules_set and module_clean in exclude_modules_set:
-                        continue
-
-                    # 3. Search filter
-                    if search_lower:
-                        if (search_lower not in message_clean.lower() and
-                            search_lower not in module_clean.lower() and
-                            search_lower not in level_clean.lower() and
-                            search_lower not in line.lower()):
+                        # 1. Level filter
+                        if level_set and level_clean not in level_set:
                             continue
 
-                    # 4. Timestamp parsing (most expensive operation)
-                    timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+                        # 2. Module filter
+                        if exclude_modules_set and module_clean in exclude_modules_set:
+                            continue
 
-                    # 5. Deployment cutoff filter
-                    if deployment_cutoff and timestamp < deployment_cutoff:
-                        continue
+                        # 3. Search filter
+                        if search_lower:
+                            if (search_lower not in message_clean.lower() and
+                                search_lower not in module_clean.lower() and
+                                search_lower not in level_clean.lower() and
+                                search_lower not in line.lower()):
+                                continue
 
-                    # Store (only if passed all filters)
-                    logs.append({
-                        'timestamp': timestamp,
-                        'level': level_clean,
-                        'module': module_clean,
-                        'message': message_clean,
-                        'formatted': line.strip()
-                    })
-            except Exception:
-                continue # Skip malformed lines
+                        # 4. Timestamp parsing (most expensive operation)
+                        timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+
+                        # 5. Deployment cutoff filter
+                        if deployment_cutoff and timestamp < deployment_cutoff:
+                            continue
+
+                        # Store (only if passed all filters)
+                        file_logs.append({
+                            'timestamp': timestamp,
+                            'level': level_clean,
+                            'module': module_clean,
+                            'message': message_clean,
+                            'formatted': line.strip()
+                        })
+                except Exception:
+                    continue # Skip malformed lines
             
+            return file_logs
+            
+        except Exception as e:
+            print(f"Error reading log file {file_path}: {e}")
+            return []
+    
+    try:
+        # Read from both files: current (app.log) and most recent rotated backup (app.log.1)
+        # IMPORTANT: We only read 2 files max to avoid performance issues.
+        # RotatingFileHandler keeps 5 backups (app.log.1 through app.log.5),
+        # but older backups (app.log.2+) are handled by cleanup_log_files_job which
+        # deletes rotated backups older than 60 days. We don't need to read them here.
+        # 
+        # Read current file first (newest logs)
+        current_logs = read_log_file(log_file, is_rotated=False)
+        logs.extend(current_logs)
+        
+        # Read rotated backup if it exists (older logs)
+        rotated_logs = read_log_file(log_file_rotated, is_rotated=True)
+        logs.extend(rotated_logs)
+        
+        # Sort all logs by timestamp (newest first)
+        # Current file logs are already newer, but we want chronological order for proper sorting
+        logs.sort(key=lambda x: x['timestamp'], reverse=True)
+        
         # Return last n (unless return_all is True)
         if not return_all and n:
-            logs = logs[-n:]
-            
+            logs = logs[:n]  # Already sorted newest first, so take first n
+                
         return logs
-        
+            
     except Exception as e:
         print(f"Error reading log file: {e}")
         return []
