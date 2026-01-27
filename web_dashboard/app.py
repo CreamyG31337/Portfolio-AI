@@ -1566,6 +1566,7 @@ def debug_auth():
     })
 
 @app.route('/api/auth/magic-link', methods=['POST'])
+@rate_limit(limit=5, period=300)  # 5 requests per 5 minutes - prevents email flooding
 def magic_link():
     """Handle magic link login request"""
     try:
@@ -1608,6 +1609,7 @@ def magic_link():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/reset-password-request', methods=['POST'])
+@rate_limit(limit=3, period=600)  # 3 requests per 10 minutes - prevents email flooding
 def reset_password_request():
     """Handle password reset request"""
     try:
@@ -1648,6 +1650,7 @@ def reset_password_request():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/change-password', methods=['POST'])
+@rate_limit(limit=5, period=60)  # 5 requests per minute - prevents brute-force if token stolen
 def change_password():
     """Handle password change for authenticated user"""
     try:
@@ -1688,6 +1691,7 @@ def change_password():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/register', methods=['POST'])
+@rate_limit(limit=3, period=3600)  # 3 requests per hour - very strict for registration to prevent spam accounts
 def register():
     """Handle user registration"""
     try:
