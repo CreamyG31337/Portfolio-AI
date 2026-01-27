@@ -74,8 +74,8 @@ def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         return []
 
 
-def _get_congress_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
-    """Get congress trades for portfolio tickers from last N days."""
+def _get_congress_trades_for_portfolio(fund: str, days: Optional[int] = None) -> List[Dict]:
+    """Get the most recent congress trades for portfolio tickers."""
     try:
         # Get portfolio tickers
         positions_df = get_current_positions_flask(fund)
@@ -92,19 +92,21 @@ def _get_congress_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         if not client:
             return []
         
-        # Calculate date range
-        end_date = datetime.now(timezone.utc).date()
-        start_date = end_date - timedelta(days=days)
-        
         # Query congress trades
-        result = client.supabase.table("congress_trades_enriched")\
+        # TODO(perf): If this grows large, consider a SQL function/view with ticker array + limit,
+        # plus a composite index on (ticker, transaction_date DESC) in congress_trades_enriched.
+        query = client.supabase.table("congress_trades_enriched")\
             .select("ticker, politician, chamber, party, state, transaction_date, type, amount, owner")\
             .in_("ticker", [t.upper() for t in portfolio_tickers])\
-            .gte("transaction_date", start_date.isoformat())\
-            .lte("transaction_date", end_date.isoformat())\
-            .order("transaction_date", desc=True)\
-            .limit(100)\
-            .execute()
+            .order("transaction_date", desc=True)
+
+        if days is not None:
+            end_date = datetime.now(timezone.utc).date()
+            start_date = end_date - timedelta(days=days)
+            query = query.gte("transaction_date", start_date.isoformat())\
+                .lte("transaction_date", end_date.isoformat())
+
+        result = query.limit(10).execute()
         
         return result.data if result.data else []
     except Exception as e:
@@ -138,6 +140,8 @@ def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         start_date = end_date - timedelta(days=days)
         
         # Fetch ETF trades for each ticker
+        # TODO(perf): If ETF trade volume grows, move aggregation/limit into SQL and return
+        # the top N rows directly to avoid Python sorting and slicing.
         all_trades = []
         for ticker in portfolio_tickers:
             try:
@@ -162,7 +166,7 @@ def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         
         # Sort by date descending
         all_trades.sort(key=lambda x: x.get('trade_date') or date.min, reverse=True)
-        return all_trades[:100]  # Limit to 100 most recent
+        return all_trades[:15]  # Limit to 15 most recent
     except Exception as e:
         logger.warning(f"Error fetching ETF trades: {e}")
         return []

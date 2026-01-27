@@ -114,6 +114,9 @@ class AIAssistant {
     private contextLoading: boolean = false; // True while loading (prevent duplicate requests)
     private isSending: boolean = false; // True while a message is being sent (prevent duplicate sends)
     private contextReloadQueued: boolean = false; // True when a refresh is requested during loading
+    private contextCache: Map<string, { context: string; charCount: number }> = new Map();
+    // TODO(perf): Optionally persist cache to localStorage or add a backend cache key
+    // to reuse across sessions if context generation becomes expensive.
 
     constructor(config: AIAssistantConfig) {
         this.config = config;
@@ -711,6 +714,34 @@ class AIAssistant {
             const includeCongressTrades = this.includeCongressTrades;
             const includeEtfTrades = this.includeEtfTrades;
 
+            const cacheKey = [
+                this.selectedFund,
+                includeThesis,
+                includeTrades,
+                includePriceVolume,
+                includeFundamentals,
+                includeInsiderTrades,
+                includeCongressTrades,
+                includeEtfTrades
+            ].join('|');
+
+            const cached = this.contextCache.get(cacheKey);
+            if (cached) {
+                this.contextString = cached.context || null;
+                this.contextReady = true;
+
+                if (contentArea) {
+                    contentArea.textContent = cached.context || '';
+                }
+                if (charBadge) {
+                    charBadge.textContent = `(${cached.charCount.toLocaleString()} chars)`;
+                }
+
+                this.setSendEnabled(true);
+                this.setQuickActionsEnabled(true);
+                return;
+            }
+
             console.log('[AIAssistant] Fetching context for fund:', this.selectedFund);
 
             const response = await fetch('/api/v2/ai/preview_context', {
@@ -748,6 +779,12 @@ class AIAssistant {
                 if (charBadge && data.char_count !== undefined) {
                     charBadge.textContent = `(${data.char_count.toLocaleString()} chars)`;
                 }
+
+                // Cache for instant reuse across toggle changes
+                this.contextCache.set(cacheKey, {
+                    context: data.context || '',
+                    charCount: data.char_count || 0
+                });
 
                 // Enable send button and quick actions
                 this.setSendEnabled(true);
