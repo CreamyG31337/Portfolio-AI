@@ -21,6 +21,7 @@ interface Job {
     name?: string;
     next_run?: string | null;
     trigger?: string;
+    trigger_details?: TriggerDetails;
     status?: 'running' | 'error' | 'idle' | 'paused';
     parameters?: Record<string, JobParameter>;
     scheduler_stopped?: boolean;
@@ -45,6 +46,19 @@ interface JobParameter {
     default?: any;
     description?: string;
     optional?: boolean;
+}
+
+interface TriggerDetails {
+    type: 'manual' | 'cron' | 'interval' | 'date' | 'unknown';
+    cron_params?: {
+        hour?: string;
+        minute?: string;
+        day_of_week?: string | null;
+        timezone?: string | null;
+    };
+    interval_seconds?: number;
+    run_date?: string | null;
+    raw?: string;
 }
 
 interface JobsStatusResponse {
@@ -79,6 +93,12 @@ interface JobsDOMElements {
     errorMsg: HTMLElement | null;
     errorText: HTMLElement | null;
     autoRefreshCheckbox: HTMLInputElement | null;
+    tabJobs: HTMLElement | null;
+    tabTimeline: HTMLElement | null;
+    viewJobs: HTMLElement | null;
+    viewTimeline: HTMLElement | null;
+    timelineContainer: HTMLElement | null;
+    frequentJobsContainer: HTMLElement | null;
 }
 
 // State
@@ -106,7 +126,13 @@ const elements: JobsDOMElements = {
     noJobs: null,
     errorMsg: null,
     errorText: null,
-    autoRefreshCheckbox: null
+    autoRefreshCheckbox: null,
+    tabJobs: null,
+    tabTimeline: null,
+    viewJobs: null,
+    viewTimeline: null,
+    timelineContainer: null,
+    frequentJobsContainer: null
 };
 
 // Initialize DOM elements when DOM is ready
@@ -125,6 +151,12 @@ function initializeDOMElements(): void {
     elements.errorMsg = document.getElementById('error-message');
     elements.errorText = document.getElementById('error-text');
     elements.autoRefreshCheckbox = document.getElementById('auto-refresh') as HTMLInputElement | null;
+    elements.tabJobs = document.getElementById('tab-jobs');
+    elements.tabTimeline = document.getElementById('tab-timeline');
+    elements.viewJobs = document.getElementById('view-jobs');
+    elements.viewTimeline = document.getElementById('view-timeline');
+    elements.timelineContainer = document.getElementById('timeline-container');
+    elements.frequentJobsContainer = document.getElementById('frequent-jobs-container');
 
     console.log('[Jobs] DOM elements initialized:', {
         statusContainer: !!elements.statusContainer,
@@ -133,7 +165,13 @@ function initializeDOMElements(): void {
         startBtn: !!elements.startBtn,
         refreshBtn: !!elements.refreshBtn,
         jobsList: !!elements.jobsList,
-        autoRefreshCheckbox: !!elements.autoRefreshCheckbox
+        autoRefreshCheckbox: !!elements.autoRefreshCheckbox,
+        tabJobs: !!elements.tabJobs,
+        tabTimeline: !!elements.tabTimeline,
+        viewJobs: !!elements.viewJobs,
+        viewTimeline: !!elements.viewTimeline,
+        timelineContainer: !!elements.timelineContainer,
+        frequentJobsContainer: !!elements.frequentJobsContainer
     });
 }
 
@@ -174,6 +212,36 @@ document.addEventListener('DOMContentLoaded', (): void => {
             }
         });
         console.log('[Jobs] Auto-refresh checkbox listener attached');
+    }
+
+    const setActiveTab = (active: 'jobs' | 'timeline'): void => {
+        if (!elements.tabJobs || !elements.tabTimeline || !elements.viewJobs || !elements.viewTimeline) {
+            console.warn('[Jobs] Tab elements missing, cannot toggle views');
+            return;
+        }
+
+        const isJobs = active === 'jobs';
+        elements.viewJobs.classList.toggle('hidden', !isJobs);
+        elements.viewTimeline.classList.toggle('hidden', isJobs);
+
+        elements.tabJobs.classList.toggle('border-accent', isJobs);
+        elements.tabJobs.classList.toggle('text-accent', isJobs);
+        elements.tabJobs.classList.toggle('border-transparent', !isJobs);
+        elements.tabJobs.classList.toggle('text-text-secondary', !isJobs);
+
+        elements.tabTimeline.classList.toggle('border-accent', !isJobs);
+        elements.tabTimeline.classList.toggle('text-accent', !isJobs);
+        elements.tabTimeline.classList.toggle('border-transparent', isJobs);
+        elements.tabTimeline.classList.toggle('text-text-secondary', isJobs);
+    };
+
+    if (elements.tabJobs && elements.tabTimeline) {
+        elements.tabJobs.addEventListener('click', () => setActiveTab('jobs'));
+        elements.tabTimeline.addEventListener('click', () => setActiveTab('timeline'));
+        setActiveTab('jobs');
+        console.log('[Jobs] Tab listeners attached');
+    } else {
+        console.warn('[Jobs] Tab buttons not found; skipping tab listeners');
     }
 
     // Expose refreshJobs globally for onclick handlers
@@ -478,6 +546,8 @@ function renderJobs(jobsData: Job[]): void {
     actionButtons.forEach(btn => {
         btn.addEventListener('click', handleJobAction);
     });
+
+    renderTimelineView(jobs);
 }
 
 function createJobCard(job: Job): string {
@@ -522,7 +592,7 @@ function createJobCard(job: Job): string {
         // Define helpers within closure to generate HTML
         const renderInput = (key: string, p: JobParameter) => {
             const label = p.description || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            const defaultValue = p.default !== undefined ? p.default : '';
+            const defaultValue = p.default ?? '';
 
             if (p.type === 'boolean') {
                 const isChecked = defaultValue === true ? 'checked' : '';
@@ -538,6 +608,15 @@ function createJobCard(job: Job): string {
             } else if (p.type === 'date') {
                 // Default to today if no default provided for date inputs
                 let val = defaultValue;
+                if (val === null || val === undefined || val === 'null' || val === 'None') {
+                    val = '';
+                }
+                if (typeof val === 'string' && val.includes('T')) {
+                    const parsedDate = new Date(val);
+                    if (!Number.isNaN(parsedDate.getTime())) {
+                        val = parsedDate.toISOString().split('T')[0];
+                    }
+                }
                 if (!val && !p.optional) {
                     val = new Date().toISOString().split('T')[0];
                 }
@@ -742,6 +821,223 @@ function getScheduleText(trigger: string): string {
     // Backend now formats triggers as readable strings, so just return as-is
     // Keep old format handling for backward compatibility
     return trigger.replace('cron[', '').replace(']', '').replace('interval[', 'Every ');
+}
+
+function renderTimelineView(jobsData: Job[]): void {
+    if (!elements.timelineContainer || !elements.frequentJobsContainer) {
+        return;
+    }
+
+    if (!jobsData || jobsData.length === 0) {
+        elements.timelineContainer.innerHTML = `
+            <div class="text-sm text-text-secondary">No scheduled jobs available.</div>
+        `;
+        elements.frequentJobsContainer.innerHTML = `
+            <div class="text-sm text-text-secondary">No recurring jobs available.</div>
+        `;
+        return;
+    }
+
+    type TimelineItem = {
+        timeLabel: string;
+        sortKey: number;
+        job: Job;
+        detail?: string;
+        badge?: string;
+    };
+
+    const timelineItems: TimelineItem[] = [];
+    const frequentJobs: Job[] = [];
+    const manualJobs: Job[] = [];
+
+    jobsData.forEach(job => {
+        const scheduleInfo = extractScheduleInfo(job);
+        if (scheduleInfo.kind === 'timeline' && scheduleInfo.timeLabel) {
+            timelineItems.push({
+                timeLabel: scheduleInfo.timeLabel,
+                sortKey: scheduleInfo.sortKey ?? 9999,
+                job,
+                detail: scheduleInfo.detail,
+                badge: scheduleInfo.badge
+            });
+            return;
+        }
+
+        if (scheduleInfo.kind === 'manual') {
+            manualJobs.push(job);
+            return;
+        }
+
+        frequentJobs.push(job);
+    });
+
+    if (timelineItems.length === 0) {
+        elements.timelineContainer.innerHTML = `
+            <div class="text-sm text-text-secondary">No fixed-time jobs found.</div>
+        `;
+    } else {
+        timelineItems.sort((a, b) => a.sortKey - b.sortKey);
+        elements.timelineContainer.innerHTML = timelineItems.map(item => {
+            const scheduleText = getScheduleText(item.job.trigger || '');
+            const jobName = item.job.name || item.job.id;
+            return `
+                <div class="relative pl-6">
+                    <div class="absolute -left-2 top-2 w-3 h-3 rounded-full bg-accent"></div>
+                    <div class="flex items-start gap-4">
+                        <div class="w-16 text-sm font-mono text-text-secondary">${item.timeLabel}</div>
+                        <div class="flex-1">
+                            <div class="text-sm font-semibold text-text-primary">${jobName}</div>
+                            <div class="text-xs text-text-secondary">
+                                ${scheduleText}${item.detail ? ` • ${item.detail}` : ''}
+                            </div>
+                        </div>
+                        ${item.badge ? `<span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border border-border text-text-secondary">${item.badge}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    const frequentEntries = frequentJobs.map(job => {
+        const scheduleText = getScheduleText(job.trigger || '');
+        const jobName = job.name || job.id;
+        return `
+            <div class="bg-dashboard-surface rounded-md border border-border px-3 py-2">
+                <div class="text-sm font-semibold text-text-primary">${jobName}</div>
+                <div class="text-xs text-text-secondary mt-1">${scheduleText || 'Recurring schedule'}</div>
+            </div>
+        `;
+    });
+
+    const manualEntries = manualJobs.map(job => {
+        const jobName = job.name || job.id;
+        return `
+            <div class="bg-dashboard-surface rounded-md border border-border px-3 py-2">
+                <div class="text-sm font-semibold text-text-primary">${jobName}</div>
+                <div class="text-xs text-text-secondary mt-1">Manual</div>
+            </div>
+        `;
+    });
+
+    if (frequentEntries.length === 0 && manualEntries.length === 0) {
+        elements.frequentJobsContainer.innerHTML = `
+            <div class="text-sm text-text-secondary">No recurring jobs available.</div>
+        `;
+    } else {
+        elements.frequentJobsContainer.innerHTML = [...frequentEntries, ...manualEntries].join('');
+    }
+}
+
+function extractScheduleInfo(job: Job): { kind: 'timeline' | 'frequent' | 'manual'; timeLabel?: string; sortKey?: number; detail?: string; badge?: string } {
+    const triggerDetails = job.trigger_details;
+
+    if (triggerDetails?.type === 'cron') {
+        const hour = triggerDetails.cron_params?.hour;
+        const minute = triggerDetails.cron_params?.minute;
+        const dayOfWeek = triggerDetails.cron_params?.day_of_week;
+        const timezone = triggerDetails.cron_params?.timezone;
+
+        if (isNumericString(hour) && isNumericString(minute)) {
+            const timeLabel = formatTimeLabel(Number(hour), Number(minute));
+            const sortKey = Number(hour) * 60 + Number(minute);
+            const detailParts: string[] = [];
+            if (dayOfWeek && dayOfWeek !== '*') {
+                detailParts.push(dayOfWeek);
+            }
+            if (timezone) {
+                detailParts.push(timezone);
+            }
+            return {
+                kind: 'timeline',
+                timeLabel,
+                sortKey,
+                detail: detailParts.length ? detailParts.join(' • ') : undefined,
+                badge: 'cron'
+            };
+        }
+
+        return { kind: 'frequent' };
+    }
+
+    if (triggerDetails?.type === 'interval') {
+        return { kind: 'frequent' };
+    }
+
+    if (triggerDetails?.type === 'date') {
+        const runDate = triggerDetails.run_date;
+        const timeInfo = runDate ? parseTimeFromIso(runDate) : null;
+        if (timeInfo) {
+            return {
+                kind: 'timeline',
+                timeLabel: timeInfo.timeLabel,
+                sortKey: timeInfo.sortKey,
+                detail: 'One-time',
+                badge: 'date'
+            };
+        }
+        return { kind: 'frequent' };
+    }
+
+    if (triggerDetails?.type === 'manual') {
+        return { kind: 'manual' };
+    }
+
+    const triggerText = job.trigger || '';
+    const timeMatch = triggerText.match(/(\d{1,2}):(\d{2})/);
+    if (triggerText.startsWith('At ') && timeMatch) {
+        const hour = Number(timeMatch[1]);
+        const minute = Number(timeMatch[2]);
+        return {
+            kind: 'timeline',
+            timeLabel: formatTimeLabel(hour, minute),
+            sortKey: hour * 60 + minute
+        };
+    }
+
+    if (triggerText.startsWith('Every ')) {
+        return { kind: 'frequent' };
+    }
+
+    if (job.next_run) {
+        const timeInfo = parseTimeFromIso(job.next_run);
+        if (timeInfo) {
+            return {
+                kind: 'timeline',
+                timeLabel: timeInfo.timeLabel,
+                sortKey: timeInfo.sortKey,
+                detail: 'Next run'
+            };
+        }
+    }
+
+    if (!triggerText || triggerText === 'Manual') {
+        return { kind: 'manual' };
+    }
+
+    return { kind: 'frequent' };
+}
+
+function parseTimeFromIso(iso: string): { timeLabel: string; sortKey: number } | null {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+    const hour = date.getHours();
+    const minute = date.getMinutes();
+    return {
+        timeLabel: formatTimeLabel(hour, minute),
+        sortKey: hour * 60 + minute
+    };
+}
+
+function formatTimeLabel(hour: number, minute: number): string {
+    const hh = hour.toString().padStart(2, '0');
+    const mm = minute.toString().padStart(2, '0');
+    return `${hh}:${mm}`;
+}
+
+function isNumericString(value?: string | null): boolean {
+    return value !== undefined && value !== null && /^\d+$/.test(value);
 }
 
 function getLogClass(level: string): string {
