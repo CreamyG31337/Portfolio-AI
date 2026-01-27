@@ -37,3 +37,8 @@ This provides defense-in-depth through visibility and accountability rather than
 2. Use cryptographically secure random generation (Python's `secrets` module)
 3. Log warnings when secrets are auto-generated to ensure proper configuration in production
 4. Document the requirement for environment variables in deployment guides
+
+## 2026-01-27 - User Enumeration in Registration
+**Vulnerability:** The registration endpoint `/api/auth/register` explicitly returned "An account with this email already exists" when the `user_already_registered` error code was received. This allowed attackers to enumerate valid email addresses registered in the system.
+**Learning:** Returning specific error messages for registration failures is user-friendly but insecure. It leaks user existence, which can be used for targeted phishing or credential stuffing attacks.
+**Prevention:** Always use generic error messages for registration and login failures, such as "Registration failed. If you already have an account, please log in." or "Invalid email or password." Do not distinguish between "user not found" and "wrong password" or "user already exists" and "other error".

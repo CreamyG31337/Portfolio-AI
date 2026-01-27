@@ -117,6 +117,12 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
+    # Add HSTS header if request is secure
+    x_forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
+    is_https = x_forwarded_proto == 'https' or request.is_secure
+    if is_https:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
     # Content Security Policy (CSP)
     # Allows scripts/styles from self and trusted CDNs
     # 'unsafe-inline' and 'unsafe-eval' are required for current template/library architecture
@@ -1732,7 +1738,8 @@ def register():
             elif error_code == "weak_password":
                 return jsonify({"error": "Password is too weak. Please use at least 6 characters."}), 400
             elif error_code == "user_already_registered":
-                return jsonify({"error": "An account with this email already exists."}), 400
+                # Security: Don't reveal account existence to prevent enumeration
+                return jsonify({"error": "Registration failed. If you already have an account, please log in."}), 400
             else:
                 return jsonify({"error": error_msg}), 400
             
