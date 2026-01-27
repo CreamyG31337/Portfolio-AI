@@ -39,6 +39,12 @@ This provides defense-in-depth through visibility and accountability rather than
 4. Document the requirement for environment variables in deployment guides
 
 ## 2026-01-27 - User Enumeration in Registration
+**Sentinel PR:** `sentinel/fix-user-enumeration-hsts-security-9352715962736857672` - REJECTED (partial)
 **Vulnerability:** The registration endpoint `/api/auth/register` explicitly returned "An account with this email already exists" when the `user_already_registered` error code was received. This allowed attackers to enumerate valid email addresses registered in the system.
-**Learning:** Returning specific error messages for registration failures is user-friendly but insecure. It leaks user existence, which can be used for targeted phishing or credential stuffing attacks.
-**Prevention:** Always use generic error messages for registration and login failures, such as "Registration failed. If you already have an account, please log in." or "Invalid email or password." Do not distinguish between "user not found" and "wrong password" or "user already exists" and "other error".
+**Reason for Rejection:** Many legitimate websites provide specific error messages like "user already exists" and this is not considered a real security issue in practice. For a small-scale application (not a service with millions of users), user-friendly error messages are acceptable. The real security concern is preventing abuse through brute force attempts.
+**Learning:** Security fixes must consider the scale and context of the application. Generic error messages can improve security but at the cost of user experience. For smaller applications, rate limiting and IP/session-based blocking of abusive behavior is a more practical and effective approach than obfuscating error messages.
+**Alternative Approach:** Instead of genericizing error messages, implement:
+- Rate limiting on registration and login endpoints (IP-based and session-based)
+- Blocking of IP addresses or sessions that repeatedly attempt registration or login
+- Monitoring and alerting for suspicious patterns (multiple failed attempts, rapid-fire requests)
+This provides defense-in-depth by preventing abuse rather than hiding information that many legitimate sites provide anyway.
