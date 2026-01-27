@@ -131,15 +131,25 @@
                 <label for="new-password" class="block text-sm font-medium text-text-secondary mb-2">
                     New Password <span class="text-theme-error-text">*</span>
                 </label>
-                <input type="password" id="new-password" required minlength="6" autocomplete="new-password" placeholder="••••••••"
-                    class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                <div class="relative">
+                    <input type="password" id="new-password" required minlength="6" autocomplete="new-password" placeholder="••••••••"
+                        class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5 pr-10">
+                    <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-none" data-toggle-password="new-password" aria-label="Toggle password visibility">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
             </div>
             <div class="mb-4">
                 <label for="confirm-password" class="block text-sm font-medium text-text-secondary mb-2">
                     Confirm New Password <span class="text-theme-error-text">*</span>
                 </label>
-                <input type="password" id="confirm-password" required minlength="6" autocomplete="new-password" placeholder="••••••••"
-                    class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                <div class="relative">
+                    <input type="password" id="confirm-password" required minlength="6" autocomplete="new-password" placeholder="••••••••"
+                        class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5 pr-10">
+                    <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-none" data-toggle-password="confirm-password" aria-label="Toggle password visibility">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
             </div>
             <button type="submit" id="change-password-btn"
                 class="px-4 py-2 text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 rounded-lg font-medium transition-colors duration-200">
