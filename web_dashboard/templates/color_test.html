@@ -19,9 +19,9 @@
     <div class="max-w-3xl mx-auto">
         <!-- Instructions -->
         <div
-            class="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">How to Use</h3>
-            <ul class="list-disc list-inside text-sm text-gray-700 dark:text-gray-300 space-y-1">
+            class="mb-6 p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+            <h3 class="text-lg font-bold text-text-primary mb-2">How to Use</h3>
+            <ul class="list-disc list-inside text-sm text-text-secondary space-y-1">
                 <li>Select a theme to load its colors</li>
                 <li>Adjust any color using the color pickers and text inputs</li>
                 <li>See live previews in the example elements below</li>
@@ -36,14 +36,14 @@
             <div class="xl:col-span-1 space-y-6">
                 <!-- Theme Selector -->
                 <div
-                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Theme Selection</h3>
+                    class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">Theme Selection</h3>
                     <div class="space-y-3">
                         <label class="block">
-                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Select
+                            <span class="text-sm font-medium text-text-secondary mb-2 block">Select
                                 Theme</span>
                             <select id="theme-selector"
-                                class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                class="w-full p-2 border border-border rounded-lg bg-dashboard-surface-alt text-text-primary">
                                 <option value="light">Light</option>
                                 <option value="dark">Dark</option>
                                 <option value="midnight-tokyo">Midnight Tokyo</option>
@@ -56,28 +56,28 @@
 
                 <!-- Header Gradient Colors -->
                 <div
-                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Header Gradient</h3>
+                    class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">Header Gradient</h3>
                     <div class="space-y-4">
                         <div>
                             <label class="block mb-2">
-                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Gradient From</span>
+                                <span class="text-sm font-medium text-text-secondary">Gradient From</span>
                                 <div class="flex items-center gap-2 mt-2">
                                     <input type="color" id="gradient-from" value="#667eea"
-                                        class="w-16 h-10 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-16 h-10 rounded border border-border cursor-pointer">
                                     <input type="text" id="gradient-from-text" value="#667eea"
-                                        class="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-2 border border-border rounded-lg bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
                         <div>
                             <label class="block mb-2">
-                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Gradient To</span>
+                                <span class="text-sm font-medium text-text-secondary">Gradient To</span>
                                 <div class="flex items-center gap-2 mt-2">
                                     <input type="color" id="gradient-to" value="#764ba2"
-                                        class="w-16 h-10 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-16 h-10 rounded border border-border cursor-pointer">
                                     <input type="text" id="gradient-to-text" value="#764ba2"
-                                        class="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-2 border border-border rounded-lg bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
@@ -86,39 +86,39 @@
 
                 <!-- Background Colors -->
                 <div
-                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Background Colors</h3>
+                    class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">Background Colors</h3>
                     <div class="space-y-3">
                         <div>
                             <label class="block mb-1">
-                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Primary</span>
+                                <span class="text-xs font-medium text-text-secondary">Primary</span>
                                 <div class="flex items-center gap-2 mt-1">
                                     <input type="color" id="bg-primary"
-                                        class="w-12 h-8 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-12 h-8 rounded border border-border cursor-pointer">
                                     <input type="text" id="bg-primary-text"
-                                        class="flex-1 p-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-1.5 border border-border rounded bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
                         <div>
                             <label class="block mb-1">
-                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Secondary</span>
+                                <span class="text-xs font-medium text-text-secondary">Secondary</span>
                                 <div class="flex items-center gap-2 mt-1">
                                     <input type="color" id="bg-secondary"
-                                        class="w-12 h-8 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-12 h-8 rounded border border-border cursor-pointer">
                                     <input type="text" id="bg-secondary-text"
-                                        class="flex-1 p-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-1.5 border border-border rounded bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
                         <div>
                             <label class="block mb-1">
-                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Tertiary</span>
+                                <span class="text-xs font-medium text-text-secondary">Tertiary</span>
                                 <div class="flex items-center gap-2 mt-1">
                                     <input type="color" id="bg-tertiary"
-                                        class="w-12 h-8 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-12 h-8 rounded border border-border cursor-pointer">
                                     <input type="text" id="bg-tertiary-text"
-                                        class="flex-1 p-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-1.5 border border-border rounded bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
@@ -127,28 +127,28 @@
 
                 <!-- Text Colors -->
                 <div
-                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Text Colors</h3>
+                    class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">Text Colors</h3>
                     <div class="space-y-3">
                         <div>
                             <label class="block mb-1">
-                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Primary</span>
+                                <span class="text-xs font-medium text-text-secondary">Primary</span>
                                 <div class="flex items-center gap-2 mt-1">
                                     <input type="color" id="text-primary"
-                                        class="w-12 h-8 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-12 h-8 rounded border border-border cursor-pointer">
                                     <input type="text" id="text-primary-text"
-                                        class="flex-1 p-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-1.5 border border-border rounded bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
                         <div>
                             <label class="block mb-1">
-                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Secondary</span>
+                                <span class="text-xs font-medium text-text-secondary">Secondary</span>
                                 <div class="flex items-center gap-2 mt-1">
                                     <input type="color" id="text-secondary"
-                                        class="w-12 h-8 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-12 h-8 rounded border border-border cursor-pointer">
                                     <input type="text" id="text-secondary-text"
-                                        class="flex-1 p-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-1.5 border border-border rounded bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
@@ -157,28 +157,28 @@
 
                 <!-- Accent Colors -->
                 <div
-                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Accent Colors</h3>
+                    class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">Accent Colors</h3>
                     <div class="space-y-3">
                         <div>
                             <label class="block mb-1">
-                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Accent</span>
+                                <span class="text-xs font-medium text-text-secondary">Accent</span>
                                 <div class="flex items-center gap-2 mt-1">
                                     <input type="color" id="color-accent"
-                                        class="w-12 h-8 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-12 h-8 rounded border border-border cursor-pointer">
                                     <input type="text" id="color-accent-text"
-                                        class="flex-1 p-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-1.5 border border-border rounded bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
                         <div>
                             <label class="block mb-1">
-                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Accent Hover</span>
+                                <span class="text-xs font-medium text-text-secondary">Accent Hover</span>
                                 <div class="flex items-center gap-2 mt-1">
                                     <input type="color" id="color-accent-hover"
-                                        class="w-12 h-8 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-12 h-8 rounded border border-border cursor-pointer">
                                     <input type="text" id="color-accent-hover-text"
-                                        class="flex-1 p-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-1.5 border border-border rounded bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
@@ -187,17 +187,17 @@
 
                 <!-- Border Colors -->
                 <div
-                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Border Colors</h3>
+                    class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">Border Colors</h3>
                     <div class="space-y-3">
                         <div>
                             <label class="block mb-1">
-                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Border</span>
+                                <span class="text-xs font-medium text-text-secondary">Border</span>
                                 <div class="flex items-center gap-2 mt-1">
                                     <input type="color" id="border-color"
-                                        class="w-12 h-8 rounded border border-gray-300 dark:border-gray-600 cursor-pointer">
+                                        class="w-12 h-8 rounded border border-border cursor-pointer">
                                     <input type="text" id="border-color-text"
-                                        class="flex-1 p-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                                        class="flex-1 p-1.5 border border-border rounded bg-dashboard-surface-alt text-text-primary font-mono text-xs">
                                 </div>
                             </label>
                         </div>
@@ -206,7 +206,7 @@
 
                 <!-- Reset Button -->
                 <div
-                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                    class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
                     <button id="reset-all-btn"
                         class="w-full px-4 py-2 text-text-primary bg-transparent border border-border rounded-lg hover:bg-dashboard-hover font-medium transition-colors duration-200">
                         Reset to Theme Default
@@ -218,23 +218,23 @@
             <div class="xl:col-span-2 space-y-6">
                 <!-- Live Preview Section -->
                 <div
-                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Live Preview</h3>
+                    class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">Live Preview</h3>
 
                     <!-- Header Preview -->
                     <div class="mb-6">
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Header Bar</p>
+                        <p class="text-sm text-text-tertiary mb-2">Header Bar</p>
                         <div id="header-preview" class="gradient-bg text-white shadow-lg rounded-lg p-4">
                             <div class="flex items-center justify-between">
                                 <h2 class="text-xl font-bold">Dashboard</h2>
-                                <div class="text-sm text-blue-100">user@example.com</div>
+                                <div class="text-sm text-text-tertiary">user@example.com</div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Example Cards -->
                     <div class="mb-6">
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Card Examples</p>
+                        <p class="text-sm text-text-tertiary mb-2">Card Examples</p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div id="card-primary" class="p-4 rounded-lg border shadow-sm">
                                 <h4 class="font-bold mb-2">Primary Card</h4>
@@ -249,7 +249,7 @@
 
                     <!-- Buttons -->
                     <div class="mb-6">
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Button Examples</p>
+                        <p class="text-sm text-text-tertiary mb-2">Button Examples</p>
                         <div class="flex flex-wrap gap-3">
                             <button id="btn-accent"
                                 class="px-4 py-2 text-accent bg-transparent border border-accent rounded-lg font-medium hover:bg-accent/10 transition-colors duration-200">
@@ -268,7 +268,7 @@
 
                     <!-- Form Elements -->
                     <div class="mb-6">
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Form Elements</p>
+                        <p class="text-sm text-text-tertiary mb-2">Form Elements</p>
                         <div class="space-y-3">
                             <input type="text" id="input-example" placeholder="Text input example"
                                 class="w-full p-2 rounded-lg border">
@@ -284,7 +284,7 @@
 
                     <!-- Text Examples -->
                     <div class="mb-6">
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Text Examples</p>
+                        <p class="text-sm text-text-tertiary mb-2">Text Examples</p>
                         <div class="space-y-2">
                             <h1 id="text-primary-example" class="text-2xl font-bold">Primary Text (Heading)</h1>
                             <p id="text-secondary-example" class="text-base">Secondary text for body content and
@@ -295,7 +295,7 @@
 
                     <!-- Border Examples -->
                     <div class="mb-6">
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Border Examples</p>
+                        <p class="text-sm text-text-tertiary mb-2">Border Examples</p>
                         <div class="grid grid-cols-3 gap-3">
                             <div class="p-3 rounded border border-2 text-center text-sm">Thick Border</div>
                             <div class="p-3 rounded border text-center text-sm">Normal Border</div>
@@ -305,7 +305,7 @@
 
                     <!-- Highlighted Card Example (like Beta Features) -->
                     <div class="mb-6">
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Highlighted Card (with left border
+                        <p class="text-sm text-text-tertiary mb-2">Highlighted Card (with left border
                             accent)</p>
                         <div id="highlighted-card" class="rounded-lg shadow-lg p-6 border-l-4"
                             style="transition: transform 0.2s ease-in-out;">
@@ -327,7 +327,7 @@
                                 </div>
                                 <label class="relative inline-flex items-center cursor-pointer">
                                     <input type="checkbox" id="example-toggle" class="sr-only peer" checked>
-                                    <div class="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-opacity-50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all"
+                                    <div class="w-11 h-6 bg-dashboard-surface-alt peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-opacity-50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-dashboard-surface after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all"
                                         id="toggle-switch" style="--accent-color: var(--color-accent);"></div>
                                 </label>
                             </div>
@@ -337,16 +337,16 @@
 
                 <!-- CSS Code Output -->
                 <div
-                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                    class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-bold text-gray-900 dark:text-white">CSS Code</h3>
+                        <h3 class="text-lg font-bold text-text-primary">CSS Code</h3>
                         <button id="copy-css-btn"
                             class="px-3 py-1 text-accent bg-transparent border border-accent hover:bg-accent/10 rounded font-medium transition-colors duration-200">
                             Copy CSS
                         </button>
                     </div>
                     <pre id="css-output"
-                        class="p-4 bg-gray-900 text-green-400 rounded-lg text-xs overflow-x-auto font-mono max-h-96 overflow-y-auto"></pre>
+                        class="p-4 bg-code-bg text-text-primary border border-code-border rounded-lg text-xs overflow-x-auto font-mono max-h-96 overflow-y-auto"></pre>
                 </div>
             </div>
         </div>
@@ -381,8 +381,8 @@
             '--text-secondary': '#d1d5db',
             '--text-tertiary': '#9ca3af',
             '--border-color': '#374151',
-            '--color-accent': '#7c3aed',
-            '--color-accent-hover': '#6d28d9'
+            '--color-accent': '#a78bfa',
+            '--color-accent-hover': '#c4b5fd'
         },
         'midnight-tokyo': {
             '--gradient-from': '#800555',
@@ -407,8 +407,8 @@
             '--text-secondary': '#8892b0',
             '--text-tertiary': '#4a5568',
             '--border-color': '#233554',
-            '--color-accent': '#021024',
-            '--color-accent-hover': '#061940'
+            '--color-accent': '#64ffda',
+            '--color-accent-hover': '#80ffe5'
         }
     };
 
@@ -487,6 +487,7 @@
         // Cards
         const bgPrimary = getCSSVariable('--bg-primary');
         const bgSecondary = getCSSVariable('--bg-secondary');
+        const bgTertiary = getCSSVariable('--bg-tertiary');
         const textPrimary = getCSSVariable('--text-primary');
         const textSecondary = getCSSVariable('--text-secondary');
         const borderColor = getCSSVariable('--border-color');
@@ -548,7 +549,7 @@
         const textarea = document.getElementById('textarea-example');
         [input, select, textarea].forEach(el => {
             if (el) {
-                el.style.backgroundColor = bgPrimary;
+                el.style.backgroundColor = bgTertiary;
                 el.style.color = textPrimary;
                 el.style.borderColor = borderColor;
             }
@@ -667,12 +668,12 @@
             const btn = document.getElementById('copy-css-btn');
             const originalText = btn.textContent;
             btn.textContent = 'Copied!';
-            btn.classList.remove('bg-gray-600');
-            btn.classList.add('bg-green-600');
+            btn.classList.remove('text-accent', 'border-accent', 'bg-transparent');
+            btn.classList.add('text-theme-success-text', 'border-theme-success-text', 'bg-theme-success-bg/10');
             setTimeout(() => {
                 btn.textContent = originalText;
-                btn.classList.remove('bg-green-600');
-                btn.classList.add('bg-gray-600');
+                btn.classList.remove('text-theme-success-text', 'border-theme-success-text', 'bg-theme-success-bg/10');
+                btn.classList.add('text-accent', 'border-accent', 'bg-transparent');
             }, 2000);
         });
     }
@@ -697,3 +698,5 @@
     });
 </script>
 {% endblock %}
+
+

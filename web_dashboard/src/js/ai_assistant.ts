@@ -624,16 +624,14 @@ class AIAssistant {
         if (tabButtons.length === 0 || panels.length === 0) return;
 
         const activeClasses = [
-            "text-blue-600",
-            "border-blue-600",
-            "dark:text-blue-500",
-            "dark:border-blue-500"
+            "text-accent",
+            "border-accent"
         ];
         const inactiveClasses = [
             "border-transparent",
-            "hover:text-gray-600",
-            "hover:border-gray-300",
-            "dark:hover:text-gray-300"
+            "text-text-secondary",
+            "hover:text-text-primary",
+            "hover:border-border"
         ];
 
         const setActive = (tabId: string): void => {
