@@ -854,13 +854,6 @@ async function fetchTradeData(): Promise<void> {
     }
 }
 
-(window as any).refreshData = function () {
-    const currentUrl = new URL(window.location.href);
-    const currentRefreshKey = parseInt(currentUrl.searchParams.get("refresh_key") || "0");
-    currentUrl.searchParams.set("refresh_key", (currentRefreshKey + 1).toString());
-    window.location.href = currentUrl.toString();
-};
-
 (window as any).downloadCsv = function () {
     if (!gridApi || !gridApi.exportDataAsCsv) {
         alert("Grid not initialized.");

@@ -42,6 +42,29 @@ let activeModalTicker: string | null = null;
 // Global cache of tickers that don't have logos (to avoid repeated 404s)
 const failedLogoCache = new Set<string>();
 
+// Theme detection helpers
+function getCurrentTheme(): string {
+    const themeManager = (window as any).themeManager;
+    if (themeManager?.getTheme) {
+        return themeManager.getTheme();
+    }
+    return document.documentElement.getAttribute("data-theme") || "system";
+}
+
+function isDarkTheme(theme: string): boolean {
+    if (theme === "system") {
+        return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    return ["dark", "midnight-tokyo", "abyss"].includes(theme);
+}
+
+function applyAgGridTheme(container: HTMLElement): void {
+    const theme = getCurrentTheme();
+    const useDark = isDarkTheme(theme);
+    container.classList.toggle("ag-theme-alpine-dark", useDark);
+    container.classList.toggle("ag-theme-alpine", !useDark);
+}
+
 // Ticker cell renderer - makes ticker clickable with logo
 class TickerCellRenderer {
     private eGui!: HTMLElement;
@@ -143,6 +166,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 setModalStatus('Regenerating AI explanation...');
                 loadModalDetails(activeModalTicker, true);
             }
+        });
+    }
+
+    // Listen for theme changes
+    const themeManager = (window as any).themeManager;
+    if (themeManager && typeof themeManager.addListener === 'function') {
+        themeManager.addListener(() => {
+            updateSignalsGridTheme();
+        });
+    } else {
+        // Fallback: Use MutationObserver to watch for data-theme attribute changes
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+                    updateSignalsGridTheme();
+                }
+            });
+        });
+        observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-theme']
         });
     }
 });
@@ -346,13 +390,8 @@ function initializeSignalsGrid(data: SignalRow[]): void {
         }
     };
 
-    // Check if dark mode is enabled
-    const isDark = document.documentElement.classList.contains('dark') ||
-        (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-
-    if (isDark) {
-        gridDiv.classList.add('ag-theme-alpine-dark');
-    }
+    // Apply appropriate AgGrid theme based on current theme
+    applyAgGridTheme(gridDiv);
 
     const gridApiInstance = (window as any).agGrid.createGrid(gridDiv, gridOptions);
     signalsGridApi = gridApiInstance;
@@ -378,6 +417,28 @@ function autoSizeSignalsColumns(): void {
         if (columnIds.length > 0) {
             signalsGridColumnApi.autoSizeColumns(columnIds, false);
         }
+    }
+}
+
+// Function to update grid theme dynamically
+function updateSignalsGridTheme(): void {
+    const gridDiv = document.querySelector('#signals-grid') as HTMLElement | null;
+    if (!gridDiv) {
+        return;
+    }
+
+    // Update grid container class based on theme
+    applyAgGridTheme(gridDiv);
+
+    // Refresh grid to update cell and row styles
+    if (signalsGridApi) {
+        window.setTimeout(() => {
+            if (!signalsGridApi) {
+                return;
+            }
+            signalsGridApi.refreshCells();
+            signalsGridApi.refreshHeader();
+        }, 0);
     }
 }
 

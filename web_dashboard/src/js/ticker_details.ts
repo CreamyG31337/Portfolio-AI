@@ -240,9 +240,9 @@ document.addEventListener('DOMContentLoaded', function (): void {
         // If ticker in URL, load it
         if (tickerParam) {
             currentTicker = tickerParam.toUpperCase();
-            const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
-            if (select) {
-                select.value = currentTicker;
+            const input = document.getElementById('ticker-search-input') as HTMLInputElement | null;
+            if (input) {
+                input.value = currentTicker;
             }
             loadTickerData(currentTicker);
         } else {
@@ -251,11 +251,8 @@ document.addEventListener('DOMContentLoaded', function (): void {
         }
     });
 
-    // Set up ticker dropdown change handler
-    const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
-    if (select) {
-        select.addEventListener('change', handleTickerSearch);
-    }
+    // Set up ticker search input with autocomplete
+    setupTickerAutocomplete();
 
     // Set up chart controls
     const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
@@ -304,7 +301,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
     });
 });
 
-// Load ticker list for dropdown
+// Load ticker list for autocomplete
 async function loadTickerList(): Promise<void> {
     try {
         const response = await fetch(appendFundParam('/api/v2/ticker/list'), {
@@ -317,25 +314,128 @@ async function loadTickerList(): Promise<void> {
 
         const data: TickerListResponse = await response.json();
         tickerList = data.tickers || [];
-
-        // Populate dropdown
-        const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
-        if (!select) return;
-
-        // Clear existing options except first one
-        while (select.options.length > 1) {
-            select.remove(1);
-        }
-
-        // Add tickers
-        tickerList.forEach(ticker => {
-            const option = document.createElement('option');
-            option.value = ticker;
-            option.textContent = ticker;
-            select.appendChild(option);
-        });
     } catch (error) {
         console.error('Error loading ticker list:', error);
+    }
+}
+
+// Set up ticker search input with autocomplete
+function setupTickerAutocomplete(): void {
+    const inputEl = document.getElementById('ticker-search-input') as HTMLInputElement | null;
+    const dropdownEl = document.getElementById('ticker-autocomplete-dropdown') as HTMLDivElement | null;
+    if (!inputEl || !dropdownEl) return;
+
+    // Store references to guarantee non-null in nested functions
+    const input: HTMLInputElement = inputEl;
+    const dropdown: HTMLDivElement = dropdownEl;
+    let selectedIndex = -1;
+
+    // Handle input changes
+    input.addEventListener('input', () => {
+        const query = input.value.toUpperCase().trim();
+        if (query.length === 0) {
+            hideAutocomplete();
+            return;
+        }
+
+        // Filter tickers that start with the query
+        const matches = tickerList.filter(t => t.toUpperCase().startsWith(query)).slice(0, 20);
+        
+        if (matches.length === 0) {
+            hideAutocomplete();
+            return;
+        }
+
+        selectedIndex = -1;
+        showAutocomplete(matches);
+    });
+
+    // Handle keyboard navigation
+    input.addEventListener('keydown', (e) => {
+        const items = dropdown.querySelectorAll('[data-ticker]');
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+            updateSelection(items);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedIndex = Math.max(selectedIndex - 1, -1);
+            updateSelection(items);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (selectedIndex >= 0 && items[selectedIndex]) {
+                selectTicker((items[selectedIndex] as HTMLElement).dataset.ticker || '');
+            } else if (input.value.trim()) {
+                selectTicker(input.value.toUpperCase().trim());
+            }
+        } else if (e.key === 'Escape') {
+            hideAutocomplete();
+        }
+    });
+
+    // Handle blur (delayed to allow click on dropdown)
+    input.addEventListener('blur', () => {
+        setTimeout(() => hideAutocomplete(), 150);
+    });
+
+    // Focus shows dropdown if there's input
+    input.addEventListener('focus', () => {
+        const query = input.value.toUpperCase().trim();
+        if (query.length > 0) {
+            const matches = tickerList.filter(t => t.toUpperCase().startsWith(query)).slice(0, 20);
+            if (matches.length > 0) {
+                showAutocomplete(matches);
+            }
+        }
+    });
+
+    function showAutocomplete(matches: string[]): void {
+        dropdown.innerHTML = '';
+        matches.forEach((ticker) => {
+            const item = document.createElement('div');
+            item.className = 'px-4 py-2 cursor-pointer hover:bg-dashboard-background text-text-primary';
+            item.dataset.ticker = ticker;
+            item.textContent = ticker;
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                selectTicker(ticker);
+            });
+            dropdown.appendChild(item);
+        });
+        dropdown.classList.remove('hidden');
+    }
+
+    function hideAutocomplete(): void {
+        dropdown.classList.add('hidden');
+        selectedIndex = -1;
+    }
+
+    function updateSelection(items: NodeListOf<Element>): void {
+        items.forEach((item, idx) => {
+            if (idx === selectedIndex) {
+                item.classList.add('bg-dashboard-background');
+            } else {
+                item.classList.remove('bg-dashboard-background');
+            }
+        });
+        // Scroll into view
+        if (selectedIndex >= 0 && items[selectedIndex]) {
+            items[selectedIndex].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function selectTicker(ticker: string): void {
+        input.value = ticker;
+        hideAutocomplete();
+        
+        // Update URL without reload
+        const url = new URL(window.location.href);
+        url.searchParams.set('ticker', ticker);
+        window.history.pushState({}, '', url);
+
+        currentTicker = ticker;
+        loadTickerData(ticker);
     }
 }
 
@@ -407,29 +507,7 @@ async function loadModelOptions(): Promise<void> {
     }
 }
 
-// Handle ticker search dropdown change
-function handleTickerSearch(): void {
-    const select = document.getElementById('ticker-select') as HTMLSelectElement | null;
-    if (!select) return;
 
-    const selectedTicker = select.value.toUpperCase().trim();
-
-    if (selectedTicker) {
-        // Update URL without reload
-        const url = new URL(window.location.href);
-        url.searchParams.set('ticker', selectedTicker);
-        window.history.pushState({}, '', url);
-
-        currentTicker = selectedTicker;
-        loadTickerData(selectedTicker);
-    } else {
-        // Clear URL and show placeholder
-        const url = new URL(window.location.href);
-        url.searchParams.delete('ticker');
-        window.history.pushState({}, '', url);
-        showPlaceholder();
-    }
-}
 
 // Load all ticker data
 async function loadTickerData(ticker: string): Promise<void> {

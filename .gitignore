@@ -360,3 +360,4 @@ mcps/mandrel/SERVER_METADATA.json
 # Allow template file
 !.vscode/mcp.json.example
 .claude/settings.local.json
+.gemini/GEMINI.md

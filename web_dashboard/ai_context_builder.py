@@ -829,6 +829,189 @@ def format_sector_allocation(sector_data: Dict[str, float]) -> str:
     return "\n".join(lines)
 
 
+def format_insider_trades(trades: List[Dict], limit: int = 50) -> str:
+    """Format insider trades data for LLM context in compact table format.
+    
+    Args:
+        trades: List of insider trade dictionaries
+        limit: Maximum number of trades to include
+        
+    Returns:
+        Formatted string with insider trades data
+    """
+    if not trades:
+        return "Insider Trades (Last 7 Days): No insider trades found."
+    
+    # Limit number of trades
+    df = trades[:limit] if isinstance(trades, list) else []
+    
+    lines = [
+        f"Insider Trades (Last 7 Days) ({len(df)} trades):",
+        "",
+        "Date     | Ticker    | Insider              | Title              | Type      | Shares    | Price     | Value",
+        "---------|-----------|----------------------|--------------------|-----------|-----------|-----------|----------"
+    ]
+    
+    for trade in df:
+        # Extract fields
+        transaction_date = trade.get('transaction_date', '')
+        ticker = trade.get('ticker', 'N/A')
+        insider_name = trade.get('insider_name', 'N/A')
+        insider_title = trade.get('insider_title', '')
+        trade_type = trade.get('type', 'N/A')
+        shares = trade.get('shares', 0)
+        price = trade.get('price_per_share', 0)
+        value = trade.get('value', 0)
+        
+        # Format date
+        date_str = "N/A"
+        if transaction_date:
+            try:
+                if isinstance(transaction_date, str):
+                    date_str = transaction_date[:10] if len(transaction_date) >= 10 else transaction_date
+                else:
+                    date_str = str(transaction_date)[:10]
+            except:
+                date_str = str(transaction_date)[:10] if transaction_date else "N/A"
+        
+        # Truncate long strings
+        insider_str = (insider_name[:20] if len(insider_name) > 20 else insider_name).ljust(20)
+        title_str = (insider_title[:18] if len(insider_title) > 18 else insider_title).ljust(18)
+        type_str = (str(trade_type)[:9] if trade_type else 'N/A').ljust(9)
+        
+        # Format numbers
+        shares_str = f"{float(shares):,.0f}" if shares else "N/A"
+        price_str = f"${float(price):.2f}" if price else "N/A"
+        value_str = f"${float(value):,.0f}" if value else "N/A"
+        
+        lines.append(
+            f"{date_str:<8} | {ticker:<9} | {insider_str} | {title_str} | {type_str} | {shares_str:>9} | {price_str:>9} | {value_str:>9}"
+        )
+    
+    return "\n".join(lines)
+
+
+def format_congress_trades(trades: List[Dict], limit: int = 50) -> str:
+    """Format congress trades data for LLM context in compact table format.
+    
+    Args:
+        trades: List of congress trade dictionaries
+        limit: Maximum number of trades to include
+        
+    Returns:
+        Formatted string with congress trades data
+    """
+    if not trades:
+        return "Congress Trades (Last 7 Days): No congress trades found."
+    
+    # Limit number of trades
+    df = trades[:limit] if isinstance(trades, list) else []
+    
+    lines = [
+        f"Congress Trades (Last 7 Days) ({len(df)} trades):",
+        "",
+        "Date     | Ticker    | Politician            | Chamber  | Type      | Amount",
+        "---------|-----------|-----------------------|----------|-----------|----------"
+    ]
+    
+    for trade in df:
+        # Extract fields
+        transaction_date = trade.get('transaction_date', '')
+        ticker = trade.get('ticker', 'N/A')
+        politician = trade.get('politician', 'N/A')
+        chamber = trade.get('chamber', 'N/A')
+        trade_type = trade.get('type', 'N/A')
+        amount = trade.get('amount', 'N/A')
+        
+        # Format date
+        date_str = "N/A"
+        if transaction_date:
+            try:
+                if isinstance(transaction_date, str):
+                    date_str = transaction_date[:10] if len(transaction_date) >= 10 else transaction_date
+                else:
+                    date_str = str(transaction_date)[:10]
+            except:
+                date_str = str(transaction_date)[:10] if transaction_date else "N/A"
+        
+        # Truncate long strings
+        politician_str = (politician[:21] if len(politician) > 21 else politician).ljust(21)
+        chamber_str = (str(chamber)[:8] if chamber else 'N/A').ljust(8)
+        type_str = (str(trade_type)[:9] if trade_type else 'N/A').ljust(9)
+        
+        # Format amount
+        if amount and amount != 'N/A':
+            try:
+                amount_str = f"${float(amount):,.0f}" if isinstance(amount, (int, float)) else str(amount)
+            except:
+                amount_str = str(amount)
+        else:
+            amount_str = "N/A"
+        
+        lines.append(
+            f"{date_str:<8} | {ticker:<9} | {politician_str} | {chamber_str} | {type_str} | {amount_str:>9}"
+        )
+    
+    return "\n".join(lines)
+
+
+def format_etf_trades(trades: List[Dict], limit: int = 50) -> str:
+    """Format ETF holding trades data for LLM context in compact table format.
+    
+    Args:
+        trades: List of ETF trade dictionaries
+        limit: Maximum number of trades to include
+        
+    Returns:
+        Formatted string with ETF trades data
+    """
+    if not trades:
+        return "ETF Trades (Last 7 Days): No ETF trades found."
+    
+    # Limit number of trades
+    df = trades[:limit] if isinstance(trades, list) else []
+    
+    lines = [
+        f"ETF Trades (Last 7 Days) ({len(df)} trades):",
+        "",
+        "Date     | Ticker    | ETF       | Action    | Shares Change | Shares After",
+        "---------|-----------|-----------|-----------|---------------|--------------"
+    ]
+    
+    for trade in df:
+        # Extract fields
+        trade_date = trade.get('trade_date', '')
+        holding_ticker = trade.get('holding_ticker', 'N/A')
+        etf_ticker = trade.get('etf_ticker', 'N/A')
+        trade_type = trade.get('trade_type', 'N/A')
+        shares_change = trade.get('shares_change', 0)
+        shares_after = trade.get('shares_after', 0)
+        
+        # Format date
+        date_str = "N/A"
+        if trade_date:
+            try:
+                if isinstance(trade_date, str):
+                    date_str = trade_date[:10] if len(trade_date) >= 10 else trade_date
+                else:
+                    date_str = str(trade_date)[:10]
+            except:
+                date_str = str(trade_date)[:10] if trade_date else "N/A"
+        
+        # Format action
+        action_str = (str(trade_type)[:9] if trade_type else 'N/A').ljust(9)
+        
+        # Format shares
+        shares_change_str = f"{float(shares_change):+,.0f}" if shares_change else "0"
+        shares_after_str = f"{float(shares_after):,.0f}" if shares_after else "0"
+        
+        lines.append(
+            f"{date_str:<8} | {holding_ticker:<9} | {etf_ticker:<9} | {action_str} | {shares_change_str:>14} | {shares_after_str:>13}"
+        )
+    
+    return "\n".join(lines)
+
+
 def build_full_context(context_items: List[Any], fund: Optional[str] = None) -> str:
     """Build full context string from multiple context items.
     

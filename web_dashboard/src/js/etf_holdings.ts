@@ -28,10 +28,18 @@ function normalizeNumber(value: unknown): number | null {
     return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+// Theme detection helpers
+function getCurrentTheme(): string {
+    const themeManager = (window as any).themeManager;
+    if (themeManager?.getTheme) {
+        return themeManager.getTheme();
+    }
+    return document.documentElement.getAttribute("data-theme") || "system";
+}
+
 // Helper function to detect dark mode
 function isDarkMode(): boolean {
-    const htmlElement = document.documentElement;
-    const theme = htmlElement.getAttribute('data-theme') || 'system';
+    const theme = getCurrentTheme();
 
     if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
         return true;

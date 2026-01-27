@@ -2382,45 +2382,33 @@ function renderSectorChart(data: AllocationChartData): void {
         return;
     }
 
-    // Update layout height to match container and ensure centered margins
+    // Update layout to be responsive
     const layout = { ...data.layout };
+    layout.autosize = true;
 
-    // Use fixed height of 700px to match HTML container height
-    // Disable autosize to prevent Plotly from shrinking the chart in flex container
-    const containerHeight = 700;
-    layout.height = containerHeight;
-    layout.autosize = false;
-
-    // Ensure proper margins - use reasonable values for centering
-    if (!layout.margin) {
-        layout.margin = { l: 20, r: 20, t: 40, b: 40 };
-    } else {
-        // Ensure left and right margins are equal for centering
-        layout.margin.l = 20;
-        layout.margin.r = 20;
-        // Use reasonable top/bottom margins
-        layout.margin.t = Math.min(60, layout.margin.t || 40);
-        layout.margin.b = Math.min(80, layout.margin.b || 40);
-    }
+    // Ensure proper margins for centering
+    layout.margin = { l: 20, r: 20, t: 40, b: 40 };
 
     try {
         Plotly.newPlot('sector-chart', data.data, layout, {
-            responsive: false,  // Disable responsive to respect fixed height of 700px
+            responsive: true,
             displayModeBar: true,
             modeBarButtonsToRemove: ['pan2d', 'lasso2d']
         });
         console.log('[Dashboard] Sector chart rendered with Plotly');
 
-        // Add resize handler to redraw chart when window resizes (only once)
-        // Use relayout instead of resize to maintain fixed height of 700px
+        // Add resize handler to redraw chart when window resizes
         if (!(window as any).__sectorChartResizeHandler) {
+            let resizeTimeout: number | undefined;
             const resizeHandler = () => {
-                const Plotly = (window as any).Plotly;
-                const el = document.getElementById('sector-chart');
-                if (Plotly && el) {
-                    // Relayout with fixed height to prevent flex container shrinking
-                    Plotly.relayout('sector-chart', { height: 700 });
-                }
+                clearTimeout(resizeTimeout);
+                resizeTimeout = window.setTimeout(() => {
+                    const Plotly = (window as any).Plotly;
+                    const el = document.getElementById('sector-chart');
+                    if (Plotly && el && (el as any).data) {
+                        Plotly.Plots.resize(el);
+                    }
+                }, 100);
             };
             (window as any).__sectorChartResizeHandler = resizeHandler;
             window.addEventListener('resize', resizeHandler);

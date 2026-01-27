@@ -33,13 +33,20 @@
 {% block content %}
 <!-- Ticker Search -->
 <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
-    <label for="ticker-select" class="block text-sm font-medium text-text-primary mb-2">
+    <label for="ticker-search-input" class="block text-sm font-medium text-text-primary mb-2">
         Search Ticker
     </label>
-    <select id="ticker-select"
-        class="w-full md:w-1/3 px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
-        <option value="">Select ticker symbol...</option>
-    </select>
+    <div class="relative w-full md:w-1/3">
+        <input type="text" id="ticker-search-input"
+            inputmode="text"
+            autocomplete="off"
+            autocapitalize="characters"
+            placeholder="Type ticker symbol..."
+            class="w-full px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+        <div id="ticker-autocomplete-dropdown"
+            class="hidden absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-dashboard-surface border border-border rounded-lg shadow-lg">
+        </div>
+    </div>
 </div>
 
 <!-- Loading Spinner -->
@@ -475,7 +482,7 @@
     <!-- Structure Signal -->
     <div class="mb-6">
         <h3 class="text-lg font-semibold mb-3 text-text-primary">Structure Signal</h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div class="bg-dashboard-background p-4 rounded-lg">
                 <div class="text-sm text-text-secondary flex items-center gap-1">
                     Trend
@@ -523,7 +530,7 @@
     <!-- Timing Signal -->
     <div class="mb-6">
         <h3 class="text-lg font-semibold mb-3 text-text-primary">Timing Signal</h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div class="bg-dashboard-background p-4 rounded-lg">
                 <div class="text-sm text-text-secondary flex items-center gap-1">
                     Volume
@@ -568,7 +575,7 @@
             <!-- Fear & Risk Signal -->
             <div>
                 <h3 class="text-lg font-semibold mb-3 text-text-primary">Fear & Risk</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Fear Level

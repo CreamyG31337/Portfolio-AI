@@ -3,6 +3,7 @@ import logging
 from typing import Optional, Dict, List, Any
 import sys
 from pathlib import Path
+from datetime import datetime, timedelta, timezone, date
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -14,11 +15,13 @@ from user_preferences import get_user_theme, get_user_ai_model, get_user_prefere
 from flask_data_utils import (
     get_available_funds_flask, get_current_positions_flask, get_trade_log_flask,
     get_cash_balances_flask, calculate_portfolio_value_over_time_flask,
-    get_fund_thesis_data_flask, calculate_performance_metrics_flask
+    get_fund_thesis_data_flask, calculate_performance_metrics_flask,
+    get_supabase_client_flask
 )
 from ai_context_builder import (
     format_holdings, format_thesis, format_trades,
-    format_performance_metrics, format_cash_balances
+    format_performance_metrics, format_cash_balances,
+    format_insider_trades, format_congress_trades, format_etf_trades
 )
 from ollama_client import load_model_config, check_ollama_health, list_available_models
 from searxng_client import check_searxng_health, get_searxng_client
@@ -32,6 +35,138 @@ ai_bp = Blueprint('ai', __name__)
 # ============================================================================
 # Cached Helper Functions
 # ============================================================================
+
+def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
+    """Get insider trades for portfolio tickers from last N days."""
+    try:
+        # Get portfolio tickers
+        positions_df = get_current_positions_flask(fund)
+        if positions_df.empty:
+            return []
+        
+        ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
+        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
+        if not portfolio_tickers:
+            return []
+        
+        # Get Supabase client
+        client = get_supabase_client_flask()
+        if not client:
+            return []
+        
+        # Calculate date range
+        end_date = datetime.now(timezone.utc).date()
+        start_date = end_date - timedelta(days=days)
+        
+        # Query insider trades
+        result = client.supabase.table("insider_trades")\
+            .select("ticker, company_name, insider_name, insider_title, transaction_date, disclosure_date, type, shares, price_per_share, value")\
+            .in_("ticker", [t.upper() for t in portfolio_tickers])\
+            .gte("transaction_date", start_date.isoformat())\
+            .lte("transaction_date", end_date.isoformat())\
+            .order("transaction_date", desc=True)\
+            .limit(100)\
+            .execute()
+        
+        return result.data if result.data else []
+    except Exception as e:
+        logger.warning(f"Error fetching insider trades: {e}")
+        return []
+
+
+def _get_congress_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
+    """Get congress trades for portfolio tickers from last N days."""
+    try:
+        # Get portfolio tickers
+        positions_df = get_current_positions_flask(fund)
+        if positions_df.empty:
+            return []
+        
+        ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
+        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
+        if not portfolio_tickers:
+            return []
+        
+        # Get Supabase client
+        client = get_supabase_client_flask()
+        if not client:
+            return []
+        
+        # Calculate date range
+        end_date = datetime.now(timezone.utc).date()
+        start_date = end_date - timedelta(days=days)
+        
+        # Query congress trades
+        result = client.supabase.table("congress_trades_enriched")\
+            .select("ticker, politician, chamber, party, state, transaction_date, type, amount, owner")\
+            .in_("ticker", [t.upper() for t in portfolio_tickers])\
+            .gte("transaction_date", start_date.isoformat())\
+            .lte("transaction_date", end_date.isoformat())\
+            .order("transaction_date", desc=True)\
+            .limit(100)\
+            .execute()
+        
+        return result.data if result.data else []
+    except Exception as e:
+        logger.warning(f"Error fetching congress trades: {e}")
+        return []
+
+
+def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
+    """Get ETF trades for portfolio tickers from last N days."""
+    try:
+        # Get portfolio tickers
+        positions_df = get_current_positions_flask(fund)
+        if positions_df.empty:
+            return []
+        
+        ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
+        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
+        if not portfolio_tickers:
+            return []
+        
+        # Get Postgres client for Research DB
+        try:
+            from postgres_client import PostgresClient
+            pc = PostgresClient()
+        except Exception as e:
+            logger.warning(f"Error creating Postgres client: {e}")
+            return []
+        
+        # Calculate date range
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
+        
+        # Fetch ETF trades for each ticker
+        all_trades = []
+        for ticker in portfolio_tickers:
+            try:
+                result = pc.execute_query("""
+                    SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
+                """, (ticker.upper(), start_date.isoformat(), end_date.isoformat()))
+                
+                if result:
+                    # Convert to list of dicts
+                    for row in result:
+                        all_trades.append({
+                            'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
+                            'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
+                            'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
+                            'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
+                            'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
+                            'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
+                        })
+            except Exception as e:
+                logger.warning(f"Error fetching ETF trades for {ticker}: {e}")
+                continue
+        
+        # Sort by date descending
+        all_trades.sort(key=lambda x: x.get('trade_date') or date.min, reverse=True)
+        return all_trades[:100]  # Limit to 100 most recent
+    except Exception as e:
+        logger.warning(f"Error fetching ETF trades: {e}")
+        return []
+
 
 @cache_data(ttl=300)
 def _get_context_data_packet(user_id: str, fund: str):
@@ -61,6 +196,25 @@ def _get_context_data_packet(user_id: str, fund: str):
     except Exception as e:
         logger.warning(f"Error loading thesis: {e}")
         thesis_data = None
+    
+    # Fetch trade data (last 7 days)
+    try:
+        insider_trades = _get_insider_trades_for_portfolio(fund, days=7)
+    except Exception as e:
+        logger.warning(f"Error loading insider trades: {e}")
+        insider_trades = []
+    
+    try:
+        congress_trades = _get_congress_trades_for_portfolio(fund, days=7)
+    except Exception as e:
+        logger.warning(f"Error loading congress trades: {e}")
+        congress_trades = []
+    
+    try:
+        etf_trades = _get_etf_trades_for_portfolio(fund, days=7)
+    except Exception as e:
+        logger.warning(f"Error loading ETF trades: {e}")
+        etf_trades = []
         
     return {
         'positions_df': positions_df,
@@ -68,7 +222,10 @@ def _get_context_data_packet(user_id: str, fund: str):
         'metrics': metrics,
         'portfolio_df': portfolio_df,
         'cash': cash,
-        'thesis_data': thesis_data
+        'thesis_data': thesis_data,
+        'insider_trades': insider_trades,
+        'congress_trades': congress_trades,
+        'etf_trades': etf_trades
     }
 
 
@@ -78,7 +235,10 @@ def _build_context_from_packet(
     include_thesis: bool,
     include_trades: bool,
     include_price_volume: bool,
-    include_fundamentals: bool
+    include_fundamentals: bool,
+    include_insider_trades: bool = True,
+    include_congress_trades: bool = True,
+    include_etf_trades: bool = True
 ) -> str:
     """Build context string from a pre-fetched data packet."""
     positions_df = data_packet['positions_df']
@@ -87,6 +247,9 @@ def _build_context_from_packet(
     portfolio_df = data_packet['portfolio_df']
     cash = data_packet['cash']
     thesis_data = data_packet['thesis_data']
+    insider_trades = data_packet.get('insider_trades', [])
+    congress_trades = data_packet.get('congress_trades', [])
+    etf_trades = data_packet.get('etf_trades', [])
 
     context_parts = []
 
@@ -112,6 +275,15 @@ def _build_context_from_packet(
     if include_trades and not trades_df.empty:
         context_parts.append(format_trades(trades_df, limit=100))
 
+    if include_insider_trades and insider_trades:
+        context_parts.append(format_insider_trades(insider_trades, limit=50))
+
+    if include_congress_trades and congress_trades:
+        context_parts.append(format_congress_trades(congress_trades, limit=50))
+
+    if include_etf_trades and etf_trades:
+        context_parts.append(format_etf_trades(etf_trades, limit=50))
+
     return "\n\n---\n\n".join(context_parts) if context_parts else "No context data available"
 
 
@@ -121,7 +293,10 @@ def _get_preview_context_string(
     include_thesis: bool,
     include_trades: bool,
     include_price_volume: bool,
-    include_fundamentals: bool
+    include_fundamentals: bool,
+    include_insider_trades: bool = True,
+    include_congress_trades: bool = True,
+    include_etf_trades: bool = True
 ) -> str:
     """Build preview context string from cached data."""
     data_packet = _get_context_data_packet(user_id, fund)
@@ -131,7 +306,10 @@ def _get_preview_context_string(
         include_thesis=include_thesis,
         include_trades=include_trades,
         include_price_volume=include_price_volume,
-        include_fundamentals=include_fundamentals
+        include_fundamentals=include_fundamentals,
+        include_insider_trades=include_insider_trades,
+        include_congress_trades=include_congress_trades,
+        include_etf_trades=include_etf_trades
     )
 
 @cache_data(ttl=30)
@@ -315,6 +493,9 @@ def api_ai_preview_context():
         include_fund = data.get('include_fundamentals', True)
         include_thesis = data.get('include_thesis', False)
         include_trades = data.get('include_trades', False)
+        include_insider_trades = data.get('include_insider_trades', True)
+        include_congress_trades = data.get('include_congress_trades', True)
+        include_etf_trades = data.get('include_etf_trades', True)
 
         context_string = _get_preview_context_string(
             user_id=user_id,
@@ -322,7 +503,10 @@ def api_ai_preview_context():
             include_thesis=include_thesis,
             include_trades=include_trades,
             include_price_volume=include_pv,
-            include_fundamentals=include_fund
+            include_fundamentals=include_fund,
+            include_insider_trades=include_insider_trades,
+            include_congress_trades=include_congress_trades,
+            include_etf_trades=include_etf_trades
         )
         
         return jsonify({
@@ -374,6 +558,9 @@ def api_ai_context_build():
 
         include_pv = data.get('include_price_volume', True)
         include_fund = data.get('include_fundamentals', True)
+        include_insider_trades = data.get('include_insider_trades', True)
+        include_congress_trades = data.get('include_congress_trades', True)
+        include_etf_trades = data.get('include_etf_trades', True)
 
         context_string = _build_context_from_packet(
             fund=fund,
@@ -381,7 +568,10 @@ def api_ai_context_build():
             include_thesis=data.get('include_thesis', False),
             include_trades=data.get('include_trades', False),
             include_price_volume=include_pv,
-            include_fundamentals=include_fund
+            include_fundamentals=include_fund,
+            include_insider_trades=include_insider_trades,
+            include_congress_trades=include_congress_trades,
+            include_etf_trades=include_etf_trades
         )
         context_parts = context_string.split("\n\n---\n\n") if context_string else []
         
@@ -629,7 +819,10 @@ def api_ai_chat():
             handler = ChatHandler(user_id=user_id, model=model, fund=fund)
             options = {
                 'include_price_volume': data.get('include_price_volume', True),
-                'include_fundamentals': data.get('include_fundamentals', True)
+                'include_fundamentals': data.get('include_fundamentals', True),
+                'include_insider_trades': data.get('include_insider_trades', True),
+                'include_congress_trades': data.get('include_congress_trades', True),
+                'include_etf_trades': data.get('include_etf_trades', True)
             }
             context_string = handler.build_context(context_items, options)
         

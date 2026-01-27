@@ -2821,6 +2821,93 @@ def update_ai_include_search():
         logger.error(f"Error updating AI include_search: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
 
+@app.route('/api/settings/ai_include_insider_trades', methods=['POST'])
+@require_auth
+def update_ai_include_insider_trades():
+    """Update user AI include insider trades preference"""
+    try:
+        from user_preferences import set_user_preference
+        from flask_auth_utils import get_user_id_flask
+        
+        data = request.get_json()
+        include_insider_trades = data.get('include_insider_trades')
+        
+        if include_insider_trades is None:
+            return jsonify({"success": False, "error": "include_insider_trades is required"}), 400
+        
+        user_id = get_user_id_flask()
+        logger.debug(f"Updating AI include_insider_trades for user {user_id} to {include_insider_trades}")
+        
+        result = set_user_preference('ai_include_insider_trades', include_insider_trades)
+        if result:
+            logger.info(f"Successfully updated AI include_insider_trades to {include_insider_trades}")
+            return jsonify({"success": True})
+        else:
+            logger.error(f"Failed to update AI include_insider_trades - set_user_preference returned False")
+            return jsonify({"success": False, "error": "Failed to save preference"}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating AI include_insider_trades: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/settings/ai_include_congress_trades', methods=['POST'])
+@require_auth
+def update_ai_include_congress_trades():
+    """Update user AI include congress trades preference"""
+    try:
+        from user_preferences import set_user_preference
+        from flask_auth_utils import get_user_id_flask
+        
+        data = request.get_json()
+        include_congress_trades = data.get('include_congress_trades')
+        
+        if include_congress_trades is None:
+            return jsonify({"success": False, "error": "include_congress_trades is required"}), 400
+        
+        user_id = get_user_id_flask()
+        logger.debug(f"Updating AI include_congress_trades for user {user_id} to {include_congress_trades}")
+        
+        result = set_user_preference('ai_include_congress_trades', include_congress_trades)
+        if result:
+            logger.info(f"Successfully updated AI include_congress_trades to {include_congress_trades}")
+            return jsonify({"success": True})
+        else:
+            logger.error(f"Failed to update AI include_congress_trades - set_user_preference returned False")
+            return jsonify({"success": False, "error": "Failed to save preference"}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating AI include_congress_trades: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/settings/ai_include_etf_trades', methods=['POST'])
+@require_auth
+def update_ai_include_etf_trades():
+    """Update user AI include ETF trades preference"""
+    try:
+        from user_preferences import set_user_preference
+        from flask_auth_utils import get_user_id_flask
+        
+        data = request.get_json()
+        include_etf_trades = data.get('include_etf_trades')
+        
+        if include_etf_trades is None:
+            return jsonify({"success": False, "error": "include_etf_trades is required"}), 400
+        
+        user_id = get_user_id_flask()
+        logger.debug(f"Updating AI include_etf_trades for user {user_id} to {include_etf_trades}")
+        
+        result = set_user_preference('ai_include_etf_trades', include_etf_trades)
+        if result:
+            logger.info(f"Successfully updated AI include_etf_trades to {include_etf_trades}")
+            return jsonify({"success": True})
+        else:
+            logger.error(f"Failed to update AI include_etf_trades - set_user_preference returned False")
+            return jsonify({"success": False, "error": "Failed to save preference"}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating AI include_etf_trades: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
 @app.route('/api/settings/debug', methods=['GET'])
 @require_auth
 def settings_debug():
@@ -2907,10 +2994,14 @@ def ticker_details_page():
 @cache_data(ttl=60)
 def _get_all_tickers_cached():
     """Get all unique tickers with caching (60s TTL)"""
+    import re
     try:
         logger.info("Starting _get_all_tickers_cached")
         from ticker_utils import get_all_unique_tickers
         tickers = get_all_unique_tickers()
+        # Filter out junk tickers that don't start with a letter or number
+        valid_ticker_pattern = re.compile(r'^[A-Za-z0-9]')
+        tickers = [t for t in (tickers or []) if valid_ticker_pattern.match(t)]
         count = len(tickers) if tickers else 0
         logger.info(f"_get_all_tickers_cached retrieved {count} tickers")
         return sorted(tickers) if tickers else []
