@@ -1,5 +1,0 @@
-node_modules/
-*.json
-.env
-npm-debug.log
-yarn-error.log
