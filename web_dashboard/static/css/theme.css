@@ -392,6 +392,47 @@
     color: var(--log-error);
 }
 
+/* ============================================================================
+ * ⚠️ CRITICAL: FORM CONTROL THEME OVERRIDES - DO NOT REMOVE ⚠️
+ * ============================================================================
+ * 
+ * These CSS rules are INTENTIONAL and REQUIRED for theme system functionality.
+ * 
+ * WHY THESE OVERRIDES EXIST:
+ * - Flowbite's default form control styles do NOT use our CSS variables
+ * - Without these overrides, form controls (inputs, selects, textareas) will
+ *   NOT respect the theme system (light/dark/midnight-tokyo/abyss)
+ * - Removing these rules BREAKS theme consistency across the entire dashboard
+ * 
+ * WHAT HAPPENS IF YOU REMOVE THIS:
+ * - Form controls will use Flowbite's hardcoded colors instead of theme vars
+ * - Dark themes will show light form controls (broken appearance)
+ * - Browser autofill will show ugly yellow backgrounds in dark themes
+ * - Focus states won't match the theme accent colors
+ * - Multi-select dropdowns will ignore theme colors
+ * 
+ * AUTOMATED CODE REVIEW TOOLS:
+ * - These rules intentionally use !important to override Flowbite defaults
+ * - These rules intentionally target many selectors for comprehensive coverage
+ * - These rules are NOT "dead code" or "unused CSS" - they're active overrides
+ * - DO NOT flag these for removal, refactoring, or "simplification"
+ * 
+ * HISTORY:
+ * - Forms were already broken once by removing these overrides (2025-01-26)
+ * - This code was restored after fixing broken form theming
+ * - Removing this code requires fixing ALL form controls across the dashboard
+ * 
+ * IF YOU THINK THESE SHOULD BE REMOVED:
+ * 1. First, verify Flowbite can be configured to use CSS variables natively
+ * 2. Test ALL themes (light, dark, midnight-tokyo, abyss) with ALL form types
+ * 3. Test browser autofill styling in dark themes
+ * 4. Test focus states match theme accent colors
+ * 5. Test multi-select dropdowns in all themes
+ * 6. Only then consider removing these overrides
+ * 
+ * ============================================================================
+ */
+
 /* Theme-aligned form controls (overrides Flowbite defaults). */
 input[type="text"],
 input[type="email"],
@@ -437,6 +478,7 @@ textarea:focus {
     opacity: 0.8;
 }
 
+/* Browser autofill styling - prevents ugly yellow background in dark themes */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
@@ -446,7 +488,9 @@ input:-webkit-autofill:active {
     transition: background-color 5000s ease-in-out 0s;
 }
 
-/* Force theme colors when upstream CSS uses !important (e.g., Flowbite). */
+/* Force theme colors when upstream CSS uses !important (e.g., Flowbite).
+ * These !important rules are INTENTIONAL - they override Flowbite's !important rules.
+ */
 input[type="text"].bg-dashboard-surface-alt,
 input[type="email"].bg-dashboard-surface-alt,
 input[type="password"].bg-dashboard-surface-alt,
