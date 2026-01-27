@@ -243,9 +243,9 @@
 
                     <hr class="border-border my-6">
 
-                    <!-- Context Selection -->
+                    <!-- Portfolio Data -->
                     <div>
-                        <h3 class="font-semibold mb-2 text-text-primary">📋 Analysis Context</h3>
+                        <h3 class="font-semibold mb-2 text-text-primary">📊 Portfolio Data</h3>
                         <p class="text-xs text-text-secondary mb-2">ℹ️ Always Included: Holdings, Performance Metrics,
                             Cash Balances</p>
                         <p class="text-xs font-semibold mb-2 text-text-primary">Optional:</p>
@@ -264,7 +264,7 @@
 
                         <hr class="my-4 border-border">
 
-                        <h4 class="font-semibold mb-2 text-sm text-text-primary">📊 Portfolio Table Options</h4>
+                        <h4 class="font-semibold mb-2 text-sm text-text-primary">Portfolio Tables</h4>
 
                         <label class="flex items-center mb-2 cursor-pointer">
                             <input type="checkbox" id="toggle-price-volume" checked
@@ -306,35 +306,38 @@
 
                     <hr class="border-border my-6">
 
-                    <!-- Web Search -->
+                    <!-- Research & Search -->
                     <div>
-                        <h3 class="font-semibold mb-2 text-text-primary">🌐 Web Search</h3>
-                        {% if searxng_available %}
-                        <p class="text-xs text-theme-success-text mb-2">? SearXNG available</p>
-                        <label class="flex items-center mb-2 cursor-pointer">
-                            <input type="checkbox" id="toggle-search" checked
-                                class="mr-2 w-4 h-4 text-accent bg-dashboard-surface-alt border-border rounded focus:ring-accent focus:ring-2">
-                            <span class="text-sm text-text-primary">Enable Web Search</span>
-                        </label>
-                        {% else %}
-                        <p class="text-xs text-theme-warning-text mb-2">⚠️ SearXNG unavailable</p>
-                        {% endif %}
-                    </div>
+                        <h3 class="font-semibold mb-2 text-text-primary">🔍 Research & Search</h3>
+                        
+                        <!-- Web Search -->
+                        <div class="mb-4">
+                            <h4 class="font-semibold mb-2 text-sm text-text-primary">🌐 Web Search</h4>
+                            {% if searxng_available %}
+                            <p class="text-xs text-theme-success-text mb-2">✅ SearXNG available</p>
+                            <label class="flex items-center mb-2 cursor-pointer">
+                                <input type="checkbox" id="toggle-search" checked
+                                    class="mr-2 w-4 h-4 text-accent bg-dashboard-surface-alt border-border rounded focus:ring-accent focus:ring-2">
+                                <span class="text-sm text-text-primary">Enable Web Search</span>
+                            </label>
+                            {% else %}
+                            <p class="text-xs text-theme-warning-text mb-2">⚠️ SearXNG unavailable</p>
+                            {% endif %}
+                        </div>
 
-                    <hr class="border-border my-6">
-
-                    <!-- Research Repository -->
-                    <div>
-                        <h3 class="font-semibold mb-2 text-text-primary">🧠 Research Knowledge</h3>
-                        {% if ollama_available %}
-                        <label class="flex items-center mb-2 cursor-pointer">
-                            <input type="checkbox" id="toggle-repository" checked
-                                class="mr-2 w-4 h-4 text-accent bg-dashboard-surface-alt border-border rounded focus:ring-accent focus:ring-2">
-                            <span class="text-sm text-text-primary">Use Research Repository</span>
-                        </label>
-                        {% else %}
-                        <p class="text-xs text-theme-warning-text mb-2">⚠️ Repository search requires Ollama</p>
-                        {% endif %}
+                        <!-- Research Repository -->
+                        <div>
+                            <h4 class="font-semibold mb-2 text-sm text-text-primary">🧠 Research Knowledge</h4>
+                            {% if ollama_available %}
+                            <label class="flex items-center mb-2 cursor-pointer">
+                                <input type="checkbox" id="toggle-repository" checked
+                                    class="mr-2 w-4 h-4 text-accent bg-dashboard-surface-alt border-border rounded focus:ring-accent focus:ring-2">
+                                <span class="text-sm text-text-primary">Use Research Repository</span>
+                            </label>
+                            {% else %}
+                            <p class="text-xs text-theme-warning-text mb-2">⚠️ Repository search requires Ollama</p>
+                            {% endif %}
+                        </div>
                     </div>
 
                     <hr class="border-border my-6">

@@ -601,8 +601,8 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Context selection - Simplified UI
-    st.header("📋 Analysis Context")
+    # Portfolio Data - Simplified UI
+    st.header("📊 Portfolio Data")
 
     # Get current context items for this fund
     context_items = chat_context.get_items()
@@ -637,8 +637,8 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Portfolio Table Options
-    st.header("📊 Portfolio Table Options")
+    # Portfolio Tables
+    st.markdown("### Portfolio Tables")
     st.caption("Customize which portfolio data tables to include")
 
     include_price_volume = st.checkbox(
@@ -657,8 +657,11 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Web Search section
-    st.header("🔍 Web Search")
+    # Research & Search section
+    st.header("🔍 Research & Search")
+    
+    # Web Search
+    st.markdown("### 🌐 Web Search")
     if searxng_available:
         st.success("✅ SearXNG available")
         include_search = st.checkbox(
@@ -667,8 +670,6 @@ with st.sidebar:
             help="Search the web for relevant information when answering questions",
             key="toggle_search"
         )
-
-
 
         # Portfolio Intelligence Section
         st.markdown("### 🧠 Portfolio Intelligence")
@@ -768,8 +769,8 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Research Knowledge section
-    st.header("🧠 Research Knowledge")
+    # Research Knowledge
+    st.markdown("### 🧠 Research Knowledge")
 
     # Check if Ollama is available (needed for embeddings) AND not using WebAI
     # WebAI users might not have Ollama running
