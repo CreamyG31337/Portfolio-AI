@@ -377,6 +377,43 @@
     </nav>
 </div>
 
+<!-- Insider Trades Section -->
+<div id="insider-trades-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <h2 class="text-xl font-bold mb-4 text-text-primary">🏢 Insider Trades</h2>
+    <p id="insider-trades-count" class="text-sm text-text-secondary mb-4"></p>
+    <div class="overflow-x-auto">
+        <table id="insider-trades-table" class="min-w-full divide-y divide-border">
+            <thead class="bg-dashboard-background">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Date</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Insider</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Type</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Shares</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Price</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Value</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                        Disclosure</th>
+                </tr>
+            </thead>
+            <tbody id="insider-trades-tbody" class="bg-dashboard-surface divide-y divide-border">
+                <!-- Populated by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+    <!-- Pagination -->
+    <nav class="mt-4" aria-label="Insider trades pagination">
+        <ul id="insider-trades-pagination" class="flex items-center -space-x-px h-8 text-sm">
+            <!-- Populated by JavaScript -->
+        </ul>
+    </nav>
+</div>
+
 <!-- Watchlist Status Section -->
 <div id="watchlist-section" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
     <h2 class="text-xl font-bold mb-4 text-text-primary">📋 Watchlist Status</h2>

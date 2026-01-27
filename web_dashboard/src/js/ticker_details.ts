@@ -81,6 +81,24 @@ interface CongressTickerTrade {
     party?: string;
 }
 
+interface InsiderTrade {
+    ticker?: string;
+    company_name?: string;
+    insider_name?: string;
+    insider_title?: string;
+    transaction_date?: string;
+    disclosure_date?: string;
+    type?: string;
+    shares?: number | null;
+    price_per_share?: number | null;
+    value?: number | null;
+    shares_held_after?: number | null;
+    percent_change?: number | null;
+    notes?: string | null;
+    created_at?: string;
+    _logo_url?: string | null;
+}
+
 interface EtfHoldingTrade {
     trade_date?: string;
     etf_ticker?: string;
@@ -159,6 +177,7 @@ interface TickerInfoResponse {
     research_articles?: ResearchArticle[];
     social_sentiment?: SocialSentiment;
     congress_trades?: CongressTickerTrade[];
+    insider_trades?: InsiderTrade[];
     watchlist_status?: WatchlistStatus;
 }
 
@@ -206,6 +225,9 @@ function appendFundParam(url: string): string {
 let allCongressTrades: CongressTickerTrade[] = [];
 let congressTradesCurrentPage: number = 0;
 const congressTradesPerPage: number = 25;
+let allInsiderTrades: InsiderTrade[] = [];
+let insiderTradesCurrentPage: number = 0;
+const insiderTradesPerPage: number = 25;
 
 // Initialize page on load
 document.addEventListener('DOMContentLoaded', function (): void {
@@ -446,6 +468,9 @@ async function loadTickerData(ticker: string): Promise<void> {
         }
         if (data.congress_trades) {
             renderCongressTickerTrades(data.congress_trades);
+        }
+        if (data.insider_trades) {
+            renderInsiderTrades(data.insider_trades);
         }
         if (data.watchlist_status) {
             renderWatchlistStatus(data.watchlist_status);
@@ -1244,6 +1269,185 @@ function renderCongressTradesPagination(): void {
     container.appendChild(nextLi);
 }
 
+// Render insider trades
+function renderInsiderTrades(trades: InsiderTrade[]): void {
+    if (!trades || trades.length === 0) {
+        return;
+    }
+
+    allInsiderTrades = trades;
+    insiderTradesCurrentPage = 0;
+
+    const section = document.getElementById("insider-trades-section");
+    if (!section) return;
+
+    section.classList.remove("hidden");
+
+    renderInsiderTradesPage();
+}
+
+function renderInsiderTradesPage(): void {
+    if (!allInsiderTrades || allInsiderTrades.length === 0) {
+        return;
+    }
+
+    const countEl = document.getElementById("insider-trades-count");
+    if (countEl) {
+        const totalPages = Math.ceil(allInsiderTrades.length / insiderTradesPerPage);
+        const start = (insiderTradesCurrentPage * insiderTradesPerPage) + 1;
+        const end = Math.min((insiderTradesCurrentPage + 1) * insiderTradesPerPage, allInsiderTrades.length);
+        countEl.textContent = `Found ${allInsiderTrades.length} insider trades (Showing ${start}-${end} of ${allInsiderTrades.length})`;
+    }
+
+    const tbody = document.getElementById("insider-trades-tbody");
+    if (!tbody) return;
+
+    tbody.innerHTML = "";
+
+    const startIndex = insiderTradesCurrentPage * insiderTradesPerPage;
+    const endIndex = Math.min(startIndex + insiderTradesPerPage, allInsiderTrades.length);
+    const pageTrades = allInsiderTrades.slice(startIndex, endIndex);
+
+    pageTrades.forEach(trade => {
+        const row = document.createElement("tr");
+        const typeValue = (trade.type || "N/A").toString();
+        const typeLower = typeValue.toLowerCase();
+        const typeClass = typeLower === "purchase"
+            ? "text-theme-success-text"
+            : typeLower === "sale"
+                ? "text-theme-error-text"
+                : "text-text-primary";
+        const insiderLabel = trade.insider_name || "N/A";
+        const titleLabel = trade.insider_title ? ` (${trade.insider_title})` : "";
+
+        row.innerHTML = `
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatDate(trade.transaction_date)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${insiderLabel}${titleLabel}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm ${typeClass}">${typeValue}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">${formatNumber(trade.shares || 0, 2)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">${formatCurrency(trade.price_per_share || 0)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">${formatCurrency(trade.value || 0)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${formatDate(trade.disclosure_date)}</td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    renderInsiderTradesPagination();
+}
+
+function renderInsiderTradesPagination(): void {
+    const container = document.getElementById("insider-trades-pagination");
+    if (!container) return;
+
+    const totalPages = Math.ceil(allInsiderTrades.length / insiderTradesPerPage);
+
+    if (totalPages <= 1) {
+        container.innerHTML = "";
+        return;
+    }
+
+    container.innerHTML = "";
+
+    const prevLi = document.createElement("li");
+    prevLi.innerHTML = `
+        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${insiderTradesCurrentPage === 0 ? "pointer-events-none opacity-50" : ""}">
+            <span class="sr-only">Previous</span>
+            <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
+            </svg>
+        </a>
+    `;
+    prevLi.onclick = (e) => {
+        e.preventDefault();
+        if (insiderTradesCurrentPage > 0) {
+            insiderTradesCurrentPage--;
+            renderInsiderTradesPage();
+        }
+    };
+    container.appendChild(prevLi);
+
+    const maxVisiblePages = 7;
+    let startPage = Math.max(0, insiderTradesCurrentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages - 1, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage < maxVisiblePages - 1) {
+        startPage = Math.max(0, endPage - maxVisiblePages + 1);
+    }
+
+    if (startPage > 0) {
+        const firstLi = document.createElement("li");
+        firstLi.innerHTML = `
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary">1</a>
+        `;
+        firstLi.onclick = (e) => {
+            e.preventDefault();
+            insiderTradesCurrentPage = 0;
+            renderInsiderTradesPage();
+        };
+        container.appendChild(firstLi);
+
+        if (startPage > 1) {
+            const ellipsisLi = document.createElement("li");
+            ellipsisLi.innerHTML = `
+                <span class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">...</span>
+            `;
+            container.appendChild(ellipsisLi);
+        }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        const pageLi = document.createElement("li");
+        pageLi.innerHTML = `
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary ${i === insiderTradesCurrentPage ? "bg-accent text-white" : ""}">${i + 1}</a>
+        `;
+        pageLi.onclick = (e) => {
+            e.preventDefault();
+            insiderTradesCurrentPage = i;
+            renderInsiderTradesPage();
+        };
+        container.appendChild(pageLi);
+    }
+
+    if (endPage < totalPages - 1) {
+        if (endPage < totalPages - 2) {
+            const ellipsisLi = document.createElement("li");
+            ellipsisLi.innerHTML = `
+                <span class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">...</span>
+            `;
+            container.appendChild(ellipsisLi);
+        }
+
+        const lastLi = document.createElement("li");
+        lastLi.innerHTML = `
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary">${totalPages}</a>
+        `;
+        lastLi.onclick = (e) => {
+            e.preventDefault();
+            insiderTradesCurrentPage = totalPages - 1;
+            renderInsiderTradesPage();
+        };
+        container.appendChild(lastLi);
+    }
+
+    const nextLi = document.createElement("li");
+    nextLi.innerHTML = `
+        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${insiderTradesCurrentPage === totalPages - 1 ? "pointer-events-none opacity-50" : ""}">
+            <span class="sr-only">Next</span>
+            <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 9l4-4-4-4"/>
+            </svg>
+        </a>
+    `;
+    nextLi.onclick = (e) => {
+        e.preventDefault();
+        if (insiderTradesCurrentPage < totalPages - 1) {
+            insiderTradesCurrentPage++;
+            renderInsiderTradesPage();
+        }
+    };
+    container.appendChild(nextLi);
+}
+
 // Render watchlist status
 function renderWatchlistStatus(status: WatchlistStatus): void {
     if (!status) {
@@ -1889,6 +2093,7 @@ function hideAllSections(): void {
         'research-section',
         'sentiment-section',
         'congress-section',
+        'insider-trades-section',
         'watchlist-section',
         'signals-section',
         'ai-analysis-section'

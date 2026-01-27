@@ -301,6 +301,7 @@ def get_ticker_info(
         'research_articles': [],
         'social_sentiment': None,
         'congress_trades': [],
+        'insider_trades': [],
         'watchlist_status': None,
         'found': False
     }
@@ -573,8 +574,34 @@ def get_ticker_info(
                 result['found'] = True
         except Exception as e:
             logger.warning(f"Error fetching congress trades for {ticker_upper}: {e}")
-    
-    # 6. Get watchlist status
+
+    # 6. Get insider trades (recent for this ticker)
+    if supabase_client:
+        try:
+            from web_dashboard.utils.logo_utils import get_ticker_logo_url
+
+            insider_result = supabase_client.supabase.table("insider_trades")\
+                .select("ticker, company_name, insider_name, insider_title, transaction_date, disclosure_date, "
+                        "type, shares, price_per_share, value, shares_held_after, percent_change, notes, created_at")\
+                .eq("ticker", ticker_upper)\
+                .order("transaction_date", desc=True)\
+                .limit(50)\
+                .execute()
+
+            if insider_result.data:
+                logo_url = get_ticker_logo_url(ticker_upper)
+                formatted_trades = []
+                for trade in insider_result.data:
+                    formatted_trade = dict(trade)
+                    formatted_trade["_logo_url"] = logo_url
+                    formatted_trades.append(formatted_trade)
+
+                result['insider_trades'] = formatted_trades
+                result['found'] = True
+        except Exception as e:
+            logger.warning(f"Error fetching insider trades for {ticker_upper}: {e}")
+
+    # 7. Get watchlist status
     if supabase_client:
         try:
             watchlist_result = supabase_client.supabase.table("watched_tickers")\
