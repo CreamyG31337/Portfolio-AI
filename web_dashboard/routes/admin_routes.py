@@ -1218,6 +1218,7 @@ def api_bump_cache_version():
             "message": str(e)
         }), 500
 
+
 @admin_bp.route('/api/admin/system/cache/reset', methods=['POST'])
 @require_admin
 def api_reset_cache():
@@ -1247,6 +1248,65 @@ def api_reset_cache():
             "success": False,
             "message": str(e)
         }), 500
+
+@admin_bp.route('/api/admin/system/registration/status')
+@require_admin
+def api_registration_status():
+    """Get current registration enabled status"""
+    try:
+        from settings import get_system_setting
+        registration_enabled = get_system_setting('registration_enabled', default=True)
+        
+        return jsonify({
+            "enabled": registration_enabled
+        })
+    except Exception as e:
+        logger.error(f"[System API] Error getting registration status: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/admin/system/registration/toggle', methods=['POST'])
+@require_admin
+def api_toggle_registration():
+    """Toggle registration enabled/disabled"""
+    try:
+        from flask_auth_utils import can_modify_data_flask, get_user_id_flask
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot modify registration settings"}), 403
+        
+        from app import get_supabase_client
+        client = get_supabase_client()
+        if not client:
+            return jsonify({"error": "Failed to connect to database"}), 500
+        
+        data = request.get_json()
+        enabled = data.get('enabled', True)
+        
+        # Get current user ID
+        user_id = get_user_id_flask()
+        
+        # Upsert the setting
+        result = client.supabase.table("system_settings").upsert({
+            "key": "registration_enabled",
+            "value": enabled,
+            "description": "Controls whether new user registration is allowed",
+            "updated_by": user_id
+        }).execute()
+        
+        if result.data:
+            status_text = "enabled" if enabled else "disabled"
+            logger.info(f"[System API] Registration {status_text} by admin")
+            
+            return jsonify({
+                "success": True,
+                "enabled": enabled,
+                "message": f"Registration successfully {status_text}"
+            })
+        else:
+            return jsonify({"error": "Failed to update registration setting"}), 500
+            
+    except Exception as e:
+        logger.error(f"[System API] Error toggling registration: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 @admin_bp.route('/api/admin/system/files/content')
 @require_admin

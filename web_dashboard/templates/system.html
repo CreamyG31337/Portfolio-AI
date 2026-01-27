@@ -49,6 +49,25 @@
         </div>
     </div>
 
+    <!-- Registration Control -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
+        <h3 class="text-lg font-semibold text-text-primary mb-4">Registration Control</h3>
+        <p class="text-sm text-text-secondary mb-4">Control whether new users can register accounts. Existing users are
+            not affected.</p>
+        <div class="flex items-center space-x-4">
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="registration-toggle" class="sr-only peer" onchange="toggleRegistration()">
+                <div
+                    class="w-11 h-6 bg-gray-400 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent/30 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent">
+                </div>
+                <span class="ms-3 text-sm font-medium text-text-primary">Allow New Registrations</span>
+            </label>
+            <div id="registration-status" class="text-sm text-text-secondary flex items-center">
+                <div class="animate-pulse bg-dashboard-background h-4 w-24 rounded"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Cache Management -->
     <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
         <h3 class="text-lg font-semibold text-text-primary mb-4">Cache Management</h3>

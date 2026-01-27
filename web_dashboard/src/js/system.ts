@@ -30,6 +30,7 @@ interface JobLog {
 document.addEventListener('DOMContentLoaded', () => {
     fetchSystemStatus();
     fetchDeploymentInfo();
+    loadRegistrationStatus();
 });
 
 async function fetchDeploymentInfo(): Promise<void> {
@@ -133,7 +134,90 @@ async function fetchSystemStatus(): Promise<void> {
     }
 }
 
+async function loadRegistrationStatus(): Promise<void> {
+    try {
+        const response = await fetch('/api/admin/system/registration/status');
+        const data = await response.json();
+
+        const toggle = document.getElementById('registration-toggle') as HTMLInputElement;
+        const statusEl = document.getElementById('registration-status');
+
+        if (toggle) {
+            toggle.checked = data.enabled;
+        }
+
+        if (statusEl) {
+            const statusText = data.enabled
+                ? '<i class="fas fa-check-circle text-theme-success-text"></i> Enabled'
+                : '<i class="fas fa-times-circle text-theme-error-text"></i> Disabled';
+            statusEl.innerHTML = statusText;
+        }
+    } catch (error) {
+        console.error("Error loading registration status:", error);
+        const statusEl = document.getElementById('registration-status');
+        if (statusEl) {
+            statusEl.innerHTML = '<span class="text-theme-error-text">Error loading status</span>';
+        }
+    }
+}
+
+async function toggleRegistration(): Promise<void> {
+    const toggle = document.getElementById('registration-toggle') as HTMLInputElement;
+    const statusEl = document.getElementById('registration-status');
+
+    if (!toggle) return;
+
+    const enabled = toggle.checked;
+
+    try {
+        // Show loading state
+        if (statusEl) {
+            statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+        }
+
+        const response = await fetch('/api/admin/system/registration/toggle', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ enabled })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Update status
+            if (statusEl) {
+                const statusText = enabled
+                    ? '<i class="fas fa-check-circle text-theme-success-text"></i> Enabled'
+                    : '<i class="fas fa-times-circle text-theme-error-text"></i> Disabled';
+                statusEl.innerHTML = statusText;
+            }
+
+            // Show toast notification
+            const message = enabled
+                ? '✅ Registration enabled - new users can now sign up'
+                : '🔒 Registration disabled - new signups blocked';
+            console.log(message);
+        } else {
+            throw new Error(data.error || 'Failed to toggle registration');
+        }
+    } catch (error) {
+        console.error("Error toggling registration:", error);
+
+        // Revert toggle on error
+        toggle.checked = !enabled;
+
+        if (statusEl) {
+            statusEl.innerHTML = `<span class="text-theme-error-text">Error: ${error}</span>`;
+        }
+
+        alert('Failed to toggle registration: ' + error);
+    }
+}
+
 // Make functions available globally for onclick handlers
 (window as any).clearCache = clearCache;
 (window as any).bumpCacheVersion = bumpCacheVersion;
 (window as any).resetSystemCache = resetSystemCache;
+(window as any).toggleRegistration = toggleRegistration;

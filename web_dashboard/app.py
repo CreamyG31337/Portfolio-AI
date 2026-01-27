@@ -1695,6 +1695,13 @@ def change_password():
 def register():
     """Handle user registration"""
     try:
+        # Check if registration is enabled via system settings
+        from settings import get_system_setting
+        registration_enabled = get_system_setting('registration_enabled', default=True)
+        
+        if not registration_enabled:
+            return jsonify({"error": "New user registration is currently disabled. Please contact an administrator."}), 403
+        
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
