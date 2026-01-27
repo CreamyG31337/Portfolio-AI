@@ -1326,7 +1326,7 @@ function renderInsiderTradesPage(): void {
             <td class="px-6 py-4 whitespace-nowrap text-sm ${typeClass}">${typeValue}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">${formatNumber(trade.shares || 0, 2)}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">${formatCurrency(trade.price_per_share || 0)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">${formatCurrency(trade.value || 0)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">${formatCurrencyWhole(trade.value || 0)}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${formatDate(trade.disclosure_date)}</td>
         `;
         tbody.appendChild(row);
@@ -1730,6 +1730,16 @@ function formatDateTime(dateStr?: string): string {
 
 function formatCurrency(value: number | string): string {
     return `$${parseFloat(String(value || 0)).toFixed(2)}`;
+}
+
+function formatCurrencyWhole(value: number | string): string {
+    const numericValue = Number(value) || 0;
+    return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(numericValue);
 }
 
 function formatNumber(value: number | string, decimals: number = 2): string {

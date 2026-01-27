@@ -6,6 +6,7 @@ Ticker Analysis Service
 Analyzes individual tickers with 3 months of multi-source data:
 - ETF changes (all ETFs that held this ticker)
 - Congress trades
+- Insider trades
 - Signals (technical analysis)
 - Fundamentals
 - Research articles
@@ -61,6 +62,7 @@ class TickerAnalysisService:
     LOOKBACK_DAYS = 90
     MAX_ETF_CHANGES = 50
     MAX_CONGRESS_TRADES = 30
+    MAX_INSIDER_TRADES = 30
     MAX_RESEARCH_ARTICLES = 10
     SKIP_IF_ANALYZED_WITHIN_HOURS = 24
     
@@ -225,6 +227,31 @@ class TickerAnalysisService:
             return result.data or []
         except Exception as e:
             logger.warning(f"Error fetching congress trades for {ticker}: {e}")
+            return []
+
+    def _get_insider_trades(self, ticker: str, start_date: datetime) -> List[Dict]:
+        """Get insider trades for this ticker.
+
+        Args:
+            ticker: Ticker symbol
+            start_date: Start of lookback period
+
+        Returns:
+            List of insider trade dictionaries
+        """
+        try:
+            start_str = start_date.strftime('%Y-%m-%d')
+            result = self.supabase.supabase.table('insider_trades') \
+                .select('ticker, company_name, insider_name, insider_title, transaction_date, disclosure_date, '
+                        'type, shares, price_per_share, value, shares_held_after, percent_change, notes, created_at') \
+                .eq('ticker', ticker.upper()) \
+                .gte('transaction_date', start_str) \
+                .order('transaction_date', desc=True) \
+                .limit(self.MAX_INSIDER_TRADES) \
+                .execute()
+            return result.data or []
+        except Exception as e:
+            logger.warning(f"Error fetching insider trades for {ticker}: {e}")
             return []
     
     def _get_latest_signals(self, ticker: str) -> Optional[Dict]:
@@ -456,6 +483,7 @@ class TickerAnalysisService:
             'price_data': self._get_price_data(ticker, self.LOOKBACK_DAYS),
             'etf_changes': self._get_etf_changes(ticker, start_date),
             'congress_trades': self._get_congress_trades(ticker, start_date),
+            'insider_trades': self._get_insider_trades(ticker, start_date),
             'signals': self._get_latest_signals(ticker),
             'research_articles': self._get_research_articles(ticker, start_date),
             'social_sentiment': self._get_social_sentiment(ticker, start_date),
@@ -565,6 +593,44 @@ class TickerAnalysisService:
             amount = t.get('amount', 'N/A')
             lines.append(f"{date} | {politician:17} | {trade_type:8} | {amount}")
         
+        return "\n".join(lines)
+
+    def _format_insider_trades(self, trades: List[Dict]) -> str:
+        """Format insider trades as table.
+
+        Args:
+            trades: List of insider trade dictionaries
+
+        Returns:
+            Formatted string
+        """
+        if not trades:
+            return ""
+
+        lines = [
+            "[ Insider Trading Activity (Last 3 Months) ]",
+            "Date       | Insider             | Title            | Type     | Shares     | Value",
+            "-----------|---------------------|------------------|----------|------------|------------"
+        ]
+
+        for t in trades[:self.MAX_INSIDER_TRADES]:
+            date = t.get('transaction_date', 'N/A') or 'N/A'
+            insider = (t.get('insider_name') or 'N/A')[:21]
+            title = (t.get('insider_title') or 'N/A')[:16]
+            trade_type = t.get('type', 'N/A') or 'N/A'
+            shares = t.get('shares') or 0
+            value = t.get('value') or 0
+            try:
+                shares_text = f"{int(float(shares)):,}"
+            except (TypeError, ValueError):
+                shares_text = "N/A"
+            try:
+                value_text = f"${int(float(value)):,}"
+            except (TypeError, ValueError):
+                value_text = "N/A"
+
+            lines.append(f"{date} | {insider:21} | {title:16} | {trade_type:8} | {shares_text:10} | {value_text}")
+
         return "\n".join(lines)
     
     def _format_signals(self, signals: Optional[Dict]) -> str:
@@ -751,6 +817,10 @@ class TickerAnalysisService:
         # Congress trades
         if data.get('congress_trades'):
             sections.append(self._format_congress_trades(data['congress_trades']))
+
+        # Insider trades
+        if data.get('insider_trades'):
+            sections.append(self._format_insider_trades(data['insider_trades']))
         
         # Signals
         if data.get('signals'):
