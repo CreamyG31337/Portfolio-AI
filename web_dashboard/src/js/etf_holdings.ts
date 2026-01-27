@@ -20,6 +20,14 @@ let gridColumnApi: any = null;
 // Global cache of tickers that don't have logos (to avoid repeated 404s)
 const failedLogoCache = new Set<string>();
 
+function normalizeNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+    const numberValue = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(numberValue) ? numberValue : null;
+}
+
 // Helper function to detect dark mode
 function isDarkMode(): boolean {
     const htmlElement = document.documentElement;
@@ -202,7 +210,12 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 minWidth: 90,
                 maxWidth: 130,
                 sortable: true,
-                valueFormatter: (params: any) => params.value > 0 ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"
+                valueFormatter: (params: any) => {
+                    const numberValue = normalizeNumber(params.value);
+                    return numberValue !== null && numberValue > 0
+                        ? numberValue.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                        : "—";
+                }
             },
             {
                 field: 'current_shares',
@@ -211,7 +224,12 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 minWidth: 100,
                 maxWidth: 150,
                 sortable: true,
-                valueFormatter: (params: any) => params.value ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0"
+                valueFormatter: (params: any) => {
+                    const numberValue = normalizeNumber(params.value);
+                    return numberValue !== null
+                        ? numberValue.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                        : "0";
+                }
             },
             {
                 field: 'weight_percent',
@@ -220,7 +238,10 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 minWidth: 80,
                 maxWidth: 120,
                 sortable: true,
-                valueFormatter: (params: any) => params.value ? params.value.toFixed(2) + '%' : "0.00%"
+                valueFormatter: (params: any) => {
+                    const numberValue = normalizeNumber(params.value);
+                    return numberValue !== null ? `${numberValue.toFixed(2)}%` : "0.00%";
+                }
             }
         ];
     } else {
@@ -266,7 +287,12 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 minWidth: 80,
                 maxWidth: 120,
                 sortable: true,
-                valueFormatter: (params: any) => params.value > 0 ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"
+                valueFormatter: (params: any) => {
+                    const numberValue = normalizeNumber(params.value);
+                    return numberValue !== null && numberValue > 0
+                        ? numberValue.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                        : "—";
+                }
             },
             {
                 field: 'action',
@@ -294,7 +320,13 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 minWidth: 90,
                 maxWidth: 130,
                 sortable: true,
-                valueFormatter: (params: any) => (params.value > 0 ? '+' : '') + params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+                valueFormatter: (params: any) => {
+                    const numberValue = normalizeNumber(params.value);
+                    if (numberValue === null) {
+                        return "0";
+                    }
+                    return `${numberValue > 0 ? '+' : ''}${numberValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+                },
                 cellClass: (params: any) => {
                     if (params.value > 0) return 'text-theme-success-text font-bold';
                     if (params.value < 0) return 'text-theme-error-text font-bold';
@@ -308,7 +340,13 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 minWidth: 80,
                 maxWidth: 120,
                 sortable: true,
-                valueFormatter: (params: any) => (params.value > 0 ? '+' : '') + params.value.toFixed(2) + '%'
+                valueFormatter: (params: any) => {
+                    const numberValue = normalizeNumber(params.value);
+                    if (numberValue === null) {
+                        return "0.00%";
+                    }
+                    return `${numberValue > 0 ? '+' : ''}${numberValue.toFixed(2)}%`;
+                }
             },
             {
                 field: 'previous_shares',
@@ -317,7 +355,12 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 minWidth: 100,
                 maxWidth: 140,
                 sortable: true,
-                valueFormatter: (params: any) => params.value ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0"
+                valueFormatter: (params: any) => {
+                    const numberValue = normalizeNumber(params.value);
+                    return numberValue !== null
+                        ? numberValue.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                        : "0";
+                }
             },
             {
                 field: 'current_shares',
@@ -326,7 +369,12 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
                 minWidth: 100,
                 maxWidth: 140,
                 sortable: true,
-                valueFormatter: (params: any) => params.value ? params.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0"
+                valueFormatter: (params: any) => {
+                    const numberValue = normalizeNumber(params.value);
+                    return numberValue !== null
+                        ? numberValue.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                        : "0";
+                }
             }
         ];
     }
@@ -428,8 +476,13 @@ function updateEtfGridTheme(): void {
 
     // Refresh grid to update cell and row styles
     if (gridApi) {
-        gridApi.refreshCells();
-        gridApi.refreshHeader();
+        window.setTimeout(() => {
+            if (!gridApi) {
+                return;
+            }
+            gridApi.refreshCells();
+            gridApi.refreshHeader();
+        }, 0);
     }
 }
 

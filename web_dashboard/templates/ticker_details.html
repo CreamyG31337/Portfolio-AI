@@ -627,8 +627,8 @@
         <script>
             window.tickerDetailsConfig = {
                 defaultModel: {{ default_model | tojson | safe if default_model else '""' }},
-            modelConfig: { { model_config | tojson | safe if model_config else '{}' } }
-    };
+                modelConfig: {{ model_config | tojson | safe if model_config else '{}' }}
+            };
         </script>
         <script type="module" src="/assets/js/ticker_details.js"></script>
         {% endblock %}
