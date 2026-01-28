@@ -1304,18 +1304,20 @@ def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.warning(f"Failed to fetch last error for {job_id}: {e}")
     
-    # Safely access next_run_time (may not be available when scheduler is stopped)
-    next_run_time = getattr(job, 'next_run_time', None)
+    # Safely access next_run_time (may not be available when scheduler is stopped or job is paused)
+    original_next_run_time = getattr(job, 'next_run_time', None)
+    next_run_time = original_next_run_time
     
-    # Check if scheduler is stopped
-    scheduler = get_scheduler(create=False)
-    scheduler_stopped = (scheduler is None or (hasattr(scheduler, 'running') and not scheduler.running))
+    # Use cross-process safe check for scheduler status
+    scheduler_running = is_scheduler_running()
+    scheduler_stopped = not scheduler_running
     
-    # If next_run_time is None and scheduler is stopped, try to calculate from trigger
-    # When scheduler is running, APScheduler handles paused jobs correctly, so don't override
-    if next_run_time is None and scheduler_stopped and job.trigger is not None:
+    # Calculate next_run_time from trigger if it's None (paused jobs or scheduler stopped)
+    # This shows users when the job would run if resumed
+    # APScheduler sets next_run_time to None for paused jobs, so we calculate it from the trigger
+    if next_run_time is None and job.trigger is not None:
         try:
-            # Calculate next fire time from trigger even when scheduler is stopped
+            # Calculate next fire time from trigger
             now = datetime.now(timezone.utc)
             # Some triggers need timezone-aware datetime
             if hasattr(job.trigger, 'timezone') and job.trigger.timezone:
@@ -1325,11 +1327,16 @@ def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
             logger.debug(f"Could not calculate next_run_time from trigger for job {job.id}: {e}")
             next_run_time = None
     
+    # Check if job is paused based on original next_run_time from APScheduler
+    # A job is paused only if scheduler is running AND next_run_time is None
+    # If scheduler is stopped, all jobs have next_run_time=None but aren't paused
+    is_paused = (scheduler_running and original_next_run_time is None and job.trigger is not None)
+    
     return {
         'id': job.id,
         'name': job.name or job.id,
         'next_run': next_run_time,
-        'is_paused': next_run_time is None,
+        'is_paused': is_paused,
         'trigger': str(job.trigger),
         'is_running': is_running,
         'running_since': running_since,
@@ -1621,18 +1628,22 @@ def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
     
     # Initialize result structure
     job_statuses = {}
-    scheduler_stopped = (scheduler is None or (hasattr(scheduler, 'running') and not scheduler.running))
+    # Use cross-process safe check for scheduler status
+    scheduler_running = is_scheduler_running()
+    scheduler_stopped = not scheduler_running
     
     for job in jobs:
         # With SQLAlchemyJobStore, jobs always have proper trigger objects
-        # Safely access next_run_time (may not be available when scheduler is stopped)
-        next_run_time = getattr(job, 'next_run_time', None)
+        # Safely access next_run_time (may not be available when scheduler is stopped or job is paused)
+        original_next_run_time = getattr(job, 'next_run_time', None)
+        next_run_time = original_next_run_time
         
-        # If next_run_time is None and scheduler is stopped, try to calculate from trigger
-        # When scheduler is running, APScheduler handles paused jobs correctly, so don't override
-        if next_run_time is None and scheduler_stopped and job.trigger is not None:
+        # Calculate next_run_time from trigger if it's None (paused jobs or scheduler stopped)
+        # This shows users when the job would run if resumed
+        # APScheduler sets next_run_time to None for paused jobs, so we calculate it from the trigger
+        if next_run_time is None and job.trigger is not None:
             try:
-                # Calculate next fire time from trigger even when scheduler is stopped
+                # Calculate next fire time from trigger
                 now = datetime.now(timezone.utc)
                 # Some triggers need timezone-aware datetime
                 if hasattr(job.trigger, 'timezone') and job.trigger.timezone:
@@ -1642,10 +1653,10 @@ def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
                 logger.debug(f"Could not calculate next_run_time from trigger for job {job.id}: {e}")
                 next_run_time = None
         
-        # Check if job is paused (next_run_time is None when paused)
-        # A job is paused if it has no next_run_time even after trying to calculate from trigger
-        # This is independent of whether the scheduler is running or stopped
-        is_paused = (next_run_time is None and job.trigger is not None)
+        # Check if job is paused based on original next_run_time from APScheduler
+        # A job is paused only if scheduler is running AND next_run_time is None
+        # If scheduler is stopped, all jobs have next_run_time=None but aren't paused
+        is_paused = (scheduler_running and original_next_run_time is None and job.trigger is not None)
         
         # Determine if job has a schedule (not manual-only)
         # A job has a schedule if it has a trigger that's not None

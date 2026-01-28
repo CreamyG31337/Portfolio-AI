@@ -1502,7 +1502,8 @@ def api_scheduler_status():
             "scheduler_running": running,
             "running": running,  # Keep for backward compatibility
             "jobs": jobs,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "is_admin": True  # This endpoint is protected by @require_admin, so user is always admin
         })
     except Exception as e:
         logger.error(f"[Scheduler API] Error getting scheduler status: {e}", exc_info=True)

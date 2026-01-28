@@ -111,7 +111,19 @@ def _get_refresh_lock(rt: str) -> threading.Lock:
 
 
 def _do_refresh(rt: str) -> tuple[bool, Optional[str], Optional[str], Optional[int]]:
-    """Internal function to perform the refresh API call"""
+    """Internal function to perform the refresh API call.
+    
+    Returns:
+        Tuple of (success, new_access_token, new_refresh_token, expires_in)
+        
+    Supabase error codes we detect:
+        - refresh_token_already_used: Token revoked (outside reuse interval)
+        - refresh_token_not_found: Session/token deleted
+        - session_expired: Inactivity timeout or timebox exceeded
+        - session_not_found: Session deleted (user signed out elsewhere)
+        - invalid_credentials: Token format invalid
+        - conflict: Too many concurrent refresh requests
+    """
     try:
         import time
         import os
@@ -145,17 +157,114 @@ def _do_refresh(rt: str) -> tuple[bool, Optional[str], Optional[str], Optional[i
                 with _refresh_locks_lock:
                     if rt in _refresh_locks:
                         del _refresh_locks[rt]
+                logger.debug(f"[FLASK_AUTH] Token refresh successful, expires_in={expires_in}s")
                 return (True, new_access_token, new_refresh_token, expires_in)
         
-        # Check if error indicates token was already used (race condition)
+        # Parse error response for better diagnostics
+        error_code = None
+        error_msg = None
+        try:
+            error_data = response.json()
+            error_code = error_data.get("error_code") or error_data.get("code")
+            error_msg = error_data.get("error_description") or error_data.get("msg") or error_data.get("message")
+        except Exception:
+            pass
+        
         error_text = response.text.lower()
-        if "already been used" in error_text or ("invalid" in error_text and "jwt" in error_text):
-            logger.warning(f"[FLASK_AUTH] Refresh token already used (race condition): {response.status_code}: {response.text[:200]}")
+        rt_preview = rt[:8] + "..." if len(rt) > 8 else rt
+        
+        # Categorize the error for better debugging
+        if error_code == "refresh_token_already_used":
+            # Refresh token was revoked - outside the 10s reuse window
+            # This means the token was used successfully elsewhere but we didn't get the new tokens
+            logger.error(
+                f"[FLASK_AUTH] REFRESH TOKEN REVOKED (refresh_token_already_used): "
+                f"Token {rt_preview} was already used and rotated. "
+                f"This usually means: (1) concurrent requests caused a race condition outside the 10s reuse window, "
+                f"or (2) the token was refreshed on another device/session. "
+                f"User must re-login. HTTP {response.status_code}"
+            )
+        elif error_code == "refresh_token_not_found":
+            # Session containing this refresh token no longer exists
+            logger.error(
+                f"[FLASK_AUTH] SESSION NOT FOUND (refresh_token_not_found): "
+                f"Token {rt_preview} session no longer exists. "
+                f"Possible causes: (1) user signed out elsewhere, (2) session was deleted, "
+                f"(3) refresh token is from a different environment/project. "
+                f"User must re-login. HTTP {response.status_code}"
+            )
+        elif error_code == "session_expired":
+            # Inactivity timeout or session timebox exceeded
+            logger.error(
+                f"[FLASK_AUTH] SESSION EXPIRED (session_expired): "
+                f"Token {rt_preview} session has expired due to inactivity or reaching max lifetime. "
+                f"Check Supabase Auth settings for session timeouts. "
+                f"User must re-login. HTTP {response.status_code}"
+            )
+        elif error_code == "session_not_found":
+            # Session deleted (similar to refresh_token_not_found)
+            logger.error(
+                f"[FLASK_AUTH] SESSION NOT FOUND (session_not_found): "
+                f"Token {rt_preview} session was deleted (user signed out or session purged). "
+                f"User must re-login. HTTP {response.status_code}"
+            )
+        elif error_code == "conflict":
+            # Too many concurrent refresh attempts
+            logger.warning(
+                f"[FLASK_AUTH] CONFLICT (conflict): "
+                f"Too many concurrent refresh requests for token {rt_preview}. "
+                f"This is a race condition - another request is refreshing. "
+                f"Consider exponential backoff. HTTP {response.status_code}"
+            )
+        elif error_code == "invalid_credentials":
+            # Token format or grant type invalid
+            logger.error(
+                f"[FLASK_AUTH] INVALID CREDENTIALS (invalid_credentials): "
+                f"Token {rt_preview} format or grant type not recognized. "
+                f"This may indicate a corrupted token or wrong token type. "
+                f"User must re-login. HTTP {response.status_code}"
+            )
+        elif "already been used" in error_text or "already used" in error_text:
+            # Fallback detection for older Supabase versions
+            logger.error(
+                f"[FLASK_AUTH] REFRESH TOKEN ALREADY USED (legacy detection): "
+                f"Token {rt_preview} was already consumed. HTTP {response.status_code}: {response.text[:200]}"
+            )
+        elif response.status_code == 400:
+            # Generic 400 - could be various issues
+            logger.error(
+                f"[FLASK_AUTH] BAD REQUEST (400): "
+                f"Token {rt_preview} refresh failed with 400. "
+                f"error_code={error_code}, error_msg={error_msg}, "
+                f"response={response.text[:300]}"
+            )
+        elif response.status_code == 401:
+            # Unauthorized - token or apikey issue
+            logger.error(
+                f"[FLASK_AUTH] UNAUTHORIZED (401): "
+                f"Token {rt_preview} refresh failed with 401. "
+                f"error_code={error_code}, error_msg={error_msg}, "
+                f"This may indicate invalid apikey or token. response={response.text[:200]}"
+            )
+        elif response.status_code == 429:
+            # Rate limited
+            logger.warning(
+                f"[FLASK_AUTH] RATE LIMITED (429): "
+                f"Too many refresh requests. Implement exponential backoff. "
+                f"response={response.text[:200]}"
+            )
         else:
-            logger.warning(f"[FLASK_AUTH] Refresh failed: {response.status_code}: {response.text[:200]}")
+            # Unknown error
+            logger.warning(
+                f"[FLASK_AUTH] REFRESH FAILED: "
+                f"Token {rt_preview}, HTTP {response.status_code}, "
+                f"error_code={error_code}, error_msg={error_msg}, "
+                f"response={response.text[:300]}"
+            )
+        
         return (False, None, None, None)
     except Exception as e:
-        logger.warning(f"[FLASK_AUTH] Refresh exception: {e}")
+        logger.warning(f"[FLASK_AUTH] Refresh exception: {e}", exc_info=True)
         return (False, None, None, None)
 
 

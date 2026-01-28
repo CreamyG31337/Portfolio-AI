@@ -65,6 +65,7 @@ interface JobsStatusResponse {
     scheduler_running: boolean;
     jobs: Job[];
     error?: string;
+    is_admin?: boolean;  // User is admin (endpoint is protected by @require_admin)
 }
 
 interface JobsApiResponse {
@@ -399,14 +400,15 @@ async function fetchStatus(): Promise<void> {
         });
 
         // Show persistent error toast if errors exist and no jobs running
-        if (hasErrors) {
+        // Only show alert to admins (is_admin is true since endpoint is protected by @require_admin)
+        if (hasErrors && data.is_admin !== false) {
             showSchedulerToast(
                 'One or more jobs failed on their last run. Open Jobs Scheduler to review.',
                 'error',
                 true // persistent
             );
         } else {
-            // Dismiss error toast if errors are resolved
+            // Dismiss error toast if errors are resolved or user is not admin
             dismissErrorToast();
         }
 
