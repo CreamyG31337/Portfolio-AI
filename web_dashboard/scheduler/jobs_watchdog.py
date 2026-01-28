@@ -189,6 +189,7 @@ def detect_stale_running_jobs() -> None:
             job_name = job['job_name']
             target_date_str = job.get('target_date')
             fund_name = job.get('fund_name') or None
+            started_at_str = job.get('started_at')
             
             if not target_date_str:
                 logger.warning(f"  Skipping {job_name} - no target_date")
@@ -200,13 +201,42 @@ def detect_stale_running_jobs() -> None:
                 logger.warning(f"  Skipping {job_name} - invalid target_date: {target_date_str}")
                 continue
             
+            # Calculate duration if started_at is available
+            duration_info = ""
+            if started_at_str:
+                try:
+                    if isinstance(started_at_str, str):
+                        started_dt = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
+                    else:
+                        started_dt = started_at_str
+                    
+                    if started_dt.tzinfo is None:
+                        started_dt = started_dt.replace(tzinfo=timezone.utc)
+                    else:
+                        started_dt = started_dt.astimezone(timezone.utc)
+                    
+                    now = datetime.now(timezone.utc)
+                    duration_seconds = (now - started_dt).total_seconds()
+                    duration_minutes = duration_seconds / 60
+                    duration_hours = duration_minutes / 60
+                    
+                    if duration_hours >= 1:
+                        duration_info = f" (ran for {duration_hours:.1f} hours)"
+                    elif duration_minutes >= 1:
+                        duration_info = f" (ran for {duration_minutes:.1f} minutes)"
+                    else:
+                        duration_info = f" (ran for {duration_seconds:.0f} seconds)"
+                except Exception as e:
+                    logger.debug(f"Could not calculate duration for {job_name}: {e}")
+            
             # Mark as failed in job_executions
+            error_message = f"Container restarted - job interrupted{duration_info}"
             try:
                 mark_job_failed(
                     job_name=job_name,
                     target_date=target_date,
                     fund_name=fund_name,
-                    error="Container restarted - job interrupted"
+                    error=error_message
                 )
             except Exception as e:
                 logger.warning(f"  Failed to mark {job_name} as failed: {e}")

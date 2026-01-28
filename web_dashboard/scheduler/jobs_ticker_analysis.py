@@ -57,6 +57,7 @@ def ticker_analysis_job() -> None:
         mark_job_started(job_id, target_date)
     except Exception as e:
         logger.warning(f"Could not mark job started: {e}")
+        target_date = datetime.now(timezone.utc).date()  # Still set target_date for error handling
     
     logger.info("Starting Ticker Analysis Job...")
     
@@ -70,6 +71,10 @@ def ticker_analysis_job() -> None:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "Ollama client not available"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            try:
+                mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             logger.error(f"❌ {message}")
             return
         
@@ -79,6 +84,10 @@ def ticker_analysis_job() -> None:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Failed to initialize clients: {e}"
         log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        try:
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        except Exception:
+            pass
         logger.error(f"❌ {message}")
         return
     
@@ -89,6 +98,10 @@ def ticker_analysis_job() -> None:
         duration_ms = int((time.time() - start_time) * 1000)
         message = "No tickers to analyze"
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+        try:
+            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+        except Exception:
+            pass
         logger.info(f"ℹ️ {message}")
         return
     
@@ -97,40 +110,60 @@ def ticker_analysis_job() -> None:
     processed = 0
     failed = 0
     
-    for ticker, priority in tickers:
-        # Check time limit
-        elapsed = time.time() - start_time
-        if elapsed > max_duration:
-            duration_ms = int((time.time() - start_time) * 1000)
-            message = f"Stopped after 2 hours. Processed {processed}/{len(tickers)} tickers. {failed} failed."
-            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-            logger.info(f"⏰ {message}")
-            logger.info(f"   Remaining tickers will be processed in next run")
-            break
+    try:
+        for ticker, priority in tickers:
+            # Check time limit
+            elapsed = time.time() - start_time
+            if elapsed > max_duration:
+                duration_ms = int((time.time() - start_time) * 1000)
+                message = f"Stopped after 2 hours. Processed {processed}/{len(tickers)} tickers. {failed} failed."
+                log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+                try:
+                    mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+                except Exception:
+                    pass
+                logger.info(f"⏰ {message}")
+                logger.info(f"   Remaining tickers will be processed in next run")
+                break
+            
+            try:
+                logger.info(f"Analyzing {ticker} (priority={priority})...")
+                service.analyze_ticker(ticker)
+                processed += 1
+                
+                # Mark manual request complete if this was a manual request (priority >= 1000)
+                if priority >= 1000:
+                    service.mark_manual_request_complete(ticker, success=True)
+                
+                # Log progress every 10 tickers
+                if processed % 10 == 0:
+                    elapsed_min = elapsed / 60
+                    logger.info(f"Progress: {processed} processed, {elapsed_min:.1f} minutes elapsed")
+                
+            except Exception as e:
+                logger.error(f"Failed to analyze {ticker}: {e}", exc_info=True)
+                # Mark manual request as failed if this was a manual request
+                if priority >= 1000:
+                    service.mark_manual_request_complete(ticker, success=False, error_message=str(e)[:500])
+                # Skip list manager handles repeated failures
+                failed += 1
         
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = f"Processed {processed}/{len(tickers)} tickers. {failed} failed."
+        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         try:
-            logger.info(f"Analyzing {ticker} (priority={priority})...")
-            service.analyze_ticker(ticker)
-            processed += 1
-            
-            # Mark manual request complete if this was a manual request (priority >= 1000)
-            if priority >= 1000:
-                service.mark_manual_request_complete(ticker, success=True)
-            
-            # Log progress every 10 tickers
-            if processed % 10 == 0:
-                elapsed_min = elapsed / 60
-                logger.info(f"Progress: {processed} processed, {elapsed_min:.1f} minutes elapsed")
-            
-        except Exception as e:
-            logger.error(f"Failed to analyze {ticker}: {e}", exc_info=True)
-            # Mark manual request as failed if this was a manual request
-            if priority >= 1000:
-                service.mark_manual_request_complete(ticker, success=False, error_message=str(e)[:500])
-            # Skip list manager handles repeated failures
-            failed += 1
-    
-    duration_ms = int((time.time() - start_time) * 1000)
-    message = f"Processed {processed}/{len(tickers)} tickers. {failed} failed."
-    log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-    logger.info(f"✅ Ticker Analysis complete: {message}")
+            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+        except Exception:
+            pass
+        logger.info(f"✅ Ticker Analysis complete: {message}")
+        
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        duration_min = duration_ms / 60000
+        error_msg = f"Job failed after {duration_min:.1f} minutes: {str(e)}. Progress: {processed}/{len(tickers)} processed, {failed} failed."
+        log_job_execution(job_id, success=False, message=error_msg, duration_ms=duration_ms)
+        try:
+            mark_job_failed(job_id, target_date, None, error_msg, duration_ms=duration_ms)
+        except Exception:
+            pass
+        logger.error(f"❌ Ticker Analysis job failed: {e}", exc_info=True)
