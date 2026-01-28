@@ -37,3 +37,11 @@ This provides defense-in-depth through visibility and accountability rather than
 2. Use cryptographically secure random generation (Python's `secrets` module)
 3. Log warnings when secrets are auto-generated to ensure proper configuration in production
 4. Document the requirement for environment variables in deployment guides
+
+## 2026-01-28 - HttpOnly Cookie Leak via Debug Endpoint
+**Vulnerability:** The `/api/debug/cookies` endpoint reflected all request cookies (including HttpOnly cookies like `auth_token`) in the JSON response body. This allowed an attacker with XSS on the dashboard to bypass HttpOnly protection by fetching this endpoint and reading the tokens from the response.
+**Learning:** HttpOnly prevents client-side scripts from accessing `document.cookie`, but it does NOT prevent the browser from sending those cookies to the server. If the server echoes them back in a response readable by JS, the protection is bypassed. Debug endpoints are common sources of such leaks.
+**Prevention:**
+1. Never reflect sensitive cookies or headers in API responses.
+2. Mask or filter sensitive keys (e.g., `token`, `auth`, `session`, `key`) in debug outputs.
+3. Restrict debug endpoints to admin-only access (already done here, but defense-in-depth requires masking too).

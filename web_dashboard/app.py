@@ -1420,8 +1420,19 @@ def debug_cookies():
         request.headers.get('X-Forwarded-Proto') == 'https' or
         request.is_secure
     )
+
+    # Mask sensitive cookies
+    masked_cookies = {}
+    sensitive_keys = ['auth_token', 'session_token', 'refresh_token', 'access_token']
+
+    for key, value in request.cookies.items():
+        if key in sensitive_keys:
+            masked_cookies[key] = "***MASKED***"
+        else:
+            masked_cookies[key] = value
+
     return jsonify({
-        "cookies": dict(request.cookies),
+        "cookies": masked_cookies,
         "cookie_count": len(request.cookies),
         "headers": dict(request.headers),
         "is_production": is_production,
