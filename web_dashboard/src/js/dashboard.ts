@@ -1992,7 +1992,7 @@ function renderMovers(data: MoversData): void {
             tr.appendChild(tickerCell);
 
             const companyCell = document.createElement('td');
-            companyCell.className = 'px-4 py-3 truncate max-w-[150px]';
+            companyCell.className = 'px-4 py-3 line-clamp-2 max-w-[150px]';
             companyCell.title = item.company_name || item.ticker;
             companyCell.textContent = item.company_name || item.ticker;
             tr.appendChild(companyCell);
