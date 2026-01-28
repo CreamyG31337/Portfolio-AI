@@ -344,6 +344,31 @@ document.addEventListener('DOMContentLoaded', function (): void {
             }
         });
     }
+
+    // Password Toggle Handler
+    const toggleButtons = document.querySelectorAll('[data-toggle-password]');
+    toggleButtons.forEach(button => {
+        button.addEventListener('click', function (this: HTMLElement) {
+            const targetId = this.getAttribute('data-toggle-password');
+            if (targetId) {
+                const input = document.getElementById(targetId) as HTMLInputElement | null;
+                const icon = this.querySelector('i');
+                if (input && icon) {
+                    if (input.type === 'password') {
+                        input.type = 'text';
+                        icon.classList.remove('fa-eye');
+                        icon.classList.add('fa-eye-slash');
+                        this.classList.add('text-accent');
+                    } else {
+                        input.type = 'password';
+                        icon.classList.remove('fa-eye-slash');
+                        icon.classList.add('fa-eye');
+                        this.classList.remove('text-accent');
+                    }
+                }
+            }
+        });
+    });
 });
 
 function updateTimezonePreview(): void {

@@ -21,3 +21,7 @@
 ## 2025-02-18 - Focus Indicators on Custom Backgrounds
 **Learning:** Interactive elements on custom backgrounds (like gradients or images) often lack visible focus indicators when default outlines are disabled. Standard outlines might be low contrast or hidden.
 **Action:** Always verify focus visibility on custom backgrounds and explicitly add high-contrast focus rings (e.g., `focus:ring-white/50` on dark/gradient headers) when using `focus:outline-none`.
+
+## 2026-01-27 - Password Visibility Toggle
+**Learning:** Users often struggle with password confirmation fields, especially on mobile or with complex requirements. A simple "show/hide" toggle reduces frustration and errors significantly more than just having a "confirm password" field.
+**Action:** Whenever implementing or auditing password fields, advocate for a visibility toggle as a standard pattern, ensuring it's accessible (ARIA labels, keyboard support) and visually integrated (padding-right to avoid overlap).
