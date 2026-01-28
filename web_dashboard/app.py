@@ -1412,7 +1412,19 @@ def login():
 @app.route('/api/debug/cookies')
 @require_admin
 def debug_cookies():
-    """Debug endpoint to inspect cookies received by the server"""
+    """
+    Debug endpoint to inspect cookies received by the server.
+    
+    Security Note: This endpoint returns all cookies including HttpOnly cookies.
+    This is safe because:
+    1. Admin-only access: Protected by @require_admin decorator
+    2. Returns user's own cookies: Only echoes back cookies the authenticated admin sent
+    3. XSS context: If an attacker has XSS, they can already make authenticated requests
+       directly - reading cookies via this endpoint doesn't provide additional attack surface
+    4. Debugging utility: Full cookie visibility is necessary for troubleshooting auth issues
+    
+    This endpoint is intentionally NOT masked to preserve debugging functionality.
+    """
     # Use same is_production logic as login route
     is_production = (
         os.getenv("FLASK_ENV") == "production" or 
@@ -1420,6 +1432,7 @@ def debug_cookies():
         request.headers.get('X-Forwarded-Proto') == 'https' or
         request.is_secure
     )
+
     return jsonify({
         "cookies": dict(request.cookies),
         "cookie_count": len(request.cookies),
