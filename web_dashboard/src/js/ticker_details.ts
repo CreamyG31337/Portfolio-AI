@@ -1,6 +1,6 @@
 export { }; // Ensure file is treated as a module
 
-import { setupTickerAutocomplete } from './ticker_autocomplete';
+import { setupTickerAutocomplete } from './ticker_autocomplete.js';
 
 // API Response interfaces
 interface TickerListResponse {
