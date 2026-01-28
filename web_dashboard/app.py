@@ -4992,6 +4992,9 @@ def api_insider_trades_data():
 
         # Look up company names from securities table
         company_name_map = {}
+        unknown_tickers = set()
+        found_tickers = set()
+        
         if unique_tickers:
             try:
                 securities_result = supabase_client.supabase.table("securities").select(
@@ -5001,11 +5004,63 @@ def api_insider_trades_data():
                 if securities_result.data:
                     for row in securities_result.data:
                         ticker = row.get("ticker", "").upper()
+                        found_tickers.add(ticker)
                         company_name = row.get("company_name")
                         if company_name and company_name.strip() and company_name != "Unknown":
                             company_name_map[ticker] = company_name.strip()
+                        else:
+                            # Ticker exists but has no company name
+                            unknown_tickers.add(ticker)
+
+                # Identify tickers that don't exist in securities table at all
+                missing_tickers = unique_tickers - found_tickers
+                unknown_tickers.update(missing_tickers)
             except Exception as e:
                 logger.warning(f"Error fetching company names from securities table: {e}")
+                # If query failed, treat all as unknown
+                unknown_tickers = unique_tickers.copy()
+
+        # Fetch and add company names for unknown tickers
+        if unknown_tickers:
+            try:
+                from utils.ticker_utils import get_ticker_currency
+                
+                # Process unknown tickers in batches to avoid overwhelming the API
+                for ticker in unknown_tickers:
+                    try:
+                        # Determine currency from ticker
+                        currency = get_ticker_currency(ticker)
+                        
+                        # Ensure ticker exists in securities table with company name
+                        # This will fetch from yfinance if needed
+                        success = supabase_client.ensure_ticker_in_securities(ticker, currency)
+                        if success:
+                            logger.debug(f"Added company name for ticker {ticker} to securities table")
+                        else:
+                            logger.warning(f"Failed to add company name for ticker {ticker}")
+                    except Exception as ticker_error:
+                        logger.warning(f"Error processing ticker {ticker} for company name lookup: {ticker_error}")
+                        continue
+
+                # Re-query securities table to get newly added company names
+                if unknown_tickers:
+                    try:
+                        securities_result = supabase_client.supabase.table("securities").select(
+                            "ticker, company_name"
+                        ).in_("ticker", list(unknown_tickers)).execute()
+
+                        if securities_result.data:
+                            for row in securities_result.data:
+                                ticker = row.get("ticker", "").upper()
+                                company_name = row.get("company_name")
+                                if company_name and company_name.strip() and company_name != "Unknown":
+                                    company_name_map[ticker] = company_name.strip()
+                    except Exception as requery_error:
+                        logger.warning(f"Error re-querying securities table for company names: {requery_error}")
+            except ImportError:
+                logger.warning("Could not import get_ticker_currency - skipping automatic company name lookup")
+            except Exception as e:
+                logger.warning(f"Error fetching company names for unknown tickers: {e}")
 
         formatted_trades = []
         for trade in all_trades:
