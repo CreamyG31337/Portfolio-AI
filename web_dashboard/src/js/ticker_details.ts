@@ -1,5 +1,7 @@
 export { }; // Ensure file is treated as a module
 
+import { setupTickerAutocomplete } from './ticker_autocomplete';
+
 // API Response interfaces
 interface TickerListResponse {
     tickers: string[];
@@ -235,24 +237,17 @@ document.addEventListener('DOMContentLoaded', function (): void {
     const urlParams = new URLSearchParams(window.location.search);
     const tickerParam = urlParams.get('ticker');
 
-    // Load ticker list first
-    loadTickerList().then(() => {
-        // If ticker in URL, load it
-        if (tickerParam) {
-            currentTicker = tickerParam.toUpperCase();
-            const input = document.getElementById('ticker-search-input') as HTMLInputElement | null;
-            if (input) {
-                input.value = currentTicker;
-            }
-            loadTickerData(currentTicker);
-        } else {
-            // Show placeholder
-            showPlaceholder();
-        }
-    });
+    // If ticker in URL, load it
+    if (tickerParam) {
+        currentTicker = tickerParam.toUpperCase();
+        loadTickerData(currentTicker);
+    } else {
+        // Show placeholder
+        showPlaceholder();
+    }
 
     // Set up ticker search input with autocomplete
-    setupTickerAutocomplete();
+    setupTickerAutocompleteLocal();
 
     // Set up chart controls
     const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
@@ -295,148 +290,41 @@ document.addEventListener('DOMContentLoaded', function (): void {
         if (currentTicker) {
             loadTickerData(currentTicker);
         } else {
-            loadTickerList();
             showPlaceholder();
         }
     });
 });
 
-// Load ticker list for autocomplete
+// Load ticker list for autocomplete (kept for backward compatibility)
 async function loadTickerList(): Promise<void> {
-    try {
-        const response = await fetch(appendFundParam('/api/v2/ticker/list'), {
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to load ticker list');
-        }
-
-        const data: TickerListResponse = await response.json();
-        tickerList = data.tickers || [];
-    } catch (error) {
-        console.error('Error loading ticker list:', error);
-    }
+    // This function is kept for backward compatibility but the actual loading
+    // is now handled by the shared autocomplete utility
+    // The ticker list will be loaded when autocomplete is initialized
 }
 
-// Set up ticker search input with autocomplete
-function setupTickerAutocomplete(): void {
-    const inputEl = document.getElementById('ticker-search-input') as HTMLInputElement | null;
-    const dropdownEl = document.getElementById('ticker-autocomplete-dropdown') as HTMLDivElement | null;
-    if (!inputEl || !dropdownEl) return;
+// Set up ticker search input with autocomplete using shared utility
+function setupTickerAutocompleteLocal(): void {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tickerParam = urlParams.get('ticker');
+    const initialValue = tickerParam ? tickerParam.toUpperCase() : '';
 
-    // Store references to guarantee non-null in nested functions
-    const input: HTMLInputElement = inputEl;
-    const dropdown: HTMLDivElement = dropdownEl;
-    let selectedIndex = -1;
+    setupTickerAutocomplete({
+        inputId: 'ticker-search-input',
+        dropdownId: 'ticker-autocomplete-dropdown',
+        onSelect: (ticker: string) => {
+            // Update URL without reload
+            const url = new URL(window.location.href);
+            url.searchParams.set('ticker', ticker);
+            window.history.pushState({}, '', url);
 
-    // Handle input changes
-    input.addEventListener('input', () => {
-        const query = input.value.toUpperCase().trim();
-        if (query.length === 0) {
-            hideAutocomplete();
-            return;
-        }
-
-        // Filter tickers that start with the query
-        const matches = tickerList.filter(t => t.toUpperCase().startsWith(query)).slice(0, 20);
-        
-        if (matches.length === 0) {
-            hideAutocomplete();
-            return;
-        }
-
-        selectedIndex = -1;
-        showAutocomplete(matches);
+            currentTicker = ticker;
+            loadTickerData(ticker);
+        },
+        allowAll: false,
+        initialValue: initialValue,
+        tickerListUrl: '/api/v2/ticker/list',
+        appendFundParam: appendFundParam
     });
-
-    // Handle keyboard navigation
-    input.addEventListener('keydown', (e) => {
-        const items = dropdown.querySelectorAll('[data-ticker]');
-        
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-            updateSelection(items);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            selectedIndex = Math.max(selectedIndex - 1, -1);
-            updateSelection(items);
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (selectedIndex >= 0 && items[selectedIndex]) {
-                selectTicker((items[selectedIndex] as HTMLElement).dataset.ticker || '');
-            } else if (input.value.trim()) {
-                selectTicker(input.value.toUpperCase().trim());
-            }
-        } else if (e.key === 'Escape') {
-            hideAutocomplete();
-        }
-    });
-
-    // Handle blur (delayed to allow click on dropdown)
-    input.addEventListener('blur', () => {
-        setTimeout(() => hideAutocomplete(), 150);
-    });
-
-    // Focus shows dropdown if there's input
-    input.addEventListener('focus', () => {
-        const query = input.value.toUpperCase().trim();
-        if (query.length > 0) {
-            const matches = tickerList.filter(t => t.toUpperCase().startsWith(query)).slice(0, 20);
-            if (matches.length > 0) {
-                showAutocomplete(matches);
-            }
-        }
-    });
-
-    function showAutocomplete(matches: string[]): void {
-        dropdown.innerHTML = '';
-        matches.forEach((ticker) => {
-            const item = document.createElement('div');
-            item.className = 'px-4 py-2 cursor-pointer hover:bg-dashboard-background text-text-primary';
-            item.dataset.ticker = ticker;
-            item.textContent = ticker;
-            item.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                selectTicker(ticker);
-            });
-            dropdown.appendChild(item);
-        });
-        dropdown.classList.remove('hidden');
-    }
-
-    function hideAutocomplete(): void {
-        dropdown.classList.add('hidden');
-        selectedIndex = -1;
-    }
-
-    function updateSelection(items: NodeListOf<Element>): void {
-        items.forEach((item, idx) => {
-            if (idx === selectedIndex) {
-                item.classList.add('bg-dashboard-background');
-            } else {
-                item.classList.remove('bg-dashboard-background');
-            }
-        });
-        // Scroll into view
-        if (selectedIndex >= 0 && items[selectedIndex]) {
-            items[selectedIndex].scrollIntoView({ block: 'nearest' });
-        }
-    }
-
-    function selectTicker(ticker: string): void {
-        input.value = ticker;
-        hideAutocomplete();
-        
-        // Update URL without reload
-        const url = new URL(window.location.href);
-        url.searchParams.set('ticker', ticker);
-        window.history.pushState({}, '', url);
-
-        currentTicker = ticker;
-        loadTickerData(ticker);
-    }
 }
 
 function initModelSelect(): void {
@@ -1915,15 +1803,16 @@ function renderEmptyAnalysis(ticker: string): void {
     content.innerHTML = `
         <div class="bg-dashboard-background p-6 rounded-lg border border-border text-center">
             <p class="text-text-secondary mb-4">No AI analysis available for this ticker yet.</p>
-            <p class="text-sm text-text-tertiary">Click the "Re-Analyze" button above to generate an analysis.</p>
+            <p class="text-sm text-text-tertiary">Click the "Analyze" button above to generate an analysis.</p>
         </div>
     `;
 
-    // Setup re-analyze button
+    // Setup analyze button (no analysis exists yet)
     const reanalyzeBtn = document.getElementById('reanalyze-btn') as HTMLButtonElement | null;
     if (reanalyzeBtn) {
         reanalyzeBtn.onclick = () => requestReanalysis(ticker);
         reanalyzeBtn.disabled = false;
+        reanalyzeBtn.innerHTML = '<i class="fas fa-brain mr-2"></i>Analyze';
     }
 }
 
@@ -2058,10 +1947,11 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
         </div>
     `;
 
-    // Setup re-analyze button
-    const reanalyzeBtn = document.getElementById('reanalyze-btn');
+    // Setup re-analyze button (analysis exists)
+    const reanalyzeBtn = document.getElementById('reanalyze-btn') as HTMLButtonElement | null;
     if (reanalyzeBtn) {
         reanalyzeBtn.onclick = () => requestReanalysis(ticker);
+        reanalyzeBtn.innerHTML = '<i class="fas fa-redo mr-2"></i>Re-Analyze';
     }
 }
 
@@ -2101,9 +1991,9 @@ async function requestReanalysis(ticker: string): Promise<void> {
     const btn = document.getElementById('reanalyze-btn') as HTMLButtonElement;
     if (!btn) return;
 
-    const originalText = btn.textContent;
+    const originalHTML = btn.innerHTML;
     btn.disabled = true;
-    btn.textContent = 'Re-analyzing...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Analyzing...';
 
     try {
         const response = await fetch(`/api/v2/ticker/${ticker}/reanalyze`, {
@@ -2119,18 +2009,24 @@ async function requestReanalysis(ticker: string): Promise<void> {
 
         if (response.ok) {
             const data = await response.json();
-            showToast(data.message || 'Re-analysis completed.', 'success');
+            showToast(data.message || 'Analysis completed.', 'success');
+            // Reload analysis - this will update button text appropriately
             loadTickerAnalysis(ticker);
         } else {
             const errorData = await response.json();
-            showToast(errorData.error || 'Failed to queue re-analysis', 'error');
+            showToast(errorData.error || 'Failed to queue analysis', 'error');
+            // Restore original button text on error
+            btn.innerHTML = originalHTML;
         }
     } catch (error) {
-        console.error('Error requesting re-analysis:', error);
-        showToast('Failed to queue re-analysis', 'error');
+        console.error('Error requesting analysis:', error);
+        showToast('Failed to queue analysis', 'error');
+        // Restore original button text on error
+        btn.innerHTML = originalHTML;
     } finally {
         btn.disabled = false;
-        btn.textContent = originalText || '🔄 Re-Analyze';
+        // Note: If successful, loadTickerAnalysis will update button text
+        // If error, we already restored it above
     }
 }
 

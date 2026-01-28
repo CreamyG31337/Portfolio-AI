@@ -121,14 +121,19 @@
             <!-- Advanced Filters -->
             <div>
                 <label class="block mb-2 text-sm font-medium text-text-primary">🔍 Advanced</label>
-                <select name="ticker"
-                    class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 mb-2 text-text-primary focus:ring-accent focus:border-accent">
-                    <option value="All" {% if current_ticker=='All' %}selected{% endif %}>All Tickers</option>
-                    {% for ticker in unique_tickers %}
-                    <option value="{{ ticker }}" {% if current_ticker==ticker %}selected{% endif %}>{{ ticker }}
-                    </option>
-                    {% endfor %}
-                </select>
+                <div class="relative mb-2">
+                    <input type="text" id="congress-ticker-filter-input"
+                        inputmode="text"
+                        autocomplete="off"
+                        autocapitalize="characters"
+                        placeholder="Type ticker symbol... (or leave empty for All)"
+                        value="{% if current_ticker and current_ticker != 'All' %}{{ current_ticker }}{% endif %}"
+                        class="w-full text-sm px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+                    <div id="congress-ticker-filter-dropdown"
+                        class="hidden absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-dashboard-surface border border-border rounded-lg shadow-lg">
+                    </div>
+                    <input type="hidden" id="congress-ticker-filter-hidden" name="ticker" value="{{ current_ticker|default('All') }}">
+                </div>
                 <select name="politician"
                     class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent">
                     <option value="All" {% if current_politician=='All' %}selected{% endif %}>All Politicians</option>
@@ -384,6 +389,24 @@
             legend.classList.toggle('hidden');
         }
     }
+</script>
+
+<!-- Ticker Autocomplete -->
+<script type="module">
+    import { setupTickerAutocomplete } from '/assets/js/ticker_autocomplete.js';
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        const currentTicker = document.getElementById('congress-ticker-filter-hidden')?.value || 'All';
+        const initialValue = currentTicker === 'All' ? '' : currentTicker;
+        
+        setupTickerAutocomplete({
+            inputId: 'congress-ticker-filter-input',
+            dropdownId: 'congress-ticker-filter-dropdown',
+            hiddenInputId: 'congress-ticker-filter-hidden',
+            allowAll: true,
+            initialValue: initialValue
+        });
+    });
 </script>
 
 <script type="module" src="/assets/js/congress_trades.js"></script>

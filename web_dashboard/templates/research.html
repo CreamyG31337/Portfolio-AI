@@ -81,13 +81,20 @@
 
             <!-- Ticker Filter -->
             <div>
-                <label for="ticker" class="block mb-2 text-sm font-medium text-text-primary">Ticker</label>
-                <select id="ticker" name="ticker" class="border rounded-lg block w-full p-2.5">
-                    <option value="All" {% if filters.ticker=='All' %}selected{% endif %}>All Tickers</option>
-                    {% for t in unique_tickers %}
-                    <option value="{{ t }}" {% if filters.ticker==t %}selected{% endif %}>{{ t }}</option>
-                    {% endfor %}
-                </select>
+                <label for="ticker-filter-input" class="block mb-2 text-sm font-medium text-text-primary">Ticker</label>
+                <div class="relative">
+                    <input type="text" id="ticker-filter-input"
+                        inputmode="text"
+                        autocomplete="off"
+                        autocapitalize="characters"
+                        placeholder="Type ticker symbol... (or leave empty for All)"
+                        value="{% if filters.ticker and filters.ticker != 'All' %}{{ filters.ticker }}{% endif %}"
+                        class="w-full px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+                    <div id="ticker-filter-dropdown"
+                        class="hidden absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-dashboard-surface border border-border rounded-lg shadow-lg">
+                    </div>
+                    <input type="hidden" id="ticker-filter-hidden" name="ticker" value="{{ filters.ticker|default('All') }}">
+                </div>
             </div>
 
             <!-- Date Range -->
@@ -864,5 +871,23 @@
         }
     }
 
+</script>
+
+<!-- Ticker Autocomplete -->
+<script type="module">
+    import { setupTickerAutocomplete } from '/assets/js/ticker_autocomplete.js';
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        const currentTicker = document.getElementById('ticker-filter-hidden')?.value || 'All';
+        const initialValue = currentTicker === 'All' ? '' : currentTicker;
+        
+        setupTickerAutocomplete({
+            inputId: 'ticker-filter-input',
+            dropdownId: 'ticker-filter-dropdown',
+            hiddenInputId: 'ticker-filter-hidden',
+            allowAll: true,
+            initialValue: initialValue
+        });
+    });
 </script>
 {% endblock %}
