@@ -70,8 +70,56 @@ def extract_article_content(url: str) -> Dict[str, Any]:
         }
     
     try:
-        # Download and extract content
-        downloaded = trafilatura.fetch_url(url)
+        # Try FlareSolverr first to bypass Cloudflare protection
+        downloaded = None
+        try:
+            from os import getenv
+            import requests
+            
+            flaresolverr_url = getenv("FLARESOLVERR_URL", "http://host.docker.internal:8191")
+            flaresolverr_endpoint = f"{flaresolverr_url}/v1"
+            
+            payload = {
+                "cmd": "request.get",
+                "url": url,
+                "maxTimeout": 60000  # 60 seconds
+            }
+            
+            logger.debug(f"Attempting to fetch via FlareSolverr: {url}")
+            response = requests.post(
+                flaresolverr_endpoint,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=70  # Slightly longer than maxTimeout
+            )
+            response.raise_for_status()
+            
+            flaresolverr_data = response.json()
+            
+            # Check FlareSolverr status
+            if flaresolverr_data.get("status") == "ok":
+                solution = flaresolverr_data.get("solution", {})
+                if solution:
+                    downloaded = solution.get("response", "")
+                    if downloaded:
+                        logger.debug(f"Successfully fetched via FlareSolverr: {url}")
+                    else:
+                        logger.debug(f"FlareSolverr returned empty response for: {url}")
+                else:
+                    logger.debug(f"FlareSolverr response missing solution for: {url}")
+            else:
+                error_msg = flaresolverr_data.get("message", "Unknown error")
+                logger.debug(f"FlareSolverr returned error: {error_msg}")
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            logger.debug(f"FlareSolverr unavailable or timed out: {e}")
+        except Exception as e:
+            logger.debug(f"FlareSolverr request failed: {e}")
+        
+        # Fallback to direct trafilatura fetch if FlareSolverr failed or unavailable
+        if not downloaded:
+            logger.debug(f"Falling back to direct trafilatura fetch: {url}")
+            downloaded = trafilatura.fetch_url(url)
+        
         if not downloaded:
             logger.warning(f"Failed to download content from {url}")
             return {

@@ -5,6 +5,29 @@
 {% block page_subtitle %}AI-curated market research and insights{% endblock %}
 
 {% block content %}
+<!-- Tabs -->
+<div class="mb-4 border-b border-border">
+    <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="research-tabs" role="tablist">
+        <li class="me-2" role="presentation">
+            <button class="inline-block p-4 border-b-2 rounded-t-lg focus:outline-none active text-accent border-accent" id="articles-tab"
+                data-tabs-target="#articles-content" data-tabs-toggle="#articles-tab" type="button" role="tab"
+                aria-controls="articles-content" aria-selected="true">
+                📚 Articles
+            </button>
+        </li>
+        <li class="me-2" role="presentation">
+            <button
+                class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-text-primary hover:border-border-hover focus:outline-none"
+                id="search-tab" data-tabs-target="#search-content" data-tabs-toggle="#search-tab" type="button"
+                role="tab" aria-controls="search-content" aria-selected="false">
+                🔍 Search
+            </button>
+        </li>
+    </ul>
+</div>
+
+<!-- Articles Tab Content -->
+<div id="articles-content" role="tabpanel" aria-labelledby="articles-tab">
 <!-- Statistics Dashboard -->
 {% if stats %}
 <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
@@ -335,6 +358,121 @@
         {% endif %}
     </nav>
 </div>
+</div>
+
+<!-- Search Tab Content -->
+<div id="search-content" class="hidden" role="tabpanel" aria-labelledby="search-tab">
+    <!-- SearXNG Availability Warning -->
+    {% if not searxng_available %}
+    <div id="searxng-warning" class="bg-theme-warning-bg border border-theme-warning-text text-theme-warning-text rounded-lg p-4 mb-6">
+        <div class="flex items-center">
+            <i class="fas fa-exclamation-triangle mr-2"></i>
+            <span>SearXNG is not available. Please check your configuration.</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Search Form -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+        <h2 class="text-2xl font-bold text-text-primary mb-4">🔍 Search</h2>
+        <form id="search-form" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Query Input -->
+                <div class="lg:col-span-2">
+                    <label for="search-query" class="block mb-2 text-sm font-medium text-text-primary">Search Query</label>
+                    <input type="text" id="search-query" name="query" required
+                        class="w-full px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary"
+                        placeholder="Enter your search query...">
+                </div>
+
+                <!-- Search Type -->
+                <div>
+                    <label for="search-type" class="block mb-2 text-sm font-medium text-text-primary">Search Type</label>
+                    <select id="search-type" name="search_type"
+                        class="w-full px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+                        <option value="web">Web</option>
+                        <option value="news" selected>News</option>
+                        <option value="general">General</option>
+                    </select>
+                </div>
+
+                <!-- Time Range -->
+                <div>
+                    <label for="search-time-range" class="block mb-2 text-sm font-medium text-text-primary">Time Range</label>
+                    <select id="search-time-range" name="time_range"
+                        class="w-full px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+                        <option value="">All Time</option>
+                        <option value="day">Past Day</option>
+                        <option value="week">Past Week</option>
+                        <option value="month">Past Month</option>
+                        <option value="year">Past Year</option>
+                    </select>
+                </div>
+
+                <!-- Max Results -->
+                <div>
+                    <label for="search-max-results" class="block mb-2 text-sm font-medium text-text-primary">Max Results</label>
+                    <select id="search-max-results" name="max_results"
+                        class="w-full px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+
+                <!-- AI Model -->
+                <div>
+                    <label for="search-model" class="block mb-2 text-sm font-medium text-text-primary">AI Model</label>
+                    <select id="search-model" name="model"
+                        class="w-full px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+                        <option value="">Loading models...</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" id="search-submit-btn"
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200 {% if not searxng_available %}disabled:opacity-50 disabled:cursor-not-allowed{% endif %}"
+                {% if not searxng_available %}disabled{% endif %}>
+                <i class="fas fa-search mr-2"></i>Search
+            </button>
+        </form>
+    </div>
+
+    <!-- Search Results -->
+    <div id="search-results-container" class="hidden">
+        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-bold text-text-primary">
+                    <span id="results-count">0</span> Results
+                </h3>
+                <div class="text-sm text-text-secondary">
+                    Query: <span id="results-query" class="font-medium"></span>
+                </div>
+            </div>
+            <div id="search-results-list" class="space-y-4">
+                <!-- Results will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="search-loading" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-12 text-center border border-border">
+        <div class="text-text-tertiary mb-4">
+            <i class="fas fa-spinner fa-spin text-5xl"></i>
+        </div>
+        <p class="text-text-secondary">Searching...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div id="search-empty" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-12 text-center border border-border">
+        <div class="text-text-tertiary mb-4">
+            <i class="fas fa-search text-5xl"></i>
+        </div>
+        <h3 class="text-lg font-medium text-text-primary mb-2">No search performed</h3>
+        <p class="text-text-secondary">Enter a query above to search for articles.</p>
+    </div>
+</div>
 
 {% endblock %}
 
@@ -480,6 +618,8 @@
     document.addEventListener('DOMContentLoaded', function () {
         loadAvailableModels();
         setupReanalyzeButton();
+        initResearchTabs();
+        initSearchTab();
         // Small delay to ensure content is fully rendered before checking overflow
         setTimeout(checkSummaryOverflow, 100);
     });
@@ -889,5 +1029,558 @@
             initialValue: initialValue
         });
     });
+</script>
+
+<!-- Search Tab JavaScript -->
+<script>
+    // Tab switching logic
+    function initResearchTabs() {
+        const tabs = [
+            { id: 'articles-tab', target: 'articles-content' },
+            { id: 'search-tab', target: 'search-content' }
+        ];
+
+        tabs.forEach(tab => {
+            const btn = document.getElementById(tab.id);
+            if (!btn) return;
+
+            btn.addEventListener('click', () => {
+                const activeClasses = ['text-accent', 'border-accent'];
+                const inactiveClasses = ['text-text-secondary', 'border-transparent', 'hover:text-text-primary', 'hover:border-border-hover'];
+
+                tabs.forEach(t => {
+                    const b = document.getElementById(t.id);
+                    const c = document.getElementById(t.target);
+
+                    if (t.id === tab.id) {
+                        // Activate this tab
+                        b?.classList.remove(...inactiveClasses);
+                        b?.classList.add(...activeClasses);
+                        b?.setAttribute('aria-selected', 'true');
+                        c?.classList.remove('hidden');
+                    } else {
+                        // Deactivate other tabs
+                        b?.classList.remove(...activeClasses);
+                        b?.classList.add(...inactiveClasses);
+                        b?.setAttribute('aria-selected', 'false');
+                        c?.classList.add('hidden');
+                    }
+                });
+            });
+        });
+    }
+
+    // Search functionality
+    let searchResults = [];
+    let searchModels = [];
+    let searchDefaultModel = '';
+
+    function initSearchTab() {
+        // Load models for search form
+        loadSearchModels();
+
+        // Setup search form handler
+        const searchForm = document.getElementById('search-form');
+        if (searchForm) {
+            searchForm.addEventListener('submit', handleSearchSubmit);
+        }
+
+        // Show empty state initially
+        document.getElementById('search-empty').classList.remove('hidden');
+    }
+
+    function loadSearchModels() {
+        fetch('/api/research/models')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.models) {
+                    searchModels = data.models;
+                    searchDefaultModel = data.default_model || '';
+
+                    const select = document.getElementById('search-model');
+                    if (select) {
+                        select.innerHTML = '';
+                        searchModels.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model;
+                            option.textContent = model;
+                            if (model === searchDefaultModel) {
+                                option.selected = true;
+                            }
+                            select.appendChild(option);
+                        });
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error loading models for search:', error);
+            });
+    }
+
+    async function handleSearchSubmit(e) {
+        e.preventDefault();
+
+        const query = document.getElementById('search-query').value.trim();
+        if (!query) {
+            showMessage('Please enter a search query.', 'warning');
+            return;
+        }
+
+        const searchType = document.getElementById('search-type').value;
+        const timeRange = document.getElementById('search-time-range').value;
+        const maxResults = parseInt(document.getElementById('search-max-results').value) || 10;
+
+        // Show loading state
+        document.getElementById('search-loading').classList.remove('hidden');
+        document.getElementById('search-empty').classList.add('hidden');
+        document.getElementById('search-results-container').classList.add('hidden');
+
+        try {
+            const response = await fetch('/api/research/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query: query,
+                    search_type: searchType,
+                    time_range: timeRange || null,
+                    max_results: maxResults
+                })
+            });
+
+            const data = await response.json();
+
+            // Hide loading state
+            document.getElementById('search-loading').classList.add('hidden');
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Search failed');
+            }
+
+            // Store results - SearXNG returns results with title, url, content (snippet), etc.
+            searchResults = (data.results || []).map((result, index) => ({
+                title: result.title || 'No title',
+                url: result.url || '',
+                content: result.content || '', // This is the snippet from SearXNG
+                publishedDate: result.publishedDate || result.pubdate || null,
+                engine: result.engine || '',
+                id: `result-${index}`,
+                state: 'not_scraped',
+                data: {}
+            }));
+
+            // Display results
+            displaySearchResults(query, searchResults);
+
+        } catch (error) {
+            console.error('Search error:', error);
+            document.getElementById('search-loading').classList.add('hidden');
+            showMessage(`Search failed: ${error.message}`, 'error');
+        }
+    }
+
+    function displaySearchResults(query, results) {
+        const container = document.getElementById('search-results-container');
+        const list = document.getElementById('search-results-list');
+        const count = document.getElementById('results-count');
+        const querySpan = document.getElementById('results-query');
+
+        count.textContent = results.length;
+        querySpan.textContent = query;
+
+        list.innerHTML = '';
+
+        if (results.length === 0) {
+            document.getElementById('search-empty').classList.remove('hidden');
+            container.classList.add('hidden');
+            return;
+        }
+
+        results.forEach((result, index) => {
+            const resultCard = createResultCard(result, index);
+            list.appendChild(resultCard);
+        });
+
+        container.classList.remove('hidden');
+        document.getElementById('search-empty').classList.add('hidden');
+    }
+
+    function createResultCard(result, index) {
+        const card = document.createElement('div');
+        card.className = 'bg-dashboard-background rounded-lg border border-border p-4';
+        card.id = `result-card-${result.id}`;
+
+        const model = document.getElementById('search-model').value || searchDefaultModel;
+
+        card.innerHTML = `
+            <div class="flex items-start justify-between mb-3">
+                <div class="flex-1">
+                    <h4 class="text-lg font-bold text-text-primary mb-1">
+                        <a href="${result.url || '#'}" target="_blank" class="hover:text-accent hover:underline">
+                            ${result.title || 'No title'}
+                            <i class="fas fa-external-link-alt text-xs ml-1 text-text-tertiary"></i>
+                        </a>
+                    </h4>
+                    <p class="text-sm text-text-secondary mb-2">
+                        <a href="${result.url || '#'}" target="_blank" class="hover:text-accent break-all">${result.url || ''}</a>
+                    </p>
+                    ${result.content ? `<p class="text-sm text-text-secondary mb-2">${result.content.substring(0, 200)}...</p>` : ''}
+                    ${result.publishedDate ? `<p class="text-xs text-text-tertiary"><i class="far fa-calendar-alt mr-1"></i>${result.publishedDate}</p>` : ''}
+                </div>
+                <div class="ml-4">
+                    <span id="state-badge-${result.id}" class="inline-block px-2 py-1 text-xs font-medium rounded border border-border bg-dashboard-surface-alt text-text-secondary">
+                        Not Scraped
+                    </span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap gap-2 mb-3">
+                <button onclick="scrapeResult('${result.id}')" id="btn-scrape-${result.id}"
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-accent text-accent hover:bg-accent/10 focus:outline-none transition-colors">
+                    <i class="fas fa-download mr-1"></i>Scrape
+                </button>
+                <button onclick="summarizeResult('${result.id}', '${model}')" id="btn-summarize-${result.id}"
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                    <i class="fas fa-file-alt mr-1"></i>Summarize
+                </button>
+                <button onclick="analyzeResult('${result.id}', '${model}')" id="btn-analyze-${result.id}"
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                    <i class="fas fa-brain mr-1"></i>Analyze
+                </button>
+                <button onclick="reanalyzeResult('${result.id}')" id="btn-reanalyze-${result.id}"
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                    <i class="fas fa-sync-alt mr-1"></i>Re-Analyze
+                </button>
+                <button onclick="saveResult('${result.id}')" id="btn-save-${result.id}"
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-accent text-accent hover:bg-accent/10 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                    <i class="fas fa-save mr-1"></i>Save
+                </button>
+            </div>
+
+            <!-- Expandable Sections -->
+            <div id="content-section-${result.id}" class="hidden mt-3 p-3 bg-dashboard-surface rounded border border-border">
+                <h5 class="text-sm font-semibold text-text-primary mb-2">Scraped Content</h5>
+                <div id="content-text-${result.id}" class="text-sm text-text-secondary whitespace-pre-wrap max-h-60 overflow-y-auto"></div>
+            </div>
+
+            <div id="summary-section-${result.id}" class="hidden mt-3 p-3 bg-dashboard-surface rounded border border-border">
+                <h5 class="text-sm font-semibold text-text-primary mb-2">Summary</h5>
+                <div id="summary-text-${result.id}" class="text-sm text-text-secondary whitespace-pre-wrap"></div>
+            </div>
+
+            <div id="analysis-section-${result.id}" class="hidden mt-3 p-3 bg-dashboard-surface rounded border border-border">
+                <h5 class="text-sm font-semibold text-text-primary mb-2">Analysis</h5>
+                <div id="analysis-text-${result.id}" class="text-sm text-text-secondary"></div>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div id="loading-${result.id}" class="hidden mt-2 text-xs text-text-tertiary">
+                <i class="fas fa-spinner fa-spin mr-1"></i><span id="loading-text-${result.id}">Processing...</span>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error-${result.id}" class="hidden mt-2 p-2 bg-theme-error-bg border border-theme-error-text text-theme-error-text rounded text-xs"></div>
+        `;
+
+        return card;
+    }
+
+    async function scrapeResult(resultId) {
+        const result = searchResults.find(r => r.id === resultId);
+        if (!result) return;
+
+        setLoading(resultId, true, 'Scraping article...');
+        setError(resultId, '');
+
+        try {
+            const response = await fetch('/api/research/scrape', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: result.url })
+            });
+
+            const data = await response.json();
+            setLoading(resultId, false);
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Scraping failed');
+            }
+
+            // Update result state
+            result.state = 'scraped';
+            result.data.scraped = data;
+            result.data.title = data.title || result.title;
+            result.data.content = data.content || '';
+            result.data.source = data.source || '';
+            result.data.published_at = data.published_at || null;
+
+            // Update UI
+            updateResultState(resultId);
+            document.getElementById(`content-text-${resultId}`).textContent = data.content || 'No content extracted';
+            document.getElementById(`content-section-${resultId}`).classList.remove('hidden');
+
+            showMessage('Content scraped successfully', 'success');
+
+        } catch (error) {
+            console.error('Scrape error:', error);
+            setError(resultId, `Scraping failed: ${error.message}`);
+            showMessage(`Scraping failed: ${error.message}`, 'error');
+        }
+    }
+
+    async function summarizeResult(resultId, model) {
+        const result = searchResults.find(r => r.id === resultId);
+        if (!result || result.state !== 'scraped') {
+            showMessage('Please scrape the article first', 'warning');
+            return;
+        }
+
+        setLoading(resultId, true, 'Generating summary...');
+        setError(resultId, '');
+
+        try {
+            const response = await fetch('/api/research/summarize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: result.data.content,
+                    model: model || searchDefaultModel
+                })
+            });
+
+            const data = await response.json();
+            setLoading(resultId, false);
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Summarization failed');
+            }
+
+            // Update result state
+            result.state = 'summarized';
+            result.data.summary = data.summary || '';
+            result.data.summary_data = data;
+
+            // Update UI
+            updateResultState(resultId);
+            document.getElementById(`summary-text-${resultId}`).textContent = data.summary || 'No summary generated';
+            document.getElementById(`summary-section-${resultId}`).classList.remove('hidden');
+
+            showMessage('Summary generated successfully', 'success');
+
+        } catch (error) {
+            console.error('Summarize error:', error);
+            setError(resultId, `Summarization failed: ${error.message}`);
+            showMessage(`Summarization failed: ${error.message}`, 'error');
+        }
+    }
+
+    async function analyzeResult(resultId, model) {
+        const result = searchResults.find(r => r.id === resultId);
+        if (!result || result.state !== 'scraped') {
+            showMessage('Please scrape the article first', 'warning');
+            return;
+        }
+
+        setLoading(resultId, true, 'Analyzing article...');
+        setError(resultId, '');
+
+        try {
+            const response = await fetch('/api/research/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: result.data.content,
+                    model: model || searchDefaultModel
+                })
+            });
+
+            const data = await response.json();
+            setLoading(resultId, false);
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Analysis failed');
+            }
+
+            // Update result state
+            result.state = 'analyzed';
+            result.data.analysis = data;
+            result.data.summary_data = data; // Store for saving
+
+            // Update UI
+            updateResultState(resultId);
+            displayAnalysis(resultId, data);
+
+            showMessage('Analysis completed successfully', 'success');
+
+        } catch (error) {
+            console.error('Analyze error:', error);
+            setError(resultId, `Analysis failed: ${error.message}`);
+            showMessage(`Analysis failed: ${error.message}`, 'error');
+        }
+    }
+
+    async function reanalyzeResult(resultId) {
+        const result = searchResults.find(r => r.id === resultId);
+        if (!result || result.state !== 'scraped') {
+            showMessage('Please scrape the article first', 'warning');
+            return;
+        }
+
+        // Show model selector
+        const model = prompt('Enter model name (or leave empty for default):', searchDefaultModel);
+        if (model === null) return; // User cancelled
+
+        await analyzeResult(resultId, model || searchDefaultModel);
+    }
+
+    async function saveResult(resultId) {
+        const result = searchResults.find(r => r.id === resultId);
+        if (!result || !result.data.content) {
+            showMessage('Please scrape the article first', 'warning');
+            return;
+        }
+
+        setLoading(resultId, true, 'Saving article...');
+        setError(resultId, '');
+
+        try {
+            const response = await fetch('/api/research/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: result.url,
+                    title: result.data.title || result.title,
+                    content: result.data.content,
+                    summary_data: result.data.summary_data || {},
+                    model: result.data.analysis?.model || searchDefaultModel
+                })
+            });
+
+            const data = await response.json();
+            setLoading(resultId, false);
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Save failed');
+            }
+
+            // Update result state
+            result.state = 'saved';
+            result.data.article_id = data.article_id;
+
+            // Update UI
+            updateResultState(resultId);
+            showMessage(`Article saved successfully! ID: ${data.article_id}`, 'success');
+
+        } catch (error) {
+            console.error('Save error:', error);
+            setError(resultId, `Save failed: ${error.message}`);
+            showMessage(`Save failed: ${error.message}`, 'error');
+        }
+    }
+
+    function displayAnalysis(resultId, analysis) {
+        const container = document.getElementById(`analysis-text-${resultId}`);
+        if (!container) return;
+
+        let html = '';
+
+        if (analysis.tickers && analysis.tickers.length > 0) {
+            html += `<div class="mb-2"><strong>Tickers:</strong> ${analysis.tickers.join(', ')}</div>`;
+        }
+
+        if (analysis.sectors && analysis.sectors.length > 0) {
+            html += `<div class="mb-2"><strong>Sectors:</strong> ${analysis.sectors.join(', ')}</div>`;
+        }
+
+        if (analysis.sentiment) {
+            html += `<div class="mb-2"><strong>Sentiment:</strong> ${analysis.sentiment}`;
+            if (analysis.sentiment_score !== undefined) {
+                html += ` (${analysis.sentiment_score})`;
+            }
+            html += `</div>`;
+        }
+
+        if (analysis.summary) {
+            html += `<div class="mb-2"><strong>Summary:</strong><div class="mt-1 whitespace-pre-wrap">${analysis.summary}</div></div>`;
+        }
+
+        if (analysis.claims && analysis.claims.length > 0) {
+            html += `<div class="mb-2"><strong>Claims:</strong><ul class="list-disc list-inside mt-1">`;
+            analysis.claims.forEach(claim => {
+                html += `<li>${claim}</li>`;
+            });
+            html += `</ul></div>`;
+        }
+
+        if (analysis.fact_check) {
+            html += `<div class="mb-2"><strong>Fact Check:</strong> ${analysis.fact_check}</div>`;
+        }
+
+        if (analysis.conclusion) {
+            html += `<div class="mb-2"><strong>Conclusion:</strong> ${analysis.conclusion}</div>`;
+        }
+
+        if (analysis.logic_check) {
+            html += `<div class="mb-2"><strong>Logic Check:</strong> ${analysis.logic_check}</div>`;
+        }
+
+        container.innerHTML = html || 'No analysis data available';
+        document.getElementById(`analysis-section-${resultId}`).classList.remove('hidden');
+    }
+
+    function updateResultState(resultId) {
+        const result = searchResults.find(r => r.id === resultId);
+        if (!result) return;
+
+        const badge = document.getElementById(`state-badge-${resultId}`);
+        const scrapeBtn = document.getElementById(`btn-scrape-${resultId}`);
+        const summarizeBtn = document.getElementById(`btn-summarize-${resultId}`);
+        const analyzeBtn = document.getElementById(`btn-analyze-${resultId}`);
+        const reanalyzeBtn = document.getElementById(`btn-reanalyze-${resultId}`);
+        const saveBtn = document.getElementById(`btn-save-${resultId}`);
+
+        // Update badge
+        const stateLabels = {
+            'not_scraped': 'Not Scraped',
+            'scraped': 'Scraped',
+            'summarized': 'Summarized',
+            'analyzed': 'Analyzed',
+            'saved': 'Saved'
+        };
+        if (badge) {
+            badge.textContent = stateLabels[result.state] || 'Unknown';
+            badge.className = result.state === 'saved' 
+                ? 'inline-block px-2 py-1 text-xs font-medium rounded border border-theme-success-text bg-theme-success-bg text-theme-success-text'
+                : 'inline-block px-2 py-1 text-xs font-medium rounded border border-border bg-dashboard-surface-alt text-text-secondary';
+        }
+
+        // Update button states
+        if (scrapeBtn) scrapeBtn.disabled = result.state !== 'not_scraped';
+        if (summarizeBtn) summarizeBtn.disabled = result.state === 'not_scraped';
+        if (analyzeBtn) analyzeBtn.disabled = result.state === 'not_scraped';
+        if (reanalyzeBtn) reanalyzeBtn.disabled = result.state === 'not_scraped';
+        if (saveBtn) saveBtn.disabled = result.state === 'not_scraped' || result.state === 'saved';
+    }
+
+    function setLoading(resultId, loading, text) {
+        const loadingEl = document.getElementById(`loading-${resultId}`);
+        const textEl = document.getElementById(`loading-text-${resultId}`);
+        if (loadingEl) loadingEl.classList.toggle('hidden', !loading);
+        if (textEl && text) textEl.textContent = text;
+    }
+
+    function setError(resultId, error) {
+        const errorEl = document.getElementById(`error-${resultId}`);
+        if (errorEl) {
+            errorEl.textContent = error;
+            errorEl.classList.toggle('hidden', !error);
+        }
+    }
 </script>
 {% endblock %}

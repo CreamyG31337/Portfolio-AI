@@ -200,9 +200,11 @@ def research_dashboard():
             
         # Get common context
         from app import get_navigation_context  # Import here to avoid circular import
+        from searxng_client import check_searxng_health
         user_email = get_user_email_flask()
         user_theme = get_user_preference('theme', default='system')
         nav_context = get_navigation_context(current_page='research')
+        searxng_available = check_searxng_health()
 
         logger.debug(f"[RESEARCH] Rendering template with {len(articles)} articles, {len(unique_tickers)} tickers")
         
@@ -226,6 +228,7 @@ def research_dashboard():
             },
             user_email=user_email,
             user_theme=user_theme,
+            searxng_available=searxng_available,
             **nav_context
         )
         
@@ -760,4 +763,338 @@ def reanalyze_article_stream():
             "success": False,
             "error": str(e)
         }), 500
+
+
+@research_bp.route('/api/research/search', methods=['POST'])
+@require_auth
+def api_research_search():
+    """Perform SearXNG search"""
+    try:
+        data = request.get_json() or {}
+        query = data.get('query', '').strip()
+        search_type = data.get('search_type', 'news')
+        time_range = data.get('time_range')
+        max_results = int(data.get('max_results', 10))
+
+        if not query:
+            return jsonify({"success": False, "error": "Query is required"}), 400
+
+        from searxng_client import get_searxng_client, check_searxng_health
+
+        if not check_searxng_health():
+            return jsonify({"success": False, "error": "SearXNG is not available"}), 503
+
+        client = get_searxng_client()
+        if not client:
+            return jsonify({"success": False, "error": "SearXNG client not initialized"}), 503
+
+        # Perform search based on type
+        if search_type == 'news':
+            results = client.search_news(query=query, time_range=time_range, max_results=max_results)
+        elif search_type == 'web':
+            results = client.search_web(query=query, time_range=time_range, max_results=max_results)
+        else:
+            results = client.search(query=query, time_range=time_range, max_results=max_results)
+
+        if results.get('error'):
+            return jsonify({"success": False, "error": results.get('error')}), 500
+
+        return jsonify({
+            "success": True,
+            "results": results.get('results', []),
+            "query": results.get('query', query),
+            "number_of_results": results.get('number_of_results', 0)
+        })
+
+    except Exception as e:
+        logger.error(f"Error performing search: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@research_bp.route('/api/research/scrape', methods=['POST'])
+@require_auth
+def api_research_scrape():
+    """Scrape article content from URL"""
+    try:
+        data = request.get_json() or {}
+        url = data.get('url', '').strip()
+
+        if not url:
+            return jsonify({"success": False, "error": "URL is required"}), 400
+
+        from research_utils import extract_article_content
+
+        extracted = extract_article_content(url)
+
+        if not extracted.get('success'):
+            error = extracted.get('error', 'Unknown error')
+            return jsonify({
+                "success": False,
+                "error": error,
+                "title": extracted.get('title', ''),
+                "source": extracted.get('source', ''),
+                "published_at": extracted.get('published_at')
+            }), 400
+
+        return jsonify({
+            "success": True,
+            "title": extracted.get('title', ''),
+            "content": extracted.get('content', ''),
+            "source": extracted.get('source', ''),
+            "published_at": extracted.get('published_at')
+        })
+
+    except Exception as e:
+        logger.error(f"Error scraping article: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@research_bp.route('/api/research/summarize', methods=['POST'])
+@require_auth
+def api_research_summarize():
+    """Generate AI summary for article content"""
+    try:
+        data = request.get_json() or {}
+        content = data.get('content', '').strip()
+        model = data.get('model')
+
+        if not content:
+            return jsonify({"success": False, "error": "Content is required"}), 400
+
+        from ollama_client import get_ollama_client, check_ollama_health
+        from settings import get_summarizing_model
+
+        if not check_ollama_health():
+            return jsonify({"success": False, "error": "Ollama is not available"}), 503
+
+        client = get_ollama_client()
+        if not client:
+            return jsonify({"success": False, "error": "Ollama client not initialized"}), 503
+
+        # Use provided model or default
+        model_name = model or get_summarizing_model()
+
+        summary_data = client.generate_summary(content, model=model_name)
+
+        if not summary_data:
+            return jsonify({"success": False, "error": "Failed to generate summary"}), 500
+
+        # Handle both string and dict formats
+        if isinstance(summary_data, str):
+            return jsonify({
+                "success": True,
+                "summary": summary_data,
+                "model": model_name
+            })
+        elif isinstance(summary_data, dict):
+            return jsonify({
+                "success": True,
+                "summary": summary_data.get("summary", ""),
+                "tickers": summary_data.get("tickers", []),
+                "sectors": summary_data.get("sectors", []),
+                "sentiment": summary_data.get("sentiment"),
+                "sentiment_score": summary_data.get("sentiment_score"),
+                "claims": summary_data.get("claims", []),
+                "fact_check": summary_data.get("fact_check"),
+                "conclusion": summary_data.get("conclusion"),
+                "logic_check": summary_data.get("logic_check"),
+                "relationships": summary_data.get("relationships", []),
+                "model": model_name
+            })
+        else:
+            return jsonify({"success": False, "error": "Invalid summary format"}), 500
+
+    except Exception as e:
+        logger.error(f"Error generating summary: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@research_bp.route('/api/research/analyze', methods=['POST'])
+@require_auth
+def api_research_analyze():
+    """Perform full AI analysis with ticker extraction and validation"""
+    try:
+        data = request.get_json() or {}
+        content = data.get('content', '').strip()
+        model = data.get('model')
+
+        if not content:
+            return jsonify({"success": False, "error": "Content is required"}), 400
+
+        from ollama_client import get_ollama_client, check_ollama_health
+        from settings import get_summarizing_model
+        from research_utils import validate_ticker_format, normalize_ticker
+
+        if not check_ollama_health():
+            return jsonify({"success": False, "error": "Ollama is not available"}), 503
+
+        client = get_ollama_client()
+        if not client:
+            return jsonify({"success": False, "error": "Ollama client not initialized"}), 503
+
+        # Use provided model or default
+        model_name = model or get_summarizing_model()
+
+        summary_data = client.generate_summary(content, model=model_name)
+
+        if not summary_data:
+            return jsonify({"success": False, "error": "Failed to generate analysis"}), 500
+
+        # Handle both string and dict formats
+        if isinstance(summary_data, str):
+            return jsonify({
+                "success": True,
+                "summary": summary_data,
+                "tickers": [],
+                "sectors": [],
+                "model": model_name
+            })
+        elif isinstance(summary_data, dict):
+            # Extract and validate tickers (same as jobs_research.py)
+            raw_tickers = summary_data.get("tickers", [])
+            extracted_tickers = []
+
+            for ticker in raw_tickers:
+                if not validate_ticker_format(ticker):
+                    logger.debug(f"Rejected invalid ticker format: {ticker}")
+                    continue
+                normalized = normalize_ticker(ticker)
+                if normalized:
+                    extracted_tickers.append(normalized)
+
+            # Extract sector
+            sectors = summary_data.get("sectors", [])
+            extracted_sector = sectors[0] if sectors else None
+
+            return jsonify({
+                "success": True,
+                "summary": summary_data.get("summary", ""),
+                "tickers": extracted_tickers,
+                "sectors": sectors,
+                "sector": extracted_sector,
+                "sentiment": summary_data.get("sentiment"),
+                "sentiment_score": summary_data.get("sentiment_score"),
+                "claims": summary_data.get("claims", []),
+                "fact_check": summary_data.get("fact_check"),
+                "conclusion": summary_data.get("conclusion"),
+                "logic_check": summary_data.get("logic_check"),
+                "relationships": summary_data.get("relationships", []),
+                "model": model_name
+            })
+        else:
+            return jsonify({"success": False, "error": "Invalid analysis format"}), 500
+
+    except Exception as e:
+        logger.error(f"Error performing analysis: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@research_bp.route('/api/research/save', methods=['POST'])
+@require_auth
+def api_research_save():
+    """Save article to research repository following exact code path from jobs_research.py"""
+    try:
+        data = request.get_json() or {}
+        url = data.get('url', '').strip()
+        title = data.get('title', '').strip()
+        content = data.get('content', '').strip()
+        summary_data = data.get('summary_data', {})
+        model = data.get('model')
+
+        if not url or not title or not content:
+            return jsonify({"success": False, "error": "URL, title, and content are required"}), 400
+
+        repo = get_research_repository()
+        if not repo:
+            return jsonify({"success": False, "error": "Research repository not available"}), 500
+
+        # Check for duplicate URLs
+        if repo.article_exists(url):
+            return jsonify({"success": False, "error": "Article with this URL already exists"}), 409
+
+        # Follow exact code path from jobs_research.py (lines 290-383)
+        from ollama_client import get_ollama_client
+        from research_utils import validate_ticker_format, normalize_ticker, extract_source_from_url
+        from scheduler.jobs_common import calculate_relevance_score
+
+        # Extract and validate tickers
+        raw_tickers = summary_data.get("tickers", [])
+        extracted_tickers = []
+
+        for ticker in raw_tickers:
+            if not validate_ticker_format(ticker):
+                logger.debug(f"Rejected invalid ticker format: {ticker}")
+                continue
+            normalized = normalize_ticker(ticker)
+            if normalized:
+                extracted_tickers.append(normalized)
+
+        # Extract sector
+        sectors = summary_data.get("sectors", [])
+        extracted_sector = sectors[0] if sectors else None
+
+        # Extract summary
+        summary = summary_data.get("summary", "")
+
+        # Calculate relevance score (no owned_tickers check for manual saves)
+        relevance_score = calculate_relevance_score(extracted_tickers, extracted_sector, owned_tickers=None)
+
+        # Generate embedding (if Ollama available)
+        embedding = None
+        ollama_client = get_ollama_client()
+        if ollama_client:
+            try:
+                embedding = ollama_client.generate_embedding(content[:6000])
+            except Exception as e:
+                logger.warning(f"Failed to generate embedding: {e}")
+                embedding = None
+
+        # Extract all Chain of Thought fields
+        claims = summary_data.get("claims")
+        fact_check = summary_data.get("fact_check")
+        conclusion = summary_data.get("conclusion")
+        sentiment = summary_data.get("sentiment")
+        sentiment_score = summary_data.get("sentiment_score")
+        logic_check = summary_data.get("logic_check")
+
+        # Extract source from URL if not provided
+        source = summary_data.get("source") or extract_source_from_url(url)
+
+        # Extract published_at if available
+        published_at = summary_data.get("published_at")
+
+        # Save article
+        article_id = repo.save_article(
+            tickers=extracted_tickers if extracted_tickers else None,
+            sector=extracted_sector,
+            article_type="Market News",  # Default type, could be made configurable
+            title=title,
+            url=url,
+            summary=summary,
+            content=content,
+            source=source,
+            published_at=published_at,
+            relevance_score=relevance_score,
+            embedding=embedding,
+            claims=claims,
+            fact_check=fact_check,
+            conclusion=conclusion,
+            sentiment=sentiment,
+            sentiment_score=sentiment_score,
+            logic_check=logic_check
+        )
+
+        if article_id:
+            logger.info(f"[RESEARCH] Article saved via search interface: {article_id}")
+            return jsonify({
+                "success": True,
+                "article_id": article_id,
+                "message": "Article saved successfully"
+            })
+        else:
+            return jsonify({"success": False, "error": "Failed to save article"}), 500
+
+    except Exception as e:
+        logger.error(f"Error saving article: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
 
