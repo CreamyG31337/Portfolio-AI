@@ -284,6 +284,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
     }
 
     initModelSelect();
+    initSignalsModelSelect();
 
     // Reload ticker data when global fund selector changes
     window.addEventListener('fundChanged', () => {
@@ -338,6 +339,52 @@ function initModelSelect(): void {
     });
 
     loadModelOptions();
+}
+
+function initSignalsModelSelect(): void {
+    const select = document.getElementById('signals-model-select') as HTMLSelectElement | null;
+    if (!select) return;
+
+    loadSignalsModelOptions();
+}
+
+async function loadSignalsModelOptions(): Promise<void> {
+    const select = document.getElementById('signals-model-select') as HTMLSelectElement | null;
+    if (!select) return;
+
+    try {
+        const response = await fetch('/api/v2/ai/models', {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to load AI models');
+        }
+
+        const data = await response.json();
+        const models = data.models || [];
+
+        select.innerHTML = '';
+        if (!Array.isArray(models) || models.length === 0) {
+            select.innerHTML = '<option value="">No models available</option>';
+            return;
+        }
+
+        models.forEach((model: { id: string; name: string; type?: string }) => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name;
+            select.appendChild(option);
+        });
+
+        // Select the first model by default
+        if (select.options.length > 0) {
+            select.value = select.options[0].value;
+        }
+    } catch (error) {
+        console.error('Error loading signals AI models:', error);
+        select.innerHTML = '<option value="">Error loading models</option>';
+    }
 }
 
 function saveModelPreference(model: string): void {
