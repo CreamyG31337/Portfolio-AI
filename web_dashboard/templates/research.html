@@ -170,7 +170,7 @@
 <!-- Articles Grid -->
 <div class="grid grid-cols-1 gap-6">
     {% for article in articles %}
-    <div
+    <div id="article-card-{{ article.id }}"
         class="bg-dashboard-surface rounded-lg shadow-sm border border-border hover:shadow-md transition-shadow duration-200">
         <div class="p-6">
             <div class="flex items-start gap-3 mb-4">
@@ -285,6 +285,14 @@
                 <div class="text-xs text-text-tertiary">
                     ID: {{ article.id|string|truncate(8, True, '') }}
                 </div>
+                {% if is_admin %}
+                <button type="button"
+                    onclick="deleteArticle('{{ article.id }}')"
+                    class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-theme-error-text text-theme-error-text hover:bg-theme-error-bg focus:outline-none focus:ring-2 focus:ring-theme-error-text/40">
+                    <i class="fas fa-trash-alt mr-1"></i>
+                    Delete
+                </button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -746,6 +754,41 @@
 
         // Start processing
         processNext(0);
+    }
+
+    function deleteArticle(articleId) {
+        if (!articleId) {
+            return;
+        }
+
+        if (!confirm("Are you sure you want to permanently delete this article?")) {
+            return;
+        }
+
+        fetch('/api/research/delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ article_id: articleId })
+        })
+            .then(response => response.json().then(data => ({ ok: response.ok, data })))
+            .then(({ ok, data }) => {
+                if (ok && data.success) {
+                    const card = document.getElementById(`article-card-${articleId}`);
+                    if (card) {
+                        card.remove();
+                    }
+                    showMessage('✅ Article deleted successfully.', 'success');
+                } else {
+                    const errorMessage = (data && data.error) ? data.error : 'Unknown error while deleting article.';
+                    showMessage(`❌ Failed to delete article: ${errorMessage}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting article:', error);
+                showMessage(`❌ Error deleting article: ${error.message}`, 'error');
+            });
     }
 
     function showMessage(message, type) {

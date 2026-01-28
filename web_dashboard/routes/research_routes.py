@@ -9,7 +9,7 @@ from pathlib import Path
 # This ensures we can import modules like 'auth', 'supabase_client', etc.
 sys.path.append(str(Path(__file__).parent.parent))
 
-from auth import require_auth
+from auth import require_auth, require_admin
 from research_repository import ResearchRepository
 from user_preferences import get_user_preference
 from flask_auth_utils import get_user_email_flask, get_auth_token, get_user_id_flask
@@ -460,6 +460,34 @@ def get_available_models():
             "error": str(e),
             "models": []
         }), 500
+
+
+@research_bp.route('/api/research/delete', methods=['POST'])
+@require_admin
+def delete_article_endpoint():
+    """Delete a single research article by ID (admin only)."""
+    try:
+        data = request.get_json() or {}
+        article_id = data.get("article_id")
+
+        if not article_id:
+            return jsonify({"success": False, "error": "article_id is required"}), 400
+
+        repo = get_research_repository()
+        if repo is None:
+            return jsonify({"success": False, "error": "Research repository is not available"}), 500
+
+        deleted = repo.delete_article(article_id)
+        if deleted:
+            logger.info(f"[RESEARCH] Article {article_id} deleted by admin")
+            return jsonify({"success": True})
+
+        logger.warning(f"[RESEARCH] Article {article_id} not found for deletion")
+        return jsonify({"success": False, "error": "Article not found"}), 404
+
+    except Exception as e:
+        logger.error(f"Error in delete article endpoint: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @research_bp.route('/api/research/reanalyze', methods=['POST'])
