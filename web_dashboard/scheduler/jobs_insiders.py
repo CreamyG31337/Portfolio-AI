@@ -478,7 +478,7 @@ def fetch_insider_trades_job() -> None:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Found {total_trades_found} trades: {new_trades} new, {skipped_duplicates} duplicates, {skipped_old} old, {errors} errors"
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('insider_trades', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('insider_trades', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ Insider trades job completed: {message} in {duration_ms/1000:.2f}s")
 
     except Exception as e:

@@ -121,7 +121,7 @@ def fetch_social_sentiment_job() -> None:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "No tickers to process"
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-            mark_job_completed('social_sentiment', target_date, None, [], duration_ms=duration_ms)
+            mark_job_completed('social_sentiment', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"ℹ️ {message}")
             return
         
@@ -223,7 +223,7 @@ def fetch_social_sentiment_job() -> None:
         message = f"Processed {success_count + error_count + len(timeout_tickers)}/{len(all_tickers)} tickers: {', '.join(parts)}"
         
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('social_sentiment', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('social_sentiment', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ Social sentiment job completed: {message} in {duration_min:.1f} minutes")
         
         # Log failed tickers if any
@@ -286,7 +286,7 @@ def cleanup_social_metrics_job() -> None:
             log_job_execution(job_id, True, message, duration_ms)
         except Exception as log_error:
             logger.warning(f"Failed to log job execution: {log_error}")
-        mark_job_completed('social_metrics_cleanup', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('social_metrics_cleanup', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ Social metrics cleanup job completed: {message} in {duration_ms/1000:.2f}s")
         
     except Exception as e:
@@ -386,7 +386,7 @@ def social_sentiment_ai_job() -> None:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Extracted {extraction_result['posts_created']} posts, created {session_result['sessions_created']} sessions, completed {analyses_completed} AI analyses"
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('social_sentiment_ai', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('social_sentiment_ai', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ Social Sentiment AI Analysis job completed: {message} in {duration_ms/1000:.2f}s")
 
     except Exception as e:

@@ -443,7 +443,7 @@ def market_research_job() -> None:
             f"{articles_irrelevant} non-market"
         )
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('market_research', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('market_research', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ {message} in {duration_min:.1f} minutes")
         
     except Exception as e:
@@ -785,7 +785,7 @@ def rss_feed_ingest_job() -> None:
             f"{total_junk_filtered} junk filtered"
         )
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('rss_feed_ingest', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('rss_feed_ingest', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ {message}")
         
     except Exception as e:
@@ -1316,7 +1316,7 @@ def ticker_research_job() -> None:
         message_parts.append(f"Saved {articles_saved} new articles")
         message = ". ".join(message_parts) + "."
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('ticker_research', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('ticker_research', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ {message}")
         
     except Exception as e:
@@ -1393,7 +1393,7 @@ def archive_retry_job() -> None:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "No pending archive articles to check"
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-            mark_job_completed('archive_retry', target_date, None, [], duration_ms=duration_ms)
+            mark_job_completed('archive_retry', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"ℹ️ {message}")
             return
         
@@ -1567,7 +1567,7 @@ def archive_retry_job() -> None:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Checked {articles_checked} articles, found {articles_archived} archived, processed {articles_processed}"
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('archive_retry', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('archive_retry', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ {message}")
         
     except Exception as e:
@@ -1646,7 +1646,7 @@ def process_research_reports_job() -> None:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "No PDF files found in Research directory"
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-            mark_job_completed('process_research_reports', target_date, None, [], duration_ms=duration_ms)
+            mark_job_completed('process_research_reports', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"ℹ️ {message}")
             return
         
@@ -1818,7 +1818,7 @@ def process_research_reports_job() -> None:
         if upload_success is not None:
             message += f", upload: {'success' if upload_success else 'failed'}"
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('process_research_reports', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('process_research_reports', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ {message}")
         
     except Exception as e:

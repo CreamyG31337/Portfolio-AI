@@ -659,7 +659,7 @@ def cleanup_log_files_job() -> None:
             log_job_execution(job_id, True, message, duration_ms)
         except Exception as log_error:
             logger.warning(f"Failed to log job execution: {log_error}")
-        mark_job_completed('log_cleanup', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('log_cleanup', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ Log cleanup job completed: {message} in {duration_ms/1000:.2f}s")
         
     except Exception as e:

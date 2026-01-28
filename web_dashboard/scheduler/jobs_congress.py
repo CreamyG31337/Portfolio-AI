@@ -576,7 +576,7 @@ def fetch_congress_trades_job() -> None:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Found {total_trades_found} trades: {new_trades} new, {skipped_duplicates} duplicates, {skipped_no_ticker} no ticker, {ai_analyzed} AI analyzed, {errors} errors"
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('congress_trades', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('congress_trades', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ Congress trades job completed: {message} in {duration_ms/1000:.2f}s")
         
     except Exception as e:
@@ -931,7 +931,7 @@ def rescore_congress_sessions_job(limit: int = 1000, batch_size: int = 10, model
                 message = f"Rescore completed ({limit} sessions)"
             
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-            mark_job_completed('rescore_congress_sessions', target_date, None, [], duration_ms=duration_ms)
+            mark_job_completed('rescore_congress_sessions', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"✅ {message}")
         else:
             duration_ms = int((time.time() - start_time) * 1000)
@@ -1107,7 +1107,7 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
                 message = "Congress trades scraping completed"
             
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-            mark_job_completed('scrape_congress_trades', target_date, None, [], duration_ms=duration_ms)
+            mark_job_completed('scrape_congress_trades', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"✅ {message}")
         else:
             duration_ms = int((time.time() - start_time) * 1000)

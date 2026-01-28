@@ -161,7 +161,7 @@ def benchmark_refresh_job() -> None:
             log_job_execution(job_id, True, message, duration_ms)
         except Exception as log_error:
             logger.warning(f"Failed to log job execution: {log_error}")
-        mark_job_completed('benchmark_refresh', target_date, None, [], duration_ms=duration_ms)
+        mark_job_completed('benchmark_refresh', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ {message}")
         
     except Exception as e:
@@ -246,7 +246,7 @@ def refresh_exchange_rates_job() -> None:
             if filled_count > 0:
                 message += f" (filled {filled_count} historical gaps)"
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-            mark_job_completed('exchange_rates', target_date, None, [], duration_ms=duration_ms)
+            mark_job_completed('exchange_rates', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"✅ {message}")
         else:
             duration_ms = int((time.time() - start_time) * 1000)

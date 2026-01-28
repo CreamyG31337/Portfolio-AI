@@ -1293,7 +1293,7 @@ def etf_watchtower_job():
             success = len(failed_etfs) == 0
             log_job_execution(job_id, success=success, message=message, duration_ms=duration_ms)
             if success:
-                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
+                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
             else:
                 mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
         except:
