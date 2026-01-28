@@ -60,7 +60,7 @@ def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         
         # Query insider trades
         result = client.supabase.table("insider_trades")\
-            .select("ticker, company_name, insider_name, insider_title, transaction_date, disclosure_date, type, shares, price_per_share, value")\
+            .select("ticker, insider_name, insider_title, transaction_date, disclosure_date, type, shares, price_per_share, value")\
             .in_("ticker", [t.upper() for t in portfolio_tickers])\
             .gte("transaction_date", start_date.isoformat())\
             .lte("transaction_date", end_date.isoformat())\

@@ -581,7 +581,7 @@ def get_ticker_info(
             from web_dashboard.utils.logo_utils import get_ticker_logo_url
 
             insider_result = supabase_client.supabase.table("insider_trades")\
-                .select("ticker, company_name, insider_name, insider_title, transaction_date, disclosure_date, "
+                .select("ticker, insider_name, insider_title, transaction_date, disclosure_date, "
                         "type, shares, price_per_share, value, shares_held_after, percent_change, notes, created_at")\
                 .eq("ticker", ticker_upper)\
                 .order("transaction_date", desc=True)\

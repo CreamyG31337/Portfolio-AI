@@ -4732,7 +4732,7 @@ def get_insider_trades_cached(
             return []
 
         query = _supabase_client.supabase.table("insider_trades").select(
-            "id, ticker, insider_name, insider_title, company_name, transaction_date, disclosure_date, "
+            "id, ticker, insider_name, insider_title, transaction_date, disclosure_date, "
             "type, shares, price_per_share, value, shares_held_after, percent_change, notes, created_at"
         )
 
@@ -4983,15 +4983,45 @@ def api_insider_trades_data():
             except (TypeError, ValueError):
                 return None
 
+        # Collect all unique tickers for company name lookup
+        unique_tickers = set()
+        for trade in all_trades:
+            ticker = trade.get("ticker", "").strip()
+            if ticker and ticker != "N/A":
+                unique_tickers.add(ticker.upper())
+
+        # Look up company names from securities table
+        company_name_map = {}
+        if unique_tickers:
+            try:
+                securities_result = supabase_client.supabase.table("securities").select(
+                    "ticker, company_name"
+                ).in_("ticker", list(unique_tickers)).execute()
+
+                if securities_result.data:
+                    for row in securities_result.data:
+                        ticker = row.get("ticker", "").upper()
+                        company_name = row.get("company_name")
+                        if company_name and company_name.strip() and company_name != "Unknown":
+                            company_name_map[ticker] = company_name.strip()
+            except Exception as e:
+                logger.warning(f"Error fetching company names from securities table: {e}")
+
         formatted_trades = []
         for trade in all_trades:
             ticker = trade.get("ticker", "N/A")
             logo_url = get_ticker_logo_url(ticker) if ticker and ticker != "N/A" else None
             insider_name = normalize_insider_name(trade.get("insider_name"))
 
+            # Get company name from securities table lookup
+            company_name = None
+            ticker_upper = ticker.upper().strip() if ticker and ticker != "N/A" else None
+            if ticker_upper and ticker_upper in company_name_map:
+                company_name = company_name_map[ticker_upper]
+
             formatted_trades.append({
                 "ticker": ticker,
-                "company_name": trade.get("company_name"),
+                "company_name": company_name,
                 "insider_name": insider_name,
                 "insider_title": trade.get("insider_title"),
                 "transaction_date": trade.get("transaction_date"),

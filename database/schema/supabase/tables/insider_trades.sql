@@ -6,7 +6,6 @@ CREATE TABLE insider_trades (
     ticker VARCHAR(20) NOT NULL,
     insider_name VARCHAR(255) NOT NULL,
     insider_title VARCHAR(255),
-    company_name VARCHAR(255),
     transaction_date DATE NOT NULL,
     disclosure_date TIMESTAMP NOT NULL,
     type VARCHAR(20) NOT NULL,

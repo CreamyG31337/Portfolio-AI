@@ -412,7 +412,6 @@ def fetch_insider_trades_job() -> None:
                         'ticker': ticker,
                         'insider_name': insider_name,
                         'insider_title': insider_title,
-                        'company_name': None,  # Not provided by the source page
                         'transaction_date': transaction_date.isoformat(),
                         'disclosure_date': disclosure_date.isoformat(),
                         'type': trade_type,
