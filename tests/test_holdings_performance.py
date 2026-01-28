@@ -19,48 +19,75 @@ def test_get_individual_holdings_performance_flask_vectorized_logic():
     # Ticker B: Halves in value
     # Ticker C: Baseline 0 (should be filtered out)
 
-    data = [
+    # Portfolio positions data (no longer includes securities join)
+    positions_data = [
         # Ticker A
-        {'ticker': 'A', 'date': '2023-01-01', 'total_value': 100, 'securities': {'sector': 'Tech', 'currency': 'USD'}},
-        {'ticker': 'A', 'date': '2023-01-02', 'total_value': 150, 'securities': {'sector': 'Tech', 'currency': 'USD'}},
-        {'ticker': 'A', 'date': '2023-01-03', 'total_value': 200, 'securities': {'sector': 'Tech', 'currency': 'USD'}},
+        {'ticker': 'A', 'date': '2023-01-01', 'total_value': 100, 'currency': 'USD'},
+        {'ticker': 'A', 'date': '2023-01-02', 'total_value': 150, 'currency': 'USD'},
+        {'ticker': 'A', 'date': '2023-01-03', 'total_value': 200, 'currency': 'USD'},
 
-        # Ticker B (missing metadata in first row, should be backfilled)
-        {'ticker': 'B', 'date': '2023-01-01', 'total_value': 100, 'securities': {}},
-        {'ticker': 'B', 'date': '2023-01-02', 'total_value': 75, 'securities': {'sector': 'Finance', 'currency': 'CAD'}},
-        {'ticker': 'B', 'date': '2023-01-03', 'total_value': 50, 'securities': {'sector': 'Finance', 'currency': 'CAD'}},
+        # Ticker B
+        {'ticker': 'B', 'date': '2023-01-01', 'total_value': 100, 'currency': 'USD'},
+        {'ticker': 'B', 'date': '2023-01-02', 'total_value': 75, 'currency': 'USD'},
+        {'ticker': 'B', 'date': '2023-01-03', 'total_value': 50, 'currency': 'USD'},
 
         # Ticker C (Baseline 0)
-        {'ticker': 'C', 'date': '2023-01-01', 'total_value': 0, 'securities': {'sector': 'Junk'}},
-        {'ticker': 'C', 'date': '2023-01-02', 'total_value': 10, 'securities': {'sector': 'Junk'}},
+        {'ticker': 'C', 'date': '2023-01-01', 'total_value': 0, 'currency': 'USD'},
+        {'ticker': 'C', 'date': '2023-01-02', 'total_value': 10, 'currency': 'USD'},
+    ]
+
+    # Securities metadata (fetched separately)
+    securities_data = [
+        {'ticker': 'A', 'sector': 'Tech', 'industry': None, 'currency': 'USD'},
+        {'ticker': 'B', 'sector': 'Finance', 'industry': None, 'currency': 'CAD'},
+        {'ticker': 'C', 'sector': 'Junk', 'industry': None, 'currency': 'USD'},
     ]
 
     # Mock Supabase client
     mock_client = MagicMock()
-    mock_result = MagicMock()
-    mock_result.data = data
-
-    # Configure query chain
-    mock_table = mock_client.supabase.table.return_value
-    mock_select = mock_table.select.return_value
-    mock_eq = mock_select.eq.return_value
-    mock_range = mock_eq.range.return_value if hasattr(mock_eq, 'range') else mock_eq.order.return_value.range.return_value
-    # The actual chain is: table().select().eq().order().range().execute()
-    # Or: table().select().eq().range().execute() depending on code
-    # Let's just make sure execute() returns data
-
-    # Based on code: query.order("date").range().execute()
-    mock_client.supabase.table("portfolio_positions").select.return_value.eq.return_value.order.return_value.range.return_value.execute.return_value = mock_result
-
-    # For pagination loop, return empty data on second call
-    mock_result_empty = MagicMock()
-    mock_result_empty.data = []
-
-    # We need to simulate the pagination loop.
-    # The code calls execute() in a loop.
-    # checking call count or side_effect
-    mock_chain = mock_client.supabase.table.return_value.select.return_value.eq.return_value.order.return_value.range.return_value.execute
-    mock_chain.side_effect = [mock_result, mock_result_empty]
+    
+    # Configure table() to return different mocks for different tables
+    def table_side_effect(table_name):
+        query_mock = MagicMock()
+        
+        if table_name == "portfolio_positions":
+            # Mock chain: table().select().eq().order().range().execute()
+            select_mock = MagicMock()
+            eq_mock = MagicMock()
+            order_mock = MagicMock()
+            range_mock = MagicMock()
+            
+            query_mock.select.return_value = select_mock
+            select_mock.eq.return_value = eq_mock
+            eq_mock.order.return_value = order_mock
+            order_mock.range.return_value = range_mock
+            
+            # For pagination: return data on first call, empty on second
+            result_1 = MagicMock()
+            result_1.data = positions_data
+            result_2 = MagicMock()
+            result_2.data = []
+            range_mock.execute.side_effect = [result_1, result_2]
+            
+            return query_mock
+            
+        elif table_name == "securities":
+            # Mock chain: table().select().in_().execute()
+            select_mock = MagicMock()
+            in_mock = MagicMock()
+            execute_mock = MagicMock()
+            
+            query_mock.select.return_value = select_mock
+            select_mock.in_.return_value = in_mock
+            in_mock.execute.return_value = execute_mock
+            
+            execute_mock.data = securities_data
+            
+            return query_mock
+        
+        return query_mock
+    
+    mock_client.supabase.table.side_effect = table_side_effect
 
     with patch('flask_data_utils.get_supabase_client_flask', return_value=mock_client), \
          patch('cache_version.get_cache_version', return_value="v1"):
@@ -102,5 +129,5 @@ def test_get_individual_holdings_performance_flask_vectorized_logic():
         # Yes, pd.json_normalize will produce NaNs for missing keys.
 
         assert df_b['sector'].iloc[0] == 'Finance'
-        # Currency defaults to 'USD' during flattening if missing, so it becomes USD (first valid value)
-        assert df_b['currency'].iloc[0] == 'USD'
+        # Currency: securities currency (CAD) takes precedence over portfolio currency (USD)
+        assert df_b['currency'].iloc[0] == 'CAD'
