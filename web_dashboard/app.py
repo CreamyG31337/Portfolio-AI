@@ -4243,13 +4243,15 @@ def api_analyze_congress_trades():
         )
         from ollama_client import OllamaClient
         from settings import get_summarizing_model
+        from user_preferences import get_user_ai_model
         
         # Check Ollama
         ollama = OllamaClient()
         if not ollama or not ollama.check_health():
             return jsonify({"error": "Ollama is not accessible. Please ensure Ollama is running."}), 503
         
-        model_name = get_summarizing_model()
+        # Get model from request, fallback to user preference, then system default
+        model_name = data.get('model') or get_user_ai_model() or get_summarizing_model()
         
         # Fetch trades from Supabase
         result = supabase_client.supabase.table("congress_trades_enriched")\
@@ -4331,6 +4333,119 @@ def api_analyze_congress_trades():
         
     except Exception as e:
         logger.error(f"Error in analyze congress trades API: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+@app.route('/api/congress_trades/preview_context', methods=['POST'])
+@require_auth
+def api_congress_trades_preview_context():
+    """Preview the AI context for selected trades"""
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        from auth import is_admin
+        
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only users cannot preview context"}), 403
+        
+        data = request.get_json()
+        if not data or 'trade_ids' not in data:
+            return jsonify({"error": "Missing trade_ids in request"}), 400
+        
+        trade_ids = data.get('trade_ids', [])
+        if not isinstance(trade_ids, list) or len(trade_ids) == 0:
+            return jsonify({"error": "trade_ids must be a non-empty list"}), 400
+        
+        # Limit batch size
+        if len(trade_ids) > 50:
+            return jsonify({"error": "Maximum 50 trades can be previewed at once"}), 400
+        
+        # Get clients
+        if is_admin():
+            from supabase_client import SupabaseClient
+            supabase_client = SupabaseClient(use_service_role=True)
+        else:
+            from flask_data_utils import get_supabase_client_flask
+            supabase_client = get_supabase_client_flask()
+        
+        if supabase_client is None:
+            return jsonify({"error": "Supabase client unavailable"}), 500
+        
+        # Import analysis functions
+        import sys
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent
+        sys.path.insert(0, str(project_root))
+        sys.path.insert(0, str(project_root / 'web_dashboard'))
+        
+        from scripts.analyze_congress_trades_batch import get_trade_context
+        
+        # Fetch trades from Supabase
+        result = supabase_client.supabase.table("congress_trades_enriched")\
+            .select("*")\
+            .in_("id", trade_ids)\
+            .execute()
+        
+        if not result.data:
+            return jsonify({"error": "No trades found with the provided IDs"}), 404
+        
+        trades = result.data
+        context_parts = []
+        
+        # Format context for each trade using PROMPT_TEMPLATE structure
+        for trade in trades:
+            context = get_trade_context(supabase_client, trade)
+            
+            # Format similar to PROMPT_TEMPLATE
+            description_line = ""
+            if context.get('description'):
+                description_line = f"- Description: {context.get('description')}\n"
+            
+            context_str = f"""Analyze this trade for potential Insider Trading/Conflict of Interest.
+Data:
+- Politician: {context.get('politician', 'Unknown')} ({context.get('party', 'Unknown')} - {context.get('state', 'Unknown')})
+- Chamber: {context.get('chamber', 'Unknown')}
+- Asset Owner: {context.get('owner', 'Self')}
+- Committee Assignments: {context.get('committees', 'Unknown')}
+- Ticker: {context.get('ticker', 'Unknown')}
+- Company: {context.get('company_name', 'Unknown')}
+- Sector: {context.get('sector', 'Unknown')}
+{description_line}- Date: {context.get('date', 'Unknown')}
+- Type: {context.get('type', 'Unknown')}
+- Amount: {context.get('amount', 'Unknown')}
+
+Task:
+Calculate a 'conflict_score' from 0.0 to 1.0 based on these rules:
+1. HIGH SCORE (0.8-1.0): Direct overlap (e.g., Armed Services member buying Defense stock, spouse trades, timing near votes).
+2. MEDIUM SCORE (0.4-0.7): Sector overlap or related industries.
+3. LOW SCORE (0.0-0.3): Broad index funds or clearly unrelated industries.
+
+Consider:
+- Committee jurisdiction over company's sector
+- Asset owner (Self vs Spouse/Dependent) - spouse trades can still be concerning
+- Political party relevance to industry
+- State interests (e.g., CA rep + tech stocks, TX rep + energy)
+
+Return JSON with TWO fields:
+{{
+  "conflict_score": 0.95,
+  "confidence_score": 0.88,
+  "reasoning": "Rep. Smith (R-TX) sits on House Armed Services and bought $50k RTX. High overlap between committee jurisdiction and defense contractor."
+}}
+
+The confidence_score (0.0-1.0) indicates how certain you are about the conflict_score. Use high confidence (>0.8) for clear-cut cases, medium (0.5-0.8) for typical cases, and low (<0.5) for ambiguous situations.
+"""
+            context_parts.append(context_str)
+        
+        # Combine all contexts
+        full_context = "\n\n---\n\n".join(context_parts)
+        
+        return jsonify({
+            "success": True,
+            "context": full_context,
+            "char_count": len(full_context)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in congress trades preview context API: {e}", exc_info=True)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 # ============================================================================

@@ -6,7 +6,8 @@
       "Bash(env)",
       "Bash(where:*)",
       "Bash(curl:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

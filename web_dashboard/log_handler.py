@@ -11,6 +11,48 @@ from collections import deque
 import threading
 from datetime import datetime
 from typing import List, Dict
+import os
+
+
+class DebugRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler with debug logging to track rotation events.
+    
+    Logs to stderr (and a debug file) whenever rotation is triggered,
+    including the file size and reason for rotation.
+    """
+    
+    def doRollover(self):
+        """Override to log rotation events before they happen."""
+        import sys
+        try:
+            file_size = os.path.getsize(self.baseFilename) if os.path.exists(self.baseFilename) else 0
+            msg = f"[ROTATION DEBUG] doRollover called! file={self.baseFilename}, size={file_size}, maxBytes={self.maxBytes}"
+            print(msg, file=sys.stderr)
+            # Also write to a debug file
+            debug_log = os.path.join(os.path.dirname(self.baseFilename), 'rotation_debug.log')
+            with open(debug_log, 'a') as f:
+                f.write(f"{datetime.now().isoformat()} - {msg}\n")
+        except Exception as e:
+            print(f"[ROTATION DEBUG] Error logging rotation: {e}", file=sys.stderr)
+        
+        # Call the parent's doRollover
+        super().doRollover()
+    
+    def shouldRollover(self, record):
+        """Override to log when rollover check happens."""
+        result = super().shouldRollover(record)
+        if result:
+            import sys
+            try:
+                file_size = os.path.getsize(self.baseFilename) if os.path.exists(self.baseFilename) else 0
+                msg = f"[ROTATION DEBUG] shouldRollover=True! file={self.baseFilename}, size={file_size}, maxBytes={self.maxBytes}, record_len={len(self.format(record))}"
+                print(msg, file=sys.stderr)
+                debug_log = os.path.join(os.path.dirname(self.baseFilename), 'rotation_debug.log')
+                with open(debug_log, 'a') as f:
+                    f.write(f"{datetime.now().isoformat()} - {msg}\n")
+            except Exception as e:
+                print(f"[ROTATION DEBUG] Error logging shouldRollover: {e}", file=sys.stderr)
+        return result
 
 class WerkzeugAccessLogFilter(logging.Filter):
     """Filter out werkzeug HTTP access logs while preserving startup/debug messages.
@@ -216,9 +258,9 @@ def setup_logging(level=logging.INFO):
     if _setup_logging_called and _file_handler is not None:
         file_handler = _file_handler
     else:
-        # Create rotating file handler
+        # Create rotating file handler with debug logging
         # Max 10MB per file, keep 5 backups = 50MB total log storage
-        file_handler = RotatingFileHandler(
+        file_handler = DebugRotatingFileHandler(
             log_file,
             maxBytes=10 * 1024 * 1024,  # 10MB
             backupCount=5,  # Keep 5 rotated files
@@ -226,6 +268,9 @@ def setup_logging(level=logging.INFO):
         )
         _file_handler = file_handler
         _setup_logging_called = True
+        # Log handler creation for debugging
+        import sys
+        print(f"[ROTATION DEBUG] Created DebugRotatingFileHandler for {log_file}", file=sys.stderr)
     file_handler.setFormatter(PacificTimeFormatter(
         '%(asctime)s | %(levelname)-8s | %(name)-30s | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'

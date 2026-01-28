@@ -143,6 +143,12 @@ declare global {
 let gridApi: AgGridApi | null = null;
 let gridColumnApi: AgGridColumnApi | null = null;
 
+// Model selection
+let selectedModel: string | null = null;
+
+// Context preview
+let contextPreviewContent: string | null = null;
+
 // Global cache of tickers that don't have logos (to avoid repeated 404s)
 const failedLogoCache = new Set<string>();
 
@@ -562,6 +568,31 @@ function onSelectionChanged(): void {
         }
     }
 
+    // Load context preview for selected trades
+    if (selectedRows && selectedRows.length > 0) {
+        const tradeIds: number[] = [];
+        for (const row of selectedRows) {
+            if (row._trade_id && typeof row._trade_id === 'number') {
+                tradeIds.push(row._trade_id);
+            }
+        }
+        if (tradeIds.length > 0) {
+            loadContextPreview(tradeIds);
+        } else {
+            // Hide context preview if no valid trade IDs
+            const previewPanel = document.getElementById('congress-context-preview-panel');
+            if (previewPanel) {
+                previewPanel.classList.add('hidden');
+            }
+        }
+    } else {
+        // Hide context preview if no selection
+        const previewPanel = document.getElementById('congress-context-preview-panel');
+        if (previewPanel) {
+            previewPanel.classList.add('hidden');
+        }
+    }
+
     if (selectedRows && selectedRows.length > 0) {
         // Show reasoning for first selected row (single row view)
         if (selectedRows.length === 1) {
@@ -614,6 +645,165 @@ function onSelectionChanged(): void {
     }
 }
 
+// Model selection functions
+function initModelSelect(): void {
+    const select = document.getElementById('congress-model-select') as HTMLSelectElement | null;
+    if (!select) return;
+
+    select.addEventListener('change', () => {
+        selectedModel = select.value;
+        saveModelPreference(selectedModel);
+    });
+
+    loadModelOptions();
+}
+
+function saveModelPreference(model: string): void {
+    if (!model) return;
+
+    // Save to localStorage for this page
+    localStorage.setItem('congress_trades_model', model);
+
+    // Also save to user preferences
+    fetch('/api/settings/ai_model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: model })
+    }).catch((err: Error) => {
+        console.error('Error saving model preference:', err);
+    });
+}
+
+async function loadModelOptions(): Promise<void> {
+    const select = document.getElementById('congress-model-select') as HTMLSelectElement | null;
+    if (!select) return;
+
+    try {
+        const response = await fetch('/api/v2/ai/models', {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to load AI models');
+        }
+
+        const data = await response.json();
+        const models = data.models || [];
+
+        select.innerHTML = '';
+        if (!Array.isArray(models) || models.length === 0) {
+            select.innerHTML = '<option value="">No models available</option>';
+            return;
+        }
+
+        models.forEach((model: { id: string; name: string; type?: string }) => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name;
+            select.appendChild(option);
+        });
+
+        // Load saved preference or use default
+        const savedModel = localStorage.getItem('congress_trades_model') || data.default_model;
+        if (savedModel && models.some((m: { id: string }) => m.id === savedModel)) {
+            select.value = savedModel;
+            selectedModel = savedModel;
+            localStorage.setItem('congress_trades_model', savedModel);
+        } else if (select.options.length > 0) {
+            select.value = select.options[0].value;
+            selectedModel = select.value;
+            localStorage.setItem('congress_trades_model', selectedModel);
+        }
+    } catch (error) {
+        console.error('Error loading AI models:', error);
+        select.innerHTML = '<option value="">Error loading models</option>';
+    }
+}
+
+// Context preview functions
+async function loadContextPreview(tradeIds: number[]): Promise<void> {
+    if (!tradeIds || tradeIds.length === 0) {
+        const previewPanel = document.getElementById('congress-context-preview-panel');
+        if (previewPanel) {
+            previewPanel.classList.add('hidden');
+        }
+        return;
+    }
+
+    const previewPanel = document.getElementById('congress-context-preview-panel');
+    const previewContent = document.getElementById('congress-context-preview-content');
+    const previewBadge = document.getElementById('congress-context-char-badge');
+
+    if (!previewPanel || !previewContent) return;
+
+    try {
+        // Show loading state
+        previewContent.textContent = 'Loading context preview...';
+        previewPanel.classList.remove('hidden');
+        
+        // Update toggle button icon
+        const toggleBtn = previewPanel.querySelector('button[onclick="toggleContextPreview()"]') as HTMLButtonElement | null;
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+        }
+
+        const response = await fetch('/api/congress_trades/preview_context', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ trade_ids: tradeIds })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to load context preview');
+        }
+
+        const result = await response.json();
+
+        if (result.success && result.context) {
+            contextPreviewContent = result.context;
+            previewContent.textContent = result.context;
+            
+            // Update character count badge
+            if (previewBadge) {
+                previewBadge.textContent = `${result.char_count || 0} chars`;
+            }
+        } else {
+            previewContent.textContent = 'No context available';
+            if (previewBadge) {
+                previewBadge.textContent = '0 chars';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading context preview:', error);
+        previewContent.textContent = 'Error loading context preview';
+        if (previewBadge) {
+            previewBadge.textContent = 'Error';
+        }
+    }
+}
+
+function toggleContextPreview(): void {
+    const previewPanel = document.getElementById('congress-context-preview-panel');
+    const toggleBtn = previewPanel?.querySelector('button[onclick="toggleContextPreview()"]') as HTMLButtonElement | null;
+    if (!previewPanel) return;
+
+    const isHidden = previewPanel.classList.contains('hidden');
+    if (isHidden) {
+        previewPanel.classList.remove('hidden');
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+        }
+    } else {
+        previewPanel.classList.add('hidden');
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+        }
+    }
+}
+
 // Analyze selected trades
 async function analyzeSelectedTrades(): Promise<void> {
     if (!gridApi) return;
@@ -650,7 +840,10 @@ async function analyzeSelectedTrades(): Promise<void> {
                 'Content-Type': 'application/json',
             },
             credentials: 'include',
-            body: JSON.stringify({ trade_ids: tradeIds })
+            body: JSON.stringify({ 
+                trade_ids: tradeIds,
+                model: selectedModel || null
+            })
         });
 
         const result = await response.json();
@@ -810,8 +1003,8 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Amount',
             headerName: '💰 Amount',
-            minWidth: 110,
-            flex: 0.6,
+            minWidth: 150, // Increased to fit 5 diamonds (💎💎💎💎💎)
+            // Removed flex to allow auto-sizing to expand beyond minWidth
             sortable: true,
             filter: true,
             cellRenderer: AmountCellRenderer,
@@ -1169,6 +1362,7 @@ async function reanalyzeSelectedTrades(): Promise<void> {
 (window as any).initializeCongressTradesGrid = initializeCongressTradesGrid;
 (window as any).analyzeSelectedTrades = analyzeSelectedTrades;
 (window as any).reanalyzeSelectedTrades = reanalyzeSelectedTrades;
+(window as any).toggleContextPreview = toggleContextPreview;
 (window as any).refreshData = function () {
     const currentUrl = new URL(window.location.href);
     const currentRefreshKey = parseInt(currentUrl.searchParams.get('refresh_key') || '0');
@@ -1193,6 +1387,9 @@ async function reanalyzeSelectedTrades(): Promise<void> {
 
 // Auto-initialize if config is present
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize model selection
+    initModelSelect();
+
     // Handle date filter toggle
     const useDateFilter = document.getElementById('use-date-filter') as HTMLInputElement | null;
     const dateRangeInputs = document.getElementById('date-range-inputs');

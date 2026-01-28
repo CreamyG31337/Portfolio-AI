@@ -327,6 +327,13 @@ function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
             cellRenderer: TickerCellRenderer
         },
         {
+            field: "company_name",
+            headerName: "Company",
+            minWidth: 180,
+            flex: 1,
+            valueFormatter: (params) => (params.value ? params.value.toString() : "-")
+        },
+        {
             field: "insider_name",
             headerName: "Insider Name",
             minWidth: 200,

@@ -248,10 +248,20 @@
                 <span>Amount Legend</span>
             </button>
         </div>
-        <button id="analyze-selected-btn" onclick="analyzeSelectedTrades()"
-            class="hidden text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent/50 font-medium rounded-lg text-sm px-5 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed">
-            <i class="fas fa-brain mr-2"></i>Analyze Selected (<span id="selected-count">0</span>)
-        </button>
+        <div class="flex items-center gap-3">
+            <!-- Model Selection -->
+            <div class="flex items-center gap-2">
+                <label for="congress-model-select" class="text-xs font-medium text-text-secondary">Model</label>
+                <select id="congress-model-select"
+                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent px-3 py-2 min-w-[180px]">
+                    <option value="">Loading models...</option>
+                </select>
+            </div>
+            <button id="analyze-selected-btn" onclick="analyzeSelectedTrades()"
+                class="hidden text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:ring-accent/50 font-medium rounded-lg text-sm px-5 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed">
+                <i class="fas fa-brain mr-2"></i>Analyze Selected (<span id="selected-count">0</span>)
+            </button>
+        </div>
     </div>
 
     <!-- Amount Legend (collapsible) -->
@@ -294,6 +304,21 @@
     </div>
 
     <div id="congress-trades-grid" class="ag-theme-alpine h-[600px] w-full"></div>
+</div>
+
+<!-- Context Preview Panel (hidden by default) -->
+<div id="congress-context-preview-panel" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+            <h3 class="text-lg font-semibold text-text-primary">🧩 Context Preview</h3>
+            <span id="congress-context-char-badge" class="text-xs text-text-secondary bg-dashboard-surface-alt px-2 py-1 rounded">0 chars</span>
+        </div>
+        <button onclick="toggleContextPreview()"
+            class="text-sm text-text-secondary hover:text-text-primary">
+            <i class="fas fa-chevron-down"></i>
+        </button>
+    </div>
+    <pre id="congress-context-preview-content" class="text-xs font-mono text-text-primary whitespace-pre-wrap bg-dashboard-surface-alt p-4 rounded border border-border max-h-96 overflow-auto"></pre>
 </div>
 
 <!-- AI Reasoning Display (hidden by default) -->

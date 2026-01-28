@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 # Module-level caches for performance
 _politician_cache = {}  # {politician_name: {'id': int, 'committees_str': str}}
-_sector_cache = {}      # {ticker: {'company_name': str, 'sector': str}}
+_sector_cache = {}      # {ticker: {'company_name': str, 'sector': str, 'description': str}}
 
 # Known ETF tickers (major ones that appear frequently in congressional trades)
 KNOWN_ETF_TICKERS = {
@@ -194,7 +194,7 @@ Data:
 - Ticker: {ticker}
 - Company: {company_name}
 - Sector: {sector}
-- Date: {date}
+{description_section}- Date: {date}
 - Type: {type}
 - Amount: {amount}
 
@@ -284,7 +284,7 @@ def prefetch_securities_batch(client: SupabaseClient, tickers: List[str]) -> Non
         chunk = uncached_tickers[i:i + chunk_size]
         try:
             response = client.supabase.table("securities")\
-                .select("ticker, company_name, sector")\
+                .select("ticker, company_name, sector, description")\
                 .in_("ticker", chunk)\
                 .execute()
             
@@ -293,7 +293,8 @@ def prefetch_securities_batch(client: SupabaseClient, tickers: List[str]) -> Non
                 if ticker:
                     _sector_cache[ticker] = {
                         'company_name': sec.get('company_name', 'Unknown'),
-                        'sector': sec.get('sector', 'Unknown')
+                        'sector': sec.get('sector', 'Unknown'),
+                        'description': sec.get('description') or None
                     }
         except Exception as e:
             logger.warning(f"Failed to prefetch securities chunk {i}: {e}")
@@ -399,6 +400,7 @@ def get_trade_context(client: SupabaseClient, trade: Dict[str, Any], use_cache: 
         'ticker': ticker,
         'company_name': 'Unknown',
         'sector': 'Unknown',
+        'description': None,
         'date': trade.get('transaction_date'),
         'type': trade.get('type'),
         'amount': trade.get('amount')
@@ -411,10 +413,11 @@ def get_trade_context(client: SupabaseClient, trade: Dict[str, Any], use_cache: 
             cached = _sector_cache[ticker]
             context['company_name'] = cached.get('company_name', 'Unknown')
             context['sector'] = cached.get('sector', 'Unknown')
+            context['description'] = cached.get('description')
         else:
             # Fetch from database
             response = client.supabase.table("securities")\
-                .select("company_name, sector")\
+                .select("company_name, sector, description")\
                 .eq("ticker", ticker)\
                 .execute()
                 
@@ -422,15 +425,18 @@ def get_trade_context(client: SupabaseClient, trade: Dict[str, Any], use_cache: 
                 sec = response.data[0]
                 company_name = sec.get('company_name', 'Unknown')
                 sector = sec.get('sector', 'Unknown')
+                description = sec.get('description')
                 
                 context['company_name'] = company_name
                 context['sector'] = sector
+                context['description'] = description
                 
                 # Cache for future use
                 if use_cache:
                     _sector_cache[ticker] = {
                         'company_name': company_name,
-                        'sector': sector
+                        'sector': sector,
+                        'description': description
                     }
                     
     except Exception as e:
@@ -525,7 +531,16 @@ def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, ver
     Returns:
         Dictionary with conflict_score, confidence_score, and reasoning, or None on failure
     """
-    prompt = PROMPT_TEMPLATE.format(**context)
+    # Format description section if available
+    description_section = ""
+    if context.get('description'):
+        description_section = f"- Description: {context['description']}\n"
+    
+    # Create context copy with formatted description
+    formatted_context = context.copy()
+    formatted_context['description_section'] = description_section
+    
+    prompt = PROMPT_TEMPLATE.format(**formatted_context)
     
     logger.info(f"Analyzing {context['politician']} - {context['ticker']}...")
     
