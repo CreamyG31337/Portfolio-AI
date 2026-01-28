@@ -116,6 +116,7 @@ let consecutiveErrors = 0;
 let maxBackoffDelay = 10000; // Max 10 seconds between retries
 let currentBackoffDelay = 5000; // Start with 5 seconds
 let isRecovering = false;
+let errorToastId: string | null = null; // Track persistent error toast
 
 // DOM Elements - Note: These may be null if called before DOM is ready
 const elements: JobsDOMElements = {
@@ -152,7 +153,7 @@ function initializeDOMElements(): void {
     elements.statusContainer = document.getElementById('scheduler-status-container');
     elements.errorContainer = document.getElementById('scheduler-error');
     elements.runningContainer = document.getElementById('scheduler-running');
-    elements.infoText = document.getElementById('scheduler-info');
+    elements.infoText = document.getElementById('info-text');
     elements.statusText = document.getElementById('status-text');
     elements.statusIndicator = document.getElementById('status-indicator');
     elements.startBtn = document.getElementById('start-scheduler-btn');
@@ -383,7 +384,33 @@ async function fetchStatus(): Promise<void> {
             console.warn('[Jobs] No jobs in response. Full response:', JSON.stringify(data, null, 2).substring(0, 1000));
         }
 
-        updateStatusUI(data.scheduler_running);
+        // Check for job errors before updating UI
+        const jobs = data.jobs || [];
+        const hasRunningJob = jobs.some((job: Job) => job.is_running === true);
+        const hasErrors = !hasRunningJob && jobs.some((job: Job) => {
+            // Check for last_error or recent ERROR logs
+            if (job.last_error) return true;
+            if (job.recent_logs && Array.isArray(job.recent_logs)) {
+                return job.recent_logs.some((log: JobLogEntry) => 
+                    log.level === 'ERROR' || log.level === 'error'
+                );
+            }
+            return false;
+        });
+
+        // Show persistent error toast if errors exist and no jobs running
+        if (hasErrors) {
+            showSchedulerToast(
+                'One or more jobs failed on their last run. Open Jobs Scheduler to review.',
+                'error',
+                true // persistent
+            );
+        } else {
+            // Dismiss error toast if errors are resolved
+            dismissErrorToast();
+        }
+
+        updateStatusUI(data.scheduler_running, jobs);
         renderJobs(data.jobs);
 
         // Success - reset error tracking
@@ -441,17 +468,49 @@ async function fetchStatus(): Promise<void> {
 }
 
 // Update Status UI
-function updateStatusUI(running: boolean): void {
-    console.log('[Jobs] updateStatusUI called:', { running, isSchedulerRunning });
+function updateStatusUI(running: boolean, jobsData: Job[] = []): void {
+    console.log('[Jobs] updateStatusUI called:', { running, isSchedulerRunning, jobsCount: jobsData.length });
     isSchedulerRunning = running;
+    
+    // Determine state: running job, errors, idle, or stopped
+    const hasRunningJob = jobsData.some((job: Job) => job.is_running === true);
+    const hasErrors = !hasRunningJob && jobsData.some((job: Job) => {
+        if (job.last_error) return true;
+        if (job.recent_logs && Array.isArray(job.recent_logs)) {
+            return job.recent_logs.some((log: JobLogEntry) => 
+                log.level === 'ERROR' || log.level === 'error'
+            );
+        }
+        return false;
+    });
+
     if (running) {
-        // Update status text and indicator
-        if (elements.statusText) {
-            elements.statusText.textContent = 'Running';
+        if (hasRunningJob) {
+            // Job is running - show pulsing indicator
+            if (elements.statusText) {
+                elements.statusText.textContent = 'Scheduler running – job in progress';
+            }
+            if (elements.statusIndicator) {
+                elements.statusIndicator.className = 'w-4 h-4 rounded-full bg-amber-500 animate-pulse';
+            }
+        } else if (hasErrors) {
+            // Errors exist but no jobs running
+            if (elements.statusText) {
+                elements.statusText.textContent = 'Last run had errors';
+            }
+            if (elements.statusIndicator) {
+                elements.statusIndicator.className = 'w-4 h-4 rounded-full bg-theme-error-text';
+            }
+        } else {
+            // Idle - scheduler running, no jobs running, no errors
+            if (elements.statusText) {
+                elements.statusText.textContent = 'Scheduler running – all jobs idle';
+            }
+            if (elements.statusIndicator) {
+                elements.statusIndicator.className = 'w-4 h-4 rounded-full bg-theme-success-text';
+            }
         }
-        if (elements.statusIndicator) {
-            elements.statusIndicator.className = 'w-3 h-3 rounded-full bg-theme-success-text';
-        }
+        
         // Hide/show containers
         if (elements.errorContainer) {
             elements.errorContainer.classList.add('hidden');
@@ -461,21 +520,21 @@ function updateStatusUI(running: boolean): void {
         }
         if (elements.infoText) {
             const recoveryMsg = isRecovering ? ' • Connection recovered!' : '';
-            elements.infoText.textContent = `Running normally • Last updated: ${new Date().toLocaleString()}${recoveryMsg}`;
-            elements.infoText.classList.remove('text-yellow-600');
+            elements.infoText.textContent = `Last updated: ${new Date().toLocaleString()}${recoveryMsg}`;
+            elements.infoText.classList.remove('text-theme-warning-text');
         }
         // Hide start button when running
         if (elements.startBtn) {
             elements.startBtn.classList.add('hidden');
         }
-        console.log('[Jobs] Status UI updated: scheduler is running');
+        console.log('[Jobs] Status UI updated: scheduler is running', { hasRunningJob, hasErrors });
     } else {
         // Update status text and indicator
         if (elements.statusText) {
-            elements.statusText.textContent = 'Stopped';
+            elements.statusText.textContent = 'Scheduler stopped';
         }
         if (elements.statusIndicator) {
-            elements.statusIndicator.className = 'w-3 h-3 rounded-full bg-theme-error-text';
+            elements.statusIndicator.className = 'w-4 h-4 rounded-full bg-theme-error-text';
         }
         // Hide/show containers
         if (elements.runningContainer) {
@@ -745,7 +804,7 @@ function createJobCard(job: Job): string {
                 <div>
                     <div class="flex items-center space-x-3">
                         <h3 class="text-lg font-bold text-text-primary">${job.name || job.id}</h3>
-                        <span class="status-badge ${statusClass}">${getJobStatusLabel(job)}</span>
+                        ${getJobStatusBadgeHtml(job)}
                     </div>
                     <p class="text-xs text-text-secondary mt-1 font-mono">${job.id}</p>
                     
@@ -792,6 +851,105 @@ function createJobCard(job: Job): string {
     `;
 }
 
+// Persistent Toast Notification System for Scheduler Errors
+function showSchedulerToast(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'error', persistent: boolean = false): void {
+    let container = document.getElementById('toast-container-scheduler');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container-scheduler';
+        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
+        document.body.appendChild(container);
+    }
+
+    // For persistent toasts, check if one already exists
+    if (persistent && errorToastId) {
+        const existingToast = document.getElementById(errorToastId);
+        if (existingToast) {
+            // Update existing toast message if needed
+            const messageEl = existingToast.querySelector('.toast-message');
+            if (messageEl) {
+                messageEl.textContent = message;
+            }
+            return;
+        }
+        // Reset ID if toast was removed
+        errorToastId = null;
+    }
+
+    const toast = document.createElement('div');
+    const toastId = persistent ? `scheduler-error-toast-${Date.now()}` : `scheduler-toast-${Date.now()}`;
+    toast.id = toastId;
+    
+    const borderColor = type === 'error' ? 'border-theme-error-text' :
+        type === 'warning' ? 'border-theme-warning-text' :
+            type === 'info' ? 'border-theme-info-text' :
+                'border-theme-success-text';
+
+    const icon = type === 'error' ? '<i class="fas fa-exclamation-circle"></i>' :
+        type === 'warning' ? '<i class="fas fa-triangle-exclamation"></i>' :
+            type === 'info' ? '<i class="fas fa-info-circle"></i>' :
+                '<i class="fas fa-check-circle"></i>';
+
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border-l-4 ${borderColor} transition-opacity duration-300 opacity-100 border border-border`;
+    toast.innerHTML = `
+        <div class="ms-3 text-sm font-normal flex items-center gap-2 toast-message">
+            <span class="text-lg">${icon}</span>
+            <span>${escapeHtmlForJobs(message)}</span>
+        </div>
+        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-transparent text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-accent p-1.5 hover:bg-dashboard-surface-alt inline-flex items-center justify-center h-8 w-8 toast-close-btn" aria-label="Close">
+            <span class="sr-only">Close</span>
+            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+            </svg>
+        </button>
+    `;
+
+    const closeBtn = toast.querySelector('.toast-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                toast.remove();
+                if (errorToastId === toastId) {
+                    errorToastId = null;
+                }
+            }, 300);
+        });
+    }
+
+    container.appendChild(toast);
+
+    // For persistent toasts, track the ID and don't auto-dismiss
+    if (persistent) {
+        errorToastId = toastId;
+    } else {
+        // Auto-dismiss non-persistent toasts after 4 seconds
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.style.opacity = '0';
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }
+        }, 4000);
+    }
+}
+
+function dismissErrorToast(): void {
+    if (errorToastId) {
+        const toast = document.getElementById(errorToastId);
+        if (toast) {
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                toast.remove();
+                errorToastId = null;
+            }, 300);
+        } else {
+            errorToastId = null;
+        }
+    }
+}
+
 // Helper Functions
 function getStatusClass(job: Job): string {
     if (job.is_paused || !job.next_run) {
@@ -817,6 +975,34 @@ function getJobStatusLabel(job: Job): string {
         return 'Failed';
     }
     return 'Scheduled';
+}
+
+function getJobStatusBadgeHtml(job: Job): string {
+    const statusClass = getStatusClass(job);
+    const label = getJobStatusLabel(job);
+    
+    let icon = '';
+    let badgeClasses = 'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full transition-all duration-200';
+    
+    if (job.is_running) {
+        // Running - pulsing amber badge with spinner icon
+        icon = '<i class="fas fa-spinner fa-spin text-xs"></i>';
+        badgeClasses += ' bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300 animate-pulse';
+    } else if (job.last_error) {
+        // Failed - red badge with error icon
+        icon = '<i class="fas fa-exclamation-circle text-xs"></i>';
+        badgeClasses += ' bg-theme-error-bg text-theme-error-text';
+    } else if (job.is_paused || !job.next_run) {
+        // Paused - yellow/gray badge with pause icon
+        icon = '<i class="fas fa-pause text-xs"></i>';
+        badgeClasses += ' bg-theme-warning-bg text-theme-warning-text';
+    } else {
+        // Scheduled/Idle - green badge with check icon
+        icon = '<i class="fas fa-check-circle text-xs"></i>';
+        badgeClasses += ' bg-theme-success-bg text-theme-success-text';
+    }
+    
+    return `<span class="status-badge ${statusClass} ${badgeClasses}">${icon}${label}</span>`;
 }
 
 function getStatusBorderColor(job: Job): string {
@@ -1047,8 +1233,8 @@ function renderTimelineItem(item: { timeLabel: string; job: Job; detail?: string
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
                         <span class="text-sm font-medium text-text-primary truncate">${jobName}</span>
-                        ${item.isRunning ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-theme-warning-bg text-theme-warning-text">Running</span>' : ''}
-                        ${item.isPast && !item.isRunning ? '<span class="text-[10px] text-theme-success-text"><i class="fas fa-check"></i></span>' : ''}
+                        ${item.isRunning ? '<span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300 animate-pulse"><i class="fas fa-spinner fa-spin text-xs"></i>Running</span>' : ''}
+                        ${item.isPast && !item.isRunning ? '<span class="text-[10px] text-theme-success-text"><i class="fas fa-check-circle"></i></span>' : ''}
                     </div>
                     ${item.detail ? `<div class="text-xs text-text-secondary mt-0.5">${item.detail}</div>` : ''}
                 </div>

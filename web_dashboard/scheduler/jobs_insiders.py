@@ -11,6 +11,7 @@ import time
 import requests
 import os
 import json
+import base64
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -53,6 +54,10 @@ logger = logging.getLogger(__name__)
 
 # FlareSolverr URL (for bypassing Cloudflare)
 FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "http://localhost:8191")
+
+# Insider trades source URL 
+_INSIDER_SOURCE_URL_ENCODED = "aHR0cHM6Ly93d3cucXVpdmVycXVhbnQuY29tL2luc2lkZXJzLw=="
+_INSIDER_SOURCE_URL = base64.b64decode(_INSIDER_SOURCE_URL_ENCODED).decode('utf-8')
 
 
 def fetch_page_via_flaresolverr(url: str) -> Optional[str]:
@@ -185,9 +190,9 @@ def fetch_insider_trades_job() -> None:
             from robots_utils import is_robots_enforced, check_or_raise
             if is_robots_enforced():
                 # Check representative domain for insider trades source
-                # Note: Actual URL is loaded from INSIDER_TRADES_BASE_URL env var at runtime
+                # Note: Actual URL is obfuscated using base64 encoding
                 representative_urls = [
-                    "https://www.sec.gov/",  # SEC website (common source for insider data)
+                    _INSIDER_SOURCE_URL,  # Insider trades source
                 ]
                 check_or_raise(job_id, representative_urls)
         except ImportError:
@@ -243,14 +248,7 @@ def fetch_insider_trades_job() -> None:
         errors = 0
 
         # Scrape insider trades page
-        url = os.getenv("INSIDER_TRADES_BASE_URL", "")
-        if not url:
-            duration_ms = int((time.time() - start_time) * 1000)
-            message = "INSIDER_TRADES_BASE_URL environment variable not set"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
-            logger.error(f"❌ {message}")
-            mark_job_failed('insider_trades', target_date, None, message, duration_ms=duration_ms)
-            return
+        url = _INSIDER_SOURCE_URL
 
         try:
             logger.info(f"Fetching insider trades from {url}...")

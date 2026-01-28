@@ -276,10 +276,38 @@ async function updateSchedulerBadge(): Promise<void> {
         const badge = schedulerLink.querySelector('.sidebar-badge');
         if (!badge) return;
 
-        if (data.scheduler_running) {
+        // Priority-based badge states
+        const jobs = data.jobs || [];
+        
+        // Priority 1: Check if any job is running
+        const hasRunningJob = jobs.some((job: any) => job.is_running === true);
+        
+        // Priority 2: Check if no jobs running but errors exist
+        const hasErrors = !hasRunningJob && jobs.some((job: any) => {
+            // Check for last_error or recent ERROR logs
+            if (job.last_error) return true;
+            if (job.recent_logs && Array.isArray(job.recent_logs)) {
+                return job.recent_logs.some((log: any) => 
+                    log.level === 'ERROR' || log.level === 'error'
+                );
+            }
+            return false;
+        });
+
+        if (hasRunningJob) {
+            // Priority 1: Job is running - show pulsing amber badge
+            badge.textContent = 'Running';
+            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-amber-800 bg-amber-100 rounded-full dark:bg-amber-900 dark:text-amber-300 animate-pulse sidebar-badge';
+        } else if (hasErrors) {
+            // Priority 2: Errors exist but no jobs running - show solid red badge
+            badge.textContent = 'Errors';
+            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-red-800 bg-red-100 rounded-full dark:bg-red-900 dark:text-red-300 sidebar-badge';
+        } else if (data.scheduler_running) {
+            // Priority 3: Scheduler running, no jobs running, no errors - show solid green badge
             badge.textContent = 'Running';
             badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-green-800 bg-green-100 rounded-full dark:bg-green-900 dark:text-green-300 sidebar-badge';
         } else {
+            // Priority 4: Scheduler stopped - show solid red badge
             badge.textContent = 'Stopped';
             badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-red-800 bg-red-100 rounded-full dark:bg-red-900 dark:text-red-300 sidebar-badge';
         }
