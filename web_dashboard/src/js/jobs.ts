@@ -1234,6 +1234,7 @@ async function handleJobAction(e: Event): Promise<void> {
         const response = await fetch(`/api/admin/scheduler/jobs/${jobId}/${action}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
             credentials: 'include'
         });
 
