@@ -49,6 +49,9 @@ def symbol_article_scraper_job() -> None:
     5. Extracts content using existing extract_article_content()
     6. Detects and handles paywalled articles
     7. Saves articles to database with article_type="symbol_article"
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing symbol pages and article URLs.
     """
     job_id = 'symbol_article_scraper'
     start_time = time.time()
@@ -189,6 +192,17 @@ def symbol_article_scraper_job() -> None:
                 for article_url in article_urls:
                     try:
                         articles_processed += 1
+                        
+                        # Check robots.txt compliance (if enabled)
+                        try:
+                            from robots_utils import check_url_allowed
+                            if not check_url_allowed(article_url):
+                                logger.debug(f"  Skipping URL disallowed by robots.txt: {article_url[:60]}...")
+                                articles_skipped += 1
+                                continue
+                        except ImportError:
+                            # robots_utils not available, skip check
+                            pass
                         
                         # Check blacklist
                         from research_utils import is_domain_blacklisted

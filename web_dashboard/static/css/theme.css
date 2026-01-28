@@ -514,9 +514,7 @@ select[multiple],
 select[size] {
     background-color: var(--bg-tertiary);
     color: var(--text-primary);
-}
-
-select[multiple] option,
+}select[multiple] option,
 select[size] option {
     background-color: var(--bg-tertiary);
     color: var(--text-primary);

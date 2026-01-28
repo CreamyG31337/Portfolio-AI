@@ -59,6 +59,9 @@ def fetch_congress_trades_job() -> None:
     6. Saves trades to Supabase congress_trades table
     
     Note: FMP API documentation lies - they claim limit can be 0-25, but only 10 actually works.
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing FMP API endpoints.
     """
     import os
     import requests
@@ -69,6 +72,19 @@ def fetch_congress_trades_job() -> None:
     start_time = time.time()
     
     try:
+        # Check robots.txt compliance (if enabled)
+        try:
+            from robots_utils import is_robots_enforced, check_or_raise
+            if is_robots_enforced():
+                # Check FMP API domain
+                representative_urls = [
+                    "https://financialmodelingprep.com/",  # FMP API domain
+                ]
+                check_or_raise(job_id, representative_urls)
+        except ImportError:
+            # robots_utils not available, skip check
+            pass
+        
         # Ensure path is set up correctly before importing
         import sys
         from pathlib import Path
@@ -958,11 +974,28 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
         max_pages: Maximum number of pages to process (None = unlimited)
         start_page: Page number to start from (default: 1)
         skip_recent: Skip trades on or after most recent trade date (default: False)
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing the congress trades scraping source.
     """
     job_id = 'scrape_congress_trades'
     start_time = time.time()
     
     try:
+        # Check robots.txt compliance (if enabled)
+        try:
+            from robots_utils import is_robots_enforced, check_or_raise
+            if is_robots_enforced():
+                # Check representative domain for congress trades scraping source
+                # Note: Actual URL is determined by the seed script at runtime
+                representative_urls = [
+                    "https://www.capitoltrades.com/",  # Common source for congress trades
+                ]
+                check_or_raise(job_id, representative_urls)
+        except ImportError:
+            # robots_utils not available, skip check
+            pass
+        
         # Ensure path is set up correctly before importing
         import sys
         from pathlib import Path

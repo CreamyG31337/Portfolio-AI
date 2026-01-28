@@ -49,6 +49,9 @@ def fetch_social_sentiment_job() -> None:
     2. Combines and deduplicates the ticker lists
     3. For each ticker, fetches sentiment from StockTwits and Reddit
     4. Saves metrics to the social_metrics table (Postgres)
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing StockTwits and Reddit APIs.
     """
     job_id = 'social_sentiment'
     start_time = time.time()

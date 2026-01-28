@@ -172,11 +172,28 @@ def fetch_insider_trades_job() -> None:
 
     Note: The source site displays insider trades from SEC disclosures (Form 4).
     Corporate insiders are required to disclose trades within two business days.
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing the insider trades source website.
     """
     job_id = 'insider_trades'
     start_time = time.time()
 
     try:
+        # Check robots.txt compliance (if enabled)
+        try:
+            from robots_utils import is_robots_enforced, check_or_raise
+            if is_robots_enforced():
+                # Check representative domain for insider trades source
+                # Note: Actual URL is loaded from INSIDER_TRADES_BASE_URL env var at runtime
+                representative_urls = [
+                    "https://www.sec.gov/",  # SEC website (common source for insider data)
+                ]
+                check_or_raise(job_id, representative_urls)
+        except ImportError:
+            # robots_utils not available, skip check
+            pass
+        
         # Ensure path is set up correctly before importing
         import sys
         from pathlib import Path

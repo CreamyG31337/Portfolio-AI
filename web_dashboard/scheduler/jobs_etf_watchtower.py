@@ -1152,9 +1152,31 @@ def log_significant_changes(repo: ResearchRepository, changes: List[Dict], etf_t
 
 
 def etf_watchtower_job():
-    """Main ETF Watchtower job - run daily after market close."""
+    """Main ETF Watchtower job - run daily after market close.
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before downloading ETF holdings from provider websites.
+    """
     job_id = 'etf_watchtower'
     start_time = __import__('time').time()
+    
+    # Check robots.txt compliance (if enabled)
+    try:
+        from robots_utils import is_robots_enforced, check_or_raise
+        if is_robots_enforced():
+            # Check ETF provider domains that this job accesses
+            representative_urls = [
+                "https://assets.ark-funds.com/",  # ARK Invest
+                "https://www.ishares.com/",  # iShares (BlackRock)
+                "https://www.ssga.com/",  # SPDR (State Street)
+                "https://assets.globalxetfs.com/",  # Global X
+                "https://www.vaneck.com/",  # VanEck
+                "https://www.direxion.com/",  # Direxion
+            ]
+            check_or_raise(job_id, representative_urls)
+    except ImportError:
+        # robots_utils not available, skip check
+        pass
     
     logger.info("🏛️ Starting ETF Watchtower Job...")
     

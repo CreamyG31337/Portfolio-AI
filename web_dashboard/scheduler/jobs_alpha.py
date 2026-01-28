@@ -25,6 +25,9 @@ def alpha_research_job() -> None:
     2. Gets specific 'opportunity' queries
     3. Constructs 'site:' dork queries to find high-quality analysis
     4. Saves articles with article_type="alpha_research"
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing article URLs from search results.
     """
     job_id = 'alpha_research'
     start_time = time.time()
@@ -135,6 +138,17 @@ def alpha_research_job() -> None:
                 
                 if not url or not title:
                     continue
+                
+                # Check robots.txt compliance (if enabled)
+                try:
+                    from robots_utils import check_url_allowed
+                    if not check_url_allowed(url):
+                        logger.debug(f"Skipping URL disallowed by robots.txt: {url[:60]}...")
+                        articles_skipped += 1
+                        continue
+                except ImportError:
+                    # robots_utils not available, skip check
+                    pass
                 
                 # Check blacklist
                 from research_utils import is_domain_blacklisted

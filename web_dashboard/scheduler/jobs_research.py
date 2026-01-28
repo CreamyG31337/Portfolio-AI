@@ -49,6 +49,9 @@ def market_research_job() -> None:
     2. Extracts article content using trafilatura
     3. Generates AI summaries using Ollama
     4. Saves articles to the database
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing article URLs from search results.
     """
     job_id = 'market_research'
     start_time = time.time()
@@ -174,6 +177,17 @@ def market_research_job() -> None:
                 if not url or not title:
                     logger.debug("Skipping result with missing URL or title")
                     continue
+                
+                # Check robots.txt compliance (if enabled)
+                try:
+                    from robots_utils import check_url_allowed
+                    if not check_url_allowed(url):
+                        logger.info(f"ℹ️ Skipping URL disallowed by robots.txt: {url[:60]}...")
+                        articles_skipped += 1
+                        continue
+                except ImportError:
+                    # robots_utils not available, skip check
+                    pass
                 
                 # Check if domain is blacklisted
                 from research_utils import is_domain_blacklisted
@@ -451,6 +465,9 @@ def rss_feed_ingest_job() -> None:
     2. Parses each feed for new articles
     3. Applies junk filtering before AI processing
     4. Saves high-quality articles to research database
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before fetching RSS feeds and article URLs.
     """
     job_id = 'rss_feed_ingest'
     start_time = time.time()
@@ -535,6 +552,17 @@ def rss_feed_ingest_job() -> None:
             try:
                 logger.info(f"📡 Fetching feed: {feed_name}")
                 
+                # Check robots.txt compliance for feed URL (if enabled)
+                try:
+                    from robots_utils import check_url_allowed
+                    if not check_url_allowed(feed_url):
+                        logger.info(f"  Skipping feed disallowed by robots.txt: {feed_url[:60]}...")
+                        feeds_failed += 1
+                        continue
+                except ImportError:
+                    # robots_utils not available, skip check
+                    pass
+                
                 # Fetch and parse RSS feed
                 feed_data = rss_client.fetch_feed(feed_url)
                 
@@ -558,6 +586,17 @@ def rss_feed_ingest_job() -> None:
                         
                         if not url or not title:
                             continue
+                        
+                        # Check robots.txt compliance (if enabled)
+                        try:
+                            from robots_utils import check_url_allowed
+                            if not check_url_allowed(url):
+                                logger.info(f"  Skipping URL disallowed by robots.txt: {url[:60]}...")
+                                total_articles_skipped += 1
+                                continue
+                        except ImportError:
+                            # robots_utils not available, skip check
+                            pass
                         
                         # Check if already exists
                         if research_repo.article_exists(url):
@@ -768,6 +807,9 @@ def ticker_research_job() -> None:
     1. Identifies all tickers held in production funds
     2. Searches for news specific to each ticker + company name
     3. Saves relevant articles to the database
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing article URLs from search results.
     """
     job_id = 'ticker_research'
     start_time = time.time()
@@ -945,6 +987,16 @@ def ticker_research_job() -> None:
                         if not url or not title:
                             continue
                         
+                        # Check robots.txt compliance (if enabled)
+                        try:
+                            from robots_utils import check_url_allowed
+                            if not check_url_allowed(url):
+                                logger.debug(f"Skipping URL disallowed by robots.txt: {url[:60]}...")
+                                continue
+                        except ImportError:
+                            # robots_utils not available, skip check
+                            pass
+                        
                         # Check blacklist
                         from research_utils import is_domain_blacklisted
                         is_blocked, domain = is_domain_blacklisted(url, blacklist)
@@ -1089,6 +1141,16 @@ def ticker_research_job() -> None:
                         
                         if not url or not title:
                             continue
+                        
+                        # Check robots.txt compliance (if enabled)
+                        try:
+                            from robots_utils import check_url_allowed
+                            if not check_url_allowed(url):
+                                logger.debug(f"Skipping URL disallowed by robots.txt: {url[:60]}...")
+                                continue
+                        except ImportError:
+                            # robots_utils not available, skip check
+                            pass
                         
                         # Check blacklist
                         from research_utils import is_domain_blacklisted
@@ -1276,6 +1338,9 @@ def archive_retry_job() -> None:
     2. Checks if they're now archived (waits at least 5 minutes after submission)
     3. If archived, extracts content and runs AI analysis
     4. Updates articles with archived content
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing archive service domains.
     """
     job_id = 'archive_retry'
     start_time = time.time()
@@ -1347,11 +1412,33 @@ def archive_retry_job() -> None:
                 
                 logger.info(f"Checking archive status for: {url[:60]}...")
                 
+                # Check robots.txt compliance for original URL (if enabled)
+                try:
+                    from robots_utils import check_url_allowed
+                    if not check_url_allowed(url):
+                        logger.info(f"Skipping URL disallowed by robots.txt: {url[:60]}...")
+                        articles_checked += 1
+                        continue
+                except ImportError:
+                    # robots_utils not available, skip check
+                    pass
+                
                 # Check if archived
                 archived_url = check_archived(url)
                 
                 if archived_url:
                     logger.info(f"✅ Found archived version: {archived_url}")
+                    
+                    # Check robots.txt for archived URL too (if enabled)
+                    try:
+                        from robots_utils import check_url_allowed
+                        if not check_url_allowed(archived_url):
+                            logger.info(f"Skipping archived URL disallowed by robots.txt: {archived_url[:60]}...")
+                            articles_checked += 1
+                            continue
+                    except ImportError:
+                        # robots_utils not available, skip check
+                        pass
                     
                     # Mark as checked with archived URL
                     research_repo.mark_archive_checked(article_id, archived_url, success=True)

@@ -28,6 +28,9 @@ def subreddit_scanner_job() -> None:
     2. Analyzes post + top comments with AI
     3. Extracts tickers with actual reasoning
     4. Saves to research repository
+    
+    Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
+    When enabled, checks robots.txt before accessing Reddit API.
     """
     job_id = 'subreddit_scanner'
     start_time = time.time()

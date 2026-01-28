@@ -49,7 +49,8 @@ INSERT INTO rss_feeds (name, url, category, enabled) VALUES
   ('CNBC Finance', 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664', 'finance', true),
   ('Investing.com Breaking', 'https://ca.investing.com/rss/news_25.rss', 'finance', true),
   ('Fortune Finance', 'https://fortune.com/feed/finance', 'finance', true),
-  ('Google News - AI Stocks', 'https://news.google.com/rss/search?q=artificial+intelligence+stocks+when:1d&hl=en-US&gl=US&ceid=US:en', 'tech', true)
+  ('Google News - AI Stocks', 'https://news.google.com/rss/search?q=artificial+intelligence+stocks+when:1d&hl=en-US&gl=US&ceid=US:en', 'tech', true),
+  ('Hunterbrook', 'https://hntrbrk.com/feed/', 'finance', true)
 ON CONFLICT (url) DO NOTHING;
 
 -- =====================================================
@@ -73,4 +74,5 @@ BEGIN
     RAISE NOTICE '  - Investing.com';
     RAISE NOTICE '  - Fortune Finance';
     RAISE NOTICE '  - Google News (AI Stocks)';
+    RAISE NOTICE '  - Hunterbrook (investigative finance)';
 END $$;
