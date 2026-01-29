@@ -13,6 +13,27 @@ from datetime import datetime
 from typing import List, Dict
 import os
 
+DEFAULT_LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
+def _parse_log_level(value: str, fallback: int) -> int:
+    """Parse log level string to logging constant with fallback."""
+    if not value:
+        return fallback
+    value = value.strip().upper()
+    return getattr(logging, value, fallback)
+
+def _get_module_log_level(module_name: str) -> int:
+    """Allow per-module overrides via env variables."""
+    overrides = {
+        "supabase_client": os.getenv("SUPABASE_CLIENT_LOG_LEVEL"),
+        "scheduler": os.getenv("SCHEDULER_LOG_LEVEL"),
+        "scheduler.scheduler_core": os.getenv("SCHEDULER_LOG_LEVEL"),
+        "scheduler.scheduler_core.heartbeat": os.getenv("SCHEDULER_HEARTBEAT_LOG_LEVEL"),
+    }
+    override_value = overrides.get(module_name)
+    base_level = _parse_log_level(DEFAULT_LOG_LEVEL, logging.INFO)
+    return _parse_log_level(override_value, base_level)
+
 
 class DebugRotatingFileHandler(RotatingFileHandler):
     """RotatingFileHandler with debug logging to track rotation events.
@@ -325,9 +346,8 @@ def setup_logging(level=logging.INFO):
         
         # Add our file handler
         logger.addHandler(file_handler)
-        # Set logger level to DEBUG to capture PERF (15) and all other levels
-        # Users can filter by level in the UI
-        logger.setLevel(logging.DEBUG)
+        # Set logger level per module (defaults to LOG_LEVEL env or INFO)
+        logger.setLevel(_get_module_log_level(module_name))
         
         # Disable propagation to prevent Streamlit interference
         logger.propagate = False

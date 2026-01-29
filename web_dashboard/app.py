@@ -1218,8 +1218,19 @@ def index():
 
 @app.route('/auth')
 def auth_page():
-    """Authentication page"""
-    return render_template('auth.html')
+    """Authentication page. Passes auth config so client can call Supabase directly for
+    password reset (avoids Supabase's Cloudflare blocking server-originated requests)."""
+    app_domain = os.getenv("APP_DOMAIN")
+    supabase_url = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+    auth_config = {}
+    if app_domain and supabase_url and anon_key:
+        auth_config = {
+            "supabase_url": supabase_url,
+            "supabase_anon_key": anon_key,
+            "reset_redirect_url": f"https://{app_domain}/auth_callback.html?type=recovery",
+        }
+    return render_template("auth.html", auth_config=auth_config)
 
 
 @app.route('/auth_callback.html')

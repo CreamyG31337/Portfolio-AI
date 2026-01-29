@@ -229,6 +229,9 @@
     <!-- Theme Manager Script -->
     <script type="module" src="/assets/js/theme.js"></script>
 
+    <!-- Auth config for client-side Supabase calls (e.g. password reset) so Supabase's Cloudflare sees browser requests -->
+    <script>window.AUTH_CONFIG = {{ auth_config | tojson }};</script>
+
     <script>
         // Wait for theme manager to be ready
         document.addEventListener('DOMContentLoaded', () => {
@@ -476,7 +479,7 @@
             }
         });
 
-        // Forgot Password form
+        // Forgot Password form — call Supabase from the browser so Supabase's Cloudflare sees a real browser request (server-side calls are often blocked)
         document.getElementById('forgotPasswordForm').addEventListener('submit', async function (e) {
             e.preventDefault();
 
@@ -487,20 +490,35 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
 
-            try {
-                const response = await fetch('/api/auth/reset-password-request', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
+            const cfg = window.AUTH_CONFIG;
+            const useClientRecover = cfg && cfg.supabase_url && cfg.supabase_anon_key && cfg.reset_redirect_url;
 
-                const data = await response.json();
+            try {
+                let response, data;
+                if (useClientRecover) {
+                    response = await fetch(`${cfg.supabase_url}/auth/v1/recover`, {
+                        method: 'POST',
+                        headers: {
+                            'apikey': cfg.supabase_anon_key,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ email, redirect_to: cfg.reset_redirect_url })
+                    });
+                    data = await response.json().catch(() => ({}));
+                } else {
+                    response = await fetch('/api/auth/reset-password-request', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                    });
+                    data = await response.json();
+                }
 
                 if (response.ok) {
                     showMessage(data.message || 'Reset link sent! Check your email.', 'success');
                     setTimeout(() => { showForm('login'); }, 3000);
                 } else {
-                    showMessage(data.error || 'Failed to request reset', 'error');
+                    showMessage(data.error || data.msg || 'Failed to request reset', 'error');
                 }
             } catch (error) {
                 showMessage('Network error. Please try again.', 'error');
