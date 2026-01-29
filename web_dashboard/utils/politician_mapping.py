@@ -39,6 +39,7 @@ POLITICIAN_ALIASES = {
     
     # Middle initial variations
     "Deborah Ross": ("Deborah K. Ross", "R000305"),
+    "Gary Peters": ("Gary C. Peters", "P000595"),
     
     # New members (as of late 2024)
     "Anthony Wied": ("Tony Wied", "W000829"),

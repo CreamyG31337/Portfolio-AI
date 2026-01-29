@@ -152,7 +152,13 @@ def fetch_congress_trades_job() -> None:
         skipped_duplicates = 0
         skipped_no_ticker = 0
         ai_analyzed = 0
-        errors = 0
+        errors = 0  # insert failed + processing exceptions only
+        warnings = 0  # politician not in DB (skipped, not a failure)
+        error_politician_not_in_db = 0
+        politicians_skipped_not_in_db = set()  # names for end-of-job summary
+        politicians_not_in_db_logged = set()  # log "not in database" once per politician
+        error_insert_failed = 0
+        error_processing = 0
         
         # Process both House and Senate
         for chamber in ['House', 'Senate']:
@@ -245,7 +251,9 @@ def fetch_congress_trades_job() -> None:
                                 politician = canonical_name
                                 party = None
                                 state = None
-                                logger.warning(f"Politician not in database: {politician}")
+                                if politician not in politicians_not_in_db_logged:
+                                    politicians_not_in_db_logged.add(politician)
+                                    logger.warning(f"Politician not in database (trades will be skipped): {politician}")
                             
                             # Parse dates (FMP uses disclosureDate and transactionDate)
                             disclosure_date_str = trade_data.get('disclosureDate') or trade_data.get('disclosure_date') or trade_data.get('date')
@@ -477,8 +485,10 @@ def fetch_congress_trades_job() -> None:
                             
                             # Skip trades without politician_id (can't enforce uniqueness without it)
                             if not politician_id:
-                                logger.warning(f"Skipping trade for {politician} {ticker}: politician_id is None (politician not in database)")
-                                errors += 1
+                                error_politician_not_in_db += 1
+                                warnings += 1
+                                politicians_skipped_not_in_db.add(politician)
+                                logger.debug(f"Skipping trade {politician} / {ticker} (politician not in database)")
                                 continue
                             
                             # Prepare trade record with ALL available fields
@@ -552,11 +562,13 @@ def fetch_congress_trades_job() -> None:
                                     skipped_duplicates += 1
                                     
                             except Exception as insert_error:
+                                error_insert_failed += 1
                                 errors += 1
                                 logger.error(f"Failed to insert trade for {politician} {ticker}: {insert_error}")
                                 continue
                         
                         except Exception as trade_error:
+                            error_processing += 1
                             errors += 1
                             logger.warning(f"Error processing trade: {trade_error}, data: {trade_data}")
                             continue
@@ -574,7 +586,17 @@ def fetch_congress_trades_job() -> None:
         
         # Log completion
         duration_ms = int((time.time() - start_time) * 1000)
-        message = f"Found {total_trades_found} trades: {new_trades} new, {skipped_duplicates} duplicates, {skipped_no_ticker} no ticker, {ai_analyzed} AI analyzed, {errors} errors"
+        message = f"Found {total_trades_found} trades: {new_trades} new, {skipped_duplicates} duplicates, {skipped_no_ticker} no ticker, {ai_analyzed} AI analyzed, {errors} errors, {warnings} warnings"
+        if errors:
+            error_breakdown = []
+            if error_insert_failed:
+                error_breakdown.append(f"{error_insert_failed} insert failed")
+            if error_processing:
+                error_breakdown.append(f"{error_processing} processing")
+            logger.info(f"Congress trades errors: {'; '.join(error_breakdown)}")
+        if politicians_skipped_not_in_db:
+            names = ", ".join(sorted(politicians_skipped_not_in_db))
+            logger.info(f"Politicians not in database (add to politicians table to import their trades): {names}")
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         mark_job_completed('congress_trades', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ Congress trades job completed: {message} in {duration_ms/1000:.2f}s")
