@@ -1221,6 +1221,24 @@ def auth_page():
     """Authentication page"""
     return render_template('auth.html')
 
+
+@app.route('/auth_callback.html')
+def auth_callback_page():
+    """Serve Supabase auth callback helper (magic links + password reset)."""
+    return app.send_static_file('auth_callback.html')
+
+
+@app.route('/set_cookie.html')
+def set_cookie_page():
+    """Serve cookie-setting helper (used by Streamlit auth flow)."""
+    return app.send_static_file('set_cookie.html')
+
+
+@app.route('/login.html')
+def login_page():
+    """Serve login helper page for browser automation."""
+    return app.send_static_file('login.html')
+
 @app.route('/auth/debug')
 def auth_debug():
     """Unauthenticated debug endpoint to check token state"""
