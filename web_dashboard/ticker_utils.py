@@ -507,8 +507,7 @@ def get_ticker_info(
                 SELECT id, title, url, summary, source, published_at, fetched_at,
                        relevance_score, sentiment, sentiment_score, article_type
                 FROM research_articles
-                WHERE tickers @> ARRAY[%s]::text[]
-                   OR ticker = %s
+                WHERE (tickers @> ARRAY[%s]::text[] OR ticker = %s)
                 AND fetched_at >= %s
                 ORDER BY fetched_at DESC
                 LIMIT 50

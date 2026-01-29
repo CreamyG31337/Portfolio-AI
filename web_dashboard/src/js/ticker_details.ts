@@ -979,7 +979,7 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
     section.classList.remove('hidden');
 
     const countEl = document.getElementById('research-count');
-    if (countEl) countEl.textContent = `Found ${articles.length} articles mentioning ${currentTicker} (last 30 days)`;
+    if (countEl) countEl.textContent = `Found ${articles.length} articles tagged with ${currentTicker} (last 30 days)`;
 
     const list = document.getElementById('research-articles-list');
     if (!list) return;

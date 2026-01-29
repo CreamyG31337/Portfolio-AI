@@ -1222,10 +1222,6 @@ def ticker_research_job() -> None:
                             if not embedding:
                                 logger.warning(f"Failed to generate embedding for {ticker}")
                         
-                        # If AI didn't extract any tickers, use the search ticker (we're searching for it, so it's relevant)
-                        if not extracted_tickers:
-                            extracted_tickers = [ticker]
-                        
                         # Calculate relevance score (check if any tickers are owned)
                         relevance_score = calculate_relevance_score(extracted_tickers, extracted_sector, owned_tickers=owned_tickers)
                         
@@ -1234,7 +1230,7 @@ def ticker_research_job() -> None:
                         
                         # Save article
                         article_id = research_repo.save_article(
-                            tickers=extracted_tickers,
+                            tickers=extracted_tickers if extracted_tickers else None,
                             sector=extracted_sector,  # Use extracted sector if available
                             article_type="Ticker News",
                             title=extracted.get('title') or title,

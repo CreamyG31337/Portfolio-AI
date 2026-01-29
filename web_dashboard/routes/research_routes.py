@@ -9,8 +9,9 @@ from pathlib import Path
 # This ensures we can import modules like 'auth', 'supabase_client', etc.
 sys.path.append(str(Path(__file__).parent.parent))
 
-from auth import require_auth, require_admin
+from auth import require_auth, require_admin, is_admin
 from research_repository import ResearchRepository
+from research_utils import validate_ticker_in_content
 from user_preferences import get_user_preference
 from flask_auth_utils import get_user_email_flask, get_auth_token, get_user_id_flask
 from flask_cache_utils import cache_resource, cache_data
@@ -22,6 +23,45 @@ research_bp = Blueprint('research', __name__)
 
 # Log blueprint registration
 logger.debug("[RESEARCH] Research blueprint loaded")
+
+
+def _normalize_article_tickers(article: Dict[str, Any]) -> List[str]:
+    """Build list of ticker strings from article (tickers array or legacy ticker)."""
+    tickers: List[str] = []
+    if article.get("tickers"):
+        raw = article["tickers"]
+        if isinstance(raw, list):
+            for t in raw:
+                if t is not None and str(t).strip():
+                    tickers.append(str(t).strip().upper())
+        elif raw is not None and str(raw).strip():
+            tickers.append(str(raw).strip().upper())
+    if not tickers and article.get("ticker"):
+        t = article["ticker"]
+        if t is not None and str(t).strip():
+            tickers.append(str(t).strip().upper())
+    return tickers
+
+
+def _article_text_to_check(article: Dict[str, Any]) -> str:
+    """Content for validation: content if present, else title + summary."""
+    content = article.get("content")
+    if content and isinstance(content, str) and content.strip():
+        return content
+    title = article.get("title") or ""
+    summary = article.get("summary") or ""
+    return f"{title} {summary}".strip()
+
+
+def _is_likely_junk(article: Dict[str, Any]) -> bool:
+    """True if article has tickers but none appear in its text (likely mislabeled)."""
+    tickers = _normalize_article_tickers(article)
+    if not tickers:
+        return False
+    text = _article_text_to_check(article)
+    if not text:
+        return False
+    return not any(validate_ticker_in_content(t, text) for t in tickers)
 
 # Cached repository instance (resource caching)
 @cache_resource
@@ -175,6 +215,7 @@ def research_dashboard():
         
         # Owned tickers filter (simplified for V1: passing boolean if checked)
         only_owned = request.args.get('only_owned') == 'true'
+        show_likely_junk = request.args.get('show_likely_junk') == '1'
         
         # Fetch tickers for dropdown (cached)
         unique_tickers = get_cached_unique_tickers(repo)
@@ -196,7 +237,12 @@ def research_dashboard():
             offset=offset
         )
         
-        logger.info(f"Research dashboard: Fetched {len(articles)} valid articles")
+        # Admin-only: filter to "likely junk" (tagged ticker not in content)
+        if show_likely_junk and is_admin():
+            articles = [a for a in articles if a and _is_likely_junk(a)]
+            logger.info(f"Research dashboard: Filtered to {len(articles)} likely-junk articles")
+        else:
+            logger.info(f"Research dashboard: Fetched {len(articles)} valid articles")
             
         # Get common context
         from app import get_navigation_context  # Import here to avoid circular import
@@ -224,6 +270,7 @@ def research_dashboard():
                 'ticker': ticker,
                 'search': search_text,
                 'only_owned': only_owned,
+                'show_likely_junk': show_likely_junk,
                 'page': page
             },
             user_email=user_email,
@@ -463,6 +510,35 @@ def get_available_models():
             "error": str(e),
             "models": []
         }), 500
+
+
+@research_bp.route('/api/research/article/<article_id>', methods=['GET'])
+@require_auth
+def get_article_full_text(article_id: str):
+    """Return one article's full text (title, url, summary, content) by ID."""
+    try:
+        repo = get_research_repository()
+        if repo is None:
+            return jsonify({"success": False, "error": "Research repository is not available"}), 500
+        query = """
+            SELECT title, url, summary, content
+            FROM research_articles
+            WHERE id = %s
+        """
+        rows = repo.client.execute_query(query, (article_id,))
+        if not rows:
+            return jsonify({"success": False, "error": "Article not found"}), 404
+        row = rows[0]
+        return jsonify({
+            "success": True,
+            "title": row.get("title"),
+            "url": row.get("url"),
+            "summary": row.get("summary"),
+            "content": row.get("content"),
+        })
+    except Exception as e:
+        logger.error(f"Error fetching article {article_id}: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @research_bp.route('/api/research/delete', methods=['POST'])
