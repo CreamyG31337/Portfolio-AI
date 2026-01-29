@@ -359,11 +359,13 @@ document.addEventListener('DOMContentLoaded', function (): void {
                         icon.classList.remove('fa-eye');
                         icon.classList.add('fa-eye-slash');
                         this.classList.add('text-accent');
+                        this.setAttribute('aria-label', 'Hide password');
                     } else {
                         input.type = 'password';
                         icon.classList.remove('fa-eye-slash');
                         icon.classList.add('fa-eye');
                         this.classList.remove('text-accent');
+                        this.setAttribute('aria-label', 'Show password');
                     }
                 }
             }
