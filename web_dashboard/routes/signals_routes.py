@@ -274,7 +274,8 @@ def api_analyze_ticker(ticker: str):
         ticker = ticker.upper().strip()
         include_ai = request.args.get('include_ai', '0') == '1'
         force_refresh = request.args.get('force', '0') == '1'
-        
+        model = request.args.get('model', '').strip() or None
+
         supabase_client = get_supabase_client()
         
         # Check for recent stored analysis (unless force refresh requested)
@@ -332,7 +333,7 @@ def api_analyze_ticker(ticker: str):
         explanation = None
         if include_ai:
             from web_dashboard.signals.ai_explainer import generate_signal_explanation
-            explanation = generate_signal_explanation(ticker, signals)
+            explanation = generate_signal_explanation(ticker, signals, model=model)
             if explanation:
                 signals['explanation'] = explanation
         
