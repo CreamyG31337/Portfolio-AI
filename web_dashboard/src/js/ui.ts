@@ -19,8 +19,6 @@ interface SidebarElements {
     sidebarBadges: NodeListOf<HTMLElement>;
 }
 
-const SIDEBAR_EXPANDED_WIDTH = 256; // w-64 = 16rem = 256px
-const SIDEBAR_COLLAPSED_WIDTH = 64;  // w-16 = 4rem = 64px
 const MOBILE_BREAKPOINT = 768; // md breakpoint in Tailwind
 const NARROW_SCREEN_THRESHOLD = 1024; // Collapse by default on screens narrower than this
 
@@ -33,42 +31,8 @@ function isNarrowScreen(): boolean {
 }
 
 function collapseSidebar(elements: SidebarElements): void {
-    const { sidebar, mainContent, sidebarTexts, sidebarContents, sidebarSelect, sidebarBadges, toggleIcon } = elements;
-
-    sidebar.style.width = `${SIDEBAR_COLLAPSED_WIDTH}px`;
+    const { sidebar } = elements;
     sidebar.setAttribute('data-sidebar-collapsed', 'true');
-
-    if (!isMobile()) {
-        mainContent.style.marginLeft = `${SIDEBAR_COLLAPSED_WIDTH}px`;
-    }
-
-    // Hide text and content with smooth transition
-    sidebarTexts.forEach(el => {
-        el.style.opacity = '0';
-        el.style.maxWidth = '0';
-        el.style.overflow = 'hidden';
-    });
-
-    sidebarContents.forEach(el => {
-        el.style.opacity = '0';
-        el.style.maxHeight = '0';
-        el.style.overflow = 'hidden';
-    });
-
-    if (sidebarSelect) {
-        sidebarSelect.style.opacity = '0';
-        sidebarSelect.style.pointerEvents = 'none';
-    }
-
-    sidebarBadges.forEach(el => {
-        el.style.opacity = '0';
-    });
-
-    // Rotate icon
-    if (toggleIcon) {
-        toggleIcon.classList.remove('fa-chevron-left');
-        toggleIcon.classList.add('fa-chevron-right');
-    }
 
     // Save state (only on desktop)
     if (!isMobile()) {
@@ -77,42 +41,8 @@ function collapseSidebar(elements: SidebarElements): void {
 }
 
 function expandSidebar(elements: SidebarElements): void {
-    const { sidebar, mainContent, sidebarTexts, sidebarContents, sidebarSelect, sidebarBadges, toggleIcon } = elements;
-
-    sidebar.style.width = `${SIDEBAR_EXPANDED_WIDTH}px`;
+    const { sidebar } = elements;
     sidebar.setAttribute('data-sidebar-collapsed', 'false');
-
-    if (!isMobile()) {
-        mainContent.style.marginLeft = `${SIDEBAR_EXPANDED_WIDTH}px`;
-    }
-
-    // Show text and content with smooth transition
-    sidebarTexts.forEach(el => {
-        el.style.opacity = '1';
-        el.style.maxWidth = 'none';
-        el.style.overflow = 'visible';
-    });
-
-    sidebarContents.forEach(el => {
-        el.style.opacity = '1';
-        el.style.maxHeight = 'none';
-        el.style.overflow = 'visible';
-    });
-
-    if (sidebarSelect) {
-        sidebarSelect.style.opacity = '1';
-        sidebarSelect.style.pointerEvents = 'auto';
-    }
-
-    sidebarBadges.forEach(el => {
-        el.style.opacity = '1';
-    });
-
-    // Rotate icon
-    if (toggleIcon) {
-        toggleIcon.classList.remove('fa-chevron-right');
-        toggleIcon.classList.add('fa-chevron-left');
-    }
 
     // Save state (only on desktop)
     if (!isMobile()) {
@@ -121,10 +51,9 @@ function expandSidebar(elements: SidebarElements): void {
 }
 
 function toggleSidebar(elements: SidebarElements): void {
-    const currentWidth = elements.sidebar.offsetWidth;
-    const isCurrentlyCollapsed = currentWidth <= SIDEBAR_COLLAPSED_WIDTH + 10; // 10px tolerance
+    const isCollapsed = elements.sidebar.getAttribute('data-sidebar-collapsed') === 'true';
 
-    if (isCurrentlyCollapsed) {
+    if (isCollapsed) {
         expandSidebar(elements);
     } else {
         collapseSidebar(elements);
@@ -151,10 +80,7 @@ function initSidebar(): void {
     };
 
     if (isMobile()) {
-        // Mobile: Let Flowbite drawer handle it completely
-        sidebar.style.width = '';
-        sidebar.style.marginLeft = '';
-        mainContent.style.marginLeft = '0';
+        // Mobile: Let Flowbite drawer handle it completely (CSS/classes)
     } else {
         // Desktop: Apply collapsible state
         const shouldCollapseByDefault = isNarrowScreen();
@@ -184,9 +110,7 @@ function initSidebar(): void {
         clearTimeout(resizeTimeout);
         resizeTimeout = window.setTimeout(() => {
             if (isMobile()) {
-                sidebar.style.width = '';
-                sidebar.style.marginLeft = '';
-                mainContent.style.marginLeft = '0';
+                // Mobile handled by CSS
             } else {
                 const isCollapsed = sidebar.getAttribute('data-sidebar-collapsed') === 'true';
                 if (isCollapsed) {
@@ -196,17 +120,6 @@ function initSidebar(): void {
                 }
             }
         }, 150);
-    });
-
-    // Handle orientation change on mobile
-    window.addEventListener('orientationchange', () => {
-        setTimeout(() => {
-            if (isMobile()) {
-                sidebar.style.width = '';
-                sidebar.style.marginLeft = '';
-                mainContent.style.marginLeft = '0';
-            }
-        }, 200);
     });
 }
 

@@ -2,22 +2,22 @@
 <!-- Mobile: Flowbite drawer (hidden by default, toggled via hamburger) -->
 <!-- Desktop: Collapsible sidebar (visible, can be collapsed) -->
 <aside id="sidebar"
-    class="fixed top-0 left-0 z-40 h-screen bg-dashboard-surface border-r border-border shadow-sm transition-all duration-300 ease-in-out transform -translate-x-full md:translate-x-0"
+    class="peer group fixed top-0 left-0 z-40 h-screen bg-dashboard-surface border-r border-border shadow-sm transition-all duration-300 ease-in-out transform -translate-x-full md:translate-x-0 w-64 data-[sidebar-collapsed=true]:w-16"
     aria-label="Sidebar" tabindex="-1" aria-labelledby="sidebar-label">
     <!-- Toggle Button (visible on desktop) -->
     <button id="sidebar-collapse-toggle"
         class="hidden md:flex absolute top-20 right-0 z-50 p-2 bg-dashboard-surface border border-border rounded-l-lg shadow-md hover:bg-dashboard-surface-alt transition-all duration-300 items-center justify-center"
         aria-label="Toggle sidebar">
         <i id="sidebar-toggle-icon"
-            class="fas fa-chevron-left text-text-secondary transition-transform duration-300"></i>
+            class="fas fa-chevron-left text-text-secondary transition-transform duration-300 group-data-[sidebar-collapsed=true]:rotate-180"></i>
     </button>
 
     <div class="h-full px-3 pb-4 pt-24 overflow-y-auto bg-dashboard-surface transition-all duration-300">
-        <div class="mb-6 mt-2 sidebar-content text-center">
+        <div class="mb-6 mt-2 sidebar-content text-center opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:max-h-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">
             <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo"
                 class="theme-aware-logo h-16 w-16 mx-auto mb-2 opacity-90 hover:opacity-100 transition-opacity">
         </div>
-        <div class="mb-4 mt-2 sidebar-content">
+        <div class="mb-4 mt-2 sidebar-content opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:max-h-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">
             <h2 id="sidebar-label"
                 class="text-lg font-bold text-text-primary px-2 whitespace-nowrap overflow-hidden sidebar-text">
                 Navigation</h2>
@@ -30,7 +30,7 @@
                 <a href="/dashboard" {% if current_page=='dashboard' %}aria-current="page" {% endif %}
                     class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'dashboard' %}bg-dashboard-surface-alt text-accent{% endif %}">
                     <span class="mr-3 text-lg flex-shrink-0">📈</span>
-                    <span class="sidebar-text whitespace-nowrap overflow-hidden">Dashboard</span>
+                    <span class="sidebar-text whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Dashboard</span>
                 </a>
             </li>
             {% for link in navigation_links %}
@@ -39,7 +39,7 @@
                 <a href="{{ link.url }}" {% if link.active %}aria-current="page" {% endif %}
                     class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if link.active %}bg-theme-info-bg text-theme-info-text{% endif %}">
                     <span class="mr-3 text-lg flex-shrink-0">{{ link.icon }}</span>
-                    <span class="sidebar-text whitespace-nowrap overflow-hidden">{{ link.name }}</span>
+                    <span class="sidebar-text whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">{{ link.name }}</span>
                 </a>
             </li>
             {% endif %}
@@ -49,23 +49,23 @@
                 <a href="/"
                     class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt">
                     <span class="mr-3 text-lg flex-shrink-0">📈</span>
-                    <span class="sidebar-text whitespace-nowrap overflow-hidden">Dashboard</span>
+                    <span class="sidebar-text whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Dashboard</span>
                 </a>
             </li>
             {% endif %}
         </ul>
 
         <!-- Fund Selector (like Streamlit sidebar) -->
-        <div class="mt-6 pt-4 border-t border-border sidebar-content">
+        <div class="mt-6 pt-4 border-t border-border sidebar-content opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:max-h-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">
             <div class="px-3 mb-2">
                 <label for="global-fund-select"
-                    class="text-xs font-semibold text-text-tertiary uppercase whitespace-nowrap overflow-hidden sidebar-text">
+                    class="text-xs font-semibold text-text-tertiary uppercase whitespace-nowrap overflow-hidden sidebar-text opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">
                     📊 Data Source
                 </label>
             </div>
             <div class="px-2">
                 <select id="global-fund-select"
-                    class="w-full p-2 text-sm border border-border rounded-lg bg-dashboard-surface text-text-primary focus:ring-2 focus:ring-accent focus:border-accent sidebar-select">
+                    class="w-full p-2 text-sm border border-border rounded-lg bg-dashboard-surface text-text-primary focus:ring-2 focus:ring-accent focus:border-accent sidebar-select opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:pointer-events-none transition-opacity duration-300">
                     {% if allow_all_funds is not defined or allow_all_funds %}
                     <option value="all" {% if not selected_fund or selected_fund=='all' %}selected{% endif %}>
                         All Funds</option>
@@ -85,23 +85,23 @@
 
         <!-- Admin section (if admin) -->
         {% if is_admin|default(false) %}
-        <div class="mt-6 pt-6 border-t border-border sidebar-content">
+        <div class="mt-6 pt-6 border-t border-border sidebar-content opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:max-h-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">
             <div class="px-3 mb-2">
                 <span
-                    class="text-xs font-semibold text-text-tertiary uppercase whitespace-nowrap overflow-hidden sidebar-text">Admin</span>
+                    class="text-xs font-semibold text-text-tertiary uppercase whitespace-nowrap overflow-hidden sidebar-text opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Admin</span>
             </div>
             <ul class="space-y-1">
                 <li>
                     <a href="/admin/scheduler" {% if current_page=='admin_scheduler' %}aria-current="page" {% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_scheduler' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🔨</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Jobs Scheduler</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Jobs Scheduler</span>
                         {% if scheduler_status == 'running' %}
                         <span
-                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-success-text bg-theme-success-bg rounded-full sidebar-badge">Running</span>
+                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-success-text bg-theme-success-bg rounded-full sidebar-badge opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 transition-opacity duration-300">Running</span>
                         {% else %}
                         <span
-                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-error-text bg-theme-error-bg rounded-full sidebar-badge">Stopped</span>
+                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-error-text bg-theme-error-bg rounded-full sidebar-badge opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 transition-opacity duration-300">Stopped</span>
                         {% endif %}
                         <!-- Badge will be updated dynamically by ui.ts -->
                     </a>
@@ -110,7 +110,7 @@
                     <a href="/admin/users" {% if current_page=='admin_users' %}aria-current="page" {% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_users' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">👥</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">User Management</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">User Management</span>
                     </a>
                 </li>
                 <li>
@@ -118,14 +118,14 @@
                         endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_contributors' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">👤</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Contributors</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Contributors</span>
                     </a>
                 </li>
                 <li>
                     <a href="/admin/funds" {% if current_page=='admin_funds' %}aria-current="page" {% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_funds' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🏦</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Fund Management</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Fund Management</span>
                     </a>
                 </li>
                 <li>
@@ -133,7 +133,7 @@
                         %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_trade_entry' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">📈</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Trade Entry</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Trade Entry</span>
                     </a>
                 </li>
                 <li>
@@ -141,7 +141,7 @@
                         endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_contributions' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">💰</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Contributions</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Contributions</span>
                     </a>
                 </li>
                 <li>
@@ -149,7 +149,7 @@
                         %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_ai_settings' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🤖</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">AI Settings</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">AI Settings</span>
                     </a>
                 </li>
                 <li>
@@ -157,21 +157,21 @@
                         %}aria-current="page" {% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_security_metadata' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">📊</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Security Metadata</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Security Metadata</span>
                     </a>
                 </li>
                 <li>
                     <a href="/admin/system" {% if current_page=='admin_system' %}aria-current="page" {% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_system' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🖥️</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">System Monitor</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">System Monitor</span>
                     </a>
                 </li>
                 <li>
                     <a href="/logs" {% if current_page=='admin_logs' %}aria-current="page" {% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page == 'admin_logs' %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">📜</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Logs</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Logs</span>
                     </a>
                 </li>
                 <li>
@@ -179,16 +179,16 @@
                         %}aria-current="page" {% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt {% if current_page in ['dev_home', 'sql_interface'] %}bg-dashboard-surface-alt text-accent{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0">🛠️</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Developer Tools</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Developer Tools</span>
                     </a>
                 </li>
                 <li>
                     <a href="/streamlit/" target="_blank"
                         class="flex items-center px-3 py-2 text-sm font-medium text-text-secondary rounded-lg hover:bg-dashboard-surface-alt">
                         <span class="mr-3 text-lg flex-shrink-0">🔄</span>
-                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden">Streamlit (Legacy)</span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Streamlit (Legacy)</span>
                         <span
-                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-warning-text bg-theme-warning-bg rounded-full sidebar-badge">Old</span>
+                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-warning-text bg-theme-warning-bg rounded-full sidebar-badge opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 transition-opacity duration-300">Old</span>
                     </a>
                 </li>
             </ul>

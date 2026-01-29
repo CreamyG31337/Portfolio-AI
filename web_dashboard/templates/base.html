@@ -16,7 +16,7 @@
 
     <!-- Header with hamburger menu and user dropdown -->
     <header id="main-header"
-        class="gradient-bg text-white shadow-lg sticky top-0 z-50 transition-transform duration-300"
+        class="bg-gradient-to-br from-[var(--gradient-from)] to-[var(--gradient-to)] text-white shadow-lg sticky top-0 z-50 transition-transform duration-300"
         data-page-id="{{ current_page|default('unknown') }}">
         <div class="container mx-auto px-4 py-4">
             <div class="flex items-center justify-between">
@@ -83,7 +83,7 @@
         {% include "components/_sidebar_content.html" %}
 
         <!-- Main content area -->
-        <main id="main-content" class="flex-1 min-w-0 min-h-screen transition-all duration-300 ease-in-out overflow-x-hidden">
+        <main id="main-content" class="flex-1 min-w-0 min-h-screen transition-all duration-300 ease-in-out overflow-x-hidden md:ml-64 peer-data-[sidebar-collapsed=true]:md:ml-16">
             <div class="w-full max-w-full px-4 py-6 md:py-8">
                 {% block content %}{% endblock %}
             </div>
