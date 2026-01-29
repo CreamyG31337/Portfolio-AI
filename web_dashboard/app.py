@@ -121,13 +121,23 @@ def add_security_headers(response):
     # Allows scripts/styles from self and trusted CDNs
     # 'unsafe-inline' and 'unsafe-eval' are required for current template/library architecture
     # but restricting domains still provides significant security benefit over no CSP
+    connect_src = "'self' https://cdn.jsdelivr.net"
+    supabase_url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+    if supabase_url:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(supabase_url)
+            if parsed.scheme and parsed.netloc:
+                connect_src += f" {parsed.scheme}://{parsed.netloc}"
+        except Exception:
+            pass
     csp = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://static.cloudflareinsights.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
         "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
         "img-src 'self' data: https://assets.parqet.com https://s.yimg.com; "
-        "connect-src 'self' https://cdn.jsdelivr.net; "
+        f"connect-src {connect_src}; "
         "frame-ancestors 'self';"
     )
     response.headers['Content-Security-Policy'] = csp
