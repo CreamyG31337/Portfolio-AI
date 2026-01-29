@@ -47,20 +47,38 @@ Signals (JSON):
     return prompt
 
 
-def generate_signal_explanation(ticker: str, signals: Dict[str, Any]) -> Optional[str]:
-    """Generate an AI explanation for a signal set."""
+def generate_signal_explanation(
+    ticker: str, signals: Dict[str, Any], model: Optional[str] = None
+) -> Optional[str]:
+    """Generate an AI explanation for a signal set.
+    Uses the given model if provided and supported (Ollama); otherwise the default summarizing model.
+    WebAI/GLM models are not supported here and fall back to the default.
+    """
     client = get_ollama_client()
     if not client:
         logger.warning("Ollama client unavailable; skipping signal explanation")
         return None
 
     prompt = build_signal_explanation_prompt(ticker, signals)
-    model = get_summarizing_model()
+    resolved = model
+    if resolved:
+        try:
+            from webai_wrapper import is_webai_model
+            if is_webai_model(resolved) or (resolved or "").startswith("glm-"):
+                logger.warning(
+                    "Model %s is not supported for signal explanation; using default",
+                    resolved,
+                )
+                resolved = None
+        except Exception:
+            resolved = None
+    if not resolved:
+        resolved = get_summarizing_model()
 
     try:
         response = client.generate_completion(
             prompt=prompt,
-            model=model,
+            model=resolved,
             temperature=0.2
         )
     except Exception as e:

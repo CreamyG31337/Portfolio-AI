@@ -721,6 +721,10 @@ class PersistentConversationSession:
             with open(self.session_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
             self._saved_metadata = metadata
+            try:
+                os.chmod(self.session_file, 0o600)
+            except OSError:
+                pass
         except Exception as e:
             # Silently fail - conversation continues but won't persist
             pass
