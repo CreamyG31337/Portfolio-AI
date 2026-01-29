@@ -178,6 +178,36 @@
                 </div>
             </div>
 
+            <!-- Set New Password Form (shown after clicking reset link) -->
+            <div id="set-new-password-form"
+                class="bg-dashboard-surface rounded-lg shadow-lg p-8 hover:-translate-y-0.5 transition-transform duration-200 hidden border border-border">
+                <h2 class="text-2xl font-bold text-text-primary mb-2 text-center">Set New Password</h2>
+                <p class="text-text-secondary text-center mb-6 text-sm">Enter your new password below</p>
+
+                <form id="setNewPasswordForm">
+                    <div class="mb-4">
+                        <label for="new-password" class="block text-sm font-medium text-text-primary mb-2">
+                            New Password <span class="text-theme-error-text">*</span>
+                        </label>
+                        <input type="password" id="new-password" autocomplete="new-password" required minlength="6" aria-invalid="false"
+                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" placeholder="••••••••">
+                    </div>
+
+                    <div class="mb-6">
+                        <label for="confirm-new-password" class="block text-sm font-medium text-text-primary mb-2">
+                            Confirm Password <span class="text-theme-error-text">*</span>
+                        </label>
+                        <input type="password" id="confirm-new-password" autocomplete="new-password" required minlength="6" aria-invalid="false"
+                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" placeholder="••••••••">
+                    </div>
+
+                    <button type="submit" id="set-password-btn"
+                        class="w-full text-accent bg-transparent border border-accent py-2 px-4 rounded-md hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-colors duration-200 font-medium">
+                        <i class="fas fa-key mr-2"></i>Update Password
+                    </button>
+                </form>
+            </div>
+
             <!-- Error/Success Messages -->
             <div id="message" class="mt-4 hidden" role="alert" aria-live="assertive" aria-atomic="true">
                 <div id="message-content" class="p-4 rounded-md shadow-lg"></div>
@@ -245,8 +275,31 @@
         const forms = {
             login: document.getElementById('login-form'),
             register: document.getElementById('register-form'),
-            forgot: document.getElementById('forgot-password-form')
+            forgot: document.getElementById('forgot-password-form'),
+            setNewPassword: document.getElementById('set-new-password-form')
         };
+
+        // Check URL params for password reset flow (auth_type=recovery)
+        const urlParams = new URLSearchParams(window.location.search);
+        const authType = urlParams.get('auth_type');
+        const authError = urlParams.get('auth_error');
+        const errorDesc = urlParams.get('error_desc');
+        
+        // Handle password recovery flow
+        if (authType === 'recovery') {
+            // User clicked password reset link - show the set new password form
+            setTimeout(() => {
+                showForm('setNewPassword');
+            }, 100);
+        }
+        
+        // Handle auth errors (expired links, etc.)
+        if (authError) {
+            setTimeout(() => {
+                const errorMessage = errorDesc ? decodeURIComponent(errorDesc) : 'Authentication failed. Please try again.';
+                showMessage(errorMessage, 'error');
+            }, 100);
+        }
 
         function showForm(name) {
             Object.keys(forms).forEach(key => {
@@ -448,6 +501,55 @@
                     setTimeout(() => { showForm('login'); }, 3000);
                 } else {
                     showMessage(data.error || 'Failed to request reset', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+
+        // Set New Password form (after clicking reset link)
+        document.getElementById('setNewPasswordForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-new-password').value;
+            const btn = document.getElementById('set-password-btn');
+            const originalText = btn.innerHTML;
+
+            if (newPassword !== confirmPassword) {
+                showMessage('Passwords do not match', 'error');
+                return;
+            }
+
+            if (newPassword.length < 6) {
+                showMessage('Password must be at least 6 characters', 'error');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
+
+            try {
+                const response = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: newPassword })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('Password updated successfully! Redirecting to login...', 'success');
+                    // Clear the URL params and redirect to clean login page
+                    setTimeout(() => {
+                        window.location.href = '/auth';
+                    }, 2000);
+                } else {
+                    showMessage(data.error || 'Failed to update password', 'error');
                 }
             } catch (error) {
                 showMessage('Network error. Please try again.', 'error');

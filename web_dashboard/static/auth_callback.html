@@ -59,13 +59,17 @@
 
                 // Check for errors (expired links, etc.)
                 if (params.get('error')) {
-                    streamlitUrl.searchParams.set('auth_error', params.get('error'));
+                    // Redirect to auth page with error info
+                    const authUrl = new URL(baseUrl + '/auth');
+                    authUrl.searchParams.set('auth_error', params.get('error'));
                     if (params.get('error_code')) {
-                        streamlitUrl.searchParams.set('error_code', params.get('error_code'));
+                        authUrl.searchParams.set('error_code', params.get('error_code'));
                     }
                     if (params.get('error_description')) {
-                        streamlitUrl.searchParams.set('error_desc', decodeURIComponent(params.get('error_description')));
+                        authUrl.searchParams.set('error_desc', params.get('error_description'));
                     }
+                    window.location.replace(authUrl.toString());
+                    return;
                 }
                 // Check for access_token (magic link or password reset success)
                 else if (params.get('access_token')) {
@@ -92,6 +96,9 @@
                 // Check if we have a return_to parameter in the search params
                 const searchParams = new URLSearchParams(window.location.search);
                 const returnTo = searchParams.get('return_to') || searchParams.get('redirectTo');
+                
+                // Check if this is a password recovery flow
+                const isRecovery = params.get('type') === 'recovery';
 
                 if (returnTo) {
                     // If we have a return_to, use it
@@ -102,6 +109,9 @@
                     } else {
                         redirectUrl = baseUrl + '/' + returnTo;
                     }
+                } else if (isRecovery) {
+                    // For password recovery, redirect to auth page with params so it shows the set password form
+                    redirectUrl = baseUrl + '/auth?auth_type=recovery';
                 }
 
                 window.location.replace(redirectUrl);

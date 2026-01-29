@@ -1597,6 +1597,8 @@ def magic_link():
         redirect_url = f"https://{app_domain}/auth_callback.html"
         
         # Request magic link from Supabase
+        # Note: For the /auth/v1/otp endpoint, use "options.emailRedirectTo" per Supabase docs
+        # But the raw REST API uses "redirect_to" at the top level (not inside data)
         response = requests.post(
             f"{os.getenv('SUPABASE_URL')}/auth/v1/otp",
             headers={
@@ -1606,9 +1608,7 @@ def magic_link():
             json={
                 "email": email,
                 "create_user": False,
-                "data": {
-                    "redirect_to": redirect_url
-                }
+                "redirect_to": redirect_url
             }
         )
         
