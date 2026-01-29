@@ -9,22 +9,27 @@
 {% endblock %}
 
 {% block content %}
-<!-- Tabs -->
+<!-- Tabs (Flowbite) -->
 <div class="mb-6 border-b border-border">
-    <nav class="flex space-x-8" aria-label="Tabs">
-        <button id="tab-application"
-            class="transition-colors duration-200 cursor-pointer border-b-2 border-accent py-4 px-1 text-sm font-medium text-accent">
-            📋 Application Logs
-        </button>
-        <button id="tab-ollama"
-            class="transition-colors duration-200 cursor-pointer border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border">
-            🤖 Ollama Logs
-        </button>
-    </nav>
+    <ul class="flex flex-wrap -mb-px text-sm font-medium text-center text-text-secondary" id="logs-tabs" role="tablist" data-tabs-toggle="#logs-tab-content">
+        <li class="me-2" role="presentation">
+            <button class="inline-block p-4 border-b-2 border-accent rounded-t-lg text-accent focus:outline-none" id="application-tab"
+                data-tabs-target="#application" type="button" role="tab" aria-controls="application" aria-selected="true">
+                📋 Application Logs
+            </button>
+        </li>
+        <li class="me-2" role="presentation">
+            <button class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-text-primary hover:border-border focus:outline-none" id="ollama-tab"
+                data-tabs-target="#ollama" type="button" role="tab" aria-controls="ollama" aria-selected="false">
+                🤖 Ollama Logs
+            </button>
+        </li>
+    </ul>
 </div>
 
+<div id="logs-tab-content">
 <!-- Application Logs Tab Content -->
-<div id="tab-content-application" class="block">
+<div id="application" class="block" role="tabpanel" aria-labelledby="application-tab">
     <!-- Controls -->
     <!-- Controls -->
     <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
@@ -111,7 +116,7 @@
 </div>
 
 <!-- Ollama Logs Tab Content -->
-<div id="tab-content-ollama" class="hidden">
+<div id="ollama" class="hidden" role="tabpanel" aria-labelledby="ollama-tab">
     <!-- Controls -->
     <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -178,6 +183,7 @@
         </div>
     </div>
 </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -186,7 +192,6 @@
     let currentPageOllama = 1;
     let autoRefreshInterval = null;
     let autoRefreshIntervalOllama = null;
-    let currentTab = 'application';
 
     const emojiMap = {
         'DEBUG': '🔍',
@@ -466,49 +471,6 @@
         }
     }
 
-    function switchTab(tabName) {
-        currentTab = tabName;
-
-        // Reset all tabs to inactive state
-        const tabs = ['tab-application', 'tab-ollama'];
-        const contents = ['tab-content-application', 'tab-content-ollama'];
-
-        tabs.forEach(tabId => {
-            const btn = document.getElementById(tabId);
-            if (btn) {
-                btn.classList.remove('border-accent', 'text-accent');
-                btn.classList.add('border-transparent', 'text-text-secondary');
-            }
-        });
-
-        contents.forEach(contentId => {
-            const el = document.getElementById(contentId);
-            if (el) {
-                el.classList.add('hidden');
-                el.classList.remove('block');
-            }
-        });
-
-        // Set active tab
-        if (tabName === 'application') {
-            const btn = document.getElementById('tab-application');
-            const content = document.getElementById('tab-content-application');
-            btn.classList.remove('border-transparent', 'text-text-secondary');
-            btn.classList.add('border-accent', 'text-accent');
-            content.classList.remove('hidden');
-            content.classList.add('block');
-        } else {
-            const btn = document.getElementById('tab-ollama');
-            const content = document.getElementById('tab-content-ollama');
-            btn.classList.remove('border-transparent', 'text-text-secondary');
-            btn.classList.add('border-accent', 'text-accent');
-            content.classList.remove('hidden');
-            content.classList.add('block');
-            // Load Ollama logs when switching to that tab
-            fetchOllamaLogs();
-        }
-    }
-
     // Event listeners
     document.getElementById('refresh-btn').addEventListener('click', () => {
         currentPage = 1;
@@ -576,9 +538,8 @@
         fetchOllamaLogs();
     });
 
-    // Tab switching
-    document.getElementById('tab-application').addEventListener('click', () => switchTab('application'));
-    document.getElementById('tab-ollama').addEventListener('click', () => switchTab('ollama'));
+    // Load Ollama logs when Ollama tab is clicked (Flowbite handles tab visibility)
+    document.getElementById('ollama-tab').addEventListener('click', () => fetchOllamaLogs());
 
     // Debounce helper
     function debounce(func, wait) {

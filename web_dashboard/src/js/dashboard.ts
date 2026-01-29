@@ -349,17 +349,21 @@ async function initFundSelector(): Promise<void> {
 }
 
 function initTimeRangeControls(): void {
+    const activeClasses = ['active', 'ring-2', 'ring-accent', 'text-accent', 'z-10'];
+    const inactiveClasses = ['text-text-primary'];
+
     document.querySelectorAll('.range-btn').forEach(btn => {
         btn.addEventListener('click', (e: Event): void => {
             const target = e.target as HTMLElement;
 
-            // Update UI
+            // Update UI (theme-aligned: accent, not blue)
             document.querySelectorAll('.range-btn').forEach(b => {
-                b.classList.remove('active', 'ring-2', 'ring-blue-700', 'text-blue-700', 'z-10');
-                b.classList.add('text-gray-900', 'hover:text-blue-700', 'dark:text-white');
+                b.classList.remove(...activeClasses);
+                b.classList.add(...inactiveClasses);
                 b.setAttribute('aria-pressed', 'false');
             });
-            target.classList.add('active', 'ring-2', 'ring-blue-700', 'text-blue-700', 'z-10');
+            target.classList.remove(...inactiveClasses);
+            target.classList.add(...activeClasses);
             target.setAttribute('aria-pressed', 'true');
 
             // Update State
