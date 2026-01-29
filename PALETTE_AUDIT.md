@@ -69,8 +69,8 @@ mainContent.style.marginLeft = `${SIDEBAR_COLLAPSED_WIDTH}px`;
 
 ## ✅ Immediate Action Items (Safe)
 
-1.  **Refactor Tabs:** Convert `logs.html` tabs to use Flowbite's data attributes.
-2.  **Standardize Button Groups:** Update the dashboard time range selector to match Flowbite's button group styling.
+1.  **Refactor Tabs:** Convert `logs.html` tabs to use Flowbite's data attributes. **Implemented:** `logs.html` now uses Flowbite tablist (`data-tabs-toggle`, `data-tabs-target`, `role="tab"` / `role="tabpanel"`); custom `switchTab()` removed; one listener on Ollama tab to load logs.
+2.  **Standardize Button Groups:** Update the dashboard time range selector to match Flowbite's button group styling. **Implemented:** Dashboard time range uses `-space-x-px` border collapse and theme-accent active state; `dashboard.ts` toggles `text-accent` / `ring-accent` instead of blue/gray.
 3.  **Audit ARIA:** Ensure all custom interactive elements (like the password toggle) have valid and updating `aria-*` attributes.
 
 ---
