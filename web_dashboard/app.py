@@ -1676,11 +1676,12 @@ def reset_password_request():
         )
 
         if response.status_code >= 400:
-            # Log Supabase error for debugging (do not log sensitive headers)
+            # Log minimal failure context (no secrets) to debug auth issues without spam
             logger.warning(
-                "Supabase recover returned %s: %s",
+                "Password reset recover failed: status=%s content_type=%s body_prefix=%s",
                 response.status_code,
-                response.text[:1000]
+                response.headers.get("Content-Type"),
+                response.text[:200]
             )
 
         # Supabase returns 200 even if user doesn't exist (security)

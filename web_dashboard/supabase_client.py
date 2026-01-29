@@ -36,6 +36,10 @@ except ImportError:
     raise ImportError("Supabase client not available. Activate virtual environment.")
 
 logger = logging.getLogger(__name__)
+# Reduce noisy debug logging by default; enable with SUPABASE_CLIENT_DEBUG=1
+SUPABASE_CLIENT_DEBUG = os.getenv("SUPABASE_CLIENT_DEBUG", "").lower() in ("1", "true", "yes", "on")
+if not SUPABASE_CLIENT_DEBUG:
+    logger.setLevel(logging.INFO)
 
 class SupabaseClient:
     """Client for interacting with Supabase database"""
@@ -167,7 +171,7 @@ class SupabaseClient:
                 # Check if there's a shared session for RPC
                 # Try to access the actual HTTP client used by rpc method
                 if hasattr(self.supabase.postgrest, '_client'):
-                    logger.info(f"[SUPABASE_CLIENT] postgrest has _client: {type(self.supabase.postgrest._client)}")
+                    logger.debug(f"[SUPABASE_CLIENT] postgrest has _client: {type(self.supabase.postgrest._client)}")
 
                         
             except Exception as e:
