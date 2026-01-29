@@ -166,8 +166,12 @@ def save_zhipu_api_key(api_key: str) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(api_key.strip())
-        # Secure the file: read/write by owner only
-        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        # Secure the file: read/write by owner only (Unix). On Windows this is
+        # best-effort; ignore errors so we never crash (e.g. network drives).
+        try:
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
         return True
     except OSError:
         return False
