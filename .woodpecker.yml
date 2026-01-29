@@ -117,6 +117,10 @@ steps:
         from_secret: webai_cookies_json
       AI_SERVICE_WEB_URL:
         from_secret: ai_service_web_url
+      FLASK_SECRET_KEY:
+        from_secret: flask_secret_key
+      JWT_SECRET:
+        from_secret: jwt_secret
     commands:
       # Set timezone (Pacific Time - handles PST/PDT automatically)
       - ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -346,6 +350,8 @@ steps:
         DOCKER_CMD="$DOCKER_CMD -e SUPABASE_SECRET_KEY=\"$SUPABASE_SECRET_KEY\""
         DOCKER_CMD="$DOCKER_CMD -e BUILD_TIMESTAMP=\"$BUILD_TIMESTAMP\""
         DOCKER_CMD="$DOCKER_CMD -e FLASK_DEBUG=true"
+        [ -n "$FLASK_SECRET_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e FLASK_SECRET_KEY=\"$FLASK_SECRET_KEY\""
+        [ -n "$JWT_SECRET" ] && DOCKER_CMD="$DOCKER_CMD -e JWT_SECRET=\"$JWT_SECRET\""
         
         # Add APP_DOMAIN (required for auth callbacks and cookie domain)
         [ -n "$APP_DOMAIN" ] && DOCKER_CMD="$DOCKER_CMD -e APP_DOMAIN=\"$APP_DOMAIN\""
@@ -401,6 +407,8 @@ steps:
         FLASK_CMD="$FLASK_CMD -e BUILD_TIMESTAMP=\"$BUILD_TIMESTAMP\""
         FLASK_CMD="$FLASK_CMD -e FLASK_DEBUG=true"
         FLASK_CMD="$FLASK_CMD -e FLASK_PORT=5001"
+        [ -n "$FLASK_SECRET_KEY" ] && FLASK_CMD="$FLASK_CMD -e FLASK_SECRET_KEY=\"$FLASK_SECRET_KEY\""
+        [ -n "$JWT_SECRET" ] && FLASK_CMD="$FLASK_CMD -e JWT_SECRET=\"$JWT_SECRET\""
         
         # Add APP_DOMAIN (required for auth callbacks and cookie domain)
         [ -n "$APP_DOMAIN" ] && FLASK_CMD="$FLASK_CMD -e APP_DOMAIN=\"$APP_DOMAIN\""

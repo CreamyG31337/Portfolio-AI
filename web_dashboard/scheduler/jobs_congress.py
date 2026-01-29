@@ -47,6 +47,51 @@ from scheduler.scheduler_core import log_job_execution
 # Initialize logger
 logger = logging.getLogger(__name__)
 
+
+def _parse_ai_conflict_json(response_text: str):
+    """Parse AI conflict-score JSON from Ollama response. Tolerates malformed JSON (trailing commas, nested braces in reasoning).
+    Returns (parsed_dict, None) on success or (None, error_message) on failure.
+    """
+    import json
+    import re
+
+    text = response_text.strip()
+    # Remove markdown code blocks
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text)
+    text = text.strip()
+
+    # Extract first top-level {...} using balanced braces (so "reasoning" can contain { or })
+    start = text.find("{")
+    if start == -1:
+        return None, "No JSON object found"
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                json_str = text[start : i + 1]
+                break
+    else:
+        return None, "Unbalanced braces"
+
+    for attempt in range(3):
+        try:
+            return json.loads(json_str), None
+        except json.JSONDecodeError as e:
+            if attempt == 0:
+                # Remove trailing commas before } or ] (common LLM mistake)
+                json_str = re.sub(r",\s*([}\]])", r"\1", json_str)
+            elif attempt == 1:
+                # Single-quoted keys (common LLM mistake): 'key': -> "key":
+                json_str = re.sub(r"'([^']+)'\s*:", r'"\1":', json_str)
+            else:
+                return None, str(e)
+    return None, "Parse failed"
+
+
 def fetch_congress_trades_job() -> None:
     """Fetch and analyze congressional stock trades from Financial Modeling Prep API.
     
@@ -452,26 +497,17 @@ def fetch_congress_trades_job() -> None:
                                     ):
                                         full_response += chunk
                                     
-                                    # Parse JSON response
-                                    json_match = re.search(r'\{[^{}]*"conflict_score"[^{}]*\}', full_response, re.DOTALL)
-                                    if json_match:
-                                        json_str = json_match.group(0)
+                                    parsed, parse_err = _parse_ai_conflict_json(full_response)
+                                    if parsed:
+                                        conflict_score = float(parsed.get("conflict_score", 0.0))
+                                        conflict_score = max(0.0, min(1.0, conflict_score))
+                                        notes = parsed.get("reasoning", "AI analysis completed")
+                                        ai_analyzed += 1
                                     else:
-                                        json_str = full_response.strip()
-                                    
-                                    # Remove markdown code blocks if present
-                                    json_str = re.sub(r'```json\s*', '', json_str)
-                                    json_str = re.sub(r'```\s*', '', json_str)
-                                    json_str = json_str.strip()
-                                    
-                                    parsed = json.loads(json_str)
-                                    
-                                    conflict_score = float(parsed.get("conflict_score", 0.0))
-                                    # Clamp to 0.0-1.0 range
-                                    conflict_score = max(0.0, min(1.0, conflict_score))
-                                    notes = parsed.get("reasoning", "AI analysis completed")
-                                    
-                                    ai_analyzed += 1
+                                        logger.warning(f"Failed to parse AI response for {politician} {ticker}: {parse_err}")
+                                        logger.debug(f"Response was: {full_response[:500]}")
+                                        conflict_score = None
+                                        notes = "Failed to parse AI response"
                                     
                                 except json.JSONDecodeError as e:
                                     logger.warning(f"Failed to parse AI response for {politician} {ticker}: {e}")
