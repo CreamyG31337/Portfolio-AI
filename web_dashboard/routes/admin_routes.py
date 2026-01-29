@@ -210,8 +210,8 @@ def _get_cached_application_logs(level_filter, search, exclude_modules, since_de
                 serializable_log['timestamp'] = serializable_log['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
             serializable_logs.append(serializable_log)
         
-        # Reverse for newest first
-        return list(reversed(serializable_logs))
+        # Logs are already sorted newest first by read_logs_from_file()
+        return serializable_logs
     except Exception as e:
         logger.error(f"Error in _get_cached_application_logs: {e}", exc_info=True)
         import traceback
