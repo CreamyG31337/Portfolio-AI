@@ -13,6 +13,7 @@ Supports:
 
 import json
 import os
+import stat
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -153,6 +154,7 @@ def get_zhipu_api_key_source() -> Optional[str]:
 def save_zhipu_api_key(api_key: str) -> bool:
     """
     Save API key to .secrets/zhipu_api_key. Caller must ensure path is safe.
+    Sets file permissions to 600 (read/write by owner only).
 
     Returns:
         True if saved successfully, False otherwise.
@@ -164,6 +166,12 @@ def save_zhipu_api_key(api_key: str) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(api_key.strip())
+        # Secure the file: read/write by owner only (Unix). On Windows this is
+        # best-effort; ignore errors so we never crash (e.g. network drives).
+        try:
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
         return True
     except OSError:
         return False
