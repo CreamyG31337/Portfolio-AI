@@ -1656,12 +1656,17 @@ def reset_password_request():
             
         # Recovery redirect URL
         redirect_url = f"https://{app_domain}/auth_callback.html?type=recovery"
-            
+
+        publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        if not publishable_key:
+            logger.error("Password reset config error: SUPABASE_PUBLISHABLE_KEY/SUPABASE_ANON_KEY missing")
+            return jsonify({"error": "Server configuration error: Supabase key missing"}), 500
+
         # Request recovery email from Supabase
         response = requests.post(
             f"{os.getenv('SUPABASE_URL')}/auth/v1/recover",
             headers={
-                "apikey": os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY"),
+                "apikey": publishable_key,
                 "Content-Type": "application/json"
             },
             json={
@@ -1669,12 +1674,28 @@ def reset_password_request():
                 "redirect_to": redirect_url
             }
         )
-        
+
+        if response.status_code >= 400:
+            # Log Supabase error for debugging (do not log sensitive headers)
+            logger.warning(
+                "Supabase recover returned %s: %s",
+                response.status_code,
+                response.text[:1000]
+            )
+
         # Supabase returns 200 even if user doesn't exist (security)
         if response.status_code == 200:
             return jsonify({"message": "If an account matches that email, a password reset link has been sent."})
         else:
-            return jsonify({"error": "Failed to send reset email"}), response.status_code
+            error_payload = {"error": "Failed to send reset email"}
+            if app.debug:
+                try:
+                    error_payload["supabase_status"] = response.status_code
+                    error_payload["supabase_body"] = response.json() if response.text else response.text
+                except ValueError:
+                    error_payload["supabase_status"] = response.status_code
+                    error_payload["supabase_body"] = response.text
+            return jsonify(error_payload), response.status_code
             
     except Exception as e:
         logger.error(f"Password reset request error: {e}")
