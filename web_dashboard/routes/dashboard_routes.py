@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request, render_template, redirect, url_fo
 import logging
 import time
 import pandas as pd
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 
 from auth import require_auth
@@ -997,25 +997,36 @@ def get_holdings_data():
 
 @dashboard_bp.route('/api/dashboard/activity', methods=['GET'])
 def get_recent_activity():
-    """Get recent transactions"""
+    """Get recent transactions, optionally filtered by time range (1M, 3M, ALL)."""
     fund = request.args.get('fund')
     # Convert 'all' or empty string to None for aggregate view
     if not fund or fund.lower() == 'all':
         fund = None
         
     limit = int(request.args.get('limit', 10))
+    time_range = request.args.get('range', 'ALL')
     display_currency = get_user_currency() or 'CAD'
     
-    logger.info(f"[Dashboard API] /api/dashboard/activity called - fund={fund}, limit={limit}, currency={display_currency}")
+    days_map = {'1M': 30, '3M': 90, '6M': 180, '1Y': 365, 'ALL': None}
+    days = days_map.get(time_range.upper() if time_range else 'ALL')
+    
+    logger.info(f"[Dashboard API] /api/dashboard/activity called - fund={fund}, limit={limit}, range={time_range}, currency={display_currency}")
     start_time = time.time()
     
     try:
         logger.debug(f"[Dashboard API] Fetching trade log for activity")
-        trades_df = get_trade_log(limit=limit, fund=fund)
+        trades_df = get_trade_log(limit=500, fund=fund)
         logger.debug(f"[Dashboard API] Trade log fetched: {len(trades_df)} rows")
         
+        if days is not None and 'date' in trades_df.columns and not trades_df.empty:
+            cutoff = pd.Timestamp.now(tz='UTC') - pd.Timedelta(days=days)
+            dates = pd.to_datetime(trades_df['date'], utc=True)
+            trades_df = trades_df.loc[dates >= cutoff].head(limit)
+        else:
+            trades_df = trades_df.head(limit)
+        
         if trades_df.empty:
-            logger.warning(f"[Dashboard API] No trades found for activity - fund={fund}")
+            logger.warning(f"[Dashboard API] No trades found for activity - fund={fund}, range={time_range}")
             return jsonify({"data": []})
             
         # Batch fetch logo URLs
@@ -1107,7 +1118,7 @@ def get_recent_activity():
 @dashboard_bp.route('/api/dashboard/dividends', methods=['GET'])
 @require_auth
 def get_dividend_data():
-    """Get dividend metrics and log.
+    """Get dividend metrics and log, optionally scoped by time range (1M, 3M, ALL).
     
     Returns:
         JSON with metrics (total LTM, tax, etc.) and list of dividend events.
@@ -1116,16 +1127,20 @@ def get_dividend_data():
     if not fund or fund.lower() == 'all':
         fund = None
     
+    time_range = request.args.get('range', 'ALL')
+    days_map = {'1M': 30, '3M': 90, '6M': 180, '1Y': 365, 'ALL': 365}
+    days_lookback = days_map.get(time_range.upper() if time_range else 'ALL', 365)
+    
     try:
         display_currency = get_user_currency() or 'CAD'
-        logger.info(f"[Dividend API] Request received - fund={fund}, currency={display_currency}")
+        logger.info(f"[Dividend API] Request received - fund={fund}, range={time_range}, currency={display_currency}")
         
         # Fetch dividend data using cached function
         # This function is now optimized to include securities(company_name) and is cached for 300s
         # The cache key includes user_id to prevent cross-user data leakage (security fix)
         logger.debug(f"[Dividend API] Querying dividends via cached function")
         
-        dividend_list = fetch_dividend_log_flask(days_lookback=365, fund=fund)
+        dividend_list = fetch_dividend_log_flask(days_lookback=days_lookback, fund=fund)
         
         logger.info(f"[Dividend API] Fetched {len(dividend_list)} dividend records")
 

@@ -372,8 +372,10 @@ function initTimeRangeControls(): void {
                 state.timeRange = range;
                 console.log('[Dashboard] Time range changed to:', state.timeRange);
 
-                // Refresh Charts only
+                // Refresh range-dependent blocks: chart, activity, dividends
                 fetchPerformanceChart();
+                fetchActivity();
+                fetchDividends();
             }
         });
     });
@@ -1420,7 +1422,7 @@ async function fetchActivity(): Promise<void> {
     // Show spinner
     showSpinner('activity-table-spinner');
 
-    const url = `/api/dashboard/activity?fund=${encodeURIComponent(state.currentFund)}&limit=100`;
+    const url = `/api/dashboard/activity?fund=${encodeURIComponent(state.currentFund)}&limit=100&range=${encodeURIComponent(state.timeRange)}`;
     const startTime = performance.now();
 
     console.log('[Dashboard] Fetching activity...', { url, fund: state.currentFund });
@@ -1672,7 +1674,7 @@ function renderPillars(pillars: Array<{ name: string; allocation: string; thesis
 }
 
 async function fetchDividends(): Promise<void> {
-    const url = `/api/dashboard/dividends?fund=${encodeURIComponent(state.currentFund)}`;
+    const url = `/api/dashboard/dividends?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}`;
     console.log('[Dashboard] Fetching dividends...', { url });
 
     try {
