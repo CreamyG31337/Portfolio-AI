@@ -10,7 +10,7 @@ import logging
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 
 from supabase_client import SupabaseClient
 from flask_auth_utils import get_user_id_flask
@@ -146,6 +146,120 @@ def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Opti
     except Exception as e:
         logger.error(f"Error getting positions (Flask): {e}", exc_info=True)
         return pd.DataFrame()
+
+
+@cache_data(ttl=300)
+def _get_positions_as_of_date_flask_cached(
+    fund: Optional[str],
+    as_of_date: str,
+    user_id: Optional[str] = None,
+    _cache_version: Optional[str] = None
+) -> pd.DataFrame:
+    """Internal cached helper to fetch positions as of a given date (user-scoped)."""
+    if _cache_version is None:
+        try:
+            from cache_version import get_cache_version
+            _cache_version = get_cache_version()
+        except ImportError:
+            _cache_version = ""
+
+    client = get_supabase_client_flask()
+    if not client:
+        return pd.DataFrame()
+
+    try:
+        as_of_dt = pd.to_datetime(as_of_date, errors='coerce')
+        if pd.isna(as_of_dt):
+            return pd.DataFrame()
+        if as_of_dt.tzinfo is None:
+            as_of_dt = as_of_dt.tz_localize(timezone.utc)
+        as_of_dt = as_of_dt.normalize() + pd.Timedelta(hours=23, minutes=59, seconds=59)
+        as_of_str = as_of_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        all_rows = []
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            query = client.supabase.table("portfolio_positions").select(
+                "ticker, date, shares, price, cost_basis, pnl, total_value, currency, fund, securities(company_name, sector, industry, currency)"
+            )
+
+            if fund:
+                query = query.eq("fund", fund)
+
+            query = query.lte("date", as_of_str).order("date", desc=True)
+
+            result = query.range(offset, offset + batch_size - 1).execute()
+            if not result.data:
+                break
+
+            all_rows.extend(result.data)
+            if len(result.data) < batch_size:
+                break
+
+            offset += batch_size
+            if offset > 50000:
+                logger.warning("Historical positions fetch limit reached")
+                break
+
+        if not all_rows:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(all_rows)
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'], errors='coerce')
+
+        # Flatten securities fields for easy access while preserving nested object
+        if 'securities' in df.columns:
+            securities_df = pd.json_normalize(df['securities'])
+            if not securities_df.empty:
+                for col in ['company_name', 'sector', 'industry', 'currency']:
+                    if col in securities_df.columns:
+                        df[col] = securities_df[col]
+
+        # Keep most recent row per ticker (as of date)
+        if 'ticker' in df.columns and 'date' in df.columns:
+            df = df.sort_values(['ticker', 'date'], ascending=[True, False])
+            df = df.drop_duplicates(subset=['ticker'], keep='first')
+
+        # Filter out zero-share rows when possible
+        if 'shares' in df.columns:
+            df = df[df['shares'].fillna(0) > 0]
+
+        # Normalize column names for downstream charts/tables
+        if 'price' in df.columns and 'current_price' not in df.columns:
+            df['current_price'] = df['price']
+        if 'total_value' in df.columns and 'market_value' not in df.columns:
+            df['market_value'] = df['total_value']
+        elif 'market_value' not in df.columns:
+            df['market_value'] = df.get('shares', 0).fillna(0) * df.get('price', 0).fillna(0)
+
+        if 'pnl' in df.columns and 'unrealized_pnl' not in df.columns:
+            df['unrealized_pnl'] = df['pnl']
+
+        if 'cost_basis' in df.columns and 'unrealized_pnl' in df.columns:
+            cost_basis = df['cost_basis'].fillna(0)
+            df['return_pct'] = np.where(cost_basis > 0, (df['unrealized_pnl'] / cost_basis) * 100, 0)
+
+        if 'currency' not in df.columns:
+            df['currency'] = None
+        df['currency'] = df['currency'].fillna('USD')
+
+        return df
+
+    except Exception as e:
+        logger.error(f"Error getting positions as of date (Flask): {e}", exc_info=True)
+        return pd.DataFrame()
+
+
+def get_positions_as_of_date_flask(
+    fund: Optional[str],
+    as_of_date: Any
+) -> pd.DataFrame:
+    """Get positions as of a specific date (Flask, cached 5min, user-scoped)."""
+    user_id = get_user_id_flask() or 'anonymous'
+    return _get_positions_as_of_date_flask_cached(fund, str(as_of_date), user_id=user_id)
 
 
 @cache_data(ttl=None)  # Cache forever - historical trades don't change

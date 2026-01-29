@@ -29,6 +29,11 @@ interface DashboardSummary {
     unrealized_pnl: number;
     unrealized_pnl_pct: number;
     display_currency: string;
+    period_start_value?: number | null;
+    period_end_value?: number | null;
+    period_change?: number | null;
+    period_change_pct?: number | null;
+    range?: '1M' | '3M' | '6M' | '1Y' | 'ALL';
     thesis?: {
         title: string;
         overview: string;
@@ -372,10 +377,16 @@ function initTimeRangeControls(): void {
                 state.timeRange = range;
                 console.log('[Dashboard] Time range changed to:', state.timeRange);
 
-                // Refresh range-dependent blocks: chart, activity, dividends
+                // Refresh range-dependent blocks
                 fetchPerformanceChart();
                 fetchActivity();
                 fetchDividends();
+                fetchSummary();
+                fetchMovers();
+                loadPnlChart(state.currentFund);
+                fetchHoldings();
+                fetchSectorChart();
+                fetchCurrencyChart();
             }
         });
     });
@@ -1018,7 +1029,7 @@ function hideSpinner(spinnerId: string): void {
 // --- Data Fetching ---
 
 async function fetchSummary(): Promise<void> {
-    const url = `/api/dashboard/summary?fund=${encodeURIComponent(state.currentFund)}`;
+    const url = `/api/dashboard/summary?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}`;
     const startTime = performance.now();
 
     console.log('[Dashboard] Fetching summary...', { url, fund: state.currentFund });
@@ -1070,12 +1081,28 @@ async function fetchSummary(): Promise<void> {
         updateMetric('metric-total-value', data.total_value, data.display_currency, true);
         updateMetric('metric-cash', data.cash_balance, data.display_currency, true);
 
-        updateChangeMetric('metric-day-change', 'metric-day-pct', data.day_change, data.day_change_pct, data.display_currency);
+        const usePeriodChange = data.range && data.range !== 'ALL' && data.period_change !== undefined && data.period_change !== null;
+        if (usePeriodChange) {
+            updateChangeMetric(
+                'metric-day-change',
+                'metric-day-pct',
+                data.period_change || 0,
+                data.period_change_pct || 0,
+                data.display_currency
+            );
+        } else {
+            updateChangeMetric('metric-day-change', 'metric-day-pct', data.day_change, data.day_change_pct, data.display_currency);
+        }
         updateChangeMetric('metric-total-pnl', 'metric-total-pnl-pct', data.unrealized_pnl, data.unrealized_pnl_pct, data.display_currency);
 
         const currencyEl = document.getElementById('metric-currency');
         if (currencyEl) {
             currencyEl.textContent = data.display_currency;
+        }
+
+        const dayChangeLabelEl = document.getElementById('metric-day-change-label');
+        if (dayChangeLabelEl) {
+            dayChangeLabelEl.textContent = usePeriodChange ? `${data.range} Change` : 'Day Change';
         }
 
         // Update Fund Stats & Rates
@@ -1246,7 +1273,7 @@ async function fetchSectorChart(): Promise<void> {
 
     const theme = getEffectiveTheme();
 
-    const url = `/api/dashboard/charts/allocation?fund=${encodeURIComponent(state.currentFund)}&theme=${encodeURIComponent(theme)}`;
+    const url = `/api/dashboard/charts/allocation?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}&theme=${encodeURIComponent(theme)}`;
     const startTime = performance.now();
 
     console.log('[Dashboard] Fetching sector chart...', { url, fund: state.currentFund, theme });
@@ -1307,7 +1334,7 @@ async function fetchHoldings(): Promise<void> {
     // Show spinner
     showSpinner('holdings-grid-spinner');
 
-    const url = `/api/dashboard/holdings?fund=${encodeURIComponent(state.currentFund)}`;
+    const url = `/api/dashboard/holdings?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}`;
     const startTime = performance.now();
 
     console.log('[Dashboard] Fetching holdings...', { url, fund: state.currentFund });
@@ -1577,7 +1604,7 @@ async function fetchMovers(): Promise<void> {
     showSpinner('gainers-spinner');
     showSpinner('losers-spinner');
 
-    const url = `/api/dashboard/movers?fund=${encodeURIComponent(state.currentFund)}&limit=10`;
+    const url = `/api/dashboard/movers?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}&limit=10`;
     const startTime = performance.now();
 
     console.log('[Dashboard] Fetching movers...', { url, fund: state.currentFund });
@@ -1796,7 +1823,7 @@ async function fetchCurrencyChart(): Promise<void> {
 
     const theme = getEffectiveTheme();
 
-    const url = `/api/dashboard/charts/currency?fund=${encodeURIComponent(state.currentFund)}&theme=${encodeURIComponent(theme)}`;
+    const url = `/api/dashboard/charts/currency?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}&theme=${encodeURIComponent(theme)}`;
     console.log('[Dashboard] Fetching currency chart...', { url });
 
     try {
@@ -1938,31 +1965,33 @@ function renderMovers(data: MoversData): void {
     // - Positive values have + sign
     // - Currencies removed, percentages in brackets with 1 decimal
     const formatMergedPnl = (pnl: number | undefined | null, pct: number | undefined | null, currency: string) => {
-        if (pnl == null || pct == null) return '--';
+        if (pnl == null && pct == null) return '--';
+
+        const absPct = pct != null ? Math.abs(pct) : null;
+        const pctStr = absPct != null ? `(${absPct.toFixed(1)}%)` : '';
+
+        if (pnl == null) {
+            return pctStr || '--';
+        }
 
         const isNegative = pnl < 0;
         const absPnl = Math.abs(pnl);
-        const absPct = Math.abs(pct);
 
         // formatMoney now handles removing currency code globally
         const pnlStr = formatMoney(absPnl, currency);
-        // 1 decimal place, wrapped in brackets
-        const pctStr = `(${absPct.toFixed(1)}%)`;
 
-        if (isNegative) {
-            // Negative: Red color (handled by class), no negative sign
-            return `${pnlStr} ${pctStr}`;
-        } else {
-            // Positive: Green color, no + sign
+        if (pctStr) {
             return `${pnlStr} ${pctStr}`;
         }
+        return pnlStr;
     };
 
-    const getPnlColor = (val: number | null | undefined) => {
-        if (val == null) return '';
-        return val > 0
+    const getPnlColor = (val: number | null | undefined, pct: number | null | undefined) => {
+        const compareVal = val != null ? val : pct;
+        if (compareVal == null) return '';
+        return compareVal > 0
             ? 'text-green-600 dark:text-green-400 font-bold'
-            : (val < 0 ? 'text-red-600 dark:text-red-400 font-bold' : '');
+            : (compareVal < 0 ? 'text-red-600 dark:text-red-400 font-bold' : '');
     };
 
     const renderTable = (tbody: HTMLElement, items: MoverItem[], isGainer: boolean) => {
@@ -1977,9 +2006,9 @@ function renderMovers(data: MoversData): void {
             tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
 
             // Calculate colors
-            const dayColor = getPnlColor(item.daily_pnl);
-            const fiveDayColor = getPnlColor(item.five_day_pnl);
-            const totalColor = getPnlColor(item.total_pnl);
+            const dayColor = getPnlColor(item.daily_pnl, item.daily_pnl_pct);
+            const fiveDayColor = getPnlColor(item.five_day_pnl, item.five_day_pnl_pct);
+            const totalColor = getPnlColor(item.total_pnl, item.total_return_pct);
 
             // Create logo image using shared helper function
             const logoImg = createLogoElement(item.ticker, item._logo_url || '');
@@ -2500,7 +2529,7 @@ async function loadPnlChart(fund: string): Promise<void> {
 
     const startTime = performance.now();
     const view = state.pnlChartView || 'top_bottom';
-    const url = `/api/dashboard/charts/pnl?fund=${encodeURIComponent(fund || '')}&theme=${encodeURIComponent(theme)}&view=${encodeURIComponent(view)}`;
+    const url = `/api/dashboard/charts/pnl?fund=${encodeURIComponent(fund || '')}&range=${encodeURIComponent(state.timeRange)}&theme=${encodeURIComponent(theme)}&view=${encodeURIComponent(view)}`;
 
     console.log('[Dashboard] Loading P&L chart:', { fund, theme, view, url });
 

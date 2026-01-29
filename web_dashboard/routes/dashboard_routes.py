@@ -22,7 +22,9 @@ from flask_data_utils import (
     get_first_trade_dates_flask as get_first_trade_dates,
     calculate_portfolio_value_over_time_flask as calculate_portfolio_value_over_time,
     get_biggest_movers_flask as get_biggest_movers,
-    get_portfolio_start_date_flask as get_portfolio_start_date
+    get_portfolio_start_date_flask as get_portfolio_start_date,
+    get_individual_holdings_performance_flask,
+    get_positions_as_of_date_flask
 )
 from web_dashboard.utils.logo_utils import get_ticker_logo_urls
 
@@ -149,8 +151,17 @@ def get_dashboard_summary():
         fund = None
         
     display_currency = get_user_currency() or 'CAD'
+    time_range = (request.args.get('range', 'ALL') or 'ALL').upper()
+    days_map = {
+        '1M': 30,
+        '3M': 90,
+        '6M': 180,
+        '1Y': 365,
+        'ALL': None
+    }
+    days = days_map.get(time_range, None)
     
-    logger.info(f"[Dashboard API] /api/dashboard/summary called - fund={fund}, currency={display_currency}")
+    logger.info(f"[Dashboard API] /api/dashboard/summary called - fund={fund}, range={time_range}, currency={display_currency}")
     start_time = time.time()
     
     try:
@@ -231,6 +242,23 @@ def get_dashboard_summary():
             logger.debug(f"[Dashboard API] First trade date: {first_trade_date}")
         except Exception as e:
             logger.warning(f"[Dashboard API] Could not get first trade date: {e}")
+
+        # Period change (range-aware)
+        period_start_value = None
+        period_end_value = None
+        period_change = None
+        period_change_pct = None
+        if days is not None:
+            try:
+                logger.debug(f"[Dashboard API] Fetching portfolio value over time for range={time_range}")
+                range_df = calculate_portfolio_value_over_time(fund, days=days, display_currency=display_currency)
+                if not range_df.empty:
+                    period_start_value = float(range_df['value'].iloc[0])
+                    period_end_value = float(range_df['value'].iloc[-1])
+                    period_change = period_end_value - period_start_value
+                    period_change_pct = (period_change / period_start_value * 100) if period_start_value > 0 else 0.0
+            except Exception as e:
+                logger.warning(f"[Dashboard API] Could not calculate period change for range={time_range}: {e}")
         
         processing_time = time.time() - start_time
         response = {
@@ -245,6 +273,11 @@ def get_dashboard_summary():
             "investor_count": investor_count,
             "holdings_count": holdings_count,
             "first_trade_date": first_trade_date,
+            "period_start_value": period_start_value,
+            "period_end_value": period_end_value,
+            "period_change": period_change,
+            "period_change_pct": period_change_pct,
+            "range": time_range,
             "from_cache": False,
             "processing_time": processing_time
         }
@@ -627,14 +660,27 @@ def get_allocation_charts():
     chart_view = request.args.get('view', 'top_bottom').strip().lower()
     if chart_view not in {'top_bottom', 'winners', 'losers'}:
         chart_view = 'top_bottom'
+    time_range = (request.args.get('range', 'ALL') or 'ALL').upper()
+    days_map = {
+        '1M': 30,
+        '3M': 90,
+        '6M': 180,
+        '1Y': 365,
+        'ALL': None
+    }
+    days = days_map.get(time_range, None)
     display_currency = get_user_currency() or 'CAD'
     
-    logger.info(f"[Dashboard API] /api/dashboard/charts/allocation called - fund={fund}, currency={display_currency}")
+    logger.info(f"[Dashboard API] /api/dashboard/charts/allocation called - fund={fund}, range={time_range}, currency={display_currency}")
     start_time = time.time()
     
     try:
         logger.debug(f"[Dashboard API] Fetching positions for allocation chart")
-        positions_df = get_current_positions(fund)
+        if days is None:
+            positions_df = get_current_positions(fund)
+        else:
+            as_of_date = datetime.now(timezone.utc) - timedelta(days=days)
+            positions_df = get_positions_as_of_date_flask(fund, as_of_date)
         logger.debug(f"[Dashboard API] Positions fetched: {len(positions_df)} rows")
         
         # Debug: Log sample of market_value data
@@ -748,15 +794,67 @@ def get_pnl_chart():
     chart_view = request.args.get('view', 'top_bottom').strip().lower()
     if chart_view not in {'top_bottom', 'winners', 'losers'}:
         chart_view = 'top_bottom'
+    time_range = (request.args.get('range', 'ALL') or 'ALL').upper()
+    days_map = {
+        '1M': 30,
+        '3M': 90,
+        '6M': 180,
+        '1Y': 365,
+        'ALL': None
+    }
+    days = days_map.get(time_range, None)
     display_currency = get_user_currency() or 'CAD'
     
-    logger.info(f"[Dashboard API] /api/dashboard/charts/pnl called - fund={fund}, currency={display_currency}")
+    logger.info(f"[Dashboard API] /api/dashboard/charts/pnl called - fund={fund}, range={time_range}, currency={display_currency}")
     start_time = time.time()
     
     try:
-        logger.debug(f"[Dashboard API] Fetching positions for P&L chart")
-        positions_df = get_current_positions(fund)
-        logger.debug(f"[Dashboard API] Positions fetched: {len(positions_df)} rows")
+        if days is None:
+            logger.debug(f"[Dashboard API] Fetching positions for P&L chart")
+            positions_df = get_current_positions(fund)
+            logger.debug(f"[Dashboard API] Positions fetched: {len(positions_df)} rows")
+        else:
+            logger.debug(f"[Dashboard API] Fetching trade log for realized P&L chart")
+            trades_df = get_trade_log(limit=1000, fund=fund)
+            logger.debug(f"[Dashboard API] Trade log fetched: {len(trades_df)} rows")
+
+            if trades_df.empty:
+                positions_df = pd.DataFrame()
+            else:
+                cutoff = pd.Timestamp.now(tz='UTC') - pd.Timedelta(days=days)
+                if 'date' in trades_df.columns:
+                    dates = pd.to_datetime(trades_df['date'], utc=True, errors='coerce')
+                    trades_df = trades_df.loc[dates >= cutoff]
+
+                def infer_action_from_row(row):
+                    for col in ['side', 'action', 'type']:
+                        if col in row and row.get(col):
+                            value = str(row.get(col)).lower()
+                            if 'sell' in value:
+                                return 'SELL'
+                            if 'buy' in value:
+                                return 'BUY'
+                    reason = row.get('reason')
+                    if pd.isna(reason) or reason is None:
+                        return 'BUY'
+                    reason_lower = str(reason).lower()
+                    if 'sell' in reason_lower or 'limit sell' in reason_lower or 'market sell' in reason_lower:
+                        return 'SELL'
+                    if 'drip' in reason_lower or 'dividend' in reason_lower:
+                        return 'DRIP'
+                    return 'BUY'
+
+                sells_df = trades_df.copy()
+                if not sells_df.empty:
+                    sells_df['action'] = sells_df.apply(infer_action_from_row, axis=1)
+                    sells_df = sells_df[sells_df['action'] == 'SELL']
+
+                if sells_df.empty or 'pnl' not in sells_df.columns:
+                    positions_df = pd.DataFrame()
+                else:
+                    sells_df = sells_df[pd.notna(sells_df['pnl'])]
+                    ticker_pnl = sells_df.groupby('ticker', as_index=False)['pnl'].sum()
+                    positions_df = ticker_pnl.rename(columns={'pnl': 'pnl'})
         
         if positions_df.empty:
             logger.warning(f"[Dashboard API] No positions found for P&L chart - fund={fund}")
@@ -788,13 +886,14 @@ def get_pnl_chart():
                 mimetype='application/json'
             )
         
-        # Fetch dividend data
+        # Fetch dividend data (only for current/unrealized mode)
         dividend_data = []
-        try:
-            dividend_data = fetch_dividend_log_flask(days_lookback=365, fund=fund)
-            logger.debug(f"[Dashboard API] Dividend data fetched: {len(dividend_data)} records")
-        except Exception as e:
-            logger.warning(f"[Dashboard API] Could not fetch dividend data: {e}")
+        if days is None:
+            try:
+                dividend_data = fetch_dividend_log_flask(days_lookback=365, fund=fund)
+                logger.debug(f"[Dashboard API] Dividend data fetched: {len(dividend_data)} records")
+            except Exception as e:
+                logger.warning(f"[Dashboard API] Could not fetch dividend data: {e}")
         
         # Create P&L chart using shared function (same as Streamlit)
         fig = create_pnl_chart(
@@ -857,14 +956,27 @@ def get_holdings_data():
     if not fund or fund.lower() == 'all':
         fund = None
         
+    time_range = (request.args.get('range', 'ALL') or 'ALL').upper()
+    days_map = {
+        '1M': 30,
+        '3M': 90,
+        '6M': 180,
+        '1Y': 365,
+        'ALL': None
+    }
+    days = days_map.get(time_range, None)
     display_currency = get_user_currency() or 'CAD'
     
-    logger.info(f"[Dashboard API] /api/dashboard/holdings called - fund={fund}, currency={display_currency}")
+    logger.info(f"[Dashboard API] /api/dashboard/holdings called - fund={fund}, range={time_range}, currency={display_currency}")
     start_time = time.time()
     
     try:
         logger.debug(f"[Dashboard API] Fetching positions for holdings table")
-        positions_df = get_current_positions(fund)
+        if days is None:
+            positions_df = get_current_positions(fund)
+        else:
+            as_of_date = datetime.now(timezone.utc) - timedelta(days=days)
+            positions_df = get_positions_as_of_date_flask(fund, as_of_date)
         logger.debug(f"[Dashboard API] Positions fetched: {len(positions_df)} rows")
         
         if positions_df.empty:
@@ -1234,9 +1346,22 @@ def get_currency_chart():
         fund = None
         
     theme = request.args.get('theme', 'light')
+    time_range = (request.args.get('range', 'ALL') or 'ALL').upper()
+    days_map = {
+        '1M': 30,
+        '3M': 90,
+        '6M': 180,
+        '1Y': 365,
+        'ALL': None
+    }
+    days = days_map.get(time_range, None)
     
     try:
-        positions_df = get_current_positions(fund)
+        if days is None:
+            positions_df = get_current_positions(fund)
+        else:
+            as_of_date = datetime.now(timezone.utc) - timedelta(days=days)
+            positions_df = get_positions_as_of_date_flask(fund, as_of_date)
         cash_balances = get_cash_balances(fund)
         
         # Create chart using shared utility
@@ -1397,28 +1522,63 @@ def get_movers_data():
         fund = None
         
     limit = int(request.args.get('limit', 10))
+    time_range = (request.args.get('range', 'ALL') or 'ALL').upper()
+    days_map = {
+        '1M': 30,
+        '3M': 90,
+        '6M': 180,
+        '1Y': 365,
+        'ALL': None
+    }
+    days = days_map.get(time_range, None)
     display_currency = get_user_currency() or 'CAD'
     
-    logger.info(f"[Dashboard API] /api/dashboard/movers called - fund={fund}, limit={limit}, currency={display_currency}")
+    logger.info(f"[Dashboard API] /api/dashboard/movers called - fund={fund}, range={time_range}, limit={limit}, currency={display_currency}")
     start_time = time.time()
     
     try:
-        positions_df = get_current_positions(fund)
+        movers = None
+        if days is not None and fund:
+            logger.debug(f"[Dashboard API] Fetching holdings performance for movers - range={time_range}")
+            perf_df = get_individual_holdings_performance_flask(fund, days=days)
+
+            if perf_df.empty:
+                logger.warning(f"[Dashboard API] No performance data found for movers - fund={fund}, range={time_range}")
+                return jsonify({"gainers": [], "losers": [], "display_currency": display_currency, "processing_time": 0.0})
+
+            # Take the last row per ticker (latest date)
+            perf_df = perf_df.sort_values(['ticker', 'date'])
+            perf_latest = perf_df.groupby('ticker').tail(1).reset_index(drop=True)
+
+            # Build gainers/losers by return_pct
+            perf_latest = perf_latest[pd.notna(perf_latest['return_pct'])]
+            if perf_latest.empty:
+                return jsonify({"gainers": [], "losers": [], "display_currency": display_currency, "processing_time": 0.0})
+
+            gainers_df = perf_latest.sort_values('return_pct', ascending=False).head(limit)
+            losers_df = perf_latest.sort_values('return_pct', ascending=True).head(limit)
+
+            movers = {
+                "gainers": gainers_df,
+                "losers": losers_df
+            }
+        else:
+            positions_df = get_current_positions(fund)
+            
+            if positions_df.empty:
+                logger.warning(f"[Dashboard API] No positions found for movers - fund={fund}")
+                return jsonify({"gainers": [], "losers": []})
+            
+            movers = get_biggest_movers(positions_df, display_currency, limit=limit)
         
-        if positions_df.empty:
-            logger.warning(f"[Dashboard API] No positions found for movers - fund={fund}")
-            return jsonify({"gainers": [], "losers": []})
-        
-        movers = get_biggest_movers(positions_df, display_currency, limit=limit)
-        
-        def df_to_list(df, logo_map=None):
+        def df_to_list(df, logo_map=None, company_map=None):
             if df.empty:
                 return []
             result = []
             for _, row in df.iterrows():
                 item = {
                     "ticker": row.get('ticker', ''),
-                    "company_name": row.get('company_name', row.get('ticker', '')),
+                    "company_name": row.get('company_name') or (company_map.get(row.get('ticker', ''), row.get('ticker', '')) if company_map else row.get('ticker', '')),
                 }
                 if logo_map:
                     item["_logo_url"] = logo_map.get(item["ticker"])
@@ -1443,6 +1603,34 @@ def get_movers_data():
                     item["market_value"] = float(row['market_value']) if pd.notna(row['market_value']) else None
                 result.append(item)
             return result
+
+        # Company name lookup for period movers
+        company_name_map = {}
+        if movers and days is not None and fund:
+            all_tickers = []
+            if not movers['gainers'].empty:
+                all_tickers.extend(movers['gainers']['ticker'].dropna().unique().tolist())
+            if not movers['losers'].empty:
+                all_tickers.extend(movers['losers']['ticker'].dropna().unique().tolist())
+            unique_tickers = list(set(all_tickers))
+
+            if unique_tickers:
+                try:
+                    client = get_supabase_client_flask()
+                    if client:
+                        for i in range(0, len(unique_tickers), 100):
+                            batch = unique_tickers[i:i + 100]
+                            result = client.supabase.table("securities") \
+                                .select("ticker, company_name") \
+                                .in_("ticker", batch) \
+                                .execute()
+                            if result.data:
+                                for row in result.data:
+                                    ticker = row.get('ticker')
+                                    if ticker:
+                                        company_name_map[ticker] = row.get('company_name') or ticker
+                except Exception as e:
+                    logger.warning(f"[Dashboard API] Could not fetch company names for movers: {e}")
         
         # Collect all tickers for logo fetching
         all_tickers = []
@@ -1460,8 +1648,8 @@ def get_movers_data():
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
 
-        gainers = df_to_list(movers['gainers'], logo_urls_map)
-        losers = df_to_list(movers['losers'], logo_urls_map)
+        gainers = df_to_list(movers['gainers'], logo_urls_map, company_name_map)
+        losers = df_to_list(movers['losers'], logo_urls_map, company_name_map)
 
         
         processing_time = time.time() - start_time
@@ -1471,6 +1659,7 @@ def get_movers_data():
             "gainers": gainers,
             "losers": losers,
             "display_currency": display_currency,
+            "range": time_range,
             "processing_time": processing_time
         })
         
