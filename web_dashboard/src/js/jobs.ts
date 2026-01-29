@@ -637,7 +637,7 @@ function createJobCard(job: Job): string {
         nextRun = new Date(job.next_run).toLocaleString();
     } else if (job.scheduler_stopped && job.has_schedule && job.trigger && job.trigger !== 'Manual') {
         // Scheduler is stopped but job has a schedule - show the schedule instead of "Not scheduled"
-        nextRun = `Scheduled: ${job.trigger}`;
+        nextRun = `Scheduled: ${escapeHtmlForJobs(job.trigger || '')}`;
     } else {
         nextRun = 'Not scheduled';
     }
@@ -667,20 +667,27 @@ function createJobCard(job: Job): string {
     let paramsHtml = '';
     if (job.parameters && Object.keys(job.parameters).length > 0) {
         const params = job.parameters;
+        // Safe ID for JS event handlers in parameter form
+        const safeJsJobId = escapeJsString(job.id);
 
         // Define helpers within closure to generate HTML
         const renderInput = (key: string, p: JobParameter) => {
             const label = p.description || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             const defaultValue = p.default ?? '';
 
+            const safeKey = escapeAttribute(key);
+            const safeLabel = escapeHtmlForJobs(label);
+            const safeDefault = escapeAttribute(defaultValue);
+            const safeJobId = escapeAttribute(job.id);
+
             if (p.type === 'boolean') {
                 const isChecked = defaultValue === true ? 'checked' : '';
                 return `
                     <div class="flex items-center mt-4 mb-2">
-                        <input type="checkbox" id="param-${job.id}-${key}" data-param="${key}" 
+                        <input type="checkbox" id="param-${safeJobId}-${safeKey}" data-param="${safeKey}"
                                class="h-4 w-4 text-accent focus:ring-accent border-border rounded" ${isChecked}>
-                        <label for="param-${job.id}-${key}" class="ml-2 block text-sm text-text-primary leading-none">
-                            ${label}
+                        <label for="param-${safeJobId}-${safeKey}" class="ml-2 block text-sm text-text-primary leading-none">
+                            ${safeLabel}
                         </label>
                     </div>
                 `;
@@ -701,24 +708,24 @@ function createJobCard(job: Job): string {
                 }
                 return `
                     <div>
-                        <label class="block text-xs font-medium text-text-primary mb-1">${label}</label>
-                        <input type="date" data-param="${key}" value="${val}" 
+                        <label class="block text-xs font-medium text-text-primary mb-1">${safeLabel}</label>
+                        <input type="date" data-param="${safeKey}" value="${escapeAttribute(val)}"
                             class="w-full text-sm bg-dashboard-surface border-border rounded-md focus:ring-accent focus:border-accent text-text-primary p-1">
                     </div>
                 `;
             } else if (p.type === 'number') {
                 return `
                     <div>
-                        <label class="block text-xs font-medium text-text-primary mb-1">${label}</label>
-                        <input type="number" data-param="${key}" value="${defaultValue}" 
+                        <label class="block text-xs font-medium text-text-primary mb-1">${safeLabel}</label>
+                        <input type="number" data-param="${safeKey}" value="${safeDefault}"
                             class="w-full text-sm bg-dashboard-surface border-border rounded-md focus:ring-accent focus:border-accent text-text-primary p-1">
                     </div>
                 `;
             } else {
                 return `
                     <div>
-                        <label class="block text-xs font-medium text-text-primary mb-1">${label}</label>
-                        <input type="text" data-param="${key}" placeholder="${defaultValue}" value="${defaultValue}"
+                        <label class="block text-xs font-medium text-text-primary mb-1">${safeLabel}</label>
+                        <input type="text" data-param="${safeKey}" placeholder="${safeDefault}" value="${safeDefault}"
                             class="w-full text-sm bg-dashboard-surface border-border rounded-md focus:ring-accent focus:border-accent text-text-primary p-1">
                     </div>
                 `;
@@ -729,15 +736,17 @@ function createJobCard(job: Job): string {
         const hasDateRange = 'use_date_range' in params;
         let fieldsHtml = '';
 
+        const safeJobId = escapeAttribute(job.id);
+
         if (hasDateRange) {
             // Render use_date_range checkbox
             fieldsHtml += `
                 <div class="col-span-full mb-2">
                     <div class="flex items-center">
-                        <input type="checkbox" id="param-${job.id}-use_date_range" data-param="use_date_range" 
-                               onchange="toggleDateRange('${job.id}', this)"
+                        <input type="checkbox" id="param-${safeJobId}-use_date_range" data-param="use_date_range"
+                               onchange="toggleDateRange('${safeJsJobId}', this)"
                                class="h-4 w-4 text-accent focus:ring-accent border-border rounded">
-                        <label for="param-${job.id}-use_date_range" class="ml-2 block text-sm font-medium text-text-primary">
+                        <label for="param-${safeJobId}-use_date_range" class="ml-2 block text-sm font-medium text-text-primary">
                             Use Date Range
                         </label>
                     </div>
@@ -777,10 +786,10 @@ function createJobCard(job: Job): string {
         }
 
         paramsHtml = `
-            <div class="mt-4 parameter-form hidden bg-dashboard-background p-4 rounded-md border border-border" id="params-${job.id}">
+            <div class="mt-4 parameter-form hidden bg-dashboard-background p-4 rounded-md border border-border" id="params-${safeJobId}">
                 <div class="flex justify-between items-center mb-3">
                     <h4 class="text-sm font-bold text-text-primary">⚙️ Job Parameters</h4>
-                    <button class="text-xs text-text-secondary hover:text-text-primary" onclick="toggleParams('${job.id}')">
+                    <button class="text-xs text-text-secondary hover:text-text-primary" onclick="toggleParams('${safeJsJobId}')">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -790,9 +799,9 @@ function createJobCard(job: Job): string {
                 </div>
                 
                 <div class="mt-4 flex justify-end border-t border-border pt-3">
-                     <button class="text-sm text-text-secondary mr-3 hover:text-text-primary px-3 py-1.5" onclick="toggleParams('${job.id}')">Cancel</button>
+                     <button class="text-sm text-text-secondary mr-3 hover:text-text-primary px-3 py-1.5" onclick="toggleParams('${safeJsJobId}')">Cancel</button>
                      <button class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-1.5 focus:outline-none transition-colors duration-200 flex items-center run-btn" 
-                        onclick="runJobWithParams('${job.id}', '${job.actual_job_id || job.id}')">
+                        onclick="runJobWithParams('${safeJsJobId}', '${escapeJsString(job.actual_job_id || job.id)}')">
                         <i class="fas fa-play mr-1.5 text-xs"></i> Run Now
                      </button>
                 </div>
@@ -800,15 +809,23 @@ function createJobCard(job: Job): string {
         `;
     }
 
+    const safeJobId = escapeAttribute(job.id);
+    const safeActualId = escapeAttribute(job.actual_job_id || job.id);
+    const safeJobName = escapeHtmlForJobs(job.name || job.id);
+    const safeScheduleText = escapeHtmlForJobs(getScheduleText(job.trigger || ''));
+
+    // Safe ID for onclick handlers
+    const safeJsJobId = escapeJsString(job.id);
+
     return `
         <div class="job-card bg-dashboard-surface rounded-lg shadow-sm p-6 border-l-4 ${getStatusBorderColor(job)} relative border-border">
             <div class="flex justify-between items-start">
                 <div>
                     <div class="flex items-center space-x-3">
-                        <h3 class="text-lg font-bold text-text-primary">${job.name || job.id}</h3>
+                        <h3 class="text-lg font-bold text-text-primary">${safeJobName}</h3>
                         ${getJobStatusBadgeHtml(job)}
                     </div>
-                    <p class="text-xs text-text-secondary mt-1 font-mono">${job.id}</p>
+                    <p class="text-xs text-text-secondary mt-1 font-mono">${safeJobId}</p>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 text-sm">
                         <div>
@@ -817,7 +834,7 @@ function createJobCard(job: Job): string {
                         </div>
                         <div>
                             <span class="text-text-secondary">Schedule:</span>
-                            <span class="font-medium text-text-primary">${getScheduleText(job.trigger || '')}</span>
+                            <span class="font-medium text-text-primary">${safeScheduleText}</span>
                         </div>
                     </div>
                 </div>
@@ -825,22 +842,22 @@ function createJobCard(job: Job): string {
                 <div class="flex space-x-2">
                     ${job.next_run
             ? `<button class="job-action-btn text-theme-warning-text hover:text-theme-warning-text/80 p-2" 
-                                data-action="pause" data-id="${job.actual_job_id || job.id}" title="Pause Job">
+                                data-action="pause" data-id="${safeActualId}" title="Pause Job">
                                 <i class="fas fa-pause"></i>
                            </button>`
             : `<button class="job-action-btn text-theme-success-text hover:text-theme-success-text/80 p-2" 
-                                data-action="resume" data-id="${job.actual_job_id || job.id}" title="Resume Job">
+                                data-action="resume" data-id="${safeActualId}" title="Resume Job">
                                 <i class="fas fa-play"></i>
                            </button>`
         }
                     
                     ${Object.keys(job.parameters || {}).length > 0
             ? `<button class="text-accent hover:text-accent-hover p-2" 
-                                onclick="toggleParams('${job.id}')" title="Run with Parameters">
+                                onclick="toggleParams('${safeJsJobId}')" title="Run with Parameters">
                                 <i class="fas fa-cog"></i>
                            </button>`
             : `<button class="job-action-btn text-accent hover:text-accent-hover p-2" 
-                                data-action="run" data-id="${job.actual_job_id || job.id}" title="Run Now">
+                                data-action="run" data-id="${safeActualId}" title="Run Now">
                                 <i class="fas fa-bolt"></i>
                            </button>`
         }
@@ -1160,9 +1177,11 @@ function renderTimelineView(jobsData: Job[]): void {
         const timeStr = minutesUntil < 60
             ? `${minutesUntil} min`
             : `${Math.floor(minutesUntil / 60)}h ${minutesUntil % 60}m`;
+        // Safe injection
+        const safeJobName = escapeHtmlForJobs(nextJob.job.name || nextJob.job.id);
         elements.nextJobInfo.innerHTML = `
             <span class="text-text-secondary">Next:</span>
-            <span class="text-text-primary font-medium">${nextJob.job.name || nextJob.job.id}</span>
+            <span class="text-text-primary font-medium">${safeJobName}</span>
             <span class="text-text-secondary">in ${timeStr}</span>
         `;
     } else if (elements.nextJobInfo) {
@@ -1170,31 +1189,33 @@ function renderTimelineView(jobsData: Job[]): void {
     }
 
     // Render interval jobs
-    if (frequentJobs.length === 0) {
-        elements.frequentJobsContainer.innerHTML = `
-            <div class="text-xs text-text-secondary italic">None</div>
-        `;
-    } else {
-        elements.frequentJobsContainer.innerHTML = frequentJobs.map(job => {
-            const scheduleText = getScheduleText(job.trigger || '');
-            const jobName = job.name || job.id;
-            const isRunning = job.is_running || job.status === 'running';
-            const statusDot = isRunning
-                ? '<span class="w-1.5 h-1.5 rounded-full bg-theme-warning-text animate-pulse"></span>'
-                : '<span class="w-1.5 h-1.5 rounded-full bg-theme-success-text/50"></span>';
-            return `
-                <div class="flex items-start gap-2 py-1.5 border-b border-border/20 last:border-0">
-                    <div class="mt-1.5">${statusDot}</div>
-                    <div class="flex-1 min-w-0">
-                        <div class="text-sm font-medium text-text-primary truncate">${jobName}</div>
-                        <div class="text-xs text-text-secondary">${scheduleText || 'Recurring'}</div>
-                    </div>
-                </div>
+    if (elements.frequentJobsContainer) {
+        if (frequentJobs.length === 0) {
+            elements.frequentJobsContainer.innerHTML = `
+                <div class="text-xs text-text-secondary italic">None</div>
             `;
-        }).join('');
+        } else {
+            elements.frequentJobsContainer.innerHTML = frequentJobs.map(job => {
+                const scheduleText = escapeHtmlForJobs(getScheduleText(job.trigger || ''));
+                const jobName = escapeHtmlForJobs(job.name || job.id);
+                const isRunning = job.is_running || job.status === 'running';
+                const statusDot = isRunning
+                    ? '<span class="w-1.5 h-1.5 rounded-full bg-theme-warning-text animate-pulse"></span>'
+                    : '<span class="w-1.5 h-1.5 rounded-full bg-theme-success-text/50"></span>';
+                return `
+                    <div class="flex items-start gap-2 py-1.5 border-b border-border/20 last:border-0">
+                        <div class="mt-1.5">${statusDot}</div>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-medium text-text-primary truncate">${jobName}</div>
+                            <div class="text-xs text-text-secondary">${scheduleText || 'Recurring'}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
     }
 
-    // Render manual jobs
+    // Manual Jobs
     if (elements.manualJobsContainer) {
         if (manualJobs.length === 0) {
             elements.manualJobsContainer.innerHTML = `
@@ -1202,7 +1223,7 @@ function renderTimelineView(jobsData: Job[]): void {
             `;
         } else {
             elements.manualJobsContainer.innerHTML = manualJobs.map(job => {
-                const jobName = job.name || job.id;
+                const jobName = escapeHtmlForJobs(job.name || job.id);
                 return `
                     <div class="flex items-center gap-2 py-1.5 border-b border-border/20 last:border-0">
                         <span class="w-1.5 h-1.5 rounded-full bg-text-secondary/30"></span>
@@ -1215,7 +1236,8 @@ function renderTimelineView(jobsData: Job[]): void {
 }
 
 function renderTimelineItem(item: { timeLabel: string; job: Job; detail?: string; badge?: string; isPast: boolean; isRunning: boolean }): string {
-    const jobName = item.job.name || item.job.id;
+    const jobName = escapeHtmlForJobs(item.job.name || item.job.id);
+    const detail = item.detail ? escapeHtmlForJobs(item.detail) : '';
 
     // Determine dot color based on status
     let dotClass = 'bg-accent'; // upcoming
@@ -1238,13 +1260,37 @@ function renderTimelineItem(item: { timeLabel: string; job: Job; detail?: string
                         ${item.isRunning ? '<span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300 animate-pulse"><i class="fas fa-spinner fa-spin text-xs"></i>Running</span>' : ''}
                         ${item.isPast && !item.isRunning ? '<span class="text-[10px] text-theme-success-text"><i class="fas fa-check-circle"></i></span>' : ''}
                     </div>
-                    ${item.detail ? `<div class="text-xs text-text-secondary mt-0.5">${item.detail}</div>` : ''}
+                    ${detail ? `<div class="text-xs text-text-secondary mt-0.5">${detail}</div>` : ''}
                 </div>
                 ${item.badge ? `<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-border/50 text-text-secondary/70 shrink-0">${item.badge}</span>` : ''}
             </div>
         </div>
     `;
 }
+
+// ... existing helper functions ...
+
+function escapeHtmlForJobs(text: string): string {
+    if (text === null || text === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function escapeAttribute(text: string | null | undefined): string {
+    if (text === null || text === undefined) return '';
+    return String(text).replace(/"/g, '&quot;');
+}
+
+function escapeJsString(text: string | null | undefined): string {
+    if (!text) return '';
+    // Escape single quotes for JS strings inside HTML attributes
+    // e.g. onclick="func('foo\'bar')"
+    // Also escape quotes for attribute safety, though usually unnecessary if we escape '
+    return String(text).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// ... existing event handling functions ...
 
 function updateCurrentTimeDisplay(): void {
     if (!elements.currentTimeDisplay) return;
@@ -1381,12 +1427,6 @@ function getLogLevelColor(level: string): string {
         return 'text-theme-warning-text';
     }
     return 'text-theme-info-text';
-}
-
-function escapeHtmlForJobs(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 function showJobsError(msg: string): void {
