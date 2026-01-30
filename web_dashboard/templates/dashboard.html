@@ -545,12 +545,14 @@
 <script type="module"
     src="/assets/js/dashboard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 <script>
-    // Immediate test to verify script loaded
-    console.log('[Dashboard] All scripts loaded, checking if dashboard.js executed...');
-    if (typeof refreshDashboard === 'undefined') {
-        console.error('[Dashboard] ERROR: refreshDashboard function not found! Script may not have loaded.');
-    } else {
-        log('[Dashboard] refreshDashboard function found, script loaded successfully');
-    }
+    // dashboard.js is type="module" so it runs async; check after it signals ready or on load
+    window.addEventListener('dashboard-ready', function() {
+        console.log('[Dashboard] refreshDashboard function found, script loaded successfully');
+    });
+    window.addEventListener('load', function() {
+        if (typeof refreshDashboard === 'undefined') {
+            console.error('[Dashboard] ERROR: refreshDashboard function not found! Script may not have loaded.');
+        }
+    });
 </script>
 {% endblock %}

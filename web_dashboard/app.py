@@ -110,6 +110,30 @@ def inject_csrf_enabled():
 
 # Add Security Headers
 @app.after_request
+def handle_invalid_session(response):
+    """Check if Supabase marked the session as invalid and redirect to login"""
+    if getattr(request, '_supabase_session_invalid', False):
+        # Session is invalid (JWT signature error, etc.) - clear cookies and redirect
+        logger.warning("[AUTH] Session invalid - clearing cookies and redirecting to login")
+        # For API requests, return 401
+        if request.path.startswith('/api/'):
+            from flask import jsonify
+            resp = jsonify({"error": "Session invalid, please log in again"})
+            resp.status_code = 401
+            resp.delete_cookie('auth_token')
+            resp.delete_cookie('refresh_token')
+            resp.delete_cookie('session_token')
+            return resp
+        # For page requests, redirect to auth page
+        resp = redirect('/auth?error=session_invalid')
+        resp.delete_cookie('auth_token')
+        resp.delete_cookie('refresh_token')
+        resp.delete_cookie('session_token')
+        return resp
+    return response
+
+
+@app.after_request
 def add_security_headers(response):
     """Add security headers to response"""
     response.headers['X-Content-Type-Options'] = 'nosniff'

@@ -34,18 +34,30 @@
     <!-- Controls -->
     <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-text-primary mb-2">Level Filter</label>
-                <select id="level-filter"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
-                    <option value="All">All Levels</option>
-                    <option value="INFO + ERROR" selected>INFO + ERROR</option>
-                    <option value="DEBUG">DEBUG</option>
-                    <option value="PERF">PERF</option>
-                    <option value="INFO">INFO</option>
-                    <option value="WARNING">WARNING</option>
-                    <option value="ERROR">ERROR</option>
-                </select>
+            <div class="md:col-span-1">
+                <label class="block text-sm font-medium text-text-primary mb-2">Log levels</label>
+                <div class="flex flex-wrap gap-x-4 gap-y-2 items-center">
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="level-ERROR" class="level-checkbox form-checkbox h-4 w-4 text-accent rounded" value="ERROR" checked>
+                        <span class="ml-2 text-sm text-text-secondary">ERROR</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="level-WARNING" class="level-checkbox form-checkbox h-4 w-4 text-accent rounded" value="WARNING" checked>
+                        <span class="ml-2 text-sm text-text-secondary">WARNING</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="level-INFO" class="level-checkbox form-checkbox h-4 w-4 text-accent rounded" value="INFO" checked>
+                        <span class="ml-2 text-sm text-text-secondary">INFO</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="level-PERF" class="level-checkbox form-checkbox h-4 w-4 text-accent rounded" value="PERF" checked>
+                        <span class="ml-2 text-sm text-text-secondary">PERF</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="level-DEBUG" class="level-checkbox form-checkbox h-4 w-4 text-accent rounded" value="DEBUG">
+                        <span class="ml-2 text-sm text-text-secondary">DEBUG</span>
+                    </label>
+                </div>
             </div>
             <div>
                 <label class="block text-sm font-medium text-text-primary mb-2">Show</label>
@@ -106,7 +118,7 @@
             <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
             <p>Loading logs...</p>
         </div>
-        <div id="logs-container" class="max-h-[70vh] overflow-y-auto bg-dashboard-surface-alt rounded-lg border border-border hidden"></div>
+        <div id="logs-container" class="bg-dashboard-surface-alt rounded-lg border border-border hidden"></div>
         <div id="error-message" class="hidden text-center py-8 text-theme-error-text">
             <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
             <pre id="error-text"
@@ -175,7 +187,7 @@
             <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
             <p>Loading logs...</p>
         </div>
-        <div id="logs-container-ollama" class="max-h-[70vh] overflow-y-auto bg-dashboard-surface-alt rounded-lg border border-border hidden"></div>
+        <div id="logs-container-ollama" class="bg-dashboard-surface-alt rounded-lg border border-border hidden"></div>
         <div id="error-message-ollama" class="hidden text-center py-8 text-theme-error-text">
             <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
             <pre id="error-text-ollama"
@@ -201,12 +213,19 @@
         'ERROR': '❌'
     };
 
+    function getSelectedLevels() {
+        const levels = [];
+        document.querySelectorAll('.level-checkbox:checked').forEach(cb => levels.push(cb.value));
+        return levels;
+    }
+
     async function fetchLogs() {
-        const level = document.getElementById('level-filter').value;
+        const levels = getSelectedLevels();
         const limit = document.getElementById('limit-select').value;
         const search = document.getElementById('search-input').value;
 
-        const url = `/api/logs/application?level=${encodeURIComponent(level)}&limit=${limit}&search=${encodeURIComponent(search)}&page=${currentPage}`;
+        const levelParams = levels.length === 0 ? 'level=All' : levels.map(l => `level=${encodeURIComponent(l)}`).join('&');
+        const url = `/api/logs/application?${levelParams}&limit=${limit}&search=${encodeURIComponent(search)}&page=${currentPage}`;
 
         try {
             document.getElementById('loading').classList.remove('hidden');
@@ -482,9 +501,11 @@
 
     document.getElementById('clear-btn').addEventListener('click', clearLogs);
 
-    document.getElementById('level-filter').addEventListener('change', () => {
-        currentPage = 1;
-        fetchLogs();
+    document.querySelectorAll('.level-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
+            currentPage = 1;
+            fetchLogs();
+        });
     });
 
     document.getElementById('limit-select').addEventListener('change', () => {

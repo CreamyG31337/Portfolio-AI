@@ -34,20 +34,6 @@ interface ApiResponse {
     message?: string;
 }
 
-// Flowbite Modal type (from window.Modal when loaded via CDN)
-interface FlowbiteModal {
-    show(): void;
-    hide(): void;
-}
-
-interface FlowbiteModalConstructor {
-    new(element: HTMLElement | null, options?: {
-        backdrop?: string;
-        closable?: boolean;
-        onHide?: () => void;
-    }): FlowbiteModal;
-}
-
 // State
 let allFunds: Fund[] = [];
 
@@ -56,8 +42,6 @@ const getElements = () => ({
     tableBody: document.getElementById('funds-table-body'),
     rebuildSelect: document.getElementById('rebuild-fund-select') as HTMLSelectElement | null,
     statsCards: document.getElementById('fund-stats-cards'),
-    editModalEl: document.getElementById('edit-fund-modal'),
-    createModalEl: document.getElementById('create-fund-modal'),
     deleteArea: document.getElementById('delete-confirm-area'),
     editOriginalName: document.getElementById('edit-fund-original-name') as HTMLInputElement | null,
     editName: document.getElementById('edit-fund-name') as HTMLInputElement | null,
@@ -91,74 +75,14 @@ function showToastForFunds(message: string, type: 'success' | 'error' = 'success
     }, 3000);
 }
 
-// Get Flowbite Modal class from window (loaded via CDN)
-function getFlowbiteModal(): FlowbiteModalConstructor | null {
-    return (window as any).Modal || null;
+// Close edit modal by clicking Flowbite's hide trigger (modal must be initialized via data-modal-target)
+function closeEditModal(): void {
+    document.querySelector<HTMLElement>('[data-modal-hide="edit-fund-modal"]')?.click();
 }
 
-// Initialize Flowbite modals
-function initializeModals(): void {
-    const ModalClass = getFlowbiteModal();
-
-    // Wait for Flowbite to be fully loaded
-    if (!ModalClass) {
-        // Flowbite not loaded yet, try again after a delay
-        setTimeout(() => {
-            if (getFlowbiteModal()) {
-                setupModals();
-            } else {
-                // If still not loaded after delay, try one more time
-                setTimeout(() => {
-                    if (getFlowbiteModal()) {
-                        setupModals();
-                    } else {
-                        console.warn('[Funds] Flowbite Modal not available. Modals may not work correctly.');
-                    }
-                }, 1000);
-            }
-        }, 100);
-        return;
-    }
-    setupModals();
-}
-
-function setupModals(): void {
-    const elements = getElements();
-    const ModalClass = getFlowbiteModal();
-
-    if (!elements.editModalEl || !elements.createModalEl) {
-        console.warn('[Funds] Modal elements not found');
-        return;
-    }
-
-    if (!ModalClass) {
-        console.warn('[Funds] Flowbite Modal class not available');
-        return;
-    }
-
-    try {
-        const modalOptions = {
-            backdrop: 'dynamic' as const,
-            closable: true,
-            onHide: () => {
-                if (elements.deleteArea) {
-                    elements.deleteArea.classList.add('hidden');
-                }
-            },
-        };
-
-        // Always create fresh modal instances for programmatic control
-        // This ensures modals work even if Flowbite's auto-init didn't run
-        if (elements.editModalEl && !window.editModal) {
-            window.editModal = new ModalClass(elements.editModalEl, modalOptions);
-        }
-
-        if (elements.createModalEl && !window.createModal) {
-            window.createModal = new ModalClass(elements.createModalEl, modalOptions);
-        }
-    } catch (error) {
-        console.error('[Funds] Error initializing modals:', error);
-    }
+// Close create modal by clicking Flowbite's hide trigger
+function closeCreateModal(): void {
+    document.querySelector<HTMLElement>('[data-modal-hide="create-fund-modal"]')?.click();
 }
 
 // Load funds from API
@@ -323,26 +247,12 @@ function openEditModal(fundName: string): void {
         elements.deleteConfirmInput.value = '';
     }
 
-    if (window.editModal) {
-        window.editModal.show();
+    // Open via Flowbite's trigger so the modal is in Flowbite's registry (required for data-modal-hide)
+    const trigger = document.getElementById('edit-fund-modal-trigger');
+    if (trigger) {
+        trigger.click();
     } else {
-        // Lazy initialize if not yet done
-        const ModalClass = getFlowbiteModal();
-        const modalEl = elements.editModalEl;
-        if (ModalClass && modalEl) {
-            window.editModal = new ModalClass(modalEl, {
-                backdrop: 'dynamic',
-                closable: true,
-                onHide: () => {
-                    if (elements.deleteArea) {
-                        elements.deleteArea.classList.add('hidden');
-                    }
-                }
-            });
-            window.editModal.show();
-        } else {
-            console.error('[Funds] Cannot open edit modal: Flowbite Modal not available');
-        }
+        console.error('[Funds] Edit fund modal trigger not found');
     }
 }
 
@@ -382,9 +292,7 @@ async function createFund(event: Event): Promise<void> {
         showToastForFunds('✅ Fund created successfully', 'success');
         form.reset();
 
-        if (window.createModal) {
-            window.createModal.hide();
-        }
+        closeCreateModal();
 
         await loadFunds();
     } catch (error) {
@@ -456,9 +364,7 @@ async function updateFund(event: Event): Promise<void> {
 
         showToastForFunds('✅ Fund updated successfully', 'success');
 
-        if (window.editModal) {
-            window.editModal.hide();
-        }
+        closeEditModal();
 
         await loadFunds();
     } catch (error) {
@@ -505,9 +411,7 @@ async function confirmDeleteFund(): Promise<void> {
 
         showToastForFunds('✅ Fund deleted successfully', 'success');
 
-        if (window.editModal) {
-            window.editModal.hide();
-        }
+        closeEditModal();
 
         await loadFunds();
     } catch (error) {
@@ -605,28 +509,12 @@ async function rebuildPortfolio(): Promise<void> {
     });
 }
 
-// Initialize on page load
-// Wait for both DOM and window load to ensure Flowbite is ready
+// Initialize on page load (Flowbite modals are initialized via data-modal-target in template)
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        loadFunds();
-        // Wait a bit for Flowbite to initialize
-        setTimeout(initializeModals, 200);
-    });
+    document.addEventListener('DOMContentLoaded', loadFunds);
 } else {
-    // DOM already loaded
     loadFunds();
-    // Wait a bit for Flowbite to initialize
-    setTimeout(initializeModals, 200);
 }
-
-// Also try on window load as a fallback
-window.addEventListener('load', () => {
-    // Re-initialize modals in case Flowbite loaded late
-    if (!window.editModal || !window.createModal) {
-        setTimeout(initializeModals, 100);
-    }
-});
 
 // Make functions globally available for onclick handlers
 window.toggleProduction = toggleProduction;

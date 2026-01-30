@@ -102,6 +102,17 @@ class SupabaseClient:
                     logger.debug("[SUPABASE_CLIENT] ⚠️ Called auth.set_session() without refresh_token (may not work for RPC)")
             except Exception as e:
                 logger.warning(f"[SUPABASE_CLIENT] ❌ auth.set_session() failed: {e}")
+                # Check if this is a signature/JWT validation error - if so, mark session as invalid
+                # so the auth middleware can force a logout/redirect
+                error_str = str(e).lower()
+                if "invalid jwt" in error_str or "signature" in error_str or "token" in error_str:
+                    try:
+                        from flask import request, has_request_context
+                        if has_request_context():
+                            request._supabase_session_invalid = True
+                            logger.warning("[SUPABASE_CLIENT] 🚨 Marked session as invalid due to JWT error")
+                    except ImportError:
+                        pass  # Not in Flask context
             
             # Method 2: Set Authorization header directly on postgrest client
             # This ensures table queries work

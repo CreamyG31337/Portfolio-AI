@@ -2593,5 +2593,6 @@ async function loadPnlChart(fund: string): Promise<void> {
 if (typeof window !== 'undefined') {
     (window as any).refreshDashboard = refreshDashboard;
     console.log('[Dashboard] refreshDashboard function exposed globally');
+    window.dispatchEvent(new CustomEvent('dashboard-ready'));
 }
 // Force rebuild: Fix missing logos by updating backend API

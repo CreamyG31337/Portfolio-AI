@@ -985,24 +985,29 @@ def logs_page():
                              user_theme='system',
                              **nav_context)
 
+VALID_LOG_LEVELS = frozenset({"DEBUG", "PERF", "INFO", "WARNING", "ERROR"})
+
+
 @admin_bp.route('/api/logs/application')
 @require_admin
 def api_logs_application():
-    """Get application logs"""
+    """Get application logs. Accepts multiple level= params (e.g. level=INFO&level=ERROR)."""
     try:
-        level = request.args.get('level', 'INFO + ERROR')
+        levels = request.args.getlist('level')
         limit = int(request.args.get('limit', 100))
         search = request.args.get('search', '')
         page = int(request.args.get('page', 1))
         since_deployment = request.args.get('since_deployment', 'false').lower() == 'true'
         
-        # Handle "INFO + ERROR" logic
-        if level == "INFO + ERROR":
-            level_filter = ["INFO", "ERROR"]
-        elif level == "All":
+        # Multiple levels: empty → default (all except DEBUG); "All" → show all; else selected levels
+        if not levels:
+            level_filter = ["INFO", "WARNING", "ERROR", "PERF"]  # default: everything but DEBUG
+        elif "All" in levels:
             level_filter = None
         else:
-            level_filter = level
+            level_filter = [l for l in levels if l in VALID_LOG_LEVELS]
+            if not level_filter:
+                level_filter = None
             
         exclude_heartbeat = request.args.get('exclude_heartbeat', 'true').lower() == 'true'
         exclude_modules = ['scheduler.scheduler_core.heartbeat'] if exclude_heartbeat else None
@@ -1085,21 +1090,22 @@ def api_logs_ollama():
 @admin_bp.route('/api/admin/system/logs/application')
 @require_admin
 def api_admin_logs_application():
-    """Get application logs (admin endpoint)"""
+    """Get application logs (admin endpoint). Accepts multiple level= params."""
     try:
-        level = request.args.get('level', 'INFO + ERROR')
+        levels = request.args.getlist('level')
         limit = int(request.args.get('limit', 100))
         search = request.args.get('search', '')
         page = int(request.args.get('page', 1))
         since_deployment = request.args.get('since_deployment', 'false').lower() == 'true'
         
-        # Handle "INFO + ERROR" logic
-        if level == "INFO + ERROR":
-            level_filter = ["INFO", "ERROR"]
-        elif level == "All":
+        if not levels:
+            level_filter = ["INFO", "WARNING", "ERROR", "PERF"]
+        elif "All" in levels:
             level_filter = None
         else:
-            level_filter = level
+            level_filter = [l for l in levels if l in VALID_LOG_LEVELS]
+            if not level_filter:
+                level_filter = None
             
         exclude_heartbeat = request.args.get('exclude_heartbeat', 'true').lower() == 'true'
         exclude_modules = ['scheduler.scheduler_core.heartbeat'] if exclude_heartbeat else None
