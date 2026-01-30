@@ -23,13 +23,9 @@ BEGIN
         );
     END IF;
 
-    -- Verify caller can modify data (must be full admin, not readonly_admin)
-    IF NOT can_modify_data(auth.uid()) THEN
-        RETURN json_build_object(
-            'success', false,
-            'message', 'Permission denied: Only full admins can modify user roles'
-        );
-    END IF;
+    -- Note: Permission check is done at Flask level (can_modify_data_flask) before calling this RPC
+    -- When called via service role key, auth.uid() is NULL so we can't check here
+    -- The SECURITY DEFINER + service role pattern means Flask is responsible for authorization
 
     -- Get user ID and current role by email
     SELECT up.user_id, up.role INTO target_user_id, current_role
@@ -44,13 +40,8 @@ BEGIN
         );
     END IF;
 
-    -- Prevent admin from modifying their own role
-    IF target_user_id = auth.uid() THEN
-        RETURN json_build_object(
-            'success', false,
-            'message', 'Cannot modify your own role'
-        );
-    END IF;
+    -- Note: Self-modification check is done at Flask level
+    -- auth.uid() is NULL when called via service role key
 
     -- Check if role is already set
     IF current_role = new_role THEN

@@ -454,6 +454,12 @@ def api_admin_set_role():
         if new_role not in ('user', 'readonly_admin', 'admin'):
             return jsonify({"error": "Invalid role. Must be user, readonly_admin, or admin"}), 400
 
+        # Prevent self-modification
+        from flask_auth_utils import get_user_email_flask
+        current_user_email = get_user_email_flask()
+        if current_user_email and user_email.lower() == current_user_email.lower():
+            return jsonify({"error": "Cannot modify your own role"}), 403
+
         # Use service role key for admin operations
         service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         if not service_key:
