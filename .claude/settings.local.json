@@ -7,7 +7,9 @@
       "Bash(where:*)",
       "Bash(curl:*)",
       "Bash(git add:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npm run build:ts:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

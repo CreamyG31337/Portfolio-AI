@@ -434,6 +434,61 @@ def api_admin_revoke_admin():
         logger.error(f"Error revoking admin role: {e}", exc_info=True)
         return jsonify({"error": "Failed to revoke admin role"}), 500
 
+@admin_bp.route('/api/admin/users/set-role', methods=['POST'])
+@require_admin
+def api_admin_set_role():
+    """Set user role (user, readonly_admin, or admin)"""
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot modify user roles"}), 403
+
+        data = request.get_json()
+        user_email = data.get('user_email')
+        new_role = data.get('new_role')
+
+        if not user_email:
+            return jsonify({"error": "User email required"}), 400
+        if not new_role:
+            return jsonify({"error": "New role required"}), 400
+        if new_role not in ('user', 'readonly_admin', 'admin'):
+            return jsonify({"error": "Invalid role. Must be user, readonly_admin, or admin"}), 400
+
+        # Use service role key for admin operations
+        service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not service_key:
+            logger.error("Missing SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY")
+            return jsonify({"error": "Server configuration error"}), 500
+
+        import requests
+        response = requests.post(
+            f"{os.getenv('SUPABASE_URL')}/rest/v1/rpc/set_user_role",
+            headers={
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json"
+            },
+            json={"user_email": user_email, "new_role": new_role}
+        )
+
+        if response.status_code == 200:
+            result_data = response.json()
+            if isinstance(result_data, list) and len(result_data) > 0:
+                result_data = result_data[0]
+
+            if result_data and result_data.get('success'):
+                # Clear cache
+                _get_cached_users_flask.clear_all_cache()
+                return jsonify(result_data), 200
+            else:
+                return jsonify(result_data or {"error": "Failed to set role"}), 400
+        else:
+            error_msg = response.json().get('message', 'Failed to set role') if response.text else 'Failed to set role'
+            return jsonify({"error": error_msg}), 400
+    except Exception as e:
+        logger.error(f"Error setting user role: {e}", exc_info=True)
+        return jsonify({"error": "Failed to set role"}), 500
+
 @admin_bp.route('/api/admin/users/delete', methods=['POST'])
 @require_admin
 def api_admin_delete_user():

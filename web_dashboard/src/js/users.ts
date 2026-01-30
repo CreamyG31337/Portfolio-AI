@@ -463,6 +463,7 @@ function createUserCard(user: User): string {
     const role = user.role || 'user';
     const fundsList = user.funds || [];
     const isAdmin = role === 'admin';
+    const isReadonly = role === 'readonly_admin';
     const isSelf = email === currentUserEmail;
 
     const fundsStr = fundsList.length > 0
@@ -471,21 +472,24 @@ function createUserCard(user: User): string {
             : fundsList.join(', '))
         : 'No funds';
 
+    const roleClass = isAdmin ? 'role-admin' : isReadonly ? 'role-readonly' : 'role-user';
+    const roleLabel = isAdmin ? '🔑 Admin' : isReadonly ? '👁️ Read-Only' : '👤 User';
+
     return `
         <div class="user-card bg-dashboard-surface rounded-lg shadow p-6 border border-border">
             <div class="flex items-start justify-between">
                 <div class="flex-1">
                     <div class="flex items-center space-x-3 mb-2">
                         <h3 class="text-lg font-semibold text-text-primary">${escapeHtmlForUsers(fullName)}</h3>
-                        <span class="role-badge ${isAdmin ? 'role-admin' : 'role-user'}">
-                            ${isAdmin ? '🔑 Admin' : '👤 User'}
+                        <span class="role-badge ${roleClass}">
+                            ${roleLabel}
                         </span>
                     </div>
                     <p class="text-sm text-text-secondary mb-2">${escapeHtmlForUsers(email)}</p>
                     <p class="text-sm text-text-secondary">📊 ${escapeHtmlForUsers(fundsStr)}</p>
                 </div>
                 <div class="action-popover">
-                    <button class="user-action-btn bg-dashboard-background hover:bg-dashboard-hover px-3 py-2 rounded-md text-sm border border-border text-text-primary" 
+                    <button class="user-action-btn bg-dashboard-background hover:bg-dashboard-hover px-3 py-2 rounded-md text-sm border border-border text-text-primary"
                             data-email="${escapeHtmlForUsers(email)}" data-role="${role}" data-is-self="${isSelf}">
                         <i class="fas fa-cog mr-1"></i>Actions
                     </button>
@@ -508,11 +512,14 @@ async function handleUserAction(e: Event): Promise<void> {
 
     // Handle the action
     switch (action) {
-        case 'grant-admin':
-            await grantAdminRole(email);
+        case 'set-admin':
+            await setUserRole(email, 'admin');
             break;
-        case 'revoke-admin':
-            await revokeAdminRole(email, isSelf);
+        case 'set-readonly':
+            await setUserRole(email, 'readonly_admin');
+            break;
+        case 'set-user':
+            await setUserRole(email, 'user');
             break;
         case 'assign-fund':
             await showAssignFundDialog(email);
@@ -532,6 +539,36 @@ async function handleUserAction(e: Event): Promise<void> {
 // Show Action Menu (simplified - use a proper modal/dropdown in production)
 async function showActionMenu(email: string, role: string, isSelf: boolean): Promise<string | null> {
     return new Promise((resolve) => {
+        // Build role buttons based on current role
+        let roleButtons = '';
+        if (isSelf) {
+            roleButtons = `<p class="text-sm text-text-secondary px-4 py-2">⚠️ Cannot modify your own role</p>`;
+        } else if (role === 'admin') {
+            roleButtons = `
+                <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="set-readonly">
+                    <i class="fas fa-eye mr-2 text-theme-info-text"></i>👁️ Set Read-Only Admin
+                </button>
+                <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="set-user">
+                    <i class="fas fa-user mr-2 text-text-secondary"></i>👤 Set User
+                </button>`;
+        } else if (role === 'readonly_admin') {
+            roleButtons = `
+                <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="set-admin">
+                    <i class="fas fa-shield-alt mr-2 text-theme-warning-text"></i>🔑 Set Full Admin
+                </button>
+                <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="set-user">
+                    <i class="fas fa-user mr-2 text-text-secondary"></i>👤 Set User
+                </button>`;
+        } else {
+            roleButtons = `
+                <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="set-readonly">
+                    <i class="fas fa-eye mr-2 text-theme-info-text"></i>👁️ Set Read-Only Admin
+                </button>
+                <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="set-admin">
+                    <i class="fas fa-shield-alt mr-2 text-theme-warning-text"></i>🔑 Set Full Admin
+                </button>`;
+        }
+
         const menu = document.createElement('div');
         menu.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center';
         menu.innerHTML = `
@@ -541,27 +578,25 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
                     <p class="text-sm text-text-secondary mt-1">${escapeHtmlForUsers(email)}</p>
                 </div>
                 <div class="p-6 space-y-2">
-                    ${role !== 'admin'
-                ? `<button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="grant-admin">
-                            <i class="fas fa-shield-alt mr-2 text-theme-info-text"></i>Grant Admin
-                           </button>`
-                : `<button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary ${isSelf ? 'opacity-50 cursor-not-allowed' : ''}" 
-                                 data-action="revoke-admin" ${isSelf ? 'disabled' : ''}>
-                            <i class="fas fa-shield-alt mr-2 text-theme-warning-text"></i>Revoke Admin
-                           </button>`}
+                    <p class="text-xs text-text-secondary uppercase tracking-wide mb-2">Role Management</p>
+                    ${roleButtons}
+                    <div class="border-t border-border my-3"></div>
+                    <p class="text-xs text-text-secondary uppercase tracking-wide mb-2">Fund Management</p>
                     <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="assign-fund">
                         <i class="fas fa-plus-circle mr-2 text-theme-success-text"></i>Assign Fund
                     </button>
                     <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="remove-fund">
                         <i class="fas fa-minus-circle mr-2 text-theme-warning-text"></i>Remove Fund
                     </button>
+                    <div class="border-t border-border my-3"></div>
+                    <p class="text-xs text-text-secondary uppercase tracking-wide mb-2">Other Actions</p>
                     <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="send-invite">
                         <i class="fas fa-envelope mr-2 text-theme-info-text"></i>Send Invite
                     </button>
-                    <div class="border-t border-border my-2"></div>
                     <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-theme-error-text font-medium" data-action="delete">
                         <i class="fas fa-trash-alt mr-2"></i>Delete User
                     </button>
+                    <div class="border-t border-border my-2"></div>
                     <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors mt-2 text-text-primary" data-action="cancel">
                         <i class="fas fa-times mr-2"></i>Cancel
                     </button>
@@ -595,51 +630,30 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
 }
 
 // User Actions
-async function grantAdminRole(email: string): Promise<void> {
-    if (!confirm(`Grant admin role to ${email}?`)) return;
+async function setUserRole(email: string, newRole: string): Promise<void> {
+    const roleLabels: Record<string, string> = {
+        'admin': 'Full Admin',
+        'readonly_admin': 'Read-Only Admin',
+        'user': 'User'
+    };
+    const roleLabel = roleLabels[newRole] || newRole;
+
+    if (!confirm(`Set ${email} role to ${roleLabel}?`)) return;
 
     try {
-        const response = await fetch('/api/admin/users/grant-admin', {
+        const response = await fetch('/api/admin/users/set-role', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_email: email })
+            body: JSON.stringify({ user_email: email, new_role: newRole })
         });
 
         const data: ApiResponse = await response.json();
 
         if (response.ok && data.success) {
-            showToast(data.message || 'Admin role granted', 'success');
+            showToast(data.message || `Role changed to ${roleLabel}`, 'success');
             fetchUsers();
         } else {
-            showToast(data.error || data.message || 'Failed to grant admin role', 'error');
-        }
-    } catch (error) {
-        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    }
-}
-
-async function revokeAdminRole(email: string, isSelf: boolean): Promise<void> {
-    if (isSelf) {
-        showToast('Cannot remove your own admin role', 'warning');
-        return;
-    }
-
-    if (!confirm(`Revoke admin role from ${email}?`)) return;
-
-    try {
-        const response = await fetch('/api/admin/users/revoke-admin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_email: email })
-        });
-
-        const data: ApiResponse = await response.json();
-
-        if (response.ok && data.success) {
-            showToast(data.message || 'Admin role revoked', 'success');
-            fetchUsers();
-        } else {
-            showToast(data.error || data.message || 'Failed to revoke admin role', 'error');
+            showToast(data.error || data.message || 'Failed to change role', 'error');
         }
     } catch (error) {
         showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
