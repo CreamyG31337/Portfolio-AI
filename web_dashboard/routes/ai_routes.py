@@ -34,6 +34,27 @@ logger = logging.getLogger(__name__)
 ai_bp = Blueprint('ai', __name__)
 
 # ============================================================================
+# Market-Hours-Aware Cache TTL (AI Context Only)
+# ============================================================================
+
+def _get_ai_context_cache_ttl() -> int:
+    """Get cache TTL for AI context based on market hours.
+
+    Returns:
+        - 600 (10 min) during market hours when prices change
+        - 21600 (6 hours) when market closed (data static until next open)
+    """
+    try:
+        from market_data.market_hours import MarketHours
+        if MarketHours().is_market_open():
+            return 600   # 10 minutes during market hours
+        return 21600     # 6 hours when market closed
+    except Exception as e:
+        logger.warning(f"Error checking market hours for cache TTL: {e}")
+        return 600       # Default to 10 min if check fails
+
+
+# ============================================================================
 # Cached Helper Functions
 # ============================================================================
 
@@ -397,7 +418,6 @@ def _build_context_from_packet(
     return context_string, format_timings
 
 
-@cache_data(ttl=300)  # Cache full context string (5 min) - includes yfinance formatting
 def _get_preview_context_string(
     user_id: str,
     fund: str,
@@ -409,18 +429,45 @@ def _get_preview_context_string(
     include_congress_trades: bool = True,
     include_etf_trades: bool = True
 ) -> tuple:
-    """Build preview context string from cached data.
+    """Build preview context string with market-hours-aware caching.
+
+    Cache TTL:
+    - 10 min during market hours (data changes)
+    - 6 hours when market closed (data static)
 
     Cache key includes all toggle parameters, so different configurations
-    get separate cache entries. This avoids calling yfinance for volume/fundamentals
-    on every page load.
+    get separate cache entries.
 
     Returns:
         tuple: (context_string, all_timings_dict)
     """
+    from flask_cache_utils import _get_cache, _make_cache_key
+
+    # Generate cache key from all parameters
+    cache_key = _make_cache_key(
+        '_get_preview_context_string',
+        (user_id, fund, include_thesis, include_trades, include_price_volume,
+         include_fundamentals, include_insider_trades, include_congress_trades,
+         include_etf_trades),
+        {}
+    )
+
+    # Try cache first
+    cache = _get_cache()
+    try:
+        cached_value = cache.get(cache_key)
+        if cached_value is not None:
+            logger.debug(f"[PERF] AI context cache HIT for {fund}")
+            return cached_value
+    except Exception as e:
+        logger.warning(f"Cache get error: {e}")
+
+    # Cache miss - generate context
+    logger.debug(f"[PERF] AI context cache MISS for {fund} - generating...")
+
     data_packet = _get_context_data_packet(user_id, fund)
     data_timings = data_packet.get('_timings', {})
-    
+
     context_string, format_timings = _build_context_from_packet(
         fund=fund,
         data_packet=data_packet,
@@ -432,15 +479,25 @@ def _get_preview_context_string(
         include_congress_trades=include_congress_trades,
         include_etf_trades=include_etf_trades
     )
-    
+
     # Combine all timings
     all_timings = {
         'data_fetch': data_timings,
         'formatting': format_timings
     }
     logger.info(f"[PERF] Context generation complete - timings (ms): {all_timings}")
-    
-    return context_string, all_timings
+
+    result = (context_string, all_timings)
+
+    # Cache with dynamic TTL based on market hours
+    ttl = _get_ai_context_cache_ttl()
+    try:
+        cache.set(cache_key, result, timeout=ttl)
+        logger.debug(f"[PERF] AI context cached for {fund} with TTL={ttl}s")
+    except Exception as e:
+        logger.warning(f"Cache set error: {e}")
+
+    return result
 
 @cache_data(ttl=30)
 def _get_cached_ollama_health():
