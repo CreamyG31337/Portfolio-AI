@@ -430,51 +430,47 @@ async function mergeContributors(): Promise<void> {
         return;
     }
 
-    if (!confirm('Are you sure you want to merge these contributors? This cannot be undone.')) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/admin/contributors/merge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                source_contributor_id: sourceId,
-                target_contributor_id: targetId
-            })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.error || 'Failed to merge contributors');
+    (window as any).showConfirmModal({
+        title: 'Merge contributors',
+        message: 'Are you sure you want to merge these contributors? This cannot be undone.',
+        confirmLabel: 'Merge',
+        danger: true,
+        onConfirm: async () => {
+            try {
+                const response = await fetch('/api/admin/contributors/merge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source_contributor_id: sourceId,
+                        target_contributor_id: targetId
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to merge contributors');
+                }
+                const resultDiv = document.getElementById('merge-result');
+                if (resultDiv) {
+                    resultDiv.classList.remove('hidden');
+                    resultDiv.className = 'mt-4 p-4 bg-theme-success-bg/20 border border-theme-success-text/30 rounded-md';
+                    resultDiv.innerHTML = `<p class="text-theme-success-text">✅ ${data.message}</p>`;
+                }
+                await loadContributors();
+                (document.getElementById('merge-source-select') as HTMLSelectElement).value = '';
+                (document.getElementById('merge-target-select') as HTMLSelectElement).value = '';
+                const preview = document.getElementById('merge-preview');
+                if (preview) preview.classList.add('hidden');
+            } catch (error) {
+                console.error('Error merging contributors:', error);
+                const resultDiv = document.getElementById('merge-result');
+                if (resultDiv) {
+                    resultDiv.classList.remove('hidden');
+                    resultDiv.className = 'mt-4 p-4 bg-theme-error-bg/20 border border-theme-error-text/30 rounded-md';
+                    resultDiv.innerHTML = `<p class="text-theme-error-text">❌ ${error instanceof Error ? error.message : 'Failed to merge contributors'}</p>`;
+                }
+            }
         }
-
-        const resultDiv = document.getElementById('merge-result');
-        if (resultDiv) {
-            resultDiv.classList.remove('hidden');
-            resultDiv.className = 'mt-4 p-4 bg-theme-success-bg/20 border border-theme-success-text/30 rounded-md';
-            resultDiv.innerHTML = `<p class="text-theme-success-text">✅ ${data.message}</p>`;
-        }
-
-        // Reload contributors
-        await loadContributors();
-
-        // Reset form
-        (document.getElementById('merge-source-select') as HTMLSelectElement).value = '';
-        (document.getElementById('merge-target-select') as HTMLSelectElement).value = '';
-        const preview = document.getElementById('merge-preview');
-        if (preview) preview.classList.add('hidden');
-
-    } catch (error) {
-        console.error('Error merging contributors:', error);
-        const resultDiv = document.getElementById('merge-result');
-        if (resultDiv) {
-            resultDiv.classList.remove('hidden');
-            resultDiv.className = 'mt-4 p-4 bg-theme-error-bg/20 border border-theme-error-text/30 rounded-md';
-            resultDiv.innerHTML = `<p class="text-theme-error-text">❌ ${error instanceof Error ? error.message : 'Failed to merge contributors'}</p>`;
-        }
-    }
+    });
 }
 
 // Load contributor for edit

@@ -1341,28 +1341,30 @@ function renderSkipList(skipList: SkipListEntry[]): void {
     }).join('');
 }
 
-async function removeFromSkipList(ticker: string): Promise<void> {
-    if (!confirm(`Remove ${ticker} from skip list? It will be eligible for analysis again.`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/admin/ai/skip-list/${encodeURIComponent(ticker)}`, {
-            method: 'DELETE',
-            credentials: 'include'
-        });
-
-        if (response.ok) {
-            showToastForAI(`${ticker} removed from skip list`, 'success');
-            loadSkipList();
-        } else {
-            const result = await response.json();
-            showToastForAI(result.error || 'Failed to remove from skip list', 'error');
+function removeFromSkipList(ticker: string): void {
+    (window as any).showConfirmModal({
+        title: 'Remove from skip list',
+        message: `Remove ${ticker} from skip list? It will be eligible for analysis again.`,
+        confirmLabel: 'Remove',
+        onConfirm: async () => {
+            try {
+                const response = await fetch(`/api/admin/ai/skip-list/${encodeURIComponent(ticker)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    showToastForAI(`${ticker} removed from skip list`, 'success');
+                    loadSkipList();
+                } else {
+                    const result = await response.json();
+                    showToastForAI(result.error || 'Failed to remove from skip list', 'error');
+                }
+            } catch (error) {
+                console.error('Error removing from skip list:', error);
+                showToastForAI('Error removing from skip list', 'error');
+            }
         }
-    } catch (error) {
-        console.error('Error removing from skip list:', error);
-        showToastForAI('Error removing from skip list', 'error');
-    }
+    });
 }
 
 // Make removeFromSkipList available globally

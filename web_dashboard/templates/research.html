@@ -970,39 +970,41 @@
     }
 
     function deleteArticle(articleId) {
-        if (!articleId) {
-            return;
-        }
-
-        if (!confirm("Are you sure you want to permanently delete this article?")) {
-            return;
-        }
-
-        fetch('/api/research/delete', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'include',
-            body: JSON.stringify({ article_id: articleId })
-        })
-            .then(response => response.json().then(data => ({ ok: response.ok, data })))
-            .then(({ ok, data }) => {
-                if (ok && data.success) {
-                    const card = document.querySelector(`#research-articles-grid [data-article-id="${articleId}"]`);
-                    if (card) {
-                        card.remove();
-                    }
-                    showMessage('✅ Article deleted successfully.', 'success');
-                } else {
-                    const errorMessage = (data && data.error) ? data.error : 'Unknown error while deleting article.';
-                    showMessage(`❌ Failed to delete article: ${errorMessage}`, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error deleting article:', error);
-                showMessage(`❌ Error deleting article: ${error.message}`, 'error');
-            });
+        if (!articleId) return;
+        window.showConfirmModal({
+            title: 'Delete this article?',
+            message: 'This action cannot be undone. The article will be permanently removed from the research repository.',
+            confirmLabel: 'Delete permanently',
+            danger: true,
+            onConfirm: function() {
+                return fetch('/api/research/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ article_id: articleId })
+                })
+                    .then(function(response) { return response.json().then(function(data) { return { ok: response.ok, data: data }; }); })
+                    .then(function(_ref) {
+                        var ok = _ref.ok, data = _ref.data;
+                        if (ok && data.success) {
+                            var card = document.querySelector('#research-articles-grid [data-article-id="' + articleId + '"]');
+                            if (card) {
+                                card.style.overflow = 'hidden';
+                                card.classList.add('opacity-0', 'scale-95', '-translate-y-2');
+                                setTimeout(function() { if (card.parentElement) card.remove(); }, 300);
+                            }
+                            showMessage('✅ Article deleted successfully.', 'success');
+                        } else {
+                            var errorMessage = (data && data.error) ? data.error : 'Unknown error while deleting article.';
+                            showMessage('❌ Failed to delete article: ' + errorMessage, 'error');
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('Error deleting article:', error);
+                        showMessage('❌ Error deleting article: ' + error.message, 'error');
+                    });
+            }
+        });
     }
 
     function showMessage(message, type) {

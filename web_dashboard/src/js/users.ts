@@ -630,34 +630,36 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
 }
 
 // User Actions
-async function setUserRole(email: string, newRole: string): Promise<void> {
+function setUserRole(email: string, newRole: string): void {
     const roleLabels: Record<string, string> = {
         'admin': 'Full Admin',
         'readonly_admin': 'Read-Only Admin',
         'user': 'User'
     };
     const roleLabel = roleLabels[newRole] || newRole;
-
-    if (!confirm(`Set ${email} role to ${roleLabel}?`)) return;
-
-    try {
-        const response = await fetch('/api/admin/users/set-role', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_email: email, new_role: newRole })
-        });
-
-        const data: ApiResponse = await response.json();
-
-        if (response.ok && data.success) {
-            showToast(data.message || `Role changed to ${roleLabel}`, 'success');
-            fetchUsers();
-        } else {
-            showToast(data.error || data.message || 'Failed to change role', 'error');
+    (window as any).showConfirmModal({
+        title: 'Set user role',
+        message: `Set ${email} role to ${roleLabel}?`,
+        confirmLabel: 'Set role',
+        onConfirm: async () => {
+            try {
+                const response = await fetch('/api/admin/users/set-role', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_email: email, new_role: newRole })
+                });
+                const data: ApiResponse = await response.json();
+                if (response.ok && data.success) {
+                    showToast(data.message || `Role changed to ${roleLabel}`, 'success');
+                    fetchUsers();
+                } else {
+                    showToast(data.error || data.message || 'Failed to change role', 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+            }
         }
-    } catch (error) {
-        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    }
+    });
 }
 
 async function showAssignFundDialog(email: string): Promise<void> {
@@ -725,57 +727,56 @@ async function showRemoveFundDialog(email: string): Promise<void> {
     }
 }
 
-async function sendInvite(email: string): Promise<void> {
-    if (!confirm(`Send invite email to ${email}?`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/admin/users/send-invite', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_email: email })
-        });
-
-        const data: ApiResponse = await response.json();
-
-        if (response.ok && data.success) {
-            showToast(data.message || 'Invite sent', 'success');
-        } else {
-            showToast(data.error || 'Failed to send invite', 'error');
+function sendInvite(email: string): void {
+    (window as any).showConfirmModal({
+        title: 'Send invite',
+        message: `Send invite email to ${email}?`,
+        confirmLabel: 'Send invite',
+        onConfirm: async () => {
+            try {
+                const response = await fetch('/api/admin/users/send-invite', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_email: email })
+                });
+                const data: ApiResponse = await response.json();
+                if (response.ok && data.success) {
+                    showToast(data.message || 'Invite sent', 'success');
+                } else {
+                    showToast(data.error || 'Failed to send invite', 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+            }
         }
-    } catch (error) {
-        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    }
+    });
 }
 
-async function deleteUser(email: string): Promise<void> {
-    if (!confirm(`⚠️ Delete user ${email}?\n\nThis cannot be undone. Contributors cannot be deleted.`)) {
-        return;
-    }
-
-    if (!confirm(`Are you absolutely sure you want to delete ${email}?`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/admin/users/delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_email: email })
-        });
-
-        const data: ApiResponse = await response.json();
-
-        if (response.ok && data.success) {
-            showToast(data.message || 'User deleted', 'success');
-            fetchUsers();
-        } else {
-            showToast(data.error || data.message || 'Failed to delete user', 'error');
+function deleteUser(email: string): void {
+    (window as any).showConfirmModal({
+        title: 'Delete user',
+        message: `Delete user ${email}? This cannot be undone. Contributors cannot be deleted.`,
+        confirmLabel: 'Delete user',
+        danger: true,
+        onConfirm: async () => {
+            try {
+                const response = await fetch('/api/admin/users/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_email: email })
+                });
+                const data: ApiResponse = await response.json();
+                if (response.ok && data.success) {
+                    showToast(data.message || 'User deleted', 'success');
+                    fetchUsers();
+                } else {
+                    showToast(data.error || data.message || 'Failed to delete user', 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+            }
         }
-    } catch (error) {
-        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    }
+    });
 }
 
 // Update Contributor Email
@@ -1047,44 +1048,41 @@ async function handleRevokeAccess(): Promise<void> {
         return;
     }
 
-    if (!confirm(`Revoke access for ${userEmail} to ${contributorEmail}?`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/admin/contributor-access/revoke', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contributor_email: contributorEmail,
-                user_email: userEmail
-            })
-        });
-
-        const data: ApiResponse = await response.json();
-
-        if (response.ok && data.success) {
-            elements.revokeAccessResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
-            elements.revokeAccessResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${data.message || 'Access revoked'}</span>`;
-            elements.revokeAccessResult.classList.remove('hidden');
-
-            // Clear form
-            elements.revokeContributorSelect.value = '';
-            elements.revokeUserSelect.value = '';
-
-            // Refresh access records
-            fetchAccessRecords();
-        } else {
-            elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
-            elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${data.error || data.message || 'Failed to revoke access'}</span>`;
-            elements.revokeAccessResult.classList.remove('hidden');
+    (window as any).showConfirmModal({
+        title: 'Revoke access',
+        message: `Revoke access for ${userEmail} to ${contributorEmail}?`,
+        confirmLabel: 'Revoke access',
+        onConfirm: async () => {
+            try {
+                const response = await fetch('/api/admin/contributor-access/revoke', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contributor_email: contributorEmail,
+                        user_email: userEmail
+                    })
+                });
+                const data: ApiResponse = await response.json();
+                if (response.ok && data.success) {
+                    elements.revokeAccessResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+                    elements.revokeAccessResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${data.message || 'Access revoked'}</span>`;
+                    elements.revokeAccessResult.classList.remove('hidden');
+                    elements.revokeContributorSelect.value = '';
+                    elements.revokeUserSelect.value = '';
+                    fetchAccessRecords();
+                } else {
+                    elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+                    elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${data.error || data.message || 'Failed to revoke access'}</span>`;
+                    elements.revokeAccessResult.classList.remove('hidden');
+                }
+            } catch (error) {
+                if (!elements.revokeAccessResult) return;
+                elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+                elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
+                elements.revokeAccessResult.classList.remove('hidden');
+            }
         }
-    } catch (error) {
-        if (!elements.revokeAccessResult) return;
-        elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
-        elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
-        elements.revokeAccessResult.classList.remove('hidden');
-    }
+    });
 }
 
 // Toast Notification System

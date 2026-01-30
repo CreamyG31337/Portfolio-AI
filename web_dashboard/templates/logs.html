@@ -424,25 +424,28 @@
         document.getElementById('next-btn-ollama').disabled = data.page >= data.pages;
     }
 
-    async function clearLogs() {
-        if (!confirm('Are you sure you want to clear all logs? This cannot be undone.')) {
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/logs/clear', { method: 'POST' });
-            const data = await response.json();
-
-            if (data.success) {
-                alert('✅ Logs cleared successfully');
-                currentPage = 1;
-                fetchLogs();
-            } else {
-                alert('❌ Failed to clear logs: ' + (data.error || 'Unknown error'));
+    function clearLogs() {
+        window.showConfirmModal({
+            title: 'Clear all logs',
+            message: 'Are you sure you want to clear all logs? This cannot be undone.',
+            confirmLabel: 'Clear logs',
+            danger: true,
+            onConfirm: async function() {
+                try {
+                    const response = await fetch('/api/logs/clear', { method: 'POST' });
+                    const data = await response.json();
+                    if (data.success) {
+                        alert('✅ Logs cleared successfully');
+                        currentPage = 1;
+                        fetchLogs();
+                    } else {
+                        alert('❌ Failed to clear logs: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    alert('❌ Error: ' + error.message);
+                }
             }
-        } catch (error) {
-            alert('❌ Error: ' + error.message);
-        }
+        });
     }
 
     function setupAutoRefresh() {

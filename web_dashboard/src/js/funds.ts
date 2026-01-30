@@ -563,31 +563,31 @@ async function rebuildPortfolio(): Promise<void> {
         return;
     }
 
-    if (!confirm(`Are you sure you want to rebuild portfolio for "${fundName}" ? This may take several minutes.`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/v2/funds/rebuild', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fund_name: fundName }),
-            credentials: 'include'
-        });
-
-        const result: FundResponse = await response.json();
-
-        if (!response.ok) {
-            throw new Error(result.error || 'Failed to start rebuild');
+    (window as any).showConfirmModal({
+        title: 'Rebuild portfolio',
+        message: `Rebuild portfolio for "${fundName}"? This may take several minutes.`,
+        confirmLabel: 'Start rebuild',
+        onConfirm: async () => {
+            try {
+                const response = await fetch('/api/v2/funds/rebuild', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fund_name: fundName }),
+                    credentials: 'include'
+                });
+                const result: FundResponse = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to start rebuild');
+                }
+                const pid = result.pid || 'N/A';
+                showToastForFunds(`✅ Rebuild started for ${fundName}(PID: ${pid})`, 'success');
+            } catch (error) {
+                console.error('[Funds] Error starting rebuild:', error);
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                showToastForFunds('❌ ' + errorMessage, 'error');
+            }
         }
-
-        const pid = result.pid || 'N/A';
-        showToastForFunds(`✅ Rebuild started for ${fundName}(PID: ${pid})`, 'success');
-    } catch (error) {
-        console.error('[Funds] Error starting rebuild:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        showToastForFunds('❌ ' + errorMessage, 'error');
-    }
+    });
 }
 
 // Initialize on page load

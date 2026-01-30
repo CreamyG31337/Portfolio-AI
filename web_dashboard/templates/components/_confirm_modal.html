@@ -1,0 +1,95 @@
+<!-- Reusable confirmation modal (Flowbite); use via window.showConfirmModal(...) -->
+<button id="confirm-modal-trigger" type="button" class="hidden" data-modal-target="confirm-modal"
+    data-modal-toggle="confirm-modal" aria-label="Open confirmation">Open</button>
+<div id="confirm-modal" tabindex="-1" aria-hidden="true"
+    class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-md max-h-full flex items-center justify-center min-h-[calc(100%-2rem)]">
+        <div class="relative bg-dashboard-surface border border-border rounded-xl shadow-lg w-full">
+            <div class="p-6 text-center">
+                <div id="confirm-modal-icon" class="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-dashboard-background border border-border mb-4">
+                    <i class="fas fa-question text-text-secondary text-xl"></i>
+                </div>
+                <h3 id="confirm-modal-title" class="mb-2 text-xl font-semibold text-text-primary">Confirm</h3>
+                <p id="confirm-modal-message" class="mb-6 text-sm text-text-secondary"></p>
+                <div class="flex gap-3 justify-center">
+                    <button type="button" id="confirm-modal-cancel" data-modal-hide="confirm-modal"
+                        class="px-4 py-2.5 text-sm font-medium rounded-lg border border-border bg-dashboard-background text-text-primary hover:bg-dashboard-surface-alt focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors">
+                        Cancel
+                    </button>
+                    <button type="button" id="confirm-modal-submit"
+                        class="px-4 py-2.5 text-sm font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors inline-flex items-center justify-center gap-2">
+                        Confirm
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    var modalId = 'confirm-modal';
+    var triggerId = 'confirm-modal-trigger';
+    var submitBtnId = 'confirm-modal-submit';
+    var titleId = 'confirm-modal-title';
+    var messageId = 'confirm-modal-message';
+    var cancelBtnId = 'confirm-modal-cancel';
+    var iconWrapId = 'confirm-modal-icon';
+
+    var primaryBtnClasses = 'px-4 py-2.5 text-sm font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors inline-flex items-center justify-center gap-2';
+    var dangerBtnClasses = 'px-4 py-2.5 text-sm font-medium rounded-lg border border-theme-error-text text-theme-error-text bg-theme-error-bg hover:bg-theme-error-text hover:text-theme-error-bg focus:ring-2 focus:ring-theme-error-text/40 focus:outline-none transition-colors inline-flex items-center justify-center gap-2';
+
+    window.showConfirmModal = function(opts) {
+        var title = (opts && opts.title) || 'Confirm';
+        var message = (opts && opts.message) != null ? opts.message : '';
+        var confirmLabel = (opts && opts.confirmLabel) || 'Confirm';
+        var cancelLabel = (opts && opts.cancelLabel) || 'Cancel';
+        var danger = !!(opts && opts.danger);
+        var onConfirm = opts && opts.onConfirm;
+
+        var titleEl = document.getElementById(titleId);
+        var messageEl = document.getElementById(messageId);
+        var cancelEl = document.getElementById(cancelBtnId);
+        var submitEl = document.getElementById(submitBtnId);
+        var iconWrap = document.getElementById(iconWrapId);
+
+        if (titleEl) titleEl.textContent = title;
+        if (messageEl) messageEl.textContent = message;
+        if (cancelEl) cancelEl.textContent = cancelLabel;
+        if (submitEl) {
+            submitEl.className = danger ? dangerBtnClasses : primaryBtnClasses;
+            submitEl.innerHTML = '<span>' + confirmLabel + '</span>';
+            submitEl.disabled = false;
+        }
+        if (iconWrap) {
+            iconWrap.className = 'mx-auto flex items-center justify-center h-14 w-14 rounded-full border mb-4 ' + (danger ? 'bg-theme-error-bg border-theme-error-text/30' : 'bg-dashboard-background border-border');
+            iconWrap.innerHTML = '<i class="fas ' + (danger ? 'fa-trash-alt text-theme-error-text' : 'fa-question text-text-secondary') + ' text-xl"></i>';
+        }
+
+        function closeModal() {
+            var hideBtn = document.querySelector('[data-modal-hide="' + modalId + '"]');
+            if (hideBtn) hideBtn.click();
+        }
+
+        if (submitEl && onConfirm) {
+            submitEl.onclick = function() {
+                if (submitEl.disabled) return;
+                submitEl.disabled = true;
+                submitEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span class="ml-2">Please wait…</span>';
+                var result = onConfirm();
+                var p = result && typeof result.then === 'function' ? result : Promise.resolve();
+                p.then(function() {
+                    closeModal();
+                    submitEl.disabled = false;
+                    submitEl.innerHTML = '<span>' + confirmLabel + '</span>';
+                }).catch(function() {
+                    submitEl.disabled = false;
+                    submitEl.innerHTML = '<span>' + confirmLabel + '</span>';
+                });
+            };
+        }
+
+        var trigger = document.getElementById(triggerId);
+        if (trigger) trigger.click();
+    };
+})();
+</script>
