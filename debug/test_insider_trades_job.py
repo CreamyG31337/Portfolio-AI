@@ -4,6 +4,7 @@ Test Insider Trades Job
 
 Test script to verify the insider trades job works correctly.
 Run this to test the insider trades scraper without running the full scheduler.
+Loads .env from project root and web_dashboard for DB connections.
 """
 
 import sys
@@ -12,7 +13,15 @@ from pathlib import Path
 # Add project root to path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / 'web_dashboard'))
+sys.path.insert(0, str(project_root / "web_dashboard"))
+
+# Load .env for DB connections (Supabase, etc.)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(project_root / ".env")
+    load_dotenv(project_root / "web_dashboard" / ".env")
+except ImportError:
+    pass
 
 # Configure logging
 import logging

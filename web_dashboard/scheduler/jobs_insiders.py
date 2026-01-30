@@ -55,9 +55,17 @@ logger = logging.getLogger(__name__)
 # FlareSolverr URL (for bypassing Cloudflare)
 FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "http://localhost:8191")
 
-# Insider trades source URL 
-_INSIDER_SOURCE_URL_ENCODED = "aHR0cHM6Ly93d3cucXVpdmVycXVhbnQuY29tL2luc2lkZXJzLw=="
-_INSIDER_SOURCE_URL = base64.b64decode(_INSIDER_SOURCE_URL_ENCODED).decode('utf-8')
+# Source URL: prefer env so it is not stored in repo; fallback for backward compatibility
+def _get_insider_source_url() -> str:
+    url = os.getenv("INSIDER_TRADES_BASE_URL", "").strip()
+    if url:
+        return url
+    try:
+        return base64.b64decode(
+            os.getenv("INSIDER_TRADES_SOURCE_ENCODED", "aHR0cHM6Ly93d3cucXVpdmVycXVhbnQuY29tL2luc2lkZXJzLw==")
+        ).decode("utf-8")
+    except Exception:
+        return ""
 
 
 def fetch_page_via_flaresolverr(url: str) -> Optional[str]:
@@ -70,7 +78,7 @@ def fetch_page_via_flaresolverr(url: str) -> Optional[str]:
             "maxTimeout": 60000
         }
 
-        logger.debug(f"Requesting via FlareSolverr: {url}")
+        logger.debug("Requesting via FlareSolverr...")
         response = requests.post(
             flaresolverr_endpoint,
             json=payload,
@@ -186,15 +194,17 @@ def fetch_insider_trades_job() -> None:
 
     try:
         # Check robots.txt compliance (if enabled)
+        source_url = _get_insider_source_url()
+        if not source_url:
+            duration_ms = int((time.time() - start_time) * 1000)
+            message = "INSIDER_TRADES_BASE_URL (or INSIDER_TRADES_SOURCE_ENCODED) not set"
+            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            logger.error(f"❌ {message}")
+            return
         try:
             from robots_utils import is_robots_enforced, check_or_raise
             if is_robots_enforced():
-                # Check representative domain for insider trades source
-                # Note: Actual URL is obfuscated using base64 encoding
-                representative_urls = [
-                    _INSIDER_SOURCE_URL,  # Insider trades source
-                ]
-                check_or_raise(job_id, representative_urls)
+                check_or_raise(job_id, [source_url])
         except ImportError:
             # robots_utils not available, skip check
             pass
@@ -237,8 +247,17 @@ def fetch_insider_trades_job() -> None:
         # Initialize client
         supabase_client = SupabaseClient(use_service_role=True)
 
-        # Calculate cutoff date (7 days ago)
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
+        # Date filter: 0 = no filter (backfill all from page); otherwise only trades within last N days
+        try:
+            days_filter = int(os.getenv("INSIDER_TRADES_DAYS", "7"))
+        except ValueError:
+            days_filter = 7
+        if days_filter <= 0:
+            cutoff_date = None  # no date filter: process all trades from source (backfill)
+            logger.info("INSIDER_TRADES_DAYS=0: backfill mode, ingesting all trades from page (no date filter)")
+        else:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_filter)
+            logger.info(f"Only ingesting trades from last {days_filter} days (set INSIDER_TRADES_DAYS=0 for one-time backfill)")
 
         # Track statistics
         total_trades_found = 0
@@ -247,11 +266,9 @@ def fetch_insider_trades_job() -> None:
         skipped_old = 0
         errors = 0
 
-        # Scrape insider trades page
-        url = _INSIDER_SOURCE_URL
-
+        url = source_url
         try:
-            logger.info(f"Fetching insider trades from {url}...")
+            logger.info("Fetching insider trades from source...")
 
             # Try FlareSolverr first
             html_content = fetch_page_via_flaresolverr(url)
@@ -318,6 +335,55 @@ def fetch_insider_trades_job() -> None:
                 log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
                 mark_job_failed('insider_trades', target_date, None, message, duration_ms=duration_ms)
                 return
+
+            # Polite scraping: when up to date, only process first N rows (source is newest-first).
+            # When behind (newest in DB older than catch-up threshold), process all to catch up.
+            default_recent_rows = 300
+            try:
+                catch_up_days = int(os.getenv("INSIDER_TRADES_CATCH_UP_DAYS", "7"))
+            except ValueError:
+                catch_up_days = 7
+            try:
+                max_rows_env = os.getenv("INSIDER_TRADES_MAX_ROWS", "").strip()
+                max_rows_override = int(max_rows_env) if max_rows_env else None
+            except ValueError:
+                max_rows_override = None
+
+            newest_in_db = None
+            try:
+                r = (
+                    supabase_client.supabase.table("insider_trades")
+                    .select("transaction_date")
+                    .order("transaction_date", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if r.data and r.data[0].get("transaction_date"):
+                    newest_in_db = r.data[0]["transaction_date"]
+                    if hasattr(newest_in_db, "date"):
+                        newest_in_db = newest_in_db.date()
+                    elif isinstance(newest_in_db, str):
+                        newest_in_db = datetime.strptime(newest_in_db[:10], "%Y-%m-%d").date()
+            except Exception as e:
+                logger.debug(f"Could not get newest transaction_date: {e}")
+
+            now_date = datetime.now(timezone.utc).date()
+            days_since_newest = (
+                (now_date - newest_in_db).days if newest_in_db else 999
+            )
+            if max_rows_override == 0:
+                logger.info("INSIDER_TRADES_MAX_ROWS=0: processing all trades from source")
+            elif days_since_newest >= catch_up_days:
+                logger.info(
+                    f"Newest trade in DB is {days_since_newest} days old (threshold={catch_up_days}): "
+                    f"processing all {len(trades_data)} trades (catch-up)"
+                )
+            elif len(trades_data) > default_recent_rows:
+                n = max_rows_override if max_rows_override and max_rows_override > 0 else default_recent_rows
+                trades_data = trades_data[:n]
+                logger.info(
+                    f"Up to date (newest {days_since_newest}d ago): processing first {n} trades only"
+                )
 
             # Process the extracted trades data
             # Data structure from the source page (expected keys):
@@ -402,8 +468,8 @@ def fetch_insider_trades_job() -> None:
                         logger.debug(f"Could not parse transaction date: {date_str}")
                         continue
 
-                    # Check if transaction is too old
-                    if transaction_date < cutoff_date.date():
+                    # Skip trades older than cutoff (when date filter is enabled)
+                    if cutoff_date is not None and transaction_date < cutoff_date.date():
                         skipped_old += 1
                         continue
 
