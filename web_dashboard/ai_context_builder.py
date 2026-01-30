@@ -231,6 +231,7 @@ def format_price_volume_table(positions_df: pd.DataFrame) -> str:
     
     Uses data from positions_df (current_price, yesterday_price already in DB view).
     Only fetches volume data from MarketDataFetcher since it's not in the DB.
+    Fetches are parallelized for performance.
     
     Args:
         positions_df: DataFrame with current positions (from get_current_positions)
@@ -243,6 +244,7 @@ def format_price_volume_table(positions_df: pd.DataFrame) -> str:
         return ""
     
     import logging
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     logger = logging.getLogger(__name__)
     logger.debug(f"[ai_context_builder.format_price_volume_table] Processing {len(positions_df)} positions")
     
@@ -256,6 +258,8 @@ def format_price_volume_table(positions_df: pd.DataFrame) -> str:
     market_fetcher = None
     market_hours = None
     fetcher_error = None
+    start_d = None
+    end_d = None
     try:
         from market_data.data_fetcher import MarketDataFetcher
         from market_data.price_cache import PriceCache
@@ -266,62 +270,86 @@ def format_price_volume_table(positions_df: pd.DataFrame) -> str:
         price_cache = PriceCache(settings=settings)
         market_fetcher = MarketDataFetcher(cache_instance=price_cache)
         market_hours = MarketHours(settings=settings)
+        start_d, end_d = market_hours.trading_day_window()
+        start_d = end_d - pd.Timedelta(days=90)  # 90 days for avg volume calc
         logger.debug(f"[ai_context_builder.format_price_volume_table] MarketDataFetcher initialized")
     except Exception as e:
         fetcher_error = str(e)
         logger.error(f"[ai_context_builder.format_price_volume_table] MarketDataFetcher FAILED: {e}", exc_info=True)
     
-    fetch_failures = []
+    # Build list of tickers to fetch
+    ticker_list = []
+    ticker_row_data = {}  # ticker -> {current_price, yesterday_price, pct_change_str}
     
     for idx, row in positions_df.iterrows():
         ticker = row.get('symbol', row.get('ticker', 'N/A'))
-        
-        # USE EXISTING DATA FROM DB (don't fetch!)
         current_price = float(row.get('current_price', 0) or 0)
         yesterday_price = float(row.get('yesterday_price', 0) or 0)
         
-        # Calculate % change from DB data
         pct_change_str = "N/A"
         if yesterday_price > 0 and current_price > 0:
             pct_change = ((current_price - yesterday_price) / yesterday_price) * 100
             pct_change_str = f"{pct_change:+.2f}%"
         
-        # ONLY fetch volume (not in DB)
-        volume_str = "N/A"
-        avg_vol_str = "N/A"
-        
-        if market_fetcher and market_hours:
-            try:
-                start_d, end_d = market_hours.trading_day_window()
-                start_d = end_d - pd.Timedelta(days=90)  # 90 days for avg volume calc
+        ticker_list.append(ticker)
+        ticker_row_data[ticker] = {
+            'current_price': current_price,
+            'pct_change_str': pct_change_str
+        }
+    
+    # Parallel fetch volume data
+    volume_data = {}  # ticker -> (volume_str, avg_vol_str)
+    fetch_failures = []
+    
+    def fetch_volume(ticker: str) -> tuple:
+        """Fetch volume data for a single ticker."""
+        try:
+            result = market_fetcher.fetch_price_data(ticker, start_d, end_d)
+            volume_str = "N/A"
+            avg_vol_str = "N/A"
+            
+            if not result.df.empty and "Volume" in result.df.columns:
+                if len(result.df) > 0:
+                    volume = float(result.df["Volume"].iloc[-1])
+                    if pd.notna(volume) and volume > 0:
+                        volume_str = f"{int(volume/1000):,}K" if volume >= 1000 else f"{int(volume):,}"
                 
-                result = market_fetcher.fetch_price_data(ticker, start_d, end_d)
-                if not result.df.empty and "Volume" in result.df.columns:
-                    # Get volume from last day
-                    if len(result.df) > 0:
-                        volume = float(result.df["Volume"].iloc[-1])
-                        if pd.notna(volume) and volume > 0:
-                            volume_str = f"{int(volume/1000):,}K" if volume >= 1000 else f"{int(volume):,}"
-                    
-                    # Calculate 30-day average volume
-                    vol_series = result.df["Volume"].dropna()
-                    if not vol_series.empty:
-                        avg_volume = vol_series.tail(30).mean()
-                        if pd.notna(avg_volume) and avg_volume > 0:
-                            avg_vol_str = f"{int(avg_volume/1000):,}K" if avg_volume >= 1000 else f"{int(avg_volume):,}"
-            except Exception as e:
-                fetch_failures.append(f"{ticker}: {str(e)[:50]}")
-                logger.error(f"[ai_context_builder.format_price_volume_table] Volume fetch FAILED for {ticker}: {e}")
-        
-        price_str = f"{current_price:,.2f}" if current_price > 0 else "N/A"
-        lines.append(f"{ticker:<18} | {price_str:>9} | {pct_change_str:>11} | {volume_str:>7} | {avg_vol_str:>14}")
+                vol_series = result.df["Volume"].dropna()
+                if not vol_series.empty:
+                    avg_volume = vol_series.tail(30).mean()
+                    if pd.notna(avg_volume) and avg_volume > 0:
+                        avg_vol_str = f"{int(avg_volume/1000):,}K" if avg_volume >= 1000 else f"{int(avg_volume):,}"
+            
+            return (ticker, volume_str, avg_vol_str, None)
+        except Exception as e:
+            return (ticker, "N/A", "N/A", str(e)[:50])
+    
+    if market_fetcher and market_hours and start_d and end_d:
+        # Use ThreadPoolExecutor for parallel fetching (max 8 workers to avoid rate limits)
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(fetch_volume, t): t for t in ticker_list}
+            for future in as_completed(futures):
+                ticker, vol_str, avg_str, error = future.result()
+                volume_data[ticker] = (vol_str, avg_str)
+                if error:
+                    fetch_failures.append(f"{ticker}: {error}")
+    else:
+        # No fetcher available, use N/A for all
+        for ticker in ticker_list:
+            volume_data[ticker] = ("N/A", "N/A")
+    
+    # Build output lines in original order
+    for ticker in ticker_list:
+        row_data = ticker_row_data[ticker]
+        vol_str, avg_vol_str = volume_data.get(ticker, ("N/A", "N/A"))
+        price_str = f"{row_data['current_price']:,.2f}" if row_data['current_price'] > 0 else "N/A"
+        lines.append(f"{ticker:<18} | {price_str:>9} | {row_data['pct_change_str']:>11} | {vol_str:>7} | {avg_vol_str:>14}")
     
     # Add diagnostic info if fetcher failed
     if fetcher_error:
         lines.append("")
         lines.append(f"Note: Volume data unavailable - {fetcher_error[:80]}")
     elif fetch_failures and len(fetch_failures) == len(positions_df):
-        # All fetches failed
         lines.append("")
         lines.append(f"Note: Volume data fetch failed for all tickers")
     
@@ -420,69 +448,89 @@ def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
         if is_stale:
             stale_tickers.append(ticker)
     
-    # Second pass: Batch fetch stale tickers from yfinance
+    # Second pass: Parallel fetch stale tickers from yfinance
     if stale_tickers:
-        logger.info(f"[fundamentals] Fetching fresh data for {len(stale_tickers)} stale tickers")
+        logger.info(f"[fundamentals] Fetching fresh data for {len(stale_tickers)} stale tickers (parallel)")
         
         try:
             from market_data.data_fetcher import MarketDataFetcher
             from market_data.price_cache import PriceCache
             from config.settings import get_settings
             from web_dashboard.supabase_client import SupabaseClient
+            from concurrent.futures import ThreadPoolExecutor, as_completed
             
             settings = get_settings()
             price_cache = PriceCache(settings=settings)
             market_fetcher = MarketDataFetcher(cache_instance=price_cache)
             
-            # Fetch data for each stale ticker (could parallelize here in future)
-            updates = []
-            for ticker in stale_tickers:
+            def fetch_single_fundamentals(ticker: str) -> dict:
+                """Fetch fundamentals for a single ticker."""
                 try:
                     fundamentals = market_fetcher.fetch_fundamentals(ticker)
                     if fundamentals:
+                        return {
+                            'ticker': ticker,
+                            'pe_ratio': fundamentals.get('trailingPE', 'N/A'),
+                            'div_yield': fundamentals.get('dividendYield', 'N/A'),
+                            'high_52w': fundamentals.get('fiftyTwoWeekHigh', 'N/A'),
+                            'low_52w': fundamentals.get('fiftyTwoWeekLow', 'N/A'),
+                            'success': True
+                        }
+                except Exception as e:
+                    logger.debug(f"[fundamentals] Failed to fetch {ticker}: {e}")
+                return {'ticker': ticker, 'success': False}
+            
+            # Parallel fetch with ThreadPoolExecutor (max 8 workers to avoid rate limits)
+            updates = []
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                futures = {executor.submit(fetch_single_fundamentals, t): t for t in stale_tickers}
+                for future in as_completed(futures):
+                    result = future.result()
+                    ticker = result['ticker']
+                    
+                    if result.get('success'):
                         # Update in-memory map
-                        ticker_data_map[ticker]['pe_ratio'] = fundamentals.get('trailingPE', 'N/A')
-                        ticker_data_map[ticker]['div_yield'] = fundamentals.get('dividendYield', 'N/A')
-                        ticker_data_map[ticker]['high_52w'] = fundamentals.get('fiftyTwoWeekHigh', 'N/A')
-                        ticker_data_map[ticker]['low_52w'] = fundamentals.get('fiftyTwoWeekLow', 'N/A')
+                        ticker_data_map[ticker]['pe_ratio'] = result['pe_ratio']
+                        ticker_data_map[ticker]['div_yield'] = result['div_yield']
+                        ticker_data_map[ticker]['high_52w'] = result['high_52w']
+                        ticker_data_map[ticker]['low_52w'] = result['low_52w']
                         
                         # Prepare DB update
                         update = {'ticker': ticker}
                         
-                        # Only update fundamentals fields, not sector/industry/etc (those are managed elsewhere)
-                        if isinstance(ticker_data_map[ticker]['pe_ratio'], str) and ticker_data_map[ticker]['pe_ratio'] != 'N/A':
+                        pe = result['pe_ratio']
+                        if pe and pe != 'N/A':
                             try:
-                                update['trailing_pe'] = float(ticker_data_map[ticker]['pe_ratio'])
+                                update['trailing_pe'] = float(pe) if not isinstance(pe, (int, float)) else pe
                             except:
                                 pass
                         
-                        if isinstance(ticker_data_map[ticker]['div_yield'], str) and ticker_data_map[ticker]['div_yield'] != 'N/A':
+                        div = result['div_yield']
+                        if div and div != 'N/A':
                             try:
-                                # Remove % sign and convert
-                                div_str = ticker_data_map[ticker]['div_yield'].replace('%', '')
-                                update['dividend_yield'] = float(div_str)
+                                div_val = str(div).replace('%', '') if isinstance(div, str) else div
+                                update['dividend_yield'] = float(div_val)
                             except:
                                 pass
                         
-                        if isinstance(ticker_data_map[ticker]['high_52w'], str) and ticker_data_map[ticker]['high_52w'] != 'N/A':
+                        high = result['high_52w']
+                        if high and high != 'N/A':
                             try:
-                                high_str = ticker_data_map[ticker]['high_52w'].replace('$', '')
-                                update['fifty_two_week_high'] = float(high_str)
+                                high_val = str(high).replace('$', '') if isinstance(high, str) else high
+                                update['fifty_two_week_high'] = float(high_val)
                             except:
                                 pass
                         
-                        if isinstance(ticker_data_map[ticker]['low_52w'], str) and ticker_data_map[ticker]['low_52w'] != 'N/A':
+                        low = result['low_52w']
+                        if low and low != 'N/A':
                             try:
-                                low_str = ticker_data_map[ticker]['low_52w'].replace('$', '')
-                                update['fifty_two_week_low'] = float(low_str)
+                                low_val = str(low).replace('$', '') if isinstance(low, str) else low
+                                update['fifty_two_week_low'] = float(low_val)
                             except:
                                 pass
                         
-                        if len(update) > 1:  # Has more than just ticker
+                        if len(update) > 1:
                             updates.append(update)
-                        
-                except Exception as e:
-                    logger.error(f"[fundamentals] Failed to fetch {ticker}: {e}")
             
             # Batch update DB
             if updates:
