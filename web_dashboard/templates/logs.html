@@ -125,6 +125,24 @@
                 class="text-left bg-theme-error-bg/10 p-4 rounded border border-theme-error-text/30 overflow-auto max-h-96 whitespace-pre-wrap font-mono text-sm"></pre>
         </div>
     </div>
+
+    <!-- Pagination at bottom -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-4 mt-6">
+        <div class="flex items-center justify-between">
+            <div id="stats-text-bottom" class="text-sm text-text-secondary">Loading...</div>
+            <div class="flex items-center space-x-2">
+                <button id="prev-btn-bottom"
+                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    <i class="fas fa-chevron-left"></i> Previous
+                </button>
+                <span id="page-info-bottom" class="text-sm text-text-secondary">Page 1 of 1</span>
+                <button id="next-btn-bottom"
+                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Ollama Logs Tab Content -->
@@ -192,6 +210,24 @@
             <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
             <pre id="error-text-ollama"
                 class="text-left bg-theme-error-bg/10 p-4 rounded border border-theme-error-text/30 overflow-auto max-h-96 whitespace-pre-wrap font-mono text-sm"></pre>
+        </div>
+    </div>
+
+    <!-- Pagination at bottom (Ollama) -->
+    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-4 mt-6">
+        <div class="flex items-center justify-between">
+            <div id="stats-text-ollama-bottom" class="text-sm text-text-secondary">Loading...</div>
+            <div class="flex items-center space-x-2">
+                <button id="prev-btn-ollama-bottom"
+                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    <i class="fas fa-chevron-left"></i> Previous
+                </button>
+                <span id="page-info-ollama-bottom" class="text-sm text-text-secondary">Page 1 of 1</span>
+                <button id="next-btn-ollama-bottom"
+                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -399,15 +435,23 @@
             container.appendChild(line);
         });
 
-        // Update stats
+        // Update stats (top and bottom)
         const start = (currentPage - 1) * parseInt(document.getElementById('limit-select').value) + 1;
         const end = Math.min(start + data.logs.length - 1, data.total);
-        document.getElementById('stats-text').textContent = `Showing ${start}-${end} of ${data.total} log entries`;
+        const statsText = `Showing ${start}-${end} of ${data.total} log entries`;
+        document.getElementById('stats-text').textContent = statsText;
+        document.getElementById('stats-text-bottom').textContent = statsText;
 
-        // Update pagination
-        document.getElementById('page-info').textContent = `Page ${data.page} of ${data.pages}`;
-        document.getElementById('prev-btn').disabled = data.page <= 1;
-        document.getElementById('next-btn').disabled = data.page >= data.pages;
+        // Update pagination (top and bottom)
+        const pageInfo = `Page ${data.page} of ${data.pages}`;
+        document.getElementById('page-info').textContent = pageInfo;
+        document.getElementById('page-info-bottom').textContent = pageInfo;
+        const prevDisabled = data.page <= 1;
+        const nextDisabled = data.page >= data.pages;
+        document.getElementById('prev-btn').disabled = prevDisabled;
+        document.getElementById('prev-btn-bottom').disabled = prevDisabled;
+        document.getElementById('next-btn').disabled = nextDisabled;
+        document.getElementById('next-btn-bottom').disabled = nextDisabled;
     }
 
     function displayOllamaLogs(data) {
@@ -432,15 +476,27 @@
             container.appendChild(line);
         });
 
-        // Update stats
+        // Update stats (top and bottom)
         const start = (currentPageOllama - 1) * parseInt(document.getElementById('limit-select-ollama').value) + 1;
         const end = Math.min(start + data.logs.length - 1, data.total);
-        document.getElementById('stats-text-ollama').textContent = `Showing ${start}-${end} of ${data.total} log entries`;
+        const statsText = `Showing ${start}-${end} of ${data.total} log entries`;
+        document.getElementById('stats-text-ollama').textContent = statsText;
+        const statsBottom = document.getElementById('stats-text-ollama-bottom');
+        if (statsBottom) statsBottom.textContent = statsText;
 
-        // Update pagination
-        document.getElementById('page-info-ollama').textContent = `Page ${data.page} of ${data.pages}`;
-        document.getElementById('prev-btn-ollama').disabled = data.page <= 1;
-        document.getElementById('next-btn-ollama').disabled = data.page >= data.pages;
+        // Update pagination (top and bottom)
+        const pageInfo = `Page ${data.page} of ${data.pages}`;
+        document.getElementById('page-info-ollama').textContent = pageInfo;
+        const pageInfoBottom = document.getElementById('page-info-ollama-bottom');
+        if (pageInfoBottom) pageInfoBottom.textContent = pageInfo;
+        const prevDisabled = data.page <= 1;
+        const nextDisabled = data.page >= data.pages;
+        document.getElementById('prev-btn-ollama').disabled = prevDisabled;
+        document.getElementById('next-btn-ollama').disabled = nextDisabled;
+        const prevBottom = document.getElementById('prev-btn-ollama-bottom');
+        const nextBottom = document.getElementById('next-btn-ollama-bottom');
+        if (prevBottom) prevBottom.disabled = prevDisabled;
+        if (nextBottom) nextBottom.disabled = nextDisabled;
     }
 
     function clearLogs() {
@@ -532,6 +588,18 @@
         fetchLogs();
     });
 
+    document.getElementById('prev-btn-bottom').addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            fetchLogs();
+        }
+    });
+
+    document.getElementById('next-btn-bottom').addEventListener('click', () => {
+        currentPage++;
+        fetchLogs();
+    });
+
     // Ollama tab event listeners
     document.getElementById('refresh-btn-ollama').addEventListener('click', () => {
         currentPageOllama = 1;
@@ -562,8 +630,32 @@
         fetchOllamaLogs();
     });
 
-    // Load Ollama logs when Ollama tab is clicked (Flowbite handles tab visibility)
+    document.getElementById('prev-btn-ollama-bottom').addEventListener('click', () => {
+        if (currentPageOllama > 1) {
+            currentPageOllama--;
+            fetchOllamaLogs();
+        }
+    });
+
+    document.getElementById('next-btn-ollama-bottom').addEventListener('click', () => {
+        currentPageOllama++;
+        fetchOllamaLogs();
+    });
+
+    // Load Ollama logs when Ollama tab is shown (click or Flowbite toggle)
     document.getElementById('ollama-tab').addEventListener('click', () => fetchOllamaLogs());
+
+    // When Ollama tab panel becomes visible, fetch logs (in case click didn't fire)
+    const ollamaPanel = document.getElementById('ollama');
+    if (ollamaPanel) {
+        let ollamaFetchTimeout = null;
+        const observer = new MutationObserver(() => {
+            if (ollamaPanel.classList.contains('hidden')) return;
+            clearTimeout(ollamaFetchTimeout);
+            ollamaFetchTimeout = setTimeout(fetchOllamaLogs, 150);
+        });
+        observer.observe(ollamaPanel, { attributes: true, attributeFilter: ['class'] });
+    }
 
     // Debounce helper
     function debounce(func, wait) {
