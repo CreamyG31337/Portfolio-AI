@@ -10,13 +10,6 @@
 
 interface SidebarElements {
     sidebar: HTMLElement;
-    mainContent: HTMLElement;
-    toggleButton: HTMLElement | null;
-    toggleIcon: HTMLElement | null;
-    sidebarTexts: NodeListOf<HTMLElement>;
-    sidebarContents: NodeListOf<HTMLElement>;
-    sidebarSelect: HTMLSelectElement | null;
-    sidebarBadges: NodeListOf<HTMLElement>;
 }
 
 const MOBILE_BREAKPOINT = 768; // md breakpoint in Tailwind
@@ -62,25 +55,15 @@ function toggleSidebar(elements: SidebarElements): void {
 
 function initSidebar(): void {
     const sidebar = document.getElementById('sidebar');
-    const mainContent = document.getElementById('main-content');
     const toggleButton = document.getElementById('sidebar-collapse-toggle');
-    const toggleIcon = document.getElementById('sidebar-toggle-icon');
 
-    if (!sidebar || !mainContent) return;
+    if (!sidebar) return;
 
-    const elements: SidebarElements = {
-        sidebar,
-        mainContent,
-        toggleButton,
-        toggleIcon,
-        sidebarTexts: document.querySelectorAll('.sidebar-text'),
-        sidebarContents: document.querySelectorAll('.sidebar-content'),
-        sidebarSelect: document.getElementById('global-fund-select') as HTMLSelectElement | null,
-        sidebarBadges: document.querySelectorAll('.sidebar-badge'),
-    };
+    const elements: SidebarElements = { sidebar };
 
     if (isMobile()) {
-        // Mobile: Let Flowbite drawer handle it completely (CSS/classes)
+        // Mobile: Let Flowbite drawer handle it completely; ensure full width (no collapsed state)
+        sidebar.removeAttribute('data-sidebar-collapsed');
     } else {
         // Desktop: Apply collapsible state
         const shouldCollapseByDefault = isNarrowScreen();
@@ -110,7 +93,8 @@ function initSidebar(): void {
         clearTimeout(resizeTimeout);
         resizeTimeout = window.setTimeout(() => {
             if (isMobile()) {
-                // Mobile handled by CSS
+                // Mobile: always show full-width drawer; clear collapsed state so Flowbite drawer isn't 64px
+                sidebar.removeAttribute('data-sidebar-collapsed');
             } else {
                 const isCollapsed = sidebar.getAttribute('data-sidebar-collapsed') === 'true';
                 if (isCollapsed) {
