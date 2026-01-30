@@ -394,7 +394,7 @@ function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
             "insider-trade-sale": (params) => params.data?.type === "Sale",
             "insider-trade-high-value": (params) => getTradeValue(params.data || {}) >= 1_000_000
         },
-        domLayout: "normal",
+        domLayout: "autoHeight",
         pagination: true,
         paginationPageSize: 25,
         paginationPageSizeSelector: [25, 50, 100],
