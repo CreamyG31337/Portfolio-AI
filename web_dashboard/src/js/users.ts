@@ -1070,16 +1070,20 @@ async function handleRevokeAccess(): Promise<void> {
                 });
                 const data: ApiResponse = await response.json();
                 if (response.ok && data.success) {
-                    elements.revokeAccessResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
-                    elements.revokeAccessResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${data.message || 'Access revoked'}</span>`;
-                    elements.revokeAccessResult.classList.remove('hidden');
-                    elements.revokeContributorSelect.value = '';
-                    elements.revokeUserSelect.value = '';
+                    if (elements.revokeAccessResult) {
+                        elements.revokeAccessResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+                        elements.revokeAccessResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${data.message || 'Access revoked'}</span>`;
+                        elements.revokeAccessResult.classList.remove('hidden');
+                    }
+                    if (elements.revokeContributorSelect) elements.revokeContributorSelect.value = '';
+                    if (elements.revokeUserSelect) elements.revokeUserSelect.value = '';
                     fetchAccessRecords();
                 } else {
-                    elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
-                    elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${data.error || data.message || 'Failed to revoke access'}</span>`;
-                    elements.revokeAccessResult.classList.remove('hidden');
+                    if (elements.revokeAccessResult) {
+                        elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+                        elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${data.error || data.message || 'Failed to revoke access'}</span>`;
+                        elements.revokeAccessResult.classList.remove('hidden');
+                    }
                 }
             } catch (error) {
                 if (!elements.revokeAccessResult) return;

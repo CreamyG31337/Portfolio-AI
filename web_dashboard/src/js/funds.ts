@@ -34,15 +34,18 @@ interface ApiResponse {
     message?: string;
 }
 
-// Flowbite Modal type (declared locally since it's only used here)
-declare class Modal {
-    constructor(element: HTMLElement | null, options?: {
+// Flowbite Modal type (from window.Modal when loaded via CDN)
+interface FlowbiteModal {
+    show(): void;
+    hide(): void;
+}
+
+interface FlowbiteModalConstructor {
+    new(element: HTMLElement | null, options?: {
         backdrop?: string;
         closable?: boolean;
         onHide?: () => void;
-    });
-    show(): void;
-    hide(): void;
+    }): FlowbiteModal;
 }
 
 // State
@@ -88,18 +91,25 @@ function showToastForFunds(message: string, type: 'success' | 'error' = 'success
     }, 3000);
 }
 
+// Get Flowbite Modal class from window (loaded via CDN)
+function getFlowbiteModal(): FlowbiteModalConstructor | null {
+    return (window as any).Modal || null;
+}
+
 // Initialize Flowbite modals
 function initializeModals(): void {
+    const ModalClass = getFlowbiteModal();
+
     // Wait for Flowbite to be fully loaded
-    if (typeof window === 'undefined' || typeof Modal === 'undefined') {
+    if (!ModalClass) {
         // Flowbite not loaded yet, try again after a delay
         setTimeout(() => {
-            if (typeof Modal !== 'undefined') {
+            if (getFlowbiteModal()) {
                 setupModals();
             } else {
                 // If still not loaded after delay, try one more time
                 setTimeout(() => {
-                    if (typeof Modal !== 'undefined') {
+                    if (getFlowbiteModal()) {
                         setupModals();
                     } else {
                         console.warn('[Funds] Flowbite Modal not available. Modals may not work correctly.');
@@ -114,28 +124,19 @@ function initializeModals(): void {
 
 function setupModals(): void {
     const elements = getElements();
+    const ModalClass = getFlowbiteModal();
 
     if (!elements.editModalEl || !elements.createModalEl) {
         console.warn('[Funds] Modal elements not found');
         return;
     }
 
+    if (!ModalClass) {
+        console.warn('[Funds] Flowbite Modal class not available');
+        return;
+    }
+
     try {
-        // Check if Flowbite has already initialized these modals
-        // Flowbite stores instances, so we check if they exist first
-        let editModalInstance: any = null;
-        let createModalInstance: any = null;
-
-        // Try to get existing Flowbite instances
-        if (typeof (window as any).Flowbite !== 'undefined') {
-            try {
-                editModalInstance = (window as any).Flowbite.Modal.getInstance(elements.editModalEl);
-                createModalInstance = (window as any).Flowbite.Modal.getInstance(elements.createModalEl);
-            } catch (e) {
-                // Flowbite.getInstance might not be available, that's okay
-            }
-        }
-
         const modalOptions = {
             backdrop: 'dynamic' as const,
             closable: true,
@@ -146,17 +147,14 @@ function setupModals(): void {
             },
         };
 
-        // Only create new instances if they don't exist
-        if (!editModalInstance && elements.editModalEl) {
-            window.editModal = new Modal(elements.editModalEl, modalOptions);
-        } else if (editModalInstance) {
-            window.editModal = editModalInstance;
+        // Always create fresh modal instances for programmatic control
+        // This ensures modals work even if Flowbite's auto-init didn't run
+        if (elements.editModalEl && !window.editModal) {
+            window.editModal = new ModalClass(elements.editModalEl, modalOptions);
         }
 
-        if (!createModalInstance && elements.createModalEl) {
-            window.createModal = new Modal(elements.createModalEl, modalOptions);
-        } else if (createModalInstance) {
-            window.createModal = createModalInstance;
+        if (elements.createModalEl && !window.createModal) {
+            window.createModal = new ModalClass(elements.createModalEl, modalOptions);
         }
     } catch (error) {
         console.error('[Funds] Error initializing modals:', error);
@@ -317,16 +315,33 @@ function openEditModal(fundName: string): void {
     if (elements.editType) elements.editType.value = fund.type || 'investment';
     if (elements.editCurrency) elements.editCurrency.value = fund.currency || 'CAD';
 
+    // Reset delete confirmation area
+    if (elements.deleteArea) {
+        elements.deleteArea.classList.add('hidden');
+    }
+    if (elements.deleteConfirmInput) {
+        elements.deleteConfirmInput.value = '';
+    }
+
     if (window.editModal) {
         window.editModal.show();
-    } else if (typeof Modal !== 'undefined') {
+    } else {
+        // Lazy initialize if not yet done
+        const ModalClass = getFlowbiteModal();
         const modalEl = elements.editModalEl;
-        if (modalEl) {
-            window.editModal = new Modal(modalEl, {
+        if (ModalClass && modalEl) {
+            window.editModal = new ModalClass(modalEl, {
                 backdrop: 'dynamic',
-                closable: true
+                closable: true,
+                onHide: () => {
+                    if (elements.deleteArea) {
+                        elements.deleteArea.classList.add('hidden');
+                    }
+                }
             });
             window.editModal.show();
+        } else {
+            console.error('[Funds] Cannot open edit modal: Flowbite Modal not available');
         }
     }
 }
