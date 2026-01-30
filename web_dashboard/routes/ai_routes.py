@@ -4,6 +4,7 @@ from typing import Optional, Dict, List, Any
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta, timezone, date
+import time
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -177,48 +178,77 @@ def _get_context_data_packet(user_id: str, fund: str):
     """Get context data packet with caching (300s TTL)"""
     logger.info(f"Refreshing context data for {user_id}/{fund}")
     
+    timings = {}
+    total_start = time.time()
+    
     # Fetch all components
+    t0 = time.time()
     positions_df = get_current_positions_flask(fund)
+    timings['positions'] = round((time.time() - t0) * 1000, 1)
+    
+    t0 = time.time()
     trades_df = get_trade_log_flask(limit=100, fund=fund)
+    timings['trades'] = round((time.time() - t0) * 1000, 1)
     
     try:
+        t0 = time.time()
         metrics = calculate_performance_metrics_flask(fund)
         portfolio_df = calculate_portfolio_value_over_time_flask(fund, days=365)
+        timings['metrics+portfolio'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
         logger.warning(f"Error loading metrics: {e}")
         metrics = None
         portfolio_df = None
+        timings['metrics+portfolio'] = 'error'
         
     try:
+        t0 = time.time()
         cash = get_cash_balances_flask(fund)
+        timings['cash'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
         logger.warning(f"Error loading cash: {e}")
         cash = None
+        timings['cash'] = 'error'
         
     try:
+        t0 = time.time()
         thesis_data = get_fund_thesis_data_flask(fund)
+        timings['thesis'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
         logger.warning(f"Error loading thesis: {e}")
         thesis_data = None
+        timings['thesis'] = 'error'
     
     # Fetch trade data (last 7 days)
     try:
+        t0 = time.time()
         insider_trades = _get_insider_trades_for_portfolio(fund, days=7)
+        timings['insider_trades'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
         logger.warning(f"Error loading insider trades: {e}")
         insider_trades = []
+        timings['insider_trades'] = 'error'
     
     try:
+        t0 = time.time()
         congress_trades = _get_congress_trades_for_portfolio(fund, days=7)
+        timings['congress_trades'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
         logger.warning(f"Error loading congress trades: {e}")
         congress_trades = []
+        timings['congress_trades'] = 'error'
     
     try:
+        t0 = time.time()
         etf_trades = _get_etf_trades_for_portfolio(fund, days=7)
+        timings['etf_trades'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
         logger.warning(f"Error loading ETF trades: {e}")
         etf_trades = []
+        timings['etf_trades'] = 'error'
+    
+    timings['total_data_fetch'] = round((time.time() - total_start) * 1000, 1)
+    logger.info(f"[PERF] Context data fetch timings (ms): {timings}")
         
     return {
         'positions_df': positions_df,
@@ -229,7 +259,8 @@ def _get_context_data_packet(user_id: str, fund: str):
         'thesis_data': thesis_data,
         'insider_trades': insider_trades,
         'congress_trades': congress_trades,
-        'etf_trades': etf_trades
+        'etf_trades': etf_trades,
+        '_timings': timings
     }
 
 
@@ -243,9 +274,16 @@ def _build_context_from_packet(
     include_insider_trades: bool = True,
     include_congress_trades: bool = True,
     include_etf_trades: bool = True
-) -> str:
-    """Build context string from a pre-fetched data packet."""
+) -> tuple:
+    """Build context string from a pre-fetched data packet.
+    
+    Returns:
+        tuple: (context_string, format_timings_dict)
+    """
     import pandas as pd
+    format_timings = {}
+    total_format_start = time.time()
+    
     # Guard against None from cache/data layer to avoid AttributeError/TypeError (e.g. len(None))
     positions_df = data_packet.get('positions_df')
     trades_df = data_packet.get('trades_df')
@@ -270,6 +308,7 @@ def _build_context_from_packet(
     context_parts = []
 
     if not positions_df.empty:
+        t0 = time.time()
         holdings_text = format_holdings(
             positions_df,
             fund,
@@ -277,30 +316,48 @@ def _build_context_from_packet(
             include_price_volume=include_price_volume,
             include_fundamentals=include_fundamentals
         )
+        format_timings['format_holdings'] = round((time.time() - t0) * 1000, 1)
         context_parts.append(holdings_text)
 
     if metrics:
+        t0 = time.time()
         context_parts.append(format_performance_metrics(metrics, portfolio_df))
+        format_timings['format_metrics'] = round((time.time() - t0) * 1000, 1)
 
     if cash:
+        t0 = time.time()
         context_parts.append(format_cash_balances(cash))
+        format_timings['format_cash'] = round((time.time() - t0) * 1000, 1)
 
     if include_thesis and thesis_data:
+        t0 = time.time()
         context_parts.append(format_thesis(thesis_data))
+        format_timings['format_thesis'] = round((time.time() - t0) * 1000, 1)
 
     if include_trades and not trades_df.empty:
+        t0 = time.time()
         context_parts.append(format_trades(trades_df, limit=100))
+        format_timings['format_trades'] = round((time.time() - t0) * 1000, 1)
 
     if include_insider_trades:
+        t0 = time.time()
         context_parts.append(format_insider_trades(insider_trades, limit=50))
+        format_timings['format_insider_trades'] = round((time.time() - t0) * 1000, 1)
 
     if include_congress_trades:
+        t0 = time.time()
         context_parts.append(format_congress_trades(congress_trades, limit=50))
+        format_timings['format_congress_trades'] = round((time.time() - t0) * 1000, 1)
 
     if include_etf_trades:
+        t0 = time.time()
         context_parts.append(format_etf_trades(etf_trades, limit=50))
+        format_timings['format_etf_trades'] = round((time.time() - t0) * 1000, 1)
 
-    return "\n\n---\n\n".join(context_parts) if context_parts else "No context data available"
+    format_timings['total_format'] = round((time.time() - total_format_start) * 1000, 1)
+    
+    context_string = "\n\n---\n\n".join(context_parts) if context_parts else "No context data available"
+    return context_string, format_timings
 
 
 def _get_preview_context_string(
@@ -313,10 +370,16 @@ def _get_preview_context_string(
     include_insider_trades: bool = True,
     include_congress_trades: bool = True,
     include_etf_trades: bool = True
-) -> str:
-    """Build preview context string from cached data."""
+) -> tuple:
+    """Build preview context string from cached data.
+    
+    Returns:
+        tuple: (context_string, all_timings_dict)
+    """
     data_packet = _get_context_data_packet(user_id, fund)
-    return _build_context_from_packet(
+    data_timings = data_packet.get('_timings', {})
+    
+    context_string, format_timings = _build_context_from_packet(
         fund=fund,
         data_packet=data_packet,
         include_thesis=include_thesis,
@@ -327,6 +390,15 @@ def _get_preview_context_string(
         include_congress_trades=include_congress_trades,
         include_etf_trades=include_etf_trades
     )
+    
+    # Combine all timings
+    all_timings = {
+        'data_fetch': data_timings,
+        'formatting': format_timings
+    }
+    logger.info(f"[PERF] Context generation complete - timings (ms): {all_timings}")
+    
+    return context_string, all_timings
 
 @cache_data(ttl=30)
 def _get_cached_ollama_health():
@@ -527,7 +599,7 @@ def api_ai_preview_context():
         include_congress_trades = data.get('include_congress_trades', True)
         include_etf_trades = data.get('include_etf_trades', True)
 
-        context_string = _get_preview_context_string(
+        context_string, timings = _get_preview_context_string(
             user_id=user_id,
             fund=fund,
             include_thesis=include_thesis,
@@ -549,7 +621,8 @@ def api_ai_preview_context():
         return jsonify({
             "success": True,
             "context": context_string,
-            "char_count": char_count
+            "char_count": char_count,
+            "timings": timings  # Performance timings for browser console
         })
 
     except Exception as e:
@@ -599,7 +672,7 @@ def api_ai_context_build():
         include_congress_trades = data.get('include_congress_trades', True)
         include_etf_trades = data.get('include_etf_trades', True)
 
-        context_string = _build_context_from_packet(
+        context_string, _format_timings = _build_context_from_packet(
             fund=fund,
             data_packet=data_packet,
             include_thesis=data.get('include_thesis', False),

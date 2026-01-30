@@ -32,6 +32,10 @@ interface ContextPreviewResponse {
     context?: string;
     char_count?: number;
     error?: string;
+    timings?: {
+        data_fetch?: Record<string, number | string>;
+        formatting?: Record<string, number | string>;
+    };
 }
 
 interface ModelsResponse {
@@ -765,6 +769,38 @@ class AIAssistant {
             const data: ContextPreviewResponse = await response.json();
 
             if (data.success) {
+                // Log performance timings to console for debugging
+                if (data.timings) {
+                    console.log('[AIAssistant] ⏱️ Context Generation Performance (ms):');
+                    console.table({
+                        '📊 Data Fetch': data.timings.data_fetch || {},
+                        '📝 Formatting': data.timings.formatting || {}
+                    });
+                    // Also log as formatted text for easy reading
+                    const df = data.timings.data_fetch || {};
+                    const ft = data.timings.formatting || {};
+                    console.log(`[AIAssistant] ⏱️ DATA FETCH BREAKDOWN:
+  - positions: ${df.positions ?? 'N/A'}ms
+  - trades: ${df.trades ?? 'N/A'}ms
+  - metrics+portfolio: ${df['metrics+portfolio'] ?? 'N/A'}ms
+  - cash: ${df.cash ?? 'N/A'}ms
+  - thesis: ${df.thesis ?? 'N/A'}ms
+  - insider_trades: ${df.insider_trades ?? 'N/A'}ms
+  - congress_trades: ${df.congress_trades ?? 'N/A'}ms
+  - etf_trades: ${df.etf_trades ?? 'N/A'}ms
+  → TOTAL DATA FETCH: ${df.total_data_fetch ?? 'N/A'}ms`);
+                    console.log(`[AIAssistant] ⏱️ FORMATTING BREAKDOWN:
+  - format_holdings: ${ft.format_holdings ?? 'N/A'}ms
+  - format_metrics: ${ft.format_metrics ?? 'N/A'}ms
+  - format_cash: ${ft.format_cash ?? 'N/A'}ms
+  - format_thesis: ${ft.format_thesis ?? 'N/A'}ms
+  - format_trades: ${ft.format_trades ?? 'N/A'}ms
+  - format_insider_trades: ${ft.format_insider_trades ?? 'N/A'}ms
+  - format_congress_trades: ${ft.format_congress_trades ?? 'N/A'}ms
+  - format_etf_trades: ${ft.format_etf_trades ?? 'N/A'}ms
+  → TOTAL FORMAT: ${ft.total_format ?? 'N/A'}ms`);
+                }
+                
                 // Cache the context string for use in chat
                 this.contextString = data.context || null;
                 this.contextReady = true;
