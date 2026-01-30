@@ -88,6 +88,11 @@
         @apply transition-opacity duration-300 ease-in-out;
     }
 
+    /* Standardized form input theme */
+    .form-input-theme {
+        @apply bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5;
+    }
+
     /* Global outline button hover/ring using currentColor; avoids per-button utility churn. */
     button[class*="bg-transparent"][class*="border"]:not(:disabled):hover,
     a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):hover {
