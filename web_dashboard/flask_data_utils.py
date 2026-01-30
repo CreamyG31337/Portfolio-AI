@@ -187,6 +187,21 @@ def _get_positions_as_of_date_flask_cached(
         as_of_dt = as_of_dt.normalize() + pd.Timedelta(hours=23, minutes=59, seconds=59)
         as_of_str = as_of_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
+        # OPTIMIZATION: First find the latest available snapshot date
+        # This prevents fetching ALL history when we only need the latest state
+        latest_date_query = client.supabase.table("portfolio_positions").select("date")
+        if fund:
+            latest_date_query = latest_date_query.eq("fund", fund)
+
+        latest_date_result = latest_date_query.lte("date", as_of_str).order("date", desc=True).limit(1).execute()
+
+        if not latest_date_result.data:
+            return pd.DataFrame()
+
+        # All rows in a batch share the exact same timestamp
+        latest_snapshot_date = latest_date_result.data[0]['date']
+        logger.info(f"Found latest snapshot date: {latest_snapshot_date} (requested as of {as_of_str})")
+
         all_rows = []
         batch_size = 1000
         offset = 0
@@ -199,7 +214,8 @@ def _get_positions_as_of_date_flask_cached(
             if fund:
                 query = query.eq("fund", fund)
 
-            query = query.lte("date", as_of_str).order("date", desc=True)
+            # Query specifically for this snapshot timestamp
+            query = query.eq("date", latest_snapshot_date)
 
             result = query.range(offset, offset + batch_size - 1).execute()
             if not result.data:
@@ -211,7 +227,7 @@ def _get_positions_as_of_date_flask_cached(
 
             offset += batch_size
             if offset > 50000:
-                logger.warning("Historical positions fetch limit reached")
+                logger.warning("Snapshot positions fetch limit reached")
                 break
 
         if not all_rows:
