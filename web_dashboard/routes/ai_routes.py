@@ -245,9 +245,21 @@ def _build_context_from_packet(
     include_etf_trades: bool = True
 ) -> str:
     """Build context string from a pre-fetched data packet."""
-    positions_df = data_packet['positions_df']
-    trades_df = data_packet['trades_df']
-    metrics = data_packet['metrics']
+    import pandas as pd
+    # Guard against None from cache/data layer to avoid AttributeError/TypeError (e.g. len(None))
+    positions_df = data_packet.get('positions_df')
+    trades_df = data_packet.get('trades_df')
+    # #region agent log
+    try:
+        _debug_log_preview("ai_routes:_build_context_from_packet:entry", "data_packet df types", {"positions_type": type(positions_df).__name__ if positions_df is not None else "None", "trades_type": type(trades_df).__name__ if trades_df is not None else "None", "hypothesisId": "B"})
+    except Exception:
+        pass
+    # #endregion
+    if positions_df is None:
+        positions_df = pd.DataFrame()
+    if trades_df is None:
+        trades_df = pd.DataFrame()
+    metrics = data_packet.get('metrics')
     portfolio_df = data_packet['portfolio_df']
     cash = data_packet['cash']
     thesis_data = data_packet['thesis_data']
@@ -480,6 +492,17 @@ def api_ai_search():
         logger.error(f"Error performing search: {e}")
         return jsonify({"error": str(e)}), 500
 
+# #region agent log
+def _debug_log_preview(location: str, message: str, data: dict) -> None:
+    import json
+    _path = r"c:\Users\cream\OneDrive\Documents\LLM-Micro-Cap-trading-bot\.cursor\debug.log"
+    try:
+        with open(_path, "a", encoding="utf-8") as _f:
+            _f.write(json.dumps({"location": location, "message": message, "data": data, "timestamp": __import__("time").time(), "sessionId": "debug-session"}) + "\n")
+    except Exception:
+        pass
+# #endregion
+
 @ai_bp.route('/api/v2/ai/preview_context', methods=['POST'])
 @require_auth
 def api_ai_preview_context():
@@ -492,7 +515,10 @@ def api_ai_preview_context():
             return jsonify({"error": "No fund specified"}), 400
 
         user_id = get_user_id_flask()
-        
+        # #region agent log
+        _debug_log_preview("ai_routes:api_ai_preview_context:entry", "preview_context request", {"fund": fund, "user_id": str(user_id)[:8] if user_id else None, "hypothesisId": "A"})
+        # #endregion
+
         include_pv = data.get('include_price_volume', True)
         include_fund = data.get('include_fundamentals', True)
         include_thesis = data.get('include_thesis', False)
@@ -512,13 +538,20 @@ def api_ai_preview_context():
             include_congress_trades=include_congress_trades,
             include_etf_trades=include_etf_trades
         )
-        
+        # #region agent log
+        _debug_log_preview("ai_routes:api_ai_preview_context:after_build", "context_string result", {"type": type(context_string).__name__ if context_string is not None else "NoneType", "len": len(context_string) if context_string is not None else None, "hypothesisId": "A"})
+        # #endregion
+        # Normalize to str and safe char_count to avoid "object of type 'NoneType' has no len()"
+        if context_string is None:
+            context_string = ""
+        char_count = len(context_string)
+
         return jsonify({
-            "success": True, 
+            "success": True,
             "context": context_string,
-            "char_count": len(context_string)
+            "char_count": char_count
         })
-        
+
     except Exception as e:
         logger.error(f"Error generating context preview: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500

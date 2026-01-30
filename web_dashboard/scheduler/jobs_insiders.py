@@ -320,11 +320,13 @@ def fetch_insider_trades_job() -> None:
                 return
 
             # Process the extracted trades data
-            # Data structure from the source page:
-            # {'rptOwnerName': 'NAME', 'officerTitle': 'TITLE', 'issuerTradingSymbol': 'TICKER',
-            #  'transactionCode': 'Purchase/Sale', 'transactionShares': 123, 'transactionPricePerShare': 1.23,
-            #  'transactionDate': 'Jan 21, 2026', 'fileDate': 'Jan 23, 2026 (10:52 PM)',
-            #  'rptOwnerCik': 1234567, 'transactionValue': 1234.56}
+            # Data structure from the source page (expected keys):
+            # rptOwnerName, officerTitle, issuerTradingSymbol, transactionCode, transactionShares,
+            # transactionPricePerShare, transactionDate, fileDate, rptOwnerCik, transactionValue
+            # Log first trade keys so we can verify source shape when names are missing
+            if trades_data:
+                first_keys = list(trades_data[0].keys()) if isinstance(trades_data[0], dict) else []
+                logger.info(f"First raw trade keys from source: {first_keys}")
 
             logger.info(f"Processing {len(trades_data)} insider trades...")
 
@@ -337,10 +339,32 @@ def fetch_insider_trades_job() -> None:
                     if not ticker:
                         continue
 
-                    insider_name = trade_data.get('rptOwnerName', '').strip()
-                    insider_title = trade_data.get('officerTitle', '-').strip()
-                    if insider_title == '-':
-                        insider_title = None
+                    # Insider name: try primary and fallback keys (source may use different names)
+                    insider_name = (
+                        trade_data.get('rptOwnerName') or
+                        trade_data.get('reportingOwnerName') or
+                        trade_data.get('ownerName') or
+                        trade_data.get('name') or
+                        ''
+                    )
+                    if isinstance(insider_name, str):
+                        insider_name = insider_name.strip()
+                    else:
+                        insider_name = str(insider_name).strip() if insider_name is not None else ''
+                    if not insider_name:
+                        logger.warning(
+                            f"Insider name missing for ticker {ticker}, raw keys: {list(trade_data.keys()) if isinstance(trade_data, dict) else 'n/a'}"
+                        )
+                        insider_name = "Unknown"
+
+                    # Title: source uses '-' when missing; store '' so DB never has NULL (every trade has a person)
+                    insider_title = trade_data.get('officerTitle', '-') or '-'
+                    if isinstance(insider_title, str):
+                        insider_title = insider_title.strip()
+                    else:
+                        insider_title = str(insider_title).strip() if insider_title is not None else ''
+                    if insider_title == '-' or not insider_title:
+                        insider_title = ''
 
                     # Get transaction type
                     trade_type = trade_data.get('transactionCode', '').strip()

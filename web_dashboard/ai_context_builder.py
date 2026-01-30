@@ -853,16 +853,16 @@ def format_insider_trades(trades: List[Dict], limit: int = 50) -> str:
     ]
     
     for trade in df:
-        # Extract fields
-        transaction_date = trade.get('transaction_date', '')
-        ticker = trade.get('ticker', 'N/A')
-        insider_name = trade.get('insider_name', 'N/A')
-        insider_title = trade.get('insider_title', '')
-        trade_type = trade.get('type', 'N/A')
+        # Extract fields (normalize None from DB to str to avoid len()/slicing on None)
+        transaction_date = trade.get('transaction_date') or ''
+        ticker = trade.get('ticker') or 'N/A'
+        insider_name = trade.get('insider_name') or 'N/A'
+        insider_title = trade.get('insider_title') or ''
+        trade_type = trade.get('type') or 'N/A'
         shares = trade.get('shares', 0)
         price = trade.get('price_per_share', 0)
         value = trade.get('value', 0)
-        
+
         # Format date
         date_str = "N/A"
         if transaction_date:
@@ -871,10 +871,10 @@ def format_insider_trades(trades: List[Dict], limit: int = 50) -> str:
                     date_str = transaction_date[:10] if len(transaction_date) >= 10 else transaction_date
                 else:
                     date_str = str(transaction_date)[:10]
-            except:
+            except Exception:
                 date_str = str(transaction_date)[:10] if transaction_date else "N/A"
-        
-        # Truncate long strings
+
+        # Truncate long strings (insider_name/insider_title are now always str)
         insider_str = (insider_name[:20] if len(insider_name) > 20 else insider_name).ljust(20)
         title_str = (insider_title[:18] if len(insider_title) > 18 else insider_title).ljust(18)
         type_str = (str(trade_type)[:9] if trade_type else 'N/A').ljust(9)
@@ -915,14 +915,14 @@ def format_congress_trades(trades: List[Dict], limit: int = 50) -> str:
     ]
     
     for trade in df:
-        # Extract fields
-        transaction_date = trade.get('transaction_date', '')
-        ticker = trade.get('ticker', 'N/A')
-        politician = trade.get('politician', 'N/A')
-        chamber = trade.get('chamber', 'N/A')
-        trade_type = trade.get('type', 'N/A')
-        amount = trade.get('amount', 'N/A')
-        
+        # Extract fields (normalize None from DB to avoid len()/slicing on None)
+        transaction_date = trade.get('transaction_date') or ''
+        ticker = trade.get('ticker') or 'N/A'
+        politician = trade.get('politician') or 'N/A'
+        chamber = trade.get('chamber') or 'N/A'
+        trade_type = trade.get('type') or 'N/A'
+        amount = trade.get('amount') or 'N/A'
+
         # Format date
         date_str = "N/A"
         if transaction_date:
@@ -931,10 +931,10 @@ def format_congress_trades(trades: List[Dict], limit: int = 50) -> str:
                     date_str = transaction_date[:10] if len(transaction_date) >= 10 else transaction_date
                 else:
                     date_str = str(transaction_date)[:10]
-            except:
+            except Exception:
                 date_str = str(transaction_date)[:10] if transaction_date else "N/A"
-        
-        # Truncate long strings
+
+        # Truncate long strings (politician/chamber are now always str or safe)
         politician_str = (politician[:21] if len(politician) > 21 else politician).ljust(21)
         chamber_str = (str(chamber)[:8] if chamber else 'N/A').ljust(8)
         type_str = (str(trade_type)[:9] if trade_type else 'N/A').ljust(9)
@@ -979,14 +979,14 @@ def format_etf_trades(trades: List[Dict], limit: int = 50) -> str:
     ]
     
     for trade in df:
-        # Extract fields
-        trade_date = trade.get('trade_date', '')
-        holding_ticker = trade.get('holding_ticker', 'N/A')
-        etf_ticker = trade.get('etf_ticker', 'N/A')
-        trade_type = trade.get('trade_type', 'N/A')
+        # Extract fields (normalize None from DB to avoid len()/slicing on None)
+        trade_date = trade.get('trade_date') or ''
+        holding_ticker = trade.get('holding_ticker') or 'N/A'
+        etf_ticker = trade.get('etf_ticker') or 'N/A'
+        trade_type = trade.get('trade_type') or 'N/A'
         shares_change = trade.get('shares_change', 0)
         shares_after = trade.get('shares_after', 0)
-        
+
         # Format date
         date_str = "N/A"
         if trade_date:
