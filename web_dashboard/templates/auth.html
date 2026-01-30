@@ -398,7 +398,7 @@
             }
         });
 
-        // Magic Link Handler
+        // Magic Link Handler — call Supabase from the browser so Supabase's Cloudflare sees a real browser request (same as password reset)
         document.getElementById('magic-link-btn').addEventListener('click', async function (e) {
             const emailInput = document.getElementById('login-email');
             const email = emailInput.value;
@@ -415,19 +415,38 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
 
-            try {
-                const response = await fetch('/api/auth/magic-link', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
+            const cfg = window.AUTH_CONFIG;
+            const useClientOtp = cfg && cfg.supabase_url && cfg.supabase_anon_key && cfg.magic_link_redirect_url;
 
-                const data = await response.json();
+            try {
+                let response, data;
+                if (useClientOtp) {
+                    response = await fetch(`${cfg.supabase_url}/auth/v1/otp`, {
+                        method: 'POST',
+                        headers: {
+                            'apikey': cfg.supabase_anon_key,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            email: email,
+                            create_user: false,
+                            redirect_to: cfg.magic_link_redirect_url
+                        })
+                    });
+                    data = await response.json().catch(() => ({}));
+                } else {
+                    response = await fetch('/api/auth/magic-link', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                    });
+                    data = await response.json();
+                }
 
                 if (response.ok) {
                     showMessage(data.message || 'Magic link sent! Check your email.', 'success');
                 } else {
-                    showMessage(data.error || 'Failed to send magic link', 'error');
+                    showMessage(data.error || data.msg || 'Failed to send magic link', 'error');
                 }
             } catch (error) {
                 showMessage('Network error. Please try again.', 'error');

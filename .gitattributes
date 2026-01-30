@@ -1,0 +1,3 @@
+# Normalize line endings so Git stops showing "modified" when only line endings differ.
+# Repo stores LF; Git converts on checkout per your core.autocrlf setting.
+* text=auto

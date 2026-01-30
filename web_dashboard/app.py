@@ -1218,8 +1218,31 @@ def index():
             logger.info("[AUTH] Root route: User authenticated, redirecting to dashboard")
             return redirect(url_for('dashboard.dashboard_page'))
         else:
-            logger.info("[AUTH] Root route: User not authenticated, redirecting to auth")
-            return redirect(url_for('auth_page'))
+            # Serve a stub that preserves URL hash before redirecting to /auth.
+            # Supabase may redirect password-reset to Site URL (root) with tokens in the hash;
+            # a 302 to /auth would drop the hash, so we send hash-holding users to auth_callback.
+            # To have reset links land on the callback directly: Supabase Dashboard → Auth →
+            # Email Templates → Recovery: use {{ .RedirectTo }} in the verify link (not SiteURL).
+            logger.info("[AUTH] Root route: User not authenticated, serving auth redirect stub")
+            return Response(
+                """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Redirecting...</title></head>
+<body><p>Redirecting...</p>
+<script>
+(function(){
+  var h = window.location.hash;
+  if (h && (h.indexOf('access_token=') !== -1 || h.indexOf('error=') !== -1)) {
+    window.location.replace('/auth_callback.html' + h);
+  } else {
+    window.location.replace('/auth');
+  }
+})();
+</script>
+</body></html>""",
+                mimetype="text/html",
+                status=200,
+            )
     except Exception as e:
         logger.error(f"Error in root route: {e}", exc_info=True)
         # On error, just redirect to auth - don't delete cookies
@@ -1239,6 +1262,7 @@ def auth_page():
             "supabase_url": supabase_url,
             "supabase_anon_key": anon_key,
             "reset_redirect_url": f"https://{app_domain}/auth_callback.html?type=recovery",
+            "magic_link_redirect_url": f"https://{app_domain}/auth_callback.html",
         }
     return render_template("auth.html", auth_config=auth_config)
 
