@@ -6,6 +6,7 @@
 {% block page_subtitle %}Manage users, roles, fund assignments, and contributor access{% endblock %}
 
 {% block extra_head %}
+<meta name="current-user-email" content="{{ user_email }}">
 <style>
     .user-card {
         transition: transform 0.2s ease-in-out;

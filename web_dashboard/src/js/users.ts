@@ -187,6 +187,12 @@ const elements: UsersDOMElements = {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', (): void => {
+    // Read current user email
+    const meta = document.querySelector('meta[name="current-user-email"]');
+    if (meta) {
+        currentUserEmail = meta.getAttribute('content') || '';
+    }
+
     fetchUsers();
     fetchFunds();
     fetchContributors();
