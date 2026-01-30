@@ -36,3 +36,7 @@ CREATE INDEX idx_congress_state ON congress_trades (state);
 CREATE INDEX idx_congress_ticker ON congress_trades (ticker);
 CREATE INDEX idx_congress_trades_politician_id ON congress_trades (politician_id);
 CREATE INDEX idx_congress_transaction_date ON congress_trades (transaction_date);
+
+-- Composite index for AI context queries (ticker + date range)
+-- Optimizes: SELECT ... WHERE ticker IN (...) ORDER BY transaction_date DESC
+CREATE INDEX idx_congress_ticker_date ON congress_trades (ticker, transaction_date DESC);

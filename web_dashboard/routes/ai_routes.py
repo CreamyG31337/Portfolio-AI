@@ -116,18 +116,21 @@ def _get_congress_trades_for_portfolio(fund: str, days: Optional[int] = None) ->
 
 
 def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
-    """Get ETF trades for portfolio tickers from last N days."""
+    """Get ETF trades for portfolio tickers from last N days.
+
+    Uses batch SQL function to fetch all tickers in a single query (vs N queries before).
+    """
     try:
         # Get portfolio tickers
         positions_df = get_current_positions_flask(fund)
         if positions_df.empty:
             return []
-        
+
         ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
         portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
         if not portfolio_tickers:
             return []
-        
+
         # Get Postgres client for Research DB
         try:
             from postgres_client import PostgresClient
@@ -135,42 +138,76 @@ def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         except Exception as e:
             logger.warning(f"Error creating Postgres client: {e}")
             return []
-        
+
         # Calculate date range
         end_date = date.today()
         start_date = end_date - timedelta(days=days)
-        
-        # Fetch ETF trades for each ticker
-        # TODO(perf): If ETF trade volume grows, move aggregation/limit into SQL and return
-        # the top N rows directly to avoid Python sorting and slicing.
-        all_trades = []
-        for ticker in portfolio_tickers:
-            try:
-                result = pc.execute_query("""
-                    SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
-                """, (ticker.upper(), start_date.isoformat(), end_date.isoformat()))
-                
-                if result:
-                    # Convert to list of dicts
-                    for row in result:
-                        all_trades.append({
-                            'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
-                            'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
-                            'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
-                            'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
-                            'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
-                            'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
-                        })
-            except Exception as e:
-                logger.warning(f"Error fetching ETF trades for {ticker}: {e}")
-                continue
-        
-        # Sort by date descending
-        all_trades.sort(key=lambda x: x.get('trade_date') or date.min, reverse=True)
-        return all_trades[:15]  # Limit to 15 most recent
+
+        # Batch fetch: single SQL query for all tickers (vs N queries before)
+        # The function returns results sorted by date DESC and limited to 15 rows
+        try:
+            # Convert tickers to uppercase for consistency
+            tickers_upper = [t.upper() for t in portfolio_tickers]
+            result = pc.execute_query("""
+                SELECT * FROM get_etf_holding_trades_batch(%s, %s::date, %s::date, %s)
+            """, (tickers_upper, start_date.isoformat(), end_date.isoformat(), 15))
+
+            if not result:
+                return []
+
+            # Convert to list of dicts
+            all_trades = []
+            for row in result:
+                all_trades.append({
+                    'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
+                    'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
+                    'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
+                    'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
+                    'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
+                    'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
+                })
+            return all_trades
+        except Exception as e:
+            logger.warning(f"Error in batch ETF query: {e}. Falling back to per-ticker queries.")
+            # Fallback to per-ticker queries if batch function doesn't exist yet
+            return _get_etf_trades_for_portfolio_fallback(portfolio_tickers, start_date, end_date, pc)
+
     except Exception as e:
         logger.warning(f"Error fetching ETF trades: {e}")
         return []
+
+
+def _get_etf_trades_for_portfolio_fallback(
+    portfolio_tickers: List[str],
+    start_date: date,
+    end_date: date,
+    pc: Any
+) -> List[Dict]:
+    """Fallback: fetch ETF trades one ticker at a time (for when batch function unavailable)."""
+    all_trades = []
+    for ticker in portfolio_tickers:
+        try:
+            result = pc.execute_query("""
+                SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
+            """, (ticker.upper(), start_date.isoformat(), end_date.isoformat()))
+
+            if result:
+                for row in result:
+                    all_trades.append({
+                        'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
+                        'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
+                        'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
+                        'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
+                        'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
+                        'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
+                    })
+        except Exception as e:
+            logger.warning(f"Error fetching ETF trades for {ticker}: {e}")
+            continue
+
+    # Sort by date descending
+    all_trades.sort(key=lambda x: x.get('trade_date') or date.min, reverse=True)
+    return all_trades[:15]
 
 
 @cache_data(ttl=300)
@@ -360,6 +397,7 @@ def _build_context_from_packet(
     return context_string, format_timings
 
 
+@cache_data(ttl=300)  # Cache full context string (5 min) - includes yfinance formatting
 def _get_preview_context_string(
     user_id: str,
     fund: str,
@@ -372,7 +410,11 @@ def _get_preview_context_string(
     include_etf_trades: bool = True
 ) -> tuple:
     """Build preview context string from cached data.
-    
+
+    Cache key includes all toggle parameters, so different configurations
+    get separate cache entries. This avoids calling yfinance for volume/fundamentals
+    on every page load.
+
     Returns:
         tuple: (context_string, all_timings_dict)
     """

@@ -416,9 +416,11 @@ def get_fund_thesis_data_flask(fund_name: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+@cache_data(ttl=300)  # Cache for 5 minutes - same as positions data
 def calculate_performance_metrics_flask(fund: Optional[str] = None) -> Dict[str, Any]:
     """Calculate key performance metrics (Flask version)
-    
+
+    Cached for 5 minutes to avoid recalculating on every dashboard load.
     Returns dict with performance metrics calculated from portfolio data.
     """
     try:
