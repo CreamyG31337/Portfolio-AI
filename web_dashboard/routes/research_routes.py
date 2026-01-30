@@ -225,23 +225,35 @@ def research_dashboard():
         total_articles, embedded_articles = get_cached_embedding_stats(repo)
         embedding_pct = (embedded_articles / total_articles * 100) if total_articles > 0 else 0
             
-        # Fetch Articles (cached)
-        articles = get_cached_articles(
-            repo=repo,
-            start_date=start_date,
-            end_date=end_date,
-            article_type_filter=article_type_filter,
-            search_filter=search_filter,
-            ticker_filter=ticker_filter,
-            per_page=per_page,
-            offset=offset
-        )
-        
-        # Admin-only: filter to "likely junk" (tagged ticker not in content)
+        # When admin uses "Show likely junk only", fetch a large pool then filter and paginate in memory.
+        # Otherwise we'd only see junk from the first page of results (often zero).
+        LIKELY_JUNK_POOL_SIZE = 2000
         if show_likely_junk and is_admin():
-            articles = [a for a in articles if a and _is_likely_junk(a)]
-            logger.info(f"Research dashboard: Filtered to {len(articles)} likely-junk articles")
+            articles_pool = get_cached_articles(
+                repo=repo,
+                start_date=start_date,
+                end_date=end_date,
+                article_type_filter=article_type_filter,
+                search_filter=search_filter,
+                ticker_filter=ticker_filter,
+                per_page=LIKELY_JUNK_POOL_SIZE,
+                offset=0
+            )
+            articles_filtered = [a for a in articles_pool if a and _is_likely_junk(a)]
+            start = (page - 1) * per_page
+            articles = articles_filtered[start : start + per_page]
+            logger.info(f"Research dashboard: Filtered to {len(articles_filtered)} likely-junk articles, page has {len(articles)}")
         else:
+            articles = get_cached_articles(
+                repo=repo,
+                start_date=start_date,
+                end_date=end_date,
+                article_type_filter=article_type_filter,
+                search_filter=search_filter,
+                ticker_filter=ticker_filter,
+                per_page=per_page,
+                offset=offset
+            )
             logger.info(f"Research dashboard: Fetched {len(articles)} valid articles")
             
         # Get common context

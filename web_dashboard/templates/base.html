@@ -42,7 +42,7 @@
                 {% block header_extra %}{% endblock %}
 
                 <!-- User menu (top-right) -->
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-3 ml-auto">
                     <!-- User email (hidden on mobile) -->
                     {% if user_email %}
                     <div class="hidden md:block text-sm text-blue-100">
@@ -83,14 +83,13 @@
         {% include "components/_sidebar_content.html" %}
 
         <!-- Main content area -->
-        <main id="main-content" class="flex-1 min-w-0 min-h-screen transition-all duration-300 ease-in-out overflow-x-hidden">
-            <div class="w-full max-w-full px-4 py-6 md:py-8">
+        <main id="main-content" class="flex-1 min-w-0 min-h-screen transition-all duration-300 ease-in-out overflow-x-hidden flex flex-col">
+            <div class="w-full max-w-full px-4 py-6 md:py-8 flex-1">
                 {% block content %}{% endblock %}
             </div>
+            {% include "components/_footer_content.html" %}
         </main>
     </div>
-
-    {% include "components/_footer_content.html" %}
 
     {% include "components/_scripts_content.html" %}
     {% block extra_scripts %}{% endblock %}

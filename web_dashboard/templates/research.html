@@ -207,9 +207,9 @@
 </div>
 
 <!-- Articles Grid -->
-<div class="grid grid-cols-1 gap-6">
+<div class="grid grid-cols-1 gap-6" id="research-articles-grid">
     {% for article in articles %}
-    <div id="article-card-{{ article.id }}"
+    <div id="article-card-{{ article.id }}" data-article-id="{{ article.id }}"
         class="bg-dashboard-surface rounded-lg shadow-sm border border-border hover:shadow-md transition-shadow duration-200">
         <div class="p-6">
             <div class="flex items-start gap-3 mb-4">
@@ -983,12 +983,13 @@
             headers: {
                 'Content-Type': 'application/json'
             },
+            credentials: 'include',
             body: JSON.stringify({ article_id: articleId })
         })
             .then(response => response.json().then(data => ({ ok: response.ok, data })))
             .then(({ ok, data }) => {
                 if (ok && data.success) {
-                    const card = document.getElementById(`article-card-${articleId}`);
+                    const card = document.querySelector(`#research-articles-grid [data-article-id="${articleId}"]`);
                     if (card) {
                         card.remove();
                     }
