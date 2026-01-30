@@ -100,6 +100,8 @@ with tab_users:
                         with col_role:
                             if role == 'admin':
                                 st.markdown("🔑 **Admin**")
+                            elif role == 'readonly_admin':
+                                st.markdown("👁️ **Read-Only**")
                             else:
                                 st.caption("👤 User")
                         
@@ -119,58 +121,118 @@ with tab_users:
                                 st.divider()
                                 
                                 # Admin role management
-                                st.markdown("**🔑 Admin Role**")
+                                st.markdown("**🔑 Role Management**")
                                 is_self = (email == current_user_email)
-                                
-                                if role == 'admin':
-                                    # Revoke admin button
-                                    if is_self:
-                                        st.caption("⚠️ Cannot remove your own admin role")
-                                    else:
-                                        if st.button("Revoke Admin", key=f"revoke_admin_{idx}_{email}", use_container_width=True, disabled=not can_modify_data()):
-                                            if not can_modify_data():
-                                                st.error("❌ Read-only admin cannot modify user roles")
-                                                st.stop()
-                                            try:
-                                                result = client.supabase.rpc(
-                                                    'revoke_admin_role',
-                                                    {'user_email': email}
-                                                ).execute()
-                                                
-                                                result_data = result.data
-                                                if isinstance(result_data, list) and len(result_data) > 0:
-                                                    result_data = result_data[0]
-                                                
-                                                if result_data and result_data.get('success'):
-                                                    st.cache_data.clear()
-                                                    st.toast(f"✅ {result_data.get('message')}", icon="✅")
-                                                    st.rerun()
-                                                else:
-                                                    st.error(f"❌ {result_data.get('message')}")
-                                            except Exception as e:
-                                                st.error(f"Error: {e}")
-                                else:
-                                    # Grant admin button
-                                    if st.button("Grant Admin", key=f"grant_admin_{idx}_{email}", use_container_width=True, disabled=not can_modify_data()):
+
+                                if is_self:
+                                    st.caption("⚠️ Cannot modify your own role")
+                                elif role == 'admin':
+                                    # Demote to readonly_admin or user
+                                    demote_to = st.selectbox(
+                                        "Demote to",
+                                        options=["readonly_admin", "user"],
+                                        key=f"demote_select_{idx}_{email}",
+                                        format_func=lambda x: "👁️ Read-Only Admin" if x == "readonly_admin" else "👤 User"
+                                    )
+                                    if st.button("Demote", key=f"demote_admin_{idx}_{email}", use_container_width=True, disabled=not can_modify_data()):
                                         if not can_modify_data():
                                             st.error("❌ Read-only admin cannot modify user roles")
                                             st.stop()
                                         try:
                                             result = client.supabase.rpc(
-                                                'grant_admin_role',
-                                                {'user_email': email}
+                                                'set_user_role',
+                                                {'user_email': email, 'new_role': demote_to}
                                             ).execute()
-                                            
+
                                             result_data = result.data
                                             if isinstance(result_data, list) and len(result_data) > 0:
                                                 result_data = result_data[0]
-                                            
+
                                             if result_data and result_data.get('success'):
                                                 st.cache_data.clear()
                                                 st.toast(f"✅ {result_data.get('message')}", icon="✅")
                                                 st.rerun()
                                             else:
-                                                st.error(f"❌ {result_data.get('message')}")
+                                                st.error(f"❌ {result_data.get('message', 'Failed to change role')}")
+                                        except Exception as e:
+                                            st.error(f"Error: {e}")
+                                elif role == 'readonly_admin':
+                                    # Promote to admin or demote to user
+                                    col_promote, col_demote = st.columns(2)
+                                    with col_promote:
+                                        if st.button("🔑 Full Admin", key=f"promote_admin_{idx}_{email}", use_container_width=True, disabled=not can_modify_data()):
+                                            if not can_modify_data():
+                                                st.error("❌ Read-only admin cannot modify user roles")
+                                                st.stop()
+                                            try:
+                                                result = client.supabase.rpc(
+                                                    'set_user_role',
+                                                    {'user_email': email, 'new_role': 'admin'}
+                                                ).execute()
+
+                                                result_data = result.data
+                                                if isinstance(result_data, list) and len(result_data) > 0:
+                                                    result_data = result_data[0]
+
+                                                if result_data and result_data.get('success'):
+                                                    st.cache_data.clear()
+                                                    st.toast(f"✅ {result_data.get('message')}", icon="✅")
+                                                    st.rerun()
+                                                else:
+                                                    st.error(f"❌ {result_data.get('message', 'Failed to change role')}")
+                                            except Exception as e:
+                                                st.error(f"Error: {e}")
+                                    with col_demote:
+                                        if st.button("👤 User", key=f"demote_user_{idx}_{email}", use_container_width=True, disabled=not can_modify_data()):
+                                            if not can_modify_data():
+                                                st.error("❌ Read-only admin cannot modify user roles")
+                                                st.stop()
+                                            try:
+                                                result = client.supabase.rpc(
+                                                    'set_user_role',
+                                                    {'user_email': email, 'new_role': 'user'}
+                                                ).execute()
+
+                                                result_data = result.data
+                                                if isinstance(result_data, list) and len(result_data) > 0:
+                                                    result_data = result_data[0]
+
+                                                if result_data and result_data.get('success'):
+                                                    st.cache_data.clear()
+                                                    st.toast(f"✅ {result_data.get('message')}", icon="✅")
+                                                    st.rerun()
+                                                else:
+                                                    st.error(f"❌ {result_data.get('message', 'Failed to change role')}")
+                                            except Exception as e:
+                                                st.error(f"Error: {e}")
+                                else:
+                                    # Regular user - can promote to admin or readonly_admin
+                                    promote_to = st.selectbox(
+                                        "Promote to",
+                                        options=["readonly_admin", "admin"],
+                                        key=f"promote_select_{idx}_{email}",
+                                        format_func=lambda x: "👁️ Read-Only Admin" if x == "readonly_admin" else "🔑 Full Admin"
+                                    )
+                                    if st.button("Promote", key=f"promote_{idx}_{email}", use_container_width=True, disabled=not can_modify_data()):
+                                        if not can_modify_data():
+                                            st.error("❌ Read-only admin cannot modify user roles")
+                                            st.stop()
+                                        try:
+                                            result = client.supabase.rpc(
+                                                'set_user_role',
+                                                {'user_email': email, 'new_role': promote_to}
+                                            ).execute()
+
+                                            result_data = result.data
+                                            if isinstance(result_data, list) and len(result_data) > 0:
+                                                result_data = result_data[0]
+
+                                            if result_data and result_data.get('success'):
+                                                st.cache_data.clear()
+                                                st.toast(f"✅ {result_data.get('message')}", icon="✅")
+                                                st.rerun()
+                                            else:
+                                                st.error(f"❌ {result_data.get('message', 'Failed to change role')}")
                                         except Exception as e:
                                             st.error(f"Error: {e}")
                                 

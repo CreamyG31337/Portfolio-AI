@@ -418,48 +418,25 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             logger.warning(f"Could not load available funds: {e}")
             available_funds = []
         
-        # Check if user is admin
-        # Note: We show admin menu items if user is authenticated, regardless of admin check result
-        # This prevents buggy admin checks from hiding menu items - let the pages handle authorization
+        # Check if user is admin (actually check the role, not just authentication)
         is_admin_value = False
-        
+
         try:
-            # Check if user is authenticated (has user_id or email)
-            user_is_authenticated = False
-            
+            from flask_auth_utils import get_user_id_flask
+            from auth import is_admin
+
+            user_id = None
             if hasattr(request, 'user_id') and request.user_id:
-                user_is_authenticated = True
+                user_id = request.user_id
             else:
-                # Try to get user_id from session/cookies
-                try:
-                    from flask_auth_utils import get_user_id_flask
-                    user_id = get_user_id_flask()
-                    if user_id:
-                        user_is_authenticated = True
-                except Exception:
-                    pass
-            
-            # If still not authenticated, check via email
-            if not user_is_authenticated:
-                try:
-                    from flask_auth_utils import get_user_email_flask
-                    if get_user_email_flask():
-                        user_is_authenticated = True
-                except Exception:
-                    pass
-            
-            # If user is authenticated, show admin menu (optimistic approach)
-            # Pages will handle actual authorization with @require_admin decorator
-            if user_is_authenticated:
-                is_admin_value = True
-        except Exception:
-            # If anything fails, default to showing menu if we can detect user is logged in
-            try:
-                from flask_auth_utils import get_user_email_flask
-                if get_user_email_flask():
-                    is_admin_value = True
-            except Exception:
-                pass
+                user_id = get_user_id_flask()
+
+            if user_id:
+                # Actually check admin status via the is_admin() function
+                is_admin_value = is_admin()
+        except Exception as e:
+            logger.debug(f"Error checking admin status for navigation: {e}")
+            is_admin_value = False
         
         # Get currently selected fund - check URL parameter first, then user preference
         selected_fund = None

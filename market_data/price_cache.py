@@ -286,10 +286,22 @@ class PriceCache:
         corrected = corrected.upper().strip()
         self._ticker_correction_cache[original] = corrected
     
+    def _get_cache_directory(self) -> Optional[Path]:
+        """Get cache directory path, or None if no data directory/active fund."""
+        try:
+            return Path(self.settings.get_data_directory()) / ".cache"
+        except ValueError as e:
+            if "No data directory specified" in str(e):
+                logger.debug("Skipping persistent cache (no data directory or active fund)")
+                return None
+            raise
+
     def save_persistent_cache(self) -> None:
         """Save cache to disk for persistence across sessions."""
+        cache_dir = self._get_cache_directory()
+        if cache_dir is None:
+            return
         try:
-            cache_dir = Path(self.settings.get_data_directory()) / ".cache"
             cache_dir.mkdir(exist_ok=True)
             
             # Save price cache (using pickle for DataFrame support)
@@ -315,9 +327,10 @@ class PriceCache:
     
     def _load_persistent_cache(self) -> None:
         """Load cache from disk if available."""
+        cache_dir = self._get_cache_directory()
+        if cache_dir is None:
+            return
         try:
-            cache_dir = Path(self.settings.get_data_directory()) / ".cache"
-            
             # Load price cache
             price_cache_file = cache_dir / "price_cache.pkl"
             if price_cache_file.exists():
@@ -342,7 +355,7 @@ class PriceCache:
                 
         except Exception as e:
             logger.warning(f"Failed to load persistent cache: {e}")
-            # Reset caches on load failure
+            # Reset caches on load failure (e.g. corrupt file)
             self._cache.clear()
             self._access_order.clear()
             self._company_name_cache.clear()

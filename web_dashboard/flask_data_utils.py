@@ -45,33 +45,44 @@ def get_supabase_client_flask() -> Optional[SupabaseClient]:
         return None
 
 
-@cache_data(ttl=300)
 def get_available_funds_flask() -> List[str]:
-    """Get list of available funds for current Flask user (cached 5min)"""
+    """Get list of available funds for current Flask user (cached 5min per user)"""
     try:
         user_id = get_user_id_flask()
         if not user_id:
             logger.warning("[get_available_funds_flask] No user_id in Flask session/cookie")
             return []
-        
+
+        # Call the cached inner function with user_id as parameter
+        # This ensures each user has their own cache entry
+        return _get_available_funds_for_user(user_id)
+    except Exception as e:
+        logger.error(f"[get_available_funds_flask] Exception: {e}", exc_info=True)
+        return []
+
+
+@cache_data(ttl=300)
+def _get_available_funds_for_user(user_id: str) -> List[str]:
+    """Internal cached function - cache key includes user_id"""
+    try:
         logger.info(f"[get_available_funds_flask] Looking up funds for user_id: {user_id[:8]}...")
-            
+
         client = get_supabase_client_flask()
         if not client:
             logger.error("[get_available_funds_flask] Failed to create Supabase client")
             return []
-            
+
         result = client.supabase.table("user_funds").select("fund_name").eq("user_id", user_id).execute()
-        
+
         if result and result.data:
             funds = [row.get('fund_name') for row in result.data if row.get('fund_name')]
             logger.info(f"[get_available_funds_flask] Found {len(funds)} funds: {funds}")
             return sorted(funds)
-        
+
         logger.warning(f"[get_available_funds_flask] No funds found for user_id: {user_id[:8]}...")
         return []
     except Exception as e:
-        logger.error(f"[get_available_funds_flask] Exception: {e}", exc_info=True)
+        logger.error(f"[_get_available_funds_for_user] Exception: {e}", exc_info=True)
         return []
 
 

@@ -309,11 +309,25 @@ def render_navigation(show_ai_assistant: bool = True, show_settings: bool = True
     
     if user_email:
         if admin_status:
-            # Modern badge for admin status
-            st.sidebar.markdown(
-                '<div class="nav-badge nav-badge-admin">✅ Admin Access</div>',
-                unsafe_allow_html=True
-            )
+            # Check if full admin or readonly_admin
+            try:
+                from auth_utils import can_modify_data
+                is_full_admin = can_modify_data()
+            except Exception:
+                is_full_admin = False
+
+            if is_full_admin:
+                # Full admin badge
+                st.sidebar.markdown(
+                    '<div class="nav-badge nav-badge-admin">🔑 Full Admin</div>',
+                    unsafe_allow_html=True
+                )
+            else:
+                # Read-only admin badge
+                st.sidebar.markdown(
+                    '<div class="nav-badge nav-badge-role">👁️ Read-Only Admin</div>',
+                    unsafe_allow_html=True
+                )
             # Admin pages (only visible to admins)
             # Jobs link - check if migrated to Flask
             try:
@@ -476,31 +490,15 @@ def render_navigation(show_ai_assistant: bool = True, show_settings: bool = True
                 # Fallback if shared_navigation not available
                 st.sidebar.page_link("pages/admin_logs.py", label="Logs", icon="📜")
         else:
-            # Check if user profile exists and show role
-            try:
-                client = get_supabase_client()
-                if client:
-                    profile_result = client.supabase.table("user_profiles").select("role").eq("user_id", get_user_id()).execute()
-                    if profile_result.data:
-                        role = profile_result.data[0].get('role', 'user')
-                        if role == 'readonly_admin':
-                            # Modern badge for readonly admin role
-                            st.sidebar.markdown(
-                                '<div class="nav-badge nav-badge-role">👁️ Role: Read-Only Admin</div>',
-                                unsafe_allow_html=True
-                            )
-                        elif role != 'admin':
-                            # Modern badge for user role
-                            st.sidebar.markdown(
-                                f'<div class="nav-badge nav-badge-role">👤 Role: {role.title()}</div>',
-                                unsafe_allow_html=True
-                            )
-                            with st.sidebar.expander("🔧 Need Admin Access?", expanded=False):
-                                st.write("To become an admin, run this command on the server:")
-                                st.code("python web_dashboard/setup_admin.py", language="bash")
-                                st.write(f"Then enter your email: `{user_email}`")
-            except Exception:
-                pass  # Silently fail if we can't check
+            # Regular user (non-admin) - show role badge
+            st.sidebar.markdown(
+                '<div class="nav-badge nav-badge-role">👤 User</div>',
+                unsafe_allow_html=True
+            )
+            with st.sidebar.expander("🔧 Need Admin Access?", expanded=False):
+                st.write("To become an admin, run this command on the server:")
+                st.code("python web_dashboard/setup_admin.py", language="bash")
+                st.write(f"Then enter your email: `{user_email}`")
     
     # Modern divider
     st.sidebar.markdown('<hr class="nav-divider">', unsafe_allow_html=True)
