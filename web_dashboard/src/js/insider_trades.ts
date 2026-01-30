@@ -35,6 +35,7 @@ interface AgGridOptions {
     paginationPageSizeSelector?: number[];
     animateRows?: boolean;
     overlayLoadingTemplate?: string;
+    enableCellTextSelection?: boolean;
 }
 
 interface AgGridColumnDef {
@@ -399,6 +400,7 @@ function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
         paginationPageSize: 25,
         paginationPageSizeSelector: [25, 50, 100],
         animateRows: true,
+        enableCellTextSelection: true,
         overlayLoadingTemplate: "<span class='ag-overlay-loading-center'>Loading insider trades...</span>"
     };
 
