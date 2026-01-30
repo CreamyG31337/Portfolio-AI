@@ -1,6 +1,6 @@
 export { }; // Ensure file is treated as a module
 
-type SecurityMode = "etf" | "stock";
+type SecurityMode = "etf" | "stock" | "portfolio";
 
 interface SecurityMetadata {
     ticker: string;
@@ -75,6 +75,8 @@ function setMode(mode: SecurityMode): void {
     if (modeHelpText) {
         modeHelpText.textContent = mode === "etf"
             ? "Showing ETF securities from the holdings log. Search updates live as you type."
+            : mode === "portfolio"
+            ? "Showing all securities in your portfolio positions. Search updates live as you type."
             : "Showing stocks that are not in the ETF holdings log. Search updates live as you type.";
     }
 }
@@ -151,12 +153,18 @@ function renderSecurities(securities: SecurityMetadata[], mode: SecurityMode, qu
         return;
     }
 
-    const labelText = mode === "etf" ? "Fund Description" : "Company Description";
+    const labelText = mode === "etf" ? "Fund Description"
+        : mode === "portfolio" ? "Security Description"
+        : "Company Description";
     const helperText = mode === "etf"
         ? "Include fund objective, strategy, themes, and sectors. Line breaks are preserved."
+        : mode === "portfolio"
+        ? "Include a description for this security in your portfolio. Line breaks are preserved."
         : "Include a short company overview or business focus. Line breaks are preserved.";
     const placeholderText = mode === "etf"
         ? "Fund Objective:\nIWC is an ETF that seeks...\n\nFund Description:\nFocuses on micro-cap..."
+        : mode === "portfolio"
+        ? "Description:\nProvide context about this security..."
         : "Company Description:\nDescribe the business, products, or strategy...";
 
     securityList.innerHTML = securities.map(security => {

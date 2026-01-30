@@ -2426,6 +2426,20 @@ def _get_cached_etf_tickers():
         logger.error(f"Error fetching ETF tickers: {e}", exc_info=True)
         return set()
 
+@cache_data(ttl=300)
+def _get_portfolio_tickers():
+    """Get distinct tickers from portfolio positions (cached)."""
+    try:
+        client = SupabaseClient(use_service_role=True)
+        result = client.supabase.table("portfolio_positions") \
+            .select("ticker") \
+            .execute()
+        tickers = set(row.get("ticker") for row in (result.data or []) if row.get("ticker"))
+        return tickers
+    except Exception as e:
+        logger.error(f"Error fetching portfolio tickers: {e}", exc_info=True)
+        return set()
+
 def _build_securities_query(client, query_text: str):
     query_builder = client.supabase.table("securities") \
         .select("ticker, company_name, description")
@@ -2445,6 +2459,8 @@ def _normalize_security_mode(mode: str) -> str:
         return "etf"
     if normalized in ("stocks", "stock"):
         return "stock"
+    if normalized in ("portfolio", "holdings"):
+        return "portfolio"
     return "etf"
 
 @admin_bp.route('/admin/security-metadata')
@@ -2497,7 +2513,14 @@ def api_get_security_metadata():
                     .limit(limit) \
                     .execute()
                 securities = result.data or []
-        else:
+        elif mode == "portfolio":
+            portfolio_tickers = _get_portfolio_tickers()
+            if portfolio_tickers:
+                result = query_builder.in_("ticker", list(portfolio_tickers)) \
+                    .limit(limit) \
+                    .execute()
+                securities = result.data or []
+        else:  # stock mode
             page_size = max(limit, 200)
             offset = 0
             while len(securities) < limit:

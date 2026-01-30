@@ -74,6 +74,11 @@ def _rate_limit_wait() -> None:
 
 FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "").strip()
 
+# Retry on transient server/rate-limit errors (503, 502, 429)
+RETRYABLE_STATUS = (429, 502, 503)
+SEC_FETCH_MAX_RETRIES = int(os.getenv("SEC_FETCH_MAX_RETRIES", "5"))
+SEC_FETCH_BACKOFF_BASE = float(os.getenv("SEC_FETCH_BACKOFF_BASE", "2.0"))
+
 
 def _headers() -> Dict[str, str]:
     ua = os.getenv("SEC_EDGAR_USER_AGENT", "").strip() or DEFAULT_USER_AGENT
@@ -113,31 +118,48 @@ def fetch_via_flaresolverr(url: str, timeout: int = 120) -> Optional[str]:
 
 
 def download_index(year: int, quarter: int, use_gzip: bool = True) -> Optional[str]:
-    """Download form index for a quarter. Quarterly dir has form.gz (not form.idx.gz) and form.idx. Uses FlareSolverr on 403."""
+    """Download form index for a quarter. Retries on 503/502/429; FlareSolverr on 403."""
     base = f"{SEC_ARCHIVES}/edgar/full-index/{year}/QTR{quarter}"
-    # SEC full-index/YYYY/QTRn/ lists: form.gz, form.idx, form.zip, form.Z (no form.idx.gz)
     url = f"{base}/form.gz" if use_gzip else f"{base}/form.idx"
     logger.info("Downloading index: %s", url)
-    try:
-        r = requests.get(url, headers=_headers(), timeout=120)
-        r.raise_for_status()
-        if use_gzip:
-            return gzip.decompress(r.content).decode("utf-8", errors="replace")
-        return r.text
-    except requests.exceptions.HTTPError as e:
-        if e.response is not None and e.response.status_code == 403 and FLARESOLVERR_URL:
-            logger.info("Index returned 403; trying FlareSolverr (%s)...", FLARESOLVERR_URL)
-            body = fetch_via_flaresolverr(url, timeout=120)
-            if body is None:
-                logger.error("FlareSolverr failed for index")
-                return None
-            # FlareSolverr typically returns the body as the browser sees it (already decompressed if gzip)
-            return body
-        logger.error("Failed to download index: %s", e)
-        return None
-    except Exception as e:
-        logger.error("Failed to download index: %s", e)
-        return None
+    last_error: Optional[Exception] = None
+    for attempt in range(SEC_FETCH_MAX_RETRIES + 1):
+        try:
+            r = requests.get(url, headers=_headers(), timeout=120)
+            if r.status_code in RETRYABLE_STATUS and attempt < SEC_FETCH_MAX_RETRIES:
+                backoff = min(SEC_FETCH_BACKOFF_BASE ** attempt, 60.0)
+                logger.warning("SEC %s for index, retry %s/%s in %.1fs", r.status_code, attempt + 1, SEC_FETCH_MAX_RETRIES, backoff)
+                time.sleep(backoff)
+                continue
+            r.raise_for_status()
+            if use_gzip:
+                return gzip.decompress(r.content).decode("utf-8", errors="replace")
+            return r.text
+        except requests.exceptions.HTTPError as e:
+            last_error = e
+            if e.response is not None and e.response.status_code == 403 and FLARESOLVERR_URL:
+                logger.info("Index returned 403; trying FlareSolverr (%s)...", FLARESOLVERR_URL)
+                body = fetch_via_flaresolverr(url, timeout=120)
+                if body is not None:
+                    return body
+            if e.response is not None and e.response.status_code in RETRYABLE_STATUS and attempt < SEC_FETCH_MAX_RETRIES:
+                backoff = min(SEC_FETCH_BACKOFF_BASE ** attempt, 60.0)
+                logger.warning("SEC %s for index, retry %s/%s in %.1fs", e.response.status_code, attempt + 1, SEC_FETCH_MAX_RETRIES, backoff)
+                time.sleep(backoff)
+                continue
+            logger.error("Failed to download index: %s", e)
+            return None
+        except Exception as e:
+            last_error = e
+            if attempt < SEC_FETCH_MAX_RETRIES:
+                backoff = min(SEC_FETCH_BACKOFF_BASE ** attempt, 60.0)
+                logger.warning("Index fetch error %s, retry %s/%s in %.1fs", e, attempt + 1, SEC_FETCH_MAX_RETRIES, backoff)
+                time.sleep(backoff)
+                continue
+            logger.error("Failed to download index: %s", e)
+            return None
+    logger.error("Failed to download index after %s retries: %s", SEC_FETCH_MAX_RETRIES + 1, last_error)
+    return None
 
 
 def parse_form_idx(content: str) -> List[Tuple[str, str, str, str, str]]:
@@ -180,26 +202,47 @@ def filter_form4(rows: List[Tuple[str, str, str, str, str]]) -> List[Tuple[str, 
 
 
 def fetch_filing(filename: str) -> Optional[str]:
-    """Fetch one filing by path (e.g. edgar/data/123/000123-24-000001.txt). Uses FlareSolverr on 403. Rate-limited globally (~9 req/s)."""
+    """Fetch one filing by path (e.g. edgar/data/123/000123-24-000001.txt). Retries on 503/502/429; FlareSolverr on 403. Rate-limited (~9 req/s)."""
     if not filename.startswith("edgar/"):
         filename = "edgar/data/" + filename.lstrip("/")
     url = f"{SEC_ARCHIVES}/{filename}"
     logger.debug("Fetching filing: %s", url[:80])
-    _rate_limit_wait()
-    try:
-        r = requests.get(url, headers=_headers(), timeout=60)
-        r.raise_for_status()
-        return r.text
-    except requests.exceptions.HTTPError as e:
-        if e.response is not None and e.response.status_code == 403 and FLARESOLVERR_URL:
-            body = fetch_via_flaresolverr(url, timeout=90)
-            if body:
-                return body
-        logger.error("Failed to fetch filing: %s", e)
-        return None
-    except Exception as e:
-        logger.error("Failed to fetch filing: %s", e)
-        return None
+    last_error: Optional[Exception] = None
+    for attempt in range(SEC_FETCH_MAX_RETRIES + 1):
+        _rate_limit_wait()
+        try:
+            r = requests.get(url, headers=_headers(), timeout=60)
+            if r.status_code in RETRYABLE_STATUS and attempt < SEC_FETCH_MAX_RETRIES:
+                backoff = min(SEC_FETCH_BACKOFF_BASE ** attempt, 60.0)
+                logger.warning("SEC %s for %s, retry %s/%s in %.1fs", r.status_code, url[:60], attempt + 1, SEC_FETCH_MAX_RETRIES, backoff)
+                time.sleep(backoff)
+                continue
+            r.raise_for_status()
+            return r.text
+        except requests.exceptions.HTTPError as e:
+            last_error = e
+            if e.response is not None and e.response.status_code == 403 and FLARESOLVERR_URL:
+                body = fetch_via_flaresolverr(url, timeout=90)
+                if body:
+                    return body
+            if e.response is not None and e.response.status_code in RETRYABLE_STATUS and attempt < SEC_FETCH_MAX_RETRIES:
+                backoff = min(SEC_FETCH_BACKOFF_BASE ** attempt, 60.0)
+                logger.warning("SEC %s for %s, retry %s/%s in %.1fs", e.response.status_code, url[:60], attempt + 1, SEC_FETCH_MAX_RETRIES, backoff)
+                time.sleep(backoff)
+                continue
+            logger.error("Failed to fetch filing: %s", e)
+            return None
+        except Exception as e:
+            last_error = e
+            if attempt < SEC_FETCH_MAX_RETRIES:
+                backoff = min(SEC_FETCH_BACKOFF_BASE ** attempt, 60.0)
+                logger.warning("Fetch error %s, retry %s/%s in %.1fs", e, attempt + 1, SEC_FETCH_MAX_RETRIES, backoff)
+                time.sleep(backoff)
+                continue
+            logger.error("Failed to fetch filing: %s", e)
+            return None
+    logger.error("Failed to fetch filing after %s retries: %s", SEC_FETCH_MAX_RETRIES + 1, last_error)
+    return None
 
 
 def extract_xml_from_submission(content: str) -> Optional[str]:
@@ -288,7 +331,7 @@ def parse_form4_sgml(content: str) -> List[Dict[str, Any]]:
     skip_tickers = {
         "SEC", "ACT", "FORM", "TYPE", "DE", "CA", "C/O", "IRS", "D", "P", "S", "A", "G", "F", "M", "X", "O", "W", "H",
         "OF", "OR", "ON", "BY", "AS", "IF", "NO", "SO", "UP", "DO", "GO", "WE", "HE", "ME", "MY", "IT", "US", "CO", "NA",
-        "COUNT", "NAME", "DATA", "FILE", "FILED", "NONE", "DATE", "OWNER", "INDEX", "KEY", "FILM", "MAIL", "ZIP", "STREET", "CITY", "STATE", "PHONE", "ORG", "INC", "LTD", "LLC",
+        "COUNT", "NAME", "DATA", "FILE", "FILED", "NONE", "DATE", "OWNER", "INDEX", "FILM", "MAIL", "ZIP", "STREET", "CITY", "STATE", "PHONE", "ORG", "INC", "LTD", "LLC",
     }
     ticker = ""
     # Prefer XML ticker when raw content has embedded Form 4 XML (e.g. <issuerTradingSymbol>FLWS</issuerTradingSymbol>)
@@ -635,24 +678,45 @@ SAMPLE_FORM4_FALLBACK = [
 
 
 def fetch_filing_by_path(path: str) -> Optional[str]:
-    """Fetch filing by full path under Archives (e.g. edgar/data/.../file.txt). Uses FlareSolverr on 403."""
+    """Fetch filing by full path under Archives. Retries on 503/502/429; FlareSolverr on 403."""
     url = f"{SEC_ARCHIVES}/{path}" if not path.startswith("http") else path
     logger.info("Fetching: %s", url[:80])
-    time.sleep(RATE_LIMIT_DELAY)
-    try:
-        r = requests.get(url, headers=_headers(), timeout=60)
-        r.raise_for_status()
-        return r.text
-    except requests.exceptions.HTTPError as e:
-        if e.response is not None and e.response.status_code == 403 and FLARESOLVERR_URL:
-            body = fetch_via_flaresolverr(url, timeout=90)
-            if body:
-                return body
-        logger.error("Failed: %s", e)
-        return None
-    except Exception as e:
-        logger.error("Failed: %s", e)
-        return None
+    last_error: Optional[Exception] = None
+    for attempt in range(SEC_FETCH_MAX_RETRIES + 1):
+        _rate_limit_wait()
+        try:
+            r = requests.get(url, headers=_headers(), timeout=60)
+            if r.status_code in RETRYABLE_STATUS and attempt < SEC_FETCH_MAX_RETRIES:
+                backoff = min(SEC_FETCH_BACKOFF_BASE ** attempt, 60.0)
+                logger.warning("SEC %s for %s, retry %s/%s in %.1fs", r.status_code, url[:60], attempt + 1, SEC_FETCH_MAX_RETRIES, backoff)
+                time.sleep(backoff)
+                continue
+            r.raise_for_status()
+            return r.text
+        except requests.exceptions.HTTPError as e:
+            last_error = e
+            if e.response is not None and e.response.status_code == 403 and FLARESOLVERR_URL:
+                body = fetch_via_flaresolverr(url, timeout=90)
+                if body:
+                    return body
+            if e.response is not None and e.response.status_code in RETRYABLE_STATUS and attempt < SEC_FETCH_MAX_RETRIES:
+                backoff = min(SEC_FETCH_BACKOFF_BASE ** attempt, 60.0)
+                logger.warning("SEC %s for %s, retry %s/%s in %.1fs", e.response.status_code, url[:60], attempt + 1, SEC_FETCH_MAX_RETRIES, backoff)
+                time.sleep(backoff)
+                continue
+            logger.error("Failed: %s", e)
+            return None
+        except Exception as e:
+            last_error = e
+            if attempt < SEC_FETCH_MAX_RETRIES:
+                backoff = min(SEC_FETCH_BACKOFF_BASE ** attempt, 60.0)
+                logger.warning("Fetch error %s, retry %s/%s in %.1fs", e, attempt + 1, SEC_FETCH_MAX_RETRIES, backoff)
+                time.sleep(backoff)
+                continue
+            logger.error("Failed: %s", e)
+            return None
+    logger.error("Failed after %s retries: %s", SEC_FETCH_MAX_RETRIES + 1, last_error)
+    return None
 
 
 def main() -> None:
