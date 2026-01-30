@@ -218,7 +218,7 @@
                     <!-- Header Preview -->
                     <div class="mb-6">
                         <p class="text-sm text-text-tertiary mb-2">Header Bar</p>
-                        <div id="header-preview" class="gradient-bg text-white shadow-lg rounded-lg p-4">
+                        <div id="header-preview" class="bg-gradient-to-br from-[var(--gradient-from)] to-[var(--gradient-to)] text-white shadow-lg rounded-lg p-4">
                             <div class="flex items-center justify-between">
                                 <h2 class="text-xl font-bold">Dashboard</h2>
                                 <div class="text-sm text-text-tertiary">user@example.com</div>
@@ -470,7 +470,7 @@
         // Header gradient
         const fromColor = document.getElementById('gradient-from').value;
         const toColor = document.getElementById('gradient-to').value;
-        const header = document.querySelector('header.gradient-bg');
+        const header = document.querySelector('header#main-header');
         const headerPreview = document.getElementById('header-preview');
         const gradient = `linear-gradient(135deg, ${fromColor} 0%, ${toColor} 100%)`;
         if (header) header.style.background = gradient;

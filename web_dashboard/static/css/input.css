@@ -75,11 +75,6 @@
 
 /* Custom component styles extracted from inline template styles */
 @layer components {
-    /* Gradient background for header */
-    .gradient-bg {
-        background-image: linear-gradient(to bottom right, var(--gradient-from), var(--gradient-to));
-    }
-
     /* Sidebar collapse transitions */
     .sidebar-text {
         @apply inline-block transition-all duration-300 ease-in-out;
