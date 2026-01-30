@@ -459,7 +459,16 @@
         container.innerHTML = '';
 
         if (!data.logs || data.logs.length === 0) {
-            container.innerHTML = '<div class="text-center py-8 text-text-secondary">No logs found matching the filters</div>';
+            let msg = 'No logs found.';
+            if (data.source_hint) {
+                msg = data.source_hint;
+            } else if (document.getElementById('search-input-ollama').value) {
+                msg = 'No logs found matching the search.';
+            }
+            const emptyEl = document.createElement('div');
+            emptyEl.className = 'text-center py-8 px-4 text-text-secondary text-sm max-w-2xl mx-auto whitespace-pre-wrap';
+            emptyEl.textContent = msg;
+            container.appendChild(emptyEl);
             return;
         }
 

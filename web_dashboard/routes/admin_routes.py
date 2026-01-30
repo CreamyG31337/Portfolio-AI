@@ -218,32 +218,34 @@ def _get_cached_application_logs(level_filter, search, exclude_modules, since_de
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
+def _get_ollama_log_file_path():
+    """Return the path we read for Ollama logs (for UI hint). Tries server.log then ollama.log."""
+    from pathlib import Path
+    logs_dir = Path(__file__).resolve().parent.parent / "logs"
+    for name in ("server.log", "ollama.log"):
+        p = logs_dir / name
+        if p.exists():
+            return p
+    return logs_dir / "server.log"  # hint shows expected name when none exist
+
+
 @cache_data(ttl=5)
 def _get_cached_ollama_log_lines():
-    """Get Ollama log lines with caching"""
-    from pathlib import Path
-    
-    log_file = Path(__file__).parent.parent / 'logs' / 'ollama.log'
-    
+    """Get Ollama log lines with caching. Reads server.log or ollama.log from web_dashboard/logs/."""
+    log_file = _get_ollama_log_file_path()
     if not log_file.exists():
         return []
-    
     try:
-        # Read up to 5MB from end for efficiency
         file_size = log_file.stat().st_size
         if file_size == 0:
             return []
-        
         buffer_size = min(5 * 1024 * 1024, file_size)
-        with open(log_file, 'rb') as f:
+        with open(log_file, "rb") as f:
             f.seek(max(0, file_size - buffer_size))
-            buffer = f.read().decode('utf-8', errors='ignore')
-        
-        lines = buffer.split('\n')
+            buffer = f.read().decode("utf-8", errors="ignore")
+        lines = buffer.split("\n")
         if file_size > buffer_size:
             lines = lines[1:]  # Skip first partial line
-        
-        # Reverse for newest first
         return list(reversed(lines))
     except Exception as e:
         logger.error(f"Error reading Ollama log file: {e}")
@@ -1073,13 +1075,19 @@ def api_logs_ollama():
                 })
         
         pages = (total + limit - 1) // limit if total > 0 else 1
-        
-        return jsonify({
-            'logs': logs,
-            'total': total,
-            'page': page,
-            'pages': pages
-        })
+        payload = {
+            "logs": logs,
+            "total": total,
+            "page": page,
+            "pages": pages,
+        }
+        if total == 0:
+            path = _get_ollama_log_file_path()
+            payload["source_hint"] = (
+                f"Ollama logs are read from: {path}. "
+                "The file is missing or empty. For Docker, mount the host log file to this path (see LOGGING_SETUP.md)."
+            )
+        return jsonify(payload)
     except ValueError as e:
         logger.error(f"Invalid parameter in Ollama logs request: {e}")
         return jsonify({"error": f"Invalid parameter: {str(e)}"}), 400

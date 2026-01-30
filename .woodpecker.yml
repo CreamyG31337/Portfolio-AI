@@ -135,8 +135,8 @@ steps:
         fi
       
       # Create all required directories once at the start
-      - mkdir -p /home/lance/trading-dashboard-logs /shared/cookies /deploy_target/frontend
-      - chmod 777 /home/lance/trading-dashboard-logs /shared/cookies
+      - mkdir -p /home/lance/trading-dashboard-logs /home/lance/ollama-logs /shared/cookies /deploy_target/frontend
+      - chmod 777 /home/lance/trading-dashboard-logs /home/lance/ollama-logs /shared/cookies
       
       # Build shared base image first (required by Streamlit and Flask images)
       # Using BuildKit for better caching and --cache-from for cross-build cache sharing
@@ -341,8 +341,8 @@ steps:
         DOCKER_CMD="docker run -d --name trading-dashboard --restart unless-stopped -p 8501:8501 --network bridge-ipv6 --add-host=host.docker.internal:host-gateway"
         # Mount application logs directory (host logs -> container logs)
         DOCKER_CMD="$DOCKER_CMD -v /home/lance/trading-dashboard-logs:/app/web_dashboard/logs"
-        # Mount Ollama logs directory (host logs -> container logs/server)
-        DOCKER_CMD="$DOCKER_CMD -v /home/lance/ollama-logs:/app/web_dashboard/logs/server"
+        # Mount Ollama server.log so logs UI can read it (Ollama container writes to /home/lance/ollama-logs/server.log)
+        DOCKER_CMD="$DOCKER_CMD -v /home/lance/ollama-logs/server.log:/app/web_dashboard/logs/server.log"
         # Mount shared cookies directory (for cookie refresher sidecar)
         DOCKER_CMD="$DOCKER_CMD -v /shared/cookies:/shared/cookies"
         DOCKER_CMD="$DOCKER_CMD -e SUPABASE_URL=\"$SUPABASE_URL\""
@@ -399,6 +399,8 @@ steps:
         FLASK_CMD="docker run -d --name trading-dashboard-flask --restart unless-stopped -p 5001:5001 --network bridge-ipv6 --add-host=host.docker.internal:host-gateway"
         # Mount application logs directory (shared with Streamlit container)
         FLASK_CMD="$FLASK_CMD -v /home/lance/trading-dashboard-logs:/app/web_dashboard/logs"
+        # Mount Ollama server.log so Admin Logs page can read it (Ollama writes to /home/lance/ollama-logs/server.log)
+        FLASK_CMD="$FLASK_CMD -v /home/lance/ollama-logs/server.log:/app/web_dashboard/logs/server.log"
         # Mount shared cookies directory
         FLASK_CMD="$FLASK_CMD -v /shared/cookies:/shared/cookies"
         FLASK_CMD="$FLASK_CMD -e SUPABASE_URL=\"$SUPABASE_URL\""
