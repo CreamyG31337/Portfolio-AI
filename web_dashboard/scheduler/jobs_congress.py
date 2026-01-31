@@ -754,6 +754,16 @@ def analyze_congress_trades_job() -> None:
     """
     job_id = 'analyze_congress_trades'
     start_time = time.time()
+
+    # Global AI lock (prevent overlapping AI jobs)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
     
     try:
         # Ensure path is set up correctly before importing
@@ -959,6 +969,16 @@ def rescore_congress_sessions_job(limit: int = 1000, batch_size: int = 10, model
     """
     job_id = 'rescore_congress_sessions'
     start_time = time.time()
+
+    # Global AI lock (prevent overlapping AI jobs)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
     
     try:
         # Ensure path is set up correctly before importing
@@ -1255,6 +1275,30 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
                 message = summary
             else:
                 message = "Congress trades scraping completed"
+            
+            # Run session backfill so new scraped trades get linked to sessions (for session-based AI analysis)
+            backfill_path = project_root / 'web_dashboard' / 'scripts' / 'backfill_congress_sessions.py'
+            if backfill_path.exists():
+                try:
+                    logger.info("Running session backfill to link new trades to sessions...")
+                    backfill_proc = subprocess.run(
+                        [sys.executable, '-u', str(backfill_path)],
+                        cwd=str(project_root),
+                        capture_output=True,
+                        text=True,
+                        timeout=3600,
+                        encoding='utf-8'
+                    )
+                    if backfill_proc.returncode == 0:
+                        logger.info("Session backfill completed successfully.")
+                    else:
+                        logger.warning(f"Session backfill exited with code {backfill_proc.returncode}; new trades may need manual backfill.")
+                except subprocess.TimeoutExpired:
+                    logger.warning("Session backfill timed out; new trades may need manual backfill.")
+                except Exception as backfill_err:
+                    logger.warning(f"Session backfill failed: {backfill_err}; new trades may need manual backfill.")
+            else:
+                logger.debug(f"Backfill script not found at {backfill_path}; skipping session link.")
             
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             mark_job_completed('scrape_congress_trades', target_date, None, [], duration_ms=duration_ms, message=message)

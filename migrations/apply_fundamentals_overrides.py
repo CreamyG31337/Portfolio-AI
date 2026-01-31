@@ -36,12 +36,17 @@ def load_overrides(config_path: Path) -> dict:
 def main():
     """Update securities table with overrides data."""
     
-    # Get Supabase credentials
+    # Get Supabase credentials - use secret key to bypass RLS for admin operations
     supabase_url = os.environ.get('SUPABASE_URL')
-    supabase_key = os.environ.get('SUPABASE_PUBLISHABLE_KEY') or os.environ.get('SUPABASE_SERVICE_KEY')
-    
+    # Prefer secret key (bypasses RLS), fall back to service key or publishable key
+    supabase_key = (
+        os.environ.get('SUPABASE_SECRET_KEY') or
+        os.environ.get('SUPABASE_SERVICE_KEY') or
+        os.environ.get('SUPABASE_PUBLISHABLE_KEY')
+    )
+
     if not supabase_url or not supabase_key:
-        print("[ERROR] SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY environment variables required")
+        print("[ERROR] SUPABASE_URL and SUPABASE_SECRET_KEY environment variables required")
         return
     
     # Connect to Supabase
@@ -53,9 +58,18 @@ def main():
     overrides = load_overrides(config_path)
     print(f"[INFO] Loaded {len(overrides)} overrides from {config_path}")
     
-    # Get existing tickers in securities table
-    result = supabase.table('securities').select('ticker').execute()
-    existing_tickers = {row['ticker'] for row in result.data}
+    # Get existing tickers in securities table (paginate to get all)
+    existing_tickers = set()
+    page_size = 1000
+    offset = 0
+    while True:
+        result = supabase.table('securities').select('ticker').range(offset, offset + page_size - 1).execute()
+        if not result.data:
+            break
+        existing_tickers.update(row['ticker'] for row in result.data)
+        if len(result.data) < page_size:
+            break
+        offset += page_size
     print(f"[INFO] Found {len(existing_tickers)} tickers in securities table")
     
     # Update each ticker with override data

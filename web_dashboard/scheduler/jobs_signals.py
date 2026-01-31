@@ -58,6 +58,16 @@ def signal_scan_job() -> None:
     """
     job_id = 'signal_scan'
     start_time = time.time()
+
+    # Global AI lock (signal job can generate AI explanations)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
     
     try:
         # Import job tracking

@@ -145,6 +145,16 @@ def etf_group_analysis_job() -> None:
     job_id = 'etf_group_analysis'
     start_time = time.time()
     
+    # Global AI lock (prevent overlapping AI jobs)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
+
     # Check if job is already running (prevents concurrent execution)
     try:
         supabase_check = SupabaseClient(use_service_role=True)

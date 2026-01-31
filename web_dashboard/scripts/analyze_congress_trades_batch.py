@@ -691,7 +691,8 @@ def analyze_session(
         end_date = session['end_date']
         trade_count = session['trade_count']
         
-        # Get trades for this session from postgres analysis table
+        # Get trades for this session: first from postgres analysis table (linked by backfill),
+        # or fallback to Supabase by politician + date range (sessions created without backfill link).
         trades_result = postgres.execute_query(
             """
             SELECT trade_id
@@ -701,11 +702,30 @@ def analyze_session(
             (session_id,)
         )
         
-        if not trades_result:
-            logger.warning(f"No trades found for session {session_id}")
-            return False
-        
-        trade_ids = [row['trade_id'] for row in trades_result]
+        if trades_result:
+            trade_ids = [row['trade_id'] for row in trades_result]
+        else:
+            # Fallback: session has no linked trades in congress_trades_analysis (e.g. created by
+            # find_or_create_session without running backfill). Fetch trades from Supabase by
+            # politician name and session date range.
+            start_str = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)[:10]
+            end_str = end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date)[:10]
+            try:
+                response = supabase.supabase.table("congress_trades_enriched")\
+                    .select("id")\
+                    .eq("politician", politician_name)\
+                    .gte("transaction_date", start_str)\
+                    .lte("transaction_date", end_str)\
+                    .order("transaction_date", desc=False)\
+                    .execute()
+                if not response.data:
+                    logger.warning(f"No trades found for session {session_id} (politician={politician_name}, {start_str} to {end_str})")
+                    return False
+                trade_ids = [row['id'] for row in response.data]
+                logger.info(f"   [LINK] Session {session_id}: resolved {len(trade_ids)} trades from Supabase (date range)")
+            except Exception as e:
+                logger.error(f"Failed to resolve trades for session {session_id} from Supabase: {e}")
+                return False
         
         # Fetch full trade data from Supabase (chunked)
         trades = []
@@ -855,6 +875,15 @@ def analyze_session(
         if 'conflict_score' not in result:
             if 'score' in result:
                 result['conflict_score'] = result['score']
+            elif 'risk_pattern' in result:
+                # Fallback: map risk_pattern to score when model omits conflict_score
+                risk_to_score = {
+                    'CONFLICT_BUY': 0.9, 'SUSPICIOUS_SELL': 0.8, 'AGGRESSIVE_BET': 1.0,
+                    'ROUTINE_DIVESTMENT': 0.1, 'NO_RELATIONSHIP': 0.0, 'ROUTINE': 0.1,
+                }
+                rp = str(result.get('risk_pattern', 'ROUTINE')).upper()
+                result['conflict_score'] = risk_to_score.get(rp, 0.5)
+                logger.warning(f"Session {session_id}: model omitted conflict_score, inferred {result['conflict_score']} from risk_pattern={rp}")
             else:
                 raise ValueError("Response missing 'conflict_score' or 'score' field")
         
