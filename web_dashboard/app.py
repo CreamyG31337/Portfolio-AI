@@ -35,6 +35,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import logging
 import requests
 import threading
+import concurrent.futures
 from flask_cors import CORS
 from flask_cache_utils import cache_data, cache_resource
 from rate_limiter import rate_limit
@@ -3981,8 +3982,11 @@ def get_congress_trades_cached(
         return []
 
 @cache_data(ttl=86400)  # Cache for 24 hours - company names don't change often
-def get_company_names_map_congress(_supabase_client, tickers_tuple: tuple, _cache_version: Optional[str] = None) -> Dict[str, str]:
-    """Batch fetch company names from securities table (cached 24 hours)"""
+def get_company_names_map_cached(_supabase_client, tickers_tuple: tuple, _cache_version: Optional[str] = None) -> Dict[str, str]:
+    """Batch fetch company names from securities table (cached 24 hours)
+
+    Bolt Optimization: Uses ThreadPoolExecutor to fetch batches in parallel.
+    """
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -3998,25 +4002,67 @@ def get_company_names_map_congress(_supabase_client, tickers_tuple: tuple, _cach
     if not _supabase_client or not tickers:
         return company_names_map
     
-    try:
-        # Query in chunks of 50 (Supabase limit)
-        for i in range(0, len(tickers), 50):
-            ticker_batch = tickers[i:i+50]
+    def fetch_batch(batch):
+        try:
             result = _supabase_client.supabase.table("securities")\
                 .select("ticker, company_name")\
-                .in_("ticker", ticker_batch)\
+                .in_("ticker", batch)\
                 .execute()
-            
-            if result.data:
-                for item in result.data:
+            return result.data or []
+        except Exception as e:
+            logger.warning(f"Error fetching company names batch: {e}")
+            return []
+
+    try:
+        # Split into batches of 50 (Supabase limit)
+        batches = [tickers[i:i+50] for i in range(0, len(tickers), 50)]
+
+        # Fetch in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_batch = {executor.submit(fetch_batch, batch): batch for batch in batches}
+            for future in concurrent.futures.as_completed(future_to_batch):
+                data = future.result()
+                for item in data:
                     ticker = item.get('ticker', '').upper()
                     company_name = item.get('company_name', '')
                     if company_name and company_name.strip() and company_name != 'Unknown':
                         company_names_map[ticker] = company_name.strip()
+
     except Exception as e:
         logger.warning(f"Error fetching company names: {e}")
     
     return company_names_map
+
+def _process_unknown_tickers_background(tickers: List[str], supabase_client):
+    """Background task to fetch metadata for unknown tickers"""
+    if not tickers:
+        return
+
+    try:
+        from utils.ticker_utils import get_ticker_currency
+
+        logger.info(f"Processing {len(tickers)} unknown tickers in background...")
+
+        # Process unknown tickers in batches to avoid overwhelming the API
+        for ticker in tickers:
+            try:
+                # Determine currency from ticker
+                currency = get_ticker_currency(ticker)
+
+                # Ensure ticker exists in securities table with company name
+                # This will fetch from yfinance if needed
+                success = supabase_client.ensure_ticker_in_securities(ticker, currency)
+                if success:
+                    logger.debug(f"Added company name for ticker {ticker} to securities table (background)")
+                else:
+                    logger.warning(f"Failed to add company name for ticker {ticker} (background)")
+            except Exception as ticker_error:
+                logger.warning(f"Error processing ticker {ticker} for company name lookup: {ticker_error}")
+                continue
+    except ImportError:
+        logger.warning("Could not import get_ticker_currency - skipping automatic company name lookup")
+    except Exception as e:
+        logger.error(f"Error in background ticker processing: {e}")
 
 def format_date_congress(d) -> str:
     """Format date for display"""
@@ -4224,8 +4270,8 @@ def api_congress_trades_data():
         # Get company names (cached) - optimize by only fetching for unique tickers in result
         unique_ticker_list = list(set([t.get('ticker') for t in all_trades if t.get('ticker')]))
         cache_version = get_cache_version()
-        # Fetch company names in chunks is handled by get_company_names_map_congress
-        company_names_map = get_company_names_map_congress(supabase_client, tuple(unique_ticker_list), cache_version)
+        # Fetch company names in parallel batches using cached function
+        company_names_map = get_company_names_map_cached(supabase_client, tuple(unique_ticker_list), cache_version)
         
         # Format trades data
         formatted_trades = []
@@ -5075,77 +5121,28 @@ def api_insider_trades_data():
             if ticker and ticker != "N/A":
                 unique_tickers.add(ticker.upper())
 
-        # Look up company names from securities table
-        company_name_map = {}
-        unknown_tickers = set()
-        found_tickers = set()
+        # Bolt Optimization: Use cached parallel fetch instead of manual in_ query
+        cache_version = get_cache_version()
+        company_name_map = get_company_names_map_cached(
+            supabase_client, tuple(sorted(list(unique_tickers))), cache_version
+        )
         
-        if unique_tickers:
-            try:
-                securities_result = supabase_client.supabase.table("securities").select(
-                    "ticker, company_name"
-                ).in_("ticker", list(unique_tickers)).execute()
+        # Identify unknown tickers (tickers requested but not in the map)
+        unknown_tickers = []
+        for ticker in unique_tickers:
+            if ticker not in company_name_map:
+                unknown_tickers.append(ticker)
 
-                if securities_result.data:
-                    for row in securities_result.data:
-                        ticker = row.get("ticker", "").upper()
-                        found_tickers.add(ticker)
-                        company_name = row.get("company_name")
-                        if company_name and company_name.strip() and company_name != "Unknown":
-                            company_name_map[ticker] = company_name.strip()
-                        else:
-                            # Ticker exists but has no company name
-                            unknown_tickers.add(ticker)
-
-                # Identify tickers that don't exist in securities table at all
-                missing_tickers = unique_tickers - found_tickers
-                unknown_tickers.update(missing_tickers)
-            except Exception as e:
-                logger.warning(f"Error fetching company names from securities table: {e}")
-                # If query failed, treat all as unknown
-                unknown_tickers = unique_tickers.copy()
-
-        # Fetch and add company names for unknown tickers
+        # Bolt Optimization: Process unknown tickers in background thread (non-blocking)
         if unknown_tickers:
-            try:
-                from utils.ticker_utils import get_ticker_currency
-                
-                # Process unknown tickers in batches to avoid overwhelming the API
-                for ticker in unknown_tickers:
-                    try:
-                        # Determine currency from ticker
-                        currency = get_ticker_currency(ticker)
-                        
-                        # Ensure ticker exists in securities table with company name
-                        # This will fetch from yfinance if needed
-                        success = supabase_client.ensure_ticker_in_securities(ticker, currency)
-                        if success:
-                            logger.debug(f"Added company name for ticker {ticker} to securities table")
-                        else:
-                            logger.warning(f"Failed to add company name for ticker {ticker}")
-                    except Exception as ticker_error:
-                        logger.warning(f"Error processing ticker {ticker} for company name lookup: {ticker_error}")
-                        continue
-
-                # Re-query securities table to get newly added company names
-                if unknown_tickers:
-                    try:
-                        securities_result = supabase_client.supabase.table("securities").select(
-                            "ticker, company_name"
-                        ).in_("ticker", list(unknown_tickers)).execute()
-
-                        if securities_result.data:
-                            for row in securities_result.data:
-                                ticker = row.get("ticker", "").upper()
-                                company_name = row.get("company_name")
-                                if company_name and company_name.strip() and company_name != "Unknown":
-                                    company_name_map[ticker] = company_name.strip()
-                    except Exception as requery_error:
-                        logger.warning(f"Error re-querying securities table for company names: {requery_error}")
-            except ImportError:
-                logger.warning("Could not import get_ticker_currency - skipping automatic company name lookup")
-            except Exception as e:
-                logger.warning(f"Error fetching company names for unknown tickers: {e}")
+            logger.info(f"Scheduling background update for {len(unknown_tickers)} unknown tickers")
+            # Create a thread to process unknowns without blocking the response
+            # Note: We pass the client, which should be thread-safe for simple operations
+            threading.Thread(
+                target=_process_unknown_tickers_background,
+                args=(unknown_tickers, supabase_client),
+                daemon=True
+            ).start()
 
         formatted_trades = []
         for trade in all_trades:
