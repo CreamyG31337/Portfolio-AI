@@ -160,7 +160,7 @@ function initializeDOMElements(): void {
     elements.statusText = document.getElementById('status-text');
     elements.statusIndicator = document.getElementById('status-indicator');
     elements.startBtn = document.getElementById('start-scheduler-btn');
-    elements.refreshBtn = document.getElementById('refresh-status-btn');
+    elements.refreshBtn = document.getElementById('refresh-jobs-btn');
     elements.jobsList = document.getElementById('jobs-container'); // Template uses 'jobs-container'
     elements.jobsLoading = document.getElementById('jobs-loading'); // Will add this to template
     elements.noJobs = document.getElementById('jobs-empty'); // Will add this to template
@@ -218,7 +218,14 @@ document.addEventListener('DOMContentLoaded', (): void => {
             consecutiveErrors = 0;
             currentBackoffDelay = 5000;
             isRecovering = false;
-            fetchStatus();
+
+            // Add loading state
+            const icon = elements.refreshBtn?.querySelector('svg');
+            if (icon) icon.classList.add('animate-spin');
+
+            fetchStatus().finally(() => {
+                if (icon) icon.classList.remove('animate-spin');
+            });
         });
         console.log('[Jobs] Refresh button listener attached');
     }
