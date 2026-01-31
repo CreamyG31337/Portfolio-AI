@@ -360,6 +360,8 @@ mcps/mandrel/SERVER_METADATA.json
 # Allow template file
 !mcps/mandrel/SERVER_METADATA.json.example
 
+# Cursor MCP local settings (root; may contain tokens)
+.mcp.json
 # VS Code MCP local settings (server URLs and tokens)
 .vscode/mcp.json
 # Allow template file
