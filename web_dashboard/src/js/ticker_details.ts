@@ -1,6 +1,7 @@
 export { }; // Ensure file is treated as a module
 
 import { setupTickerAutocomplete } from './ticker_autocomplete.js';
+import { getCsrfHeaders } from './csrf.js';
 
 // API Response interfaces
 interface TickerListResponse {
@@ -392,7 +393,7 @@ function saveModelPreference(model: string): void {
 
     fetch('/api/settings/ai_model', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
         body: JSON.stringify({ model: model })
     }).catch((err: Error) => {
         console.error('Error saving model preference:', err);
@@ -2050,7 +2051,8 @@ async function requestReanalysis(ticker: string): Promise<void> {
             method: 'POST',
             credentials: 'include',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
             },
             body: JSON.stringify({
                 model: selectedModel || undefined

@@ -3,6 +3,7 @@
  * Handles theme switching, persistence, and API synchronization
  */
 
+import { getCsrfHeaders } from './csrf.js';
 import { Theme, ThemeChangeCallback } from './types';
 
 interface ApiResponse {
@@ -114,7 +115,8 @@ class ThemeManager {
             const response = await fetch('/api/settings/theme', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    ...getCsrfHeaders()
                 },
                 credentials: 'include',
                 body: JSON.stringify({ theme } as ThemeRequest)

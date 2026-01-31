@@ -3,6 +3,8 @@
  * Handles contribution history, summary, and adding new contributions
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 // Type definitions
 interface Fund {
     name: string;
@@ -287,7 +289,7 @@ async function handleAddContribution(e: Event): Promise<void> {
 
         const response = await fetch('/api/admin/contributions', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(payload),
             credentials: 'include'
         });

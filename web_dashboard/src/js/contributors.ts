@@ -3,6 +3,8 @@
  * Handles contributor viewing, splitting, merging, and editing
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 interface ContributorData {
     id: string;
     name: string;
@@ -377,7 +379,7 @@ async function splitContributor(): Promise<void> {
     try {
         const response = await fetch('/api/admin/contributors/split', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({
                 source_contributor_id: contributorId,
                 new_contributor_name: newName,
@@ -439,7 +441,7 @@ async function mergeContributors(): Promise<void> {
             try {
                 const response = await fetch('/api/admin/contributors/merge', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                     body: JSON.stringify({
                         source_contributor_id: sourceId,
                         target_contributor_id: targetId
@@ -504,7 +506,7 @@ async function updateContributor(): Promise<void> {
     try {
         const response = await fetch(`/api/admin/contributors/${contributorId}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({
                 name: name,
                 email: email || null
@@ -777,7 +779,7 @@ async function grantContributorAccess(): Promise<void> {
     try {
         const response = await fetch('/api/admin/contributor-access/grant', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({
                 contributor_email: contributorEmail,
                 user_email: userEmail,
@@ -817,7 +819,7 @@ async function revokeContributorAccess(contributorEmail: string, userEmail: stri
     try {
         const response = await fetch('/api/admin/contributor-access/revoke', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({
                 contributor_email: contributorEmail,
                 user_email: userEmail

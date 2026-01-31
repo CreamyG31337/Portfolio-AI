@@ -85,18 +85,15 @@ try:
     # Disable default CSRF checking so we can manually control it
     app.config['WTF_CSRF_CHECK_DEFAULT'] = False
     
-    # Exempt API routes from CSRF (they use JWT/token authentication)
-    # Manually protect non-API routes in before_request
+    # Manually protect all state-changing routes in before_request
     @app.before_request
-    def csrf_protect_non_api_routes():
-        """Apply CSRF protection only to non-API routes"""
+    def csrf_protect_routes():
+        """Apply CSRF protection to all routes"""
         # Only check CSRF for state-changing methods
         if request.method in app.config.get('WTF_CSRF_METHODS', ['POST', 'PUT', 'PATCH', 'DELETE']):
-            # Skip CSRF validation for API routes
-            if not request.path.startswith('/api/'):
-                csrf.protect()
+            csrf.protect()
     
-    logger.info("API routes (/api/*) exempted from CSRF protection")
+    logger.info("CSRF protection enabled for all state-changing routes")
 except ImportError:
     CSRF_ENABLED = False
     csrf = None

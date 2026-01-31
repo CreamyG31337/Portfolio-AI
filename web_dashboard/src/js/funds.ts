@@ -3,6 +3,8 @@
  * Handles fund CRUD operations, production toggles, and portfolio rebuilds
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 // Type definitions
 interface Fund {
     name: string;
@@ -205,7 +207,7 @@ async function toggleProduction(fundName: string, isProduction: boolean): Promis
     try {
         const response = await fetch(`/api/v2/funds/${encodeURIComponent(fundName)}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({ is_production: isProduction }),
             credentials: 'include'
         });
@@ -278,7 +280,7 @@ async function createFund(event: Event): Promise<void> {
 
         const response = await fetch('/api/v2/funds', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(data),
             credentials: 'include'
         });
@@ -328,7 +330,7 @@ async function updateFund(event: Event): Promise<void> {
         if (newName !== originalName) {
             const renameResponse = await fetch('/api/v2/funds/rename', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                 body: JSON.stringify({ old_name: originalName, new_name: newName }),
                 credentials: 'include'
             });
@@ -350,7 +352,7 @@ async function updateFund(event: Event): Promise<void> {
 
         const response = await fetch(`/ api / v2 / funds / ${encodeURIComponent(newName)} `, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(updateData),
             credentials: 'include'
         });
@@ -399,6 +401,7 @@ async function confirmDeleteFund(): Promise<void> {
     try {
         const response = await fetch(`/ api / v2 / funds / ${encodeURIComponent(originalName)} `, {
             method: 'DELETE',
+            headers: { ...getCsrfHeaders() },
             credentials: 'include'
         });
 
@@ -442,7 +445,7 @@ async function refreshTickerMetadata(): Promise<void> {
     try {
         const response = await fetch('/api/v2/ticker/refresh', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({ ticker, currency }),
             credentials: 'include'
         });
@@ -490,7 +493,7 @@ async function rebuildPortfolio(): Promise<void> {
             try {
                 const response = await fetch('/api/v2/funds/rebuild', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                     body: JSON.stringify({ fund_name: fundName }),
                     credentials: 'include'
                 });
