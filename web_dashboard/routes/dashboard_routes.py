@@ -290,6 +290,215 @@ def get_dashboard_summary():
         logger.error(f"[Dashboard API] Error calculating dashboard summary (took {processing_time:.3f}s): {e}", exc_info=True)
         return jsonify({"error": str(e), "processing_time": processing_time}), 500
 
+@dashboard_bp.route('/api/dashboard/action-queue', methods=['GET'])
+@require_auth
+def get_action_queue():
+    """Get top priority actions for the dashboard."""
+    fund = request.args.get('fund')
+    if not fund or fund.lower() == 'all':
+        fund = None
+
+    limit = int(request.args.get('limit', 10))
+    limit = max(1, min(limit, 25))
+
+    start_time = time.time()
+
+    try:
+        supabase_client = get_supabase_client_flask()
+        if not supabase_client:
+            return jsonify({"error": "Database client unavailable"}), 500
+
+        positions_df = get_current_positions(fund)
+        held_tickers = set()
+        if not positions_df.empty and 'ticker' in positions_df.columns:
+            held_tickers = set(
+                positions_df['ticker']
+                .dropna()
+                .astype(str)
+                .str.upper()
+                .str.strip()
+                .tolist()
+            )
+
+        # Watchlist tickers (active)
+        watchlist = []
+        try:
+            result = supabase_client.supabase.table("watched_tickers") \
+                .select("ticker, priority_tier, is_active, source, created_at") \
+                .eq("is_active", True) \
+                .execute()
+            if result.data:
+                for item in result.data:
+                    ticker = (item.get("ticker") or "").upper().strip()
+                    if ticker:
+                        watchlist.append({
+                            "ticker": ticker,
+                            "priority_tier": item.get("priority_tier") or "C",
+                            "source": item.get("source"),
+                            "created_at": item.get("created_at")
+                        })
+        except Exception as e:
+            logger.warning(f"[Dashboard API] Error fetching watched_tickers: {e}")
+
+        if not watchlist:
+            return jsonify({
+                "data": [],
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "processing_time": time.time() - start_time
+            })
+
+        tickers = list({item.get("ticker") for item in watchlist if item.get("ticker")})
+
+        # Latest signals per ticker (batch)
+        latest_by_ticker: Dict[str, Dict[str, Any]] = {}
+        try:
+            batch_size = 100
+            for i in range(0, len(tickers), batch_size):
+                batch = tickers[i:i + batch_size]
+                rows = supabase_client.supabase.table("signal_analysis") \
+                    .select(
+                        "ticker, analysis_date, structure_signal, timing_signal, "
+                        "fear_risk_signal, overall_signal, confidence_score, explanation"
+                    ) \
+                    .in_("ticker", batch) \
+                    .order("analysis_date", desc=True) \
+                    .execute()
+                if rows.data:
+                    for row in rows.data:
+                        row_ticker = row.get("ticker")
+                        if row_ticker and row_ticker not in latest_by_ticker:
+                            latest_by_ticker[row_ticker] = row
+        except Exception as e:
+            logger.warning(f"[Dashboard API] Error fetching signal_analysis: {e}")
+
+        # Company name lookup
+        company_names_map: Dict[str, str] = {}
+        try:
+            for i in range(0, len(tickers), 100):
+                batch = tickers[i:i + 100]
+                result = supabase_client.supabase.table("securities") \
+                    .select("ticker, company_name") \
+                    .in_("ticker", batch) \
+                    .execute()
+                if result.data:
+                    for row in result.data:
+                        ticker = row.get("ticker")
+                        if ticker:
+                            company_names_map[ticker] = row.get("company_name") or ticker
+        except Exception as e:
+            logger.warning(f"[Dashboard API] Error fetching company names: {e}")
+
+        # Logo URLs
+        logo_urls_map = {}
+        try:
+            logo_urls_map = get_ticker_logo_urls(tickers)
+        except Exception as e:
+            logger.warning(f"[Dashboard API] Error fetching logo URLs: {e}")
+
+        def _get_fear_level(signal_row: Dict[str, Any]) -> str:
+            fear = signal_row.get("fear_risk_signal")
+            if isinstance(fear, dict):
+                return fear.get("fear_level") or "LOW"
+            return "LOW"
+
+        def _get_trend(signal_row: Dict[str, Any]) -> str:
+            structure = signal_row.get("structure_signal")
+            if isinstance(structure, dict):
+                return structure.get("trend") or "NEUTRAL"
+            return "NEUTRAL"
+
+        def _score_action(action: str, confidence: float, fear_level: str, tier: str, is_held: bool) -> int:
+            base = 0
+            if action == "SELL":
+                base = 100
+            elif action == "BUY":
+                base = 90
+            elif action == "RISK":
+                base = 80
+            elif action == "WATCH":
+                base = 60
+
+            base += int((confidence or 0) * 20)
+
+            if fear_level == "EXTREME":
+                base += 15
+            elif fear_level == "HIGH":
+                base += 10
+            elif fear_level == "MODERATE":
+                base += 5
+
+            if tier == "A":
+                base += 5
+            elif tier == "B":
+                base += 3
+
+            if is_held:
+                base += 2
+
+            return base
+
+        actions: List[Dict[str, Any]] = []
+        for item in watchlist:
+            ticker = item.get("ticker")
+            if not ticker:
+                continue
+
+            signal = latest_by_ticker.get(ticker)
+            if not signal:
+                continue
+
+            overall_signal = signal.get("overall_signal") or "HOLD"
+            confidence = float(signal.get("confidence_score") or 0.0)
+            fear_level = _get_fear_level(signal)
+            trend = _get_trend(signal)
+            is_held = ticker in held_tickers
+            priority_tier = item.get("priority_tier") or "C"
+
+            action = None
+            if overall_signal == "SELL" and is_held:
+                action = "SELL"
+            elif overall_signal == "BUY" and not is_held:
+                action = "BUY"
+            elif fear_level in ["HIGH", "EXTREME"]:
+                action = "RISK"
+            elif overall_signal == "WATCH":
+                action = "WATCH"
+
+            if not action:
+                continue
+
+            score = _score_action(action, confidence, fear_level, priority_tier, is_held)
+            note = f"{overall_signal} signal, trend {trend}, fear {fear_level}"
+
+            actions.append({
+                "ticker": ticker,
+                "company_name": company_names_map.get(ticker),
+                "_logo_url": logo_urls_map.get(ticker),
+                "action": action,
+                "overall_signal": overall_signal,
+                "confidence": confidence,
+                "fear_level": fear_level,
+                "trend": trend,
+                "priority_score": score,
+                "priority_tier": priority_tier,
+                "is_held": is_held,
+                "analysis_date": signal.get("analysis_date"),
+                "explanation": signal.get("explanation"),
+                "note": note
+            })
+
+        actions.sort(key=lambda x: x.get("priority_score", 0), reverse=True)
+        actions = actions[:limit]
+
+        return jsonify({
+            "data": actions,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "processing_time": time.time() - start_time
+        })
+    except Exception as e:
+        logger.error(f"[Dashboard API] Error building action queue: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 @dashboard_bp.route('/api/dashboard/charts/performance', methods=['GET'])
 def get_performance_chart():
     """Get portfolio performance chart as Plotly JSON.
@@ -1667,3 +1876,59 @@ def get_movers_data():
         processing_time = time.time() - start_time
         logger.error(f"[Dashboard API] Error fetching movers (took {processing_time:.3f}s): {e}", exc_info=True)
         return jsonify({"error": str(e), "processing_time": processing_time}), 500
+
+
+@dashboard_bp.route('/api/dashboard/charts/commodities', methods=['GET'])
+def get_commodities_chart():
+    """Get commodity prices chart as Plotly JSON.
+    
+    GET /api/dashboard/charts/commodities
+    
+    Query Parameters:
+        commodities (str): Comma-separated list of commodity symbols to show
+                          Options: 'gold', 'silver', 'oil', 'uranium', 'lithium'
+                          Default: 'gold,silver'
+        days (int): Number of days of historical data (default: 365)
+        theme (str): Chart theme - 'dark', 'light', 'midnight-tokyo', 'abyss'
+        
+    Returns:
+        JSON response with Plotly chart data (multi-line chart, normalized %)
+    """
+    try:
+        # Parse query parameters
+        commodities_str = request.args.get('commodities', 'gold,silver')
+        commodities = [c.strip().lower() for c in commodities_str.split(',') if c.strip()]
+        days = int(request.args.get('days', 365))
+        theme = request.args.get('theme', 'light')
+        
+        logger.info(f"[Dashboard API] /api/dashboard/charts/commodities called - commodities={commodities}, days={days}, theme={theme}")
+        start_time = time.time()
+        
+        if not commodities:
+            return jsonify({"error": "No commodities specified"}), 400
+        
+        # Create chart using utility function
+        from chart_utils import create_commodity_chart
+        from plotly_utils import serialize_plotly_figure
+        
+        fig = create_commodity_chart(
+            commodities=commodities,
+            days=days,
+            theme=theme,
+            show_weekend_shading=True
+        )
+        
+        # Serialize figure
+        chart_json = serialize_plotly_figure(fig)
+        
+        processing_time = time.time() - start_time
+        logger.info(f"[Dashboard API] Commodity chart created - {len(commodities)} commodities, processing_time={processing_time:.3f}s")
+        
+        return Response(chart_json, mimetype='application/json')
+        
+    except ValueError as ve:
+        logger.error(f"Error parsing commodity chart parameters: {ve}")
+        return jsonify({"error": f"Invalid parameter: {str(ve)}"}), 400
+    except Exception as e:
+        logger.error(f"Error creating commodity chart: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500

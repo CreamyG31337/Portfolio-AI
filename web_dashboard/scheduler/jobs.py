@@ -144,7 +144,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     'ticker_research': {
         'name': '🔍 Ticker Research Collection',
         'description': 'Fetch news for specific companies in the portfolio',
-        'default_interval_minutes': 360,  # Every 6 hours
+        'default_interval_minutes': 720,  # Every 12 hours
         'enabled_by_default': True,
         'icon': '🔍'
     },
@@ -158,13 +158,13 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     'opportunity_discovery': {
         'name': '🔍 Opportunity Discovery',
         'description': 'Hunt for new investment opportunities using targeted search queries',
-        'default_interval_minutes': 720,  # Every 12 hours
+        'default_interval_minutes': 1440,  # Daily
         'enabled_by_default': True,
         'icon': '🔍'
     },
     'benchmark_refresh': {
         'name': 'Benchmark Data Refresh',
-        'description': 'Fetch and cache benchmark data (S&P 500, QQQ, Russell 2000, VTI) for chart performance',
+        'description': 'Fetch and cache benchmark & commodity data (S&P 500, QQQ, Russell 2000, VTI, Gold, Silver, Oil, Uranium, Lithium) for chart performance',
         'default_interval_minutes': 30,  # Every 30 minutes during market hours
         'enabled_by_default': True,
         'icon': '📊'
@@ -195,21 +195,30 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'description': 'Calculate technical signals (trend, timing, fear/risk) for watchlist tickers',
         'default_interval_minutes': 240,  # Every 4 hours
         'enabled_by_default': True,
-        'icon': '📊'
+        'icon': '📊',
+        'cron_triggers': [
+            {'day_of_week': 'mon-fri', 'hour': '6,10', 'minute': 15, 'timezone': 'America/Los_Angeles'}
+        ]
     },
     'congress_trades': {
         'name': '🏛️ Congress Trade Fetch',
         'description': 'Fetch and analyze congressional stock trades from FMP API',
         'default_interval_minutes': 360,  # 6 hours (but uses cron triggers)
         'enabled_by_default': True,
-        'icon': '🏛️'
+        'icon': '🏛️',
+        'cron_triggers': [
+            {'hour': '19,21,23,1', 'minute': 0, 'timezone': 'America/Los_Angeles'}
+        ]
     },
     'insider_trades': {
         'name': '🏢 Insider Trade Fetch',
         'description': 'Fetch corporate insider trading data from external source',
         'default_interval_minutes': 360,  # 6 hours
         'enabled_by_default': True,
-        'icon': '🏢'
+        'icon': '🏢',
+        'cron_triggers': [
+            {'hour': 20, 'minute': 0, 'timezone': 'America/Los_Angeles'}
+        ]
     },
     'analyze_congress_trades': {
         'name': '🏛️ Congress Trade Analysis',
@@ -235,7 +244,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     'alpha_research': {
         'name': '📚 Alpha Hunter',
         'description': 'Targeted research on high-value alpha domains',
-        'default_interval_minutes': 360,  # Every 6 hours
+        'default_interval_minutes': 1440,  # Daily
         'enabled_by_default': True,
         'icon': '📚'
     },
@@ -359,7 +368,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '💼',
         'cron_triggers': [
-            {'hour': 21, 'minute': 0, 'timezone': 'America/New_York'}  # 9 PM EST
+            {'hour': 19, 'minute': 15, 'timezone': 'America/Los_Angeles'}  # 7:15 PM PT
         ]
     },
     'ticker_analysis': {
@@ -369,7 +378,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '🔍',
         'cron_triggers': [
-            {'hour': 22, 'minute': 0, 'timezone': 'America/New_York'}  # 10 PM EST
+            {'hour': 21, 'minute': 0, 'timezone': 'America/Los_Angeles'}  # 9:00 PM PT
         ]
     },
     'etf_watchtower': {
@@ -379,7 +388,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '💼',
         'cron_triggers': [
-            {'hour': 20, 'minute': 0, 'timezone': 'America/New_York'}  # 20:00 EST - after ARK publishes
+            {'hour': 18, 'minute': 0, 'timezone': 'America/Los_Angeles'}  # 6:00 PM PT - after ARK publishes
         ]
     },
     'refresh_securities_metadata': {
@@ -834,13 +843,13 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: market_research_collect_postmarket (weekdays 4:30 PM EST)")
 
-        # Ticker Research: Every 6 hours
+        # Ticker Research: Twice daily (7:15 AM/PM PT)
         scheduler.add_job(
             ticker_research_job,
             trigger=CronTrigger(
-                hour='*/6',
+                hour='7,19',
                 minute=15,
-                timezone='America/New_York'
+                timezone='America/Los_Angeles'
             ),
             id='ticker_research_collect',
             name=f"{get_job_icon('ticker_research_collect')} Ticker Specific Research",
@@ -848,7 +857,7 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: ticker_research_collect (every 6 hours)")
+        logger.info("Registered job: ticker_research_collect (daily at 7:15 AM/PM PT)")
 
         # Research Report Processing: Every hour
         if AVAILABLE_JOBS.get('process_research_reports', {}).get('enabled_by_default'):
@@ -863,13 +872,13 @@ def register_default_jobs(scheduler) -> None:
             )
             logger.info("Registered job: process_research_reports (every 60 minutes - 1 hour)")
 
-        # Opportunity Discovery: Every 12 hours
+        # Opportunity Discovery: Daily at 9:30 PM PT
         scheduler.add_job(
             opportunity_discovery_job,
             trigger=CronTrigger(
-                hour='*/12',
+                hour=21,
                 minute=30,
-                timezone='America/New_York'
+                timezone='America/Los_Angeles'
             ),
             id='opportunity_discovery_scan',
             name=f"{get_job_icon('opportunity_discovery_scan')} Opportunity Discovery",
@@ -877,17 +886,17 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: opportunity_discovery_scan (every 12 hours)")
+        logger.info("Registered job: opportunity_discovery_scan (daily at 9:30 PM PT)")
 
-    # Alpha Research Job: Every 6 hours (offset)
+    # Alpha Research Job: Daily at 10:30 PM PT
     if AVAILABLE_JOBS.get('alpha_research', {}).get('enabled_by_default'):
         from scheduler.jobs_alpha import alpha_research_job
         scheduler.add_job(
             alpha_research_job,
             trigger=CronTrigger(
-                hour='*/6',
-                minute=45, # Offset from others
-                timezone='America/New_York'
+                hour=22,
+                minute=30,
+                timezone='America/Los_Angeles'
             ),
             id='alpha_research_collect',
             name=f"{get_job_icon('alpha_research')} Alpha Hunter",
@@ -895,7 +904,7 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: alpha_research_collect (every 6 hours)")
+        logger.info("Registered job: alpha_research_collect (daily at 10:30 PM PT)")
     
     # Symbol Article Scraper: Daily at 2:00 AM EST (off-peak, avoids conflicts with 3:00 AM cleanup)
     if AVAILABLE_JOBS.get('symbol_article_scraper', {}).get('enabled_by_default'):
@@ -963,18 +972,37 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: social_sentiment_fetch (every 60 minutes - 1 hour)")
     
-    # Signal scan job - every 4 hours
+    # Signal scan job - weekday pre-market + mid-morning (Pacific time)
     if AVAILABLE_JOBS['signal_scan']['enabled_by_default']:
-        scheduler.add_job(
-            signal_scan_job,
-            trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['signal_scan']['default_interval_minutes']),
-            id='signal_scan',
-            name=f"{get_job_icon('signal_scan')} Technical Signal Scan",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True
-        )
-        logger.info("Registered job: signal_scan (every 240 minutes - 4 hours)")
+        signal_triggers = AVAILABLE_JOBS['signal_scan'].get('cron_triggers', [])
+        if signal_triggers:
+            trigger_config = signal_triggers[0]
+            scheduler.add_job(
+                signal_scan_job,
+                trigger=CronTrigger(
+                    day_of_week=trigger_config.get('day_of_week', 'mon-fri'),
+                    hour=trigger_config['hour'],
+                    minute=trigger_config['minute'],
+                    timezone=trigger_config.get('timezone', 'America/Los_Angeles')
+                ),
+                id='signal_scan',
+                name=f"{get_job_icon('signal_scan')} Technical Signal Scan",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: signal_scan (weekdays 6:15 AM + 10:15 AM PT)")
+        else:
+            scheduler.add_job(
+                signal_scan_job,
+                trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['signal_scan']['default_interval_minutes']),
+                id='signal_scan',
+                name=f"{get_job_icon('signal_scan')} Technical Signal Scan",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: signal_scan (every 240 minutes - 4 hours)")
     
     # Social sentiment AI analysis job - every 2 hours
     # DISABLED: Redundant with inline analysis in fetch_social_sentiment_job
@@ -1051,44 +1079,84 @@ def register_default_jobs(scheduler) -> None:
     scheduler.pause_job('scrape_congress_trades') # Ensure it's paused/manual only
     logger.info("Registered job: scrape_congress_trades (Manual only)")
     
-    # Congress trades job - every 12 minutes (120 runs/day × 2 API calls = 240 total, stays under 250 limit)
+    # Congress trades job - nightly batches (Pacific time)
     if AVAILABLE_JOBS['congress_trades']['enabled_by_default']:
-        scheduler.add_job(
-            fetch_congress_trades_job,
-            trigger=IntervalTrigger(minutes=12),
-            id='congress_trades_fetch',
-            name=f"{get_job_icon('congress_trades')} Congress Trade Fetch",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True
-        )
-        logger.info("Registered job: congress_trades_fetch (every 12 minutes - 120 runs/day, 240 API calls/day)")
+        congress_triggers = AVAILABLE_JOBS['congress_trades'].get('cron_triggers', [])
+        if congress_triggers:
+            trigger_config = congress_triggers[0]
+            scheduler.add_job(
+                fetch_congress_trades_job,
+                trigger=CronTrigger(
+                    hour=trigger_config['hour'],
+                    minute=trigger_config['minute'],
+                    timezone=trigger_config.get('timezone', 'America/Los_Angeles')
+                ),
+                id='congress_trades_fetch',
+                name=f"{get_job_icon('congress_trades')} Congress Trade Fetch",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: congress_trades_fetch (nightly at 7 PM, 9 PM, 11 PM, 1 AM PT)")
+        else:
+            scheduler.add_job(
+                fetch_congress_trades_job,
+                trigger=IntervalTrigger(minutes=12),
+                id='congress_trades_fetch',
+                name=f"{get_job_icon('congress_trades')} Congress Trade Fetch",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: congress_trades_fetch (every 12 minutes - 120 runs/day, 240 API calls/day)")
     
-    # Analyze congress trades job - every 30 minutes (processes unscored trades with committee data)
+    # Analyze congress trades job - nightly after fetch batches (Pacific time)
     if AVAILABLE_JOBS['analyze_congress_trades']['enabled_by_default']:
         scheduler.add_job(
             analyze_congress_trades_job,
-            trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['analyze_congress_trades']['default_interval_minutes']),
+            trigger=CronTrigger(
+                hour=2,
+                minute=0,
+                timezone='America/Los_Angeles'
+            ),
             id='analyze_congress_trades',
             name=f"{get_job_icon('analyze_congress_trades')} Congress Trade Analysis",
             replace_existing=True,
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: analyze_congress_trades (every 30 minutes - processes unscored trades)")
+        logger.info("Registered job: analyze_congress_trades (daily at 2:00 AM PT)")
 
-    # Insider trades job - every 6 hours
+    # Insider trades job - nightly (Pacific time)
     if AVAILABLE_JOBS['insider_trades']['enabled_by_default']:
-        scheduler.add_job(
-            fetch_insider_trades_job,
-            trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['insider_trades']['default_interval_minutes']),
-            id='insider_trades_fetch',
-            name=f"{get_job_icon('insider_trades')} Insider Trade Fetch",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True
-        )
-        logger.info("Registered job: insider_trades_fetch (every 6 hours - scrapes external source)")
+        insider_triggers = AVAILABLE_JOBS['insider_trades'].get('cron_triggers', [])
+        if insider_triggers:
+            trigger_config = insider_triggers[0]
+            scheduler.add_job(
+                fetch_insider_trades_job,
+                trigger=CronTrigger(
+                    hour=trigger_config['hour'],
+                    minute=trigger_config['minute'],
+                    timezone=trigger_config.get('timezone', 'America/Los_Angeles')
+                ),
+                id='insider_trades_fetch',
+                name=f"{get_job_icon('insider_trades')} Insider Trade Fetch",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: insider_trades_fetch (daily at 8:00 PM PT)")
+        else:
+            scheduler.add_job(
+                fetch_insider_trades_job,
+                trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['insider_trades']['default_interval_minutes']),
+                id='insider_trades_fetch',
+                name=f"{get_job_icon('insider_trades')} Insider Trade Fetch",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: insider_trades_fetch (every 6 hours - scrapes external source)")
     
     # Dividend processing job - daily at 2:00 AM PST
     if AVAILABLE_JOBS['dividend_processing']['enabled_by_default']:
@@ -1156,7 +1224,7 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: subreddit_scanner (every 4 hours)")
 
-    # ETF Watchtower - Daily at 8:00 PM EST
+    # ETF Watchtower - Daily at 6:00 PM PT
     if AVAILABLE_JOBS.get('etf_watchtower', {}).get('enabled_by_default', True):
         from scheduler.jobs_etf_watchtower import etf_watchtower_job
         
@@ -1180,9 +1248,9 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: etf_watchtower (daily at 8:00 PM EST)")
+        logger.info("Registered job: etf_watchtower (daily at 6:00 PM PT)")
     
-    # ETF Group Analysis - Daily at 9:00 PM EST (after ETF Watchtower)
+    # ETF Group Analysis - Daily at 7:15 PM PT (after ETF Watchtower)
     if AVAILABLE_JOBS.get('etf_group_analysis', {}).get('enabled_by_default', True):
         from scheduler.jobs_etf_analysis import etf_group_analysis_job
         
@@ -1204,9 +1272,9 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True,
             misfire_grace_time=3600  # 1 hour grace period
         )
-        logger.info("Registered job: etf_group_analysis (daily at 9:00 PM EST)")
+        logger.info("Registered job: etf_group_analysis (daily at 7:15 PM PT)")
     
-    # Ticker Analysis - Daily at 10:00 PM EST (2-hour max, resumable)
+    # Ticker Analysis - Daily at 9:00 PM PT (2-hour max, resumable)
     if AVAILABLE_JOBS.get('ticker_analysis', {}).get('enabled_by_default', True):
         from scheduler.jobs_ticker_analysis import ticker_analysis_job
         
@@ -1228,7 +1296,7 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True,
             misfire_grace_time=3600  # 1 hour grace period
         )
-        logger.info("Registered job: ticker_analysis (daily at 10:00 PM EST, 2-hour max)")
+        logger.info("Registered job: ticker_analysis (daily at 9:00 PM PT, 2-hour max)")
     
     # Securities Metadata Refresh - Daily at 1:00 AM EST (low priority, off-peak)
     if AVAILABLE_JOBS.get('refresh_securities_metadata', {}).get('enabled_by_default', True):
