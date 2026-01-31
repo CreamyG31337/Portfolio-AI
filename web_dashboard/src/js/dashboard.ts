@@ -154,6 +154,29 @@ interface MoversData {
     processing_time: number;
 }
 
+interface ActionQueueItem {
+    ticker: string;
+    company_name?: string;
+    _logo_url?: string;
+    action: 'BUY' | 'SELL' | 'RISK' | 'WATCH';
+    overall_signal: string;
+    confidence: number;
+    fear_level: string;
+    trend: string;
+    priority_score: number;
+    priority_tier: string;
+    is_held: boolean;
+    analysis_date?: string;
+    explanation?: string;
+    note?: string;
+}
+
+interface ActionQueueData {
+    data: ActionQueueItem[];
+    updated_at: string;
+    processing_time: number;
+}
+
 interface ExchangeRateData {
     current_rate: number | null;
     rate_label: string;
@@ -219,7 +242,6 @@ function initThemeSync(): void {
             fetchSectorChart().catch(err => console.error('[Dashboard] Error refreshing sector chart on theme change:', err));
             fetchCurrencyChart().catch(err => console.error('[Dashboard] Error refreshing currency chart on theme change:', err));
             fetchExchangeRateData().catch(err => console.error('[Dashboard] Error refreshing exchange rate chart on theme change:', err));
-            fetchCommoditiesChart().catch(err => console.error('[Dashboard] Error refreshing commodities chart on theme change:', err));
             fetchCommoditiesChart().catch(err => console.error('[Dashboard] Error refreshing commodities chart on theme change:', err));
 
             // Refresh individual holdings chart if visible
@@ -243,7 +265,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
     initSolidLinesCheckbox();
     initIndividualHoldingsControls();
     initExchangeRateControls();
-    initCommodityControls();
+    initCommodityControls();
     initCommodityControls();
 
     initPnlChartControls();
@@ -941,8 +963,8 @@ async function refreshDashboard(): Promise<void> {
             fetchSectorChart(),
             fetchCurrencyChart(),
             fetchExchangeRateData(),
-            fetchCommoditiesChart(),
             fetchCommoditiesChart(),
+            fetchActionQueue(),
 
             loadPnlChart(state.currentFund),
             fetchMovers(),
@@ -1679,6 +1701,169 @@ async function fetchMovers(): Promise<void> {
     }
 }
 
+async function fetchActionQueue(): Promise<void> {
+    showSpinner('action-queue-spinner');
+
+    const url = `/api/dashboard/action-queue?fund=${encodeURIComponent(state.currentFund)}&limit=10`;
+    const startTime = performance.now();
+
+    console.log('[Dashboard] Fetching action queue...', { url, fund: state.currentFund });
+
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+
+        console.log('[Dashboard] Action queue response received', {
+            status: response.status,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            console.error('[Dashboard] Action queue API error:', {
+                status: response.status,
+                errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
+                url: url
+            });
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            (error as any).traceback = errorInfo.traceback;
+            throw error;
+        }
+
+        const data: ActionQueueData = await response.json();
+        console.log('[Dashboard] Action queue data received', {
+            items_count: data.data ? data.data.length : 0
+        });
+
+        renderActionQueue(data);
+        hideSpinner('action-queue-spinner');
+
+    } catch (error) {
+        hideSpinner('action-queue-spinner');
+        const duration = performance.now() - startTime;
+        const traceback = (error as any)?.traceback;
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[Dashboard] Error fetching action queue:', {
+            error: error,
+            message: errorMsg,
+            traceback: traceback ? 'present' : 'missing',
+            url: url,
+            duration: `${duration.toFixed(2)}ms`
+        });
+
+        const tableBody = document.getElementById('action-queue-table-body');
+        if (tableBody) {
+            tableBody.innerHTML = `<tr><td colspan="8" class="text-center text-theme-error-text py-4"><p>Error loading action queue: ${errorMsg}</p></td></tr>`;
+        }
+
+        const emptyEl = document.getElementById('action-queue-empty');
+        if (emptyEl) {
+            emptyEl.classList.add('hidden');
+        }
+    }
+}
+
+function renderActionQueue(data: ActionQueueData): void {
+    const tableBody = document.getElementById('action-queue-table-body');
+    const emptyEl = document.getElementById('action-queue-empty');
+    const updatedEl = document.getElementById('action-queue-updated');
+
+    if (!tableBody) return;
+
+    // Update timestamp
+    if (updatedEl && data.updated_at) {
+        const date = new Date(data.updated_at);
+        updatedEl.textContent = `Updated: ${date.toLocaleTimeString()}`;
+    }
+
+    // Handle empty data
+    if (!data.data || data.data.length === 0) {
+        tableBody.innerHTML = '';
+        if (emptyEl) {
+            emptyEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    // Hide empty message
+    if (emptyEl) {
+        emptyEl.classList.add('hidden');
+    }
+
+    // Render rows
+    const rows = data.data.map((item, index) => {
+        const actionColors: Record<string, string> = {
+            'BUY': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+            'SELL': 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+            'RISK': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+            'WATCH': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+        };
+
+        const fearColors: Record<string, string> = {
+            'EXTREME': 'text-red-600 dark:text-red-400',
+            'HIGH': 'text-orange-600 dark:text-orange-400',
+            'MODERATE': 'text-yellow-600 dark:text-yellow-400',
+            'LOW': 'text-green-600 dark:text-green-400'
+        };
+
+        const fearIcons: Record<string, string> = {
+            'EXTREME': '🔴',
+            'HIGH': '🟠',
+            'MODERATE': '🟡',
+            'LOW': '🟢'
+        };
+
+        const actionClass = actionColors[item.action] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        const fearClass = fearColors[item.fear_level] || '';
+        const fearIcon = fearIcons[item.fear_level] || '';
+
+        const confidencePct = Math.round((item.confidence || 0) * 100);
+        const analysisDate = item.analysis_date ? new Date(item.analysis_date).toLocaleDateString() : '-';
+
+        // Logo HTML
+        const logoHtml = item._logo_url
+            ? `<img src="${item._logo_url}" alt="${item.ticker}" class="w-5 h-5 rounded-full inline-block mr-1" onerror="this.style.display='none'">`
+            : '';
+
+        return `
+            <tr class="border-b border-border hover:bg-dashboard-hover">
+                <td class="px-4 py-3">
+                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-bold">
+                        ${index + 1}
+                    </span>
+                </td>
+                <td class="px-4 py-3 font-medium text-text-primary">
+                    ${logoHtml}
+                    <a href="/ticker/${item.ticker}" class="hover:text-accent hover:underline">${item.ticker}</a>
+                    ${item.is_held ? '<span class="ml-1 text-xs text-text-tertiary">(held)</span>' : ''}
+                </td>
+                <td class="px-4 py-3">
+                    <span class="px-2 py-0.5 rounded text-xs font-medium ${actionClass}">
+                        ${item.action}
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-text-secondary">${item.overall_signal}</td>
+                <td class="px-4 py-3 text-right">
+                    <div class="flex items-center justify-end gap-1">
+                        <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div class="bg-accent h-2 rounded-full" style="width: ${confidencePct}%"></div>
+                        </div>
+                        <span class="text-xs text-text-secondary w-8">${confidencePct}%</span>
+                    </div>
+                </td>
+                <td class="px-4 py-3 ${fearClass}">${fearIcon} ${item.fear_level}</td>
+                <td class="px-4 py-3 text-text-secondary text-xs max-w-[200px] truncate" title="${item.note || ''}">${item.note || '-'}</td>
+                <td class="px-4 py-3 text-text-tertiary text-xs">${analysisDate}</td>
+            </tr>
+        `;
+    }).join('');
+
+    tableBody.innerHTML = rows;
+}
+
 function renderPillars(pillars: Array<{ name: string; allocation: string; thesis: string; }>): void {
     const container = document.getElementById('thesis-pillars');
     if (!container) return;
@@ -1955,133 +2140,12 @@ function renderExchangeRateData(data: ExchangeRateData): void {
                 (window as any).__exchangeRateChartResizeHandler = resizeHandler;
                 window.addEventListener('resize', resizeHandler);
             }
-
-// ============================================================================
-// Commodity Chart Functions
-// ============================================================================
-
-async function fetchCommoditiesChart(): Promise<void> {
-    showSpinner('commodities-chart-spinner');
-    
-    const theme = getEffectiveTheme();
-    
-    // Get selected commodities from checkboxes
-    const selected: string[] = [];
-    const checkboxes = document.querySelectorAll('.commodity-toggle');
-    checkboxes.forEach((cb: Element) => {
-        const input = cb as HTMLInputElement;
-        if (input.checked) {
-            const commodityName = input.id.replace('commodity-', '');
-            selected.push(commodityName);
-        }
-    });
-    
-    if (selected.length === 0) {
-        const chartEl = document.getElementById('commodities-chart');
-        if (chartEl) {
-            chartEl.innerHTML = '<div class="text-center text-text-secondary py-12"><p>Select at least one commodity to display</p></div>';
-        }
-        hideSpinner('commodities-chart-spinner');
-        return;
-    }
-    
-    const commoditiesParam = selected.join(',');
-    const url = `/api/dashboard/charts/commodities?commodities=${encodeURIComponent(commoditiesParam)}&days=365&theme=${encodeURIComponent(theme)}`;
-    console.log('[Dashboard] Fetching commodities chart...', { url, selected });
-    
-    try {
-        const response = await fetch(url, { credentials: 'include' });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data: AllocationChartData = await response.json();
-        renderCommoditiesChart(data);
-    } catch (error) {
-        console.error('[Dashboard] Error fetching commodities chart:', error);
-        const chartEl = document.getElementById('commodities-chart');
-        if (chartEl) chartEl.innerHTML = '<div class="text-center text-text-secondary py-8"><p>Error loading chart</p></div>';
-    } finally {
-        hideSpinner('commodities-chart-spinner');
-    }
-}
-
-function renderCommoditiesChart(data: AllocationChartData): void {
-    const chartEl = document.getElementById('commodities-chart');
-    if (!chartEl) return;
-    
-    const Plotly = (window as any).Plotly;
-    if (!Plotly) return;
-    
-    const layout = { ...data.layout };
-    layout.height = 400;
-    layout.autosize = true;
-    layout.margin = { l: 60, r: 20, t: 40, b: 60 };
-    
-    try {
-        Plotly.newPlot('commodities-chart', data.data, layout, {
-            responsive: true,
-            displayModeBar: false,
-            useResizeHandler: true
-        });
-        
-        if (!(window as any).__commoditiesChartResizeHandler) {
-            const resizeHandler = () => {
-                if (document.getElementById('commodities-chart')) {
-                    Plotly.Plots.resize('commodities-chart');
-                }
-            };
-            (window as any).__commoditiesChartResizeHandler = resizeHandler;
-            window.addEventListener('resize', resizeHandler);
-        }
-    } catch (error) {
-        console.error('[Dashboard] Error rendering commodities chart:', error);
-    }
-}
-
-function initCommodityControls(): void {
-    const checkboxes = document.querySelectorAll('.commodity-toggle');
-    
-    if (checkboxes.length === 0) {
-        console.warn('[Dashboard] Commodity toggles not found');
-        return;
-    }
-    
-    const savedPrefs = localStorage.getItem('commodity_selections');
-    if (savedPrefs) {
-        try {
-            const prefs = JSON.parse(savedPrefs);
-            checkboxes.forEach((cb: Element) => {
-                const input = cb as HTMLInputElement;
-                const commodityName = input.id.replace('commodity-', '');
-                if (typeof prefs[commodityName] === 'boolean') {
-                    input.checked = prefs[commodityName];
-                }
-            });
-        } catch (e) {
-            console.warn('[Dashboard] Error loading commodity preferences:', e);
-        }
-    }
-    
-    checkboxes.forEach((cb: Element) => {
-        cb.addEventListener('change', (): void => {
-            const prefs: { [key: string]: boolean } = {};
-            checkboxes.forEach((checkbox: Element) => {
-                const input = checkbox as HTMLInputElement;
-                const commodityName = input.id.replace('commodity-', '');
-                prefs[commodityName] = input.checked;
-            });
-            localStorage.setItem('commodity_selections', JSON.stringify(prefs));
-            fetchCommoditiesChart();
-        });
-    });
-}
-
         } catch (error) {
             console.error('[Dashboard] Error rendering exchange rate chart:', error);
         }
     }
 }
 
-
 // ============================================================================
 // Commodity Chart Functions
 // ============================================================================
@@ -2200,6 +2264,7 @@ function initCommodityControls(): void {
         });
     });
 }
+
 
 const MOVERS_COLUMN_COUNT = 7;
 
