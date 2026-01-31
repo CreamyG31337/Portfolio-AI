@@ -33,6 +33,16 @@ def opportunity_discovery_job() -> None:
     # Import job tracking at the start
     from datetime import datetime, timezone
     target_date = datetime.now(timezone.utc).date()
+
+    # Global AI lock (SearXNG + Ollama workload)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
     
     try:
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
@@ -121,8 +131,19 @@ def opportunity_discovery_job() -> None:
         articles_skipped = 0
         articles_blacklisted = 0
         articles_irrelevant = 0
+
+        # Safety timeouts (avoid runaway jobs)
+        MAX_JOB_DURATION = 40 * 60  # 40 minutes total
+        MAX_ARTICLE_DURATION = 4 * 60  # 4 minutes per article
         
         for result in search_results['results']:
+            # Check overall job timeout
+            elapsed = time.time() - start_time
+            if elapsed > MAX_JOB_DURATION:
+                logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Stopping opportunity discovery")
+                break
+
+            article_start = time.time()
             try:
                 url = result.get('url', '')
                 title = result.get('title', '')
@@ -148,6 +169,11 @@ def opportunity_discovery_job() -> None:
                     logger.debug(f"Skipping blacklisted: {domain}")
                     articles_blacklisted += 1
                     continue
+
+                # Per-article timeout guard
+                if time.time() - article_start > MAX_ARTICLE_DURATION:
+                    logger.warning(f"⏱️  Article timeout - skipping: {title[:40]}...")
+                    continue
                 
                 # Check if already exists
                 if research_repo.article_exists(url):
@@ -158,7 +184,7 @@ def opportunity_discovery_job() -> None:
                 # Extract content
                 logger.info(f"  💎 Extracting: {title[:40]}...")
                 extracted = extract_article_content(url)
-                
+
                 # Health tracking
                 from research_domain_health import DomainHealthTracker
                 tracker = DomainHealthTracker()
@@ -174,6 +200,11 @@ def opportunity_discovery_job() -> None:
                         if tracker.auto_blacklist_domain(url):
                             logger.warning(f"🚫 AUTO-BLACKLISTED: {domain}")
                             articles_blacklisted += 1
+                    continue
+
+                # Per-article timeout guard after extraction
+                if time.time() - article_start > MAX_ARTICLE_DURATION:
+                    logger.warning(f"⏱️  Article timeout after extraction - skipping: {title[:40]}...")
                     continue
                 
                 tracker.record_success(url)

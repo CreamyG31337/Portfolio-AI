@@ -132,7 +132,7 @@
     "sector": "Large Cap",
     "industry": "US Equity ETF",
     "country": "USA",
-    "description_note": "Vanguard S&P 500 Index ETF (CAD-hedged) - tracks S&P 500 with currency hedging"
+    "description_note": "Vanguard S&P 500 Index ETF (unhedged) - tracks S&P 500 without currency hedging"
   },
   "VOO": {
     "sector": "Large Cap",
@@ -177,10 +177,10 @@
     "description_note": "iShares Core S&P/TSX Capped Composite Index ETF - tracks Canadian large cap stocks"
   },
   "ZEA.TO": {
-    "sector": "Financials",
-    "industry": "Canadian Banks ETF",
-    "country": "Canada",
-    "description_note": "BMO S&P/TSX Equal Weight Banks Index ETF - equal-weighted Canadian bank stocks"
+    "sector": "International Equity",
+    "industry": "International Developed Markets ETF",
+    "country": "Global",
+    "description_note": "BMO MSCI EAFE Index ETF - tracks developed markets in Europe, Australasia, and Far East"
   },
   "FTXL": {
     "sector": "Technology",
@@ -226,9 +226,9 @@
   },
   "GLCC.TO": {
     "sector": "Materials",
-    "industry": "Commodities ETF",
-    "country": "Global",
-    "description_note": "Global X Copper Miners ETF - global copper mining companies"
+    "industry": "Gold ETF",
+    "country": "Canada",
+    "description_note": "Global X Gold Producer Equity Covered Call ETF - gold producers with covered call income strategy"
   },
   "ITA": {
     "sector": "Industrials",

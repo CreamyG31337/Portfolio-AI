@@ -56,6 +56,16 @@ def market_research_job() -> None:
     job_id = 'market_research'
     start_time = time.time()
     target_date = datetime.now(timezone.utc).date()
+
+    # Global AI lock (SearXNG + Ollama workload)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
     
     try:
         # Import job tracking
@@ -814,6 +824,16 @@ def ticker_research_job() -> None:
     job_id = 'ticker_research'
     start_time = time.time()
     target_date = datetime.now(timezone.utc).date()
+
+    # Global AI lock (SearXNG + Ollama workload)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
     
     try:
         # Import job tracking
@@ -965,9 +985,20 @@ def ticker_research_job() -> None:
         articles_failed = 0
         tickers_processed = 0
         sectors_researched = 0
+
+        # Safety timeouts (avoid runaway jobs)
+        MAX_JOB_DURATION = 60 * 60  # 60 minutes total
+        MAX_ITEM_DURATION = 4 * 60  # 4 minutes per sector/ticker
         
         # 3. Research sectors for ETFs first
         for sector in sorted(etf_sectors):
+            # Check overall job timeout
+            elapsed = time.time() - start_time
+            if elapsed > MAX_JOB_DURATION:
+                logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Stopping ticker research")
+                break
+
+            item_start = time.time()
             try:
                 query = f"{sector} sector news investment"
                 logger.info(f"🔎 Researching sector for ETFs: '{query}'")
@@ -980,6 +1011,11 @@ def ticker_research_job() -> None:
                 
                 # Process results
                 for result in search_results['results']:
+                    # Check per-item timeout
+                    item_elapsed = time.time() - item_start
+                    if item_elapsed > MAX_ITEM_DURATION:
+                        logger.warning(f"⏱️  Sector timeout ({item_elapsed:.1f}s) - stopping sector: {sector}")
+                        break
                     try:
                         url = result.get('url', '')
                         title = result.get('title', '')
@@ -1115,6 +1151,13 @@ def ticker_research_job() -> None:
         
         # 4. Iterate and search for each regular (non-ETF) ticker
         for ticker, company in regular_tickers.items():
+            # Check overall job timeout
+            elapsed = time.time() - start_time
+            if elapsed > MAX_JOB_DURATION:
+                logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Stopping ticker research")
+                break
+
+            item_start = time.time()
             try:
                 # Construct search query
                 # Use company name if available for better results, otherwise just ticker + "stock"
@@ -1135,6 +1178,11 @@ def ticker_research_job() -> None:
                 
                 # Process results
                 for result in search_results['results']:
+                    # Check per-item timeout
+                    item_elapsed = time.time() - item_start
+                    if item_elapsed > MAX_ITEM_DURATION:
+                        logger.warning(f"⏱️  Ticker timeout ({item_elapsed:.1f}s) - stopping: {ticker}")
+                        break
                     try:
                         url = result.get('url', '')
                         title = result.get('title', '')

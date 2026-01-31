@@ -6,6 +6,7 @@ Jobs for fetching corporate insider trading data from an external source.
 Uses FlareSolverr to bypass Cloudflare protection.
 """
 
+import ast
 import logging
 import time
 import requests
@@ -319,13 +320,13 @@ def fetch_insider_trades_job() -> None:
                             break
                         except json.JSONDecodeError as e:
                             logger.warning(f"Failed to parse embedded data: {e}")
-                            # Try eval as fallback (safe since it's from the source page)
+                            # Try ast.literal_eval as fallback (safe for dict/list from source page)
                             try:
-                                trades_data = eval(json_str)
-                                logger.info(f"Found {len(trades_data)} trades using eval")
+                                trades_data = ast.literal_eval(json_str)
+                                logger.info(f"Found {len(trades_data)} trades using literal_eval")
                                 break
-                            except Exception as eval_error:
-                                logger.warning(f"eval also failed: {eval_error}")
+                            except Exception as literal_eval_error:
+                                logger.warning(f"literal_eval also failed: {literal_eval_error}")
                                 continue
 
             if not trades_data:

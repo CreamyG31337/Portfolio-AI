@@ -137,6 +137,41 @@
         </div>
     </div>
 
+    <!-- Action Queue -->
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm mb-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+                <h3 class="text-lg font-bold text-text-primary">⚡ Action Queue</h3>
+                <p class="text-xs text-text-secondary">Top priority actions based on latest signals</p>
+            </div>
+            <div class="text-xs text-text-tertiary" id="action-queue-updated">Updated: -</div>
+        </div>
+        <div class="relative overflow-x-auto max-h-[420px] overflow-y-auto border border-border rounded-lg">
+            <div id="action-queue-spinner"
+                class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+            </div>
+            <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
+                    <tr>
+                        <th scope="col" class="px-4 py-3">Priority</th>
+                        <th scope="col" class="px-4 py-3">Ticker</th>
+                        <th scope="col" class="px-4 py-3">Action</th>
+                        <th scope="col" class="px-4 py-3">Signal</th>
+                        <th scope="col" class="px-4 py-3 text-right">Confidence</th>
+                        <th scope="col" class="px-4 py-3">Fear</th>
+                        <th scope="col" class="px-4 py-3">Note</th>
+                        <th scope="col" class="px-4 py-3">Updated</th>
+                    </tr>
+                </thead>
+                <tbody id="action-queue-table-body"></tbody>
+            </table>
+        </div>
+        <div id="action-queue-empty" class="hidden mt-4 text-sm text-text-secondary">
+            No high-priority actions right now.
+        </div>
+    </div>
+
     <!-- Biggest Daily Movers -->
     <div id="movers-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <!-- Top Gainers -->
@@ -301,258 +336,311 @@
                         <div
                             class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
                         </div>
-                    </div>
-                    <!-- Plotly Chart -->
-                </div>
-            </div>
 
-            <!-- Currency Exposure Section -->
-            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-text-primary">Currency Exposure</h3>
-                    <label class="flex items-center gap-2 cursor-pointer text-sm text-text-secondary">
-                        <input type="checkbox" id="inverse-exchange-rate"
-                            class="rounded border-border text-accent focus:ring-accent bg-dashboard-surface">
-                        <span>Show CAD/USD</span>
-                    </label>
-                </div>
+                        <!-- Market Indicators Section -->
+                        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                            <h3 class="text-lg font-bold text-text-primary mb-4">📊 Market Indicators</h3>
 
-                <!-- Two-column layout: Rate metrics + Pie chart -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    <!-- Left column: Exchange rate metric and historical chart -->
-                    <div class="lg:col-span-1">
-                        <!-- Current Rate Metric -->
-                        <div id="exchange-rate-metric"
-                            class="mb-4 p-3 bg-dashboard-surface-alt rounded-lg border border-border">
-                            <div class="text-sm text-text-secondary" id="exchange-rate-label">USD/CAD Rate
-                            </div>
-                            <div class="text-2xl font-bold text-text-primary" id="exchange-rate-value">
-                                <div class="animate-pulse bg-dashboard-surface h-8 w-24 rounded"></div>
-                            </div>
-                            <div class="text-xs text-text-tertiary" id="exchange-rate-help">1 USD = X CAD
-                            </div>
-                        </div>
+                            <!-- Commodity Prices Chart -->
+                            <div class="mb-6 pb-6 border-b border-border">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h4 class="text-base font-semibold text-text-primary">Commodity & Asset Prices</h4>
 
-                        <!-- Historical Rate Chart -->
-                        <div class="w-full relative min-h-[200px]" id="exchange-rate-chart">
-                            <div id="exchange-rate-chart-spinner"
-                                class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                                <div
-                                    class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400">
+                                    <!-- Commodity Toggles -->
+                                    <div class="flex flex-wrap gap-2">
+                                        <label class="flex items-center gap-1 cursor-pointer">
+                                            <input type="checkbox" id="commodity-gold" checked
+                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                                            <span class="text-sm">🥇 Gold</span>
+                                        </label>
+                                        <label class="flex items-center gap-1 cursor-pointer">
+                                            <input type="checkbox" id="commodity-silver" checked
+                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                                            <span class="text-sm">🥈 Silver</span>
+                                        </label>
+                                        <label class="flex items-center gap-1 cursor-pointer">
+                                            <input type="checkbox" id="commodity-oil"
+                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                                            <span class="text-sm">🛢️ Oil</span>
+                                        </label>
+                                        <label class="flex items-center gap-1 cursor-pointer">
+                                            <input type="checkbox" id="commodity-uranium"
+                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                                            <span class="text-sm">☢️ Uranium</span>
+                                        </label>
+                                        <label class="flex items-center gap-1 cursor-pointer">
+                                            <input type="checkbox" id="commodity-lithium"
+                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                                            <span class="text-sm">🔋 Lithium</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Chart Container -->
+                                <div class="w-full relative min-h-[400px]" id="commodities-chart">
+                                    <div id="commodities-chart-spinner"
+                                        class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Currency Section -->
+                            <div class="flex justify-between items-center mb-4">
+                                <h4 class="text-base font-semibold text-text-primary">Currency Exposure</h4>
+                                <label class="flex items-center gap-2 cursor-pointer text-sm text-text-secondary">
+                                    <input type="checkbox" id="inverse-exchange-rate"
+                                        class="rounded border-border text-accent focus:ring-accent bg-dashboard-surface">
+                                    <span>Show CAD/USD</span>
+                                </label>
+                            </div>
+
+                            <!-- Two-column layout: Rate metrics + Pie chart -->
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                <!-- Left column: Exchange rate metric and historical chart -->
+                                <div class="lg:col-span-1">
+                                    <!-- Current Rate Metric -->
+                                    <div id="exchange-rate-metric"
+                                        class="mb-4 p-3 bg-dashboard-surface-alt rounded-lg border border-border">
+                                        <div class="text-sm text-text-secondary" id="exchange-rate-label">USD/CAD Rate
+                                        </div>
+                                        <div class="text-2xl font-bold text-text-primary" id="exchange-rate-value">
+                                            <div class="animate-pulse bg-dashboard-surface h-8 w-24 rounded"></div>
+                                        </div>
+                                        <div class="text-xs text-text-tertiary" id="exchange-rate-help">1 USD = X CAD
+                                        </div>
+                                    </div>
+
+                                    <!-- Historical Rate Chart -->
+                                    <div class="w-full relative min-h-[200px]" id="exchange-rate-chart">
+                                        <div id="exchange-rate-chart-spinner"
+                                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                                            <div
+                                                class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Right column: Currency exposure pie chart -->
+                                <div class="lg:col-span-2">
+                                    <div class="w-full relative overflow-hidden min-h-[300px] max-h-[400px]"
+                                        id="currency-chart">
+                                        <!-- Loading spinner -->
+                                        <div id="currency-chart-spinner"
+                                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                                            <div
+                                                class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
+                                            </div>
+                                        </div>
+                                        <!-- Plotly Chart -->
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Right column: Currency exposure pie chart -->
-                    <div class="lg:col-span-2">
-                        <div class="w-full relative overflow-hidden min-h-[300px] max-h-[400px]" id="currency-chart">
-                            <!-- Loading spinner -->
-                            <div id="currency-chart-spinner"
-                                class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                                <div
-                                    class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
-                                </div>
+                <!-- P&L by Position Chart -->
+                <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm mb-6">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <h3 class="text-lg font-bold text-text-primary">P&L by Position</h3>
+                        <div class="inline-flex rounded-md shadow-sm" role="group" aria-label="P&L chart view">
+                            <button type="button" data-pnl-view="top_bottom" aria-pressed="true"
+                                class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
+                                Top/Bottom 20
+                            </button>
+                            <button type="button" data-pnl-view="winners" aria-pressed="false"
+                                class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border-t border-b border-border hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
+                                Winners 40
+                            </button>
+                            <button type="button" data-pnl-view="losers" aria-pressed="false"
+                                class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
+                                Losers 40
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+                        ℹ️ Default view shows the top 20 winners and bottom 20 losers. Use the toggle to switch to 40
+                        winners or 40 losers.
+                        💡 <strong>Winning positions with gains</strong> show overlay bars (green unrealized + gold
+                        dividends).
+                        <strong>Winning positions with losses offset by dividends</strong> show red bar below axis
+                        (loss) + gold bar
+                        above axis (dividends) at the same position.
+                        <strong>Losing positions</strong> show single red bars below axis.
+                    </div>
+                    <div class="w-full relative min-h-[500px]" id="pnl-chart">
+                        <div id="pnl-chart-spinner"
+                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                            <div
+                                class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
                             </div>
-                            <!-- Plotly Chart -->
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- P&L by Position Chart -->
-    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm mb-6">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h3 class="text-lg font-bold text-text-primary">P&L by Position</h3>
-            <div class="inline-flex rounded-md shadow-sm" role="group" aria-label="P&L chart view">
-                <button type="button" data-pnl-view="top_bottom" aria-pressed="true"
-                    class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
-                    Top/Bottom 20
-                </button>
-                <button type="button" data-pnl-view="winners" aria-pressed="false"
-                    class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border-t border-b border-border hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
-                    Winners 40
-                </button>
-                <button type="button" data-pnl-view="losers" aria-pressed="false"
-                    class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
-                    Losers 40
-                </button>
-            </div>
-        </div>
-        <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
-            ℹ️ Default view shows the top 20 winners and bottom 20 losers. Use the toggle to switch to 40 winners or 40 losers.
-            💡 <strong>Winning positions with gains</strong> show overlay bars (green unrealized + gold dividends).
-            <strong>Winning positions with losses offset by dividends</strong> show red bar below axis (loss) + gold bar
-            above axis (dividends) at the same position.
-            <strong>Losing positions</strong> show single red bars below axis.
-        </div>
-        <div class="w-full relative min-h-[500px]" id="pnl-chart">
-            <div id="pnl-chart-spinner"
-                class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
-            </div>
-        </div>
-    </div>
+                <!-- Dividends Section -->
+                <div class="mb-6">
+                    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
+                                <span class="text-theme-success-text">💰</span> Dividends
+                            </h3>
+                            <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)" aria-expanded="true"
+                                aria-controls="dividend-log-container"
+                                class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
+                                <i class="fas fa-eye-slash mr-1" aria-hidden="true"></i> <span>Hide Log</span>
+                            </button>
+                        </div>
 
-    <!-- Dividends Section -->
-    <div class="mb-6">
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
-                    <span class="text-theme-success-text">💰</span> Dividends
-                </h3>
-                <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)" aria-expanded="true"
-                    aria-controls="dividend-log-container"
-                    class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
-                    <i class="fas fa-eye-slash mr-1" aria-hidden="true"></i> <span>Hide Log</span>
-                </button>
-            </div>
+                        <!-- Dividend Metrics -->
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
+                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                                <div class="text-xs text-text-secondary font-medium">Total (LTM)</div>
+                                <div class="text-lg font-bold text-text-primary" id="div-total">--</div>
+                            </div>
+                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                                <div class="text-xs text-text-secondary font-medium">Tax Paid (LTM)</div>
+                                <div class="text-lg font-bold text-text-primary" id="div-tax">--</div>
+                            </div>
+                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                                <div class="text-xs text-text-secondary font-medium">Largest</div>
+                                <div class="text-lg font-bold text-text-primary" id="div-largest">--</div>
+                                <div class="text-xs text-text-tertiary" id="div-largest-ticker"></div>
+                            </div>
+                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                                <div class="text-xs text-text-secondary font-medium">Reinvested</div>
+                                <div class="text-lg font-bold text-text-primary" id="div-reinvested">--</div>
+                            </div>
+                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                                <div class="text-xs text-text-secondary font-medium">Events</div>
+                                <div class="text-lg font-bold text-text-primary" id="div-events">--</div>
+                            </div>
+                        </div>
 
-            <!-- Dividend Metrics -->
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
-                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                    <div class="text-xs text-text-secondary font-medium">Total (LTM)</div>
-                    <div class="text-lg font-bold text-text-primary" id="div-total">--</div>
+                        <!-- Dividend Log Table -->
+                        <div id="dividend-log-container"
+                            class="relative overflow-x-auto max-h-[300px] overflow-y-auto border border-border rounded-lg">
+                            <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                                <thead
+                                    class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-2">Pay Date</th>
+                                        <th scope="col" class="px-4 py-2">Ticker</th>
+                                        <th scope="col" class="px-4 py-2">Company</th>
+                                        <th scope="col" class="px-4 py-2 text-right">Gross ($)</th>
+                                        <th scope="col" class="px-4 py-2 text-right">Net ($)</th>
+                                        <th scope="col" class="px-4 py-2 text-right">Reinvested Shares</th>
+                                        <th scope="col" class="px-4 py-2 text-right">DRIP Price ($)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dividend-log-body">
+                                    <!-- JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
-                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                    <div class="text-xs text-text-secondary font-medium">Tax Paid (LTM)</div>
-                    <div class="text-lg font-bold text-text-primary" id="div-tax">--</div>
+
+                <!-- Holdings Table -->
+                <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm mb-6">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">Current Holdings</h3>
+                    <div class="relative w-full h-[500px]">
+                        <!-- Loading spinner -->
+                        <div id="holdings-grid-spinner"
+                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
+                        </div>
+                        <div id="holdings-grid" class="ag-theme-alpine w-full h-full"></div>
+                    </div>
                 </div>
-                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                    <div class="text-xs text-text-secondary font-medium">Largest</div>
-                    <div class="text-lg font-bold text-text-primary" id="div-largest">--</div>
-                    <div class="text-xs text-text-tertiary" id="div-largest-ticker"></div>
-                </div>
-                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                    <div class="text-xs text-text-secondary font-medium">Reinvested</div>
-                    <div class="text-lg font-bold text-text-primary" id="div-reinvested">--</div>
-                </div>
-                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                    <div class="text-xs text-text-secondary font-medium">Events</div>
-                    <div class="text-lg font-bold text-text-primary" id="div-events">--</div>
+
+                <!-- Recent Activity -->
+                <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
+                    <h3 class="text-lg font-bold text-text-primary mb-4">Recent Activity</h3>
+                    <div class="relative overflow-x-auto max-h-[600px] overflow-y-auto border border-border rounded-lg">
+                        <!-- Loading spinner -->
+                        <div id="activity-table-spinner"
+                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
+                        </div>
+                        <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                            <thead
+                                class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Date</th>
+                                    <th scope="col" class="px-6 py-3">Ticker</th>
+                                    <th scope="col" class="px-6 py-3">Company</th>
+                                    <th scope="col" class="px-6 py-3">Action</th>
+                                    <th scope="col" class="px-6 py-3 text-right">Shares</th>
+                                    <th scope="col" class="px-6 py-3 text-right">Price</th>
+                                    <th scope="col" class="px-6 py-3 text-right">Amount / P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activity-table-body">
+                                <!-- JS -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
+            {% endblock %}
 
-            <!-- Dividend Log Table -->
-            <div id="dividend-log-container"
-                class="relative overflow-x-auto max-h-[300px] overflow-y-auto border border-border rounded-lg">
-                <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
-                    <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
-                        <tr>
-                            <th scope="col" class="px-4 py-2">Pay Date</th>
-                            <th scope="col" class="px-4 py-2">Ticker</th>
-                            <th scope="col" class="px-4 py-2">Company</th>
-                            <th scope="col" class="px-4 py-2 text-right">Gross ($)</th>
-                            <th scope="col" class="px-4 py-2 text-right">Net ($)</th>
-                            <th scope="col" class="px-4 py-2 text-right">Reinvested Shares</th>
-                            <th scope="col" class="px-4 py-2 text-right">DRIP Price ($)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="dividend-log-body">
-                        <!-- JS -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+            {% block extra_head %}
+            <!-- AgGrid Community Edition - Base styles and themes -->
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
+            <link rel="stylesheet"
+                href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine.css">
+            <link rel="stylesheet"
+                href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine-dark.css">
+            {% endblock %}
 
-    <!-- Holdings Table -->
-    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm mb-6">
-        <h3 class="text-lg font-bold text-text-primary mb-4">Current Holdings</h3>
-        <div class="relative w-full h-[500px]">
-            <!-- Loading spinner -->
-            <div id="holdings-grid-spinner"
-                class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
-            </div>
-            <div id="holdings-grid" class="ag-theme-alpine w-full h-full"></div>
-        </div>
-    </div>
+            {% block extra_scripts %}
+            <script src="https://cdn.jsdelivr.net/npm/plotly.js@2.27.0/dist/plotly.min.js"></script>
+            <!-- Load AgGrid from CDN - use same version as congress_trades for consistency -->
+            <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+            <script>
+                // Pass initial data from backend if needed, or just let JS fetch it
+                const INITIAL_FUND = {{ initial_fund| tojson }};
+                console.log('[Dashboard] Script block loaded, INITIAL_FUND:', INITIAL_FUND);
 
-    <!-- Recent Activity -->
-    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-sm">
-        <h3 class="text-lg font-bold text-text-primary mb-4">Recent Activity</h3>
-        <div class="relative overflow-x-auto max-h-[600px] overflow-y-auto border border-border rounded-lg">
-            <!-- Loading spinner -->
-            <div id="activity-table-spinner"
-                class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
-            </div>
-            <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
-                <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
-                    <tr>
-                        <th scope="col" class="px-6 py-3">Date</th>
-                        <th scope="col" class="px-6 py-3">Ticker</th>
-                        <th scope="col" class="px-6 py-3">Company</th>
-                        <th scope="col" class="px-6 py-3">Action</th>
-                        <th scope="col" class="px-6 py-3 text-right">Shares</th>
-                        <th scope="col" class="px-6 py-3 text-right">Price</th>
-                        <th scope="col" class="px-6 py-3 text-right">Amount / P&L</th>
-                    </tr>
-                </thead>
-                <tbody id="activity-table-body">
-                    <!-- JS -->
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endblock %}
+                function toggleDividendLog(btn) {
+                    const container = document.getElementById('dividend-log-container');
+                    if (!container) return;
 
-{% block extra_head %}
-<!-- AgGrid Community Edition - Base styles and themes -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine-dark.css">
-{% endblock %}
+                    const isHidden = container.classList.toggle('hidden');
+                    const icon = btn.querySelector('i');
+                    const span = btn.querySelector('span');
 
-{% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/plotly.js@2.27.0/dist/plotly.min.js"></script>
-<!-- Load AgGrid from CDN - use same version as congress_trades for consistency -->
-<script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
-<script>
-    // Pass initial data from backend if needed, or just let JS fetch it
-    const INITIAL_FUND = {{ initial_fund|tojson }};
-    console.log('[Dashboard] Script block loaded, INITIAL_FUND:', INITIAL_FUND);
+                    btn.setAttribute('aria-expanded', !isHidden);
 
-    function toggleDividendLog(btn) {
-        const container = document.getElementById('dividend-log-container');
-        if (!container) return;
-
-        const isHidden = container.classList.toggle('hidden');
-        const icon = btn.querySelector('i');
-        const span = btn.querySelector('span');
-
-        btn.setAttribute('aria-expanded', !isHidden);
-
-        if (isHidden) {
-            if (span) span.textContent = 'Show Log';
-            if (icon) {
-                icon.classList.remove('fa-eye-slash');
-                icon.classList.add('fa-eye');
-            }
-        } else {
-            if (span) span.textContent = 'Hide Log';
-            if (icon) {
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
-            }
-        }
-    }
-</script>
-<script type="module"
-    src="/assets/js/dashboard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
-<script>
-    // dashboard.js is type="module" so it runs async; check after it signals ready or on load
-    window.addEventListener('dashboard-ready', function() {
-        console.log('[Dashboard] refreshDashboard function found, script loaded successfully');
-    });
-    window.addEventListener('load', function() {
-        if (typeof refreshDashboard === 'undefined') {
-            console.error('[Dashboard] ERROR: refreshDashboard function not found! Script may not have loaded.');
-        }
-    });
-</script>
-{% endblock %}
+                    if (isHidden) {
+                        if (span) span.textContent = 'Show Log';
+                        if (icon) {
+                            icon.classList.remove('fa-eye-slash');
+                            icon.classList.add('fa-eye');
+                        }
+                    } else {
+                        if (span) span.textContent = 'Hide Log';
+                        if (icon) {
+                            icon.classList.remove('fa-eye');
+                            icon.classList.add('fa-eye-slash');
+                        }
+                    }
+                }
+            </script>
+            <script type="module"
+                src="/assets/js/dashboard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+            <script>
+                // dashboard.js is type="module" so it runs async; check after it signals ready or on load
+                window.addEventListener('dashboard-ready', function () {
+                    console.log('[Dashboard] refreshDashboard function found, script loaded successfully');
+                });
+                window.addEventListener('load', function () {
+                    if (typeof refreshDashboard === 'undefined') {
+                        console.error('[Dashboard] ERROR: refreshDashboard function not found! Script may not have loaded.');
+                    }
+                });
+            </script>
+            {% endblock %}

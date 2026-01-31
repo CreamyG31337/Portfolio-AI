@@ -40,13 +40,22 @@ def test_benchmark_refresh():
         # Initialize Supabase client (use service role for writing)
         client = SupabaseClient(use_service_role=True)
         
-        # Define benchmarks to refresh
+        # Define benchmarks and commodities to refresh
         benchmarks = [
+            # Market Indices
             {"ticker": "^GSPC", "name": "S&P 500"},
             {"ticker": "QQQ", "name": "Nasdaq-100"},
             {"ticker": "^RUT", "name": "Russell 2000"},
-            {"ticker": "VTI", "name": "Total Market"}
+            {"ticker": "VTI", "name": "Total Market"},
+            
+            # Commodities
+            {"ticker": "GC=F", "name": "Gold Futures"},
+            {"ticker": "SI=F", "name": "Silver Futures"},
+            {"ticker": "CL=F", "name": "Crude Oil Futures"},
+            {"ticker": "URA", "name": "Uranium ETF"},
+            {"ticker": "LIT", "name": "Lithium ETF"}
         ]
+
         
         # Fetch data for the last 30 days to ensure we have recent data
         end_date = datetime.now()

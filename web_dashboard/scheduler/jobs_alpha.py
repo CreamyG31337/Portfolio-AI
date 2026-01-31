@@ -31,6 +31,16 @@ def alpha_research_job() -> None:
     """
     job_id = 'alpha_research'
     start_time = time.time()
+
+    # Global AI lock (SearXNG + Ollama workload)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
     
     # We need to import log_job_execution and mark_job_* functions
     # Assuming they are available or we need to import them like in other jobs
@@ -126,12 +136,23 @@ def alpha_research_job() -> None:
         articles_saved = 0
         articles_skipped = 0
         articles_irrelevant = 0
+
+        # Safety timeouts (avoid runaway jobs)
+        MAX_JOB_DURATION = 40 * 60  # 40 minutes total
+        MAX_ARTICLE_DURATION = 4 * 60  # 4 minutes per article
         
         # Load blacklist for safety (even though we are targeting specific sites, redundancy is good)
         from settings import get_research_domain_blacklist
         blacklist = get_research_domain_blacklist()
         
         for result in search_results['results']:
+            # Check overall job timeout
+            elapsed = time.time() - start_time
+            if elapsed > MAX_JOB_DURATION:
+                logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Stopping alpha research")
+                break
+
+            article_start = time.time()
             try:
                 url = result.get('url', '')
                 title = result.get('title', '')
@@ -156,6 +177,11 @@ def alpha_research_job() -> None:
                 if is_blocked:
                     logger.debug(f"Skipping explicitly blacklisted: {domain}")
                     continue
+
+                # Per-article timeout guard
+                if time.time() - article_start > MAX_ARTICLE_DURATION:
+                    logger.warning(f"⏱️  Article timeout - skipping: {title[:40]}...")
+                    continue
                 
                 # Check if already exists
                 if research_repo.article_exists(url):
@@ -169,6 +195,11 @@ def alpha_research_job() -> None:
                 
                 content = extracted.get('content', '')
                 if not content or not extracted.get('success'):
+                    continue
+
+                # Per-article timeout guard after extraction
+                if time.time() - article_start > MAX_ARTICLE_DURATION:
+                    logger.warning(f"⏱️  Article timeout after extraction - skipping: {title[:40]}...")
                     continue
                 
                 # Generate summary and embedding

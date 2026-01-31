@@ -163,6 +163,10 @@ def run_backfill_2025() -> None:
         rows = parse_form_idx(index_text)
         form4_rows = filter_form4(rows)
         logger.info("Form 4 rows in index: %s", len(form4_rows))
+        # Index has one row per reporting owner; same filing (filename) can appear multiple times.
+        unique_filings = len({r[4] for r in form4_rows})
+        if unique_filings < len(form4_rows):
+            logger.info("Unique filings (by path): %s (rows are higher due to multiple reporting owners per form)", unique_filings)
         if BACKFILL_LIMIT > 0:
             form4_rows = form4_rows[:BACKFILL_LIMIT]
             logger.info("Limited to first %s filings.", BACKFILL_LIMIT)
@@ -197,7 +201,7 @@ def run_backfill_2025() -> None:
                     t["_date_filed"] = t.get("_date_filed") or date_filed
                 for t in trans_list:
                     ticker = (t.get("ticker") or "").strip().upper()
-                    if not ticker or ticker in ("FILED", "NONE", "-", "DATE", "OWNER", "INDEX", "KEY", "FILM"):
+                    if not ticker or ticker in ("FILED", "NONE", "-", "DATE", "OWNER", "INDEX", "FILM"):
                         if ticker:
                             logger.info(
                                 "Skipped junk ticker %r from %s (%s) — inspect at https://www.sec.gov/Archives/%s",
@@ -260,8 +264,8 @@ def run_backfill_2025() -> None:
                         total_errors += 1
                 processed += 1
                 if processed % 100 == 0 and processed > 0:
-                    logger.info("Processed %s filings, upserted %s trades so far.", processed, total_upserted)
-        logger.info("QTR%s done: processed %s filings.", quarter, processed)
+                    logger.info("Processed %s index rows, upserted %s trades so far.", processed, total_upserted)
+        logger.info("QTR%s done: processed %s index rows.", quarter, processed)
     logger.info("Backfill complete: upserted=%s errors=%s skipped=%s", total_upserted, total_errors, total_skipped)
 
 

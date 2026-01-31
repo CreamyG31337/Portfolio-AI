@@ -2,61 +2,9 @@
 # Separate container for Flask routes (Settings page, API endpoints)
 # Runs on port 5001 to avoid conflict with NFT calculator on port 5000
 # Optimized for fast builds with layer caching
-# Multi-stage build: Build Tailwind CSS first, then Python app
+# Uses shared frontend builder (trading-dashboard-frontend:latest)
 
-# Stage 1: Build Tailwind CSS and TypeScript
-FROM node:20-alpine AS frontend-builder
-WORKDIR /app
-
-# Copy package files for dependency installation (better layer caching)
-COPY package.json ./
-COPY tailwind.config.js ./
-
-# Install npm dependencies for Tailwind (cached layer - only rebuilds if package.json changes)
-# Use BuildKit cache mount to persist npm cache between builds
-RUN --mount=type=cache,target=/root/.npm \
-    npm install
-
-# Copy Tailwind input CSS and source files needed for content scanning
-# Copy in order: config, input CSS, then templates (for better caching)
-COPY web_dashboard/static/css/input.css ./web_dashboard/static/css/input.css
-COPY web_dashboard/templates ./web_dashboard/templates
-COPY web_dashboard/src ./web_dashboard/src
-
-# Build Tailwind CSS (production-optimized, minified)
-# Ensure output directory exists and build with error handling
-RUN mkdir -p web_dashboard/static/css && \
-    npm run build:css && \
-    ls -lh web_dashboard/static/css/tailwind.css || \
-    (echo "ERROR: Tailwind CSS build failed - output file not found" && exit 1)
-
-# Build TypeScript: Copy TypeScript config and package.json
-COPY web_dashboard/package.json ./web_dashboard/package.json
-COPY web_dashboard/tsconfig.json ./web_dashboard/tsconfig.json
-
-# Install TypeScript dependencies
-# Use BuildKit cache mount to persist npm cache between builds
-WORKDIR /app/web_dashboard
-RUN --mount=type=cache,target=/root/.npm \
-    npm install
-
-# Copy TypeScript source files
-COPY web_dashboard/src ./src
-
-# Build TypeScript (outputs to static/js/)
-RUN echo "=== TypeScript Compilation Starting ===" && \
-    npm run build || \
-    (echo "=== TypeScript Compilation Failed ===" && \
-    echo "Showing compilation diagnostics:" && \
-    (npx tsc --diagnostics 2>&1 || true) && \
-    echo "=== Full TypeScript Error Output ===" && \
-    exit 1) && \
-    echo "=== TypeScript Compilation Successful ===" && \
-    ls -lh static/js/dashboard.js static/js/settings.js static/js/theme.js static/js/chart_theme_utils.js static/js/congress_trades.js static/js/ticker_details.js static/js/ai_assistant.js static/js/jobs.js static/js/system.js || \
-    (echo "ERROR: TypeScript build failed - output files not found" && exit 1)
-
-# Stage 2: Python app
-# Use shared base image with common Python dependencies
+# Stage 1 is removed - use shared frontend-builder image
 FROM trading-dashboard-base:latest
 
 # Set Flask-specific environment variable
@@ -68,17 +16,14 @@ ENV FLASK_PORT=5001
 ARG CACHEBUST=1
 COPY . /app
 
-# Copy built Tailwind CSS from builder stage
-# Ensure directory exists first, then copy the built CSS file
-RUN mkdir -p web_dashboard/static/css
-COPY --from=frontend-builder /app/web_dashboard/static/css/tailwind.css ./web_dashboard/static/css/tailwind.css
+# Copy built frontend assets from shared builder
+# Ensure directory exists first, then copy the built files
+RUN mkdir -p web_dashboard/static/css web_dashboard/static/js
+COPY --from=trading-dashboard-frontend:latest /app/web_dashboard/static/css/tailwind.css ./web_dashboard/static/css/
+COPY --from=trading-dashboard-frontend:latest /app/web_dashboard/static/js/ ./web_dashboard/static/js/
 RUN test -f web_dashboard/static/css/tailwind.css || (echo "ERROR: Tailwind CSS file not found after copy from builder stage" && exit 1)
 
-# Copy compiled TypeScript JavaScript files from builder stage
-# Copy all TypeScript-compiled files (including system.js)
-RUN mkdir -p web_dashboard/static/js
-# Copy ALL compiled TypeScript JavaScript files and source maps from builder stage
-COPY --from=frontend-builder /app/web_dashboard/static/js/ ./web_dashboard/static/js/
+
 
 # Verify that key files are present
 RUN test -f web_dashboard/static/js/settings.js || (echo "ERROR: settings.js missing" && exit 1)

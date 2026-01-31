@@ -39,6 +39,16 @@ if str(web_dashboard_dir) not in sys.path:
 
 logger = logging.getLogger(__name__)
 
+AI_JOB_NAMES = {
+    'ticker_analysis',
+    'etf_group_analysis',
+    'analyze_congress_trades',
+    'rescore_congress_sessions',
+    'social_sentiment',
+    'social_sentiment_ai',
+    'signal_scan'
+}
+
 
 def mark_job_started(
     job_name: str,
@@ -358,6 +368,61 @@ def cleanup_stale_running_jobs(max_age_hours: int = 24) -> int:
     except Exception as e:
         logger.warning(f"Failed to cleanup stale jobs: {e}")
         return 0
+
+
+def get_running_ai_job(
+    exclude_job_name: Optional[str] = None,
+    max_age_hours: int = 6
+) -> Optional[str]:
+    """
+    Check if any AI job is currently running (global lock).
+
+    Args:
+        exclude_job_name: Job name to ignore (typically current job)
+        max_age_hours: Ignore running jobs older than this window
+
+    Returns:
+        Running job name if lock is active, otherwise None
+    """
+    try:
+        from supabase_client import SupabaseClient
+        client = SupabaseClient(use_service_role=True)
+        result = client.supabase.table("job_executions") \
+            .select("job_name, started_at") \
+            .eq("status", "running") \
+            .in_("job_name", list(AI_JOB_NAMES)) \
+            .execute()
+
+        if not result.data:
+            return None
+
+        cutoff = datetime.now(timezone.utc).timestamp() - (max_age_hours * 3600)
+
+        for row in result.data:
+            job_name = row.get("job_name")
+            if not job_name or job_name == exclude_job_name:
+                continue
+
+            started_at = row.get("started_at")
+            if started_at:
+                try:
+                    started = datetime.fromisoformat(
+                        started_at.replace("Z", "+00:00") if isinstance(started_at, str) else str(started_at)
+                    )
+                    if started.tzinfo is None:
+                        started = started.replace(tzinfo=timezone.utc)
+                    if started.timestamp() < cutoff:
+                        continue
+                except Exception:
+                    # If parse fails, treat as active to be safe
+                    pass
+
+            return job_name
+
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to check AI job lock: {e}")
+        return None
 
 
 def add_to_retry_queue(

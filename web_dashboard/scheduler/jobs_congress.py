@@ -161,6 +161,7 @@ def fetch_congress_trades_job() -> None:
             from ollama_client import get_ollama_client
             from web_dashboard.utils.politician_mapping import lookup_politician_metadata, resolve_politician_name
             from settings import get_summarizing_model
+            from data.committee_jurisdictions import get_committee_context
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
@@ -477,14 +478,105 @@ def fetch_congress_trades_job() -> None:
                             conflict_score = None
                             notes = None
                             model_name = None  # Will be set if AI analysis runs
-                            
+
                             # Note: Ollama errors (e.g., 404 if service not running) are handled gracefully
                             # Trades will still be saved without AI analysis if Ollama is unavailable
                             if ollama_client:
                                 try:
-                                    # Build prompt for AI analysis
-                                    prompt = f"Analyze this trade: {politician} {'bought' if trade_type == 'Purchase' else 'sold'} {ticker} on {transaction_date}. Asset: {asset_type}. Amount: {amount}. Is this suspicious given current events? Return JSON: {{'conflict_score': 0.0-1.0, 'reasoning': '...'}}"
-                                    
+                                    # Fetch company/sector info from securities table
+                                    company_name = 'Unknown'
+                                    sector = 'Unknown'
+                                    description = None
+                                    try:
+                                        sec_result = supabase_client.supabase.table("securities")\
+                                            .select("company_name, sector, description")\
+                                            .eq("ticker", ticker)\
+                                            .maybe_single()\
+                                            .execute()
+                                        if sec_result and sec_result.data:
+                                            company_name = sec_result.data.get('company_name', 'Unknown')
+                                            sector = sec_result.data.get('sector', 'Unknown')
+                                            description = sec_result.data.get('description')
+                                    except Exception as sec_err:
+                                        logger.debug(f"Could not fetch security info for {ticker}: {sec_err}")
+
+                                    # Fetch committee assignments if we have politician_id
+                                    committees_str = 'Unknown'
+                                    if politician_id:
+                                        try:
+                                            assignments_result = supabase_client.supabase.table("committee_assignments")\
+                                                .select("""
+                                                    rank,
+                                                    title,
+                                                    committees (
+                                                        name,
+                                                        target_sectors
+                                                    )
+                                                """)\
+                                                .eq("politician_id", politician_id)\
+                                                .execute()
+
+                                            if assignments_result.data:
+                                                committees_list = []
+                                                for assignment in assignments_result.data:
+                                                    committee = assignment.get('committees', {})
+                                                    committee_name = committee.get('name', 'Unknown')
+                                                    target_sectors = committee.get('target_sectors', [])
+                                                    title = assignment.get('title', 'Member')
+                                                    sectors_str = ', '.join(target_sectors) if target_sectors else 'None'
+                                                    title_str = f" ({title})" if title else ""
+                                                    committees_list.append(f"{committee_name}{title_str} - Sectors: {sectors_str}")
+                                                committees_str = '; '.join(committees_list) if committees_list else 'None'
+                                            else:
+                                                committees_str = 'None (no committee assignments found)'
+                                        except Exception as comm_err:
+                                            logger.debug(f"Could not fetch committees for politician {politician_id}: {comm_err}")
+
+                                    # Get committee jurisdiction descriptions (the "cheat sheet" for the AI)
+                                    committee_context = get_committee_context(committees_str)
+
+                                    # Build description section
+                                    description_section = ""
+                                    if description:
+                                        description_section = f"- Description: {description}\n"
+
+                                    # Build full prompt with all context (matches batch script quality)
+                                    prompt = f"""Analyze this trade for potential Insider Trading/Conflict of Interest.
+Data:
+- Politician: {politician} ({party or 'Unknown'} - {state or 'Unknown'})
+- Chamber: {chamber}
+- Asset Owner: {owner}
+- Committee Assignments: {committees_str}
+- Committee Jurisdictions:
+{committee_context}
+- Ticker: {ticker}
+- Company: {company_name}
+- Sector: {sector}
+{description_section}- Date: {transaction_date}
+- Type: {trade_type}
+- Amount: {amount}
+
+Task:
+Calculate a 'conflict_score' from 0.0 to 1.0 based on these rules:
+1. HIGH SCORE (0.8-1.0): Direct overlap (e.g., Armed Services member buying Defense stock, Intelligence member trading defense contractors, spouse trades, timing near votes).
+2. MEDIUM SCORE (0.4-0.7): Sector overlap or related industries.
+3. LOW SCORE (0.0-0.3): Broad index funds or clearly unrelated industries.
+
+Consider:
+- Committee jurisdiction over company's sector (see Committee Jurisdictions above)
+- Asset owner (Self vs Spouse/Dependent) - spouse trades can still be concerning
+- Political party relevance to industry
+- State interests (e.g., CA rep + tech stocks, TX rep + energy)
+
+Return JSON with these fields:
+{{
+  "conflict_score": 0.95,
+  "confidence_score": 0.88,
+  "reasoning": "Brief explanation of why this score was assigned."
+}}
+
+The confidence_score (0.0-1.0) indicates how certain you are about the conflict_score. Use high confidence (>0.8) for clear-cut cases, medium (0.5-0.8) for typical cases, and low (<0.5) for ambiguous situations."""
+
                                     # Query Ollama (non-streaming for structured response)
                                     # Get model from settings (defaults to granite3.3:8b from model_config.json)
                                     model_name = get_summarizing_model()
@@ -493,10 +585,10 @@ def fetch_congress_trades_job() -> None:
                                         prompt=prompt,
                                         model=model_name,
                                         stream=True,
-                                        temperature=0.3  # Lower temperature for more consistent analysis
+                                        temperature=0.1  # Lower temperature for consistent JSON
                                     ):
                                         full_response += chunk
-                                    
+
                                     parsed, parse_err = _parse_ai_conflict_json(full_response)
                                     if parsed:
                                         conflict_score = float(parsed.get("conflict_score", 0.0))
@@ -508,7 +600,7 @@ def fetch_congress_trades_job() -> None:
                                         logger.debug(f"Response was: {full_response[:500]}")
                                         conflict_score = None
                                         notes = "Failed to parse AI response"
-                                    
+
                                 except json.JSONDecodeError as e:
                                     logger.warning(f"Failed to parse AI response for {politician} {ticker}: {e}")
                                     logger.debug(f"Response was: {full_response[:500]}")
@@ -662,6 +754,16 @@ def analyze_congress_trades_job() -> None:
     """
     job_id = 'analyze_congress_trades'
     start_time = time.time()
+
+    # Global AI lock (prevent overlapping AI jobs)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
     
     try:
         # Ensure path is set up correctly before importing
@@ -867,6 +969,16 @@ def rescore_congress_sessions_job(limit: int = 1000, batch_size: int = 10, model
     """
     job_id = 'rescore_congress_sessions'
     start_time = time.time()
+
+    # Global AI lock (prevent overlapping AI jobs)
+    try:
+        from utils.job_tracking import get_running_ai_job
+        running_ai = get_running_ai_job(exclude_job_name=job_id)
+        if running_ai:
+            logger.info(f"⏸️  AI lock active: {running_ai} is running. Skipping {job_id}.")
+            return
+    except Exception as e:
+        logger.warning(f"AI lock check failed (continuing): {e}")
     
     try:
         # Ensure path is set up correctly before importing
@@ -1163,6 +1275,30 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
                 message = summary
             else:
                 message = "Congress trades scraping completed"
+            
+            # Run session backfill so new scraped trades get linked to sessions (for session-based AI analysis)
+            backfill_path = project_root / 'web_dashboard' / 'scripts' / 'backfill_congress_sessions.py'
+            if backfill_path.exists():
+                try:
+                    logger.info("Running session backfill to link new trades to sessions...")
+                    backfill_proc = subprocess.run(
+                        [sys.executable, '-u', str(backfill_path)],
+                        cwd=str(project_root),
+                        capture_output=True,
+                        text=True,
+                        timeout=3600,
+                        encoding='utf-8'
+                    )
+                    if backfill_proc.returncode == 0:
+                        logger.info("Session backfill completed successfully.")
+                    else:
+                        logger.warning(f"Session backfill exited with code {backfill_proc.returncode}; new trades may need manual backfill.")
+                except subprocess.TimeoutExpired:
+                    logger.warning("Session backfill timed out; new trades may need manual backfill.")
+                except Exception as backfill_err:
+                    logger.warning(f"Session backfill failed: {backfill_err}; new trades may need manual backfill.")
+            else:
+                logger.debug(f"Backfill script not found at {backfill_path}; skipping session link.")
             
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             mark_job_completed('scrape_congress_trades', target_date, None, [], duration_ms=duration_ms, message=message)

@@ -44,19 +44,25 @@ from scheduler.scheduler_core import log_job_execution
 logger = logging.getLogger(__name__)
 
 def benchmark_refresh_job() -> None:
-    """Refresh benchmark data cache for chart performance.
+    """Refresh benchmark and commodity data cache for chart performance.
     
     This job:
-    1. Fetches latest benchmark data from Yahoo Finance
+    1. Fetches latest benchmark and commodity data from Yahoo Finance
     2. Caches it in the benchmark_data table
-    3. Ensures charts always have up-to-date market index data
+    3. Ensures charts always have up-to-date market index and commodity data
     
-    Benchmarks refreshed:
+    Benchmarks & Commodities refreshed:
     - S&P 500 (^GSPC)
     - Nasdaq-100 (QQQ)
     - Russell 2000 (^RUT)
     - Total Market (VTI)
+    - Gold (GC=F)
+    - Silver (SI=F)
+    - Crude Oil (CL=F)
+    - Uranium ETF (URA)
+    - Lithium ETF (LIT)
     """
+
     job_id = 'benchmark_refresh'
     start_time = time.time()
     target_date = datetime.now(timezone.utc).date()
@@ -92,8 +98,22 @@ def benchmark_refresh_job() -> None:
             {"ticker": "^GSPC", "name": "S&P 500"},
             {"ticker": "QQQ", "name": "Nasdaq-100"},
             {"ticker": "^RUT", "name": "Russell 2000"},
-            {"ticker": "VTI", "name": "Total Market"}
+            {"ticker": "VTI", "name": "Total Market"},
+            # Commodities - Precious Metals
+            {"ticker": "GC=F", "name": "Gold"},
+            {"ticker": "SI=F", "name": "Silver"},
+            # Commodities - Energy
+            {"ticker": "CL=F", "name": "Crude Oil"},
+            {"ticker": "NG=F", "name": "Natural Gas"},
+            # Commodities - Industrial Metals
+            {"ticker": "HG=F", "name": "Copper"},
+            # Commodities - ETFs (Uranium, Lithium)
+            {"ticker": "URA", "name": "Uranium ETF"},
+            {"ticker": "LIT", "name": "Lithium ETF"}, 
+            # Commodities - Agriculture
+            {"ticker": "ZW=F", "name": "Wheat"}
         ]
+
         
         # Fetch data for the last 30 days to ensure we have recent data
         end_date = datetime.now()

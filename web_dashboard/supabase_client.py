@@ -78,41 +78,72 @@ class SupabaseClient:
             
             logger.debug(f"[SUPABASE_CLIENT] Initializing with user token (length: {len(user_token)})")
             
+            # Check if token is expired BEFORE calling set_session()
+            # Calling set_session() with an expired token causes JWT validation errors
+            token_is_valid = True
+            try:
+                import base64
+                import json as json_lib
+                import time as time_mod
+                token_parts = user_token.split('.')
+                if len(token_parts) >= 2:
+                    payload = token_parts[1]
+                    payload += '=' * (4 - len(payload) % 4)
+                    decoded = base64.urlsafe_b64decode(payload)
+                    token_data = json_lib.loads(decoded)
+                    exp = token_data.get('exp', 0)
+                    if exp > 0 and exp < time_mod.time():
+                        logger.warning(f"[SUPABASE_CLIENT] ⚠️ Token is EXPIRED (exp={exp}, now={int(time_mod.time())}). Skipping set_session().")
+                        token_is_valid = False
+            except Exception as e:
+                logger.debug(f"[SUPABASE_CLIENT] Could not parse token expiry: {e}")
+            
             # CRITICAL: Set Authorization header on ALL request paths
             # The Supabase Python SDK uses multiple internal clients (postgrest, auth, etc.)
             # We need to ensure the Authorization header is set for ALL of them
             
-            try:
-                # Method 1: Set session via auth client (standard approach)
-                # This is the CORRECT way - it sets auth headers globally for ALL requests
-                # including RPC calls, table queries, etc.
-                if refresh_token:
-                    # Use both tokens for proper session
-                    self.supabase.auth.set_session(
-                        access_token=user_token,
-                        refresh_token=refresh_token
-                    )
-                    logger.debug("[SUPABASE_CLIENT] ✅ Successfully called auth.set_session() with refresh_token")
-                else:
-                    # Try with empty refresh_token as fallback
-                    self.supabase.auth.set_session(
-                        access_token=user_token,
-                        refresh_token=""
-                    )
-                    logger.debug("[SUPABASE_CLIENT] ⚠️ Called auth.set_session() without refresh_token (may not work for RPC)")
-            except Exception as e:
-                logger.warning(f"[SUPABASE_CLIENT] ❌ auth.set_session() failed: {e}")
-                # Check if this is a signature/JWT validation error - if so, mark session as invalid
-                # so the auth middleware can force a logout/redirect
-                error_str = str(e).lower()
-                if "invalid jwt" in error_str or "signature" in error_str or "token" in error_str:
-                    try:
-                        from flask import request, has_request_context
-                        if has_request_context():
-                            request._supabase_session_invalid = True
-                            logger.warning("[SUPABASE_CLIENT] 🚨 Marked session as invalid due to JWT error")
-                    except ImportError:
-                        pass  # Not in Flask context
+            # Only call set_session if token is not expired
+            if token_is_valid:
+                try:
+                    # Method 1: Set session via auth client (standard approach)
+                    # This is the CORRECT way - it sets auth headers globally for ALL requests
+                    # including RPC calls, table queries, etc.
+                    if refresh_token:
+                        # Use both tokens for proper session
+                        self.supabase.auth.set_session(
+                            access_token=user_token,
+                            refresh_token=refresh_token
+                        )
+                        logger.debug("[SUPABASE_CLIENT] ✅ Successfully called auth.set_session() with refresh_token")
+                    else:
+                        # Try with empty refresh_token as fallback
+                        self.supabase.auth.set_session(
+                            access_token=user_token,
+                            refresh_token=""
+                        )
+                        logger.debug("[SUPABASE_CLIENT] ⚠️ Called auth.set_session() without refresh_token (may not work for RPC)")
+                except Exception as e:
+                    logger.warning(f"[SUPABASE_CLIENT] ❌ auth.set_session() failed: {e}")
+                    # Check if this is a signature/JWT validation error - if so, mark session as invalid
+                    # so the auth middleware can force a logout/redirect
+                    error_str = str(e).lower()
+                    if "invalid jwt" in error_str or "signature" in error_str or "token" in error_str:
+                        try:
+                            from flask import request, has_request_context
+                            if has_request_context():
+                                request._supabase_session_invalid = True
+                                logger.warning("[SUPABASE_CLIENT] 🚨 Marked session as invalid due to JWT error")
+                        except ImportError:
+                            pass  # Not in Flask context
+            else:
+                # Token is expired - mark session as invalid so refresh flow can handle it
+                try:
+                    from flask import request, has_request_context
+                    if has_request_context():
+                        request._supabase_session_invalid = True
+                        logger.warning("[SUPABASE_CLIENT] 🚨 Marked session as invalid due to expired token")
+                except ImportError:
+                    pass  # Not in Flask context
             
             # Method 2: Set Authorization header directly on postgrest client
             # This ensures table queries work

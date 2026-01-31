@@ -126,7 +126,21 @@ COMMITTEE_CONTEXT = {
     "Senate Committee on the Judiciary": (
         "Regulates Antitrust (Big Tech), Intellectual Property (Patents/Copyright), and Immigration."
     ),
-    
+
+    # --- INTELLIGENCE COMMITTEES ---
+    "House Permanent Select Committee on Intelligence": (
+        "Oversees CIA, NSA, DIA, and all U.S. Intelligence agencies. Direct conflict with Defense Contractors "
+        "(Lockheed Martin, Northrop Grumman, Raytheon, General Dynamics, L3Harris), Cybersecurity companies "
+        "(Palantir, Booz Allen, SAIC, Leidos), and Satellite/Aerospace (SpaceX contracts, Boeing). "
+        "Members have access to classified briefings on defense programs."
+    ),
+
+    "Senate Select Committee on Intelligence": (
+        "Oversees CIA, NSA, DIA, and all U.S. Intelligence agencies (Senate version). Direct conflict with "
+        "Defense Contractors, Cybersecurity companies, and Aerospace. Members receive classified briefings "
+        "on national security matters including defense spending and technology programs."
+    ),
+
     # --- LEADERSHIP ---
     "Leadership": (
         "Role: Speaker / Party Leader / Majority Leader. "

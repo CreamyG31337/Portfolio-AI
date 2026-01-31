@@ -2195,3 +2195,153 @@ def create_investor_allocation_chart(investors_df: pd.DataFrame, fund_name: Opti
     )
     
     return fig
+
+
+def create_commodity_chart(
+    commodities: List[str],
+    days: int = 365,
+    theme: str = 'light',
+    show_weekend_shading: bool = True
+) -> go.Figure:
+    """Create a multi-line chart showing commodity price changes over time.
+    
+    Each line shows percentage change from the first date in the series,
+    similar to how benchmarks are displayed in portfolio charts.
+    
+    Args:
+        commodities: List of commodity keys to display (e.g., ['gold', 'silver', 'oil'])
+        days: Number of days of historical data to fetch
+        theme: Chart theme ('light', 'dark', 'midnight-tokyo', 'abyss')
+        show_weekend_shading: Whether to add weekend shading
+        
+    Returns:
+        Plotly Figure object with commodity price traces
+    """
+    from datetime import datetime, timedelta
+    from web_dashboard.supabase_client import SupabaseClient
+    
+    # Map commodity names to ticker symbols
+    COMMODITY_TICKERS = {
+        'gold': {'ticker': 'GC=F', 'name': 'Gold', 'color': '#f59e0b'},  # Amber/gold color
+        'silver': {'ticker': 'SI=F', 'name': 'Silver', 'color': '#94a3b8'},  # Silver-gray color
+        'oil': {'ticker': 'CL=F', 'name': 'Crude Oil', 'color': '#16a34a'},  # Green
+        'uranium': {'ticker': 'URA', 'name': 'Uranium', 'color': '#8b5cf6'},  # Purple
+        'lithium': {'ticker': 'LIT', 'name': 'Lithium', 'color': '#06b6d4'},  # Cyan
+    }
+    
+    fig = go.Figure()
+    
+    # Calculate date range
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+    
+    # Fetch data for each commodity
+    client = SupabaseClient()
+    
+    for commodity_key in commodities:
+        if commodity_key not in COMMODITY_TICKERS:
+            logger.warning(f"Unknown commodity: {commodity_key}")
+            continue
+        
+        config = COMMODITY_TICKERS[commodity_key]
+        ticker = config['ticker']
+        
+        # Fetch benchmark data (commodities are stored in benchmark_data table)
+        data = client.get_benchmark_data(ticker, start_date, end_date)
+        
+        if not data or len(data) == 0:
+            logger.warning(f"No data found for {config['name']} ({ticker})")
+            continue
+        
+        # Convert to DataFrame for easier manipulation
+        df = pd.DataFrame(data)
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.sort_values('date')
+        
+        # Filter out weekends/holidays
+        df = _filter_trading_days(df, 'date', market='us')
+        
+        # Adjust dates to market close time for alignment
+        df = _adjust_to_market_close(df, 'date')
+        
+        if len(df) == 0:
+            continue
+        
+        # Normalize to percentage change from first value (baseline 100)
+        first_close = float(df['close'].iloc[0])
+        df['normalized'] = ((df['close'].astype(float) / first_close) * 100)
+        
+        # Calculate return for label
+        if len(df) > 1:
+            final_value = df['normalized'].iloc[-1]
+            commodity_return = final_value - 100
+            label_suffix = f" ({commodity_return:+.2f}%)"
+        else:
+            label_suffix = ""
+        
+        # Add trace
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['normalized'],
+            mode='lines',
+            name=f"{config['name']}{label_suffix}",
+            line=dict(color=config['color'], width=3),
+            hovertemplate=f"{config['name']}<br>%{{x|%Y-%m-%d}}<br>%{{y:,.2f}}<extra></extra>"
+        ))
+    
+    # Get theme configuration
+    theme_config = get_chart_theme_config(theme)
+    
+    # Add weekend shading if requested and we have data
+    if show_weekend_shading and len(fig.data) > 0:
+        # Get date range from first trace
+        first_trace = fig.data[0]
+        if hasattr(first_trace, 'x') and len(first_trace.x) > 0:
+            trace_start = pd.to_datetime(first_trace.x[0])
+            trace_end = pd.to_datetime(first_trace.x[-1])
+            _add_weekend_shading(fig, trace_start, trace_end,
+                                weekend_color=theme_config['weekend_shading_color'])
+            _add_holiday_shading(fig, trace_start, trace_end, market='us',
+                                holiday_color=theme_config['weekend_shading_color'])
+    
+    # Add baseline reference line
+    if len(fig.data) > 0:
+        fig.add_hline(
+            y=100,
+            line_dash="dash",
+            line_color=theme_config['baseline_line_color'],
+            opacity=0.5,
+            annotation_text="Baseline (0%)",
+            annotation_position="right"
+        )
+    
+    # Layout
+    fig.update_layout(
+        title=dict(text="Commodity & Asset Prices", x=0.5, xanchor='center'),
+        xaxis_title="Date",
+        yaxis_title="Performance Index (Baseline 100)",
+        hovermode='x unified',
+        template=theme_config['template'],
+        height=400,
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor=theme_config['legend_bg_color']
+        ),
+        margin=dict(l=50, r=50, t=80, b=50)
+    )
+    
+    # Handle empty chart
+    if len(fig.data) == 0:
+        fig.add_annotation(
+            text="No commodity data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16)
+        )
+    
+    return fig
+

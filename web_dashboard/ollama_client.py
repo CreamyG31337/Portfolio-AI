@@ -313,7 +313,7 @@ class OllamaClient:
         request_start_time = time.time()
         
         try:
-            logger.info(f"🤖 Ollama query starting: model={model}, temp={effective_temp}, ctx={effective_ctx}, max_tokens={effective_max_tokens}, stream={stream}, timeout={streaming_timeout}s")
+            logger.info(f"[Ollama] query starting: model={model}, temp={effective_temp}, ctx={effective_ctx}, max_tokens={effective_max_tokens}, stream={stream}, timeout={streaming_timeout}s")
             logger.debug(f"Prompt length: {len(full_prompt)} chars")
             
             response = self.session.post(
@@ -325,7 +325,7 @@ class OllamaClient:
             response.raise_for_status()
             
             connection_time = time.time() - request_start_time
-            logger.debug(f"⏱️  Ollama connection established in {connection_time:.2f}s, streaming...")
+            logger.debug(f"Ollama connection established in {connection_time:.2f}s, streaming...")
             
             if stream:
                 # Stream response chunks with timeout protection
@@ -335,7 +335,7 @@ class OllamaClient:
                 def timeout_handler():
                     """Handler called when streaming timeout is reached"""
                     timeout_triggered.set()
-                    logger.error(f"❌ Ollama streaming timeout after {streaming_timeout}s - killing connection")
+                    logger.error(f"[ERROR] Ollama streaming timeout after {streaming_timeout}s - killing connection")
                 
                 # Set up timeout timer
                 timeout_timer = threading.Timer(streaming_timeout, timeout_handler)
@@ -347,7 +347,7 @@ class OllamaClient:
                         # Check if timeout was triggered
                         if timeout_triggered.is_set():
                             elapsed = time.time() - request_start_time
-                            logger.error(f"❌ Ollama streaming timed out after {elapsed:.2f}s")
+                            logger.error(f"[ERROR] Ollama streaming timed out after {elapsed:.2f}s")
                             yield f"\n\n[ERROR: Streaming timed out after {elapsed:.1f}s - response may be incomplete]"
                             break
                         
@@ -360,7 +360,7 @@ class OllamaClient:
                                     # Cancel timeout timer on successful completion
                                     timeout_timer.cancel()
                                     elapsed = time.time() - request_start_time
-                                    logger.info(f"✅ Ollama streaming completed in {elapsed:.2f}s")
+                                    logger.info(f"[OK] Ollama streaming completed in {elapsed:.2f}s")
                                     break
                             except json.JSONDecodeError:
                                 continue
@@ -372,30 +372,30 @@ class OllamaClient:
                 # Non-streaming response
                 data = response.json()
                 elapsed = time.time() - request_start_time
-                logger.info(f"✅ Ollama request completed in {elapsed:.2f}s")
+                logger.info(f"[OK] Ollama request completed in {elapsed:.2f}s")
                 yield data.get("response", "")
                 
         except requests.exceptions.Timeout:
             elapsed = time.time() - request_start_time
-            logger.error(f"❌ Ollama request timed out after {elapsed:.2f}s (timeout setting: {self.timeout}s)")
+            logger.error(f"[ERROR] Ollama request timed out after {elapsed:.2f}s (timeout setting: {self.timeout}s)")
             yield "Request timed out. Please try again with a shorter prompt or context."
         except requests.exceptions.ConnectionError as e:
             elapsed = time.time() - request_start_time
-            logger.error(f"❌ Cannot connect to Ollama API at {self.base_url} after {elapsed:.2f}s: {e}")
+            logger.error(f"[ERROR] Cannot connect to Ollama API at {self.base_url} after {elapsed:.2f}s: {e}")
             yield "Cannot connect to AI assistant. Please check if Ollama is running."
         except requests.exceptions.HTTPError as e:
             elapsed = time.time() - request_start_time
             # Provide more helpful error messages for common issues
             if e.response and e.response.status_code == 404:
                 # 404 usually means model doesn't exist
-                logger.error(f"❌ Ollama API HTTP 404 after {elapsed:.2f}s: Model '{model}' not found. Available models: {', '.join(self.list_available_models()[:5])}")
+                logger.error(f"[ERROR] Ollama API HTTP 404 after {elapsed:.2f}s: Model '{model}' not found. Available models: {', '.join(self.list_available_models()[:5])}")
                 yield f"Model '{model}' not found. Please ensure the model is installed: ollama pull {model}"
             else:
-                logger.error(f"❌ Ollama API HTTP error after {elapsed:.2f}s: {e}")
+                logger.error(f"[ERROR] Ollama API HTTP error after {elapsed:.2f}s: {e}")
                 yield f"AI assistant error: {str(e)}"
         except Exception as e:
             elapsed = time.time() - request_start_time
-            logger.error(f"❌ Unexpected error querying Ollama after {elapsed:.2f}s: {e}", exc_info=True)
+            logger.error(f"[ERROR] Unexpected error querying Ollama after {elapsed:.2f}s: {e}", exc_info=True)
             yield f"An error occurred: {str(e)}"
     
     def generate_completion(
@@ -654,7 +654,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             logger.error(f"❌ Ollama summary request timed out after {self.timeout}s")
             return {}
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"❌ Cannot connect to Ollama API at {self.base_url}: {e}")
+            logger.error(f"[ERROR] Cannot connect to Ollama API at {self.base_url}: {e}")
             return {}
         except Exception as e:
             logger.error(f"❌ Error generating summary: {e}", exc_info=True)
@@ -778,7 +778,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             logger.error(f"❌ Ollama streaming summary timed out after {self.timeout}s")
             return {}
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"❌ Cannot connect to Ollama API at {self.base_url}: {e}")
+            logger.error(f"[ERROR] Cannot connect to Ollama API at {self.base_url}: {e}")
             return {}
         except Exception as e:
             logger.error(f"❌ Error generating streaming summary: {e}", exc_info=True)
@@ -827,7 +827,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             logger.error(f"❌ Ollama embedding request timed out after {self.timeout}s")
             return []
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"❌ Cannot connect to Ollama API at {self.base_url}: {e}")
+            logger.error(f"[ERROR] Cannot connect to Ollama API at {self.base_url}: {e}")
             return []
         except Exception as e:
             logger.error(f"❌ Error generating embedding: {e}", exc_info=True)
