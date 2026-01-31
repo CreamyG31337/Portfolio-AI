@@ -4,6 +4,7 @@ import logging
 import time
 import pandas as pd
 from datetime import datetime, timezone, timedelta
+from typing import Dict, List, Any
 import json
 
 from auth import require_auth
