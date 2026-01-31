@@ -138,6 +138,14 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
+    # Strict Transport Security (HSTS)
+    # 1 year duration, include subdomains
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
+    # Permissions Policy
+    # Disable features not used by the dashboard
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=(), payment=(), usb=()'
+
     # Content Security Policy (CSP)
     # Allows scripts/styles from self and trusted CDNs
     # 'unsafe-inline' and 'unsafe-eval' are required for current template/library architecture
