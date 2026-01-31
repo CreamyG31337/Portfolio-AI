@@ -3,6 +3,8 @@
  * Handles manual trade entry, email parsing, and trade history
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 // Type definitions
 interface Trade {
     date: string;
@@ -233,7 +235,7 @@ async function handleManualSubmit(e: Event): Promise<void> {
 
         const response = await fetch('/api/admin/trades/submit', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(payload),
             credentials: 'include'
         });
@@ -286,7 +288,7 @@ async function handleEmailParse(): Promise<void> {
     try {
         const response = await fetch('/api/admin/trades/preview-email', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({ text: textArea.value }),
             credentials: 'include'
         });
@@ -378,7 +380,7 @@ async function handleEmailConfirm(): Promise<void> {
     try {
         const response = await fetch('/api/admin/trades/submit', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(payload),
             credentials: 'include'
         });

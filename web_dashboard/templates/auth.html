@@ -17,6 +17,10 @@
 
     <!-- Flowbite CSS (required for components) -->
     <link href="https://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.css" rel="stylesheet" />
+
+    {% if CSRF_ENABLED %}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    {% endif %}
 </head>
 
 <body class="bg-dashboard-background min-h-screen flex flex-col">
@@ -303,6 +307,13 @@
             }
         }
 
+        // Helper to get CSRF token
+        function getCsrfHeaders() {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            const token = meta ? meta.getAttribute('content') : null;
+            return token ? { 'X-CSRFToken': token } : {};
+        }
+
         // Login form
         document.getElementById('loginForm').addEventListener('submit', async function (e) {
             e.preventDefault();
@@ -319,7 +330,10 @@
                 const response = await fetch('/api/auth/login', {
                     method: 'POST',
                     credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
                     body: JSON.stringify({ email, password })
                 });
 
@@ -377,7 +391,10 @@
             try {
                 const response = await fetch('/api/auth/magic-link', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
                     body: JSON.stringify({ email })
                 });
 
@@ -418,7 +435,10 @@
                 const response = await fetch('/api/auth/register', {
                     method: 'POST',
                     credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
                     body: JSON.stringify({ email, password, name })
                 });
 
@@ -452,7 +472,10 @@
             try {
                 const response = await fetch('/api/auth/reset-password-request', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
                     body: JSON.stringify({ email })
                 });
 

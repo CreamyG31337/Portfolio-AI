@@ -3,6 +3,7 @@
  * Handles system status and cache management
  */
 
+import { getCsrfHeaders } from './csrf.js';
 import { clearCache, bumpCacheVersion, resetSystemCache } from './system_cache_functions.js';
 
 // Type definitions
@@ -178,7 +179,8 @@ async function toggleRegistration(): Promise<void> {
         const response = await fetch('/api/admin/system/registration/toggle', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
             },
             body: JSON.stringify({ enabled })
         });

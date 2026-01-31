@@ -3,6 +3,8 @@
  * Handles user management, contributor access, and all related operations
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 // Type definitions
 interface User {
     user_id: string;
@@ -651,7 +653,7 @@ function setUserRole(email: string, newRole: string): void {
             try {
                 const response = await fetch('/api/admin/users/set-role', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                     body: JSON.stringify({ user_email: email, new_role: newRole })
                 });
                 const data: ApiResponse = await response.json();
@@ -682,7 +684,7 @@ async function showAssignFundDialog(email: string): Promise<void> {
     try {
         const response = await fetch('/api/admin/assign-fund', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({ user_email: email, fund_name: fund })
         });
 
@@ -716,7 +718,7 @@ async function showRemoveFundDialog(email: string): Promise<void> {
     try {
         const response = await fetch('/api/admin/remove-fund', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({ user_email: email, fund_name: fund })
         });
 
@@ -742,7 +744,7 @@ function sendInvite(email: string): void {
             try {
                 const response = await fetch('/api/admin/users/send-invite', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                     body: JSON.stringify({ user_email: email })
                 });
                 const data: ApiResponse = await response.json();
@@ -768,7 +770,7 @@ function deleteUser(email: string): void {
             try {
                 const response = await fetch('/api/admin/users/delete', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                     body: JSON.stringify({ user_email: email })
                 });
                 const data: ApiResponse = await response.json();
@@ -851,7 +853,7 @@ async function handleUpdateEmail(): Promise<void> {
 
         const response = await fetch('/api/admin/users/update-contributor-email', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({
                 contributor_name: data.name,
                 contributor_id: data.id,
@@ -987,7 +989,7 @@ async function handleGrantAccess(): Promise<void> {
     try {
         const response = await fetch('/api/admin/contributor-access/grant', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({
                 contributor_email: contributorEmail,
                 user_email: userEmail,
@@ -1062,7 +1064,7 @@ async function handleRevokeAccess(): Promise<void> {
             try {
                 const response = await fetch('/api/admin/contributor-access/revoke', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                     body: JSON.stringify({
                         contributor_email: contributorEmail,
                         user_email: userEmail

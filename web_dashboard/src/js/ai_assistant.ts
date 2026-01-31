@@ -3,6 +3,8 @@
  * Handles chat interface, streaming responses, context management, and search
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 // Configuration interfaces
 interface AIAssistantConfig {
     userEmail: string;
@@ -750,7 +752,7 @@ class AIAssistant {
 
             const response = await fetch('/api/v2/ai/preview_context', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                 body: JSON.stringify({
                     fund: this.selectedFund,
                     include_thesis: includeThesis,
@@ -932,7 +934,7 @@ class AIAssistant {
 
         fetch('/api/v2/ai/context', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({
                 action: action,
                 item_type: itemType,
@@ -952,7 +954,7 @@ class AIAssistant {
     clearContext(): void {
         fetch('/api/v2/ai/context', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({ action: 'clear' })
         })
             .then((res: Response) => res.json())
@@ -1246,7 +1248,7 @@ class AIAssistant {
 
         const response = await fetch('/api/v2/ai/search', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({
                 query: query,
                 tickers: tickers,
@@ -1266,7 +1268,7 @@ class AIAssistant {
     async performRepositorySearch(query: string): Promise<any[]> {
         const response = await fetch('/api/v2/ai/repository', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({
                 query: query,
                 max_results: 3,
@@ -1296,7 +1298,7 @@ class AIAssistant {
     sendWebAIMessage(requestData: ChatRequest, loadingId: string): void {
         fetch('/api/v2/ai/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(requestData)
         })
             .then((res: Response) => {
@@ -1340,7 +1342,7 @@ class AIAssistant {
     sendStreamingMessage(requestData: ChatRequest, loadingId: string): void {
         fetch('/api/v2/ai/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(requestData)
         })
             .then((res: Response) => {
@@ -1704,7 +1706,7 @@ class AIAssistant {
         // Save model preference to user settings
         fetch('/api/settings/ai_model', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({ model: this.selectedModel })
         }).catch((err: Error) => console.error('Error saving model preference:', err));
     }
@@ -1797,7 +1799,7 @@ class AIAssistant {
         try {
             const response = await fetch('/api/v2/ai/portfolio-intelligence', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                 body: JSON.stringify({ fund: this.selectedFund })
             });
 
@@ -2012,7 +2014,7 @@ class AIAssistant {
         try {
             const response = await fetch('/api/settings/ai_include_search', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                 body: JSON.stringify({ include_search: includeSearch })
             });
 
@@ -2038,7 +2040,7 @@ class AIAssistant {
         try {
             const response = await fetch('/api/settings/ai_include_insider_trades', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                 body: JSON.stringify({ include_insider_trades: includeInsiderTrades })
             });
 
@@ -2064,7 +2066,7 @@ class AIAssistant {
         try {
             const response = await fetch('/api/settings/ai_include_congress_trades', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                 body: JSON.stringify({ include_congress_trades: includeCongressTrades })
             });
 
@@ -2090,7 +2092,7 @@ class AIAssistant {
         try {
             const response = await fetch('/api/settings/ai_include_etf_trades', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
                 body: JSON.stringify({ include_etf_trades: includeEtfTrades })
             });
 

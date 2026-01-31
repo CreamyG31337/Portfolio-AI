@@ -9,6 +9,8 @@
  * - Run `npm run build:ts` to compile changes
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 console.log('[Jobs] jobs.ts file loaded and executing...');
 
 // Export empty object to make this a module
@@ -1461,7 +1463,7 @@ async function handleJobAction(e: Event): Promise<void> {
     try {
         const response = await fetch(`/api/admin/scheduler/jobs/${jobId}/${action}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify({}),
             credentials: 'include'
         });
@@ -1500,6 +1502,7 @@ async function startScheduler(): Promise<void> {
     try {
         const response = await fetch('/api/admin/scheduler/start', {
             method: 'POST',
+            headers: { ...getCsrfHeaders() },
             credentials: 'include'
         });
 
@@ -1594,7 +1597,7 @@ async function runJobWithParams(id: string, actualJobId: string): Promise<void> 
 
         const response = await fetch(`/api/admin/scheduler/jobs/${actualJobId}/run`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(params),
             credentials: 'include'
         });

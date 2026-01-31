@@ -3,6 +3,8 @@
  * Handles AgGrid initialization and interactions
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 // AgGrid types (using any for now - can install @types/ag-grid-community later)
 interface AgGridParams {
     value: string | null;
@@ -751,6 +753,7 @@ async function loadContextPreview(tradeIds: number[]): Promise<void> {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                ...getCsrfHeaders()
             },
             credentials: 'include',
             body: JSON.stringify({ trade_ids: tradeIds })
@@ -838,6 +841,7 @@ async function analyzeSelectedTrades(): Promise<void> {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                ...getCsrfHeaders()
             },
             credentials: 'include',
             body: JSON.stringify({ 
@@ -1324,6 +1328,7 @@ async function reanalyzeSelectedTrades(): Promise<void> {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                ...getCsrfHeaders()
             },
             credentials: 'include',
             body: JSON.stringify({ trade_ids: tradeIds })

@@ -3,6 +3,8 @@
  * These functions are imported into system.ts
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 interface CacheResponse {
     success: boolean;
     message: string;
@@ -23,6 +25,7 @@ export async function clearCache(): Promise<void> {
     try {
         const response = await fetch('/api/admin/system/cache/clear', {
             method: 'POST',
+            headers: { ...getCsrfHeaders() },
             credentials: 'include'
         });
         
@@ -71,6 +74,7 @@ export async function bumpCacheVersion(): Promise<void> {
     try {
         const response = await fetch('/api/admin/system/cache/bump-version', {
             method: 'POST',
+            headers: { ...getCsrfHeaders() },
             credentials: 'include'
         });
         
@@ -113,6 +117,7 @@ export async function resetSystemCache(): Promise<void> {
     try {
         const response = await fetch('/api/admin/system/cache/reset', {
             method: 'POST',
+            headers: { ...getCsrfHeaders() },
             credentials: 'include'
         });
         

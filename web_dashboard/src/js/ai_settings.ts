@@ -1,4 +1,5 @@
 import { ApiResponse } from './types';
+import { getCsrfHeaders } from './csrf.js';
 
 // Types for AI Settings
 interface StatusResponse {
@@ -408,7 +409,10 @@ async function testWebaiCookies() {
     try {
         console.log('[DEBUG] Sending POST request to /api/admin/ai/cookies/test');
         const response = await fetch('/api/admin/ai/cookies/test', {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                ...getCsrfHeaders()
+            }
         });
 
         console.log('[DEBUG] Received response:', response.status, response.statusText);
@@ -585,7 +589,8 @@ async function saveCookies() {
         const response = await fetch('/api/admin/ai/cookies', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
             },
             body: JSON.stringify({ cookies })
         });
@@ -626,7 +631,12 @@ async function testGlmApiKey() {
     testGlmBtn.textContent = 'Testing...';
     (testGlmBtn as HTMLButtonElement).disabled = true;
     try {
-        const response = await fetch('/api/admin/ai/glm-api-key/test', { method: 'POST' });
+        const response = await fetch('/api/admin/ai/glm-api-key/test', {
+            method: 'POST',
+            headers: {
+                ...getCsrfHeaders()
+            }
+        });
         const result: ApiResponse & { error?: string; message?: string } = await response.json();
         if (result.success) {
             showToastForAI(result.message || 'GLM API key test successful', 'success');
@@ -656,7 +666,10 @@ async function saveGlmApiKey() {
     try {
         const response = await fetch('/api/admin/ai/glm-api-key', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
+            },
             body: JSON.stringify({ api_key: val })
         });
         const result: ApiResponse & { error?: string; message?: string } = await response.json();
@@ -963,7 +976,10 @@ async function addDomain() {
     try {
         const response = await fetch('/api/admin/ai/blacklist/add', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
+            },
             body: JSON.stringify({ domain })
         });
 
@@ -993,7 +1009,10 @@ async function removeDomain(domain: string) {
             try {
                 const response = await fetch('/api/admin/ai/blacklist/remove', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
                     body: JSON.stringify({ domain })
                 });
 
@@ -1018,7 +1037,10 @@ async function toggleAutoBlacklist(domain: string, currentEntry: BlacklistEntry)
         const isAuto = !currentEntry.auto_blacklisted;
         const response = await fetch('/api/admin/ai/blacklist/toggle', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
+            },
             body: JSON.stringify({ domain, auto_blacklisted: isAuto })
         });
 
@@ -1114,7 +1136,8 @@ async function saveSettings() {
         const response = await fetch('/api/admin/ai/settings', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
             },
             body: JSON.stringify({
                 auto_blacklist_threshold: autoBlacklistThreshold,

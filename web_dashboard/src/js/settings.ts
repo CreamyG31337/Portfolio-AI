@@ -1,4 +1,6 @@
 // Settings page AJAX handlers
+import { getCsrfHeaders } from './csrf.js';
+
 console.log('Settings.js loaded successfully');
 
 // API Response interface
@@ -99,6 +101,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        ...getCsrfHeaders(),
                     },
                     body: JSON.stringify({ enabled: enabled })
                 });
@@ -147,6 +150,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...getCsrfHeaders(),
                 },
                 body: JSON.stringify({ timezone: timezone } as TimezoneRequest)
             })
@@ -197,6 +201,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...getCsrfHeaders(),
                 },
                 body: JSON.stringify({ currency: currency } as CurrencyRequest)
             })
@@ -250,6 +255,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...getCsrfHeaders(),
                 },
                 body: JSON.stringify({ theme: theme } as ThemeRequest)
             })
@@ -322,6 +328,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        ...getCsrfHeaders(),
                     },
                     body: JSON.stringify({ password: newPassword }),
                 });
