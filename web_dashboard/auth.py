@@ -141,8 +141,9 @@ def require_auth(f):
         refresh_token = get_refresh_token()
         
         # Don't delete cookies in require_auth - let the route handle authentication
-        # Only check for obviously corrupted refresh tokens, but don't delete cookies
-        if refresh_token and len(refresh_token) < 50:
+        # Note: Supabase now returns 12-character opaque refresh tokens (this is normal)
+        # Only warn if the token is suspiciously short (less than 10 chars)
+        if refresh_token and len(refresh_token) < 10:
             logger.warning(f"[AUTH] require_auth: Refresh token appears corrupted (length={len(refresh_token)}), but continuing anyway")
             # Don't delete cookies - just log the warning
         
