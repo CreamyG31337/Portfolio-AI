@@ -366,3 +366,4 @@ mcps/mandrel/SERVER_METADATA.json
 !.vscode/mcp.json.example
 .claude/settings.local.json
 .gemini/GEMINI.md
+.mcp.json

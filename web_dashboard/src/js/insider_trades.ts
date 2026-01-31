@@ -414,14 +414,14 @@ function initializeInsiderTradesGrid(trades: InsiderTrade[]): void {
             gridApi?.sizeColumnsToFit();
         });
         gridApi.addEventListener("firstDataRendered", () => {
-            setTimeout(() => {
+            requestAnimationFrame(() => {
                 const columns = gridColumnApi?.getAllDisplayedColumns() || [];
                 const columnIds = columns.map((col: any) => col.getColId()).filter(Boolean);
                 if (columnIds.length > 0) {
                     gridColumnApi?.autoSizeColumns(columnIds, false);
                     gridApi?.sizeColumnsToFit();
                 }
-            }, 300);
+            });
         });
     }
 }
