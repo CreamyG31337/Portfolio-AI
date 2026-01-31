@@ -155,9 +155,24 @@ steps:
         }
         echo "✅ Base image built successfully"
       
+      # Build shared frontend builder image (Tailwind CSS + TypeScript)
+      # Built once, used by both Streamlit and Flask containers
+      - |
+        export DOCKER_BUILDKIT=1
+        export COMPOSE_DOCKER_CLI_BUILD=1
+        echo "Building shared frontend builder image (CSS + TypeScript)..."
+        docker build --progress=plain \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
+          --cache-from trading-dashboard-frontend:latest \
+          -f web_dashboard/Dockerfile.frontend \
+          -t trading-dashboard-frontend:latest . || {
+          echo "❌ ERROR: Frontend builder image build failed"
+          exit 1
+        }
+        echo "✅ Frontend builder image built successfully"
+      
       # Build all Docker images in parallel for faster deployment
-      # Note: Tailwind CSS is now built inside Dockerfiles using multi-stage builds
-      # This leverages Docker layer caching and eliminates the need to install Node.js in CI
+      # Note: Both Streamlit and Flask now copy frontend assets from shared frontend builder
       # Using BuildKit for better caching and parallel builds
       - |
         set +e  # Don't exit on error - we'll handle errors manually
@@ -187,8 +202,10 @@ steps:
         # Build Streamlit image (capture both stdout and stderr)
         # Use previous images as cache sources for better cache hits
         (docker build --progress=plain \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
           --build-arg CACHEBUST=${CI_COMMIT_SHA} \
           --cache-from trading-dashboard-base:latest \
+          --cache-from trading-dashboard-frontend:latest \
           --cache-from trading-dashboard:latest \
           -f web_dashboard/Dockerfile \
           -t trading-dashboard:latest . > "$STREAMLIT_LOG" 2>&1; echo $? > "$STREAMLIT_EXIT_FILE") &
@@ -197,15 +214,21 @@ steps:
         # Build Flask image (capture both stdout and stderr)
         # Use previous images as cache sources for better cache hits
         (docker build --progress=plain \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
           --build-arg CACHEBUST=${CI_COMMIT_SHA} \
           --cache-from trading-dashboard-base:latest \
+          --cache-from trading-dashboard-frontend:latest \
           --cache-from trading-dashboard-flask:latest \
           -f web_dashboard/Dockerfile.flask \
           -t trading-dashboard-flask:latest . > "$FLASK_LOG" 2>&1; echo $? > "$FLASK_EXIT_FILE") &
         FLASK_PID=$!
         
         # Build Cookie refresher image (capture both stdout and stderr)
-        (docker build --progress=plain -f web_dashboard/Dockerfile.cookie-refresher -t cookie-refresher:latest . > "$COOKIE_LOG" 2>&1; echo $? > "$COOKIE_EXIT_FILE") &
+        (docker build --progress=plain \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
+          --cache-from cookie-refresher:latest \
+          -f web_dashboard/Dockerfile.cookie-refresher \
+          -t cookie-refresher:latest . > "$COOKIE_LOG" 2>&1; echo $? > "$COOKIE_EXIT_FILE") &
         COOKIE_PID=$!
         
         echo "Waiting for builds to complete (PIDs: Streamlit=$STREAMLIT_PID Flask=$FLASK_PID Cookie=$COOKIE_PID)..."
@@ -500,7 +523,6 @@ steps:
       
       # Deploy static files (auth callback HTML, cookie setting page, and login form)
       - echo "Deploying static files..."
-      - mkdir -p /deploy_target/frontend
       - cp web_dashboard/static/auth_callback.html /deploy_target/frontend/auth_callback.html
       - cp web_dashboard/static/set_cookie.html /deploy_target/frontend/set_cookie.html
       - cp web_dashboard/static/login.html /deploy_target/frontend/login.html
@@ -528,9 +550,15 @@ steps:
       
       # Clean up old Docker images (keep last 5 versions)
       # This prevents disk space issues from accumulating old image versions
-      - echo "Cleaning up old Docker images (keeping last 5)..."
-      - docker images -q trading-dashboard | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true
-      - docker images -q trading-dashboard-flask | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true
+      # Run cleanup in parallel for faster execution
+      - |
+        echo "Cleaning up old Docker images (keeping last 5)..."
+        (docker images -q trading-dashboard | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
+        (docker images -q trading-dashboard-flask | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
+        (docker images -q trading-dashboard-frontend | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
+        (docker images -q cookie-refresher | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
+        wait
+        echo "✅ Cleanup complete"
       
       - echo "✅ Build and deployment complete!"
     when:
