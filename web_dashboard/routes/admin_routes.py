@@ -2428,13 +2428,35 @@ def _get_cached_etf_tickers():
 
 @cache_data(ttl=300)
 def _get_portfolio_tickers():
-    """Get distinct tickers from portfolio positions (cached)."""
+    """Get distinct tickers from portfolio positions (cached, handles pagination)."""
     try:
         client = SupabaseClient(use_service_role=True)
-        result = client.supabase.table("portfolio_positions") \
-            .select("ticker") \
-            .execute()
-        tickers = set(row.get("ticker") for row in (result.data or []) if row.get("ticker"))
+        tickers = set()
+        offset = 0
+        page_size = 1000
+
+        while True:
+            result = client.supabase.table("portfolio_positions") \
+                .select("ticker") \
+                .range(offset, offset + page_size - 1) \
+                .execute()
+
+            if not result.data:
+                break
+
+            for row in result.data:
+                ticker = row.get("ticker")
+                if ticker:
+                    tickers.add(ticker)
+
+            if len(result.data) < page_size:
+                break
+
+            offset += page_size
+            if offset > 50000:
+                logger.warning("Reached 50,000 row safety limit in _get_portfolio_tickers")
+                break
+
         return tickers
     except Exception as e:
         logger.error(f"Error fetching portfolio tickers: {e}", exc_info=True)
@@ -2495,47 +2517,85 @@ def etf_metadata_page():
 @admin_bp.route('/api/admin/security-metadata')
 @require_admin
 def api_get_security_metadata():
-    """Get ETF or stock securities for metadata updates."""
+    """Get ETF or stock securities for metadata updates with pagination."""
     try:
         client = SupabaseClient(use_service_role=True)
         mode = _normalize_security_mode(request.args.get("mode", "etf"))
         query_text = (request.args.get("q") or "").strip()
-        limit = min(max(int(request.args.get("limit", 200)), 1), 1000)
+        limit = min(max(int(request.args.get("limit", 20)), 1), 100)
+        offset = max(int(request.args.get("offset", 0)), 0)
 
         etf_tickers = _get_cached_etf_tickers()
 
-        query_builder = _build_securities_query(client, query_text).order("ticker")
-
+        # For ETF and Portfolio modes, we can calculate total from the ticker sets
+        total = 0
+        has_more = False
         securities = []
+
         if mode == "etf":
             if etf_tickers:
-                result = query_builder.in_("ticker", list(etf_tickers)) \
-                    .limit(limit) \
-                    .execute()
-                securities = result.data or []
+                # Get all matching tickers for total count
+                all_tickers = sorted(etf_tickers)
+                if query_text:
+                    safe_query = query_text.lower()
+                    # Filter tickers by query (basic filter, DB does the real work)
+                    all_tickers = [t for t in all_tickers if safe_query in t.lower()]
+
+                total = len(all_tickers)
+                # Paginate the ticker list
+                page_tickers = all_tickers[offset:offset + limit]
+                has_more = offset + limit < total
+
+                if page_tickers:
+                    query_builder = _build_securities_query(client, query_text).order("ticker")
+                    result = query_builder.in_("ticker", page_tickers).execute()
+                    securities = result.data or []
+                    # Re-sort to match ticker order
+                    ticker_order = {t: i for i, t in enumerate(page_tickers)}
+                    securities = sorted(securities, key=lambda s: ticker_order.get(s.get("ticker"), 999))
+
         elif mode == "portfolio":
             portfolio_tickers = _get_portfolio_tickers()
             if portfolio_tickers:
-                result = query_builder.in_("ticker", list(portfolio_tickers)) \
-                    .limit(limit) \
-                    .execute()
-                securities = result.data or []
-        else:  # stock mode
-            page_size = max(limit, 200)
-            offset = 0
-            while len(securities) < limit:
-                result = query_builder.range(offset, offset + page_size - 1).execute()
+                all_tickers = sorted(portfolio_tickers)
+                if query_text:
+                    safe_query = query_text.lower()
+                    all_tickers = [t for t in all_tickers if safe_query in t.lower()]
+
+                total = len(all_tickers)
+                page_tickers = all_tickers[offset:offset + limit]
+                has_more = offset + limit < total
+
+                if page_tickers:
+                    query_builder = _build_securities_query(client, query_text).order("ticker")
+                    result = query_builder.in_("ticker", page_tickers).execute()
+                    securities = result.data or []
+                    ticker_order = {t: i for i, t in enumerate(page_tickers)}
+                    securities = sorted(securities, key=lambda s: ticker_order.get(s.get("ticker"), 999))
+
+        else:  # stock mode - more complex pagination
+            # For stock mode, we need to filter out ETF tickers which is harder to paginate
+            # Use a larger fetch and filter approach
+            query_builder = _build_securities_query(client, query_text).order("ticker")
+            page_size = 500
+            db_offset = 0
+            all_filtered = []
+
+            # Fetch enough to get the requested page
+            target_count = offset + limit + 1  # +1 to check if there's more
+            while len(all_filtered) < target_count and db_offset < 50000:
+                result = query_builder.range(db_offset, db_offset + page_size - 1).execute()
                 if not result.data:
                     break
                 filtered = [row for row in result.data if row.get("ticker") not in etf_tickers]
-                securities.extend(filtered)
+                all_filtered.extend(filtered)
                 if len(result.data) < page_size:
                     break
-                offset += page_size
-                if offset > 50000:
-                    logger.warning("Reached 50,000 row safety limit in api_get_security_metadata")
-                    break
-            securities = securities[:limit]
+                db_offset += page_size
+
+            total = len(all_filtered)  # Approximate - may be more if we hit limit
+            has_more = len(all_filtered) > offset + limit
+            securities = all_filtered[offset:offset + limit]
 
         return jsonify({
             "success": True,
@@ -2549,7 +2609,10 @@ def api_get_security_metadata():
             "mode": mode,
             "query": query_text,
             "limit": limit,
-            "count": len(securities)
+            "offset": offset,
+            "count": len(securities),
+            "total": total,
+            "has_more": has_more
         })
     except Exception as e:
         logger.error(f"Error fetching security metadata: {e}", exc_info=True)
@@ -2600,6 +2663,36 @@ def api_update_security_metadata(ticker: str):
         return jsonify({"success": True, "message": f"Updated metadata for {ticker_upper}"})
     except Exception as e:
         logger.error(f"Error updating security metadata for {ticker}: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@admin_bp.route('/api/admin/security-metadata/<ticker>/fetch', methods=['POST'])
+@require_admin
+def api_fetch_security_description(ticker: str):
+    """Fetch security description from yfinance without saving."""
+    try:
+        import yfinance as yf
+
+        ticker_upper = ticker.upper().strip()
+        stock = yf.Ticker(ticker_upper)
+        info = stock.info
+
+        description = (
+            info.get('longBusinessSummary') or
+            info.get('longDescription') or
+            info.get('description')
+        )
+
+        if description:
+            description = description.strip()
+
+        return jsonify({
+            "success": True,
+            "ticker": ticker_upper,
+            "description": description,
+            "company_name": info.get('longName') or info.get('shortName')
+        })
+    except Exception as e:
+        logger.error(f"Error fetching description from yfinance for {ticker}: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
 
 @admin_bp.route('/api/admin/etf-metadata/<ticker>', methods=['PUT'])
