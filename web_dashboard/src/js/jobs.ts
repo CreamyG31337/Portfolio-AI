@@ -248,11 +248,13 @@ document.addEventListener('DOMContentLoaded', (): void => {
         elements.tabJobs.classList.toggle('text-accent', isJobs);
         elements.tabJobs.classList.toggle('border-transparent', !isJobs);
         elements.tabJobs.classList.toggle('text-text-secondary', !isJobs);
+        elements.tabJobs.setAttribute('aria-selected', isJobs.toString());
 
         elements.tabTimeline.classList.toggle('border-accent', !isJobs);
         elements.tabTimeline.classList.toggle('text-accent', !isJobs);
         elements.tabTimeline.classList.toggle('border-transparent', isJobs);
         elements.tabTimeline.classList.toggle('text-text-secondary', isJobs);
+        elements.tabTimeline.setAttribute('aria-selected', (!isJobs).toString());
     };
 
     if (elements.tabJobs && elements.tabTimeline) {

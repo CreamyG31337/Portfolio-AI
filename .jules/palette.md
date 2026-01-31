@@ -1,27 +1,3 @@
-# Palette's Journal
-
-## 2024-05-23 - Initial Setup
-**Learning:** The project uses a mix of server-side rendered templates (Flask) and client-side TypeScript. Accessibility issues are present in the templates (missing ARIA labels, interactive elements without keyboard support).
-**Action:** Focus on adding ARIA attributes and improving keyboard navigation in HTML templates, while checking TypeScript for dynamic behavior.
-
-## 2024-05-23 - Authentication Forms Autocomplete
-
-**Learning:** Missing `autocomplete` attributes on authentication forms are a common but critical oversight. Adding them significantly improves the user experience by enabling browser autofill and password manager integration, which also aids accessibility by reducing cognitive load and typing errors.
-
-**Action:** Always audit form inputs for `autocomplete` attributes, especially for email, password, and username fields. Use specific values like `username`, `current-password`, and `new-password`.
-
-## 2025-02-12 - Auth Forms and Button Semantics
-**Learning:** Users often scan authentication forms quickly. Adding placeholders (e.g., `name@example.com`, `••••••••`) significantly improves usability by providing a visual hint of the expected input format. Also, explicitly setting `type="button"` on buttons that are not intended to submit forms is crucial to prevent unexpected behavior and adhere to HTML standards.
-**Action:** Always check for placeholders in form inputs and verify button types in future UI enhancements.
-
-## 2025-02-18 - Focus Management in Auth Forms
-**Learning:** Switching between forms (e.g., Login/Register) using visibility toggles does not automatically move focus, which disorients keyboard and screen reader users. Programmatically focusing the first input of the new form is essential.
-**Action:** When toggling visibility of major UI sections, always manage focus by finding the first interactive element and focusing it (often requires a small `setTimeout` of ~50ms to ensure the element is rendered and interactive).
-
-## 2025-02-18 - Focus Indicators on Custom Backgrounds
-**Learning:** Interactive elements on custom backgrounds (like gradients or images) often lack visible focus indicators when default outlines are disabled. Standard outlines might be low contrast or hidden.
-**Action:** Always verify focus visibility on custom backgrounds and explicitly add high-contrast focus rings (e.g., `focus:ring-white/50` on dark/gradient headers) when using `focus:outline-none`.
-
-## 2026-01-27 - Password Visibility Toggle
-**Learning:** Users often struggle with password confirmation fields, especially on mobile or with complex requirements. A simple "show/hide" toggle reduces frustration and errors significantly more than just having a "confirm password" field.
-**Action:** Whenever implementing or auditing password fields, advocate for a visibility toggle as a standard pattern, ensuring it's accessible (ARIA labels, keyboard support) and visually integrated (padding-right to avoid overlap).
+## 2026-01-30 - Verification of Authenticated UI
+**Learning:** Verified that testing authenticated pages (like admin/jobs) requires creating a standalone HTML harness that mocks inheritance and static assets, as bypassing backend auth logic in a live test environment is complex and unreliable.
+**Action:** When working on authenticated views, always create a `verification/mock_view.html` that includes the relevant CSS/JS and HTML structure to test interactions in isolation using Playwright with a local HTTP server.
