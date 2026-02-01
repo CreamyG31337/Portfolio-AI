@@ -38,19 +38,26 @@
     </div>
 
     <!-- Tab Navigation -->
-    <div class="mb-6 flex border-b border-border" role="tablist" aria-label="Jobs view selector">
-        <button id="tab-jobs" role="tab" aria-selected="true" aria-controls="view-jobs"
-            class="px-6 py-2 text-sm font-medium border-b-2 border-accent text-accent transform transition-colors duration-200">
-            <i class="fas fa-list mr-2"></i>Jobs List
-        </button>
-        <button id="tab-timeline" role="tab" aria-selected="false" aria-controls="view-timeline"
-            class="px-6 py-2 text-sm font-medium border-b-2 border-transparent text-text-secondary hover:text-text-primary hover:border-text-secondary transform transition-colors duration-200">
-            <i class="fas fa-clock mr-2"></i>Daily Schedule
-        </button>
+    <div class="mb-6 border-b border-border">
+        <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="jobs-tab" data-tabs-toggle="#jobs-tab-content" role="tablist"
+            data-active-classes="border-accent text-accent"
+            data-inactive-classes="border-transparent text-text-secondary hover:text-text-primary hover:border-text-secondary">
+            <li class="me-2" role="presentation">
+                <button class="inline-block px-6 py-2 border-b-2 rounded-t-lg transform transition-colors duration-200" id="tab-jobs" data-tabs-target="#view-jobs" type="button" role="tab" aria-controls="view-jobs" aria-selected="true">
+                    <i class="fas fa-list mr-2"></i>Jobs List
+                </button>
+            </li>
+            <li class="me-2" role="presentation">
+                <button class="inline-block px-6 py-2 border-b-2 rounded-t-lg transform transition-colors duration-200" id="tab-timeline" data-tabs-target="#view-timeline" type="button" role="tab" aria-controls="view-timeline" aria-selected="false">
+                    <i class="fas fa-clock mr-2"></i>Daily Schedule
+                </button>
+            </li>
+        </ul>
     </div>
 
-    <!-- Jobs Grid View -->
-    <div id="view-jobs" role="tabpanel" aria-labelledby="tab-jobs" class="animate-fade-in">
+    <div id="jobs-tab-content">
+        <!-- Jobs Grid View -->
+        <div id="view-jobs" role="tabpanel" aria-labelledby="tab-jobs" class="animate-fade-in">
         <div id="jobs-container" class="grid grid-cols-1 gap-6">
             <!-- Loading Skeleton -->
             <div class="animate-pulse space-y-4">
@@ -61,8 +68,8 @@
         </div>
     </div>
 
-    <!-- Timeline View -->
-    <div id="view-timeline" role="tabpanel" aria-labelledby="tab-timeline" class="hidden animate-fade-in">
+        <!-- Timeline View -->
+        <div id="view-timeline" role="tabpanel" aria-labelledby="tab-timeline" class="hidden animate-fade-in">
         <!-- Current Time Banner -->
         <div class="mb-4 flex items-center gap-3 text-sm">
             <div class="flex items-center gap-2 px-3 py-1.5 bg-accent/10 border border-accent/30 rounded-full">
@@ -143,6 +150,7 @@
                     </div>
                 </div>
             </div>
+        </div>
         </div>
     </div>
 </div>
