@@ -1373,7 +1373,12 @@ def login():
         
         logger.info(f"Login attempt for {email}: Status {response.status_code}")
         if response.status_code != 200:
-            logger.error(f"Login failed: {response.text}")
+            # Log failure but avoid dumping full response body if it's large or sensitive
+            try:
+                error_body = response.json()
+                logger.error(f"Login failed: {error_body.get('msg', 'Unknown error')} ({error_body.get('error_code', 'no_code')})")
+            except Exception:
+                logger.error(f"Login failed (raw): {response.text[:200]}")
         
         if response.status_code == 200:
             auth_data = response.json()
@@ -1468,10 +1473,11 @@ def login():
             # Handle specific error cases
             if error_code == "email_not_confirmed":
                 return jsonify({"error": "Please check your email and click the confirmation link before logging in."}), 401
-            elif error_code == "invalid_credentials":
-                return jsonify({"error": "Invalid email or password."}), 401
-            else:
-                return jsonify({"error": error_msg}), 401
+
+            # For all other auth errors (invalid_credentials, user_not_found, etc.), return generic message
+            # to prevent user enumeration
+            logger.warning(f"Login failed for {email}: {error_code} - {error_msg}")
+            return jsonify({"error": "Invalid email or password."}), 401
             
     except Exception as e:
         logger.error(f"Login error: {e}", exc_info=True)
