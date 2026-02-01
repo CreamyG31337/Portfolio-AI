@@ -96,10 +96,6 @@ interface JobsDOMElements {
     errorMsg: HTMLElement | null;
     errorText: HTMLElement | null;
     autoRefreshCheckbox: HTMLInputElement | null;
-    tabJobs: HTMLElement | null;
-    tabTimeline: HTMLElement | null;
-    viewJobs: HTMLElement | null;
-    viewTimeline: HTMLElement | null;
     timelineContainer: HTMLElement | null;
     frequentJobsContainer: HTMLElement | null;
     manualJobsContainer: HTMLElement | null;
@@ -137,10 +133,6 @@ const elements: JobsDOMElements = {
     errorMsg: null,
     errorText: null,
     autoRefreshCheckbox: null,
-    tabJobs: null,
-    tabTimeline: null,
-    viewJobs: null,
-    viewTimeline: null,
     timelineContainer: null,
     frequentJobsContainer: null,
     manualJobsContainer: null,
@@ -167,10 +159,6 @@ function initializeDOMElements(): void {
     elements.errorMsg = document.getElementById('error-message');
     elements.errorText = document.getElementById('error-text');
     elements.autoRefreshCheckbox = document.getElementById('auto-refresh') as HTMLInputElement | null;
-    elements.tabJobs = document.getElementById('tab-jobs');
-    elements.tabTimeline = document.getElementById('tab-timeline');
-    elements.viewJobs = document.getElementById('view-jobs');
-    elements.viewTimeline = document.getElementById('view-timeline');
     elements.timelineContainer = document.getElementById('timeline-container');
     elements.frequentJobsContainer = document.getElementById('frequent-jobs-container');
     elements.manualJobsContainer = document.getElementById('manual-jobs-container');
@@ -188,10 +176,6 @@ function initializeDOMElements(): void {
         refreshBtn: !!elements.refreshBtn,
         jobsList: !!elements.jobsList,
         autoRefreshCheckbox: !!elements.autoRefreshCheckbox,
-        tabJobs: !!elements.tabJobs,
-        tabTimeline: !!elements.tabTimeline,
-        viewJobs: !!elements.viewJobs,
-        viewTimeline: !!elements.viewTimeline,
         timelineContainer: !!elements.timelineContainer,
         frequentJobsContainer: !!elements.frequentJobsContainer
     });
@@ -234,38 +218,6 @@ document.addEventListener('DOMContentLoaded', (): void => {
             }
         });
         console.log('[Jobs] Auto-refresh checkbox listener attached');
-    }
-
-    const setActiveTab = (active: 'jobs' | 'timeline'): void => {
-        if (!elements.tabJobs || !elements.tabTimeline || !elements.viewJobs || !elements.viewTimeline) {
-            console.warn('[Jobs] Tab elements missing, cannot toggle views');
-            return;
-        }
-
-        const isJobs = active === 'jobs';
-        elements.viewJobs.classList.toggle('hidden', !isJobs);
-        elements.viewTimeline.classList.toggle('hidden', isJobs);
-
-        elements.tabJobs.classList.toggle('border-accent', isJobs);
-        elements.tabJobs.classList.toggle('text-accent', isJobs);
-        elements.tabJobs.classList.toggle('border-transparent', !isJobs);
-        elements.tabJobs.classList.toggle('text-text-secondary', !isJobs);
-        elements.tabJobs.setAttribute('aria-selected', isJobs.toString());
-
-        elements.tabTimeline.classList.toggle('border-accent', !isJobs);
-        elements.tabTimeline.classList.toggle('text-accent', !isJobs);
-        elements.tabTimeline.classList.toggle('border-transparent', isJobs);
-        elements.tabTimeline.classList.toggle('text-text-secondary', isJobs);
-        elements.tabTimeline.setAttribute('aria-selected', (!isJobs).toString());
-    };
-
-    if (elements.tabJobs && elements.tabTimeline) {
-        elements.tabJobs.addEventListener('click', () => setActiveTab('jobs'));
-        elements.tabTimeline.addEventListener('click', () => setActiveTab('timeline'));
-        setActiveTab('jobs');
-        console.log('[Jobs] Tab listeners attached');
-    } else {
-        console.warn('[Jobs] Tab buttons not found; skipping tab listeners');
     }
 
     // Expose refreshJobs globally for onclick handlers
