@@ -13,6 +13,7 @@ import asyncio
 import os
 import re
 import time
+import logging
 from pathlib import Path
 from typing import Optional, Tuple, List
 
@@ -726,8 +727,9 @@ class PersistentConversationSession:
             except OSError:
                 pass
         except Exception as e:
-            # Silently fail - conversation continues but won't persist
-            pass
+            # Log the error but allow conversation to continue
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to save conversation metadata: {e}")
     
     async def _ensure_chat(self):
         """Ensure chat session is initialized, loading from saved state if available."""
