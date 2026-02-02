@@ -6,34 +6,81 @@ module.exports = {
     "./web_dashboard/src/**/*.ts",
     // Include any Python files that might contain Tailwind classes in strings
     "./web_dashboard/**/*.py",
+    "./node_modules/flowbite/**/*.js"
   ],
   darkMode: ['selector', '[data-theme="dark"], [data-theme="midnight-tokyo"], [data-theme="abyss"]'],
   theme: {
     extend: {
       colors: {
-        accent: {
-          DEFAULT: 'var(--color-accent)',
-          hover: 'var(--color-accent-hover)',
+        // Semantic color names that map to CSS variables
+        'dashboard': {
+            'background': 'var(--bg-secondary)',
+            'surface': 'var(--bg-primary)',
+            'surface-alt': 'var(--bg-tertiary)',
         },
-        dashboard: {
-          background: 'var(--bg-primary)',
-          surface: 'var(--bg-secondary)',
-          'surface-alt': 'var(--bg-tertiary)',
+        'text': {
+            'primary': 'var(--text-primary)',
+            'secondary': 'var(--text-secondary)',
+            'tertiary': 'var(--text-tertiary)',
+            'muted': 'var(--text-muted)',
         },
-        text: {
-          primary: 'var(--text-primary)',
-          secondary: 'var(--text-secondary)',
-          muted: 'var(--text-muted)',
+        'accent': {
+            'DEFAULT': 'var(--color-accent)',
+            'hover': 'var(--color-accent-hover)',
+            'from': 'var(--gradient-from)',
+            'to': 'var(--gradient-to)',
         },
-        border: {
-          DEFAULT: 'var(--border-color)',
-          hover: 'var(--border-hover)',
-        }
-      }
+        'link': {
+            'DEFAULT': 'var(--color-link)',
+            'hover': 'var(--color-link-hover)',
+        },
+        'border': {
+            'DEFAULT': 'var(--border-color)',
+            'hover': 'var(--border-hover)',
+        },
+        // Semantic status colors
+        'theme-success': {
+            'bg': 'var(--color-success-bg)',
+            'text': 'var(--color-success-text)',
+        },
+        'theme-error': {
+            'bg': 'var(--color-error-bg)',
+            'text': 'var(--color-error-text)',
+        },
+        'theme-warning': {
+            'bg': 'var(--color-warning-bg)',
+            'text': 'var(--color-warning-text)',
+        },
+        'theme-info': {
+            'bg': 'var(--color-info-bg)',
+            'text': 'var(--color-info-text)',
+        },
+        // Log level colors
+        'log': {
+            'debug': 'var(--log-debug)',
+            'perf': 'var(--log-perf)',
+            'info': 'var(--log-info)',
+            'warning': 'var(--log-warning)',
+            'error': 'var(--log-error)',
+        },
+        // Component-specific colors
+        'code': {
+            'bg': 'var(--code-bg)',
+            'border': 'var(--code-border)',
+        },
+      },
+      animation: {
+        'fade-in': 'fadeIn 0.3s ease-out',
+      },
+      keyframes: {
+        fadeIn: {
+            '0%': { opacity: '0' },
+            '100%': { opacity: '1' },
+        },
+      },
     },
   },
   plugins: [
-    // Add Tailwind plugins here if needed
-    // Example: require('@tailwindcss/typography'),
+    require('flowbite/plugin')
   ],
 }

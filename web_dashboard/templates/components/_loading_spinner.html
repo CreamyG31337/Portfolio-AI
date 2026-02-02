@@ -1,5 +1,5 @@
-<div id="{{ id }}"
+<div id="{{ id }}" role="status"
     class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10 {{ extra_classes|default('') }}">
-    <div class="animate-spin rounded-full h-{{ size|default('12') }} w-{{ size|default('12') }} border-b-2 {{ color|default('border-accent') }}">
-    </div>
+    <div class="animate-spin rounded-full h-{{ size|default('12') }} w-{{ size|default('12') }} border-b-2 {{ color|default('border-accent') }}"></div>
+    <span class="sr-only">Loading...</span>
 </div>

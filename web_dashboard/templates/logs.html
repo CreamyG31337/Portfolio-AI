@@ -100,12 +100,12 @@
             <div id="stats-text" class="text-sm text-text-secondary">Loading...</div>
             <div id="pagination-controls" class="flex items-center space-x-2">
                 <button id="prev-btn"
-                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    class="btn-pagination">
                     <i class="fas fa-chevron-left"></i> Previous
                 </button>
                 <span id="page-info" class="text-sm text-text-secondary">Page 1 of 1</span>
                 <button id="next-btn"
-                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    class="btn-pagination">
                     Next <i class="fas fa-chevron-right"></i>
                 </button>
             </div>
@@ -132,12 +132,12 @@
             <div id="stats-text-bottom" class="text-sm text-text-secondary">Loading...</div>
             <div class="flex items-center space-x-2">
                 <button id="prev-btn-bottom"
-                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    class="btn-pagination">
                     <i class="fas fa-chevron-left"></i> Previous
                 </button>
                 <span id="page-info-bottom" class="text-sm text-text-secondary">Page 1 of 1</span>
                 <button id="next-btn-bottom"
-                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    class="btn-pagination">
                     Next <i class="fas fa-chevron-right"></i>
                 </button>
             </div>
@@ -187,12 +187,12 @@
             <div id="stats-text-ollama" class="text-sm text-text-secondary">Loading...</div>
             <div id="pagination-controls-ollama" class="flex items-center space-x-2">
                 <button id="prev-btn-ollama"
-                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    class="btn-pagination">
                     <i class="fas fa-chevron-left"></i> Previous
                 </button>
                 <span id="page-info-ollama" class="text-sm text-text-secondary">Page 1 of 1</span>
                 <button id="next-btn-ollama"
-                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    class="btn-pagination">
                     Next <i class="fas fa-chevron-right"></i>
                 </button>
             </div>
@@ -219,12 +219,12 @@
             <div id="stats-text-ollama-bottom" class="text-sm text-text-secondary">Loading...</div>
             <div class="flex items-center space-x-2">
                 <button id="prev-btn-ollama-bottom"
-                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    class="btn-pagination">
                     <i class="fas fa-chevron-left"></i> Previous
                 </button>
                 <span id="page-info-ollama-bottom" class="text-sm text-text-secondary">Page 1 of 1</span>
                 <button id="next-btn-ollama-bottom"
-                    class="px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    class="btn-pagination">
                     Next <i class="fas fa-chevron-right"></i>
                 </button>
             </div>
@@ -232,6 +232,11 @@
     </div>
 </div>
 </div>
+
+<!-- Template for log rows to avoid HTML in JS -->
+<template id="log-row-template">
+    <div class="font-mono text-sm p-2 border-b border-border text-text-secondary hover:brightness-95 dark:hover:brightness-110 cursor-default"></div>
+</template>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -416,6 +421,7 @@
     function displayLogs(data) {
         const container = document.getElementById('logs-container');
         container.innerHTML = '';
+        const template = document.getElementById('log-row-template');
 
         if (!data.logs || data.logs.length === 0) {
             container.innerHTML = '<div class="text-center py-8 text-text-secondary">No logs found matching the filters</div>';
@@ -423,16 +429,15 @@
         }
 
         data.logs.forEach(log => {
-            const line = document.createElement('div');
-            // log-line replacement: font-mono text-sm p-2 border-b border-border text-text-secondary hover:bg-dashboard-surface-alt
-            // Note: hover color adjusted to match theme intent, using surface-hover if available or surface-primary if alt is background
-            line.className = `font-mono text-sm p-2 border-b border-border text-text-secondary hover:brightness-95 dark:hover:brightness-110 cursor-default log-${log.level}`;
+            const clone = template.content.cloneNode(true);
+            const div = clone.querySelector('div');
+            div.classList.add(`log-${log.level}`);
 
             const emoji = emojiMap[log.level] || '•';
             const module = log.module.substring(0, 30).padEnd(30, ' ');
 
-            line.textContent = `${emoji} ${log.timestamp} | ${log.level.padEnd(8, ' ')} | ${module} | ${log.message}`;
-            container.appendChild(line);
+            div.textContent = `${emoji} ${log.timestamp} | ${log.level.padEnd(8, ' ')} | ${module} | ${log.message}`;
+            container.appendChild(clone);
         });
 
         // Update stats (top and bottom)
@@ -457,6 +462,7 @@
     function displayOllamaLogs(data) {
         const container = document.getElementById('logs-container-ollama');
         container.innerHTML = '';
+        const template = document.getElementById('log-row-template');
 
         if (!data.logs || data.logs.length === 0) {
             let msg = 'No logs found.';
@@ -473,16 +479,18 @@
         }
 
         data.logs.forEach(log => {
-            const line = document.createElement('div');
-            line.className = 'font-mono text-sm p-2 border-b border-border text-text-secondary hover:brightness-95 dark:hover:brightness-110 cursor-default log-INFO';
+            const clone = template.content.cloneNode(true);
+            const div = clone.querySelector('div');
+            // Override class to ensure log-INFO color is used if needed, or rely on base template
+            div.classList.add('log-INFO');
 
             // Ollama logs may not have timestamps, so just show the message
             const displayText = log.timestamp
                 ? `${log.timestamp} | ${log.message}`
                 : log.message;
 
-            line.textContent = `ℹ️ ${displayText}`;
-            container.appendChild(line);
+            div.textContent = `ℹ️ ${displayText}`;
+            container.appendChild(clone);
         });
 
         // Update stats (top and bottom)

@@ -16,8 +16,14 @@
                         class="px-4 py-2.5 text-sm font-medium rounded-lg border border-border bg-dashboard-background text-text-primary hover:bg-dashboard-surface-alt focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors">
                         Cancel
                     </button>
-                    <button type="button" id="confirm-modal-submit"
+                    <!-- Primary Action Button -->
+                    <button type="button" id="confirm-modal-submit-primary"
                         class="px-4 py-2.5 text-sm font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors inline-flex items-center justify-center gap-2">
+                        Confirm
+                    </button>
+                    <!-- Danger Action Button -->
+                    <button type="button" id="confirm-modal-submit-danger"
+                        class="px-4 py-2.5 text-sm font-medium rounded-lg border border-theme-error-text text-theme-error-text bg-theme-error-bg hover:bg-theme-error-text hover:text-theme-error-bg focus:ring-2 focus:ring-theme-error-text/40 focus:outline-none transition-colors inline-flex items-center justify-center gap-2 hidden">
                         Confirm
                     </button>
                 </div>
@@ -29,14 +35,12 @@
 (function() {
     var modalId = 'confirm-modal';
     var triggerId = 'confirm-modal-trigger';
-    var submitBtnId = 'confirm-modal-submit';
     var titleId = 'confirm-modal-title';
     var messageId = 'confirm-modal-message';
     var cancelBtnId = 'confirm-modal-cancel';
     var iconWrapId = 'confirm-modal-icon';
-
-    var primaryBtnClasses = 'px-4 py-2.5 text-sm font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors inline-flex items-center justify-center gap-2';
-    var dangerBtnClasses = 'px-4 py-2.5 text-sm font-medium rounded-lg border border-theme-error-text text-theme-error-text bg-theme-error-bg hover:bg-theme-error-text hover:text-theme-error-bg focus:ring-2 focus:ring-theme-error-text/40 focus:outline-none transition-colors inline-flex items-center justify-center gap-2';
+    var primaryBtnId = 'confirm-modal-submit-primary';
+    var dangerBtnId = 'confirm-modal-submit-danger';
 
     window.showConfirmModal = function(opts) {
         var title = (opts && opts.title) || 'Confirm';
@@ -49,17 +53,26 @@
         var titleEl = document.getElementById(titleId);
         var messageEl = document.getElementById(messageId);
         var cancelEl = document.getElementById(cancelBtnId);
-        var submitEl = document.getElementById(submitBtnId);
         var iconWrap = document.getElementById(iconWrapId);
+        var primaryBtn = document.getElementById(primaryBtnId);
+        var dangerBtn = document.getElementById(dangerBtnId);
+
+        var activeBtn = danger ? dangerBtn : primaryBtn;
+        var inactiveBtn = danger ? primaryBtn : dangerBtn;
 
         if (titleEl) titleEl.textContent = title;
         if (messageEl) messageEl.textContent = message;
         if (cancelEl) cancelEl.textContent = cancelLabel;
-        if (submitEl) {
-            submitEl.className = danger ? dangerBtnClasses : primaryBtnClasses;
-            submitEl.innerHTML = '<span>' + confirmLabel + '</span>';
-            submitEl.disabled = false;
+
+        if (activeBtn) {
+            activeBtn.classList.remove('hidden');
+            activeBtn.innerHTML = '<span>' + confirmLabel + '</span>';
+            activeBtn.disabled = false;
         }
+        if (inactiveBtn) {
+            inactiveBtn.classList.add('hidden');
+        }
+
         if (iconWrap) {
             iconWrap.className = 'mx-auto flex items-center justify-center h-14 w-14 rounded-full border mb-4 ' + (danger ? 'bg-theme-error-bg border-theme-error-text/30' : 'bg-dashboard-background border-border');
             iconWrap.innerHTML = '<i class="fas ' + (danger ? 'fa-trash-alt text-theme-error-text' : 'fa-question text-text-secondary') + ' text-xl"></i>';
@@ -70,20 +83,20 @@
             if (hideBtn) hideBtn.click();
         }
 
-        if (submitEl && onConfirm) {
-            submitEl.onclick = function() {
-                if (submitEl.disabled) return;
-                submitEl.disabled = true;
-                submitEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span class="ml-2">Please wait…</span>';
+        if (activeBtn && onConfirm) {
+            activeBtn.onclick = function() {
+                if (activeBtn.disabled) return;
+                activeBtn.disabled = true;
+                activeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span class="ml-2">Please wait…</span>';
                 var result = onConfirm();
                 var p = result && typeof result.then === 'function' ? result : Promise.resolve();
                 p.then(function() {
                     closeModal();
-                    submitEl.disabled = false;
-                    submitEl.innerHTML = '<span>' + confirmLabel + '</span>';
+                    activeBtn.disabled = false;
+                    activeBtn.innerHTML = '<span>' + confirmLabel + '</span>';
                 }).catch(function() {
-                    submitEl.disabled = false;
-                    submitEl.innerHTML = '<span>' + confirmLabel + '</span>';
+                    activeBtn.disabled = false;
+                    activeBtn.innerHTML = '<span>' + confirmLabel + '</span>';
                 });
             };
         }
