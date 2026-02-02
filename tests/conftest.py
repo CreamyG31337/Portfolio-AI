@@ -9,6 +9,11 @@ web_dashboard_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..
 if web_dashboard_path not in sys.path:
     sys.path.insert(0, web_dashboard_path)
 
+# Also add root to path for utils import
+root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if root_path not in sys.path:
+    sys.path.insert(0, root_path)
+
 @pytest.fixture
 def app():
     """Create and configure a new app instance for each test."""
@@ -25,13 +30,7 @@ def app():
          patch('flask_caching.Cache'), \
          patch('log_handler.setup_logging'):
 
-        app_path = os.path.join(web_dashboard_path, "app.py")
-        spec = importlib.util.spec_from_file_location("web_dashboard_app", app_path)
-        if not spec or not spec.loader:
-            raise RuntimeError("Failed to load Flask app module for tests")
-        app_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(app_module)
-        app = app_module.app
+        from web_dashboard.app import app
         from jinja2 import FileSystemLoader
         app.jinja_loader = FileSystemLoader(os.path.join(web_dashboard_path, "templates"))
         

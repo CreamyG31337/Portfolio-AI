@@ -53,7 +53,7 @@ except ImportError:
 
 # Initialize Flask app with template and static folders
 # serving static files at /assets to avoid conflict with Streamlit's /static
-app = Flask(__name__, 
+app = Flask(__name__,
             template_folder='templates',
             static_folder='static',
             static_url_path='/assets')
@@ -82,10 +82,10 @@ try:
     csrf = CSRFProtect(app)
     CSRF_ENABLED = True
     logger.info("CSRF protection enabled via Flask-WTF")
-    
+
     # Disable default CSRF checking so we can manually control it
     app.config['WTF_CSRF_CHECK_DEFAULT'] = False
-    
+
     # Manually protect all state-changing routes in before_request
     @app.before_request
     def csrf_protect_routes():
@@ -93,7 +93,7 @@ try:
         # Only check CSRF for state-changing methods
         if request.method in app.config.get('WTF_CSRF_METHODS', ['POST', 'PUT', 'PATCH', 'DELETE']):
             csrf.protect()
-    
+
     logger.info("CSRF protection enabled for all state-changing routes")
 except ImportError:
     CSRF_ENABLED = False
@@ -175,7 +175,7 @@ def add_security_headers(response):
     return response
 
 # Configure CORS to allow credentials from Vercel deployment
-CORS(app, 
+CORS(app,
      supports_credentials=True,
      origins=["https://webdashboard-hazel.vercel.app", "http://localhost:5000"],
      allow_headers=["Content-Type", "Authorization", "X-CSRFToken"],
@@ -221,7 +221,7 @@ def internal_server_error(e):
     else:
         tb = "Traceback hidden (app.debug is False)"
         message = "An internal server error occurred."
-    
+
     # Return JSON for API requests
     if request.path.startswith('/api/') or request.is_json:
         response_data = {
@@ -270,11 +270,11 @@ def handle_exception(e):
     from werkzeug.exceptions import HTTPException
     if isinstance(e, HTTPException):
         return e
-    
+
     # Handle non-HTTP exceptions (like 500s)
     import traceback
     logger.error(f"Unhandled exception: {e}", exc_info=True)
-    
+
     # Only expose traceback in debug mode
     if app.debug:
         tb = traceback.format_exc()
@@ -293,7 +293,7 @@ def handle_exception(e):
             response_data["traceback"] = tb
 
         return jsonify(response_data), 500
-        
+
     # Return HTML for browser requests (visible on screen)
     if app.debug:
         return f"""
@@ -350,12 +350,12 @@ def get_supabase_client() -> Optional[SupabaseClient]:
     """Get Supabase client instance with user authentication"""
     if not SUPABASE_AVAILABLE:
         return None
-    
+
     try:
         # Get user token from cookies to respect RLS policies
         from flask import request
         user_token = request.cookies.get('auth_token') or request.cookies.get('session_token')
-        
+
         return SupabaseClient(user_token=user_token)
     except Exception as e:
         logger.error(f"Failed to initialize Supabase client: {e}", exc_info=True)
@@ -396,7 +396,7 @@ def inject_build_timestamp():
         except (ImportError, Exception):
             # If zoneinfo not available (Python < 3.9) or other error, use simple format
             build_timestamp = datetime.now().strftime("%Y-%m-%d %I:%M %p")
-    
+
     return {'build_timestamp': build_timestamp}
 
 def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
@@ -405,16 +405,16 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
         from shared_navigation import get_navigation_links, is_page_migrated
         from user_preferences import get_user_preference
         from flask_auth_utils import get_user_email_flask
-        
+
         # Get navigation links
         links = get_navigation_links()
         is_v2_enabled = get_user_preference('v2_enabled', default=False)
-        
+
         # If we're on a v2 page (current_page is migrated), assume v2 is enabled for navigation
         # This ensures menu is populated when viewing v2 pages
         if current_page and is_page_migrated(current_page):
             is_v2_enabled = True
-        
+
         # Build navigation context
         # Only check: is v2 enabled AND is page migrated? If yes, show link.
         # Don't hide links for any other reason - let pages handle errors and authorization
@@ -426,12 +426,12 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             if is_page_migrated(link['page']):
                 # Only show migrated pages if v2 is enabled
                 show = is_v2_enabled
-            
+
             # Determine URL (use Flask route if migrated and v2 enabled)
             url = link['url']
             if is_page_migrated(link['page']) and is_v2_enabled:
                 url = link['url']  # Already points to Flask route
-            
+
             nav_links.append({
                 'name': link['name'],
                 'url': url,
@@ -439,7 +439,7 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
                 'show': show,
                 'active': current_page == link['page']
             })
-        
+
         # Get available funds for the sidebar selector (Flask-compatible)
         try:
             from flask_data_utils import get_available_funds_flask
@@ -447,7 +447,7 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
         except Exception as e:
             logger.warning(f"Could not load available funds: {e}")
             available_funds = []
-        
+
         # Check if user is admin (actually check the role, not just authentication)
         is_admin_value = False
 
@@ -467,7 +467,7 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
         except Exception as e:
             logger.debug(f"Error checking admin status for navigation: {e}")
             is_admin_value = False
-        
+
         # Get currently selected fund - check URL parameter first, then user preference
         selected_fund = None
         try:
@@ -481,15 +481,15 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
                 selected_fund = get_user_selected_fund()
         except Exception:
             pass
-            
+
         # Determine if "All Funds" is allowed for this page
         # Restrict on pages where aggregate view doesn't make sense or isn't supported
         restricted_all_funds_pages = ['ai_assistant', 'ticker_details']
         allow_all_funds = True
-        
+
         if current_page in restricted_all_funds_pages:
             allow_all_funds = False
-            
+
             # If "All Funds" is selected but not allowed, default to first available fund
             # This ensures the selector shows a valid option for the context
             if not selected_fund or str(selected_fund).lower() == 'all':
@@ -497,7 +497,7 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
                     selected_fund = available_funds[0]
                 else:
                     selected_fund = ""
-        
+
         # Get scheduler status globally for the menu badge
         scheduler_status = 'stopped'
         try:
@@ -513,7 +513,7 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
                     scheduler_status = 'running'
             except Exception:
                 pass
-            
+
         return {
             'navigation_links': nav_links,
             'is_admin': is_admin_value,
@@ -608,19 +608,19 @@ def _start_scheduler_background():
     import threading
     import os
     from scheduler.scheduler_core import start_scheduler, is_scheduler_running
-    
+
     # Global reference to keep thread alive
     _scheduler_thread = None
-    
+
     def _scheduler_init_thread():
         global _scheduler_thread
         thread_name = threading.current_thread().name
         thread_id = threading.current_thread().ident
         process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
-        
+
         import sys
         import time
-        
+
         # Log to both logger and stderr for maximum visibility
         def log_both(level, msg):
             """Log to both logger and stderr for visibility even if logging system fails"""
@@ -636,39 +636,39 @@ def _start_scheduler_background():
                     logger.debug(f"[PID:{process_id} TID:{thread_id}] {msg}")
             except:
                 pass  # If logger fails, at least stderr worked
-        
+
         try:
             log_both('info', f"[{thread_name}] Starting scheduler initialization...")
-            
+
             # Retry configuration
             MAX_RETRIES = 3
             RETRY_DELAYS = [0.5, 2.0, 5.0]  # Exponential backoff
-            
+
             for attempt in range(MAX_RETRIES):
                 try:
                     # Wait before attempting (increases with each retry)
                     delay = RETRY_DELAYS[attempt]
                     log_both('info', f"Attempt {attempt + 1}/{MAX_RETRIES}: Waiting {delay}s for Flask initialization...")
                     time.sleep(delay)
-                    
+
                     # Check if scheduler is already running (cross-process check)
                     # On first attempt, be more aggressive - we just cleared stale heartbeat files,
                     # so only trust heartbeat on subsequent attempts where another process might have started it
                     if attempt > 0 and is_scheduler_running():
                         log_both('info', "✅ Scheduler already running (detected via heartbeat), skipping auto-start")
                         break
-                    
+
                     # Attempt to start scheduler
                     log_both('info', f"🚀 Attempting to start scheduler (attempt {attempt + 1}/{MAX_RETRIES})...")
                     result = start_scheduler()
-                    
+
                     if result:
                         log_both('info', "✅ start_scheduler() returned True")
-                        
+
                         # HEALTH CHECK: Verify scheduler is actually running
                         log_both('info', "Verifying scheduler health...")
                         time.sleep(2)  # Wait for scheduler to initialize jobs
-                        
+
                         # Check 1: Verify scheduler reports running
                         if not is_scheduler_running():
                             log_both('error', "❌ Health check failed: is_scheduler_running() returned False after startup")
@@ -678,7 +678,7 @@ def _start_scheduler_background():
                             else:
                                 log_both('error', "❌ All retries exhausted - scheduler failed health check")
                                 break
-                        
+
                         # Check 2: Verify heartbeat file is being updated
                         from scheduler.scheduler_core import _HEARTBEAT_FILE, _check_heartbeat
                         if _HEARTBEAT_FILE.exists():
@@ -689,7 +689,7 @@ def _start_scheduler_background():
                                 log_both('info', f"✅ Heartbeat file is fresh ({heartbeat_age:.1f}s old)")
                         else:
                             log_both('warning', "⚠️ Heartbeat file does not exist yet (may update soon)")
-                        
+
                         # Success!
                         log_both('info', "=" * 60)
                         log_both('info', "✅ SCHEDULER STARTED SUCCESSFULLY ON FLASK INITIALIZATION")
@@ -698,32 +698,32 @@ def _start_scheduler_background():
                     else:
                         # start_scheduler() returned False (already running or failed)
                         log_both('warning', f"⚠️ start_scheduler() returned False on attempt {attempt + 1}")
-                        
+
                         # Check if it's because another process has it running
                         if is_scheduler_running():
                             log_both('info', "✅ Another process has scheduler running (detected via heartbeat)")
                             break
-                        
+
                         # Otherwise, it failed - retry if we have attempts left
                         if attempt < MAX_RETRIES - 1:
                             log_both('warning', f"Will retry in {RETRY_DELAYS[attempt + 1]}s...")
                         else:
                             log_both('error', "❌ All retries exhausted - scheduler failed to start")
                             log_both('error', "Check logs above for errors. You can start manually via Jobs page.")
-                
+
                 except Exception as e:
                     log_both('error', f"❌ Exception during scheduler start attempt {attempt + 1}: {e}")
                     import traceback
                     traceback.print_exc(file=sys.stderr)
-                    
+
                     if attempt < MAX_RETRIES - 1:
                         log_both('warning', f"Will retry in {RETRY_DELAYS[attempt + 1]}s...")
                     else:
                         log_both('error', "❌ All retries exhausted due to exceptions")
                         log_both('error', "⚠️ Flask will continue without scheduler - start manually via Jobs page")
-            
+
             log_both('info', f"[{thread_name}] Scheduler initialization complete")
-            
+
             # CRITICAL: Thread stays alive to execute scheduler jobs
             # Sleep forever to keep thread alive and log heartbeat
             sleep_count = 0
@@ -731,14 +731,14 @@ def _start_scheduler_background():
                 sleep_count += 1
                 logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Keeping scheduler thread alive (cycle {sleep_count})")
                 time.sleep(60)
-                
+
         except Exception as e:
             # Catch-all for any unexpected errors
             log_both('error', f"❌ CRITICAL: Unexpected error in scheduler init thread: {e}")
             import traceback
             traceback.print_exc(file=sys.stderr)
             log_both('error', "⚠️ Flask will continue without scheduler - start manually via jobs page")
-    
+
     # Start scheduler in NON-daemon thread (keeps it alive for job execution)
     process_id = os.getpid() if hasattr(os, 'getpid') else 'N/A'
     _scheduler_thread = threading.Thread(
@@ -762,16 +762,16 @@ if os.environ.get('DISABLE_SCHEDULER', '').lower() != 'true':
     # When debug mode is disabled, start normally.
     flask_debug = os.environ.get('FLASK_DEBUG', '').lower() == 'true'
     is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
-    
+
     should_start = True
     reason = ""
-    
+
     if flask_debug and not is_reloader_process:
         # This is the parent/monitor process in debug mode - don't start scheduler here
         should_start = False
         reason = "Flask debug mode: deferring scheduler to reloader child process"
         logger.info(f"ℹ️ {reason}")
-    
+
     if should_start:
         # Check if thread is already running to avoid duplicates
         _existing_threads = [t.name for t in threading.enumerate()]
@@ -802,24 +802,24 @@ def load_portfolio_data(fund_name=None) -> Dict:
     """Load and process portfolio data from Supabase (using flask_data_utils)"""
     try:
         from flask_data_utils import (
-            get_current_positions_flask, 
-            get_trade_log_flask, 
+            get_current_positions_flask,
+            get_trade_log_flask,
             get_cash_balances_flask,
             get_available_funds_flask
         )
-        
+
         # Get available funds first
         available_funds = get_available_funds_flask()
-        
+
         # Default to first fund if not specified
         if not fund_name and available_funds:
             fund_name = available_funds[0]
-            
+
         # Load data components using modern utils
         portfolio_df = get_current_positions_flask(fund=fund_name)
         trades_df = get_trade_log_flask(limit=500, fund=fund_name)
         cash_balances = get_cash_balances_flask(fund=fund_name)
-        
+
         return {
             "portfolio": portfolio_df,
             "trades": trades_df,
@@ -870,7 +870,7 @@ def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataF
         elif client:
             # Use Supabase client for combined metrics (legacy)
             return client.get_performance_metrics()
-        
+
         # Fallback to local calculation if Supabase not available
         if portfolio_df.empty:
             return {
@@ -882,7 +882,7 @@ def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataF
                 "winning_trades": 0,
                 "losing_trades": 0
             }
-        
+
         # Calculate current portfolio metrics
         if 'total_market_value' in portfolio_df.columns:
             total_value = portfolio_df['total_market_value'].sum()
@@ -894,9 +894,9 @@ def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataF
             total_value = current_positions.get('Total Value', pd.Series([0])).sum()
             total_cost_basis = current_positions.get('Cost Basis', pd.Series([0])).sum()
             unrealized_pnl = current_positions.get('PnL', pd.Series([0])).sum()
-        
+
         performance_pct = (unrealized_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0
-        
+
         # Calculate trade statistics
         if not trade_df.empty:
             total_trades = len(trade_df)
@@ -908,7 +908,7 @@ def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataF
                 losing_trades = len(trade_df[trade_df.get('PnL', 0) < 0])
         else:
             total_trades = winning_trades = losing_trades = 0
-        
+
         return {
             "total_value": round(total_value, 2),
             "total_cost_basis": round(total_cost_basis, 2),
@@ -939,17 +939,17 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
             daily_data = client.get_daily_performance_data(days=30, fund=fund_name)
             if not daily_data:
                 return json.dumps({})
-            
+
             df = pd.DataFrame(daily_data)
         else:
             # Fallback to local calculation
             if portfolio_df.empty:
                 return json.dumps({})
-            
+
             # Load exchange rates for currency conversion
             from utils.currency_converter import load_exchange_rates, convert_usd_to_cad, is_us_ticker
             from decimal import Decimal
-            
+
             # Load exchange rates from common location (USD/CAD rates apply to all funds)
             exchange_rates_path = Path("trading_data/exchange_rates")
             if not exchange_rates_path.exists():
@@ -964,9 +964,9 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
                             break
                 if not exchange_rates_path:
                     exchange_rates_path = Path("trading_data/funds/Project Chimera")  # Final fallback
-            
+
             exchange_rates = load_exchange_rates(exchange_rates_path)
-            
+
             # Group by date and calculate daily totals
             daily_totals = []
             for date, group in portfolio_df.groupby(portfolio_df['Date'].dt.date):
@@ -975,12 +975,12 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
                     # Calculate totals with proper currency conversion
                     total_value_cad = Decimal('0')
                     total_cost_basis_cad = Decimal('0')
-                    
+
                     for _, pos in current_positions.iterrows():
                         ticker = pos['Ticker']
                         value = Decimal(str(pos['Total Value']))
                         cost_basis = Decimal(str(pos['Cost Basis']))
-                        
+
                         # Convert USD to CAD if needed
                         if is_us_ticker(ticker):
                             value_cad = convert_usd_to_cad(value, exchange_rates)
@@ -988,32 +988,32 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
                         else:
                             value_cad = value
                             cost_basis_cad = cost_basis
-                        
+
                         total_value_cad += value_cad
                         total_cost_basis_cad += cost_basis_cad
-                    
+
                     # Convert back to float for compatibility
                     total_value = float(total_value_cad)
                     total_cost_basis = float(total_cost_basis_cad)
                     performance_pct = ((total_value - total_cost_basis) / total_cost_basis * 100) if total_cost_basis > 0 else 0
-                    
+
                     daily_totals.append({
                         'date': date,
                         'value': total_value,
                         'cost_basis': total_cost_basis,
                         'performance_pct': performance_pct
                     })
-            
+
             if not daily_totals:
                 return json.dumps({})
-            
+
             # Create DataFrame and sort by date
             df = pd.DataFrame(daily_totals).sort_values('date')
             df['performance_index'] = df['performance_pct'] + 100
-        
+
         # Create Plotly chart
         fig = go.Figure()
-        
+
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['performance_index'],
@@ -1022,11 +1022,11 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
             line=dict(color='#2E86AB', width=3),
             marker=dict(size=6)
         ))
-        
+
         # Add break-even line
-        fig.add_hline(y=100, line_dash="dash", line_color="gray", 
+        fig.add_hline(y=100, line_dash="dash", line_color="gray",
                      annotation_text="Break-even", annotation_position="bottom right")
-        
+
         fig.update_layout(
             title="Portfolio Performance Over Time",
             xaxis_title="Date",
@@ -1035,10 +1035,10 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
             template='plotly_white',
             height=500
         )
-        
+
         from plotly_utils import serialize_plotly_figure
         return serialize_plotly_figure(fig)
-    
+
     except Exception as e:
         logger.error(f"Error creating performance chart: {e}", exc_info=True)
         return json.dumps({})
@@ -1105,13 +1105,13 @@ def dashboard_fallback():
                 <div class="error-icon">⚠️</div>
                 <h1>Dashboard Unavailable</h1>
                 <p>The dashboard route failed to initialize due to a code error.</p>
-                
+
                 <div class="info">
                     <strong>What this means:</strong><br>
                     The dashboard routes are currently unavailable because an error occurred during initialization.
                     This is typically caused by an import error, missing dependency, or runtime error in the code.
                 </div>
-                
+
                 <p><strong>What to do:</strong></p>
                 <ul>
                     <li>Check the server logs for detailed error information</li>
@@ -1119,7 +1119,7 @@ def dashboard_fallback():
                     <li>Ensure all required dependencies are installed</li>
                     <li>Try restarting the Flask server</li>
                 </ul>
-                
+
                 <div class="actions">
                     <a href="/" class="action-link">Go to Home</a>
                     <a href="/auth" class="action-link">Login Page</a>
@@ -1139,11 +1139,11 @@ def index():
         import base64
         import json as json_lib
         import time
-        
+
         auth_token = request.cookies.get('auth_token')
         session_token = request.cookies.get('session_token')
         refresh_token = get_refresh_token()
-        
+
         # Don't delete cookies in root route - just check authentication
         # Check if auth_token is missing or expired, try to refresh if we have refresh_token
         if not auth_token and refresh_token:
@@ -1153,7 +1153,7 @@ def index():
             if success and new_token:
                 # Refresh succeeded - redirect with new cookies
                 is_production = (
-                    os.getenv("FLASK_ENV") == "production" or 
+                    os.getenv("FLASK_ENV") == "production" or
                     os.getenv("APP_DOMAIN") is not None or
                     request.headers.get('X-Forwarded-Proto') == 'https' or
                     request.is_secure
@@ -1164,7 +1164,7 @@ def index():
                 if new_refresh:
                     response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite=samesite_value, path='/')
                 return response
-        
+
         # Check if auth_token exists and is expired, try to refresh
         if auth_token:
             try:
@@ -1182,7 +1182,7 @@ def index():
                         if success and new_token:
                             # Refresh succeeded - redirect with new cookies
                             is_production = (
-                                os.getenv("FLASK_ENV") == "production" or 
+                                os.getenv("FLASK_ENV") == "production" or
                                 os.getenv("APP_DOMAIN") is not None or
                                 request.headers.get('X-Forwarded-Proto') == 'https' or
                                 request.is_secure
@@ -1200,12 +1200,12 @@ def index():
                             logger.warning("[AUTH] Token expired and refresh failed, will redirect to auth")
             except Exception as e:
                 logger.warning(f"[AUTH] Error checking auth_token: {e}, will continue to auth check")
-        
+
         # Check if we have a valid auth_token (required for proper Supabase auth)
         # Also accept session_token as fallback for legacy compatibility
         is_authenticated = False
         token_to_check = auth_token or session_token
-        
+
         if token_to_check:
             try:
                 token_parts = token_to_check.split('.')
@@ -1220,7 +1220,7 @@ def index():
             except Exception as e:
                 logger.warning(f"[AUTH] Error parsing token in root route: {e}")
                 pass
-        
+
         if is_authenticated:
             logger.info("[AUTH] Root route: User authenticated, redirecting to dashboard")
             return redirect(url_for('dashboard.dashboard_page'))
@@ -1297,11 +1297,11 @@ def auth_debug():
     import base64
     import json as json_lib
     import time
-    
+
     auth_token = request.cookies.get('auth_token')
     session_token = request.cookies.get('session_token')
     refresh_token = request.cookies.get('refresh_token')
-    
+
     def decode_token_safe(token):
         if not token:
             return None
@@ -1327,7 +1327,7 @@ def auth_debug():
             }
         except Exception as e:
             return {"valid": False, "error": str(e)}
-    
+
     return jsonify({
         "auth_token": {
             "present": bool(auth_token),
@@ -1355,10 +1355,10 @@ def login():
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
-        
+
         if not email or not password:
             return jsonify({"error": "Email and password required"}), 400
-        
+
         # Authenticate with Supabase
         response = requests.post(
             f"{os.getenv('SUPABASE_URL')}/auth/v1/token?grant_type=password",
@@ -1371,11 +1371,11 @@ def login():
                 "password": password
             }
         )
-        
+
         logger.info(f"Login attempt for {email}: Status {response.status_code}")
         if response.status_code != 200:
             logger.error(f"Login failed: {response.text}")
-        
+
         if response.status_code == 200:
             auth_data = response.json()
             # DEBUG: Log what Supabase actually returns (for debugging refresh_token issues)
@@ -1385,12 +1385,12 @@ def login():
                 logger.info(f"[LOGIN DEBUG] refresh_token preview: {auth_data['refresh_token'][:50]}...")
             else:
                 logger.warning("[LOGIN DEBUG] refresh_token NOT in Supabase response!")
-            
+
             user_id = auth_data["user"]["id"]
-            
+
             # Create session token
             session_token = auth_manager.create_user_session(user_id, email)
-            
+
             # Create response with cookie
             response = jsonify({
                 "token": session_token,
@@ -1399,7 +1399,7 @@ def login():
                     "email": email
                 }
             })
-            
+
             # Set the session token as a cookie (Flask legacy)
             # Use secure cookies for production (HTTPS), allow non-secure for local dev (HTTP)
             # Behind a reverse proxy, request.is_secure is False even on HTTPS
@@ -1410,22 +1410,22 @@ def login():
             is_https = x_forwarded_proto == 'https' or request.is_secure
             has_app_domain = bool(os.getenv("APP_DOMAIN"))
             is_production_env = os.getenv("FLASK_ENV") == "production"
-            
+
             is_production = is_production_env or has_app_domain or is_https
-            
+
             # CRITICAL: Always use secure=True if we detect HTTPS (even if is_production is False)
             # Browsers will reject cookies with secure=False on HTTPS sites
             use_secure = is_https or is_production
-            
+
             # Use SameSite=Lax for same-site requests (works for both production and dev)
             # SameSite=None is only needed for cross-origin requests and requires Secure=True
             # Since we're on the same domain, Lax is the correct choice
             samesite_value = 'Lax'
-            
+
             response.set_cookie(
-                'session_token', 
-                session_token, 
-                max_age=86400, 
+                'session_token',
+                session_token,
+                max_age=86400,
                 httponly=True,
                 secure=use_secure,  # True for HTTPS, False for localhost HTTP
                 samesite=samesite_value,
@@ -1437,35 +1437,35 @@ def login():
             if "access_token" in auth_data:
                 # Default Supabase expiry is 3600s (1 hour)
                 expires_in = auth_data.get("expires_in", 3600)
-                
+
                 response.set_cookie(
-                    'auth_token', 
-                    auth_data["access_token"], 
-                    max_age=expires_in, 
-                    httponly=True, 
+                    'auth_token',
+                    auth_data["access_token"],
+                    max_age=expires_in,
+                    httponly=True,
                     secure=use_secure,
                     samesite=samesite_value,
                     path='/'
                 )
-                
+
                 # Also set refresh token if available so client can refresh if needed
                 if "refresh_token" in auth_data:
                     response.set_cookie(
-                        'refresh_token', 
-                        auth_data["refresh_token"], 
+                        'refresh_token',
+                        auth_data["refresh_token"],
                         max_age=86400 * 30, # 30 days usually
                         httponly=True,
                         secure=use_secure,
                         samesite=samesite_value,
                         path='/'
                     )
-            
+
             return response
         else:
             error_data = response.json() if response.text else {}
             error_code = error_data.get("error_code", "")
             error_msg = error_data.get("msg", "Invalid credentials")
-            
+
             # Handle specific error cases
             if error_code == "email_not_confirmed":
                 return jsonify({"error": "Please check your email and click the confirmation link before logging in."}), 401
@@ -1473,7 +1473,7 @@ def login():
                 return jsonify({"error": "Invalid email or password."}), 401
             else:
                 return jsonify({"error": error_msg}), 401
-            
+
     except Exception as e:
         logger.error(f"Login error: {e}", exc_info=True)
         import traceback
@@ -1484,7 +1484,7 @@ def login():
 def debug_cookies():
     """
     Debug endpoint to inspect cookies received by the server.
-    
+
     Security Note: This endpoint returns all cookies including HttpOnly cookies.
     This is safe because:
     1. Admin-only access: Protected by @require_admin decorator
@@ -1492,12 +1492,12 @@ def debug_cookies():
     3. XSS context: If an attacker has XSS, they can already make authenticated requests
        directly - reading cookies via this endpoint doesn't provide additional attack surface
     4. Debugging utility: Full cookie visibility is necessary for troubleshooting auth issues
-    
+
     This endpoint is intentionally NOT masked to preserve debugging functionality.
     """
     # Use same is_production logic as login route
     is_production = (
-        os.getenv("FLASK_ENV") == "production" or 
+        os.getenv("FLASK_ENV") == "production" or
         os.getenv("APP_DOMAIN") is not None or
         request.headers.get('X-Forwarded-Proto') == 'https' or
         request.is_secure
@@ -1522,27 +1522,27 @@ def debug_refresh_attempt():
     from flask_auth_utils import get_refresh_token
     import os
     import requests
-    
+
     refresh_token = get_refresh_token()
-    
+
     if not refresh_token:
         return jsonify({
             "error": "No refresh_token found",
             "refresh_token_present": False
         })
-    
+
     # Attempt the refresh and capture the full response
     try:
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-        
+
         if not supabase_url or not supabase_key:
             return jsonify({
                 "error": "Missing Supabase config",
                 "supabase_url": bool(supabase_url),
                 "supabase_key": bool(supabase_key)
             })
-        
+
         response = requests.post(
             f"{supabase_url}/auth/v1/token?grant_type=refresh_token",
             headers={
@@ -1552,7 +1552,7 @@ def debug_refresh_attempt():
             json={"refresh_token": refresh_token},
             timeout=10
         )
-        
+
         result = {
             "refresh_token_length": len(refresh_token),
             "refresh_token_preview": refresh_token[:50] + "..." if len(refresh_token) > 50 else refresh_token,
@@ -1561,14 +1561,14 @@ def debug_refresh_attempt():
             "supabase_response_json": response.json() if response.text else None,
             "success": response.status_code == 200
         }
-        
+
         # If refresh succeeded, save the new tokens to cookies
         if response.status_code == 200:
             auth_data = response.json()
             new_access_token = auth_data.get("access_token")
             new_refresh_token = auth_data.get("refresh_token")
             expires_in = auth_data.get("expires_in", 3600)
-            
+
             if new_access_token:
                 # Use same cookie settings as login route
                 x_forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
@@ -1578,7 +1578,7 @@ def debug_refresh_attempt():
                 is_production = is_production_env or has_app_domain or is_https
                 use_secure = is_https or is_production
                 samesite_value = 'Lax'
-                
+
                 flask_response = jsonify(result)
                 flask_response.set_cookie(
                     'auth_token',
@@ -1602,7 +1602,7 @@ def debug_refresh_attempt():
                     result["new_refresh_token_saved"] = True
                     result["new_refresh_token_length"] = len(new_refresh_token)
                 return flask_response
-        
+
         return jsonify(result)
     except Exception as e:
         return jsonify({
@@ -1618,10 +1618,10 @@ def debug_auth():
     import time
     import json
     import base64
-    
+
     token = get_auth_token()
     refresh = get_refresh_token()
-    
+
     token_details = {}
     if token:
         try:
@@ -1633,9 +1633,9 @@ def debug_auth():
                 token_details = json.loads(decoded)
         except Exception as e:
             token_details = {"error": str(e)}
-            
+
     success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
-    
+
     return jsonify({
         "success": success,
         "token_present": bool(token),
@@ -1655,17 +1655,17 @@ def magic_link():
     try:
         data = request.get_json()
         email = data.get('email')
-        
+
         if not email:
             return jsonify({"error": "Email required"}), 400
-            
+
         app_domain = os.getenv("APP_DOMAIN")
         if not app_domain:
             return jsonify({"error": "Server configuration error: APP_DOMAIN missing"}), 500
-            
+
         # Ensure redirect URL is absolute and correct for auth flow
         redirect_url = f"https://{app_domain}/auth_callback.html"
-        
+
         # Request magic link from Supabase
         # Note: For the /auth/v1/otp endpoint, use "options.emailRedirectTo" per Supabase docs
         # But the raw REST API uses "redirect_to" at the top level (not inside data)
@@ -1681,12 +1681,12 @@ def magic_link():
                 "redirect_to": redirect_url
             }
         )
-        
+
         if response.status_code == 200:
             return jsonify({"message": "Magic link sent to your email"})
         else:
             return jsonify({"error": "Failed to send magic link"}), response.status_code
-            
+
     except Exception as e:
         logger.error(f"Magic link error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -1698,14 +1698,14 @@ def reset_password_request():
     try:
         data = request.get_json()
         email = data.get('email')
-        
+
         if not email:
             return jsonify({"error": "Email required"}), 400
 
         app_domain = os.getenv("APP_DOMAIN")
         if not app_domain:
             return jsonify({"error": "Server configuration error: APP_DOMAIN missing"}), 500
-            
+
         # Recovery redirect URL
         redirect_url = f"https://{app_domain}/auth_callback.html?type=recovery"
 
@@ -1749,7 +1749,7 @@ def reset_password_request():
                     error_payload["supabase_status"] = response.status_code
                     error_payload["supabase_body"] = response.text
             return jsonify(error_payload), response.status_code
-            
+
     except Exception as e:
         logger.error(f"Password reset request error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -1760,19 +1760,19 @@ def change_password():
     """Handle password change for authenticated user"""
     try:
         # Get token from cookie or header
-        token = (request.cookies.get('auth_token') or 
-                 request.cookies.get('session_token') or 
+        token = (request.cookies.get('auth_token') or
+                 request.cookies.get('session_token') or
                  request.headers.get('Authorization', '').replace('Bearer ', ''))
-                 
+
         if not token:
              return jsonify({"error": "Authentication required"}), 401
-             
+
         data = request.get_json()
         new_password = data.get('password')
-        
+
         if not new_password or len(new_password) < 6:
             return jsonify({"error": "Password must be at least 6 characters"}), 400
-            
+
         # Update user in Supabase
         response = requests.put(
             f"{os.getenv('SUPABASE_URL')}/auth/v1/user",
@@ -1785,12 +1785,12 @@ def change_password():
                 "password": new_password
             }
         )
-        
+
         if response.status_code == 200:
             return jsonify({"message": "Password updated successfully"})
         else:
             return jsonify({"error": "Failed to update password"}), response.status_code
-            
+
     except Exception as e:
         logger.error(f"Password change error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -1803,18 +1803,18 @@ def register():
         # Check if registration is enabled via system settings
         from settings import get_system_setting
         registration_enabled = get_system_setting('registration_enabled', default=True)
-        
+
         if not registration_enabled:
             return jsonify({"error": "New user registration is currently disabled. Please contact an administrator."}), 403
-        
+
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
         name = data.get('name')
-        
+
         if not email or not password or not name:
             return jsonify({"error": "Email, password, and name required"}), 400
-        
+
         # Register with Supabase
         response = requests.post(
             f"{os.getenv('SUPABASE_URL')}/auth/v1/signup",
@@ -1830,18 +1830,18 @@ def register():
                 }
             }
         )
-        
+
         logger.info(f"Registration attempt for {email}: Status {response.status_code}")
         if response.status_code != 200:
             logger.error(f"Registration failed: {response.text}")
-        
+
         if response.status_code == 200:
             return jsonify({"message": "Account created successfully! Please check your email and click the confirmation link to activate your account."})
         else:
             error_data = response.json() if response.text else {}
             error_code = error_data.get("error_code", "")
             error_msg = error_data.get("msg", "Registration failed")
-            
+
             # Handle specific error cases
             if error_code == "email_address_invalid":
                 return jsonify({"error": "Please enter a valid email address."}), 400
@@ -1851,7 +1851,7 @@ def register():
                 return jsonify({"error": "An account with this email already exists."}), 400
             else:
                 return jsonify({"error": error_msg}), 400
-            
+
     except Exception as e:
         logger.error(f"Registration error: {e}", exc_info=True)
         import traceback
@@ -1861,40 +1861,40 @@ def register():
 def logout():
     """Handle user logout"""
     is_production = request.host != 'localhost:5000' and not request.host.startswith('127.0.0.1')
-    
+
     # Create redirect response to auth page
     response = redirect(url_for('auth_page'))
-    
+
     # Clear session_token (Flask login)
     response.set_cookie(
-        'session_token', 
-        '', 
+        'session_token',
+        '',
         expires=0,
         secure=is_production,
         samesite='Lax',
         path='/'
     )
-    
+
     # Clear auth_token (Streamlit login) to prevent auto-login loop
     response.set_cookie(
-        'auth_token', 
-        '', 
+        'auth_token',
+        '',
         expires=0,
         secure=is_production,
         samesite='Lax',
         path='/'
     )
-    
+
     # Clear refresh_token
     response.set_cookie(
-        'refresh_token', 
-        '', 
+        'refresh_token',
+        '',
         expires=0,
         secure=is_production,
         samesite='Lax',
         path='/'
     )
-    
+
     return response
 
 # =====================================================
@@ -1917,14 +1917,14 @@ def admin_funds_page():
     from flask_auth_utils import get_user_email_flask
     from user_preferences import get_user_theme
     from app import get_navigation_context
-    
+
     user_email = get_user_email_flask()
     user_theme = get_user_theme() or 'system'
-    
+
     # Get navigation context
     nav_context = get_navigation_context(current_page='admin_funds')
-    
-    return render_template('funds.html', 
+
+    return render_template('funds.html',
                          user_email=user_email,
                          user_theme=user_theme,
                          **nav_context)
@@ -1943,17 +1943,17 @@ def api_admin_users():
                 "Content-Type": "application/json"
             }
         )
-        
+
         if response.status_code == 200:
             users = response.json()
-            
+
             # Get stats
             stats = {
                 "total_users": len(users),
                 "total_funds": len(set(fund for user in users for fund in (user.get('funds') or []))),
                 "total_assignments": sum(len(user.get('funds') or []) for user in users)
             }
-            
+
             return jsonify({"users": users, "stats": stats})
         else:
             logger.error(f"Error getting users: {response.text}")
@@ -1977,7 +1977,7 @@ def api_admin_funds():
             },
             params={"select": "fund"}
         )
-        
+
         if response.status_code == 200:
             funds = list(set(row['fund'] for row in response.json()))
             return jsonify({"funds": sorted(funds)})
@@ -1996,10 +1996,10 @@ def api_admin_assign_fund():
         data = request.get_json()
         user_email = data.get('user_email')
         fund_name = data.get('fund_name')
-        
+
         if not user_email or not fund_name:
             return jsonify({"error": "User email and fund name required"}), 400
-        
+
         # Use the database function to assign fund
         response = requests.post(
             f"{os.getenv('SUPABASE_URL')}/rest/v1/rpc/assign_fund_to_user",
@@ -2013,7 +2013,7 @@ def api_admin_assign_fund():
                 "fund_name": fund_name
             }
         )
-        
+
         if response.status_code == 200:
             result_data = response.json()
             if isinstance(result_data, dict):
@@ -2030,7 +2030,7 @@ def api_admin_assign_fund():
         else:
             error_msg = response.json().get('message', 'Failed to assign fund') if response.text else 'Failed to assign fund'
             return jsonify({"error": error_msg}), 400
-            
+
     except Exception as e:
         logger.error(f"Error assigning fund: {e}")
         return jsonify({"error": "Failed to assign fund"}), 500
@@ -2043,10 +2043,10 @@ def api_admin_remove_fund():
         data = request.get_json()
         user_email = data.get('user_email')
         fund_name = data.get('fund_name')
-        
+
         if not user_email or not fund_name:
             return jsonify({"error": "User email and fund name required"}), 400
-        
+
         # Get user ID first
         user_response = requests.get(
             f"{os.getenv('SUPABASE_URL')}/rest/v1/user_profiles",
@@ -2057,12 +2057,12 @@ def api_admin_remove_fund():
             },
             params={"email": f"eq.{user_email}", "select": "user_id"}
         )
-        
+
         if user_response.status_code != 200 or not user_response.json():
             return jsonify({"error": "User not found"}), 404
-        
+
         user_id = user_response.json()[0]['user_id']
-        
+
         # Remove fund assignment
         remove_response = requests.delete(
             f"{os.getenv('SUPABASE_URL')}/rest/v1/user_funds",
@@ -2073,12 +2073,12 @@ def api_admin_remove_fund():
             },
             params={"user_id": f"eq.{user_id}", "fund_name": f"eq.{fund_name}"}
         )
-        
+
         if remove_response.status_code in [200, 204]:
             return jsonify({"message": f"Fund '{fund_name}' removed from {user_email}"})
         else:
             return jsonify({"error": "Failed to remove fund"}), 400
-            
+
     except Exception as e:
         logger.error(f"Error removing fund: {e}")
         return jsonify({"error": "Failed to remove fund"}), 500
@@ -2105,7 +2105,7 @@ def api_funds():
                 funds = list(set([item.get('fund', '') for item in data if item.get('fund')]))
                 logger.debug(f"Returning Supabase funds: {funds}")
                 return jsonify({"funds": funds})
-        
+
         # Fallback to CSV configuration
         config_file = Path("../repository_config.json")
         if config_file.exists():
@@ -2114,12 +2114,12 @@ def api_funds():
             funds = config.get("repository", {}).get("available_funds", [])
             logger.debug(f"Returning CSV config funds: {funds}")
             return jsonify({"funds": funds})
-        
+
         # Final fallback
         funds = ["Project Chimera", "RRSP Lance Webull", "TFSA", "TEST"]
         logger.debug(f"Returning hardcoded fallback funds: {funds}")
         return jsonify({"funds": funds})
-        
+
     except Exception as e:
         logger.error(f"Error getting user funds: {e}")
         # Return fallback funds on error
@@ -2130,13 +2130,13 @@ def api_funds():
 def api_portfolio():
     """API endpoint for portfolio data"""
     fund = request.args.get('fund')
-    
+
     # Fund access check disabled for single-user setup
     # All authenticated users can access all funds
-    
+
     data = load_portfolio_data(fund)
     metrics = calculate_performance_metrics(data['portfolio'], data['trades'], fund)
-    
+
     # Get current positions
     current_positions = []
     if not data['portfolio'].empty:
@@ -2147,7 +2147,7 @@ def api_portfolio():
                 # Calculate market value using correct column name
                 market_value = float(row['shares']) * float(row.get('current_price', row.get('price', 0)))
                 total_pnl = market_value - float(row['cost_basis'])
-                
+
                 current_positions.append({
                     'ticker': row['ticker'],
                     'shares': round(float(row['shares']), 4),
@@ -2175,7 +2175,7 @@ def api_portfolio():
                     'pnl': round(row['PnL'], 2),
                     'pnl_pct': round((row['PnL'] / row['Cost Basis'] * 100), 2) if row['Cost Basis'] > 0 else 0
                 })
-    
+
     return jsonify({
         'metrics': metrics,
         'positions': current_positions,
@@ -2190,10 +2190,10 @@ def api_portfolio():
 def api_performance_chart():
     """API endpoint for performance chart data"""
     fund = request.args.get('fund')
-    
+
     # Fund access check disabled for single-user setup
     # All authenticated users can access all funds
-    
+
     data = load_portfolio_data(fund)
     chart_data = create_performance_chart(data['portfolio'], fund)
     return chart_data
@@ -2203,24 +2203,24 @@ def api_performance_chart():
 def api_contributors():
     """API endpoint for fund contributors/holders"""
     fund = request.args.get('fund')
-    
+
     if not fund:
         return jsonify({"error": "Fund parameter required"}), 400
-    
+
     try:
         # Get contributor data from Supabase
         client = SupabaseClient()
-        
+
         # Get contributor ownership data
         result = client.supabase.table('contributor_ownership').select('*').eq('fund', fund).execute()
-        
+
         if not result.data:
             return jsonify([])
-        
+
         # Format the data for frontend
         contributors = []
         total_net = sum([float(c['net_contribution']) for c in result.data])
-        
+
         # NOTE: This API returns ownership percentages from the summary view.
         # For accurate per-contributor returns, use NAV-based calculations from:
         # - portfolio/position_calculator.py calculate_ownership_percentages()
@@ -2228,7 +2228,7 @@ def api_contributors():
         for contributor in result.data:
             net_contrib = float(contributor['net_contribution'])
             ownership_pct = (net_contrib / total_net * 100) if total_net > 0 else 0
-            
+
             contributors.append({
                 'contributor': contributor['contributor'],
                 'email': contributor['email'],
@@ -2240,16 +2240,16 @@ def api_contributors():
                 'first_contribution': contributor['first_contribution'],
                 'last_transaction': contributor['last_transaction']
             })
-        
+
         # Sort by net contribution (highest first)
         contributors.sort(key=lambda x: x['net_contribution'], reverse=True)
-        
+
         return jsonify({
             'contributors': contributors,
             'total_contributors': len(contributors),
             'total_net_contributions': total_net
         })
-        
+
     except Exception as e:
         print(f"Error fetching contributors: {e}")
         return jsonify({"error": "Failed to fetch contributors"}), 500
@@ -2259,18 +2259,18 @@ def api_contributors():
 def api_recent_trades():
     """API endpoint for recent trades"""
     fund = request.args.get('fund')
-    
+
     # Fund access check disabled for single-user setup
     # All authenticated users can access all funds
-    
+
     data = load_portfolio_data(fund)
-    
+
     if data['trades'].empty:
         return jsonify([])
-    
+
     # Get last 10 trades
     recent_trades = data['trades'].tail(10).to_dict('records')
-    
+
     # Format the data
     formatted_trades = []
     for trade in recent_trades:
@@ -2293,7 +2293,7 @@ def api_recent_trades():
             cost_basis = trade['Cost Basis']
             pnl = trade['PnL']
             reason = trade['Reason']
-        
+
         formatted_trades.append({
             'date': date_str,
             'ticker': ticker,
@@ -2303,7 +2303,7 @@ def api_recent_trades():
             'pnl': round(pnl, 2),
             'reason': reason
         })
-    
+
     return jsonify(formatted_trades)
 
 # =====================================================
@@ -2316,7 +2316,7 @@ def dev_home():
     """Developer home page"""
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    
+
     nav_context = get_navigation_context(current_page='dev_home')
     return render_template('dev_home.html', **nav_context)
 
@@ -2326,7 +2326,7 @@ def sql_interface():
     """SQL query interface for debugging"""
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    
+
     nav_context = get_navigation_context(current_page='sql_interface')
     return render_template('sql_interface.html', **nav_context)
 
@@ -2335,13 +2335,13 @@ def sql_interface():
 def execute_sql():
     """
     Execute SQL query with admin privileges.
-    
+
     SECURITY NOTES:
     - This endpoint is protected by @require_auth and is_admin() checks
     - Admins have full SQL access (SELECT, INSERT, UPDATE, DELETE, etc.)
     - All queries are logged with user info for audit trail
     - Use with caution - this provides direct database access
-    
+
     BEST PRACTICES:
     - Test queries on non-production data first
     - Use transactions for multi-step operations
@@ -2350,24 +2350,24 @@ def execute_sql():
     """
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    
+
     try:
         from flask_auth_utils import get_user_email_flask
-        
+
         query = request.json.get('query', '').strip()
         if not query:
             return jsonify({"error": "No query provided"}), 400
-        
+
         # Get user info for audit logging
         user_email = get_user_email_flask() or "unknown_admin"
-        
+
         # Improved safety validation (whole-word matching to avoid false positives like 'update_date')
         # Note: This is a warning system, not a blocker - admins need full SQL access
         dangerous_keywords = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE']
         pattern = r'\b(' + '|'.join(dangerous_keywords) + r')\b'
-        
+
         is_modification_query = bool(re.search(pattern, query, re.IGNORECASE))
-        
+
         # Comprehensive audit logging
         if is_modification_query:
             logger.warning(
@@ -2380,26 +2380,26 @@ def execute_sql():
                 f"ADMIN SQL QUERY - User: {user_email} | "
                 f"Query: {query[:100]}{'...' if len(query) > 100 else ''}"
             )
-        
+
         # Execute query
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Database connection failed"}), 500
-        
+
         # Use raw SQL execution
         result = client.supabase.rpc('execute_sql', {'query': query}).execute()
-        
+
         # Log successful execution
         row_count = len(result.data) if result.data else 0
         logger.info(f"ADMIN SQL SUCCESS - User: {user_email} | Rows affected/returned: {row_count}")
-        
+
         return jsonify({
             "success": True,
             "data": result.data,
             "count": row_count,
             "warning": "Modification query executed" if is_modification_query else None
         })
-        
+
     except Exception as e:
         logger.error(
             f"ADMIN SQL ERROR - User: {user_email if 'user_email' in locals() else 'unknown'} | "
@@ -2419,23 +2419,23 @@ def export_portfolio():
     """Export portfolio data as JSON for LLM analysis"""
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    
+
     try:
         fund = request.args.get('fund')
         limit = int(request.args.get('limit', 1000))
-        
+
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Database connection failed"}), 500
-        
+
         # Get portfolio positions
         query = client.supabase.table("portfolio_positions").select("*")
         if fund:
             query = query.eq("fund", fund)
         query = query.limit(limit)
-        
+
         result = query.execute()
-        
+
         return jsonify({
             "success": True,
             "data": result.data,
@@ -2443,7 +2443,7 @@ def export_portfolio():
             "fund": fund,
             "timestamp": datetime.now().isoformat()
         })
-        
+
     except Exception as e:
         logger.error(f"Portfolio export error: {e}")
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
@@ -2454,23 +2454,23 @@ def export_trades():
     """Export trade data as JSON for LLM analysis"""
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    
+
     try:
         fund = request.args.get('fund')
         limit = int(request.args.get('limit', 1000))
-        
+
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Database connection failed"}), 500
-        
+
         # Get trade log
         query = client.supabase.table("trade_log").select("*")
         if fund:
             query = query.eq("fund", fund)
         query = query.order("date", desc=True).limit(limit)
-        
+
         result = query.execute()
-        
+
         return jsonify({
             "success": True,
             "data": result.data,
@@ -2478,7 +2478,7 @@ def export_trades():
             "fund": fund,
             "timestamp": datetime.now().isoformat()
         })
-        
+
     except Exception as e:
         logger.error(f"Trades export error: {e}")
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
@@ -2489,19 +2489,19 @@ def export_performance():
     """Export performance metrics for LLM analysis"""
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    
+
     try:
         days = int(request.args.get('days', 30))
         fund = request.args.get('fund')
-        
+
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Database connection failed"}), 500
-        
+
         # Get performance data
         performance_data = client.get_performance_metrics()
         daily_data = client.get_daily_performance_data(days, fund=fund)
-        
+
         return jsonify({
             "success": True,
             "performance": performance_data,
@@ -2510,7 +2510,7 @@ def export_performance():
             "fund": fund,
             "timestamp": datetime.now().isoformat()
         })
-        
+
     except Exception as e:
         logger.error(f"Performance export error: {e}")
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
@@ -2521,24 +2521,24 @@ def export_cash():
     """Export cash balance data for LLM analysis"""
     if not is_admin():
         return jsonify({"error": "Admin privileges required"}), 403
-    
+
     try:
         fund = request.args.get('fund')
-        
+
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Database connection failed"}), 500
-        
+
         # Get cash balances
         cash_balances = client.get_cash_balances(fund)
-        
+
         return jsonify({
             "success": True,
             "data": cash_balances,
             "fund": fund,
             "timestamp": datetime.now().isoformat()
         })
-        
+
     except Exception as e:
         logger.error(f"Cash export error: {e}")
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
@@ -2551,12 +2551,12 @@ def logs_debug():
         from flask_auth_utils import get_user_email_flask, get_user_id_flask
         from auth import is_admin
         from supabase_client import SupabaseClient
-        
+
         user_email = get_user_email_flask()
         user_id = get_user_id_flask()
         request_user_id = getattr(request, 'user_id', None)
         admin_status = is_admin() if hasattr(request, 'user_id') else False
-        
+
         # Check user profile directly in database
         profile_role = None
         profile_error = None
@@ -2574,7 +2574,7 @@ def logs_debug():
         except Exception as e:
             profile_error = str(e)
             logger.error(f"Error querying user_profiles: {e}", exc_info=True)
-        
+
         # Try RPC call directly
         rpc_result = None
         rpc_error = None
@@ -2588,7 +2588,7 @@ def logs_debug():
         except Exception as e:
             rpc_error = str(e)
             logger.error(f"Error calling is_admin RPC: {e}", exc_info=True)
-        
+
         return jsonify({
             "user_email": user_email,
             "user_id": user_id,
@@ -2611,7 +2611,7 @@ def logs_debug():
 def _get_cached_application_logs(level_filter, search, exclude_modules):
     """Get application logs with caching (5s TTL for near real-time)"""
     from log_handler import read_logs_from_file
-    
+
     try:
         # Get all filtered logs
         all_logs = read_logs_from_file(
@@ -2621,7 +2621,7 @@ def _get_cached_application_logs(level_filter, search, exclude_modules):
             return_all=True,
             exclude_modules=exclude_modules if exclude_modules else None
         )
-        
+
         # Convert datetime objects to strings for cache compatibility
         # This ensures the cache can properly serialize/deserialize the data
         serializable_logs = []
@@ -2630,7 +2630,7 @@ def _get_cached_application_logs(level_filter, search, exclude_modules):
             if 'timestamp' in serializable_log and hasattr(serializable_log['timestamp'], 'strftime'):
                 serializable_log['timestamp'] = serializable_log['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
             serializable_logs.append(serializable_log)
-        
+
         # Reverse for newest first
         return list(reversed(serializable_logs))
     except Exception as e:
@@ -2643,27 +2643,27 @@ def _get_cached_application_logs(level_filter, search, exclude_modules):
 def _get_cached_ollama_log_lines():
     """Get Ollama log lines with caching (5s TTL for near real-time)"""
     from pathlib import Path
-    
+
     log_file = Path(__file__).parent / 'logs' / 'ollama.log'
-    
+
     if not log_file.exists():
         return []
-    
+
     try:
         # Read up to 5MB from end for efficiency
         file_size = log_file.stat().st_size
         if file_size == 0:
             return []
-        
+
         buffer_size = min(5 * 1024 * 1024, file_size)
         with open(log_file, 'rb') as f:
             f.seek(max(0, file_size - buffer_size))
             buffer = f.read().decode('utf-8', errors='ignore')
-        
+
         lines = buffer.split('\n')
         if file_size > buffer_size:
             lines = lines[1:]  # Skip first partial line
-        
+
         # Reverse for newest first
         return list(reversed(lines))
     except Exception as e:
@@ -2696,15 +2696,15 @@ def settings_page():
     try:
         from flask_auth_utils import get_user_email_flask
         from user_preferences import get_user_timezone, get_user_currency, get_user_theme
-        
+
         user_email = get_user_email_flask()
         current_timezone = get_user_timezone() or 'America/Los_Angeles'
         current_currency = get_user_currency() or 'CAD'
         current_theme = get_user_theme() or 'system'
-        
+
         # Get navigation context
         nav_context = get_navigation_context(current_page='settings')
-        
+
         return render_template('settings.html',
                              user_email=user_email,
                              current_timezone=current_timezone,
@@ -2723,16 +2723,16 @@ def update_timezone():
     try:
         from user_preferences import set_user_timezone
         from flask_auth_utils import get_user_id_flask
-        
+
         data = request.get_json()
         timezone = data.get('timezone')
-        
+
         if not timezone:
             return jsonify({"success": False, "error": "Timezone is required"}), 400
-        
+
         user_id = get_user_id_flask()
         logger.debug(f"Updating timezone for user {user_id} to {timezone}")
-        
+
         result = set_user_timezone(timezone)
         if result:
             logger.info(f"Successfully updated timezone to {timezone}")
@@ -2740,7 +2740,7 @@ def update_timezone():
         else:
             logger.error(f"Failed to update timezone - set_user_timezone returned False for user {user_id}")
             return jsonify({"success": False, "error": "Failed to save timezone. Check server logs for details."}), 500
-            
+
     except Exception as e:
         logger.error(f"Error updating timezone: {e}", exc_info=True)
         import traceback
@@ -2755,16 +2755,16 @@ def update_currency():
     try:
         from user_preferences import set_user_currency
         from flask_auth_utils import get_user_id_flask
-        
+
         data = request.get_json()
         currency = data.get('currency')
-        
+
         if not currency:
             return jsonify({"success": False, "error": "Currency is required"}), 400
-        
+
         user_id = get_user_id_flask()
         logger.debug(f"Updating currency for user {user_id} to {currency}")
-        
+
         result = set_user_currency(currency)
         if result:
             logger.info(f"Successfully updated currency to {currency}")
@@ -2772,7 +2772,7 @@ def update_currency():
         else:
             logger.error(f"Failed to update currency - set_user_currency returned False for user {user_id}")
             return jsonify({"success": False, "error": "Failed to save currency. Check server logs for details."}), 500
-            
+
     except Exception as e:
         logger.error(f"Error updating currency: {e}", exc_info=True)
         import traceback
@@ -2787,16 +2787,16 @@ def update_theme():
     try:
         from user_preferences import set_user_theme
         from flask_auth_utils import get_user_id_flask
-        
+
         data = request.get_json()
         theme = data.get('theme')
-        
+
         if not theme:
             return jsonify({"success": False, "error": "Theme is required"}), 400
-        
+
         user_id = get_user_id_flask()
         logger.debug(f"Updating theme for user {user_id} to {theme}")
-        
+
         result = set_user_theme(theme)
         if result:
             logger.info(f"Successfully updated theme to {theme}")
@@ -2804,7 +2804,7 @@ def update_theme():
         else:
             logger.error(f"Failed to update theme - set_user_theme returned False for user {user_id}")
             return jsonify({"success": False, "error": "Failed to save theme. Check server logs for details."}), 500
-            
+
     except Exception as e:
         logger.error(f"Error updating theme: {e}", exc_info=True)
         import traceback
@@ -2819,19 +2819,19 @@ def update_v2_enabled():
     try:
         from user_preferences import set_user_preference
         from flask_auth_utils import get_user_id_flask
-        
+
         data = request.get_json()
         if not data:
             return jsonify({"success": False, "error": "Missing request body"}), 400
-            
+
         enabled = data.get('enabled')
-        
+
         if enabled is None:
             return jsonify({"success": False, "error": "Missing enabled parameter"}), 400
-        
+
         user_id = get_user_id_flask()
         logger.debug(f"Updating v2_enabled for user {user_id} to {enabled}")
-        
+
         # Debug: capture any exception from set_user_preference
         try:
             result = set_user_preference('v2_enabled', enabled)
@@ -2841,7 +2841,7 @@ def update_v2_enabled():
             tb = traceback.format_exc()
             logger.error(f"set_user_preference raised exception: {pref_error}\n{tb}")
             return jsonify({"success": False, "error": f"Preference error: {str(pref_error)}", "traceback": tb}), 500
-            
+
         if result:
             logger.info(f"Successfully updated v2_enabled to {enabled}")
             return jsonify({"success": True})
@@ -2862,16 +2862,16 @@ def update_ai_model():
     try:
         from user_preferences import set_user_ai_model
         from flask_auth_utils import get_user_id_flask
-        
+
         data = request.get_json()
         model = data.get('model')
-        
+
         if not model:
             return jsonify({"success": False, "error": "Model is required"}), 400
-        
+
         user_id = get_user_id_flask()
         logger.debug(f"Updating AI model for user {user_id} to {model}")
-        
+
         result = set_user_ai_model(model)
         if result:
             logger.info(f"Successfully updated AI model to {model}")
@@ -2879,7 +2879,7 @@ def update_ai_model():
         else:
             logger.error(f"Failed to update AI model - set_user_ai_model returned False")
             return jsonify({"success": False, "error": "Failed to save model preference"}), 500
-            
+
     except Exception as e:
         logger.error(f"Error updating AI model: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
@@ -2890,7 +2890,7 @@ def get_preferences():
     """Get all user preferences"""
     try:
         from user_preferences import get_all_user_preferences
-        
+
         preferences = get_all_user_preferences()
         return jsonify({"success": True, "preferences": preferences})
     except Exception as e:
@@ -2904,16 +2904,16 @@ def update_ai_include_search():
     try:
         from user_preferences import set_user_preference
         from flask_auth_utils import get_user_id_flask
-        
+
         data = request.get_json()
         include_search = data.get('include_search')
-        
+
         if include_search is None:
             return jsonify({"success": False, "error": "include_search is required"}), 400
-        
+
         user_id = get_user_id_flask()
         logger.debug(f"Updating AI include_search for user {user_id} to {include_search}")
-        
+
         result = set_user_preference('ai_include_search', include_search)
         if result:
             logger.info(f"Successfully updated AI include_search to {include_search}")
@@ -2921,7 +2921,7 @@ def update_ai_include_search():
         else:
             logger.error(f"Failed to update AI include_search - set_user_preference returned False")
             return jsonify({"success": False, "error": "Failed to save preference"}), 500
-            
+
     except Exception as e:
         logger.error(f"Error updating AI include_search: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
@@ -2933,16 +2933,16 @@ def update_ai_include_insider_trades():
     try:
         from user_preferences import set_user_preference
         from flask_auth_utils import get_user_id_flask
-        
+
         data = request.get_json()
         include_insider_trades = data.get('include_insider_trades')
-        
+
         if include_insider_trades is None:
             return jsonify({"success": False, "error": "include_insider_trades is required"}), 400
-        
+
         user_id = get_user_id_flask()
         logger.debug(f"Updating AI include_insider_trades for user {user_id} to {include_insider_trades}")
-        
+
         result = set_user_preference('ai_include_insider_trades', include_insider_trades)
         if result:
             logger.info(f"Successfully updated AI include_insider_trades to {include_insider_trades}")
@@ -2950,7 +2950,7 @@ def update_ai_include_insider_trades():
         else:
             logger.error(f"Failed to update AI include_insider_trades - set_user_preference returned False")
             return jsonify({"success": False, "error": "Failed to save preference"}), 500
-            
+
     except Exception as e:
         logger.error(f"Error updating AI include_insider_trades: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
@@ -2962,16 +2962,16 @@ def update_ai_include_congress_trades():
     try:
         from user_preferences import set_user_preference
         from flask_auth_utils import get_user_id_flask
-        
+
         data = request.get_json()
         include_congress_trades = data.get('include_congress_trades')
-        
+
         if include_congress_trades is None:
             return jsonify({"success": False, "error": "include_congress_trades is required"}), 400
-        
+
         user_id = get_user_id_flask()
         logger.debug(f"Updating AI include_congress_trades for user {user_id} to {include_congress_trades}")
-        
+
         result = set_user_preference('ai_include_congress_trades', include_congress_trades)
         if result:
             logger.info(f"Successfully updated AI include_congress_trades to {include_congress_trades}")
@@ -2979,7 +2979,7 @@ def update_ai_include_congress_trades():
         else:
             logger.error(f"Failed to update AI include_congress_trades - set_user_preference returned False")
             return jsonify({"success": False, "error": "Failed to save preference"}), 500
-            
+
     except Exception as e:
         logger.error(f"Error updating AI include_congress_trades: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
@@ -2991,16 +2991,16 @@ def update_ai_include_etf_trades():
     try:
         from user_preferences import set_user_preference
         from flask_auth_utils import get_user_id_flask
-        
+
         data = request.get_json()
         include_etf_trades = data.get('include_etf_trades')
-        
+
         if include_etf_trades is None:
             return jsonify({"success": False, "error": "include_etf_trades is required"}), 400
-        
+
         user_id = get_user_id_flask()
         logger.debug(f"Updating AI include_etf_trades for user {user_id} to {include_etf_trades}")
-        
+
         result = set_user_preference('ai_include_etf_trades', include_etf_trades)
         if result:
             logger.info(f"Successfully updated AI include_etf_trades to {include_etf_trades}")
@@ -3008,7 +3008,7 @@ def update_ai_include_etf_trades():
         else:
             logger.error(f"Failed to update AI include_etf_trades - set_user_preference returned False")
             return jsonify({"success": False, "error": "Failed to save preference"}), 500
-            
+
     except Exception as e:
         logger.error(f"Error updating AI include_etf_trades: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
@@ -3021,11 +3021,11 @@ def settings_debug():
         from user_preferences import set_user_preference, get_user_preference, _get_user_id, _is_authenticated
         from flask_auth_utils import get_user_id_flask, get_auth_token
         from supabase_client import SupabaseClient
-        
+
         user_id = get_user_id_flask()
         token = get_auth_token()
         is_authenticated = _is_authenticated()
-        
+
         # Test creating client
         client = None
         client_error = None
@@ -3033,7 +3033,7 @@ def settings_debug():
             client = SupabaseClient(user_token=token) if token else SupabaseClient()
         except Exception as e:
             client_error = str(e)
-        
+
         # Test RPC call
         rpc_result = None
         rpc_error = None
@@ -3048,7 +3048,7 @@ def settings_debug():
             except Exception as e:
                 rpc_error = str(e)
                 logger.error(f"RPC test failed: {e}", exc_info=True)
-        
+
         return jsonify({
             "user_id": user_id,
             "token_present": bool(token),
@@ -3075,16 +3075,16 @@ def ticker_details_page():
         from flask_auth_utils import get_user_email_flask
         from ollama_client import load_model_config
         from user_preferences import get_user_ai_model, get_user_theme
-        
+
         user_email = get_user_email_flask()
         ticker = request.args.get('ticker', '').upper().strip()
         user_theme = get_user_theme() or 'system'
         default_model = get_user_ai_model()
         model_config = load_model_config()
-        
+
         # Get navigation context
         nav_context = get_navigation_context(current_page='ticker_details')
-        
+
         return render_template('ticker_details.html',
                                user_email=user_email,
                                ticker=ticker,
@@ -3151,23 +3151,23 @@ def _get_ticker_info_cached(
     """Get ticker info with caching (300s TTL)"""
     from postgres_client import PostgresClient
     from supabase_client import SupabaseClient
-    
+
     # Initialize Supabase client with appropriate access
     if user_is_admin:
         supabase_client = SupabaseClient(use_service_role=True)
     else:
         supabase_client = SupabaseClient(user_token=auth_token) if auth_token else None
-    
+
     # Initialize Postgres client
     try:
         postgres_client = PostgresClient()
     except Exception as e:
         logger.warning(f"PostgresClient initialization failed: {e}")
         postgres_client = None
-    
+
     if not supabase_client and not postgres_client:
         raise ValueError("Unable to connect to databases")
-    
+
     # Get ticker info
     from ticker_utils import get_ticker_info
     return get_ticker_info(ticker, supabase_client, postgres_client, fund=fund)
@@ -3180,17 +3180,17 @@ def api_ticker_info():
         from flask_auth_utils import get_user_id_flask
         from auth import is_admin
         import json as json_lib
-        
+
         ticker = request.args.get('ticker', '').upper().strip()
         if not ticker:
             return jsonify({"error": "Ticker symbol is required"}), 400
-        
+
         fund = _normalize_fund_param(request.args.get('fund'))
-        
+
         # Check if user is admin
         user_is_admin = is_admin()
         auth_token = request.cookies.get('auth_token')
-        
+
         # Get ticker info (cached)
         try:
             ticker_data = _get_ticker_info_cached(ticker, user_is_admin, auth_token, fund)
@@ -3198,25 +3198,25 @@ def api_ticker_info():
             # Handle recursion errors specifically from cache pickling issues
             logger.error(f"RecursionError fetching ticker info for {ticker}", exc_info=True)
             return jsonify({"error": "Data structure too complex (recursion error)"}), 500
-        
+
         # Helper for safe serialization
         def safe_serialize(obj, visited=None):
             if visited is None:
                 visited = set()
-            
+
             # Primitive types
             if obj is None or isinstance(obj, (bool, int, float, str)):
                 return obj
-            
+
             # Handle dates/times
             if isinstance(obj, (datetime, date, pd.Timestamp)):
                 return obj.isoformat()
-            
+
             # Handle circular references
             obj_id = id(obj)
             if obj_id in visited:
                 return f"<Circular Reference: {type(obj).__name__}>"
-            
+
             visited.add(obj_id)
             try:
                 if isinstance(obj, (list, tuple)):
@@ -3232,9 +3232,9 @@ def api_ticker_info():
 
         # Serialize explicitly
         clean_data = safe_serialize(ticker_data)
-        
+
         return jsonify(clean_data)
-        
+
     except Exception as e:
         logger.error(f"Error fetching ticker info: {e}", exc_info=True)
         import traceback
@@ -3250,13 +3250,13 @@ def get_ticker_analysis(ticker: str):
     """Get latest AI analysis for a ticker."""
     try:
         from postgres_client import PostgresClient
-        
+
         ticker_upper = ticker.upper().strip()
         postgres = PostgresClient()
-        
+
         # Get latest analysis
         result = postgres.execute_query("""
-            SELECT 
+            SELECT
                 ticker, analysis_type, analysis_date, data_start_date, data_end_date,
                 sentiment, sentiment_score, confidence_score, themes, summary,
                 analysis_text, reasoning, input_context,
@@ -3267,7 +3267,7 @@ def get_ticker_analysis(ticker: str):
             ORDER BY analysis_date DESC
             LIMIT 1
         """, (ticker_upper,))
-        
+
         if result:
             analysis = result[0]
             # Convert themes array to list if it's a string
@@ -3280,7 +3280,7 @@ def get_ticker_analysis(ticker: str):
             return jsonify(analysis)
         else:
             return jsonify(None)
-        
+
     except Exception as e:
         logger.error(f"Error fetching ticker analysis for {ticker}: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -3324,34 +3324,34 @@ def request_ticker_reanalysis(ticker: str):
         from ollama_client import get_ollama_client
         from ticker_analysis_service import TickerAnalysisService
         from user_preferences import get_user_ai_model
-        
+
         ticker_upper = ticker.upper().strip()
         user_email = get_user_email_flask() or 'anonymous'
         request_data = request.get_json(silent=True) or {}
-        
+
         # Initialize clients
         supabase = SupabaseClient(use_service_role=True)
         postgres = PostgresClient()
         ollama = get_ollama_client()
         if not ollama:
             return jsonify({'error': 'Ollama is not accessible. Please ensure Ollama is running.'}), 503
-        
+
         # Remove from skip list if present
         skip_manager = AISkipListManager(supabase)
         skip_manager.remove_from_skip_list(ticker_upper)
-        
+
         # Run analysis immediately using user's preferred model
         preferred_model = request_data.get('model') or get_user_ai_model()
         service = TickerAnalysisService(ollama, supabase, postgres, skip_manager)
         service.analyze_ticker(ticker_upper, requested_by=user_email, model_override=preferred_model)
-        
+
         logger.info(f"Completed manual re-analysis for {ticker_upper} by {user_email}")
-        
+
         return jsonify({
             'status': 'completed',
             'message': f'Re-analysis completed for {ticker_upper}.'
         })
-        
+
     except Exception as e:
         logger.error(f"Error running re-analysis for {ticker}: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -3366,15 +3366,15 @@ def _get_ticker_price_history_cached(
 ):
     """Get ticker price history with caching (300s TTL)"""
     from supabase_client import SupabaseClient
-    
+
     if user_is_admin:
         supabase_client = SupabaseClient(use_service_role=True)
     else:
         supabase_client = SupabaseClient(user_token=auth_token) if auth_token else None
-    
+
     if not supabase_client:
         raise ValueError("Unable to connect to database")
-    
+
     from ticker_utils import get_ticker_price_history
     return get_ticker_price_history(ticker, supabase_client, days=days, fund=fund)
 
@@ -3384,28 +3384,28 @@ def api_ticker_price_history():
     """Get price history for a ticker"""
     try:
         from auth import is_admin
-        
+
         ticker = request.args.get('ticker', '').upper().strip()
         if not ticker:
             return jsonify({"error": "Ticker symbol is required"}), 400
-        
+
         days = int(request.args.get('days', 90))
         fund = _normalize_fund_param(request.args.get('fund'))
         user_is_admin = is_admin()
         auth_token = request.cookies.get('auth_token')
-        
+
         # Get price history (cached)
         price_df = _get_ticker_price_history_cached(ticker, days, user_is_admin, auth_token, fund)
-        
+
         # Convert DataFrame to JSON
         if price_df.empty:
             return jsonify({"data": []})
-        
+
         # Convert dates to ISO strings
         price_df = price_df.copy()
         if 'date' in price_df.columns:
             price_df['date'] = price_df['date'].apply(lambda x: x.isoformat() if hasattr(x, 'isoformat') else str(x))
-        
+
         return jsonify({"data": price_df.to_dict('records')})
     except Exception as e:
         logger.error(f"Error fetching price history: {e}", exc_info=True)
@@ -3427,15 +3427,15 @@ def _get_ticker_chart_data_cached(
 ):
     """Get ticker chart data with caching (300s TTL) - theme applied separately"""
     from supabase_client import SupabaseClient
-    
+
     if user_is_admin:
         supabase_client = SupabaseClient(use_service_role=True)
     else:
         supabase_client = SupabaseClient(user_token=auth_token) if auth_token else None
-    
+
     if not supabase_client:
         raise ValueError("Unable to connect to database")
-    
+
     # Convert range to days
     range_days = {
         '3m': 90,
@@ -3444,10 +3444,10 @@ def _get_ticker_chart_data_cached(
         '2y': 730,
         '5y': 1825
     }.get(range, 90)
-    
+
     from ticker_utils import get_ticker_price_history
     price_df = get_ticker_price_history(ticker, supabase_client, days=range_days, fund=fund)
-    
+
     if price_df.empty:
         # Return empty chart data structure instead of raising error
         return json.dumps({
@@ -3465,24 +3465,24 @@ def _get_ticker_chart_data_cached(
                 }]
             }
         })
-    
+
     # Preserve full-resolution data for trade marker alignment
     full_price_df = price_df.copy()
 
     # Downsample to maintain ~90 data points
     from chart_utils import downsample_price_data
     price_df = downsample_price_data(price_df, range_days)
-    
+
     # Fetch congress trades for this ticker within the chart date range
     congress_trades = []
     try:
         from cache_version import get_cache_version
         refresh_key = get_cache_version()
-        
+
         # Calculate date range for congress trades (match chart range)
         start_date = (date.today() - timedelta(days=range_days)).isoformat()
         end_date = date.today().isoformat()
-        
+
         # Fetch congress trades
         congress_trades = get_congress_trades_cached(
             supabase_client,
@@ -3495,13 +3495,13 @@ def _get_ticker_chart_data_cached(
     except Exception as e:
         logger.warning(f"Error fetching congress trades for chart: {e}")
         # Continue without congress trades if there's an error
-    
+
     # Fetch user trades for this ticker within the chart date range
     user_trades = []
     try:
         start_date = (date.today() - timedelta(days=range_days)).isoformat()
         end_date = date.today().isoformat()
-        
+
         trade_query = supabase_client.supabase.table("trade_log")\
             .select("*")\
             .eq("ticker", ticker)\
@@ -3510,32 +3510,32 @@ def _get_ticker_chart_data_cached(
         if fund:
             trade_query = trade_query.eq("fund", fund)
         trade_result = trade_query.order("date", desc=True).execute()
-        
+
         if trade_result.data:
             user_trades = trade_result.data
     except Exception as e:
         logger.warning(f"Error fetching user trades for chart: {e}")
         # Continue without user trades if there's an error
-    
+
     # Fetch ETF trades for this ticker within the chart date range (from Research DB)
     etf_trades = []
     try:
         from postgres_client import PostgresClient
         pc = PostgresClient()
-        
+
         start_date = (date.today() - timedelta(days=range_days)).isoformat()
         end_date = date.today().isoformat()
-        
+
         etf_result = pc.execute_query("""
             SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
         """, (ticker, start_date, end_date))
-        
+
         if etf_result:
             etf_trades = etf_result
     except Exception as e:
         logger.warning(f"Error fetching ETF trades for chart: {e}")
         # Continue without ETF trades if there's an error
-    
+
     # Create chart WITHOUT template - theme applied post-cache
     # Using theme=None tells create_ticker_price_chart to skip template embedding
     from chart_utils import create_ticker_price_chart
@@ -3552,7 +3552,7 @@ def _get_ticker_chart_data_cached(
         etf_trades=etf_trades,
         trade_price_df=full_price_df
     )
-    
+
     # Serialize with numpy array conversion for proper JSON encoding
     from plotly_utils import serialize_plotly_figure
     return serialize_plotly_figure(fig)
@@ -3569,13 +3569,13 @@ def _get_ticker_chart_cached(
 ):
     """Get ticker chart with theme applied dynamically (not cached per theme)"""
     import json
-    
+
     # Get cached chart data (without theme)
     chart_json_str = _get_ticker_chart_data_cached(ticker, use_solid, user_is_admin, auth_token, fund, range)
-    
+
     # Parse the JSON
     chart_data = json.loads(chart_json_str)
-    
+
     # Determine theme to use
     if not theme or theme not in ['dark', 'light', 'midnight-tokyo', 'abyss']:
         try:
@@ -3585,21 +3585,21 @@ def _get_ticker_chart_cached(
         except Exception as e:
             logger.warning(f"Error getting user theme, defaulting to 'light': {e}")
             theme = 'light'
-    
+
     # Apply theme to the chart data
     from chart_utils import get_chart_theme_config
     theme_config = get_chart_theme_config(theme)
-    
+
     # Update layout for theme
     if 'layout' in chart_data:
         # Set template name (Plotly.js will look it up)
         chart_data['layout']['template'] = theme_config['template']
-        
+
         # Explicitly set background colors (these override any embedded template colors)
         chart_data['layout']['paper_bgcolor'] = theme_config['paper_bgcolor']
         chart_data['layout']['plot_bgcolor'] = theme_config['plot_bgcolor']
         chart_data['layout']['font'] = {'color': theme_config['font_color']}
-        
+
         # Update grid colors for both axes if they exist
         if 'xaxis' in chart_data['layout']:
             chart_data['layout']['xaxis']['gridcolor'] = theme_config['grid_color']
@@ -3607,11 +3607,11 @@ def _get_ticker_chart_cached(
         if 'yaxis' in chart_data['layout']:
             chart_data['layout']['yaxis']['gridcolor'] = theme_config['grid_color']
             chart_data['layout']['yaxis']['zerolinecolor'] = theme_config['grid_color']
-        
+
         # Update legend background if it exists
         if 'legend' in chart_data['layout']:
             chart_data['layout']['legend']['bgcolor'] = theme_config['legend_bg_color']
-        
+
         # Update shapes (baseline line and weekend shading)
         if 'shapes' in chart_data['layout']:
             for shape in chart_data['layout']['shapes']:
@@ -3622,19 +3622,19 @@ def _get_ticker_chart_cached(
                 elif shape.get('type') == 'rect' and 'fillcolor' in shape:
                     # This is weekend shading
                     shape['fillcolor'] = theme_config['weekend_shading_color']
-    
+
     # Convert numpy arrays to Python lists using shared utility
     from plotly_utils import convert_numpy_to_list
-    
+
     chart_data = convert_numpy_to_list(chart_data)
-    
+
     # Return as JSON string
     return json.dumps(chart_data)
 
 @cache_data(ttl=300)
 def _get_ticker_etf_trades_cached(ticker: str, user_is_admin: bool, auth_token: Optional[str], range: str = '3m'):
     """Get ETF holding trades for a ticker within a date range (300s TTL).
-    
+
     Data is fetched from Research DB (not Supabase).
     """
     from postgres_client import PostgresClient
@@ -3663,11 +3663,11 @@ def api_ticker_chart():
     """Get Plotly chart JSON for ticker price history"""
     try:
         from auth import is_admin
-        
+
         ticker = request.args.get('ticker', '').upper().strip()
         if not ticker:
             return jsonify({"error": "Ticker symbol is required"}), 400
-        
+
         use_solid = request.args.get('use_solid', 'false').lower() == 'true'
         fund = _normalize_fund_param(request.args.get('fund'))
         # Get theme from request (client detects actual page theme)
@@ -3677,10 +3677,10 @@ def api_ticker_chart():
         # Validate range
         if chart_range not in ['3m', '6m', '1y', '2y', '5y']:
             chart_range = '3m'
-        
+
         user_is_admin = is_admin()
         auth_token = request.cookies.get('auth_token')
-        
+
         # Get chart (cached) - use client theme if valid, otherwise fall back to user preference
         chart_json = _get_ticker_chart_cached(
             ticker,
@@ -3738,12 +3738,12 @@ def api_ticker_external_links():
         ticker = request.args.get('ticker', '').upper().strip()
         if not ticker:
             return jsonify({"error": "Ticker symbol is required"}), 400
-        
+
         exchange = request.args.get('exchange', None)
-        
+
         from ticker_utils import get_ticker_external_links
         links = get_ticker_external_links(ticker, exchange=exchange)
-        
+
         return jsonify(links)
     except Exception as e:
         logger.error(f"Error fetching external links for {ticker}: {e}")
@@ -3778,38 +3778,38 @@ def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_versi
             _cache_version = get_cache_version()
         except ImportError:
             _cache_version = ""
-    
+
     try:
         if _supabase_client is None:
             return []
-        
+
         all_tickers = set()
         batch_size = 1000
         offset = 0
-        
+
         while True:
             result = _supabase_client.supabase.table("congress_trades_enriched")\
                 .select("ticker")\
                 .range(offset, offset + batch_size - 1)\
                 .execute()
-            
+
             if not result.data:
                 break
-            
+
             for trade in result.data:
                 ticker = trade.get('ticker')
                 if ticker:
                     all_tickers.add(ticker)
-            
+
             if len(result.data) < batch_size:
                 break
-            
+
             offset += batch_size
-            
+
             if offset > 100000:
                 logger.warning("Reached 100,000 row safety limit in get_unique_tickers_congress pagination")
                 break
-        
+
         return sorted(list(all_tickers))
     except Exception as e:
         logger.error(f"Error fetching unique tickers: {e}", exc_info=True)
@@ -3824,38 +3824,38 @@ def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_v
             _cache_version = get_cache_version()
         except ImportError:
             _cache_version = ""
-    
+
     try:
         if _supabase_client is None:
             return []
-        
+
         all_politicians = set()
         batch_size = 1000
         offset = 0
-        
+
         while True:
             result = _supabase_client.supabase.table("congress_trades_enriched")\
                 .select("politician")\
                 .range(offset, offset + batch_size - 1)\
                 .execute()
-            
+
             if not result.data:
                 break
-            
+
             for trade in result.data:
                 politician = trade.get('politician')
                 if politician:
                     all_politicians.add(politician)
-            
+
             if len(result.data) < batch_size:
                 break
-            
+
             offset += batch_size
-            
+
             if offset > 100000:
                 logger.warning("Reached 100,000 row safety limit in get_unique_politicians_congress pagination")
                 break
-        
+
         return sorted(list(all_politicians))
     except Exception as e:
         logger.error(f"Error fetching unique politicians: {e}", exc_info=True)
@@ -3866,18 +3866,18 @@ def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, 
     """Get AI analysis data from PostgreSQL (cached 60s)"""
     if _postgres_client is None:
         return {}
-    
+
     try:
         result = _postgres_client.execute_query(
             "SELECT trade_id, conflict_score, reasoning, model_used, analyzed_at FROM congress_trades_analysis WHERE conflict_score IS NOT NULL ORDER BY analyzed_at DESC"
         )
-        
+
         analysis_map = {}
         for row in result:
             trade_id = row['trade_id']
             if trade_id not in analysis_map:
                 analysis_map[trade_id] = row
-        
+
         return analysis_map
     except Exception as e:
         logger.error(f"Error fetching analysis data: {e}")
@@ -3903,12 +3903,12 @@ def get_congress_trades_cached(
     try:
         if _supabase_client is None:
             return []
-        
+
         # Optimize query to select only needed columns
         query = _supabase_client.supabase.table("congress_trades_enriched").select(
             "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner"
         )
-        
+
         if ticker_filter:
             query = query.eq("ticker", ticker_filter)
         if politician_filter:
@@ -3921,12 +3921,12 @@ def get_congress_trades_cached(
             query = query.gte("transaction_date", start_date)
         if end_date:
             query = query.lte("transaction_date", end_date)
-        
+
         query = query.order("transaction_date", desc=True)
-        
+
         # Get analysis data for filtering (needed for analyzed_only and score filters)
         analysis_map = get_analysis_data_congress(_postgres_client, refresh_key) if _postgres_client else {}
-        
+
         # Fetch ALL rows using pagination (Supabase limits to 1000 per request)
         all_trades = []
         batch_size = 1000
@@ -3951,39 +3951,39 @@ def get_congress_trades_cached(
                 break
 
         logger.info(f"[CongressTrades] Fetched {len(all_trades)} total rows from Supabase")
-        
+
         # Post-process: filter by analysis status and score
         if analyzed_only or unanalyzed_only or min_score is not None or max_score is not None:
             filtered_trades = []
             for trade in all_trades:
                 trade_id = trade.get('id')
-                
+
                 # Filter by analysis status
                 if analyzed_only and trade_id not in analysis_map:
                     continue
                 if unanalyzed_only and trade_id in analysis_map:
                     continue
-                
+
                 # Check score filters
                 if min_score is not None or max_score is not None:
                     analysis = analysis_map.get(trade_id)
                     if not analysis or analysis.get('conflict_score') is None:
                         continue
-                    
+
                     score_val = float(analysis['conflict_score'])
-                    
+
                     # Check minimum score
                     if min_score is not None and score_val < min_score:
                         continue
-                    
+
                     # Check maximum score (for Low Risk filter)
                     if max_score is not None and score_val >= max_score:
                         continue
-                
+
                 filtered_trades.append(trade)
-            
+
             return filtered_trades
-        
+
         return all_trades
     except Exception as e:
         logger.error(f"Error fetching congress trades: {e}", exc_info=True)
@@ -4001,15 +4001,15 @@ def get_company_names_map_cached(_supabase_client, tickers_tuple: tuple, _cache_
             _cache_version = get_cache_version()
         except ImportError:
             _cache_version = ""
-    
+
     # Convert tuple back to list
     tickers = list(tickers_tuple) if tickers_tuple else []
-    
+
     company_names_map = {}
-    
+
     if not _supabase_client or not tickers:
         return company_names_map
-    
+
     def fetch_batch(batch):
         try:
             result = _supabase_client.supabase.table("securities")\
@@ -4038,7 +4038,7 @@ def get_company_names_map_cached(_supabase_client, tickers_tuple: tuple, _cache_
 
     except Exception as e:
         logger.warning(f"Error fetching company names: {e}")
-    
+
     return company_names_map
 
 def _process_unknown_tickers_background(tickers: List[str], supabase_client):
@@ -4076,16 +4076,16 @@ def format_date_congress(d) -> str:
     """Format date for display"""
     if d is None:
         return "N/A"
-    
+
     if isinstance(d, str):
         try:
             d = datetime.fromisoformat(d.split('T')[0]).date()
         except (ValueError, AttributeError, TypeError):
             return d
-    
+
     if isinstance(d, date):
         return d.strftime("%Y-%m-%d")
-    
+
     return str(d)
 
 @app.route('/congress_trades')
@@ -4098,20 +4098,20 @@ def congress_trades_page():
         from user_preferences import get_user_theme
         from cache_version import get_cache_version
         from auth import is_admin
-        
+
         user_email = get_user_email_flask()
         user_theme = get_user_theme() or 'system'
-        
+
         # Get refresh key from query params
         refresh_key = int(request.args.get('refresh_key', 0))
-        
+
         # Get Supabase client
         if is_admin():
             from supabase_client import SupabaseClient
             supabase_client = SupabaseClient(use_service_role=True)
         else:
             supabase_client = get_supabase_client_flask()
-        
+
         if supabase_client is None:
             nav_context = get_navigation_context(current_page='congress_trades')
             return render_template('congress_trades.html',
@@ -4120,10 +4120,10 @@ def congress_trades_page():
                                  error="Congress Trades Database Unavailable",
                                  error_message="The congress trades database is not available. Check the logs or contact an administrator.",
                                  **nav_context)
-        
+
         # Get Postgres client
         postgres_client = get_postgres_client_congress()
-        
+
         # Get filter values from query params
         chamber_filter = request.args.get('chamber', 'All')
         type_filter = request.args.get('type', 'All')
@@ -4136,13 +4136,13 @@ def congress_trades_page():
         use_date_filter = request.args.get('use_date_filter') == 'true'
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        
+
         # Convert filters
         chamber_filter = None if chamber_filter == 'All' else chamber_filter
         type_filter = None if type_filter == 'All' else type_filter
         ticker_filter = None if ticker_filter == 'All' else ticker_filter
         politician_filter = None if politician_filter == 'All' else politician_filter
-        
+
         min_score = None
         max_score = None
         if score_filter == "High Risk (>0.7)":
@@ -4154,12 +4154,12 @@ def congress_trades_page():
         elif score_filter == "Low Risk (<0.3)":
             min_score = 0.0
             max_score = 0.3
-        
+
         # Get unique values for filters
         cache_version = get_cache_version()
         unique_tickers = get_unique_tickers_congress(supabase_client, refresh_key, cache_version)
         unique_politicians = get_unique_politicians_congress(supabase_client, refresh_key, cache_version)
-        
+
         # Lazy load: Pass empty data initially
         trades_data = []
         total_trades = 0
@@ -4171,10 +4171,10 @@ def congress_trades_page():
         purchase_count = 0
         sale_count = 0
         most_active_display = "Loading..."
-        
+
         # Get navigation context
         nav_context = get_navigation_context(current_page='congress_trades')
-        
+
         return render_template('congress_trades.html',
                              user_email=user_email,
                              user_theme=user_theme,
@@ -4225,21 +4225,21 @@ def api_congress_trades_data():
         from cache_version import get_cache_version
         from auth import is_admin
         from web_dashboard.utils.logo_utils import get_ticker_logo_url
-        
+
         refresh_key = int(request.args.get('refresh_key', 0))
-        
+
         # Get Supabase client
         if is_admin():
             from supabase_client import SupabaseClient
             supabase_client = SupabaseClient(use_service_role=True)
         else:
             supabase_client = get_supabase_client_flask()
-        
+
         if supabase_client is None:
             return jsonify({"error": "Supabase client unavailable"}), 500
-        
+
         postgres_client = get_postgres_client_congress()
-        
+
         # Get filter values
         ticker_filter = request.args.get('ticker')
         politician_filter = request.args.get('politician')
@@ -4254,7 +4254,7 @@ def api_congress_trades_data():
         max_score = request.args.get('max_score')
         min_score = float(min_score) if min_score else None
         max_score = float(max_score) if max_score else None
-        
+
         # Get ALL trades (cached - internal pagination happens in the function)
         all_trades = get_congress_trades_cached(
             supabase_client,
@@ -4271,28 +4271,28 @@ def api_congress_trades_data():
             max_score=max_score,
             _postgres_client=postgres_client
         )
-        
+
         # Get analysis data
         analysis_map = get_analysis_data_congress(postgres_client, refresh_key) if postgres_client else {}
-        
+
         # Get company names (cached) - optimize by only fetching for unique tickers in result
         unique_ticker_list = list(set([t.get('ticker') for t in all_trades if t.get('ticker')]))
         cache_version = get_cache_version()
         # Fetch company names in parallel batches using cached function
         company_names_map = get_company_names_map_cached(supabase_client, tuple(unique_ticker_list), cache_version)
-        
+
         # Format trades data
         formatted_trades = []
         for trade in all_trades:
             ticker = trade.get('ticker', 'N/A')
             ticker_upper = ticker.upper() if ticker != 'N/A' else 'N/A'
             company_name = company_names_map.get(ticker_upper, 'N/A')
-            
+
             trade_id = trade.get('id')
             analysis = analysis_map.get(trade_id, {})
             conflict_score = analysis.get('conflict_score')
             reasoning = analysis.get('reasoning', '')
-            
+
             if conflict_score is not None:
                 score_val = float(conflict_score)
                 if score_val >= 0.7:
@@ -4303,12 +4303,12 @@ def api_congress_trades_data():
                     score_display = f"🟢 {score_val:.2f}"
             else:
                 score_display = "⚪ N/A"
-            
+
             reasoning_short = reasoning[:80] + '...' if reasoning and len(reasoning) > 80 else (reasoning or '')
-            
+
             # Get logo URL for ticker
             logo_url = get_ticker_logo_url(ticker) if ticker != 'N/A' else None
-            
+
             formatted_trades.append({
                 'Ticker': ticker,
                 'Company': company_name,
@@ -4348,22 +4348,22 @@ def api_analyze_congress_trades():
     try:
         from flask_auth_utils import can_modify_data_flask
         from auth import is_admin
-        
+
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only users cannot analyze trades"}), 403
-        
+
         data = request.get_json()
         if not data or 'trade_ids' not in data:
             return jsonify({"error": "Missing trade_ids in request"}), 400
-        
+
         trade_ids = data.get('trade_ids', [])
         if not isinstance(trade_ids, list) or len(trade_ids) == 0:
             return jsonify({"error": "trade_ids must be a non-empty list"}), 400
-        
+
         # Limit batch size to prevent overwhelming the system
         if len(trade_ids) > 50:
             return jsonify({"error": "Maximum 50 trades can be analyzed at once"}), 400
-        
+
         # Get clients
         if is_admin():
             from supabase_client import SupabaseClient
@@ -4371,21 +4371,21 @@ def api_analyze_congress_trades():
         else:
             from flask_data_utils import get_supabase_client_flask
             supabase_client = get_supabase_client_flask()
-        
+
         if supabase_client is None:
             return jsonify({"error": "Supabase client unavailable"}), 500
-        
+
         postgres_client = get_postgres_client_congress()
         if postgres_client is None:
             return jsonify({"error": "PostgreSQL client unavailable"}), 500
-        
+
         # Import analysis functions
         import sys
         from pathlib import Path
         project_root = Path(__file__).parent.parent
         sys.path.insert(0, str(project_root))
         sys.path.insert(0, str(project_root / 'web_dashboard'))
-        
+
         from scripts.analyze_congress_trades_batch import (
             get_trade_context,
             analyze_trade,
@@ -4394,38 +4394,38 @@ def api_analyze_congress_trades():
         from ollama_client import OllamaClient
         from settings import get_summarizing_model
         from user_preferences import get_user_ai_model
-        
+
         # Check Ollama
         ollama = OllamaClient()
         if not ollama or not ollama.check_health():
             return jsonify({"error": "Ollama is not accessible. Please ensure Ollama is running."}), 503
-        
+
         # Get model from request, fallback to user preference, then system default
         model_name = data.get('model') or get_user_ai_model() or get_summarizing_model()
-        
+
         # Fetch trades from Supabase
         result = supabase_client.supabase.table("congress_trades_enriched")\
             .select("*")\
             .in_("id", trade_ids)\
             .execute()
-        
+
         if not result.data:
             return jsonify({"error": "No trades found with the provided IDs"}), 404
-        
+
         trades = result.data
         processed = 0
         errors = 0
         skipped = 0
-        
+
         # Process each trade
         for trade in trades:
             try:
                 # Get trade context
                 context = get_trade_context(supabase_client, trade)
-                
+
                 # Check if low-risk (skip AI analysis)
                 is_low_risk, filter_reason = is_low_risk_asset(context)
-                
+
                 if is_low_risk:
                     # Auto-assign low conflict score
                     analysis = {
@@ -4437,20 +4437,20 @@ def api_analyze_congress_trades():
                 else:
                     # Analyze with AI
                     analysis = analyze_trade(ollama, context, model=model_name)
-                
+
                 if analysis and 'conflict_score' in analysis:
                     score = float(analysis['conflict_score'])
                     confidence = float(analysis.get('confidence_score', 0.75))
                     reasoning = analysis.get('reasoning', 'No reasoning provided')
-                    
+
                     # Save to PostgreSQL
                     postgres_client.execute_update(
                         """
-                        INSERT INTO congress_trades_analysis 
+                        INSERT INTO congress_trades_analysis
                             (trade_id, conflict_score, confidence_score, reasoning, model_used, analysis_version)
                         VALUES (%s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (trade_id, model_used, analysis_version) 
-                        DO UPDATE SET 
+                        ON CONFLICT (trade_id, model_used, analysis_version)
+                        DO UPDATE SET
                             conflict_score = EXCLUDED.conflict_score,
                             confidence_score = EXCLUDED.confidence_score,
                             reasoning = EXCLUDED.reasoning,
@@ -4458,21 +4458,21 @@ def api_analyze_congress_trades():
                         """,
                         (trade['id'], score, confidence, reasoning, model_name, 1)
                     )
-                    
+
                     processed += 1
                 else:
                     errors += 1
-                    
+
             except Exception as e:
                 logger.error(f"Error processing trade {trade.get('id', 'unknown')}: {e}", exc_info=True)
                 errors += 1
-        
+
         message = f"Processed {processed} trade(s)"
         if skipped > 0:
             message += f", skipped {skipped} low-risk trade(s)"
         if errors > 0:
             message += f", {errors} error(s)"
-        
+
         return jsonify({
             "success": True,
             "processed": processed,
@@ -4480,7 +4480,7 @@ def api_analyze_congress_trades():
             "errors": errors,
             "message": message
         })
-        
+
     except Exception as e:
         logger.error(f"Error in analyze congress trades API: {e}", exc_info=True)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
@@ -4492,22 +4492,22 @@ def api_congress_trades_preview_context():
     try:
         from flask_auth_utils import can_modify_data_flask
         from auth import is_admin
-        
+
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only users cannot preview context"}), 403
-        
+
         data = request.get_json()
         if not data or 'trade_ids' not in data:
             return jsonify({"error": "Missing trade_ids in request"}), 400
-        
+
         trade_ids = data.get('trade_ids', [])
         if not isinstance(trade_ids, list) or len(trade_ids) == 0:
             return jsonify({"error": "trade_ids must be a non-empty list"}), 400
-        
+
         # Limit batch size
         if len(trade_ids) > 50:
             return jsonify({"error": "Maximum 50 trades can be previewed at once"}), 400
-        
+
         # Get clients
         if is_admin():
             from supabase_client import SupabaseClient
@@ -4515,40 +4515,40 @@ def api_congress_trades_preview_context():
         else:
             from flask_data_utils import get_supabase_client_flask
             supabase_client = get_supabase_client_flask()
-        
+
         if supabase_client is None:
             return jsonify({"error": "Supabase client unavailable"}), 500
-        
+
         # Import analysis functions
         import sys
         from pathlib import Path
         project_root = Path(__file__).parent.parent
         sys.path.insert(0, str(project_root))
         sys.path.insert(0, str(project_root / 'web_dashboard'))
-        
+
         from scripts.analyze_congress_trades_batch import get_trade_context
-        
+
         # Fetch trades from Supabase
         result = supabase_client.supabase.table("congress_trades_enriched")\
             .select("*")\
             .in_("id", trade_ids)\
             .execute()
-        
+
         if not result.data:
             return jsonify({"error": "No trades found with the provided IDs"}), 404
-        
+
         trades = result.data
         context_parts = []
-        
+
         # Format context for each trade using PROMPT_TEMPLATE structure
         for trade in trades:
             context = get_trade_context(supabase_client, trade)
-            
+
             # Format similar to PROMPT_TEMPLATE
             description_line = ""
             if context.get('description'):
                 description_line = f"- Description: {context.get('description')}\n"
-            
+
             context_str = f"""Analyze this trade for potential Insider Trading/Conflict of Interest.
 Data:
 - Politician: {context.get('politician', 'Unknown')} ({context.get('party', 'Unknown')} - {context.get('state', 'Unknown')})
@@ -4584,16 +4584,16 @@ Return JSON with TWO fields:
 The confidence_score (0.0-1.0) indicates how certain you are about the conflict_score. Use high confidence (>0.8) for clear-cut cases, medium (0.5-0.8) for typical cases, and low (<0.5) for ambiguous situations.
 """
             context_parts.append(context_str)
-        
+
         # Combine all contexts
         full_context = "\n\n---\n\n".join(context_parts)
-        
+
         return jsonify({
             "success": True,
             "context": full_context,
             "char_count": len(full_context)
         })
-        
+
     except Exception as e:
         logger.error(f"Error in congress trades preview context API: {e}", exc_info=True)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
@@ -5036,6 +5036,33 @@ def insider_trades_page():
                              **nav_context), 500
 
 
+def _process_unknown_tickers_background(tickers, supabase_client):
+    """Background task to fetch metadata for unknown tickers"""
+    try:
+        from utils.ticker_utils import get_ticker_currency
+
+        # Process unknown tickers
+        for ticker in tickers:
+            try:
+                # Determine currency from ticker
+                currency = get_ticker_currency(ticker)
+
+                # Ensure ticker exists in securities table with company name
+                # This will fetch from yfinance if needed
+                success = supabase_client.ensure_ticker_in_securities(ticker, currency)
+                if success:
+                    logger.debug(f"Added company name for ticker {ticker} to securities table (background)")
+                else:
+                    logger.warning(f"Failed to add company name for ticker {ticker} (background)")
+            except Exception as ticker_error:
+                logger.warning(f"Error processing ticker {ticker} for company name lookup: {ticker_error}")
+                continue
+    except ImportError:
+        logger.warning("Could not import get_ticker_currency in background task")
+    except Exception as e:
+        logger.error(f"Error in background ticker processing: {e}")
+
+
 @app.route('/api/insider_trades/data')
 @require_auth
 def api_insider_trades_data():
@@ -5134,7 +5161,7 @@ def api_insider_trades_data():
         company_name_map = get_company_names_map_cached(
             supabase_client, tuple(sorted(list(unique_tickers))), cache_version
         )
-        
+
         # Identify unknown tickers (tickers requested but not in the map)
         unknown_tickers = []
         for ticker in unique_tickers:
@@ -5144,13 +5171,14 @@ def api_insider_trades_data():
         # Bolt Optimization: Process unknown tickers in background thread (non-blocking)
         if unknown_tickers:
             logger.info(f"Scheduling background update for {len(unknown_tickers)} unknown tickers")
-            # Create a thread to process unknowns without blocking the response
-            # Note: We pass the client, which should be thread-safe for simple operations
-            threading.Thread(
-                target=_process_unknown_tickers_background,
-                args=(unknown_tickers, supabase_client),
-                daemon=True
-            ).start()
+            try:
+                threading.Thread(
+                    target=_process_unknown_tickers_background,
+                    args=(unknown_tickers, supabase_client),
+                    daemon=True
+                ).start()
+            except Exception as e:
+                logger.warning(f"Error starting background ticker processing: {e}")
 
         formatted_trades = []
         for trade in all_trades:
