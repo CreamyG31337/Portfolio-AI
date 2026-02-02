@@ -7,27 +7,6 @@
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/plotly.js@2.27.0/dist/plotly.min.js"></script>
-<style>
-    /* Loading spinner animation - custom animation not available in Tailwind */
-    .loading-spinner {
-        border: 4px solid var(--border-color);
-        border-top: 4px solid #3498db;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-        0% {
-            transform: rotate(0deg);
-        }
-
-        100% {
-            transform: rotate(360deg);
-        }
-    }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -50,7 +29,9 @@
 </div>
 
 <!-- Loading Spinner -->
-<div id="loading-spinner" class="loading-spinner hidden"></div>
+<div id="loading-spinner" class="hidden flex justify-center items-center py-12">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
+</div>
 
 <!-- Error Message -->
 <div id="error-message"
@@ -93,7 +74,7 @@
                 <div class="group relative inline-block">
                     <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                     <div
-                        class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                        class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                         Price-to-Earnings Ratio. A valuation ratio of a company's current share price compared to its
                         per-share earnings.
                     </div>
@@ -216,7 +197,7 @@
         💡 Tip: Rotate your device for better viewing
     </div>
     <div id="chart-loading" class="hidden min-h-[200px] flex items-center justify-center">
-        <div class="loading-spinner"></div>
+        <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-accent"></div>
     </div>
     <div id="chart-container" class="overflow-x-auto"></div>
     <div id="chart-metrics" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
@@ -489,7 +470,7 @@
                     <div class="group relative inline-block">
                         <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                         <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                             Primary market direction (Bullish/Bearish). Determined by price action relative to moving
                             averages.
                         </div>
@@ -503,7 +484,7 @@
                     <div class="group relative inline-block">
                         <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                         <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                             Indicates if price has retreated from recent highs. Can signal a buying opportunity in
                             uptrends.
                         </div>
@@ -517,7 +498,7 @@
                     <div class="group relative inline-block">
                         <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                         <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                             Detects if price is breaking key resistance levels, often creating momentum.
                         </div>
                     </div>
@@ -537,7 +518,7 @@
                     <div class="group relative inline-block">
                         <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                         <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                             Total shares traded today relative to average. High relative volume confirms trends.
                         </div>
                     </div>
@@ -550,7 +531,7 @@
                     <div class="group relative inline-block">
                         <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                         <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                             Rel. Strength Index (0-100). >70 overbought, <30 oversold. Momentum indicator. </div>
                         </div>
                     </div>
@@ -562,7 +543,7 @@
                         <div class="group relative inline-block">
                             <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                             <div
-                                class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                                 Commodity Channel Index. >100 overbought, <-100 oversold. Measures deviation from avg.
                                     </div>
                             </div>
@@ -582,7 +563,7 @@
                             <div class="group relative inline-block">
                                 <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                                 <div
-                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                                     Sentiment gauge. 'Extreme Fear' can be a buy signal, 'Extreme Greed' a sell signal.
                                 </div>
                             </div>
@@ -595,7 +576,7 @@
                             <div class="group relative inline-block">
                                 <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                                 <div
-                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                                     Composite risk metric (0-10). Higher score indicates higher volatility/downside
                                     risk.
                                 </div>
@@ -609,7 +590,7 @@
                             <div class="group relative inline-block">
                                 <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                                 <div
-                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-white bg-gray-800 rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                                     Aggregated trading suggestion (Buy/Sell/Hold) based on all technical factors.
                                 </div>
                             </div>
