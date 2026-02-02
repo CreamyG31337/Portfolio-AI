@@ -35,22 +35,22 @@
 
     <!-- Error Display (Hidden by default) -->
     <div id="dashboard-error-container"
-        class="hidden mb-6 p-4 bg-red-50 border border-red-200 rounded-lg dark:bg-red-900/20 dark:border-red-800">
+        class="hidden mb-6 p-4 bg-theme-error-bg border border-theme-error-text rounded-lg">
         <div class="flex items-start">
             <div class="flex-shrink-0">
-                <i class="fas fa-exclamation-triangle text-red-400 text-xl"></i>
+                <i class="fas fa-exclamation-triangle text-theme-error-text text-xl"></i>
             </div>
             <div class="ml-3 flex-1">
-                <h3 class="text-lg font-bold text-red-900 dark:text-red-100">Error Loading Dashboard Data</h3>
-                <div id="dashboard-error-message" class="mt-2 text-sm text-red-800 dark:text-red-200">
+                <h3 class="text-lg font-bold text-theme-error-text">Error Loading Dashboard Data</h3>
+                <div id="dashboard-error-message" class="mt-2 text-sm text-theme-error-text">
                     <!-- Error details will be inserted here -->
                 </div>
-                <button onclick="refreshDashboard()" class="mt-3 text-sm text-red-700 hover:text-red-900 underline">
+                <button onclick="refreshDashboard()" class="mt-3 text-sm text-theme-error-text underline hover:text-text-primary">
                     Try Again
                 </button>
             </div>
             <button onclick="document.getElementById('dashboard-error-container').classList.add('hidden')"
-                class="ml-auto text-red-400 hover:text-red-600" aria-label="Close error message">
+                class="ml-auto text-theme-error-text hover:text-text-primary" aria-label="Close error message">
                 <i class="fas fa-times" aria-hidden="true"></i>
             </button>
         </div>
@@ -147,10 +147,9 @@
             <div class="text-xs text-text-tertiary" id="action-queue-updated">Updated: -</div>
         </div>
         <div class="relative overflow-x-auto max-h-[420px] overflow-y-auto border border-border rounded-lg">
-            <div id="action-queue-spinner"
-                class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
-            </div>
+            {% with id='action-queue-spinner', size='8' %}
+                {% include "components/_loading_spinner.html" %}
+            {% endwith %}
             <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
                 <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
                     <tr>
@@ -180,11 +179,9 @@
                 <span class="text-theme-success-text">🟢</span> Top Gainers
             </h3>
             <div class="relative overflow-x-auto max-h-[400px] overflow-y-auto border border-border rounded-lg">
-                <div id="gainers-spinner"
-                    class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-theme-success-text">
-                    </div>
-                </div>
+                {% with id='gainers-spinner', size='8', color='border-theme-success-text' %}
+                    {% include "components/_loading_spinner.html" %}
+                {% endwith %}
                 <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
                     <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
                         <tr>
@@ -209,10 +206,9 @@
                 <span class="text-theme-error-text">🔴</span> Top Losers
             </h3>
             <div class="relative overflow-x-auto max-h-[400px] overflow-y-auto border border-border rounded-lg">
-                <div id="losers-spinner"
-                    class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-theme-error-text"></div>
-                </div>
+                {% with id='losers-spinner', size='8', color='border-theme-error-text' %}
+                    {% include "components/_loading_spinner.html" %}
+                {% endwith %}
                 <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
                     <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
                         <tr>
@@ -246,11 +242,9 @@
             </div>
             <div class="w-full relative min-h-[500px]" id="performance-chart">
                 <!-- Loading spinner -->
-                <div id="performance-chart-spinner"
-                    class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent">
-                    </div>
-                </div>
+                {% with id='performance-chart-spinner', size='12' %}
+                    {% include "components/_loading_spinner.html" %}
+                {% endwith %}
                 <!-- Plotly Chart -->
             </div>
 
@@ -314,11 +308,9 @@
 
                     <!-- Chart Container -->
                     <div class="w-full relative min-h-[450px]" id="individual-holdings-chart">
-                        <div id="individual-holdings-spinner"
-                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10 hidden">
-                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent">
-                            </div>
-                        </div>
+                        {% with id='individual-holdings-spinner', size='12', extra_classes='hidden' %}
+                            {% include "components/_loading_spinner.html" %}
+                        {% endwith %}
                     </div>
                 </div>
             </div>
@@ -331,12 +323,9 @@
                 <h3 class="text-lg font-bold text-text-primary mb-4">Sector Allocation</h3>
                 <div class="w-full relative aspect-square max-h-[700px]" id="sector-chart">
                     <!-- Loading spinner -->
-                    <div id="sector-chart-spinner"
-                        class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                        <div
-                            class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
-                        </div>
-                    </div>
+                    {% with id='sector-chart-spinner', size='12' %}
+                        {% include "components/_loading_spinner.html" %}
+                    {% endwith %}
                 </div>
             </div>
 
@@ -381,10 +370,9 @@
 
                                 <!-- Chart Container -->
                                 <div class="w-full relative min-h-[400px]" id="commodities-chart">
-                                    <div id="commodities-chart-spinner"
-                                        class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
-                                    </div>
+                                    {% with id='commodities-chart-spinner', size='12' %}
+                                        {% include "components/_loading_spinner.html" %}
+                                    {% endwith %}
                                 </div>
                             </div>
 
@@ -416,12 +404,9 @@
 
                                     <!-- Historical Rate Chart -->
                                     <div class="w-full relative min-h-[200px]" id="exchange-rate-chart">
-                                        <div id="exchange-rate-chart-spinner"
-                                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                                            <div
-                                                class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400">
-                                            </div>
-                                        </div>
+                                        {% with id='exchange-rate-chart-spinner', size='8' %}
+                                            {% include "components/_loading_spinner.html" %}
+                                        {% endwith %}
                                     </div>
                                 </div>
 
@@ -430,12 +415,9 @@
                                     <div class="w-full relative overflow-hidden min-h-[300px] max-h-[400px]"
                                         id="currency-chart">
                                         <!-- Loading spinner -->
-                                        <div id="currency-chart-spinner"
-                                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                                            <div
-                                                class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
-                                            </div>
-                                        </div>
+                                        {% with id='currency-chart-spinner', size='12' %}
+                                            {% include "components/_loading_spinner.html" %}
+                                        {% endwith %}
                                         <!-- Plotly Chart -->
                                     </div>
                                 </div>
@@ -474,12 +456,9 @@
                         <strong>Losing positions</strong> show single red bars below axis.
                     </div>
                     <div class="w-full relative min-h-[500px]" id="pnl-chart">
-                        <div id="pnl-chart-spinner"
-                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                            <div
-                                class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400">
-                            </div>
-                        </div>
+                        {% with id='pnl-chart-spinner', size='12' %}
+                            {% include "components/_loading_spinner.html" %}
+                        {% endwith %}
                     </div>
                 </div>
 
@@ -551,10 +530,9 @@
                     <h3 class="text-lg font-bold text-text-primary mb-4">Current Holdings</h3>
                     <div class="relative w-full h-[500px]">
                         <!-- Loading spinner -->
-                        <div id="holdings-grid-spinner"
-                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
-                        </div>
+                        {% with id='holdings-grid-spinner', size='12' %}
+                            {% include "components/_loading_spinner.html" %}
+                        {% endwith %}
                         <div id="holdings-grid" class="ag-theme-alpine w-full h-full"></div>
                     </div>
                 </div>
@@ -564,10 +542,9 @@
                     <h3 class="text-lg font-bold text-text-primary mb-4">Recent Activity</h3>
                     <div class="relative overflow-x-auto max-h-[600px] overflow-y-auto border border-border rounded-lg">
                         <!-- Loading spinner -->
-                        <div id="activity-table-spinner"
-                            class="absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10">
-                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
-                        </div>
+                        {% with id='activity-table-spinner', size='12' %}
+                            {% include "components/_loading_spinner.html" %}
+                        {% endwith %}
                         <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
                             <thead
                                 class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
