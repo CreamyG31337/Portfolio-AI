@@ -102,6 +102,10 @@ python dev_run.py --data-dir "trading_data/funds/TEST"
 - **Ensure all tests pass** before pushing changes
 - **Use descriptive commit messages** that explain the "why" rather than just the "what"
 
+## Merging PRs
+- **One PR at a time:** Review each branch, check the diff, then merge. Do not batch-merge multiple PRs.
+- **Code review docs (e.g. CODE_REVIEW_*.md):** Read them, implement the suggested changes in code, then merge the code. Do **not** merge the review doc itself into the repo.
+
 ## Code Style Guidelines
 
 ### Python Version & Requirements
@@ -410,6 +414,11 @@ python run_tests.py integration
 - Use repository pattern for data access
 - Separate business logic from presentation
 - Follow existing modular architecture
+
+### Verification folder (do not delete)
+- **`verification/`** contains Playwright/UI verification scripts and screenshots (e.g. password toggle test).
+- **Do NOT delete** `verification/` or its contents when making PRs (jobs, auth, settings, or "cleanup").
+- Multiple PRs have accidentally removed these files; they are intentional and should stay.
 
 ### Security
 - Never log or expose sensitive data
