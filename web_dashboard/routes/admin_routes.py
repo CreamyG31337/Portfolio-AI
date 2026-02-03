@@ -1898,12 +1898,18 @@ def api_preview_email_trade():
         500: Server error during parsing
     """
     try:
+        try:
+            from utils.email_trade_parser import EmailTradeParser
+        except ImportError:
+            logger.error("EmailTradeParser not available (utils.email_trade_parser import failed)", exc_info=True)
+            return jsonify({"error": "Email trade parser is not available. Check server logs."}), 500
+
         data = request.get_json()
         email_text = data.get('text', '')
         
         if not email_text:
             return jsonify({"error": "No email text provided"}), 400
-            
+
         parser = EmailTradeParser()
         trade = parser.parse_email_trade(email_text)
         

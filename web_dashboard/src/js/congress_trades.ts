@@ -30,6 +30,20 @@ interface AgGridApi {
     hideOverlay(): void;
     applyTransaction(transaction: { add: CongressTrade[] }): void;
     getColumnApi?: () => AgGridColumnApi;
+    setDatasource(datasource: AgGridDatasource): void;
+    purgeInfiniteCache(): void;
+    getInfiniteRowCount(): number | null;
+}
+
+interface AgGridDatasource {
+    getRows: (params: AgGridDatasourceParams) => void;
+}
+
+interface AgGridDatasourceParams {
+    startRow: number;
+    endRow: number;
+    successCallback: (rows: CongressTrade[], lastRow: number) => void;
+    failCallback: () => void;
 }
 
 interface AgGridColumnApi {
@@ -44,7 +58,7 @@ interface AgGridGlobal {
 
 interface AgGridOptions {
     columnDefs: AgGridColumnDef[];
-    rowData: CongressTrade[];
+    rowData?: CongressTrade[];
     defaultColDef?: Partial<AgGridColumnDef>;
     rowSelection?: any;
     // suppressRowClickSelection deprecated
@@ -60,6 +74,12 @@ interface AgGridOptions {
     animateRows?: boolean;
     suppressCellFocus?: boolean;
     overlayLoadingTemplate?: string;
+    overlayNoRowsTemplate?: string;
+    rowModelType?: 'clientSide' | 'infinite' | 'serverSide' | 'viewport';
+    cacheBlockSize?: number;
+    maxBlocksInCache?: number;
+    infiniteInitialRowCount?: number;
+    datasource?: AgGridDatasource;
 }
 
 interface AgGridColumnDef {
@@ -887,10 +907,12 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         return;
     }
 
-    // Check if grid is already initialized
+    // Check if grid is already initialized - for infinite model, refresh datasource
     if (gridDiv.getAttribute('data-initialized') === 'true') {
         if (gridApi) {
-            gridApi.setGridOption('rowData', tradesData);
+            // For infinite row model, purge cache and set new datasource
+            gridApi.purgeInfiniteCache();
+            gridApi.setDatasource(createDatasource());
             return;
         }
         // Grid was marked initialized but gridApi is null - clear and recreate
@@ -1067,14 +1089,13 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         }
     ];
 
-    // Grid options
+    // Grid options - using infinite row model for server-side pagination
     const gridOptions: AgGridOptions = {
         columnDefs: columnDefs,
-        rowData: tradesData,
         defaultColDef: {
             editable: false,
-            sortable: true,
-            filter: true,
+            sortable: false, // Disable client-side sorting for infinite model
+            filter: false, // Disable client-side filtering for infinite model
             resizable: true,
             wrapHeaderText: true,
             autoHeaderHeight: true
@@ -1084,14 +1105,31 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         enableCellTextSelection: true,
         ensureDomOrder: true,
         domLayout: 'normal',
+        // Infinite row model settings
+        rowModelType: 'infinite',
+        cacheBlockSize: 100, // Fetch 100 rows at a time
+        maxBlocksInCache: 10, // Keep up to 10 blocks (1000 rows) in memory
+        infiniteInitialRowCount: 100, // Initial placeholder count
         pagination: true,
         paginationPageSize: 100,
-        paginationPageSizeSelector: [100, 250, 500, 1000],
+        paginationPageSizeSelector: [100, 250, 500],
         onCellClicked: onCellClicked,
         onSelectionChanged: onSelectionChanged,
-        animateRows: true,
+        animateRows: false, // Disable for better infinite scroll performance
         suppressCellFocus: false,
-        overlayLoadingTemplate: '<span class="ag-overlay-loading-center">Please wait while your rows are loading...</span>'
+        overlayLoadingTemplate: `
+            <div class="flex flex-col items-center justify-center p-8">
+                <i class="fas fa-spinner fa-spin text-4xl text-accent mb-4"></i>
+                <span class="text-text-secondary">Loading congress trades...</span>
+            </div>
+        `,
+        overlayNoRowsTemplate: `
+            <div class="flex flex-col items-center justify-center p-8">
+                <i class="fas fa-inbox text-4xl text-text-tertiary mb-4"></i>
+                <span class="text-text-secondary">No trades found matching your filters.</span>
+            </div>
+        `,
+        datasource: createDatasource()
     };
 
     // Create grid
@@ -1132,160 +1170,120 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
     }
 }
 
-// Statistics Accumulator
-const statsAccumulator = {
-    total_trades: 0,
-    analyzed_count: 0,
-    house_count: 0,
-    senate_count: 0,
-    purchase_count: 0,
-    sale_count: 0,
-    unique_tickers: new Set<string>(),
-    high_risk_count: 0,
-    politician_counts_31d: new Map<string, number>()
-};
-
-function calculateAndRenderStats(newTrades: CongressTrade[]): void {
-    const thirtyOneDaysAgo = new Date();
-    thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31);
-
-    for (const trade of newTrades) {
-        statsAccumulator.total_trades++;
-
-        // Analyzed count (check for non-null Score that isn't '⚪ N/A')
-        if (trade.Score && !trade.Score.includes('⚪')) {
-            statsAccumulator.analyzed_count++;
-        }
-
-        // High Risk
-        if (trade.Score && trade.Score.includes('🔴')) {
-            statsAccumulator.high_risk_count++;
-        }
-
-        // Chamber
-        if (trade.Chamber === 'House') statsAccumulator.house_count++;
-        if (trade.Chamber === 'Senate') statsAccumulator.senate_count++;
-
-        // Type
-        if (trade.Type === 'Purchase') statsAccumulator.purchase_count++;
-        if (trade.Type === 'Sale') statsAccumulator.sale_count++;
-
-        // Unique Tickers
-        if (trade.Ticker && trade.Ticker !== 'N/A') {
-            statsAccumulator.unique_tickers.add(trade.Ticker);
-        }
-
-        // Most Active (31d)
-        if (trade.Date && trade.Politician && trade.Politician !== 'N/A') {
-            const tradeDate = new Date(trade.Date);
-            if (tradeDate >= thirtyOneDaysAgo) {
-                // Check owner (skip spouse/child if needed, matching python logic)
-                const owner = (trade.Owner || '').toLowerCase();
-                if (owner !== 'child' && owner !== 'spouse') {
-                    const count = statsAccumulator.politician_counts_31d.get(trade.Politician) || 0;
-                    statsAccumulator.politician_counts_31d.set(trade.Politician, count + 1);
-                }
-            }
-        }
-    }
-
-    // Determine most active
-    let mostActiveDisplay = "N/A";
-    let maxCount = 0;
-    for (const [politician, count] of statsAccumulator.politician_counts_31d.entries()) {
-        if (count > maxCount) {
-            maxCount = count;
-            mostActiveDisplay = `${politician} (${count})`;
-        }
-    }
-
-    // Render
-    const setText = (id: string, text: string) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = text;
-    };
-
-    setText('stat-total-trades', statsAccumulator.total_trades.toString());
-    setText('stat-analyzed', `${statsAccumulator.analyzed_count}/${statsAccumulator.total_trades}`);
-    setText('stat-house', statsAccumulator.house_count.toString());
-    setText('stat-senate', statsAccumulator.senate_count.toString());
-    setText('stat-buy-sell', `${statsAccumulator.purchase_count}/${statsAccumulator.sale_count}`);
-    setText('stat-tickers', statsAccumulator.unique_tickers.size.toString());
-    setText('stat-high-risk', statsAccumulator.high_risk_count.toString());
-    setText('stat-most-active', mostActiveDisplay);
-}
-
-async function fetchTradeData(): Promise<void> {
+// Fetch stats from API endpoint (aggregated server-side)
+async function fetchStats(): Promise<void> {
     const searchParams = new URLSearchParams(window.location.search);
 
     try {
-        // Reset stats
-        statsAccumulator.total_trades = 0;
-        statsAccumulator.analyzed_count = 0;
-        statsAccumulator.house_count = 0;
-        statsAccumulator.senate_count = 0;
-        statsAccumulator.purchase_count = 0;
-        statsAccumulator.sale_count = 0;
-        statsAccumulator.unique_tickers.clear();
-        statsAccumulator.high_risk_count = 0;
-        statsAccumulator.politician_counts_31d.clear();
-
-        // Update loading text
-        const titleEl = document.querySelector('h2.text-xl.font-bold.mb-4.text-gray-900.dark\\:text-white');
-        if (titleEl && titleEl.textContent?.includes('Congress Trades')) {
-            titleEl.textContent = `📋 Congress Trades (Loading...)`;
-        }
-
-        const response = await fetch(`/api/congress_trades/data?${searchParams.toString()}`);
+        const response = await fetch(`/api/congress_trades/stats?${searchParams.toString()}`);
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const data: CongressTradeApiResponse = await response.json();
+        const stats: CongressTradeStats = await response.json();
 
-        console.log(`[CongressTrades] Received ${data.trades?.length || 0} trades`);
+        // Render stats
+        const setText = (id: string, text: string) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
 
-        if (data.error) {
-            console.error('API Error:', data.error);
-            return;
-        }
-
-        const newTrades = data.trades || [];
-
-        // Initialize grid with ALL data
-        initializeCongressTradesGrid(newTrades);
-
-        // Auto-size columns after data is loaded (with delay for logos/images/emojis to load)
-        if (gridColumnApi) {
-            setTimeout(() => {
-                if (gridColumnApi) {
-                    const allColumns = gridColumnApi.getAllDisplayedColumns();
-                    if (allColumns && allColumns.length > 0) {
-                        const columnIds = allColumns.map((col: any) => col.getColId()).filter(Boolean);
-                        if (columnIds.length > 0) {
-                            // Auto-size but respect minWidth constraints
-                            gridColumnApi.autoSizeColumns(columnIds, false);
-                        }
-                    }
-                }
-            }, 800); // Wait for images/logos/emojis to fully render
-        }
-
-        // Calculate stats from full dataset
-        calculateAndRenderStats(newTrades);
-
-        // Done loading
-        if (titleEl) {
-            titleEl.textContent = '📋 Congress Trades';
-        }
+        setText('stat-total-trades', stats.total_trades.toString());
+        setText('stat-analyzed', `${stats.analyzed_count}/${stats.total_trades}`);
+        setText('stat-house', stats.house_count.toString());
+        setText('stat-senate', stats.senate_count.toString());
+        setText('stat-buy-sell', `${stats.purchase_count}/${stats.sale_count}`);
+        setText('stat-tickers', stats.unique_tickers_count.toString());
+        setText('stat-high-risk', stats.high_risk_count.toString());
+        setText('stat-most-active', stats.most_active_display);
 
     } catch (error) {
-        console.error('Failed to fetch trades data:', error);
-        if (gridApi) {
-            gridApi.hideOverlay();
-        }
+        console.error('Failed to fetch stats:', error);
+        // Show error state in stats
+        const setText = (id: string, text: string) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
+        setText('stat-total-trades', 'Error');
     }
+}
+
+// Create a datasource for infinite row model
+function createDatasource(): AgGridDatasource {
+    const searchParams = new URLSearchParams(window.location.search);
+
+    return {
+        getRows: async (params: AgGridDatasourceParams) => {
+            const { startRow, endRow, successCallback, failCallback } = params;
+            const limit = endRow - startRow;
+            const offset = startRow;
+
+            console.log(`[CongressTrades] Fetching rows ${startRow}-${endRow}`);
+
+            try {
+                // Show loading overlay
+                if (gridApi) {
+                    gridApi.showLoadingOverlay();
+                }
+
+                // Build API URL with pagination
+                const apiParams = new URLSearchParams(searchParams);
+                apiParams.set('limit', limit.toString());
+                apiParams.set('offset', offset.toString());
+
+                const response = await fetch(`/api/congress_trades/data?${apiParams.toString()}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data: CongressTradeApiResponse = await response.json();
+
+                if (data.error) {
+                    console.error('API Error:', data.error);
+                    failCallback();
+                    return;
+                }
+
+                const trades = data.trades || [];
+                const total = data.total || 0;
+
+                console.log(`[CongressTrades] Received ${trades.length} trades (total: ${total})`);
+
+                // Calculate lastRow for AgGrid
+                // If we have fewer rows than requested, we've reached the end
+                let lastRow = -1; // -1 means unknown/more data available
+                if (trades.length < limit || !data.has_more) {
+                    lastRow = startRow + trades.length;
+                }
+
+                successCallback(trades, lastRow);
+
+            } catch (error) {
+                console.error('Failed to fetch trades data:', error);
+                failCallback();
+            } finally {
+                if (gridApi) {
+                    gridApi.hideOverlay();
+                }
+            }
+        }
+    };
+}
+
+// Initialize grid with infinite row model
+async function initializeInfiniteGrid(): Promise<void> {
+    // First, fetch stats (runs in parallel conceptually)
+    fetchStats();
+
+    // Initialize the grid with infinite row model
+    initializeCongressTradesGrid([]);
+}
+
+// Legacy function for backward compatibility - now uses infinite model
+async function fetchTradeData(): Promise<void> {
+    await initializeInfiniteGrid();
 }
 
 // Re-analyze all visible trades

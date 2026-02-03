@@ -3903,97 +3903,122 @@ def get_congress_trades_cached(
     unanalyzed_only: bool = False,
     min_score: Optional[float] = None,
     max_score: Optional[float] = None,
-    _postgres_client = None
-) -> List[Dict[str, Any]]:
-    """Get congress trades with filters (cached 6 hours). Fetches ALL matching rows."""
+    _postgres_client = None,
+    limit: int = 100,
+    offset: int = 0
+) -> Dict[str, Any]:
+    """Get congress trades with filters and pagination (cached 6 hours).
+    
+    Returns a dict with:
+        - trades: List of trade records for the requested page
+        - total: Total count of matching records
+        - has_more: Whether there are more records after this page
+    """
     try:
         if _supabase_client is None:
-            return []
+            return {"trades": [], "total": 0, "has_more": False}
 
-        # Optimize query to select only needed columns
-        query = _supabase_client.supabase.table("congress_trades_enriched").select(
-            "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner"
-        )
-
-        if ticker_filter:
-            query = query.eq("ticker", ticker_filter)
-        if politician_filter:
-            query = query.eq("politician", politician_filter)
-        if chamber_filter:
-            query = query.eq("chamber", chamber_filter)
-        if type_filter:
-            query = query.eq("type", type_filter)
-        if start_date:
-            query = query.gte("transaction_date", start_date)
-        if end_date:
-            query = query.lte("transaction_date", end_date)
-
-        query = query.order("transaction_date", desc=True)
+        # Build base filter function for reuse
+        def apply_filters(q):
+            if ticker_filter:
+                q = q.eq("ticker", ticker_filter)
+            if politician_filter:
+                q = q.eq("politician", politician_filter)
+            if chamber_filter:
+                q = q.eq("chamber", chamber_filter)
+            if type_filter:
+                q = q.eq("type", type_filter)
+            if start_date:
+                q = q.gte("transaction_date", start_date)
+            if end_date:
+                q = q.lte("transaction_date", end_date)
+            return q
 
         # Get analysis data for filtering (needed for analyzed_only and score filters)
         analysis_map = get_analysis_data_congress(_postgres_client, refresh_key) if _postgres_client else {}
 
-        # Fetch ALL rows using pagination (Supabase limits to 1000 per request)
-        all_trades = []
-        batch_size = 1000
-        offset = 0
+        # Check if we need post-filtering (analysis-based filters require fetching all and filtering)
+        needs_post_filter = analyzed_only or unanalyzed_only or min_score is not None or max_score is not None
 
-        while True:
-            result = query.range(offset, offset + batch_size - 1).execute()
+        if needs_post_filter:
+            # For analysis-based filters, we must fetch all matching trades first, then filter and paginate
+            query = _supabase_client.supabase.table("congress_trades_enriched").select(
+                "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner"
+            )
+            query = apply_filters(query)
+            query = query.order("transaction_date", desc=True).order("id", desc=True)
 
-            if not result.data:
-                break
+            # Fetch all rows (with batching due to Supabase 1000 row limit)
+            all_trades = []
+            batch_size = 1000
+            batch_offset = 0
 
-            all_trades.extend(result.data)
+            while True:
+                result = query.range(batch_offset, batch_offset + batch_size - 1).execute()
+                if not result.data:
+                    break
+                all_trades.extend(result.data)
+                if len(result.data) < batch_size:
+                    break
+                batch_offset += batch_size
+                if batch_offset > 100000:
+                    logger.warning("Reached 100,000 row safety limit in get_congress_trades_cached pagination")
+                    break
 
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            # Safety limit
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_congress_trades_cached pagination")
-                break
-
-        logger.info(f"[CongressTrades] Fetched {len(all_trades)} total rows from Supabase")
-
-        # Post-process: filter by analysis status and score
-        if analyzed_only or unanalyzed_only or min_score is not None or max_score is not None:
+            # Post-process: filter by analysis status and score
             filtered_trades = []
             for trade in all_trades:
                 trade_id = trade.get('id')
 
-                # Filter by analysis status
                 if analyzed_only and trade_id not in analysis_map:
                     continue
                 if unanalyzed_only and trade_id in analysis_map:
                     continue
 
-                # Check score filters
                 if min_score is not None or max_score is not None:
                     analysis = analysis_map.get(trade_id)
                     if not analysis or analysis.get('conflict_score') is None:
                         continue
-
                     score_val = float(analysis['conflict_score'])
-
-                    # Check minimum score
                     if min_score is not None and score_val < min_score:
                         continue
-
-                    # Check maximum score (for Low Risk filter)
                     if max_score is not None and score_val >= max_score:
                         continue
 
                 filtered_trades.append(trade)
 
-            return filtered_trades
+            total = len(filtered_trades)
+            page_trades = filtered_trades[offset:offset + limit]
+            has_more = (offset + limit) < total
 
-        return all_trades
+            logger.info(f"[CongressTrades] Post-filtered: {total} total, returning {len(page_trades)} (offset={offset})")
+            return {"trades": page_trades, "total": total, "has_more": has_more}
+
+        # Standard path: use Supabase pagination directly
+        # Get count first
+        count_query = _supabase_client.supabase.table("congress_trades_enriched").select("id", count="exact")
+        count_query = apply_filters(count_query)
+        count_result = count_query.execute()
+        total = count_result.count if count_result.count is not None else 0
+
+        # Get paginated data
+        query = _supabase_client.supabase.table("congress_trades_enriched").select(
+            "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner"
+        )
+        query = apply_filters(query)
+        query = query.order("transaction_date", desc=True).order("id", desc=True)
+        query = query.range(offset, offset + limit - 1)
+
+        result = query.execute()
+        trades = result.data or []
+        has_more = (offset + limit) < total
+
+        logger.info(f"[CongressTrades] Fetched {len(trades)} rows (offset={offset}, limit={limit}, total={total})")
+        return {"trades": trades, "total": total, "has_more": has_more}
+
     except Exception as e:
         logger.error(f"Error fetching congress trades: {e}", exc_info=True)
-        return []
+        return {"trades": [], "total": 0, "has_more": False}
 
 @cache_data(ttl=86400)  # Cache for 24 hours - company names don't change often
 def get_company_names_map_cached(_supabase_client, tickers_tuple: tuple, _cache_version: Optional[str] = None) -> Dict[str, str]:
@@ -4224,7 +4249,23 @@ def congress_trades_page():
 @app.route('/api/congress_trades/data')
 @require_auth
 def api_congress_trades_data():
-    """API endpoint for congress trades data (JSON) - fetches ALL data at once"""
+    """API endpoint for congress trades data (JSON) with server-side pagination.
+    
+    Query parameters:
+        - limit: Number of records per page (default 100, max 500)
+        - offset: Starting offset for pagination (default 0)
+        - ticker, politician, chamber, type: Filter values
+        - start_date, end_date: Date range filters
+        - analysis_status: 'all', 'analyzed', or 'unanalyzed'
+        - min_score, max_score: Score range filters
+        - refresh_key: Cache refresh key
+    
+    Returns:
+        - trades: List of formatted trade records for the requested page
+        - total: Total count of matching records
+        - next_offset: Offset for the next page (if has_more is true)
+        - has_more: Whether there are more records after this page
+    """
     try:
         from flask_auth_utils import get_auth_token
         from flask_data_utils import get_supabase_client_flask
@@ -4233,6 +4274,10 @@ def api_congress_trades_data():
         from web_dashboard.utils.logo_utils import get_ticker_logo_url
 
         refresh_key = int(request.args.get('refresh_key', 0))
+
+        # Pagination parameters
+        limit = min(int(request.args.get('limit', 100)), 500)  # Default 100, max 500
+        offset = int(request.args.get('offset', 0))
 
         # Get Supabase client
         if is_admin():
@@ -4261,8 +4306,8 @@ def api_congress_trades_data():
         min_score = float(min_score) if min_score else None
         max_score = float(max_score) if max_score else None
 
-        # Get ALL trades (cached - internal pagination happens in the function)
-        all_trades = get_congress_trades_cached(
+        # Get paginated trades
+        result = get_congress_trades_cached(
             supabase_client,
             refresh_key,
             ticker_filter=ticker_filter if ticker_filter and ticker_filter != 'All' else None,
@@ -4275,21 +4320,27 @@ def api_congress_trades_data():
             unanalyzed_only=unanalyzed_only,
             min_score=min_score,
             max_score=max_score,
-            _postgres_client=postgres_client
+            _postgres_client=postgres_client,
+            limit=limit,
+            offset=offset
         )
+
+        trades = result["trades"]
+        total = result["total"]
+        has_more = result["has_more"]
 
         # Get analysis data
         analysis_map = get_analysis_data_congress(postgres_client, refresh_key) if postgres_client else {}
 
         # Get company names (cached) - optimize by only fetching for unique tickers in result
-        unique_ticker_list = list(set([t.get('ticker') for t in all_trades if t.get('ticker')]))
+        unique_ticker_list = list(set([t.get('ticker') for t in trades if t.get('ticker')]))
         cache_version = get_cache_version()
         # Fetch company names in parallel batches using cached function
         company_names_map = get_company_names_map_cached(supabase_client, tuple(unique_ticker_list), cache_version)
 
         # Format trades data
         formatted_trades = []
-        for trade in all_trades:
+        for trade in trades:
             ticker = trade.get('ticker', 'N/A')
             ticker_upper = ticker.upper() if ticker != 'N/A' else 'N/A'
             company_name = company_names_map.get(ticker_upper, 'N/A')
@@ -4334,17 +4385,227 @@ def api_congress_trades_data():
                 '_logo_url': logo_url  # Include logo URL for display
             })
 
-        return jsonify({
+        response = {
             "trades": formatted_trades,
-            "has_more": False,
-            "total": len(all_trades)
-        })
+            "total": total,
+            "has_more": has_more
+        }
+        if has_more:
+            response["next_offset"] = offset + limit
+
+        return jsonify(response)
     except ValueError as e:
         logger.error(f"Invalid parameter in congress trades API: {e}", exc_info=True)
         return jsonify({"error": f"Invalid parameter: {str(e)}"}), 400
     except Exception as e:
         logger.error(f"Error in congress trades API: {e}", exc_info=True)
         return jsonify({"error": "An error occurred while fetching congress trades data. Please check the logs."}), 500
+
+
+@cache_data(ttl=300)
+def _get_congress_trades_stats_cached(
+    _supabase_client,
+    _postgres_client,
+    ticker_filter: Optional[str],
+    politician_filter: Optional[str],
+    chamber_filter: Optional[str],
+    type_filter: Optional[str],
+    start_date: Optional[str],
+    end_date: Optional[str],
+    use_date_filter: bool,
+    analysis_status: str,
+    score_filter: str,
+    _cache_version: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Get aggregated statistics for congress trades using SQL COUNT with FILTER.
+    Returns dict with total_trades, analyzed_count, house_count, senate_count, etc.
+    """
+    if _supabase_client is None:
+        return {"error": "Supabase client unavailable"}
+
+    # Build base query with filters
+    query = _supabase_client.supabase.table("congress_trades_enriched").select("id, ticker, chamber, type, politician, owner, transaction_date")
+
+    # Apply filters
+    if ticker_filter:
+        query = query.eq("ticker", ticker_filter)
+    if politician_filter:
+        query = query.eq("politician", politician_filter)
+    if chamber_filter:
+        query = query.eq("chamber", chamber_filter)
+    if type_filter:
+        query = query.eq("type", type_filter)
+    if use_date_filter and start_date:
+        query = query.gte("transaction_date", start_date)
+    if use_date_filter and end_date:
+        query = query.lte("transaction_date", end_date)
+
+    # Fetch all matching trade IDs with minimal fields
+    all_trade_ids = []
+    batch_size = 1000
+    offset = 0
+    all_trades_data = []
+
+    while True:
+        result = query.range(offset, offset + batch_size - 1).execute()
+        if not result.data:
+            break
+        all_trades_data.extend(result.data)
+        all_trade_ids.extend([t['id'] for t in result.data])
+        if len(result.data) < batch_size:
+            break
+        offset += batch_size
+        if offset > 100000:
+            break
+
+    # Get analysis data from PostgreSQL if available
+    analysis_map = {}
+    if _postgres_client and all_trade_ids:
+        try:
+            # Get all analysis data for these trade IDs
+            result = _postgres_client.execute_query(
+                "SELECT trade_id, conflict_score FROM congress_trades_analysis WHERE trade_id = ANY(%s) AND conflict_score IS NOT NULL",
+                (all_trade_ids,)
+            )
+            for row in result:
+                analysis_map[row['trade_id']] = row['conflict_score']
+        except Exception as e:
+            logger.warning(f"Error fetching analysis data for stats: {e}")
+
+    # Filter by analysis_status and score_filter
+    filtered_trades = []
+    for trade in all_trades_data:
+        trade_id = trade['id']
+        has_analysis = trade_id in analysis_map
+        score = analysis_map.get(trade_id)
+
+        # Apply analysis_status filter
+        if analysis_status == 'analyzed' and not has_analysis:
+            continue
+        if analysis_status == 'unanalyzed' and has_analysis:
+            continue
+
+        # Apply score_filter
+        if score_filter == "High Risk (>0.7)":
+            if score is None or score < 0.7:
+                continue
+        elif score_filter == "Medium Risk (0.3-0.7)":
+            if score is None or score < 0.3 or score >= 0.7:
+                continue
+        elif score_filter == "Low Risk (<0.3)":
+            if score is None or score >= 0.3:
+                continue
+
+        filtered_trades.append((trade, has_analysis, score))
+
+    # Calculate stats from filtered trades
+    total_trades = len(filtered_trades)
+    analyzed_count = sum(1 for _, has_analysis, _ in filtered_trades if has_analysis)
+    house_count = sum(1 for t, _, _ in filtered_trades if t.get('chamber') == 'House')
+    senate_count = sum(1 for t, _, _ in filtered_trades if t.get('chamber') == 'Senate')
+    purchase_count = sum(1 for t, _, _ in filtered_trades if t.get('type') == 'Purchase')
+    sale_count = sum(1 for t, _, _ in filtered_trades if t.get('type') in ('Sale', 'Sale (Full)', 'Sale (Partial)'))
+    unique_tickers = set(t.get('ticker') for t, _, _ in filtered_trades if t.get('ticker'))
+    unique_tickers_count = len(unique_tickers)
+    high_risk_count = sum(1 for _, _, score in filtered_trades if score is not None and score >= 0.7)
+
+    # Get most active politician in last 31 days (excluding spouse/child trades)
+    most_active_display = "N/A"
+    try:
+        cutoff_date = (datetime.now() - timedelta(days=31)).strftime('%Y-%m-%d')
+        recent_trades = [
+            t for t, _, _ in filtered_trades
+            if t.get('transaction_date') and t['transaction_date'] >= cutoff_date
+            and t.get('owner', '').lower() not in ('spouse', 'child', 'dependent')
+        ]
+        if recent_trades:
+            politician_counts: Dict[str, int] = {}
+            for t in recent_trades:
+                pol = t.get('politician', 'Unknown')
+                politician_counts[pol] = politician_counts.get(pol, 0) + 1
+            if politician_counts:
+                top_politician = max(politician_counts.items(), key=lambda x: x[1])
+                most_active_display = f"{top_politician[0]} ({top_politician[1]})"
+    except Exception as e:
+        logger.warning(f"Error calculating most active politician: {e}")
+
+    return {
+        "total_trades": total_trades,
+        "analyzed_count": analyzed_count,
+        "house_count": house_count,
+        "senate_count": senate_count,
+        "purchase_count": purchase_count,
+        "sale_count": sale_count,
+        "unique_tickers_count": unique_tickers_count,
+        "high_risk_count": high_risk_count,
+        "most_active_display": most_active_display
+    }
+
+
+@app.route('/api/congress_trades/stats')
+@require_auth
+def api_congress_trades_stats():
+    """API endpoint for congress trades aggregated statistics (JSON)"""
+    try:
+        from flask_data_utils import get_supabase_client_flask
+        from cache_version import get_cache_version
+        from auth import is_admin
+
+        # Get Supabase client
+        if is_admin():
+            from supabase_client import SupabaseClient
+            supabase_client = SupabaseClient(use_service_role=True)
+        else:
+            supabase_client = get_supabase_client_flask()
+
+        if supabase_client is None:
+            return jsonify({"error": "Supabase client unavailable"}), 500
+
+        postgres_client = get_postgres_client_congress()
+
+        # Get filter values
+        ticker_filter = request.args.get('ticker')
+        politician_filter = request.args.get('politician')
+        chamber_filter = request.args.get('chamber')
+        type_filter = request.args.get('type')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        use_date_filter = request.args.get('use_date_filter') == 'true'
+        analysis_status = request.args.get('analysis_status', 'all')
+        score_filter = request.args.get('score_filter', 'All Scores')
+
+        # Normalize "All" values to None
+        ticker_filter = None if ticker_filter in (None, '', 'All') else ticker_filter
+        politician_filter = None if politician_filter in (None, '', 'All') else politician_filter
+        chamber_filter = None if chamber_filter in (None, '', 'All') else chamber_filter
+        type_filter = None if type_filter in (None, '', 'All') else type_filter
+
+        cache_version = get_cache_version()
+
+        stats = _get_congress_trades_stats_cached(
+            supabase_client,
+            postgres_client,
+            ticker_filter,
+            politician_filter,
+            chamber_filter,
+            type_filter,
+            start_date,
+            end_date,
+            use_date_filter,
+            analysis_status,
+            score_filter,
+            _cache_version=cache_version
+        )
+
+        if "error" in stats:
+            return jsonify(stats), 500
+
+        return jsonify(stats)
+
+    except Exception as e:
+        logger.error(f"Error in congress trades stats API: {e}", exc_info=True)
+        return jsonify({"error": "An error occurred while fetching congress trades statistics."}), 500
 
 
 @app.route('/api/congress_trades/analyze', methods=['POST'])
