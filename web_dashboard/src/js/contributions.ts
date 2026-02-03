@@ -164,60 +164,128 @@ async function loadContributors(): Promise<void> {
         
         const data: ContributorsResponse = await response.json();
         contributorsList = data.contributors || [];
-        
-        // Populate the datalist
-        const datalist = document.getElementById('prev-contributors');
-        if (datalist) {
-            datalist.innerHTML = '';
-            contributorsList.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.name;
-                opt.dataset.id = c.id;
-                opt.dataset.email = c.email || '';
-                datalist.appendChild(opt);
-            });
-        }
     } catch (error) {
         console.error('[Contributions] Error loading contributors:', error);
     }
 }
 
-// Handle contributor selection - auto-fill email when selecting from datalist
+// Render contributor dropdown items based on filter
+function renderContributorDropdown(filter: string): void {
+    const dropdown = document.getElementById('contributor-dropdown');
+    if (!dropdown) return;
+    
+    const filterLower = filter.toLowerCase();
+    const filtered = filter 
+        ? contributorsList.filter(c => 
+            c.name.toLowerCase().includes(filterLower) ||
+            (c.email && c.email.toLowerCase().includes(filterLower))
+          )
+        : contributorsList;
+    
+    if (filtered.length === 0) {
+        dropdown.innerHTML = `
+            <div class="p-3 text-sm text-text-secondary">
+                ${filter ? 'No matching contributors. A new one will be created.' : 'No contributors found.'}
+            </div>
+        `;
+        return;
+    }
+    
+    dropdown.innerHTML = filtered.map(c => `
+        <div class="contributor-option p-3 hover:bg-dashboard-hover cursor-pointer border-b border-border last:border-b-0"
+             data-id="${escapeHtmlForContributions(c.id)}"
+             data-name="${escapeHtmlForContributions(c.name)}"
+             data-email="${escapeHtmlForContributions(c.email || '')}">
+            <div class="font-medium text-text-primary">${escapeHtmlForContributions(c.name)}</div>
+            ${c.email ? `<div class="text-xs text-text-secondary">${escapeHtmlForContributions(c.email)}</div>` : ''}
+        </div>
+    `).join('');
+    
+    // Add click handlers to dropdown items
+    dropdown.querySelectorAll('.contributor-option').forEach(option => {
+        option.addEventListener('click', () => {
+            selectContributor(
+                option.getAttribute('data-id') || '',
+                option.getAttribute('data-name') || '',
+                option.getAttribute('data-email') || ''
+            );
+        });
+    });
+}
+
+// Select a contributor from dropdown
+function selectContributor(id: string, name: string, email: string): void {
+    const contributorInput = document.getElementById('contributor') as HTMLInputElement | null;
+    const contributorIdInput = document.getElementById('contributor-id') as HTMLInputElement | null;
+    const emailInput = document.getElementById('email') as HTMLInputElement | null;
+    const dropdown = document.getElementById('contributor-dropdown');
+    
+    if (contributorInput) {
+        contributorInput.value = name;
+    }
+    if (contributorIdInput) {
+        contributorIdInput.value = id;
+    }
+    // Auto-fill email only if email field is empty
+    if (emailInput && !emailInput.value && email) {
+        emailInput.value = email;
+    }
+    
+    selectedContributorId = id;
+    
+    // Hide dropdown
+    if (dropdown) {
+        dropdown.classList.add('hidden');
+    }
+}
+
+// Setup contributor autocomplete with custom dropdown
 function setupContributorAutoFill(): void {
     const contributorInput = document.getElementById('contributor') as HTMLInputElement | null;
-    const emailInput = document.getElementById('email') as HTMLInputElement | null;
+    const contributorIdInput = document.getElementById('contributor-id') as HTMLInputElement | null;
+    const dropdown = document.getElementById('contributor-dropdown');
     
-    if (!contributorInput || !emailInput) return;
+    if (!contributorInput || !dropdown) return;
     
-    // Track the last known value to detect selection vs typing
-    let lastValue = '';
-    
+    // Show dropdown and filter on input
     contributorInput.addEventListener('input', () => {
-        const currentValue = contributorInput.value;
+        const value = contributorInput.value;
         
-        // Find matching contributor
-        const match = contributorsList.find(c => c.name === currentValue);
-        
-        if (match) {
-            // User selected a contributor from datalist
-            selectedContributorId = match.id;
-            
-            // Auto-fill email only if email field is empty
-            if (!emailInput.value && match.email) {
-                emailInput.value = match.email;
-            }
-        } else if (currentValue !== lastValue) {
-            // User is typing something different - clear the selection
-            selectedContributorId = null;
+        // Clear contributor_id when user types (they're no longer selecting existing)
+        if (contributorIdInput) {
+            contributorIdInput.value = '';
         }
+        selectedContributorId = null;
         
-        lastValue = currentValue;
+        // Show dropdown with filtered results
+        renderContributorDropdown(value);
+        dropdown.classList.remove('hidden');
     });
     
-    // Also handle when user clears the field
-    contributorInput.addEventListener('change', () => {
-        if (!contributorInput.value) {
-            selectedContributorId = null;
+    // Show dropdown on focus
+    contributorInput.addEventListener('focus', () => {
+        renderContributorDropdown(contributorInput.value);
+        dropdown.classList.remove('hidden');
+    });
+    
+    // Hide dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        const target = e.target as Node;
+        if (!contributorInput.contains(target) && !dropdown.contains(target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
+    
+    // Keyboard navigation
+    contributorInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            dropdown.classList.add('hidden');
+        } else if (e.key === 'ArrowDown') {
+            const firstOption = dropdown.querySelector('.contributor-option') as HTMLElement | null;
+            if (firstOption) {
+                e.preventDefault();
+                firstOption.focus();
+            }
         }
     });
 }
@@ -379,6 +447,11 @@ async function handleAddContribution(e: Event): Promise<void> {
             showToastForContributions('✅ Transaction Saved');
             form.reset();
             selectedContributorId = null; // Clear contributor selection
+            // Also clear the hidden contributor_id input
+            const contributorIdInput = document.getElementById('contributor-id') as HTMLInputElement | null;
+            if (contributorIdInput) {
+                contributorIdInput.value = '';
+            }
             const dateInput = document.getElementById('date') as HTMLInputElement | null;
             if (dateInput) {
                 dateInput.valueAsDate = new Date();

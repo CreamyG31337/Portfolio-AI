@@ -138,15 +138,19 @@
                         </div>
                     </div>
 
-                    <div>
+                    <div class="relative">
                         <label for="contributor" class="block mb-2 text-sm font-medium text-text-primary">Contributor
                             Name</label>
-                        <input type="text" id="contributor" name="contributor" list="prev-contributors"
+                        <input type="text" id="contributor" name="contributor" autocomplete="off"
                             class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
+                            placeholder="Type to search contributors..."
                             required>
-                        <datalist id="prev-contributors">
-                            <!-- JS -->
-                        </datalist>
+                        <input type="hidden" id="contributor-id" name="contributor_id">
+                        <!-- Custom dropdown for contributors -->
+                        <div id="contributor-dropdown" 
+                            class="hidden absolute z-50 w-full mt-1 bg-dashboard-surface border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                            <!-- Populated by JS -->
+                        </div>
                     </div>
 
                     <div>

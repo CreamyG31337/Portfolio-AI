@@ -24,12 +24,17 @@ The `POST /api/admin/contributions` endpoint now:
 - Always populates both `contributor_id` and `contributor` (snapshot) fields
 - Also populates `fund_id` for the fund FK
 
-### 3. Frontend Changes (`contributions.ts`)
+### 3. Frontend Changes (`contributions.ts` + `contributions.html`)
 
-- **Datalist populated from `contributors` table** instead of contribution history
+- **Replaced native `<datalist>` with custom Flowbite-styled dropdown**
+  - Shows contributor name + email in dropdown items
+  - Supports type-to-filter search
+  - Properly fires events on selection
 - **Email auto-fill** when selecting a contributor from the dropdown
+- **Hidden `contributor_id` input** stores the selected contributor's ID
 - **Tracks `contributor_id`** for selected contributors and sends it with form submission
 - **Clears selection** if user edits the name after selecting
+- **Falls back gracefully** - if no match found, a new contributor is created server-side
 
 ## Running the Migration
 
