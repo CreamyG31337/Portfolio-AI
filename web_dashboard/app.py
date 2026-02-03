@@ -103,53 +103,54 @@ except ImportError:
 
 # Make CSRF_ENABLED available to all templates
 @app.context_processor
-    def inject_csrf_enabled():
-        """Make CSRF_ENABLED available to all templates"""
-        return {'CSRF_ENABLED': CSRF_ENABLED}
+def inject_csrf_enabled():
+    """Make CSRF_ENABLED available to all templates"""
+    return {'CSRF_ENABLED': CSRF_ENABLED}
 
-    @app.before_request
-    def validate_fund_query_param():
-        """Validate ?fund= on page requests and strip invalid values."""
-        if request.method != "GET" or "fund" not in request.args:
-            return None
 
-        path = request.path or ""
-        if path.startswith(("/api/", "/static/", "/assets/")):
-            return None
+@app.before_request
+def validate_fund_query_param():
+    """Validate ?fund= on page requests and strip invalid values."""
+    if request.method != "GET" or "fund" not in request.args:
+        return None
 
-        raw_fund = request.args.get("fund")
-        if raw_fund is None:
-            return None
+    path = request.path or ""
+    if path.startswith(("/api/", "/static/", "/assets/")):
+        return None
 
-        fund_value = str(raw_fund).strip()
-        if not fund_value:
-            return None
+    raw_fund = request.args.get("fund")
+    if raw_fund is None:
+        return None
 
-        restricted_all_funds_paths = {"/ai_assistant", "/ticker_details"}
-        fund_lower = fund_value.lower()
+    fund_value = str(raw_fund).strip()
+    if not fund_value:
+        return None
 
-        if fund_lower in ("all", "all funds"):
-            if path in restricted_all_funds_paths:
-                logger.warning(
-                    "[fund-selector] Invalid fund '%s' for path '%s' (all not allowed).",
-                    fund_value,
-                    path
-                )
-            return _redirect_without_fund_param()
+    restricted_all_funds_paths = {"/ai_assistant", "/ticker_details"}
+    fund_lower = fund_value.lower()
 
-        try:
-            from flask_data_utils import get_available_funds_flask
-            available_funds = get_available_funds_flask()
-        except Exception as e:
-            logger.warning("[fund-selector] Failed to validate fund '%s': %s", fund_value, e)
-            return None
-
-        if available_funds and fund_value not in available_funds:
+    if fund_lower in ("all", "all funds"):
+        if path in restricted_all_funds_paths:
             logger.warning(
-                "[fund-selector] Invalid fund '%s' for user on path '%s'.",
+                "[fund-selector] Invalid fund '%s' for path '%s' (all not allowed).",
                 fund_value,
                 path
             )
+        return _redirect_without_fund_param()
+
+    try:
+        from flask_data_utils import get_available_funds_flask
+        available_funds = get_available_funds_flask()
+    except Exception as e:
+        logger.warning("[fund-selector] Failed to validate fund '%s': %s", fund_value, e)
+        return None
+
+    if available_funds and fund_value not in available_funds:
+        logger.warning(
+            "[fund-selector] Invalid fund '%s' for user on path '%s'.",
+            fund_value,
+            path
+        )
         return _redirect_without_fund_param()
 
     def _redirect_without_fund_param():
