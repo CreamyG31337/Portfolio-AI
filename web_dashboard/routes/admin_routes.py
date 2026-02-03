@@ -1920,10 +1920,13 @@ def api_preview_email_trade():
                 _root = _here.parent.parent.parent  # fallback
             debug_out["chosen_root"] = str(_root)
             debug_out["was_fallback"] = (_root == _here.parent.parent.parent)
-            if str(_root) not in sys.path:
-                sys.path.insert(0, str(_root))
+            # Always put repo root at index 0 so 'data' resolves to repo root (server may already have /app in path but not first)
+            _root_str = str(_root)
+            while _root_str in sys.path:
+                sys.path.remove(_root_str)
+            sys.path.insert(0, _root_str)
             debug_out["sys_path_after"] = list(sys.path[:6])
-            debug_out["root_at_index0"] = (sys.path[0] == str(_root))
+            debug_out["root_at_index0"] = (sys.path[0] == _root_str)
             # Clear cached 'data' from sys.modules so repo-root data is used (web_dashboard/data has no models)
             for _k in sorted(sys.modules.keys(), key=lambda x: -len(x)):
                 if _k == "data" or _k.startswith("data."):
