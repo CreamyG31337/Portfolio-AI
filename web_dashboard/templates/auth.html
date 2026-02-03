@@ -352,12 +352,11 @@
                     // Backend already set auth_token, refresh_token, and session_token cookies via Set-Cookie headers
                     showMessage('Login successful! Redirecting...', 'success');
 
-                    // Redirect to ?next= if present and safe (same-origin path), else dashboard
-                    const nextParam = new URLSearchParams(window.location.search).get('next');
-                    const redirectTo = (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) ? nextParam : '/';
-
+                    // Wait longer to ensure cookies are fully processed by browser
+                    // Cookies need time to be set and available for the next request
                     setTimeout(() => {
-                        window.location.href = redirectTo;
+                        // Force a full page reload to ensure cookies are sent
+                        window.location.href = '/';
                     }, 1500);
                 } else {
                     console.error('Login failed:', data);

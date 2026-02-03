@@ -340,17 +340,7 @@ async function initFundSelector(): Promise<void> {
         return;
     }
 
-    // Read fund from URL parameter first (for persistence across refreshes)
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlFund = urlParams.get('fund');
-
-    if (urlFund) {
-        // URL parameter takes precedence
-        state.currentFund = urlFund;
-        selector.value = urlFund;
-        console.log('[Dashboard] Initial state set from URL parameter:', state.currentFund);
-    } else if (!state.currentFund) {
-        // Fall back to selector value if no URL param and no state
+    if (!state.currentFund) {
         state.currentFund = selector.value;
         console.log('[Dashboard] Initial state set from selector value:', state.currentFund);
     } else {
@@ -366,16 +356,6 @@ async function initFundSelector(): Promise<void> {
         const target = e.target as HTMLSelectElement;
         state.currentFund = target.value;
         console.log('[Dashboard] Global fund changed to:', state.currentFund);
-
-        // Update URL to persist selection across page refreshes
-        const url = new URL(window.location.href);
-        if (state.currentFund && state.currentFund.toLowerCase() !== 'all') {
-            url.searchParams.set('fund', state.currentFund);
-        } else {
-            url.searchParams.delete('fund');
-        }
-        // Use pushState to update URL without page reload
-        window.history.pushState({ fund: state.currentFund }, '', url.toString());
 
         refreshDashboard();
     });

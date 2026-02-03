@@ -36,6 +36,7 @@ import logging
 import requests
 import threading
 import concurrent.futures
+from urllib.parse import urlencode
 from flask_cors import CORS
 from flask_cache_utils import cache_data, cache_resource
 from rate_limiter import rate_limit
@@ -102,9 +103,61 @@ except ImportError:
 
 # Make CSRF_ENABLED available to all templates
 @app.context_processor
-def inject_csrf_enabled():
-    """Make CSRF_ENABLED available to all templates"""
-    return {'CSRF_ENABLED': CSRF_ENABLED}
+    def inject_csrf_enabled():
+        """Make CSRF_ENABLED available to all templates"""
+        return {'CSRF_ENABLED': CSRF_ENABLED}
+
+    @app.before_request
+    def validate_fund_query_param():
+        """Validate ?fund= on page requests and strip invalid values."""
+        if request.method != "GET" or "fund" not in request.args:
+            return None
+
+        path = request.path or ""
+        if path.startswith(("/api/", "/static/", "/assets/")):
+            return None
+
+        raw_fund = request.args.get("fund")
+        if raw_fund is None:
+            return None
+
+        fund_value = str(raw_fund).strip()
+        if not fund_value:
+            return None
+
+        restricted_all_funds_paths = {"/ai_assistant", "/ticker_details"}
+        fund_lower = fund_value.lower()
+
+        if fund_lower in ("all", "all funds"):
+            if path in restricted_all_funds_paths:
+                logger.warning(
+                    "[fund-selector] Invalid fund '%s' for path '%s' (all not allowed).",
+                    fund_value,
+                    path
+                )
+            return _redirect_without_fund_param()
+
+        try:
+            from flask_data_utils import get_available_funds_flask
+            available_funds = get_available_funds_flask()
+        except Exception as e:
+            logger.warning("[fund-selector] Failed to validate fund '%s': %s", fund_value, e)
+            return None
+
+        if available_funds and fund_value not in available_funds:
+            logger.warning(
+                "[fund-selector] Invalid fund '%s' for user on path '%s'.",
+                fund_value,
+                path
+            )
+        return _redirect_without_fund_param()
+
+    def _redirect_without_fund_param():
+        args = request.args.to_dict(flat=False)
+        args.pop("fund", None)
+        query = urlencode(args, doseq=True)
+        target = request.path + (f"?{query}" if query else "")
+        return redirect(target, code=302)
 
 # Add Security Headers
 @app.after_request
@@ -468,17 +521,11 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             logger.debug(f"Error checking admin status for navigation: {e}")
             is_admin_value = False
 
-        # Get currently selected fund - check URL parameter first, then user preference
+        # Get currently selected fund from user preference
         selected_fund = None
         try:
-            # Check URL parameter first (for persistence across refreshes)
-            url_fund = request.args.get('fund')
-            if url_fund:
-                selected_fund = url_fund
-            else:
-                # Fall back to user preference
-                from user_preferences import get_user_selected_fund
-                selected_fund = get_user_selected_fund()
+            from user_preferences import get_user_selected_fund
+            selected_fund = get_user_selected_fund()
         except Exception:
             pass
 
@@ -2905,6 +2952,36 @@ def get_preferences():
     except Exception as e:
         logger.error(f"Error getting preferences: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/settings/selected-fund', methods=['POST'])
+@require_auth
+def update_selected_fund():
+    """Update user's selected fund preference."""
+    try:
+        from user_preferences import set_user_selected_fund
+        from flask_data_utils import get_available_funds_flask
+
+        payload = request.get_json(silent=True) or {}
+        fund = str(payload.get("fund", "")).strip()
+
+        if not fund:
+            fund = "all"
+
+        if fund.lower() not in ("all", "all funds"):
+            available_funds = get_available_funds_flask()
+            if available_funds and fund not in available_funds:
+                logger.warning("[fund-selector] Rejecting invalid fund preference: %s", fund)
+                return jsonify({"success": False, "error": "Invalid fund"}), 400
+
+        result = set_user_selected_fund(fund)
+        if not result:
+            logger.error("[fund-selector] Failed to set selected fund preference")
+            return jsonify({"success": False, "error": "Failed to update fund preference"}), 500
+
+        return jsonify({"success": True, "fund": fund})
+    except Exception as e:
+        logger.error(f"Error updating selected fund: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
 
 @app.route('/api/settings/ai_include_search', methods=['POST'])
 @require_auth

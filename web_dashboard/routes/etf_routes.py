@@ -7,7 +7,7 @@ from collections import Counter
 
 # Import utilities
 from flask_auth_utils import get_user_email_flask
-from user_preferences import get_user_timezone
+from user_preferences import get_user_timezone, get_user_selected_fund
 from streamlit_utils import get_supabase_client
 from flask_data_utils import get_available_funds_flask
 from auth import require_auth
@@ -532,7 +532,7 @@ def etf_holdings():
     refresh_key = request.args.get('refresh_key', 0)
     selected_etf = request.args.get('etf', 'All ETFs')  # Default to "All ETFs" to show changes view
     selected_date_str = request.args.get('date')
-    selected_fund = request.args.get('fund', 'All Funds')
+    selected_fund = get_user_selected_fund() or "All Funds"
     change_type_filter = request.args.get('change_type', 'ALL')  # NEW, SOLD, BUY, SELL, ALL
     # Default to True (show changes only, hide HOLD) if not specified
     # Hidden input always sends a value ('true' or 'false'), so we can default to 'true'

@@ -3,6 +3,8 @@
  * Handles header auto-hide, sidebar collapse, scheduler badge updates, and fund selector persistence
  */
 
+import { getCsrfHeaders } from './csrf.js';
+
 // ============================================================================
 // Sidebar Collapse/Expand (Desktop)
 // Mobile uses Flowbite Drawer component
@@ -244,51 +246,29 @@ function initFundSelector(): void {
     const selector = document.getElementById('global-fund-select') as HTMLSelectElement | null;
     if (!selector) return;
 
-    // Read fund from URL parameter on page load
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlFund = urlParams.get('fund');
+    const saveSelectedFund = async (fund: string): Promise<void> => {
+        try {
+            await fetch('/api/settings/selected-fund', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                body: JSON.stringify({ fund })
+            });
+        } catch (error) {
+            console.warn('[UI] Failed to persist selected fund preference:', error);
+        }
+    };
 
-    if (urlFund && selector.querySelector(`option[value="${urlFund}"]`)) {
-        selector.value = urlFund;
-    }
-
-    // Update URL when fund selector changes (without page reload)
     selector.addEventListener('change', (e) => {
         const selectedFund = (e.target as HTMLSelectElement).value;
-        const url = new URL(window.location.href);
-
-        if (selectedFund && selectedFund.toLowerCase() !== 'all') {
-            url.searchParams.set('fund', selectedFund);
-        } else {
-            url.searchParams.delete('fund');
-        }
-
-        // Update URL without page reload
-        window.history.pushState({ fund: selectedFund }, '', url.toString());
+        saveSelectedFund(selectedFund);
 
         // Dispatch custom event for pages that need to react to fund changes
         window.dispatchEvent(new CustomEvent('fundChanged', { detail: { fund: selectedFund } }));
     });
 
-    // Handle browser back/forward buttons
-    window.addEventListener('popstate', () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlFund = urlParams.get('fund');
-
-        if (urlFund && selector.querySelector(`option[value="${urlFund}"]`)) {
-            selector.value = urlFund;
-            window.dispatchEvent(new CustomEvent('fundChanged', { detail: { fund: urlFund } }));
-        } else if (!urlFund) {
-            // If no fund in URL, set to "all" or first option
-            const allOption = selector.querySelector('option[value="all"]');
-            if (allOption) {
-                selector.value = 'all';
-            } else if (selector.options.length > 0) {
-                selector.value = selector.options[0].value;
-            }
-            window.dispatchEvent(new CustomEvent('fundChanged', { detail: { fund: selector.value } }));
-        }
-    });
+    // Dispatch initial event so pages can sync to the selector state
+    window.dispatchEvent(new CustomEvent('fundChanged', { detail: { fund: selector.value } }));
 }
 
 // ============================================================================

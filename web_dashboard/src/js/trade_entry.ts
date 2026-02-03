@@ -105,41 +105,6 @@ function getSelectedFund(): string {
     return fund;
 }
 
-// Normalize fund string for matching (trim, collapse spaces, case-insensitive compare)
-function normalizeFundForMatch(s: string): string {
-    return s.replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-// Apply ?fund= from URL to the global fund selector (so dropdown and banner match the link)
-function applyFundFromQueryString(): void {
-    try {
-        const params = new URLSearchParams(window.location.search);
-        const fundParam = params.get('fund');
-        if (fundParam == null || fundParam.trim() === '') return;
-        let decoded: string;
-        try {
-            decoded = decodeURIComponent(fundParam.trim()).replace(/\s+/g, ' ').trim();
-        } catch {
-            return; // malformed percent-encoding, ignore
-        }
-        if (!decoded) return;
-        const globalSelector = document.getElementById('global-fund-select') as HTMLSelectElement | null;
-        if (!globalSelector) return;
-        const want = normalizeFundForMatch(decoded);
-        const option = Array.from(globalSelector.options).find(o => {
-            if (o.value === 'all' || o.value === '') return false;
-            return o.value === decoded ||
-                normalizeFundForMatch(o.value) === want ||
-                normalizeFundForMatch((o.textContent || '').trim()) === want;
-        });
-        if (option) {
-            globalSelector.value = option.value;
-        }
-    } catch {
-        // invalid/missing query string or DOM: leave dropdown as-is
-    }
-}
-
 // Update the visible "Selected fund" banner (clear confirmation of where trades will go)
 function updateSelectedFundDisplay(): void {
     const nameEl = document.getElementById('trade-entry-fund-name');
@@ -595,12 +560,9 @@ function renderPagination(totalPages: number, currPage: number): void {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    // Sync ?fund= from URL to dropdown, then show selected fund in banner
-    applyFundFromQueryString();
     updateSelectedFundDisplay();
     // Retry once after a short delay (sidebar/select may render or become ready slightly later)
     setTimeout(() => {
-        applyFundFromQueryString();
         updateSelectedFundDisplay();
     }, 150);
 
@@ -661,25 +623,11 @@ document.addEventListener('DOMContentLoaded', () => {
         confirmEmailBtn.addEventListener('click', handleEmailConfirm);
     }
 
-    // Listen to global fund selector changes
+    // Listen to global fund selector changes (update banner + history tab)
     const globalFundSelect = document.getElementById('global-fund-select') as HTMLSelectElement | null;
     if (globalFundSelect) {
         globalFundSelect.addEventListener('change', () => {
             updateSelectedFundDisplay();
-            // Keep URL in sync so ?fund= reflects current selection
-            try {
-                const fund = getSelectedFund();
-                const url = new URL(window.location.href);
-                if (fund) {
-                    url.searchParams.set('fund', fund);
-                } else {
-                    url.searchParams.delete('fund');
-                }
-                window.history.replaceState({}, '', url.toString());
-            } catch {
-                // invalid URL or replaceState failed: ignore
-            }
-            // Refresh recent trades if that tab is open
             const historyContent = document.getElementById('history-content');
             if (historyContent && !historyContent.classList.contains('hidden')) {
                 fetchRecentTrades();

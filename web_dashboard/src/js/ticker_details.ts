@@ -206,10 +206,8 @@ const modelConfig = tickerDetailsConfig.modelConfig || {};
 selectedModel = tickerDetailsConfig.defaultModel || '';
 
 function getSelectedFund(): string | null {
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlFund = urlParams.get('fund');
     const selector = document.getElementById('global-fund-select') as HTMLSelectElement | null;
-    const rawFund = urlFund || (selector ? selector.value : '');
+    const rawFund = selector ? selector.value : '';
 
     if (!rawFund) return null;
     const normalized = rawFund.trim();

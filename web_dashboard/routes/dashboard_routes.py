@@ -48,8 +48,8 @@ def dashboard_page():
         user_email = get_user_email_flask()
         user_theme = get_user_theme() or 'system'
         
-        # Determine initial fund - check URL parameter first, then user preference
-        selected_fund = request.args.get('fund') or get_user_selected_fund()
+        # Determine initial fund from user preference
+        selected_fund = get_user_selected_fund()
         
         # Navigation context
         nav_context = get_navigation_context(current_page='dashboard')

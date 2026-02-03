@@ -745,8 +745,7 @@ function renderNotableTrades(
 
 function getSelectedFund(): string | null {
     const selector = document.getElementById("global-fund-select") as HTMLSelectElement | null;
-    const urlFund = new URLSearchParams(window.location.search).get("fund");
-    const selected = (selector?.value || urlFund || "").trim();
+    const selected = (selector?.value || "").trim();
     return selected || null;
 }
 
