@@ -51,3 +51,11 @@ This provides defense-in-depth through visibility and accountability rather than
 - Endpoints that only return the user's own data don't provide additional attack surface
 - Debugging functionality has legitimate operational value that must be balanced against theoretical risks
 **Decision:** Keep endpoint functional with full cookie visibility. Added security documentation in endpoint docstring explaining why this is safe.
+
+## 2026-02-06 - Insecure JWT Signature Verification Bypass
+**Vulnerability:** The application blindly parsed Supabase `auth_token` JWTs in `require_auth` without verifying the signature, as a fallback when `session_token` verification failed. This allowed attackers to forge tokens with any user ID (including admin) and gain unauthorized access to protected endpoints.
+**Learning:** Developers sometimes skip signature verification when integrating third-party auth tokens (like Supabase) if the signing secret isn't readily available or to support legacy clients. Accepting a JWT without signature verification is equivalent to having no authentication at all.
+**Prevention:**
+1. Always verify JWT signatures using the correct secret key.
+2. If the secret isn't available, validate the token via the provider's API (e.g., Supabase `getUser`) before trusting it.
+3. Remove any insecure "parsing-only" fallback logic.

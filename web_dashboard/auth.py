@@ -8,16 +8,15 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import request, jsonify, session, redirect, url_for, make_response
+from flask import request, jsonify, redirect, make_response
 import requests
-from typing import Optional, List
 import logging
 
 logger = logging.getLogger(__name__)
 
 class AuthManager:
     """Handles user authentication and authorization"""
-    
+
     def __init__(self):
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_anon_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
@@ -27,12 +26,16 @@ class AuthManager:
             import secrets
             logger.warning("AuthManager: JWT_SECRET not set. Generating a random secret. Sessions will be invalidated on restart.")
             self.jwt_secret = secrets.token_hex(32)
-        
+
+        self.supabase_jwt_secret = os.getenv("SUPABASE_JWT_SECRET")
+        if not self.supabase_jwt_secret:
+            logger.info("AuthManager: SUPABASE_JWT_SECRET not set. Token verification will fall back to API check (slower).")
+
         # Debug logging
         if not self.supabase_anon_key:
             logger.warning("AuthManager: No Supabase anon key found in environment (checked SUPABASE_PUBLISHABLE_KEY and SUPABASE_ANON_KEY)")
-        
-    def get_user_funds(self, user_id: str) -> List[str]:
+
+    def get_user_funds(self, user_id: str) -> list[str]:
         """Get funds assigned to a user"""
         try:
             # Get user's assigned funds from Supabase
@@ -45,7 +48,7 @@ class AuthManager:
                 },
                 json={"user_uuid": user_id}
             )
-            
+
             if response.status_code == 200:
                 funds = [row["fund_name"] for row in response.json()]
                 return funds
@@ -55,7 +58,7 @@ class AuthManager:
         except Exception as e:
             logger.error(f"Error getting user funds: {e}")
             return []
-    
+
     def check_fund_access(self, user_id: str, fund_name: str) -> bool:
         """Check if user has access to a specific fund"""
         try:
@@ -68,14 +71,14 @@ class AuthManager:
                 },
                 json={"user_uuid": user_id, "fund_name": fund_name}
             )
-            
+
             if response.status_code == 200:
                 return response.json()
             return False
         except Exception as e:
             logger.error(f"Error checking fund access: {e}")
             return False
-    
+
     def create_user_session(self, user_id: str, email: str) -> str:
         """Create a JWT session token for the user"""
         payload = {
@@ -84,8 +87,8 @@ class AuthManager:
             "exp": datetime.utcnow() + timedelta(hours=24)
         }
         return jwt.encode(payload, self.jwt_secret, algorithm="HS256")
-    
-    def verify_session(self, token: str) -> Optional[dict]:
+
+    def verify_session(self, token: str) -> dict | None:
         """Verify and decode a JWT session token"""
         try:
             payload = jwt.decode(token, self.jwt_secret, algorithms=["HS256"])
@@ -94,7 +97,54 @@ class AuthManager:
             return None
         except jwt.InvalidTokenError:
             return None
-    
+
+    def verify_supabase_token(self, token: str) -> dict | None:
+        """Verify a Supabase JWT token"""
+        # Try verifying with secret if available
+        if self.supabase_jwt_secret:
+            try:
+                # Supabase tokens usually have aud="authenticated"
+                # Allow 'authenticated' audience or no audience check if needed
+                payload = jwt.decode(token, self.supabase_jwt_secret, algorithms=["HS256"], audience="authenticated")
+                return payload
+            except jwt.InvalidAudienceError:
+                 # Try without audience check just in case
+                try:
+                    payload = jwt.decode(token, self.supabase_jwt_secret, algorithms=["HS256"], options={"verify_aud": False})
+                    return payload
+                except Exception:
+                    pass
+            except Exception:
+                # If secret verification fails (e.g. invalid signature), return None
+                return None
+
+        # Fallback to API verification if no secret (slower but secure)
+        try:
+            response = requests.get(
+                f"{self.supabase_url}/auth/v1/user",
+                headers={
+                    "apikey": self.supabase_anon_key,
+                    "Authorization": f"Bearer {token}"
+                },
+                timeout=5
+            )
+
+            if response.status_code == 200:
+                user_data = response.json()
+                # Normalize to JWT payload format expected by app
+                return {
+                    "sub": user_data.get("id"),
+                    "email": user_data.get("email"),
+                    "aud": user_data.get("aud"),
+                    # Add simple expiration since API check passed (token is valid now)
+                    "exp": datetime.utcnow().timestamp() + 300
+                }
+            else:
+                return None
+        except Exception as e:
+            logger.error(f"Error verifying Supabase token via API: {e}")
+            return None
+
     def is_admin(self, user_id: str) -> bool:
         """Check if user is admin"""
         try:
@@ -107,7 +157,7 @@ class AuthManager:
                 },
                 json={"user_uuid": user_id}
             )
-            
+
             if response.status_code == 200:
                 result = response.json()
                 # Handle both boolean and list responses
@@ -132,27 +182,26 @@ def require_auth(f):
     """Decorator to require authentication for routes"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        from flask import redirect
-        from flask_auth_utils import refresh_token_if_needed_flask, get_auth_token, get_refresh_token, is_authenticated_flask
-        
+        from flask_auth_utils import refresh_token_if_needed_flask, get_refresh_token
+
         # Detect broken auth state first
         auth_token = request.cookies.get('auth_token')
         session_token = request.cookies.get('session_token')
         refresh_token = get_refresh_token()
-        
+
         # Don't delete cookies in require_auth - let the route handle authentication
         # Note: Supabase now returns 12-character opaque refresh tokens (this is normal)
         # Only warn if the token is suspiciously short (less than 10 chars)
         if refresh_token and len(refresh_token) < 10:
             logger.warning(f"[AUTH] require_auth: Refresh token appears corrupted (length={len(refresh_token)}), but continuing anyway")
             # Don't delete cookies - just log the warning
-        
+
         # Now try to refresh token if needed (only if we have a token)
         success = True
         new_token = None
         new_refresh = None
         expires_in = None
-        
+
         if auth_token or session_token:
             # We have a token - try to refresh if needed, but NEVER delete cookies here
             # If auth_token is missing but refresh_token exists, try to refresh
@@ -170,7 +219,7 @@ def require_auth(f):
                 # Have auth_token - try to refresh proactively if needed (within 5 minutes of expiry)
                 # This keeps tokens fresh during active sessions
                 success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
-                
+
                 # Check if token is expired and refresh failed - if so, redirect to login
                 if not success and not new_token:
                     # Refresh failed - check if token is expired
@@ -208,7 +257,7 @@ def require_auth(f):
                 return jsonify({"error": "Authentication required"}), 401
             else:
                 return redirect('/auth')
-        
+
         # Store new tokens in request context if they were refreshed
         if new_token:
             request._new_auth_token = new_token
@@ -216,13 +265,13 @@ def require_auth(f):
                 request._new_refresh_token = new_refresh
             if expires_in:
                 request._token_expires_in = expires_in
-        
+
         # Check for auth_token (use new token if available, otherwise from cookies)
         # If we successfully refreshed, we should have a token now
-        token = new_token or (request.cookies.get('auth_token') or 
-                              request.cookies.get('session_token') or 
+        token = new_token or (request.cookies.get('auth_token') or
+                              request.cookies.get('session_token') or
                               request.headers.get('Authorization', '').replace('Bearer ', ''))
-        
+
         # If we don't have a token, check fallback options
         if not token:
             # Only use session_token as fallback if we never tried to refresh
@@ -230,7 +279,7 @@ def require_auth(f):
             if session_token and not refresh_token:
                 # Have session_token but no refresh_token - allow access but log warning
                 # Supabase features won't work, but basic auth will
-                logger.warning(f"[AUTH] require_auth: Using session_token as fallback (no refresh_token available)")
+                logger.warning("[AUTH] require_auth: Using session_token as fallback (no refresh_token available)")
                 token = session_token
             else:
                 # No token at all, or refresh was attempted and failed - redirect to login
@@ -238,52 +287,32 @@ def require_auth(f):
                     return jsonify({"error": "Authentication required"}), 401
                 else:
                     return redirect('/auth')
-        
+
         # Try to verify with auth_manager (for session_token format)
         user_data = auth_manager.verify_session(token)
-        
-        # If that fails, try parsing as JWT (for auth_token format from Streamlit)
+
+        # If that fails, try verifying as Supabase token (securely)
         if not user_data:
-            try:
-                # Check if token is valid by parsing it
-                import base64
-                import json as json_lib
-                token_parts = token.split('.')
-                if len(token_parts) >= 2:
-                    payload = token_parts[1]
-                    payload += '=' * (4 - len(payload) % 4)
-                    decoded = base64.urlsafe_b64decode(payload)
-                    user_data = json_lib.loads(decoded)
-                    # Check expiration
-                    import time
-                    exp = user_data.get('exp', 0)
-                    if exp > 0 and exp < time.time():
-                        # Token expired, don't use it
-                        user_data = None
-                    else:
-                        # Convert to format expected by request context
-                        user_data = {
-                            "user_id": user_data.get("sub"),
-                            "email": user_data.get("email")
-                        }
-            except Exception:
-                pass
-        
+            user_data = auth_manager.verify_supabase_token(token)
+
+            # If verification successful but format needs adjusting
+            if user_data and ("user_id" not in user_data):
+                user_data["user_id"] = user_data.get("sub")
+
         if not user_data:
             # For HTML pages, redirect to login; for API, return JSON error
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Invalid or expired session"}), 401
             else:
-                from flask import redirect
                 return redirect('/auth')
-        
+
         # Add user data to request context
         request.user_id = user_data.get("user_id") or user_data.get("sub")
         request.user_email = user_data.get("email")
-        
+
         # Execute the route function
         response = f(*args, **kwargs)
-        
+
         # If token was refreshed, update cookies in the response
         if new_token:
             import os
@@ -319,7 +348,7 @@ def require_auth(f):
                     samesite=samesite_value,
                     path='/'
                 )
-        
+
         return response
     return decorated_function
 
@@ -330,10 +359,10 @@ def require_fund_access(fund_name: str):
         def decorated_function(*args, **kwargs):
             if not hasattr(request, 'user_id'):
                 return jsonify({"error": "Authentication required"}), 401
-            
+
             if not auth_manager.check_fund_access(request.user_id, fund_name):
                 return jsonify({"error": "Access denied to this fund"}), 403
-            
+
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -349,57 +378,39 @@ def require_admin(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # First, authenticate the user (similar to require_auth)
-        token = (request.cookies.get('auth_token') or 
-                 request.cookies.get('session_token') or 
+        token = (request.cookies.get('auth_token') or
+                 request.cookies.get('session_token') or
                  request.headers.get('Authorization', '').replace('Bearer ', ''))
-        
+
         if not token:
             # For HTML pages, redirect to login; for API, return JSON error
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Authentication required"}), 401
             else:
-                from flask import redirect
-                # Redirect to /auth instead of / to avoid redirect loop
                 return redirect('/auth')
-        
+
         # Try to verify with auth_manager (for session_token format)
         user_data = auth_manager.verify_session(token)
-        
-        # If that fails, try parsing as JWT (for auth_token format from Streamlit)
+
+        # If that fails, try verifying as Supabase token (securely)
         if not user_data:
-            try:
-                from flask_auth_utils import is_authenticated_flask
-                if is_authenticated_flask():
-                    # Extract user data from token
-                    import base64
-                    import json as json_lib
-                    token_parts = token.split('.')
-                    if len(token_parts) >= 2:
-                        payload = token_parts[1]
-                        payload += '=' * (4 - len(payload) % 4)
-                        decoded = base64.urlsafe_b64decode(payload)
-                        user_data = json_lib.loads(decoded)
-                        # Convert to format expected by request context
-                        user_data = {
-                            "user_id": user_data.get("sub"),
-                            "email": user_data.get("email")
-                        }
-            except Exception:
-                pass
-        
+            user_data = auth_manager.verify_supabase_token(token)
+
+            # If verification successful but format needs adjusting
+            if user_data and ("user_id" not in user_data):
+                user_data["user_id"] = user_data.get("sub")
+
         if not user_data:
             # For HTML pages, redirect to login; for API, return JSON error
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Invalid or expired session"}), 401
             else:
-                from flask import redirect
-                # Redirect to /auth instead of / to avoid redirect loop
                 return redirect('/auth')
-        
+
         # Add user data to request context
         request.user_id = user_data.get("user_id") or user_data.get("sub")
         request.user_email = user_data.get("email")
-        
+
         # Now check admin status - try using Supabase client (like Streamlit does)
         is_user_admin = False
         admin_check_error = None
@@ -417,9 +428,9 @@ def require_admin(f):
                         result = client.supabase.rpc('is_admin', {'user_uuid': request.user_id}).execute()
                     else:
                         result = None
-                    
+
                     logger.debug(f"Admin check RPC result: {result.data}, type: {type(result.data)}")
-                    
+
                     if result and result.data is not None:
                         if isinstance(result.data, bool):
                             is_user_admin = result.data
@@ -430,7 +441,7 @@ def require_admin(f):
                 except Exception as e:
                     admin_check_error = str(e)
                     logger.debug(f"Error checking admin with Supabase client: {e}", exc_info=True)
-            
+
             # Fallback to HTTP request method
             if not is_user_admin:
                 logger.debug(f"Trying HTTP request admin check for user_id: {request.user_id}")
@@ -445,9 +456,9 @@ def require_admin(f):
                         },
                         json={"user_uuid": request.user_id}
                     )
-                    
+
                     logger.debug(f"Admin check HTTP response: status={response.status_code}, body={response.text[:200]}")
-                    
+
                     if response.status_code == 200:
                         result = response.json()
                         if isinstance(result, bool):
@@ -457,7 +468,7 @@ def require_admin(f):
                 except Exception as e:
                     admin_check_error = str(e)
                     logger.debug(f"Error checking admin with HTTP request: {e}")
-            
+
             # Final fallback to auth_manager method
             if not is_user_admin:
                 logger.debug(f"Trying final fallback admin check for user_id: {request.user_id}")
@@ -466,7 +477,7 @@ def require_admin(f):
         except Exception as e:
             admin_check_error = str(e)
             logger.error(f"Error checking admin status: {e}", exc_info=True)
-        
+
         if not is_user_admin:
             error_msg = f"Admin check failed for user_id: {request.user_id}, email: {request.user_email}"
             if admin_check_error:
@@ -475,10 +486,8 @@ def require_admin(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Admin privileges required", "details": admin_check_error}), 403
             else:
-                from flask import redirect
-                # Redirect to /auth instead of / to avoid redirect loop
                 return redirect('/auth')
-        
+
         return f(*args, **kwargs)
     return decorated_function
 
@@ -486,13 +495,13 @@ def is_admin():
     """Check if current user is admin"""
     if not hasattr(request, 'user_id'):
         return False
-        
+
     # Attempt to perform a robust check similar to require_admin decorator
     try:
-        token = (request.cookies.get('auth_token') or 
-                 request.cookies.get('session_token') or 
+        token = (request.cookies.get('auth_token') or
+                 request.cookies.get('session_token') or
                  request.headers.get('Authorization', '').replace('Bearer ', ''))
-                 
+
         if token:
             # Try using Supabase client with user's token
             # This is critical because RPC often returns false/error for Anon key
@@ -502,7 +511,7 @@ def is_admin():
                 supabase_token = get_supabase_access_token()
                 client = SupabaseClient(user_token=supabase_token) if supabase_token else None
                 result = client.supabase.rpc('is_admin', {'user_uuid': request.user_id}).execute() if client else None
-                
+
                 if result and result.data is not None:
                     if isinstance(result.data, bool):
                         return result.data
@@ -510,13 +519,13 @@ def is_admin():
                         return bool(result.data[0])
             except Exception as e:
                 logger.debug(f"is_admin helper: Supabase client check failed: {e}")
-                
+
             # Fallback to HTTP request if client method fails
             # (Though if client failed, this uses Anon key which likely also fails)
             return auth_manager.is_admin(request.user_id)
-            
+
     except Exception as e:
         logger.error(f"Error in is_admin helper: {e}")
-        
+
     # Final fallback
     return auth_manager.is_admin(request.user_id)
