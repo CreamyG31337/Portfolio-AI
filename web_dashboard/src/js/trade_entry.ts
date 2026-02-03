@@ -105,6 +105,30 @@ function getSelectedFund(): string {
     return fund;
 }
 
+// Update the visible "Selected fund" banner
+function updateSelectedFundDisplay(): void {
+    const nameEl = document.getElementById('trade-entry-fund-name');
+    const hintEl = document.getElementById('trade-entry-fund-hint');
+    const banner = document.getElementById('trade-entry-fund-banner');
+    if (!nameEl || !hintEl || !banner) return;
+
+    const fund = getSelectedFund();
+    const globalSelector = document.getElementById('global-fund-select') as HTMLSelectElement | null;
+    const rawValue = globalSelector ? globalSelector.value : '';
+
+    if (fund) {
+        nameEl.textContent = fund;
+        nameEl.classList.remove('text-theme-warning-text');
+        hintEl.classList.add('hidden');
+        banner.classList.remove('border-theme-warning-text', 'bg-theme-warning-bg');
+    } else {
+        nameEl.textContent = rawValue === 'all' ? 'All Funds (select one)' : '—';
+        nameEl.classList.add('text-theme-warning-text');
+        hintEl.classList.remove('hidden');
+        banner.classList.add('border-theme-warning-text', 'bg-theme-warning-bg');
+    }
+}
+
 // State
 let parsedTradeData: ParsedTrade | null = null;
 let currentPage = 0;
@@ -539,6 +563,9 @@ function renderPagination(totalPages: number, currPage: number): void {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // Show selected fund in banner
+    updateSelectedFundDisplay();
+
     // Initialize tabs
     initTabs();
 
@@ -600,6 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const globalFundSelect = document.getElementById('global-fund-select');
     if (globalFundSelect) {
         globalFundSelect.addEventListener('change', () => {
+            updateSelectedFundDisplay();
             // Refresh recent trades if that tab is open
             const historyContent = document.getElementById('history-content');
             if (historyContent && !historyContent.classList.contains('hidden')) {

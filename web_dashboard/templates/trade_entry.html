@@ -7,6 +7,12 @@
 {% block content %}
 <!-- PAGE: trade_entry.html | ID: admin_trade_entry -->
 <div class="px-4 py-6">
+    <!-- Selected fund (trades apply to this fund) -->
+    <div id="trade-entry-fund-banner" class="mb-4 flex items-center gap-2 p-3 rounded-lg border border-border bg-dashboard-surface">
+        <span class="text-sm font-medium text-text-secondary">Selected fund:</span>
+        <span id="trade-entry-fund-name" class="font-semibold text-text-primary">—</span>
+        <span id="trade-entry-fund-hint" class="hidden text-sm text-theme-warning-text ml-auto">Select a fund in the sidebar to enter trades.</span>
+    </div>
     <!-- Tabs -->
     <div class="mb-4 border-b border-border">
         <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="trade-tabs" role="tablist">
