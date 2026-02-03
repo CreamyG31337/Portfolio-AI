@@ -126,7 +126,7 @@ def _load_cookies() -> Tuple[Optional[str], Optional[str]]:
                     import logging
                     logger = logging.getLogger(__name__)
                     logger.debug(f"Original value length: {len(original)}")
-                    logger.debug(f"Cleaned value (first 500 chars): {cookies_json[:500]}")
+                    logger.debug(f"Cleaned value length: {len(cookies_json)}")
                     raise
             
             secure_1psid = cookies.get("__Secure-1PSID")
@@ -174,11 +174,8 @@ def _load_cookies() -> Tuple[Optional[str], Optional[str]]:
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to parse WEBAI_COOKIES_JSON as JSON: {e}")
             # Log more details for debugging
-            raw_value = original[:500] if 'original' in locals() else (cookies_json[:500] if 'cookies_json' in locals() else 'N/A')
-            cleaned_value = cookies_json[:500] if 'cookies_json' in locals() else 'N/A'
-            logger.debug(f"Raw WEBAI_COOKIES_JSON value (first 500 chars): {raw_value}")
-            logger.debug(f"Cleaned value (first 500 chars): {cleaned_value}")
-            logger.debug(f"Raw value length: {len(original) if 'original' in locals() else 'N/A'}")
+            logger.debug(f"Raw WEBAI_COOKIES_JSON value length: {len(original) if 'original' in locals() else 'N/A'}")
+            logger.debug(f"Cleaned value length: {len(cookies_json) if 'cookies_json' in locals() else 'N/A'}")
             # Check for common issues
             if 'original' in locals():
                 if '\n' in original:
@@ -191,7 +188,7 @@ def _load_cookies() -> Tuple[Optional[str], Optional[str]]:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Error processing WEBAI_COOKIES_JSON: {e}")
-            logger.debug(f"Raw WEBAI_COOKIES_JSON value (first 200 chars): {original[:200] if 'original' in locals() else cookies_json[:200]}")
+            logger.debug(f"Raw WEBAI_COOKIES_JSON value length: {len(original) if 'original' in locals() else len(cookies_json) if 'cookies_json' in locals() else 'N/A'}")
     
     # Option 2: Individual environment variables
     secure_1psid = os.getenv("WEBAI_SECURE_1PSID")
