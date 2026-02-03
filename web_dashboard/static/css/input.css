@@ -93,6 +93,11 @@
         @apply bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5;
     }
 
+    /* Standardized pagination button */
+    .btn-pagination {
+        @apply px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-surface-alt disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200;
+    }
+
     /* Global outline button hover/ring using currentColor; avoids per-button utility churn. */
     button[class*="bg-transparent"][class*="border"]:not(:disabled):hover,
     a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):hover {
