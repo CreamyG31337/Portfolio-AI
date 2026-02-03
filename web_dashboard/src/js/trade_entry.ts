@@ -293,9 +293,12 @@ async function handleEmailParse(): Promise<void> {
             credentials: 'include'
         });
 
-        const result: EmailParseResponse = await response.json();
+        const result: EmailParseResponse & { debug?: unknown } = await response.json();
 
         if (!response.ok || !result.success) {
+            if (result.debug !== undefined) {
+                console.error('[Trade Entry] API debug (copy this for support):', JSON.stringify(result.debug, null, 2));
+            }
             throw new Error(result.error || 'Parse failed');
         }
 
