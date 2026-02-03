@@ -6,6 +6,7 @@ WORKDIR /app
 
 # Copy package files for dependency installation
 COPY package.json ./
+COPY postcss.config.mjs ./
 COPY tailwind.config.js ./
 COPY web_dashboard/package.json ./web_dashboard/package.json
 COPY web_dashboard/tsconfig.json ./web_dashboard/tsconfig.json
