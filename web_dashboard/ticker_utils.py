@@ -569,7 +569,50 @@ def get_ticker_info(
                 .execute()
             
             if congress_result.data:
-                result['congress_trades'] = congress_result.data
+                trades = congress_result.data
+                analysis_map = {}
+                if postgres_client:
+                    trade_ids = [trade.get("id") for trade in trades if trade.get("id") is not None]
+                    if trade_ids:
+                        try:
+                            analysis_rows = postgres_client.execute_query(
+                                "SELECT trade_id, conflict_score, reasoning "
+                                "FROM congress_trades_analysis "
+                                "WHERE trade_id = ANY(%s)",
+                                (trade_ids,)
+                            )
+                            for row in analysis_rows:
+                                analysis_map[row["trade_id"]] = row
+                        except Exception as e:
+                            logger.warning(f"Error fetching congress trade analysis for {ticker_upper}: {e}")
+
+                formatted_trades = []
+                for trade in trades:
+                    trade_id = trade.get("id")
+                    analysis = analysis_map.get(trade_id, {})
+                    conflict_score = analysis.get("conflict_score")
+                    reasoning = analysis.get("reasoning") or ""
+
+                    if conflict_score is not None:
+                        score_val = float(conflict_score)
+                        if score_val >= 0.7:
+                            score_display = f"🔴 {score_val:.2f}"
+                        elif score_val >= 0.3:
+                            score_display = f"🟡 {score_val:.2f}"
+                        else:
+                            score_display = f"🟢 {score_val:.2f}"
+                    else:
+                        score_display = "⚪ N/A"
+
+                    reasoning_short = reasoning[:120] + "..." if reasoning and len(reasoning) > 120 else reasoning
+
+                    formatted_trade = dict(trade)
+                    formatted_trade["score_display"] = score_display
+                    formatted_trade["analysis_reasoning"] = reasoning
+                    formatted_trade["analysis_reasoning_short"] = reasoning_short
+                    formatted_trades.append(formatted_trade)
+
+                result['congress_trades'] = formatted_trades
                 result['found'] = True
         except Exception as e:
             logger.warning(f"Error fetching congress trades for {ticker_upper}: {e}")
@@ -940,4 +983,3 @@ def make_tickers_clickable(text: str) -> str:
     result = re.sub(ticker_pattern, replace_ticker, text)
     
     return result
-

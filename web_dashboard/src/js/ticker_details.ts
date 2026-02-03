@@ -76,12 +76,18 @@ interface SocialSentiment {
 }
 
 interface CongressTickerTrade {
+    id?: number;
     transaction_date?: string;
     politician?: string;
     chamber?: string;
     type?: string;
     amount?: string;
     party?: string;
+    state?: string;
+    owner?: string;
+    score_display?: string;
+    analysis_reasoning?: string;
+    analysis_reasoning_short?: string;
 }
 
 interface InsiderTrade {
@@ -1145,13 +1151,56 @@ function renderCongressTradesPage(): void {
     // Render trades for current page
     pageTrades.forEach(trade => {
         const row = document.createElement('tr');
+        const typeValue = (trade.type || 'N/A').toString();
+        const typeLower = typeValue.toLowerCase();
+        let typeLabel = typeValue;
+        let typeClass = 'text-text-primary';
+
+        if (typeLower === 'purchase' || typeLower === 'buy') {
+            typeLabel = 'Purchase';
+            typeClass = 'bg-theme-success-bg text-theme-success-text';
+        } else if (typeLower === 'sale' || typeLower === 'sell') {
+            typeLabel = 'Sale';
+            typeClass = 'bg-theme-error-bg text-theme-error-text';
+        }
+
+        const partyValue = (trade.party || 'N/A').toString();
+        const partyLower = partyValue.toLowerCase();
+        let partyLabel = partyValue;
+        let partyClass = 'text-text-primary';
+
+        if (partyLower.includes('democrat') || partyLower === 'd') {
+            partyLabel = '🔵 D';
+            partyClass = 'text-theme-info-text font-semibold';
+        } else if (partyLower.includes('republican') || partyLower === 'r') {
+            partyLabel = '🔴 R';
+            partyClass = 'text-theme-error-text font-semibold';
+        } else if (partyLower.includes('independent') || partyLower === 'i') {
+            partyLabel = '🟣 I';
+            partyClass = 'text-theme-warning-text font-semibold';
+        }
+
+        const scoreDisplay = trade.score_display || '⚪ N/A';
+        const reasoningText = trade.analysis_reasoning_short || trade.analysis_reasoning || 'N/A';
+        const reasoningFull = trade.analysis_reasoning || reasoningText;
+
         row.innerHTML = `
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${formatDate(trade.transaction_date)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.politician || 'N/A'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.chamber || 'N/A'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.type || 'N/A'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.amount || 'N/A'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${trade.party || 'N/A'}</td>
+            <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary">${formatDate(trade.transaction_date)}</td>
+            <td class="px-4 py-4 whitespace-nowrap text-sm">
+                <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${typeClass}">
+                    ${escapeHtml(typeLabel)}
+                </span>
+            </td>
+            <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary text-right">${escapeHtml(trade.amount || 'N/A')}</td>
+            <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtml(trade.politician || 'N/A')}</td>
+            <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtml(trade.chamber || 'N/A')}</td>
+            <td class="px-4 py-4 whitespace-nowrap text-sm ${partyClass}">${escapeHtml(partyLabel)}</td>
+            <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtml(trade.state || 'N/A')}</td>
+            <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtml(trade.owner || 'N/A')}</td>
+            <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtml(scoreDisplay)}</td>
+            <td class="px-4 py-4 text-sm text-text-secondary max-w-xs truncate" title="${escapeHtml(reasoningFull)}">
+                ${escapeHtml(reasoningText)}
+            </td>
         `;
         tbody.appendChild(row);
     });

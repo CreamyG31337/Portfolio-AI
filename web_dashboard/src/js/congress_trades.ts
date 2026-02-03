@@ -42,6 +42,8 @@ interface AgGridDatasource {
 interface AgGridDatasourceParams {
     startRow: number;
     endRow: number;
+    sortModel?: Array<{ colId: string; sort: 'asc' | 'desc' }>;
+    filterModel?: Record<string, unknown>;
     successCallback: (rows: CongressTrade[], lastRow: number) => void;
     failCallback: () => void;
 }
@@ -71,6 +73,7 @@ interface AgGridOptions {
     paginationPageSizeSelector?: number[];
     onCellClicked?: (params: AgGridParams) => void;
     onSelectionChanged?: () => void;
+    onSortChanged?: () => void;
     animateRows?: boolean;
     suppressCellFocus?: boolean;
     overlayLoadingTemplate?: string;
@@ -335,9 +338,11 @@ class TypeCellRenderer implements AgGridCellRenderer {
 
         let displayText = '';
         let color = '';
+        let background = '';
 
         if (typeLower === 'purchase' || typeLower === 'buy') {
             color = 'var(--theme-success-text)'; // Green
+            background = 'var(--color-success-bg)';
             if (this.emojiOnly) {
                 displayText = '📈';
             } else if (this.useEmoji) {
@@ -347,6 +352,7 @@ class TypeCellRenderer implements AgGridCellRenderer {
             }
         } else if (typeLower === 'sale' || typeLower === 'sell') {
             color = 'var(--theme-error-text)'; // Red
+            background = 'var(--color-error-bg)';
             if (this.emojiOnly) {
                 displayText = '📉';
             } else if (this.useEmoji) {
@@ -361,7 +367,16 @@ class TypeCellRenderer implements AgGridCellRenderer {
         this.eGui.innerText = displayText;
         if (color) {
             this.eGui.style.color = color;
-            this.eGui.style.fontWeight = '500';
+            this.eGui.style.fontWeight = '600';
+            this.eGui.style.display = 'inline-flex';
+            this.eGui.style.alignItems = 'center';
+            this.eGui.style.justifyContent = 'center';
+            this.eGui.style.padding = '2px 8px';
+            this.eGui.style.borderRadius = '9999px';
+            this.eGui.style.fontSize = '0.75rem';
+            if (background) {
+                this.eGui.style.backgroundColor = background;
+            }
         }
     }
 
@@ -895,6 +910,18 @@ async function analyzeSelectedTrades(): Promise<void> {
     }
 }
 
+const SORTABLE_FIELDS: Record<string, string> = {
+    Ticker: 'ticker',
+    Politician: 'politician',
+    Chamber: 'chamber',
+    Party: 'party',
+    State: 'state',
+    Date: 'transaction_date',
+    Type: 'type',
+    Amount: 'amount',
+    Owner: 'owner'
+};
+
 export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void {
     const gridDiv = document.querySelector('#congress-trades-grid') as HTMLElement | null;
     if (!gridDiv) {
@@ -971,7 +998,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             headerName: 'Company',
             minWidth: 150,
             flex: 2,
-            sortable: true,
+            sortable: false,
             filter: true
         },
         {
@@ -1044,7 +1071,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             headerName: 'Score',
             minWidth: 130,
             flex: 1,
-            sortable: true,
+            sortable: false,
             filter: true,
             cellRenderer: ScoreCellRenderer
         },
@@ -1061,7 +1088,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             headerName: 'AI Reasoning',
             minWidth: 200,
             flex: 4, // Increased from 3 to give more space
-            sortable: true,
+            sortable: false,
             filter: true,
             tooltipValueGetter: function (params: AgGridParams): string {
                 return params.data?._tooltip || params.value || '';
@@ -1094,7 +1121,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         columnDefs: columnDefs,
         defaultColDef: {
             editable: false,
-            sortable: false, // Disable client-side sorting for infinite model
+            sortable: true, // Enable server-side sorting for infinite model
             filter: false, // Disable client-side filtering for infinite model
             resizable: true,
             wrapHeaderText: true,
@@ -1104,7 +1131,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         enableRangeSelection: true,
         enableCellTextSelection: true,
         ensureDomOrder: true,
-        domLayout: 'normal',
+        domLayout: 'autoHeight',
         // Infinite row model settings
         rowModelType: 'infinite',
         cacheBlockSize: 100, // Fetch 100 rows at a time
@@ -1115,6 +1142,11 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         paginationPageSizeSelector: [100, 250, 500],
         onCellClicked: onCellClicked,
         onSelectionChanged: onSelectionChanged,
+        onSortChanged: () => {
+            if (gridApi) {
+                gridApi.purgeInfiniteCache();
+            }
+        },
         animateRows: false, // Disable for better infinite scroll performance
         suppressCellFocus: false,
         overlayLoadingTemplate: `
@@ -1231,6 +1263,14 @@ function createDatasource(): AgGridDatasource {
                 const apiParams = new URLSearchParams(searchParams);
                 apiParams.set('limit', limit.toString());
                 apiParams.set('offset', offset.toString());
+
+                if (params.sortModel && params.sortModel.length > 0) {
+                    const { colId, sort } = params.sortModel[0];
+                    if (colId && SORTABLE_FIELDS[colId]) {
+                        apiParams.set('sort_by', colId);
+                        apiParams.set('sort_dir', sort);
+                    }
+                }
 
                 const response = await fetch(`/api/congress_trades/data?${apiParams.toString()}`);
 

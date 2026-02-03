@@ -3572,8 +3572,8 @@ def _get_ticker_chart_data_cached(
         start_date = (date.today() - timedelta(days=range_days)).isoformat()
         end_date = date.today().isoformat()
 
-        # Fetch congress trades
-        congress_trades = get_congress_trades_cached(
+        # Fetch congress trades (returns {trades: [...], total, has_more}; we need the list)
+        congress_result = get_congress_trades_cached(
             supabase_client,
             refresh_key,
             ticker_filter=ticker,
@@ -3581,6 +3581,7 @@ def _get_ticker_chart_data_cached(
             end_date=end_date,
             _postgres_client=None  # Not needed for basic trade data
         )
+        congress_trades = congress_result.get("trades", []) if isinstance(congress_result, dict) else []
     except Exception as e:
         logger.warning(f"Error fetching congress trades for chart: {e}")
         # Continue without congress trades if there's an error
@@ -3988,6 +3989,8 @@ def get_congress_trades_cached(
     min_score: Optional[float] = None,
     max_score: Optional[float] = None,
     _postgres_client = None,
+    sort_by: Optional[str] = None,
+    sort_dir: Optional[str] = None,
     limit: int = 100,
     offset: int = 0
 ) -> Dict[str, Any]:
@@ -4017,6 +4020,22 @@ def get_congress_trades_cached(
             if end_date:
                 q = q.lte("transaction_date", end_date)
             return q
+
+        sort_map = {
+            "Ticker": "ticker",
+            "Politician": "politician",
+            "Chamber": "chamber",
+            "Party": "party",
+            "State": "state",
+            "Date": "transaction_date",
+            "Type": "type",
+            "Amount": "amount",
+            "Owner": "owner"
+        }
+        sort_column = sort_map.get(sort_by or "", "transaction_date")
+        sort_direction = (sort_dir or "desc").lower()
+        if sort_direction not in ("asc", "desc"):
+            sort_direction = "desc"
 
         # Get analysis data for filtering (needed for analyzed_only and score filters)
         analysis_map = get_analysis_data_congress(_postgres_client, refresh_key) if _postgres_client else {}
@@ -4071,6 +4090,42 @@ def get_congress_trades_cached(
 
                 filtered_trades.append(trade)
 
+            def _parse_amount_max(amount_value: Optional[str]) -> float:
+                if not amount_value or not isinstance(amount_value, str):
+                    return 0.0
+                lower = amount_value.lower()
+                if "over" in lower or ">" in lower:
+                    match = re.search(r"\$?([\d,]+)", lower)
+                    if match:
+                        try:
+                            return float(match.group(1).replace(",", ""))
+                        except ValueError:
+                            return 0.0
+                matches = re.findall(r"\$?([\d,]+)", lower)
+                if matches:
+                    try:
+                        return float(matches[-1].replace(",", ""))
+                    except ValueError:
+                        return 0.0
+                return 0.0
+
+            def _sort_key(trade: Dict[str, Any]):
+                value = trade.get(sort_column)
+                if sort_column == "transaction_date":
+                    return value or ""
+                if sort_column == "amount":
+                    return _parse_amount_max(value)
+                if isinstance(value, str):
+                    return value.lower()
+                if value is None:
+                    return ""
+                return value
+
+            filtered_trades.sort(
+                key=_sort_key,
+                reverse=(sort_direction == "desc")
+            )
+
             total = len(filtered_trades)
             page_trades = filtered_trades[offset:offset + limit]
             has_more = (offset + limit) < total
@@ -4090,7 +4145,9 @@ def get_congress_trades_cached(
             "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner"
         )
         query = apply_filters(query)
-        query = query.order("transaction_date", desc=True).order("id", desc=True)
+        query = query.order(sort_column, desc=(sort_direction == "desc")).order(
+            "id", desc=(sort_direction == "desc")
+        )
         query = query.range(offset, offset + limit - 1)
 
         result = query.execute()
@@ -4382,6 +4439,8 @@ def api_congress_trades_data():
         type_filter = request.args.get('type')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        sort_by = request.args.get('sort_by')
+        sort_dir = request.args.get('sort_dir')
         analysis_status = request.args.get('analysis_status', 'all')  # 'all', 'analyzed', 'unanalyzed'
         analyzed_only = (analysis_status == 'analyzed')
         unanalyzed_only = (analysis_status == 'unanalyzed')
@@ -4405,6 +4464,8 @@ def api_congress_trades_data():
             min_score=min_score,
             max_score=max_score,
             _postgres_client=postgres_client,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
             limit=limit,
             offset=offset
         )
