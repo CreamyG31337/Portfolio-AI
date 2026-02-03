@@ -8,6 +8,7 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
+from urllib.parse import quote
 from flask import request, jsonify, session, redirect, url_for, make_response
 import requests
 from typing import Optional, List
@@ -165,7 +166,7 @@ def require_auth(f):
                     if request.path.startswith('/api/'):
                         return jsonify({"error": "Session expired, please log in again"}), 401
                     else:
-                        return redirect('/auth')
+                        return redirect('/auth?next=' + quote(request.full_path, safe=''))
             elif auth_token:
                 # Have auth_token - try to refresh proactively if needed (within 5 minutes of expiry)
                 # This keeps tokens fresh during active sessions
@@ -191,7 +192,7 @@ def require_auth(f):
                                 if request.path.startswith('/api/'):
                                     return jsonify({"error": "Session expired, please log in again"}), 401
                                 else:
-                                    return redirect('/auth')
+                                    return redirect('/auth?next=' + quote(request.full_path, safe=''))
                     except Exception as e:
                         logger.debug(f"[AUTH] Error checking token expiration: {e}")
                         # If we can't parse the token, continue to validation below
@@ -207,7 +208,7 @@ def require_auth(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Authentication required"}), 401
             else:
-                return redirect('/auth')
+                return redirect('/auth?next=' + quote(request.full_path, safe=''))
         
         # Store new tokens in request context if they were refreshed
         if new_token:
@@ -237,7 +238,7 @@ def require_auth(f):
                 if request.path.startswith('/api/'):
                     return jsonify({"error": "Authentication required"}), 401
                 else:
-                    return redirect('/auth')
+                    return redirect('/auth?next=' + quote(request.full_path, safe=''))
         
         # Try to verify with auth_manager (for session_token format)
         user_data = auth_manager.verify_session(token)
@@ -275,8 +276,9 @@ def require_auth(f):
                 return jsonify({"error": "Invalid or expired session"}), 401
             else:
                 from flask import redirect
-                # Redirect to /auth instead of / to avoid redirect loop
-                return redirect('/auth')
+                # Preserve full URL (path + query) so after login we can redirect back
+                next_path = quote(request.full_path, safe='')
+                return redirect('/auth?next=' + next_path)
         
         # Add user data to request context
         request.user_id = user_data.get("user_id") or user_data.get("sub")
@@ -361,7 +363,7 @@ def require_admin(f):
             else:
                 from flask import redirect
                 # Redirect to /auth instead of / to avoid redirect loop
-                return redirect('/auth')
+                return redirect('/auth?next=' + quote(request.full_path, safe=''))
         
         # Try to verify with auth_manager (for session_token format)
         user_data = auth_manager.verify_session(token)
@@ -395,7 +397,7 @@ def require_admin(f):
             else:
                 from flask import redirect
                 # Redirect to /auth instead of / to avoid redirect loop
-                return redirect('/auth')
+                return redirect('/auth?next=' + quote(request.full_path, safe=''))
         
         # Add user data to request context
         request.user_id = user_data.get("user_id") or user_data.get("sub")
@@ -478,7 +480,7 @@ def require_admin(f):
             else:
                 from flask import redirect
                 # Redirect to /auth instead of / to avoid redirect loop
-                return redirect('/auth')
+                return redirect('/auth?next=' + quote(request.full_path, safe=''))
         
         return f(*args, **kwargs)
     return decorated_function

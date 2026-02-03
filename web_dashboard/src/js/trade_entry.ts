@@ -105,6 +105,11 @@ function getSelectedFund(): string {
     return fund;
 }
 
+// Normalize fund string for matching (trim, collapse spaces, case-insensitive compare)
+function normalizeFundForMatch(s: string): string {
+    return s.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 // Apply ?fund= from URL to the global fund selector (so dropdown and banner match the link)
 function applyFundFromQueryString(): void {
     try {
@@ -113,16 +118,22 @@ function applyFundFromQueryString(): void {
         if (fundParam == null || fundParam.trim() === '') return;
         let decoded: string;
         try {
-            decoded = decodeURIComponent(fundParam.trim());
+            decoded = decodeURIComponent(fundParam.trim()).replace(/\s+/g, ' ').trim();
         } catch {
             return; // malformed percent-encoding, ignore
         }
         if (!decoded) return;
         const globalSelector = document.getElementById('global-fund-select') as HTMLSelectElement | null;
         if (!globalSelector) return;
-        const option = Array.from(globalSelector.options).find(o => o.value === decoded);
+        const want = normalizeFundForMatch(decoded);
+        const option = Array.from(globalSelector.options).find(o => {
+            if (o.value === 'all' || o.value === '') return false;
+            return o.value === decoded ||
+                normalizeFundForMatch(o.value) === want ||
+                normalizeFundForMatch((o.textContent || '').trim()) === want;
+        });
         if (option) {
-            globalSelector.value = decoded;
+            globalSelector.value = option.value;
         }
     } catch {
         // invalid/missing query string or DOM: leave dropdown as-is
@@ -587,6 +598,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Sync ?fund= from URL to dropdown, then show selected fund in banner
     applyFundFromQueryString();
     updateSelectedFundDisplay();
+    // Retry once after a short delay (sidebar/select may render or become ready slightly later)
+    setTimeout(() => {
+        applyFundFromQueryString();
+        updateSelectedFundDisplay();
+    }, 150);
 
     // Initialize tabs
     initTabs();
