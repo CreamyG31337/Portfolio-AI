@@ -229,9 +229,9 @@
     </div>
 
     <!-- Main Charts -->
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6 w-full">
-        <!-- Performance Chart (2/3 width) -->
-        <div class="xl:col-span-2 p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+    <!-- Performance Chart (full width) -->
+    <div class="mb-6 w-full">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-text-primary">Portfolio Performance</h3>
                 <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
@@ -315,312 +315,309 @@
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Sector Allocation (1/3 width) -->
-        <div class="xl:col-span-1 flex flex-col gap-6 min-w-0">
-            <!-- Sector Allocation Chart -->
-            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs flex-shrink-0 min-w-0">
-                <h3 class="text-lg font-bold text-text-primary mb-4">Sector Allocation</h3>
-                <div class="w-full relative aspect-square max-h-[700px]" id="sector-chart">
-                    <!-- Loading spinner -->
-                    {% with id='sector-chart-spinner', size='12' %}
+    <!-- Sector Allocation and Market Indicators Row -->
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6 w-full">
+        <!-- Sector Allocation Chart -->
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs min-w-0">
+            <h3 class="text-lg font-bold text-text-primary mb-4">Sector Allocation</h3>
+            <div class="w-full relative aspect-square max-h-[500px]" id="sector-chart">
+                <!-- Loading spinner -->
+                {% with id='sector-chart-spinner', size='12' %}
+                    {% include "components/_loading_spinner.html" %}
+                {% endwith %}
+            </div>
+        </div>
+
+        <!-- Market Indicators Section -->
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+            <h3 class="text-lg font-bold text-text-primary mb-4">📊 Market Indicators</h3>
+
+            <!-- Commodity Prices Chart -->
+            <div class="mb-6 pb-6 border-b border-border">
+                <div class="flex justify-between items-center mb-4">
+                    <h4 class="text-base font-semibold text-text-primary">Commodity & Asset Prices</h4>
+
+                    <!-- Commodity Toggles -->
+                    <div class="flex flex-wrap gap-2">
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" id="commodity-gold" checked
+                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                            <span class="text-sm">🥇 Gold</span>
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" id="commodity-silver" checked
+                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                            <span class="text-sm">🥈 Silver</span>
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" id="commodity-oil"
+                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                            <span class="text-sm">🛢️ Oil</span>
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" id="commodity-uranium"
+                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                            <span class="text-sm">☢️ Uranium</span>
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" id="commodity-lithium"
+                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
+                            <span class="text-sm">🔋 Lithium</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Chart Container -->
+                <div class="w-full relative min-h-[400px]" id="commodities-chart">
+                    {% with id='commodities-chart-spinner', size='12' %}
                         {% include "components/_loading_spinner.html" %}
                     {% endwith %}
                 </div>
             </div>
 
-            <!-- Market Indicators Section -->
-            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
-                            <h3 class="text-lg font-bold text-text-primary mb-4">📊 Market Indicators</h3>
+            <!-- Currency Section -->
+            <div class="flex justify-between items-center mb-4">
+                <h4 class="text-base font-semibold text-text-primary">Currency Exposure</h4>
+                <label class="flex items-center gap-2 cursor-pointer text-sm text-text-secondary">
+                    <input type="checkbox" id="inverse-exchange-rate"
+                        class="rounded border-border text-accent focus:ring-accent bg-dashboard-surface">
+                    <span>Show CAD/USD</span>
+                </label>
+            </div>
 
-                            <!-- Commodity Prices Chart -->
-                            <div class="mb-6 pb-6 border-b border-border">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h4 class="text-base font-semibold text-text-primary">Commodity & Asset Prices</h4>
-
-                                    <!-- Commodity Toggles -->
-                                    <div class="flex flex-wrap gap-2">
-                                        <label class="flex items-center gap-1 cursor-pointer">
-                                            <input type="checkbox" id="commodity-gold" checked
-                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
-                                            <span class="text-sm">🥇 Gold</span>
-                                        </label>
-                                        <label class="flex items-center gap-1 cursor-pointer">
-                                            <input type="checkbox" id="commodity-silver" checked
-                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
-                                            <span class="text-sm">🥈 Silver</span>
-                                        </label>
-                                        <label class="flex items-center gap-1 cursor-pointer">
-                                            <input type="checkbox" id="commodity-oil"
-                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
-                                            <span class="text-sm">🛢️ Oil</span>
-                                        </label>
-                                        <label class="flex items-center gap-1 cursor-pointer">
-                                            <input type="checkbox" id="commodity-uranium"
-                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
-                                            <span class="text-sm">☢️ Uranium</span>
-                                        </label>
-                                        <label class="flex items-center gap-1 cursor-pointer">
-                                            <input type="checkbox" id="commodity-lithium"
-                                                class="rounded border-border text-accent focus:ring-accent commodity-toggle">
-                                            <span class="text-sm">🔋 Lithium</span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <!-- Chart Container -->
-                                <div class="w-full relative min-h-[400px]" id="commodities-chart">
-                                    {% with id='commodities-chart-spinner', size='12' %}
-                                        {% include "components/_loading_spinner.html" %}
-                                    {% endwith %}
-                                </div>
-                            </div>
-
-                            <!-- Currency Section -->
-                            <div class="flex justify-between items-center mb-4">
-                                <h4 class="text-base font-semibold text-text-primary">Currency Exposure</h4>
-                                <label class="flex items-center gap-2 cursor-pointer text-sm text-text-secondary">
-                                    <input type="checkbox" id="inverse-exchange-rate"
-                                        class="rounded border-border text-accent focus:ring-accent bg-dashboard-surface">
-                                    <span>Show CAD/USD</span>
-                                </label>
-                            </div>
-
-                            <!-- Two-column layout: Rate metrics + Pie chart -->
-                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                                <!-- Left column: Exchange rate metric and historical chart -->
-                                <div class="lg:col-span-1">
-                                    <!-- Current Rate Metric -->
-                                    <div id="exchange-rate-metric"
-                                        class="mb-4 p-3 bg-dashboard-surface-alt rounded-lg border border-border">
-                                        <div class="text-sm text-text-secondary" id="exchange-rate-label">USD/CAD Rate
-                                        </div>
-                                        <div class="text-2xl font-bold text-text-primary" id="exchange-rate-value">
-                                            <div class="animate-pulse bg-dashboard-surface h-8 w-24 rounded"></div>
-                                        </div>
-                                        <div class="text-xs text-text-tertiary" id="exchange-rate-help">1 USD = X CAD
-                                        </div>
-                                    </div>
-
-                                    <!-- Historical Rate Chart -->
-                                    <div class="w-full relative min-h-[200px]" id="exchange-rate-chart">
-                                        {% with id='exchange-rate-chart-spinner', size='8' %}
-                                            {% include "components/_loading_spinner.html" %}
-                                        {% endwith %}
-                                    </div>
-                                </div>
-
-                                <!-- Right column: Currency exposure pie chart -->
-                                <div class="lg:col-span-2">
-                                    <div class="w-full relative overflow-hidden min-h-[300px] max-h-[400px]"
-                                        id="currency-chart">
-                                        <!-- Loading spinner -->
-                                        {% with id='currency-chart-spinner', size='12' %}
-                                            {% include "components/_loading_spinner.html" %}
-                                        {% endwith %}
-                                        <!-- Plotly Chart -->
-                                    </div>
-                                </div>
-                            </div>
+            <!-- Two-column layout: Rate metrics + Pie chart -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <!-- Left column: Exchange rate metric and historical chart -->
+                <div class="lg:col-span-1">
+                    <!-- Current Rate Metric -->
+                    <div id="exchange-rate-metric"
+                        class="mb-4 p-3 bg-dashboard-surface-alt rounded-lg border border-border">
+                        <div class="text-sm text-text-secondary" id="exchange-rate-label">USD/CAD Rate
+                        </div>
+                        <div class="text-2xl font-bold text-text-primary" id="exchange-rate-value">
+                            <div class="animate-pulse bg-dashboard-surface h-8 w-24 rounded"></div>
+                        </div>
+                        <div class="text-xs text-text-tertiary" id="exchange-rate-help">1 USD = X CAD
                         </div>
                     </div>
-                </div>
 
-                <!-- P&L by Position Chart -->
-                <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
-                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-                        <h3 class="text-lg font-bold text-text-primary">P&L by Position</h3>
-                        <div class="inline-flex rounded-md shadow-xs" role="group" aria-label="P&L chart view">
-                            <button type="button" data-pnl-view="top_bottom" aria-pressed="true"
-                                class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
-                                Top/Bottom 20
-                            </button>
-                            <button type="button" data-pnl-view="winners" aria-pressed="false"
-                                class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border-t border-b border-border hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
-                                Winners 40
-                            </button>
-                            <button type="button" data-pnl-view="losers" aria-pressed="false"
-                                class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
-                                Losers 40
-                            </button>
-                        </div>
-                    </div>
-                    <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
-                        ℹ️ Default view shows the top 20 winners and bottom 20 losers. Use the toggle to switch to 40
-                        winners or 40 losers.
-                        💡 <strong>Winning positions with gains</strong> show overlay bars (green unrealized + gold
-                        dividends).
-                        <strong>Winning positions with losses offset by dividends</strong> show red bar below axis
-                        (loss) + gold bar
-                        above axis (dividends) at the same position.
-                        <strong>Losing positions</strong> show single red bars below axis.
-                    </div>
-                    <div class="w-full relative min-h-[500px]" id="pnl-chart">
-                        {% with id='pnl-chart-spinner', size='12' %}
+                    <!-- Historical Rate Chart -->
+                    <div class="w-full relative min-h-[200px]" id="exchange-rate-chart">
+                        {% with id='exchange-rate-chart-spinner', size='8' %}
                             {% include "components/_loading_spinner.html" %}
                         {% endwith %}
                     </div>
                 </div>
 
-                <!-- Dividends Section -->
-                <div class="mb-6">
-                    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
-                                <span class="text-theme-success-text">💰</span> Dividends
-                            </h3>
-                            <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)" aria-expanded="true"
-                                aria-controls="dividend-log-container"
-                                class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
-                                <i class="fas fa-eye-slash mr-1" aria-hidden="true"></i> <span>Hide Log</span>
-                            </button>
-                        </div>
-
-                        <!-- Dividend Metrics -->
-                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
-                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                                <div class="text-xs text-text-secondary font-medium">Total (LTM)</div>
-                                <div class="text-lg font-bold text-text-primary" id="div-total">--</div>
-                            </div>
-                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                                <div class="text-xs text-text-secondary font-medium">Tax Paid (LTM)</div>
-                                <div class="text-lg font-bold text-text-primary" id="div-tax">--</div>
-                            </div>
-                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                                <div class="text-xs text-text-secondary font-medium">Largest</div>
-                                <div class="text-lg font-bold text-text-primary" id="div-largest">--</div>
-                                <div class="text-xs text-text-tertiary" id="div-largest-ticker"></div>
-                            </div>
-                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                                <div class="text-xs text-text-secondary font-medium">Reinvested</div>
-                                <div class="text-lg font-bold text-text-primary" id="div-reinvested">--</div>
-                            </div>
-                            <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
-                                <div class="text-xs text-text-secondary font-medium">Events</div>
-                                <div class="text-lg font-bold text-text-primary" id="div-events">--</div>
-                            </div>
-                        </div>
-
-                        <!-- Dividend Log Table -->
-                        <div id="dividend-log-container"
-                            class="relative overflow-x-auto max-h-[300px] overflow-y-auto border border-border rounded-lg">
-                            <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
-                                <thead
-                                    class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
-                                    <tr>
-                                        <th scope="col" class="px-4 py-2">Pay Date</th>
-                                        <th scope="col" class="px-4 py-2">Ticker</th>
-                                        <th scope="col" class="px-4 py-2">Company</th>
-                                        <th scope="col" class="px-4 py-2 text-right">Gross ($)</th>
-                                        <th scope="col" class="px-4 py-2 text-right">Net ($)</th>
-                                        <th scope="col" class="px-4 py-2 text-right">Reinvested Shares</th>
-                                        <th scope="col" class="px-4 py-2 text-right">DRIP Price ($)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="dividend-log-body">
-                                    <!-- JS -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Holdings Table -->
-                <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
-                    <h3 class="text-lg font-bold text-text-primary mb-4">Current Holdings</h3>
-                    <div class="relative w-full h-[500px]">
+                <!-- Right column: Currency exposure pie chart -->
+                <div class="lg:col-span-2">
+                    <div class="w-full relative overflow-hidden min-h-[300px] max-h-[400px]"
+                        id="currency-chart">
                         <!-- Loading spinner -->
-                        {% with id='holdings-grid-spinner', size='12' %}
+                        {% with id='currency-chart-spinner', size='12' %}
                             {% include "components/_loading_spinner.html" %}
                         {% endwith %}
-                        <div id="holdings-grid" class="ag-theme-alpine w-full h-full"></div>
-                    </div>
-                </div>
-
-                <!-- Recent Activity -->
-                <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
-                    <h3 class="text-lg font-bold text-text-primary mb-4">Recent Activity</h3>
-                    <div class="relative overflow-x-auto max-h-[600px] overflow-y-auto border border-border rounded-lg">
-                        <!-- Loading spinner -->
-                        {% with id='activity-table-spinner', size='12' %}
-                            {% include "components/_loading_spinner.html" %}
-                        {% endwith %}
-                        <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
-                            <thead
-                                class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
-                                <tr>
-                                    <th scope="col" class="px-6 py-3">Date</th>
-                                    <th scope="col" class="px-6 py-3">Ticker</th>
-                                    <th scope="col" class="px-6 py-3">Company</th>
-                                    <th scope="col" class="px-6 py-3">Action</th>
-                                    <th scope="col" class="px-6 py-3 text-right">Shares</th>
-                                    <th scope="col" class="px-6 py-3 text-right">Price</th>
-                                    <th scope="col" class="px-6 py-3 text-right">Amount / P&L</th>
-                                </tr>
-                            </thead>
-                            <tbody id="activity-table-body">
-                                <!-- JS -->
-                            </tbody>
-                        </table>
+                        <!-- Plotly Chart -->
                     </div>
                 </div>
             </div>
-            {% endblock %}
+        </div>
+    </div>
 
-            {% block extra_head %}
-            <!-- AgGrid Community Edition - Base styles and themes -->
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
-            <link rel="stylesheet"
-                href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine.css">
-            <link rel="stylesheet"
-                href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine-dark.css">
-            {% endblock %}
+    <!-- P&L by Position Chart -->
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 class="text-lg font-bold text-text-primary">P&L by Position</h3>
+            <div class="inline-flex rounded-md shadow-xs" role="group" aria-label="P&L chart view">
+                <button type="button" data-pnl-view="top_bottom" aria-pressed="true"
+                    class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
+                    Top/Bottom 20
+                </button>
+                <button type="button" data-pnl-view="winners" aria-pressed="false"
+                    class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border-t border-b border-border hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
+                    Winners 40
+                </button>
+                <button type="button" data-pnl-view="losers" aria-pressed="false"
+                    class="pnl-view-btn px-3 py-1.5 text-xs font-medium text-text-primary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent">
+                    Losers 40
+                </button>
+            </div>
+        </div>
+        <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+            ℹ️ Default view shows the top 20 winners and bottom 20 losers. Use the toggle to switch to 40
+            winners or 40 losers.
+            💡 <strong>Winning positions with gains</strong> show overlay bars (green unrealized + gold
+            dividends).
+            <strong>Winning positions with losses offset by dividends</strong> show red bar below axis
+            (loss) + gold bar
+            above axis (dividends) at the same position.
+            <strong>Losing positions</strong> show single red bars below axis.
+        </div>
+        <div class="w-full relative min-h-[500px]" id="pnl-chart">
+            {% with id='pnl-chart-spinner', size='12' %}
+                {% include "components/_loading_spinner.html" %}
+            {% endwith %}
+        </div>
+    </div>
 
-            {% block extra_scripts %}
-            <script src="https://cdn.jsdelivr.net/npm/plotly.js@2.27.0/dist/plotly.min.js"></script>
-            <!-- Load AgGrid from CDN - use same version as congress_trades for consistency -->
-            <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
-            <script>
-                // Pass initial data from backend if needed, or just let JS fetch it
-                const INITIAL_FUND = {{ initial_fund| tojson }};
-                console.log('[Dashboard] Script block loaded, INITIAL_FUND:', INITIAL_FUND);
+    <!-- Dividends Section -->
+    <div class="mb-6">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
+                    <span class="text-theme-success-text">💰</span> Dividends
+                </h3>
+                <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)" aria-expanded="true"
+                    aria-controls="dividend-log-container"
+                    class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
+                    <i class="fas fa-eye-slash mr-1" aria-hidden="true"></i> <span>Hide Log</span>
+                </button>
+            </div>
 
-                function toggleDividendLog(btn) {
-                    const container = document.getElementById('dividend-log-container');
-                    if (!container) return;
+            <!-- Dividend Metrics -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
+                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                    <div class="text-xs text-text-secondary font-medium">Total (LTM)</div>
+                    <div class="text-lg font-bold text-text-primary" id="div-total">--</div>
+                </div>
+                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                    <div class="text-xs text-text-secondary font-medium">Tax Paid (LTM)</div>
+                    <div class="text-lg font-bold text-text-primary" id="div-tax">--</div>
+                </div>
+                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                    <div class="text-xs text-text-secondary font-medium">Largest</div>
+                    <div class="text-lg font-bold text-text-primary" id="div-largest">--</div>
+                    <div class="text-xs text-text-tertiary" id="div-largest-ticker"></div>
+                </div>
+                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                    <div class="text-xs text-text-secondary font-medium">Reinvested</div>
+                    <div class="text-lg font-bold text-text-primary" id="div-reinvested">--</div>
+                </div>
+                <div class="p-3 bg-dashboard-surface-alt rounded border border-border">
+                    <div class="text-xs text-text-secondary font-medium">Events</div>
+                    <div class="text-lg font-bold text-text-primary" id="div-events">--</div>
+                </div>
+            </div>
 
-                    const isHidden = container.classList.toggle('hidden');
-                    const icon = btn.querySelector('i');
-                    const span = btn.querySelector('span');
+            <!-- Dividend Log Table -->
+            <div id="dividend-log-container"
+                class="relative overflow-x-auto max-h-[300px] overflow-y-auto border border-border rounded-lg">
+                <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                    <thead
+                        class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
+                        <tr>
+                            <th scope="col" class="px-4 py-2">Pay Date</th>
+                            <th scope="col" class="px-4 py-2">Ticker</th>
+                            <th scope="col" class="px-4 py-2">Company</th>
+                            <th scope="col" class="px-4 py-2 text-right">Gross ($)</th>
+                            <th scope="col" class="px-4 py-2 text-right">Net ($)</th>
+                            <th scope="col" class="px-4 py-2 text-right">Reinvested Shares</th>
+                            <th scope="col" class="px-4 py-2 text-right">DRIP Price ($)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dividend-log-body">
+                        <!-- JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
-                    btn.setAttribute('aria-expanded', !isHidden);
+    <!-- Holdings Table -->
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
+        <h3 class="text-lg font-bold text-text-primary mb-4">Current Holdings</h3>
+        <div class="relative w-full h-[500px]">
+            <!-- Loading spinner -->
+            {% with id='holdings-grid-spinner', size='12' %}
+                {% include "components/_loading_spinner.html" %}
+            {% endwith %}
+            <div id="holdings-grid" class="ag-theme-alpine w-full h-full"></div>
+        </div>
+    </div>
 
-                    if (isHidden) {
-                        if (span) span.textContent = 'Show Log';
-                        if (icon) {
-                            icon.classList.remove('fa-eye-slash');
-                            icon.classList.add('fa-eye');
-                        }
-                    } else {
-                        if (span) span.textContent = 'Hide Log';
-                        if (icon) {
-                            icon.classList.remove('fa-eye');
-                            icon.classList.add('fa-eye-slash');
-                        }
-                    }
-                }
-            </script>
-            <script type="module"
-                src="/assets/js/dashboard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
-            <script>
-                // dashboard.js is type="module" so it runs async; check after it signals ready or on load
-                window.addEventListener('dashboard-ready', function () {
-                    console.log('[Dashboard] refreshDashboard function found, script loaded successfully');
-                });
-                window.addEventListener('load', function () {
-                    if (typeof refreshDashboard === 'undefined') {
-                        console.error('[Dashboard] ERROR: refreshDashboard function not found! Script may not have loaded.');
-                    }
-                });
-            </script>
-            {% endblock %}
+    <!-- Recent Activity -->
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <h3 class="text-lg font-bold text-text-primary mb-4">Recent Activity</h3>
+        <div class="relative overflow-x-auto max-h-[600px] overflow-y-auto border border-border rounded-lg">
+            <!-- Loading spinner -->
+            {% with id='activity-table-spinner', size='12' %}
+                {% include "components/_loading_spinner.html" %}
+            {% endwith %}
+            <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                <thead
+                    class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10">
+                    <tr>
+                        <th scope="col" class="px-6 py-3">Date</th>
+                        <th scope="col" class="px-6 py-3">Ticker</th>
+                        <th scope="col" class="px-6 py-3">Company</th>
+                        <th scope="col" class="px-6 py-3">Action</th>
+                        <th scope="col" class="px-6 py-3 text-right">Shares</th>
+                        <th scope="col" class="px-6 py-3 text-right">Price</th>
+                        <th scope="col" class="px-6 py-3 text-right">Amount / P&L</th>
+                    </tr>
+                </thead>
+                <tbody id="activity-table-body">
+                    <!-- JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<!-- AgGrid Community Edition - Base styles and themes -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine-dark.css">
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/plotly.js@2.27.0/dist/plotly.min.js"></script>
+<!-- Load AgGrid from CDN - use same version as congress_trades for consistency -->
+<script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+<script>
+    // Pass initial data from backend if needed, or just let JS fetch it
+    const INITIAL_FUND = {{ initial_fund| tojson }};
+    console.log('[Dashboard] Script block loaded, INITIAL_FUND:', INITIAL_FUND);
+
+    function toggleDividendLog(btn) {
+        const container = document.getElementById('dividend-log-container');
+        if (!container) return;
+
+        const isHidden = container.classList.toggle('hidden');
+        const icon = btn.querySelector('i');
+        const span = btn.querySelector('span');
+
+        btn.setAttribute('aria-expanded', !isHidden);
+
+        if (isHidden) {
+            if (span) span.textContent = 'Show Log';
+            if (icon) {
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        } else {
+            if (span) span.textContent = 'Hide Log';
+            if (icon) {
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            }
+        }
+    }
+</script>
+<script type="module" src="/assets/js/dashboard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+<script>
+    // dashboard.js is type="module" so it runs async; check after it signals ready or on load
+    window.addEventListener('dashboard-ready', function () {
+        console.log('[Dashboard] refreshDashboard function found, script loaded successfully');
+    });
+    window.addEventListener('load', function () {
+        if (typeof refreshDashboard === 'undefined') {
+            console.error('[Dashboard] ERROR: refreshDashboard function not found! Script may not have loaded.');
+        }
+    });
+</script>
+{% endblock %}
