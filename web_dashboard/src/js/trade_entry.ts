@@ -105,7 +105,31 @@ function getSelectedFund(): string {
     return fund;
 }
 
-// Update the visible "Selected fund" banner
+// Apply ?fund= from URL to the global fund selector (so dropdown and banner match the link)
+function applyFundFromQueryString(): void {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const fundParam = params.get('fund');
+        if (fundParam == null || fundParam.trim() === '') return;
+        let decoded: string;
+        try {
+            decoded = decodeURIComponent(fundParam.trim());
+        } catch {
+            return; // malformed percent-encoding, ignore
+        }
+        if (!decoded) return;
+        const globalSelector = document.getElementById('global-fund-select') as HTMLSelectElement | null;
+        if (!globalSelector) return;
+        const option = Array.from(globalSelector.options).find(o => o.value === decoded);
+        if (option) {
+            globalSelector.value = decoded;
+        }
+    } catch {
+        // invalid/missing query string or DOM: leave dropdown as-is
+    }
+}
+
+// Update the visible "Selected fund" banner (clear confirmation of where trades will go)
 function updateSelectedFundDisplay(): void {
     const nameEl = document.getElementById('trade-entry-fund-name');
     const hintEl = document.getElementById('trade-entry-fund-hint');
@@ -317,12 +341,9 @@ async function handleEmailParse(): Promise<void> {
             credentials: 'include'
         });
 
-        const result: EmailParseResponse & { debug?: unknown } = await response.json();
+        const result: EmailParseResponse = await response.json();
 
         if (!response.ok || !result.success) {
-            if (result.debug !== undefined) {
-                console.error('[Trade Entry] API debug (copy this for support):', JSON.stringify(result.debug, null, 2));
-            }
             throw new Error(result.error || 'Parse failed');
         }
 
@@ -563,7 +584,8 @@ function renderPagination(totalPages: number, currPage: number): void {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    // Show selected fund in banner
+    // Sync ?fund= from URL to dropdown, then show selected fund in banner
+    applyFundFromQueryString();
     updateSelectedFundDisplay();
 
     // Initialize tabs
@@ -624,10 +646,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Listen to global fund selector changes
-    const globalFundSelect = document.getElementById('global-fund-select');
+    const globalFundSelect = document.getElementById('global-fund-select') as HTMLSelectElement | null;
     if (globalFundSelect) {
         globalFundSelect.addEventListener('change', () => {
             updateSelectedFundDisplay();
+            // Keep URL in sync so ?fund= reflects current selection
+            try {
+                const fund = getSelectedFund();
+                const url = new URL(window.location.href);
+                if (fund) {
+                    url.searchParams.set('fund', fund);
+                } else {
+                    url.searchParams.delete('fund');
+                }
+                window.history.replaceState({}, '', url.toString());
+            } catch {
+                // invalid URL or replaceState failed: ignore
+            }
             // Refresh recent trades if that tab is open
             const historyContent = document.getElementById('history-content');
             if (historyContent && !historyContent.classList.contains('hidden')) {

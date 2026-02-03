@@ -1898,54 +1898,31 @@ def api_preview_email_trade():
         500: Server error during parsing
     """
     try:
-        # #region agent log (diagnostics returned in API response when import fails)
-        debug_out: dict = {}
-        # #endregion
         try:
             # Ensure repo root (must contain data/models and utils) is on path
             _here = Path(__file__).resolve().parent
-            debug_out["_here"] = str(_here)
-            debug_out["sys_path_before"] = list(sys.path[:6])
             _root = None
-            _candidates = []
             for _candidate in [_here.parent.parent, _here.parent.parent.parent, _here.parent.parent.parent.parent]:
-                _dm = (_candidate / "data" / "models").is_dir()
-                _ut = (_candidate / "utils").is_dir()
-                _candidates.append({"path": str(_candidate), "data_models": _dm, "utils": _ut})
-                if _dm and _ut:
+                if (_candidate / "data" / "models").is_dir() and (_candidate / "utils").is_dir():
                     _root = _candidate
                     break
-            debug_out["candidates"] = _candidates
             if _root is None:
                 _root = _here.parent.parent.parent  # fallback
-            debug_out["chosen_root"] = str(_root)
-            debug_out["was_fallback"] = (_root == _here.parent.parent.parent)
             # Always put repo root at index 0 so 'data' resolves to repo root (server may already have /app in path but not first)
             _root_str = str(_root)
             while _root_str in sys.path:
                 sys.path.remove(_root_str)
             sys.path.insert(0, _root_str)
-            debug_out["sys_path_after"] = list(sys.path[:6])
-            debug_out["root_at_index0"] = (sys.path[0] == _root_str)
             # Clear cached 'data' from sys.modules so repo-root data is used (web_dashboard/data has no models)
             for _k in sorted(sys.modules.keys(), key=lambda x: -len(x)):
                 if _k == "data" or _k.startswith("data."):
                     sys.modules.pop(_k, None)
-            try:
-                import data.models.trade as _dt
-                debug_out["data_models_import"] = "ok"
-                debug_out["data_models_file"] = str(getattr(_dt, "__file__", None))
-            except ImportError as _de:
-                debug_out["data_models_import"] = "failed"
-                debug_out["data_models_error"] = str(_de)
             from utils.email_trade_parser import EmailTradeParser
         except ImportError as ie:
-            debug_out["EmailTradeParser_import_error"] = str(ie)
             logger.exception("EmailTradeParser import failed")
             return jsonify({
                 "error": "Email trade parser is not available: " + str(ie),
-                "detail": str(ie),
-                "debug": debug_out
+                "detail": str(ie)
             }), 500
 
         data = request.get_json()
