@@ -1924,6 +1924,10 @@ def api_preview_email_trade():
                 sys.path.insert(0, str(_root))
             debug_out["sys_path_after"] = list(sys.path[:6])
             debug_out["root_at_index0"] = (sys.path[0] == str(_root))
+            # Clear cached 'data' from sys.modules so repo-root data is used (web_dashboard/data has no models)
+            for _k in sorted(sys.modules.keys(), key=lambda x: -len(x)):
+                if _k == "data" or _k.startswith("data."):
+                    sys.modules.pop(_k, None)
             try:
                 import data.models.trade as _dt
                 debug_out["data_models_import"] = "ok"
