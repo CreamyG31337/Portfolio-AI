@@ -548,6 +548,16 @@ function updatePnlChartViewButtons(): void {
 // Global cache of tickers that don't have logos (to avoid repeated 404s)
 const failedLogoCache = new Set<string>();
 
+function escapeHtml(text: string | null | undefined): string {
+    if (text === null || text === undefined) return '';
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 /**
  * Creates a logo image element with fallback handling.
  * 
@@ -1762,9 +1772,18 @@ function renderActionQueue(data: ActionQueueData): void {
         const confidencePct = Math.round((item.confidence || 0) * 100);
         const analysisDate = item.analysis_date ? new Date(item.analysis_date).toLocaleDateString() : '-';
 
+        // Safe escaped values
+        const safeTicker = escapeHtml(item.ticker);
+        const safeLogoUrl = item._logo_url ? escapeHtml(item._logo_url) : '';
+        const safeAction = escapeHtml(item.action);
+        const safeSignal = escapeHtml(item.overall_signal);
+        const safeFearLevel = escapeHtml(item.fear_level);
+        const safeNote = escapeHtml(item.note || '-');
+        const safeNoteTitle = escapeHtml(item.note || '');
+
         // Logo HTML
-        const logoHtml = item._logo_url
-            ? `<img src="${item._logo_url}" alt="${item.ticker}" class="w-5 h-5 rounded-full inline-block mr-1" onerror="this.style.display='none'">`
+        const logoHtml = safeLogoUrl
+            ? `<img src="${safeLogoUrl}" alt="${safeTicker}" class="w-5 h-5 rounded-full inline-block mr-1" onerror="this.style.display='none'">`
             : '';
 
         return `
@@ -1776,15 +1795,15 @@ function renderActionQueue(data: ActionQueueData): void {
                 </td>
                 <td class="px-4 py-3 font-medium text-text-primary">
                     ${logoHtml}
-                    <a href="/ticker/${item.ticker}" class="hover:text-accent hover:underline">${item.ticker}</a>
+                    <a href="/ticker/${safeTicker}" class="hover:text-accent hover:underline">${safeTicker}</a>
                     ${item.is_held ? '<span class="ml-1 text-xs text-text-tertiary">(held)</span>' : ''}
                 </td>
                 <td class="px-4 py-3">
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${actionClass}">
-                        ${item.action}
+                        ${safeAction}
                     </span>
                 </td>
-                <td class="px-4 py-3 text-text-secondary">${item.overall_signal}</td>
+                <td class="px-4 py-3 text-text-secondary">${safeSignal}</td>
                 <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-1">
                         <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -1793,8 +1812,8 @@ function renderActionQueue(data: ActionQueueData): void {
                         <span class="text-xs text-text-secondary w-8">${confidencePct}%</span>
                     </div>
                 </td>
-                <td class="px-4 py-3 ${fearClass}">${fearIcon} ${item.fear_level}</td>
-                <td class="px-4 py-3 text-text-secondary text-xs max-w-[200px] truncate" title="${item.note || ''}">${item.note || '-'}</td>
+                <td class="px-4 py-3 ${fearClass}">${fearIcon} ${safeFearLevel}</td>
+                <td class="px-4 py-3 text-text-secondary text-xs max-w-[200px] truncate" title="${safeNoteTitle}">${safeNote}</td>
                 <td class="px-4 py-3 text-text-tertiary text-xs">${analysisDate}</td>
             </tr>
         `;
