@@ -2259,7 +2259,12 @@ def api_get_contributions():
 @admin_bp.route('/api/admin/contributions', methods=['POST'])
 @require_admin
 def api_add_contribution():
-    """Add a new contribution or withdrawal"""
+    """Add a new contribution or withdrawal.
+    
+    Accepts either:
+    - contributor_id (UUID): Links to existing contributor (preferred)
+    - contributor (string) + email: Will look up or create contributor
+    """
     try:
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
@@ -2268,6 +2273,7 @@ def api_add_contribution():
         data = request.get_json()
         
         fund = data.get('fund')
+        contributor_id = data.get('contributor_id')
         name = data.get('contributor')
         email = data.get('email')
         amount = float(data.get('amount', 0))
@@ -2275,8 +2281,11 @@ def api_add_contribution():
         date_str = data.get('date')
         notes = data.get('notes')
         
-        if not fund or not name or amount <= 0 or not date_str:
+        if not fund or amount <= 0 or not date_str:
             return jsonify({"error": "Invalid contribution data"}), 400
+        
+        if not contributor_id and not name:
+            return jsonify({"error": "Either contributor_id or contributor name is required"}), 400
             
         # Combine date with current time
         try:
@@ -2284,10 +2293,71 @@ def api_add_contribution():
             timestamp = datetime.combine(date_obj, datetime.now().time()).isoformat()
         except:
             return jsonify({"error": "Invalid date format"}), 400
+        
+        # Service role client
+        client = SupabaseClient(use_service_role=True)
+        
+        # Resolve contributor_id if not provided
+        contributor_name = name
+        if not contributor_id:
+            # Try to find existing contributor by email first (most reliable)
+            if email:
+                result = client.supabase.table("contributors").select("id, name").eq("email", email).execute()
+                if result.data:
+                    contributor_id = result.data[0]['id']
+                    contributor_name = result.data[0]['name']
+            
+            # If still no match, try by exact name
+            if not contributor_id and name:
+                result = client.supabase.table("contributors").select("id, name, email").eq("name", name).execute()
+                if result.data:
+                    # Only use if there's exactly one match (avoid ambiguity)
+                    if len(result.data) == 1:
+                        contributor_id = result.data[0]['id']
+                        contributor_name = result.data[0]['name']
+                    else:
+                        # Multiple contributors with same name - need email to disambiguate
+                        # Try to find one with matching email
+                        for c in result.data:
+                            if c.get('email') == email:
+                                contributor_id = c['id']
+                                contributor_name = c['name']
+                                break
+            
+            # Still no match? Create new contributor
+            if not contributor_id:
+                new_contrib = {
+                    "name": name,
+                    "email": email if email else None,
+                    "kyc_status": "pending"
+                }
+                result = client.supabase.table("contributors").insert(new_contrib).execute()
+                if result.data:
+                    contributor_id = result.data[0]['id']
+                    contributor_name = result.data[0]['name']
+                    logger.info(f"Created new contributor: {name} (ID: {contributor_id})")
+        else:
+            # contributor_id provided - look up the name for the snapshot
+            result = client.supabase.table("contributors").select("name, email").eq("id", contributor_id).execute()
+            if result.data:
+                contributor_name = result.data[0]['name']
+                # Use contributor's email if none provided
+                if not email:
+                    email = result.data[0].get('email')
+            else:
+                return jsonify({"error": f"Contributor not found: {contributor_id}"}), 400
+        
+        # Get fund_id for the FK
+        fund_result = client.supabase.table("funds").select("id").eq("name", fund).execute()
+        if not fund_result.data:
+            return jsonify({"error": f"Fund not found: {fund}"}), 400
+        fund_id = fund_result.data[0]['id']
             
         payload = {
             "fund": fund,
-            "contributor": name,
+            "fund_id": fund_id,
+            "contributor": contributor_name,
+            "contributor_id": contributor_id,
             "email": email if email else None,
             "amount": amount,
             "contribution_type": c_type,
@@ -2295,8 +2365,6 @@ def api_add_contribution():
             "notes": notes if notes else None
         }
         
-        # Service role client
-        client = SupabaseClient(use_service_role=True)
         client.supabase.table("fund_contributions").insert(payload).execute()
         
         return jsonify({"success": True, "message": f"{c_type} recorded successfully"})

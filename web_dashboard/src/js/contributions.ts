@@ -14,6 +14,16 @@ interface FundsResponse {
     funds?: Fund[];
 }
 
+interface Contributor {
+    id: string;
+    name: string;
+    email: string | null;
+}
+
+interface ContributorsResponse {
+    contributors?: Contributor[];
+}
+
 interface Contribution {
     contributor: string;
     fund: string;
@@ -47,6 +57,10 @@ interface TabConfig {
     id: string;
     target: string;
 }
+
+// Module-level state for contributor selection
+let contributorsList: Contributor[] = [];
+let selectedContributorId: string | null = null;
 
 // Utility functions (scoped to contributions.ts to avoid conflicts)
 function escapeHtmlForContributions(text: string | undefined | null): string {
@@ -138,6 +152,76 @@ async function loadFunds(): Promise<void> {
     }
 }
 
+// Load contributors from the contributors table (not from contribution history)
+async function loadContributors(): Promise<void> {
+    try {
+        const response = await fetch('/api/admin/contributors', { credentials: 'include' });
+        
+        if (!response.ok) {
+            console.error('[Contributions] Failed to load contributors');
+            return;
+        }
+        
+        const data: ContributorsResponse = await response.json();
+        contributorsList = data.contributors || [];
+        
+        // Populate the datalist
+        const datalist = document.getElementById('prev-contributors');
+        if (datalist) {
+            datalist.innerHTML = '';
+            contributorsList.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.name;
+                opt.dataset.id = c.id;
+                opt.dataset.email = c.email || '';
+                datalist.appendChild(opt);
+            });
+        }
+    } catch (error) {
+        console.error('[Contributions] Error loading contributors:', error);
+    }
+}
+
+// Handle contributor selection - auto-fill email when selecting from datalist
+function setupContributorAutoFill(): void {
+    const contributorInput = document.getElementById('contributor') as HTMLInputElement | null;
+    const emailInput = document.getElementById('email') as HTMLInputElement | null;
+    
+    if (!contributorInput || !emailInput) return;
+    
+    // Track the last known value to detect selection vs typing
+    let lastValue = '';
+    
+    contributorInput.addEventListener('input', () => {
+        const currentValue = contributorInput.value;
+        
+        // Find matching contributor
+        const match = contributorsList.find(c => c.name === currentValue);
+        
+        if (match) {
+            // User selected a contributor from datalist
+            selectedContributorId = match.id;
+            
+            // Auto-fill email only if email field is empty
+            if (!emailInput.value && match.email) {
+                emailInput.value = match.email;
+            }
+        } else if (currentValue !== lastValue) {
+            // User is typing something different - clear the selection
+            selectedContributorId = null;
+        }
+        
+        lastValue = currentValue;
+    });
+    
+    // Also handle when user clears the field
+    contributorInput.addEventListener('change', () => {
+        if (!contributorInput.value) {
+            selectedContributorId = null;
+        }
+    });
+}
+
 // Fetch contribution history
 async function fetchHistory(): Promise<void> {
     const fundSelect = document.getElementById('contrib-fund-filter') as HTMLSelectElement | null;
@@ -166,10 +250,6 @@ async function fetchHistory(): Promise<void> {
 
         tbody.innerHTML = '';
 
-        // Update datalist for contributor names
-        const datalist = document.getElementById('prev-contributors');
-        const uniqueNames = new Set<string>();
-
         // Handle response format - check for contributions array
         const contributions: Contribution[] = Array.isArray(data)
             ? data
@@ -183,8 +263,6 @@ async function fetchHistory(): Promise<void> {
             tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="5" class="px-6 py-4 text-center text-text-secondary">No records found</td></tr>';
         } else {
             contributions.forEach(row => {
-                uniqueNames.add(row.contributor);
-
                 const tr = document.createElement('tr');
                 tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-hover';
 
@@ -206,15 +284,7 @@ async function fetchHistory(): Promise<void> {
             });
         }
 
-        // Update Datalist
-        if (datalist) {
-            datalist.innerHTML = '';
-            uniqueNames.forEach(name => {
-                const opt = document.createElement('option');
-                opt.value = name;
-                datalist.appendChild(opt);
-            });
-        }
+        // Note: Datalist is now populated from loadContributors(), not from history
 
     } catch (error) {
         console.error('[Contributions] Error fetching history:', error);
@@ -282,10 +352,15 @@ async function handleAddContribution(e: Event): Promise<void> {
 
     try {
         const formData = new FormData(form);
-        const payload: Record<string, string> = {};
+        const payload: Record<string, string | null> = {};
         formData.forEach((value, key) => {
             payload[key] = value.toString();
         });
+        
+        // Include contributor_id if we have a selected contributor
+        if (selectedContributorId) {
+            payload['contributor_id'] = selectedContributorId;
+        }
 
         const response = await fetch('/api/admin/contributions', {
             method: 'POST',
@@ -303,12 +378,13 @@ async function handleAddContribution(e: Event): Promise<void> {
         if (result.success) {
             showToastForContributions('✅ Transaction Saved');
             form.reset();
+            selectedContributorId = null; // Clear contributor selection
             const dateInput = document.getElementById('date') as HTMLInputElement | null;
             if (dateInput) {
                 dateInput.valueAsDate = new Date();
             }
-            // Refresh tables
-            await fetchHistory();
+            // Refresh tables and reload contributors (in case a new one was created)
+            await Promise.all([fetchHistory(), loadContributors()]);
             const summaryContent = document.getElementById('summary-content');
             if (summaryContent && !summaryContent.classList.contains('hidden')) {
                 await fetchSummary();
@@ -371,8 +447,12 @@ document.addEventListener('DOMContentLoaded', () => {
         dateInput.valueAsDate = new Date();
     }
 
-    // Load funds
+    // Load funds and contributors
     loadFunds();
+    loadContributors();
+    
+    // Set up contributor auto-fill (email auto-populates when selecting from dropdown)
+    setupContributorAutoFill();
 
     // Event listeners
     const contribForm = document.getElementById('contrib-form');
