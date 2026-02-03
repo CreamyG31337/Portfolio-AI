@@ -1495,7 +1495,7 @@ class AIAssistant {
             bubbleContainer.className = 'flex flex-col max-w-[80%]';
 
             const bubble = document.createElement('div');
-            bubble.className = 'message-bubble bg-dashboard-surface-alt text-text-primary border border-accent/30 rounded-lg rounded-br-sm px-4 py-3 shadow-sm';
+            bubble.className = 'message-bubble bg-dashboard-surface-alt text-text-primary border border-accent/30 rounded-lg rounded-br-sm px-4 py-3 shadow-xs';
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content leading-relaxed text-white';
@@ -1524,7 +1524,7 @@ class AIAssistant {
             bubbleContainer.className = 'flex-1';
 
             const bubble = document.createElement('div');
-            bubble.className = 'message-bubble bg-dashboard-surface-alt text-text-primary rounded-lg rounded-bl-sm px-4 py-3 shadow-sm';
+            bubble.className = 'message-bubble bg-dashboard-surface-alt text-text-primary rounded-lg rounded-bl-sm px-4 py-3 shadow-xs';
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content leading-relaxed [&>p]:my-2 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0';
@@ -1557,7 +1557,7 @@ class AIAssistant {
             // Check if this is an error message
             if (content.includes('Error:') || content.includes('error:') || content.includes('❌')) {
                 // Update bubble styling for error
-                bubble.className = 'bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg px-4 py-3 shadow-sm';
+                bubble.className = 'bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg px-4 py-3 shadow-xs';
                 if (role === 'user') {
                     bubble.className += ' rounded-br-sm';
                 } else {
@@ -1845,7 +1845,7 @@ class AIAssistant {
             if (messageDiv) {
                 const bubble = messageDiv.querySelector('.bg-dashboard-surface-alt, .bg-accent') as HTMLElement | null;
                 if (bubble) {
-                    bubble.className = 'bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg rounded-bl-sm px-4 py-3 shadow-sm';
+                    bubble.className = 'bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg rounded-bl-sm px-4 py-3 shadow-xs';
                 }
             }
         }, 10);

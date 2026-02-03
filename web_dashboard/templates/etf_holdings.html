@@ -44,7 +44,7 @@
 
 <!-- Summary Stats (Always visible when stats exist) -->
 {% if stats %}
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-4 mb-6 border border-border">
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div class="bg-dashboard-background rounded-lg p-3">
             <div class="text-xs text-text-secondary uppercase font-bold">Data Date</div>
@@ -89,7 +89,7 @@
 {% endif %}
 
 <!-- Filters -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-4 mb-6 border border-border">
     <form id="filters-form" action="/etf_holdings" method="GET" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <!-- ETF Filter -->
@@ -194,7 +194,7 @@
 {% endif %}
 
 <!-- Data Table -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
     <div class="flex justify-between items-center mb-4">
         <h2 class="text-xl font-bold text-text-primary">
             {% if view_mode == 'holdings' %}

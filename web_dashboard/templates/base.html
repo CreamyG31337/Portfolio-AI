@@ -10,7 +10,7 @@
 <body class="bg-dashboard-background min-h-screen" data-page-id="{{ current_page|default('unknown') }}">
     <!-- Accessibility: Skip to main content -->
     <a href="#main-content"
-        class="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:z-[100] focus:p-4 focus:bg-dashboard-surface focus:text-accent focus:shadow-lg focus:font-bold focus:outline-none focus:ring-2 focus:ring-accent rounded-br-lg transition-transform duration-200 semantic-focus">
+        class="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:z-[100] focus:p-4 focus:bg-dashboard-surface focus:text-accent focus:shadow-lg focus:font-bold focus:outline-hidden focus:ring-2 focus:ring-accent rounded-br-lg transition-transform duration-200 semantic-focus">
         Skip to main content
     </a>
 
@@ -23,7 +23,7 @@
                 <!-- Hamburger menu (mobile only) -->
                 <button id="sidebar-toggle" data-drawer-target="sidebar" data-drawer-toggle="sidebar"
                     aria-controls="sidebar" aria-expanded="false" aria-label="Toggle navigation menu"
-                    class="md:hidden p-2 rounded-lg hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50">
+                    class="md:hidden p-2 rounded-lg hover:bg-white/10 focus:outline-hidden focus:ring-2 focus:ring-white/50">
                     <i class="fas fa-bars text-xl" aria-hidden="true"></i>
                 </button>
 
@@ -54,7 +54,7 @@
                     <div class="relative">
                         <button id="user-menu-button" data-dropdown-toggle="user-menu" aria-controls="user-menu"
                             aria-haspopup="true" aria-expanded="false" aria-label="User menu"
-                            class="flex items-center p-2 rounded-lg hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/50">
+                            class="flex items-center p-2 rounded-lg hover:bg-white/10 focus:outline-hidden focus:ring-2 focus:ring-white/50">
                             <i class="fas fa-user-circle text-2xl" aria-hidden="true"></i>
                         </button>
                         <div id="user-menu"

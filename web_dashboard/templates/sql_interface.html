@@ -31,18 +31,18 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
     <!-- Query Editor -->
     <div class="lg:col-span-2">
-        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-bold text-text-primary">
                     <i class="fas fa-code mr-2"></i>Query Editor
                 </h2>
                 <div class="flex space-x-2">
                     <button onclick="executeQuery()"
-                        class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                        class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                         <i class="fas fa-play mr-2"></i>Execute
                     </button>
                     <button onclick="formatQuery()"
-                        class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-hover focus:ring-4 focus:ring-border/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                        class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-hover focus:ring-4 focus:ring-border/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                         <i class="fas fa-magic mr-2"></i>Format
                     </button>
                 </div>
@@ -66,18 +66,18 @@
         </div>
 
         <!-- Results -->
-        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mt-6 border border-border">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mt-6 border border-border">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-bold text-text-primary">
                     <i class="fas fa-table mr-2"></i>Results
                 </h2>
                 <div class="flex space-x-2">
                     <button onclick="exportResults()"
-                        class="text-theme-success-text bg-transparent border border-theme-success-text hover:bg-theme-success-bg/10 focus:ring-4 focus:ring-theme-success-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                        class="text-theme-success-text bg-transparent border border-theme-success-text hover:bg-theme-success-bg/10 focus:ring-4 focus:ring-theme-success-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                         <i class="fas fa-download mr-2"></i>Export
                     </button>
                     <button onclick="clearResults()"
-                        class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-hover focus:ring-4 focus:ring-border/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                        class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-hover focus:ring-4 focus:ring-border/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                         <i class="fas fa-trash mr-2"></i>Clear
                     </button>
                 </div>
@@ -95,7 +95,7 @@
     <!-- Sidebar -->
     <div class="space-y-6">
         <!-- Quick Queries -->
-        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
             <h3 class="text-lg font-bold text-text-primary mb-4">
                 <i class="fas fa-bolt mr-2"></i>Quick Queries
             </h3>
@@ -129,7 +129,7 @@
         </div>
 
         <!-- Table Schema -->
-        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
             <h3 class="text-lg font-bold text-text-primary mb-4">
                 <i class="fas fa-database mr-2"></i>Table Schema
             </h3>
@@ -156,7 +156,7 @@
         </div>
 
         <!-- Query History -->
-        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
             <h3 class="text-lg font-bold text-text-primary mb-4">
                 <i class="fas fa-history mr-2"></i>Query History
             </h3>

@@ -9,7 +9,7 @@
 <div class="mb-4 border-b border-border">
     <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="research-tabs" role="tablist">
         <li class="me-2" role="presentation">
-            <button class="inline-block p-4 border-b-2 rounded-t-lg focus:outline-none active text-accent border-accent" id="articles-tab"
+            <button class="inline-block p-4 border-b-2 rounded-t-lg focus:outline-hidden active text-accent border-accent" id="articles-tab"
                 data-tabs-target="#articles-content" data-tabs-toggle="#articles-tab" type="button" role="tab"
                 aria-controls="articles-content" aria-selected="true">
                 📚 Articles
@@ -17,7 +17,7 @@
         </li>
         <li class="me-2" role="presentation">
             <button
-                class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-text-primary hover:border-border-hover focus:outline-none"
+                class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-text-primary hover:border-border-hover focus:outline-hidden"
                 id="search-tab" data-tabs-target="#search-content" data-tabs-toggle="#search-tab" type="button"
                 role="tab" aria-controls="search-content" aria-selected="false">
                 🔍 Search
@@ -30,7 +30,7 @@
 <div id="articles-content" role="tabpanel" aria-labelledby="articles-tab">
 <!-- Statistics Dashboard -->
 {% if stats %}
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
     <h2 class="text-2xl font-bold text-text-primary mb-6">📊 Statistics</h2>
 
     <!-- Metrics Row -->
@@ -87,7 +87,7 @@
 {% endif %}
 
 <!-- Filters Section -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-4 mb-6 border border-border">
     <form action="/research" method="GET" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Search -->
@@ -173,7 +173,7 @@
             </div>
 
             <button type="submit"
-                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2 focus:outline-none transition-colors duration-200">
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2 focus:outline-hidden transition-colors duration-200">
                 <i class="fas fa-filter mr-2"></i>Apply Filters
             </button>
         </div>
@@ -181,7 +181,7 @@
 </div>
 
 <!-- Re-Analyze Controls -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-4 mb-6 border border-border">
     <div class="flex items-center justify-between flex-wrap gap-4">
         <div class="flex items-center gap-4 flex-1">
             <label for="reanalysis-model" class="text-sm font-medium text-text-primary">Re-Analysis Model:</label>
@@ -192,7 +192,7 @@
             <span id="selected-count" class="text-sm text-text-secondary hidden">0 articles selected</span>
         </div>
         <button id="reanalyze-btn" disabled
-            class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+            class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-hidden disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
             <i class="fas fa-sync-alt mr-2"></i>Re-Analyze Selected
         </button>
     </div>
@@ -210,7 +210,7 @@
 <div class="grid grid-cols-1 gap-6" id="research-articles-grid">
     {% for article in articles %}
     <div id="article-card-{{ article.id }}" data-article-id="{{ article.id }}"
-        class="bg-dashboard-surface rounded-lg shadow-sm border border-border hover:shadow-md transition-shadow duration-200">
+        class="bg-dashboard-surface rounded-lg shadow-xs border border-border hover:shadow-md transition-shadow duration-200">
         <div class="p-6">
             <div class="flex items-start gap-3 mb-4">
                 <input type="checkbox"
@@ -310,7 +310,7 @@
 
                 <!-- Inline expand/collapse button -->
                 <button id="toggle-btn-{{ article.id }}" onclick="toggleSummary('{{ article.id }}')"
-                    class="text-accent hover:text-accent-hover text-sm font-medium focus:outline-none mt-2 inline-flex items-center transition-colors">
+                    class="text-accent hover:text-accent-hover text-sm font-medium focus:outline-hidden mt-2 inline-flex items-center transition-colors">
                     <span id="toggle-text-{{ article.id }}">Show more</span>
                     <i id="toggle-icon-{{ article.id }}"
                         class="fas fa-chevron-down ml-1 transition-transform duration-300"></i>
@@ -324,14 +324,14 @@
                     <span>ID: {{ article.id|string|truncate(8, True, '') }}</span>
                     <button type="button"
                         onclick="openFullTextModal('{{ article.id }}')"
-                        class="text-accent hover:text-accent-hover font-medium focus:outline-none">
+                        class="text-accent hover:text-accent-hover font-medium focus:outline-hidden">
                         View full text
                     </button>
                 </div>
                 {% if is_admin %}
                 <button type="button"
                     onclick="deleteArticle('{{ article.id }}')"
-                    class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-theme-error-text text-theme-error-text hover:bg-theme-error-bg focus:outline-none focus:ring-2 focus:ring-theme-error-text/40">
+                    class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-theme-error-text text-theme-error-text hover:bg-theme-error-bg focus:outline-hidden focus:ring-2 focus:ring-theme-error-text/40">
                     <i class="fas fa-trash-alt mr-1"></i>
                     Delete
                 </button>
@@ -340,7 +340,7 @@
         </div>
     </div>
     {% else %}
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-12 text-center">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-12 text-center">
         <div class="text-text-tertiary mb-4">
             <i class="fas fa-search text-5xl"></i>
         </div>
@@ -411,7 +411,7 @@
     {% endif %}
 
     <!-- Search Form -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
         <h2 class="text-2xl font-bold text-text-primary mb-4">🔍 Search</h2>
         <form id="search-form" class="space-y-4">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -470,7 +470,7 @@
             </div>
 
             <button type="submit" id="search-submit-btn"
-                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none transition-colors duration-200 {% if not searxng_available %}disabled:opacity-50 disabled:cursor-not-allowed{% endif %}"
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-hidden transition-colors duration-200 {% if not searxng_available %}disabled:opacity-50 disabled:cursor-not-allowed{% endif %}"
                 {% if not searxng_available %}disabled{% endif %}>
                 <i class="fas fa-search mr-2"></i>Search
             </button>
@@ -479,7 +479,7 @@
 
     <!-- Search Results -->
     <div id="search-results-container" class="hidden">
-        <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-xl font-bold text-text-primary">
                     <span id="results-count">0</span> Results
@@ -495,7 +495,7 @@
     </div>
 
     <!-- Loading State -->
-    <div id="search-loading" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-12 text-center border border-border">
+    <div id="search-loading" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-12 text-center border border-border">
         <div class="text-text-tertiary mb-4">
             <i class="fas fa-spinner fa-spin text-5xl"></i>
         </div>
@@ -503,7 +503,7 @@
     </div>
 
     <!-- Empty State -->
-    <div id="search-empty" class="hidden bg-dashboard-surface rounded-lg shadow-sm p-12 text-center border border-border">
+    <div id="search-empty" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-12 text-center border border-border">
         <div class="text-text-tertiary mb-4">
             <i class="fas fa-search text-5xl"></i>
         </div>
@@ -1042,7 +1042,7 @@
         toastEl.innerHTML = `
             <i class="fas ${icon} text-lg"></i>
             <span class="font-medium text-sm">${message}</span>
-            <button onclick="this.parentElement.remove()" class="ml-auto text-text-tertiary hover:text-text-primary focus:outline-none">
+            <button onclick="this.parentElement.remove()" class="ml-auto text-text-tertiary hover:text-text-primary focus:outline-hidden">
                 <i class="fas fa-times"></i>
             </button>
         `;
@@ -1307,26 +1307,26 @@
             <!-- Action Buttons -->
             <div class="flex flex-wrap gap-2 mb-3">
                 <button onclick="scrapeResult('${result.id}')" id="btn-scrape-${result.id}"
-                    class="px-3 py-1.5 text-xs font-medium rounded border border-accent text-accent hover:bg-accent/10 focus:outline-none transition-colors">
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-accent text-accent hover:bg-accent/10 focus:outline-hidden transition-colors">
                     <i class="fas fa-download mr-1"></i>Scrape
                 </button>
                 <button onclick="summarizeResult('${result.id}', '${model}')" id="btn-summarize-${result.id}"
-                    class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-hidden transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled>
                     <i class="fas fa-file-alt mr-1"></i>Summarize
                 </button>
                 <button onclick="analyzeResult('${result.id}', '${model}')" id="btn-analyze-${result.id}"
-                    class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-hidden transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled>
                     <i class="fas fa-brain mr-1"></i>Analyze
                 </button>
                 <button onclick="reanalyzeResult('${result.id}')" id="btn-reanalyze-${result.id}"
-                    class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-hidden transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled>
                     <i class="fas fa-sync-alt mr-1"></i>Re-Analyze
                 </button>
                 <button onclick="saveResult('${result.id}')" id="btn-save-${result.id}"
-                    class="px-3 py-1.5 text-xs font-medium rounded border border-accent text-accent hover:bg-accent/10 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="px-3 py-1.5 text-xs font-medium rounded border border-accent text-accent hover:bg-accent/10 focus:outline-hidden transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled>
                     <i class="fas fa-save mr-1"></i>Save
                 </button>

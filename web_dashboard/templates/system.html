@@ -22,7 +22,7 @@
 <div id="content-status">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <!-- Database Status -->
-        <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 status-card">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 status-card">
             <h3 class="text-lg font-semibold text-text-primary mb-2">Database Connection</h3>
             <div id="status-db" class="flex items-center">
                 <div class="animate-pulse bg-dashboard-background h-6 w-24 rounded"></div>
@@ -31,7 +31,7 @@
         </div>
 
         <!-- Postgres Status -->
-        <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 status-card">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 status-card">
             <h3 class="text-lg font-semibold text-text-primary mb-2">Research Repository</h3>
             <div id="status-postgres" class="flex items-center">
                 <div class="animate-pulse bg-dashboard-background h-6 w-24 rounded"></div>
@@ -40,7 +40,7 @@
         </div>
 
         <!-- Exchange Rates -->
-        <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 status-card">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 status-card">
             <h3 class="text-lg font-semibold text-text-primary mb-2">Exchange Rates</h3>
             <div id="status-rates">
                 <div class="animate-pulse bg-dashboard-background h-6 w-24 rounded"></div>
@@ -50,7 +50,7 @@
     </div>
 
     <!-- Registration Control -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 mb-6">
         <h3 class="text-lg font-semibold text-text-primary mb-4">Registration Control</h3>
         <p class="text-sm text-text-secondary mb-4">Control whether new users can register accounts. Existing users are
             not affected.</p>
@@ -58,7 +58,7 @@
             <label class="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" id="registration-toggle" class="sr-only peer" onchange="toggleRegistration()">
                 <div
-                    class="w-11 h-6 bg-gray-400 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent/30 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent">
+                    class="w-11 h-6 bg-gray-400 peer-focus:outline-hidden peer-focus:ring-4 peer-focus:ring-accent/30 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent">
                 </div>
                 <span class="ms-3 text-sm font-medium text-text-primary">Allow New Registrations</span>
             </label>
@@ -69,13 +69,13 @@
     </div>
 
     <!-- Cache Management -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 mb-6">
         <h3 class="text-lg font-semibold text-text-primary mb-4">Cache Management</h3>
         <p class="text-sm text-text-secondary mb-4">Reset all system caches and increment the cache version to force
             fresh data retrieval.</p>
         <div class="flex items-center space-x-4">
             <button id="reset-cache-btn" onclick="resetSystemCache()"
-                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center transition-colors duration-200">
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:outline-hidden focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center transition-colors duration-200">
                 <i class="fas fa-trash-alt mr-2"></i> Reset System Cache
             </button>
             <div id="cache-status" class="text-sm text-text-secondary"></div>
@@ -83,7 +83,7 @@
     </div>
 
     <!-- Recent Jobs -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6">
         <h3 class="text-lg font-semibold text-text-primary mb-4">Recent Scheduler Jobs</h3>
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left text-text-secondary">

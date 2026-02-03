@@ -204,15 +204,15 @@ web_dashboard/
 
 #### Core CSS & UI Libraries
 
-1. **Tailwind CSS** (v3.4.1) - **PRIMARY CSS FRAMEWORK**
-   - Utility-first CSS framework for all styling
-   - Built from source: `npm run build:css`
-   - Output: `web_dashboard/static/css/tailwind.css`
-   - **✅ DO**: Use Tailwind utility classes for all styling
-   - **❌ DON'T**: Write custom CSS unless absolutely necessary (use Tailwind classes instead)
+1. **Tailwind CSS** (v4.x) - **PRIMARY CSS FRAMEWORK**
+ - Utility-first CSS framework for all styling
+ - Built from source: `npm run build:css` (PostCSS + `@tailwindcss/postcss`)
+ - Output: `web_dashboard/static/css/tailwind.css`
+ - **✅ DO**: Use Tailwind utility classes for all styling
+ - **❌ DON'T**: Write custom CSS unless absolutely necessary (use Tailwind classes instead)
 
-2. **Flowbite** (v2.5.2) - **PRIMARY UI COMPONENT LIBRARY**
-   - Interactive UI components built on top of Tailwind CSS
+2. **Flowbite** (v4.x) - **PRIMARY UI COMPONENT LIBRARY**
+ - Interactive UI components built on top of Tailwind CSS
    - Provides: modals, dropdowns, drawers, tooltips, tabs, forms, etc.
    - **✅ DO**: Use Flowbite components for interactive UI elements
    - **❌ DON'T**: Build custom components that Flowbite already provides
@@ -278,7 +278,7 @@ npm run build
 - Tailwind source: `web_dashboard/static/css/input.css`
 - Tailwind output: `web_dashboard/static/css/tailwind.css`
 - Theme CSS: `web_dashboard/static/css/theme.css` (custom theme variables)
-- Head content (includes Flowbite CSS): `web_dashboard/templates/components/_head_content.html`
+- Head content: `web_dashboard/templates/components/_head_content.html` (Flowbite styles are built into tailwind.css)
 - Scripts content (includes Flowbite JS): `web_dashboard/templates/components/_scripts_content.html`
 
 **Before Adding New CSS/UI Libraries:**

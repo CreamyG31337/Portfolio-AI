@@ -13,13 +13,13 @@
 <div class="mb-6 border-b border-border">
     <ul class="flex flex-wrap -mb-px text-sm font-medium text-center text-text-secondary" id="logs-tabs" role="tablist" data-tabs-toggle="#logs-tab-content" data-tabs-active-classes="text-accent border-accent" data-tabs-inactive-classes="text-text-secondary border-transparent hover:text-text-primary hover:border-border">
         <li class="me-2" role="presentation">
-            <button class="inline-block p-4 border-b-2 border-accent rounded-t-lg text-accent focus:outline-none" id="application-tab"
+            <button class="inline-block p-4 border-b-2 border-accent rounded-t-lg text-accent focus:outline-hidden" id="application-tab"
                 data-tabs-target="#application" type="button" role="tab" aria-controls="application" aria-selected="true">
                 📋 Application Logs
             </button>
         </li>
         <li class="me-2" role="presentation">
-            <button class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-text-primary hover:border-border focus:outline-none" id="ollama-tab"
+            <button class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-text-primary hover:border-border focus:outline-hidden" id="ollama-tab"
                 data-tabs-target="#ollama" type="button" role="tab" aria-controls="ollama" aria-selected="false">
                 🤖 Ollama Logs
             </button>
@@ -32,7 +32,7 @@
 <div id="application" class="block" role="tabpanel" aria-labelledby="application-tab">
     <!-- Controls -->
     <!-- Controls -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div class="md:col-span-1">
                 <label class="block text-sm font-medium text-text-primary mb-2">Log levels</label>
@@ -62,7 +62,7 @@
             <div>
                 <label class="block text-sm font-medium text-text-primary mb-2">Show</label>
                 <select id="limit-select"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent">
                     <option value="50">50</option>
                     <option value="100" selected>100</option>
                     <option value="200">200</option>
@@ -73,15 +73,15 @@
             <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-text-primary mb-2">Search</label>
                 <input type="text" id="search-input" placeholder="Filter by text..."
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent">
             </div>
             <div class="flex items-end space-x-2">
                 <button id="refresh-btn"
-                    class="flex-1 text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                    class="flex-1 text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                     <i class="fas fa-sync-alt mr-2"></i>Refresh
                 </button>
                 <button id="clear-btn"
-                    class="flex-1 text-theme-error-text bg-transparent border border-theme-error-text hover:bg-theme-error-bg/10 focus:ring-4 focus:ring-theme-error-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                    class="flex-1 text-theme-error-text bg-transparent border border-theme-error-text hover:bg-theme-error-bg/10 focus:ring-4 focus:ring-theme-error-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                     <i class="fas fa-trash mr-2"></i>Clear
                 </button>
             </div>
@@ -95,7 +95,7 @@
     </div>
 
     <!-- Stats -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-4 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-4 mb-6">
         <div class="flex items-center justify-between">
             <div id="stats-text" class="text-sm text-text-secondary">Loading...</div>
             <div id="pagination-controls" class="flex items-center space-x-2">
@@ -113,7 +113,7 @@
     </div>
 
     <!-- Logs Display -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6">
         <div id="loading" class="text-center py-8 text-text-secondary">
             <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
             <p>Loading logs...</p>
@@ -127,7 +127,7 @@
     </div>
 
     <!-- Pagination at bottom -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-4 mt-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-4 mt-6">
         <div class="flex items-center justify-between">
             <div id="stats-text-bottom" class="text-sm text-text-secondary">Loading...</div>
             <div class="flex items-center space-x-2">
@@ -148,12 +148,12 @@
 <!-- Ollama Logs Tab Content -->
 <div id="ollama" class="hidden" role="tabpanel" aria-labelledby="ollama-tab">
     <!-- Controls -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
                 <label class="block text-sm font-medium text-text-primary mb-2">Show</label>
                 <select id="limit-select-ollama"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent">
                     <option value="50">50</option>
                     <option value="100" selected>100</option>
                     <option value="200">200</option>
@@ -164,11 +164,11 @@
             <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-text-primary mb-2">Search</label>
                 <input type="text" id="search-input-ollama" placeholder="Filter by text..."
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-none focus:ring-2 focus:ring-accent">
+                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent">
             </div>
             <div class="flex items-end">
                 <button id="refresh-btn-ollama"
-                    class="w-full text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                    class="w-full text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                     <i class="fas fa-sync-alt mr-2"></i>Refresh
                 </button>
             </div>
@@ -182,7 +182,7 @@
     </div>
 
     <!-- Stats -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-4 mb-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-4 mb-6">
         <div class="flex items-center justify-between">
             <div id="stats-text-ollama" class="text-sm text-text-secondary">Loading...</div>
             <div id="pagination-controls-ollama" class="flex items-center space-x-2">
@@ -200,7 +200,7 @@
     </div>
 
     <!-- Logs Display -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6">
         <div id="loading-ollama" class="text-center py-8 text-text-secondary">
             <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
             <p>Loading logs...</p>
@@ -214,7 +214,7 @@
     </div>
 
     <!-- Pagination at bottom (Ollama) -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-4 mt-6">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-4 mt-6">
         <div class="flex items-center justify-between">
             <div id="stats-text-ollama-bottom" class="text-sm text-text-secondary">Loading...</div>
             <div class="flex items-center space-x-2">

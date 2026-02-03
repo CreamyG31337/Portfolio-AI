@@ -122,7 +122,7 @@ async function loadFunds(): Promise<void> {
                         <td class="px-6 py-4">
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" value="" class="sr-only peer" ${fund.is_production ? 'checked' : ''} onchange="window.toggleProduction('${escapeHtmlForFunds(fund.name)}', this.checked)">
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent dark:bg-gray-700 dark:border-gray-600"></div>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-hidden peer-focus:ring-4 peer-focus:ring-accent/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent dark:bg-gray-700 dark:border-gray-600"></div>
                             </label>
                         </td>
                         <td class="px-6 py-4 text-text-secondary">
@@ -157,7 +157,7 @@ async function loadFunds(): Promise<void> {
             const totalPositions = allFunds.reduce((sum, f) => sum + (f.positions || 0), 0);
 
             statsCards.innerHTML = `
-                <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+                <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6">
                     <div class="flex items-center">
                         <div class="p-3 bg-theme-info-bg rounded-lg">
                             <i class="fas fa-building text-theme-info-text text-2xl"></i>
@@ -168,7 +168,7 @@ async function loadFunds(): Promise<void> {
                         </div>
                     </div>
                 </div>
-                <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+                <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6">
                     <div class="flex items-center">
                         <div class="p-3 bg-theme-success-bg rounded-lg">
                             <i class="fas fa-check-circle text-theme-success-text text-2xl"></i>
@@ -179,7 +179,7 @@ async function loadFunds(): Promise<void> {
                         </div>
                     </div>
                 </div>
-                <div class="bg-dashboard-surface rounded-lg shadow-sm border border-border p-6">
+                <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6">
                     <div class="flex items-center">
                         <div class="p-3 bg-purple-100 rounded-lg dark:bg-purple-900/30">
                             <i class="fas fa-chart-line text-purple-600 text-2xl dark:text-purple-400"></i>

@@ -11,7 +11,7 @@
 {% block content %}
 <!-- Quick Stats -->
 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
         <div class="flex items-center">
             <div class="p-3 bg-theme-info-bg/20 rounded-full">
                 <i class="fas fa-database text-theme-info-text text-xl"></i>
@@ -23,7 +23,7 @@
         </div>
     </div>
 
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
         <div class="flex items-center">
             <div class="p-3 bg-theme-success-bg/20 rounded-full">
                 <i class="fas fa-chart-line text-theme-success-text text-xl"></i>
@@ -35,7 +35,7 @@
         </div>
     </div>
 
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
         <div class="flex items-center">
             <div class="p-3 bg-accent/10 rounded-full">
                 <i class="fas fa-code text-accent text-xl"></i>
@@ -47,7 +47,7 @@
         </div>
     </div>
 
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
         <div class="flex items-center">
             <div class="p-3 bg-theme-warning-bg/20 rounded-full">
                 <i class="fas fa-bug text-theme-warning-text text-xl"></i>
@@ -63,7 +63,7 @@
 <!-- Main Tools -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
     <!-- SQL Interface -->
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
         <div class="flex items-center mb-4">
             <i class="fas fa-terminal text-accent text-2xl mr-3"></i>
             <h2 class="text-2xl font-bold text-text-primary">SQL Interface</h2>
@@ -85,14 +85,14 @@
             </div>
         </div>
         <a href="/dev/sql"
-            class="mt-4 inline-block text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:outline-none focus:ring-accent/30 font-medium rounded-lg text-sm px-6 py-3 transition-colors duration-200">
+            class="mt-4 inline-block text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:outline-hidden focus:ring-accent/30 font-medium rounded-lg text-sm px-6 py-3 transition-colors duration-200">
             <i class="fas fa-play mr-2"></i>Open SQL Interface
         </a>
     </div>
 </div>
 
 <!-- API Documentation -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mt-8 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mt-8 border border-border">
     <div class="flex items-center mb-4">
         <i class="fas fa-book text-accent text-2xl mr-3"></i>
         <h2 class="text-2xl font-bold text-text-primary">API Endpoints</h2>
@@ -131,7 +131,7 @@
 </div>
 
 <!-- Auth Debugging -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mt-8 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mt-8 border border-border">
     <div class="flex items-center mb-4">
         <i class="fas fa-key text-theme-error-text text-2xl mr-3"></i>
         <h2 class="text-2xl font-bold text-text-primary">Authentication Debug</h2>
@@ -141,15 +141,15 @@
     <div id="auth-debug-content" class="space-y-4">
         <div class="flex flex-wrap items-center gap-4">
             <button onclick="loadAuthDebug()"
-                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                 <i class="fas fa-sync mr-2"></i>Refresh Debug Info
             </button>
             <button onclick="testRefreshToken()"
-                class="text-theme-success-text bg-transparent border border-theme-success-text hover:bg-theme-success-bg/10 focus:ring-4 focus:ring-theme-success-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                class="text-theme-success-text bg-transparent border border-theme-success-text hover:bg-theme-success-bg/10 focus:ring-4 focus:ring-theme-success-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                 <i class="fas fa-redo mr-2"></i>Test Token Refresh
             </button>
             <button onclick="testLoginResponse()"
-                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-none transition-colors duration-200">
+                class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                 <i class="fas fa-sign-in-alt mr-2"></i>Test Login Response
             </button>
         </div>
@@ -161,7 +161,7 @@
 </div>
 
 <!-- Quick Actions -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mt-8 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mt-8 border border-border">
     <div class="flex items-center mb-4">
         <i class="fas fa-bolt text-theme-warning-text text-2xl mr-3"></i>
         <h2 class="text-2xl font-bold text-text-primary">Quick Actions</h2>

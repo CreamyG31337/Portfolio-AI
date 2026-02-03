@@ -77,7 +77,7 @@ function setMode(mode: SecurityMode): void {
         const isActive = button.dataset.modeToggle === mode;
         button.classList.toggle("bg-dashboard-surface", isActive);
         button.classList.toggle("text-text-primary", isActive);
-        button.classList.toggle("shadow-sm", isActive);
+        button.classList.toggle("shadow-xs", isActive);
         button.classList.toggle("text-text-secondary", !isActive);
     });
 
@@ -242,7 +242,7 @@ function renderSecurities(securities: SecurityMetadata[], mode: SecurityMode, qu
         const hasDescription = Boolean(security.description && security.description.trim());
 
         return `
-            <div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border">
+            <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                     <div>
                         <h3 class="text-lg font-bold text-text-primary">${ticker}</h3>

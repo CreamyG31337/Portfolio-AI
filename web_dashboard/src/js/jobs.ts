@@ -763,7 +763,7 @@ function createJobCard(job: Job): string {
                 
                 <div class="mt-4 flex justify-end border-t border-border pt-3">
                      <button class="text-sm text-text-secondary mr-3 hover:text-text-primary px-3 py-1.5" onclick="toggleParams('${safeJsJobId}')">Cancel</button>
-                     <button class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-1.5 focus:outline-none transition-colors duration-200 flex items-center run-btn" 
+                     <button class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-1.5 focus:outline-hidden transition-colors duration-200 flex items-center run-btn" 
                         onclick="runJobWithParams('${safeJsJobId}', '${escapeJsString(job.actual_job_id || job.id)}')">
                         <i class="fas fa-play mr-1.5 text-xs"></i> Run Now
                      </button>
@@ -781,7 +781,7 @@ function createJobCard(job: Job): string {
     const safeJsJobId = escapeJsString(job.id);
 
     return `
-        <div class="job-card bg-dashboard-surface rounded-lg shadow-sm p-6 border-l-4 ${getStatusBorderColor(job)} relative border-border">
+        <div class="job-card bg-dashboard-surface rounded-lg shadow-xs p-6 border-l-4 ${getStatusBorderColor(job)} relative border-border">
             <div class="flex justify-between items-start">
                 <div>
                     <div class="flex items-center space-x-3">

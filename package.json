@@ -3,17 +3,18 @@
   "version": "1.0.0",
   "description": "Trading bot web dashboard with Tailwind CSS",
   "scripts": {
-    "build:css": "tailwindcss -i web_dashboard/static/css/input.css -o web_dashboard/static/css/tailwind.css --minify",
-    "watch:css": "tailwindcss -i web_dashboard/static/css/input.css -o web_dashboard/static/css/tailwind.css --watch",
+    "build:css": "postcss web_dashboard/static/css/input.css -o web_dashboard/static/css/tailwind.css",
+    "watch:css": "postcss web_dashboard/static/css/input.css -o web_dashboard/static/css/tailwind.css --watch",
     "build:ts": "tsc -p web_dashboard/tsconfig.json --pretty --listFiles --diagnostics",
     "build": "npm run build:css && npm run build:ts",
     "test:ts": "tsc -p web_dashboard/tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "autoprefixer": "^10.4.17",
+    "@tailwindcss/postcss": "^4.1.0",
     "flowbite": "^4.0.1",
     "postcss": "^8.4.35",
-    "tailwindcss": "^3.4.1",
+    "postcss-cli": "^11.0.0",
+    "tailwindcss": "^4.1.0",
     "typescript": "^5.3.0"
   },
   "engines": {

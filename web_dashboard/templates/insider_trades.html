@@ -53,7 +53,7 @@
 </div>
 
 <!-- Filters -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-4 mb-6 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-4 mb-6 border border-border">
     <form id="filters-form" action="/insider_trades" method="GET" class="space-y-4">
         <input type="hidden" name="refresh_key" value="{{ refresh_key }}">
 
@@ -134,7 +134,7 @@
 </div>
 
 <!-- Summary Statistics -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
     <h2 class="text-xl font-bold mb-4 text-text-primary">📊 Summary Statistics</h2>
     <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div class="bg-dashboard-surface-alt rounded-lg p-4">
@@ -166,22 +166,22 @@
 
 <!-- Charts -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border min-w-0">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-4 border border-border min-w-0">
         <h3 class="text-sm font-semibold text-text-primary mb-3">Top 10 Active Insiders</h3>
         <div id="insider-top-insiders-chart" class="h-[280px]"></div>
     </div>
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border min-w-0">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-4 border border-border min-w-0">
         <h3 class="text-sm font-semibold text-text-primary mb-3">Daily Transaction Volume</h3>
         <div id="insider-volume-chart" class="h-[280px]"></div>
     </div>
-    <div class="bg-dashboard-surface rounded-lg shadow-sm p-4 border border-border min-w-0">
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-4 border border-border min-w-0">
         <h3 class="text-sm font-semibold text-text-primary mb-3">Purchase vs Sale Distribution</h3>
         <div id="insider-type-distribution-chart" class="h-[280px]"></div>
     </div>
 </div>
 
 <!-- Notable Trades -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 mb-6 border border-border min-w-0">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border min-w-0">
     <div>
         <h2 class="text-xl font-bold text-text-primary">⭐ Notable Trades</h2>
         <p class="text-xs text-text-secondary mt-1">Top 5 trades from the last 7 days.</p>
@@ -199,7 +199,7 @@
 </div>
 
 <!-- Data Table -->
-<div class="bg-dashboard-surface rounded-lg shadow-sm p-6 border border-border min-w-0">
+<div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border min-w-0">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 class="text-xl font-bold text-text-primary">📋 Insider Trades</h2>
         <button type="button" onclick="downloadCsv()"
