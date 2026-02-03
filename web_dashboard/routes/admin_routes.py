@@ -1899,8 +1899,15 @@ def api_preview_email_trade():
     """
     try:
         try:
-            # Ensure project root is on path (in case CWD differs in production)
-            _root = Path(__file__).resolve().parent.parent.parent
+            # Ensure repo root (must contain data/models and utils) is on path
+            _here = Path(__file__).resolve().parent
+            _root = None
+            for _candidate in [_here.parent.parent, _here.parent.parent.parent, _here.parent.parent.parent.parent]:
+                if (_candidate / "data" / "models").is_dir() and (_candidate / "utils").is_dir():
+                    _root = _candidate
+                    break
+            if _root is None:
+                _root = _here.parent.parent.parent  # fallback
             if str(_root) not in sys.path:
                 sys.path.insert(0, str(_root))
             from utils.email_trade_parser import EmailTradeParser
