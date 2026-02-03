@@ -915,8 +915,14 @@ def fetch_latest_rates_bulk_flask(currencies: List[str], target_currency: str) -
         from datetime import datetime, timedelta
         thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
         
-        response = client.supabase.table('exchange_rates').select('*') \
+        # Optimization: Select only needed columns and filter for relevant currencies
+        # We need rates where both from/to are in the set of {currencies + target}
+        relevant_currencies = list(set(unique_currencies + [target_currency.upper()]))
+
+        response = client.supabase.table('exchange_rates').select('from_currency,to_currency,timestamp,rate') \
             .gte('timestamp', thirty_days_ago) \
+            .in_('from_currency', relevant_currencies) \
+            .in_('to_currency', relevant_currencies) \
             .execute()
             
         if not response.data:
