@@ -13,7 +13,7 @@ from auth import require_auth, require_admin, is_admin
 from research_repository import ResearchRepository
 from research_utils import validate_ticker_in_content
 from user_preferences import get_user_preference
-from flask_auth_utils import get_user_email_flask, get_auth_token, get_user_id_flask
+from flask_auth_utils import get_user_email_flask, get_supabase_access_token, get_user_id_flask
 from flask_cache_utils import cache_resource, cache_data
 # Note: get_navigation_context imported inside function to avoid circular import
 
@@ -424,7 +424,7 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
         owned_tickers = []
         try:
             # Try to get user token for Supabase client
-            user_token = get_auth_token()
+            user_token = get_supabase_access_token()
             user_id = get_user_id_flask()
             
             # Use service role for admin users, user token for regular users
@@ -778,7 +778,7 @@ def reanalyze_article_stream():
                 # Get owned tickers for relevance
                 owned_tickers = []
                 try:
-                    user_token = get_auth_token()
+                    user_token = get_supabase_access_token()
                     client = None
                     if user_token:
                         try:
@@ -1185,4 +1185,3 @@ def api_research_save():
     except Exception as e:
         logger.error(f"Error saving article: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
-

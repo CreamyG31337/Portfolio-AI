@@ -137,10 +137,9 @@ def get_user_preference(key: str, default: Any = None) -> Any:
                 # We're in a Flask request - get tokens from cookies
                 try:
                     from supabase_client import SupabaseClient
-                    from flask_auth_utils import get_auth_token, get_refresh_token
+                    from flask_auth_utils import get_supabase_access_token
                     
-                    user_token = get_auth_token()
-                    # refresh_token = get_refresh_token()
+                    user_token = get_supabase_access_token()
                     client = SupabaseClient(user_token=user_token) if user_token else SupabaseClient()
                 except ImportError as e:
                     logger.warning(f"Cannot get preference in Flask context: {e}")
@@ -359,10 +358,9 @@ def set_user_preference(key: str, value: Any) -> bool:
                 # We're in a Flask request - get tokens from cookies
                 try:
                     from supabase_client import SupabaseClient
-                    from flask_auth_utils import get_auth_token, get_refresh_token
+                    from flask_auth_utils import get_supabase_access_token
                     
-                    user_token = get_auth_token()
-                    # refresh_token = get_refresh_token()
+                    user_token = get_supabase_access_token()
                     if user_token:
                         logger.debug(f"[PREF] Creating SupabaseClient with tokens (access: {len(user_token)}) for preference '{key}'")
                         client = SupabaseClient(user_token=user_token)
@@ -605,8 +603,8 @@ def get_all_user_preferences() -> Dict[str, Any]:
                 # We're in a Flask request - get tokens from cookies
                 try:
                     from supabase_client import SupabaseClient
-                    from flask_auth_utils import get_auth_token
-                    user_token = get_auth_token()
+                    from flask_auth_utils import get_supabase_access_token
+                    user_token = get_supabase_access_token()
                     logger.debug(f"[PREF] Flask context: user_token present={bool(user_token)}")
                     client = SupabaseClient(user_token=user_token) if user_token else SupabaseClient()
                 except ImportError as e:

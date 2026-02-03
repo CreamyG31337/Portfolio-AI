@@ -26,11 +26,10 @@ def get_supabase_client_flask() -> Optional[SupabaseClient]:
     which sets the Authorization header so RLS policies work correctly.
     """
     try:
-        from flask_auth_utils import get_auth_token, get_refresh_token
+        from flask_auth_utils import get_supabase_access_token
         
         # Get the user's JWT token from cookies
-        user_token = get_auth_token()
-        # refresh_token = get_refresh_token()
+        user_token = get_supabase_access_token()
         
         if not user_token:
             logger.warning("[get_supabase_client_flask] No auth_token cookie found - RLS queries will fail!")

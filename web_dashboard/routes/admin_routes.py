@@ -1899,10 +1899,17 @@ def api_preview_email_trade():
     """
     try:
         try:
+            # Ensure project root is on path (in case CWD differs in production)
+            _root = Path(__file__).resolve().parent.parent.parent
+            if str(_root) not in sys.path:
+                sys.path.insert(0, str(_root))
             from utils.email_trade_parser import EmailTradeParser
-        except ImportError:
-            logger.error("EmailTradeParser not available (utils.email_trade_parser import failed)", exc_info=True)
-            return jsonify({"error": "Email trade parser is not available. Check server logs."}), 500
+        except ImportError as ie:
+            logger.exception("EmailTradeParser import failed")
+            return jsonify({
+                "error": "Email trade parser is not available: " + str(ie),
+                "detail": str(ie)
+            }), 500
 
         data = request.get_json()
         email_text = data.get('text', '')

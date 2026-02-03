@@ -10,6 +10,7 @@ Shares the same cookie format as Streamlit auth system.
 import base64
 import json
 import logging
+import os
 import threading
 from typing import Optional, Dict
 from flask import request
@@ -29,6 +30,40 @@ def get_auth_token() -> Optional[str]:
         return request._new_auth_token
     # Fall back to cookies
     return request.cookies.get('auth_token') or request.cookies.get('session_token')
+
+
+def is_supabase_jwt(token: Optional[str]) -> bool:
+    """Return True if the token looks like a Supabase access JWT."""
+    if not token:
+        return False
+    try:
+        token_parts = token.split('.')
+        if len(token_parts) < 2:
+            return False
+        payload = token_parts[1]
+        payload += '=' * (4 - len(payload) % 4)
+        decoded = base64.urlsafe_b64decode(payload)
+        claims = json.loads(decoded)
+        # Supabase access tokens include iss and aud="authenticated"
+        iss = claims.get('iss')
+        aud = claims.get('aud')
+        if aud != "authenticated":
+            return False
+        if iss:
+            supabase_url = os.getenv("SUPABASE_URL", "")
+            if supabase_url and iss.startswith(supabase_url):
+                return True
+        # If we couldn't validate iss, still treat as Supabase if aud matches
+        return True
+    except Exception:
+        return False
+
+
+def get_supabase_access_token() -> Optional[str]:
+    """Get a Supabase access token (auth_token only), never a session_token."""
+    # Prefer refreshed token if available
+    candidate = getattr(request, '_new_auth_token', None) or request.cookies.get('auth_token')
+    return candidate if is_supabase_jwt(candidate) else None
 
 
 def get_refresh_token() -> Optional[str]:
@@ -295,6 +330,12 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
     # Use session_token as fallback for token validation, but check auth_token for refresh logic
     token = auth_token or session_token  # For validation purposes
     
+    # If auth_token is present but not a Supabase JWT, treat it as missing for refresh purposes
+    if auth_token and not is_supabase_jwt(auth_token):
+        logger.warning("[FLASK_AUTH] auth_token is not a Supabase JWT; will attempt refresh if possible")
+        auth_token = None
+        token = session_token
+
     # If no auth_token but we have refresh_token, try to refresh immediately
     if not auth_token and refresh_token:
         # Missing auth_token - try to refresh using refresh_token

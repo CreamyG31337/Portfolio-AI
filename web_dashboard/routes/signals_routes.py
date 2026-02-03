@@ -19,7 +19,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from auth import require_auth
 from supabase_client import SupabaseClient
-from flask_auth_utils import get_user_email_flask, get_auth_token
+from flask_auth_utils import get_user_email_flask, get_supabase_access_token
 from flask_cache_utils import cache_resource, cache_data
 from cache_version import get_cache_version
 from auth import is_admin
@@ -40,7 +40,7 @@ def get_supabase_client():
             return SupabaseClient(use_service_role=True)
         
         # Regular users use their token to respect RLS
-        user_token = get_auth_token()
+        user_token = get_supabase_access_token()
         if user_token:
             return SupabaseClient(user_token=user_token)
         else:

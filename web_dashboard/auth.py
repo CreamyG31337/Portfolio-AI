@@ -409,16 +409,19 @@ def require_admin(f):
             if token and len(token.split('.')) == 3:
                 try:
                     from supabase_client import SupabaseClient
-                    from flask_auth_utils import get_refresh_token
-                    # Create Supabase client with user token (handles auth header properly)
-                    refresh_token = get_refresh_token()
-                    client = SupabaseClient(user_token=token)
+                    from flask_auth_utils import get_supabase_access_token
+                    # Create Supabase client with Supabase access token (handles auth header properly)
+                    supabase_token = get_supabase_access_token()
+                    client = SupabaseClient(user_token=supabase_token) if supabase_token else None
                     # Call RPC function (same way Streamlit does it)
-                    result = client.supabase.rpc('is_admin', {'user_uuid': request.user_id}).execute()
+                    if client:
+                        result = client.supabase.rpc('is_admin', {'user_uuid': request.user_id}).execute()
+                    else:
+                        result = None
                     
                     logger.debug(f"Admin check RPC result: {result.data}, type: {type(result.data)}")
                     
-                    if result.data is not None:
+                    if result and result.data is not None:
                         if isinstance(result.data, bool):
                             is_user_admin = result.data
                         elif isinstance(result.data, list) and len(result.data) > 0:
@@ -496,12 +499,12 @@ def is_admin():
             # This is critical because RPC often returns false/error for Anon key
             try:
                 from supabase_client import SupabaseClient
-                from flask_auth_utils import get_refresh_token
-                refresh_token = get_refresh_token()
-                client = SupabaseClient(user_token=token)
-                result = client.supabase.rpc('is_admin', {'user_uuid': request.user_id}).execute()
+                from flask_auth_utils import get_supabase_access_token
+                supabase_token = get_supabase_access_token()
+                client = SupabaseClient(user_token=supabase_token) if supabase_token else None
+                result = client.supabase.rpc('is_admin', {'user_uuid': request.user_id}).execute() if client else None
                 
-                if result.data is not None:
+                if result and result.data is not None:
                     if isinstance(result.data, bool):
                         return result.data
                     elif isinstance(result.data, list) and len(result.data) > 0:

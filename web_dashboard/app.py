@@ -350,13 +350,13 @@ def get_supabase_client() -> Optional[SupabaseClient]:
     """Get Supabase client instance with user authentication"""
     if not SUPABASE_AVAILABLE:
         return None
-
+    
     try:
         # Get user token from cookies to respect RLS policies
-        from flask import request
-        user_token = request.cookies.get('auth_token') or request.cookies.get('session_token')
-
-        return SupabaseClient(user_token=user_token)
+        from flask_auth_utils import get_supabase_access_token
+        user_token = get_supabase_access_token()
+        
+        return SupabaseClient(user_token=user_token) if user_token else SupabaseClient()
     except Exception as e:
         logger.error(f"Failed to initialize Supabase client: {e}", exc_info=True)
         return None
@@ -1140,7 +1140,8 @@ def index():
         import json as json_lib
         import time
 
-        auth_token = request.cookies.get('auth_token')
+        from flask_auth_utils import get_supabase_access_token
+        auth_token = get_supabase_access_token()
         session_token = request.cookies.get('session_token')
         refresh_token = get_refresh_token()
 
@@ -2567,8 +2568,9 @@ def logs_debug():
         profile_role = None
         profile_error = None
         try:
-            token = request.cookies.get('auth_token') or request.cookies.get('session_token')
-            if token and len(token.split('.')) == 3:
+            from flask_auth_utils import get_supabase_access_token
+            token = get_supabase_access_token()
+            if token:
                 # Use SupabaseClient with user token (handles auth properly)
                 client = SupabaseClient(user_token=token)
                 # Query user_profiles table directly
@@ -2585,8 +2587,9 @@ def logs_debug():
         rpc_result = None
         rpc_error = None
         try:
-            token = request.cookies.get('auth_token') or request.cookies.get('session_token')
-            if token and request_user_id and len(token.split('.')) == 3:
+            from flask_auth_utils import get_supabase_access_token
+            token = get_supabase_access_token()
+            if token and request_user_id:
                 # Use SupabaseClient with user token (handles auth properly)
                 client = SupabaseClient(user_token=token)
                 rpc_response = client.supabase.rpc('is_admin', {'user_uuid': request_user_id}).execute()
@@ -3025,11 +3028,11 @@ def settings_debug():
     """Debug endpoint to test preference saving"""
     try:
         from user_preferences import set_user_preference, get_user_preference, _get_user_id, _is_authenticated
-        from flask_auth_utils import get_user_id_flask, get_auth_token
+        from flask_auth_utils import get_user_id_flask, get_supabase_access_token
         from supabase_client import SupabaseClient
 
         user_id = get_user_id_flask()
-        token = get_auth_token()
+        token = get_supabase_access_token()
         is_authenticated = _is_authenticated()
 
         # Test creating client
@@ -3195,7 +3198,8 @@ def api_ticker_info():
 
         # Check if user is admin
         user_is_admin = is_admin()
-        auth_token = request.cookies.get('auth_token')
+        from flask_auth_utils import get_supabase_access_token
+        auth_token = get_supabase_access_token()
 
         # Get ticker info (cached)
         try:
@@ -3398,7 +3402,8 @@ def api_ticker_price_history():
         days = int(request.args.get('days', 90))
         fund = _normalize_fund_param(request.args.get('fund'))
         user_is_admin = is_admin()
-        auth_token = request.cookies.get('auth_token')
+        from flask_auth_utils import get_supabase_access_token
+        auth_token = get_supabase_access_token()
 
         # Get price history (cached)
         price_df = _get_ticker_price_history_cached(ticker, days, user_is_admin, auth_token, fund)
@@ -3685,7 +3690,8 @@ def api_ticker_chart():
             chart_range = '3m'
 
         user_is_admin = is_admin()
-        auth_token = request.cookies.get('auth_token')
+        from flask_auth_utils import get_supabase_access_token
+        auth_token = get_supabase_access_token()
 
         # Get chart (cached) - use client theme if valid, otherwise fall back to user preference
         chart_json = _get_ticker_chart_cached(
