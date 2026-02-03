@@ -6,7 +6,7 @@ A Flask web app to display trading bot portfolio performance using Supabase
 
 # Check critical dependencies first
 try:
-    from flask import Flask, render_template, jsonify, request, redirect, url_for, session, Response
+    from flask import Flask, render_template, jsonify, request, redirect, url_for, session, Response, copy_current_request_context
 except ImportError as e:
     print(f"❌ ERROR: {e}")
     print("🔔 SOLUTION: Activate the virtual environment first!")
@@ -864,9 +864,15 @@ def load_portfolio_data(fund_name=None) -> Dict:
             fund_name = available_funds[0]
 
         # Load data components using modern utils
-        portfolio_df = get_current_positions_flask(fund=fund_name)
-        trades_df = get_trade_log_flask(limit=500, fund=fund_name)
-        cash_balances = get_cash_balances_flask(fund=fund_name)
+        # Use ThreadPoolExecutor to fetch data in parallel with request context
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_portfolio = executor.submit(copy_current_request_context(get_current_positions_flask), fund=fund_name)
+            future_trades = executor.submit(copy_current_request_context(get_trade_log_flask), limit=500, fund=fund_name)
+            future_cash = executor.submit(copy_current_request_context(get_cash_balances_flask), fund=fund_name)
+
+            portfolio_df = future_portfolio.result()
+            trades_df = future_trades.result()
+            cash_balances = future_cash.result()
 
         return {
             "portfolio": portfolio_df,
@@ -890,35 +896,6 @@ def load_portfolio_data(fund_name=None) -> Dict:
 def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataFrame, fund_name=None) -> Dict:
     """Calculate key performance metrics for a specific fund or all funds"""
     try:
-        client = get_supabase_client()
-        if client and fund_name:
-            # Get metrics for specific fund
-            positions = client.get_current_positions(fund=fund_name)
-            trades = client.get_trade_log(limit=1000, fund=fund_name)
-
-            # Use correct column names from latest_positions view
-            total_value = sum(float(pos.get("market_value", 0) or 0) for pos in positions)
-            total_cost_basis = sum(float(pos.get("cost_basis", 0) or 0) for pos in positions)
-            unrealized_pnl = sum(float(pos.get("unrealized_pnl", 0) or 0) for pos in positions)
-            performance_pct = (unrealized_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0
-
-            total_trades = len(trades)
-            winning_trades = len([t for t in trades if t["pnl"] > 0])
-            losing_trades = len([t for t in trades if t["pnl"] < 0])
-
-            return {
-                "total_value": round(total_value, 2),
-                "total_cost_basis": round(total_cost_basis, 2),
-                "unrealized_pnl": round(unrealized_pnl, 2),
-                "performance_pct": round(performance_pct, 2),
-                "total_trades": total_trades,
-                "winning_trades": winning_trades,
-                "losing_trades": losing_trades
-            }
-        elif client:
-            # Use Supabase client for combined metrics (legacy)
-            return client.get_performance_metrics()
-
         # Fallback to local calculation if Supabase not available
         if portfolio_df.empty:
             return {
@@ -932,7 +909,11 @@ def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataF
             }
 
         # Calculate current portfolio metrics
-        if 'total_market_value' in portfolio_df.columns:
+        if 'market_value' in portfolio_df.columns:
+            total_value = portfolio_df['market_value'].sum()
+            total_cost_basis = portfolio_df['cost_basis'].sum()
+            unrealized_pnl = portfolio_df['unrealized_pnl'].sum()
+        elif 'total_market_value' in portfolio_df.columns:
             total_value = portfolio_df['total_market_value'].sum()
             total_cost_basis = portfolio_df['total_cost_basis'].sum()
             unrealized_pnl = portfolio_df['total_pnl'].sum()
