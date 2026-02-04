@@ -207,6 +207,7 @@ let currentTicker: string = '';
 let tickerList: string[] = [];
 let selectedModel: string = '';
 let contextCharCount: number = 0;
+let modelSyncInProgress: boolean = false;
 const tickerDetailsConfig = (window as any).tickerDetailsConfig || {};
 const modelConfig = tickerDetailsConfig.modelConfig || {};
 selectedModel = tickerDetailsConfig.defaultModel || '';
@@ -346,6 +347,7 @@ function initModelSelect(): void {
         selectedModel = select.value;
         updateContextUsage();
         saveModelPreference(selectedModel);
+        syncModelSelects('ticker');
     });
 
     loadModelOptions();
@@ -355,7 +357,38 @@ function initSignalsModelSelect(): void {
     const select = document.getElementById('signals-model-select') as HTMLSelectElement | null;
     if (!select) return;
 
+    select.addEventListener('change', () => {
+        syncModelSelects('signals');
+    });
+
     loadSignalsModelOptions();
+}
+
+function syncModelSelects(source: 'ticker' | 'signals'): void {
+    if (modelSyncInProgress) return;
+    modelSyncInProgress = true;
+
+    const tickerSelect = document.getElementById('ticker-model-select') as HTMLSelectElement | null;
+    const signalsSelect = document.getElementById('signals-model-select') as HTMLSelectElement | null;
+
+    if (source === 'ticker' && tickerSelect && signalsSelect) {
+        const nextValue = tickerSelect.value;
+        if (nextValue && Array.from(signalsSelect.options).some(option => option.value === nextValue)) {
+            signalsSelect.value = nextValue;
+        }
+    }
+
+    if (source === 'signals' && signalsSelect && tickerSelect) {
+        const nextValue = signalsSelect.value;
+        if (nextValue && Array.from(tickerSelect.options).some(option => option.value === nextValue)) {
+            tickerSelect.value = nextValue;
+            selectedModel = nextValue;
+            updateContextUsage();
+            saveModelPreference(selectedModel);
+        }
+    }
+
+    modelSyncInProgress = false;
 }
 
 async function loadSignalsModelOptions(): Promise<void> {
@@ -387,8 +420,15 @@ async function loadSignalsModelOptions(): Promise<void> {
             select.appendChild(option);
         });
 
-        // Select the first model by default
-        if (select.options.length > 0) {
+        const preferredModel = tickerDetailsConfig.defaultModel || '';
+        const preferredOption = preferredModel
+            ? Array.from(select.options).find(option => option.value === preferredModel)
+            : null;
+
+        if (preferredOption) {
+            select.value = preferredOption.value;
+        } else if (select.options.length > 0) {
+            // Select the first model by default
             select.value = select.options[0].value;
         }
     } catch (error) {
