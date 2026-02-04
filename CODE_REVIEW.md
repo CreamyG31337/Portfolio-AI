@@ -61,3 +61,50 @@ This is a race condition waiting to happen. If the grid renders slower than 300m
 1.  **IMMEDIATE:** Replace `eval()` with `ast.literal_eval()` in `web_dashboard/scheduler/jobs_insiders.py`.
 2.  **HIGH:** Add server-side pagination to `api_insider_trades_data` or strictly limit the default date range to prevent massive payloads.
 3.  **MEDIUM:** Refactor `setTimeout` in frontend grid initialization.
+
+# Code Review: Dashboard Import & Architecture
+**Commit:** `b2fe0d5` - Enhance dashboard data handling for JSON serialization
+
+## Summary
+This massive commit (1638 files) appears to be a full import or major restructuring of the `web_dashboard` module. Due to the size, this review focuses on the core architectural components: `app.py`, `webai_wrapper.py`, and `auth_utils.py`.
+
+## Critical Findings
+
+### 🚨 Security: Admin Raw SQL Execution
+**File:** `web_dashboard/app.py`, endpoint `/api/dev/query`
+**Issue:** The endpoint allows authenticated admins to execute arbitrary raw SQL queries via `client.supabase.rpc("execute_sql", ...)`.
+**Risk:** While protected by `@require_admin`, this is a "God Mode" feature. If an admin account is compromised (e.g., session hijacking, weak password), an attacker has full control over the database, including the ability to drop tables or exfiltrate all data.
+**Recommendation:** Strictly limit this to read-only queries if possible, or remove it entirely in production environments. If needed for debugging, ensure it requires 2FA or VPN access.
+
+### ⚠️ Security: Unsanitized Filename from Session ID
+**File:** `web_dashboard/webai_wrapper.py`, class `PersistentConversationSession`
+**Issue:** The `session_id` is used directly to create a file path:
+```python
+self.session_file = self.storage_dir / f"{session_id}.json"
+```
+**Risk:** If `session_id` is derived from user input without validation, it could lead to path traversal attacks (e.g., `../../etc/passwd`).
+**Mitigation:** Ensure `session_id` is strictly validated (e.g., UUID format) before use, or hash it to generate the filename. Currently, `auth_utils.py` seems to provide UUIDs, which is safe, but the wrapper class itself is unsafe if used in other contexts.
+
+## Major Findings
+
+### ⚠️ Architecture: Monolithic `app.py`
+**File:** `web_dashboard/app.py`
+**Issue:** The file is over 5,600 lines long, mixing configuration, routing, business logic, and utility functions.
+**Impact:** Maintainability is low; testing is difficult; merge conflicts are likely.
+**Recommendation:** Refactor into smaller blueprints (e.g., `auth_routes.py`, `portfolio_routes.py`) and services.
+
+### ⚠️ Architecture: `nest_asyncio` Patching
+**File:** `web_dashboard/webai_wrapper.py`
+**Issue:** The code uses `nest_asyncio.apply()` to handle nested event loops (likely for Streamlit compatibility).
+**Impact:** This monkey-patches `asyncio` and can lead to unpredictable behavior, especially with other async libraries or in production WSGI/ASGI environments.
+**Recommendation:** Evaluate if the sync wrappers (`send_sync`) are strictly necessary or if the architecture can be fully async.
+
+### ℹ️ Code Quality
+-   **Linting:** `ruff` detected **384 issues** in the 3 reviewed files alone, mostly formatting (whitespace) and bare `except` blocks.
+-   **Error Handling:** Frequent use of bare `except:` or `except Exception:` without re-raising or proper handling, which can mask bugs.
+
+## Action Items
+1.  **HIGH:** Validate `session_id` in `PersistentConversationSession` to prevent path traversal.
+2.  **HIGH:** Review the necessity and security controls of `/api/dev/query`.
+3.  **MEDIUM:** Run a linter/formatter (black/ruff) to fix the 300+ formatting issues.
+4.  **MEDIUM:** Refactor `app.py` to reduce file size and complexity.
