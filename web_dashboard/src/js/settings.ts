@@ -321,7 +321,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
 
             const originalText = submitBtn.textContent || 'Update Password';
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Updating...';
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
 
             try {
                 const response = await fetch('/api/auth/change-password', {
