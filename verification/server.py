@@ -1,37 +1,33 @@
-from flask import Flask, render_template, send_from_directory
+from flask import Flask, render_template
 import os
 import sys
 
-# Add web_dashboard to python path
-sys.path.append(os.path.abspath('web_dashboard'))
+# Add web_dashboard to path
+sys.path.append(os.path.abspath("web_dashboard"))
 
 app = Flask(__name__,
-            template_folder='../web_dashboard/templates',
-            static_folder='../web_dashboard/static')
+            template_folder="../web_dashboard/templates",
+            static_folder="../web_dashboard/static")
+
+@app.route('/')
+def dashboard():
+    # Mock data required by templates
+    return render_template('dashboard.html',
+                           initial_fund="Test Fund",
+                           build_timestamp="dev",
+                           CSRF_ENABLED=False,
+                           user_theme="light",
+                           current_page="dashboard",
+                           user_email="test@example.com",
+                           build_version="1.0.0") # _footer_content might use build_version
+
+@app.route('/assets/<path:filename>')
+def custom_static(filename):
+    return app.send_static_file(filename)
 
 @app.context_processor
 def inject_globals():
-    return {
-        'csrf_token': lambda: 'mock-csrf-token',
-        'build_timestamp': '2024-01-01',
-        'user_theme': 'light',
-        'current_page': 'ticker_details',
-        'user_email': 'test@example.com'
-    }
-
-@app.route('/ticker_details')
-def ticker_details():
-    return render_template('ticker_details.html',
-                           default_model='gpt-4',
-                           model_config={'models': {'gpt-4': {'num_ctx': 8192}}})
-
-@app.route('/assets/<path:path>')
-def send_assets(path):
-    return send_from_directory('../web_dashboard/static', path)
-
-@app.route('/')
-def index():
-    return "Verification Server Running"
+    return dict(csrf_token=lambda: "mock_token")
 
 if __name__ == '__main__':
     app.run(port=5000)
