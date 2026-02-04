@@ -109,10 +109,13 @@ interface HoldingsData {
         quantity: number;
         price: number;
         value: number;
-        day_change: number;
-        day_change_pct: number;
+        /** null when no prior snapshot (e.g. new position) — show "—" not $0 */
+        day_change: number | null;
+        day_change_pct: number | null;
         total_return: number;
         total_return_pct: number;
+        five_day_pnl?: number | null;
+        five_day_pnl_pct?: number | null;
         _logo_url?: string;
     }>;
 }
@@ -766,25 +769,25 @@ function initGrid(): void {
             maxWidth: 180,
             type: 'numericColumn',
             valueFormatter: (params: any) => {
-                const val = params.value || 0;
-                const pct = params.data?.day_change_pct || 0;
-                const isNegative = val < 0;
-                const absVal = Math.abs(val);
-                const absPct = Math.abs(pct);
-
-                if (isNegative) {
-                    // Negative: Red color (handled by style), no negative sign
-                    return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
-                } else {
-                    // Positive: Green color, no + sign
-                    return `${formatMoney(val)} ${pct.toFixed(1)}%`;
-                }
+                const val = params.value;
+                const pct = params.data?.day_change_pct;
+                // No prior snapshot (e.g. new position) — show "—" so we don't imply $0 profit
+                if (val == null && pct == null) return '—';
+                const n = val ?? 0;
+                const p = pct ?? 0;
+                const isNegative = n < 0;
+                const absVal = Math.abs(n);
+                const absPct = Math.abs(p);
+                if (isNegative) return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
+                return `${formatMoney(n)} ${p.toFixed(1)}%`;
             },
             cellStyle: (params: any) => {
-                const val = params.value || 0;
-                if (val > 0) return { color: '#10b981', fontWeight: 'bold', textAlign: 'right' };
-                if (val < 0) return { color: '#ef4444', fontWeight: 'bold', textAlign: 'right' };
-                return { textAlign: 'right' };
+                const val = params.value;
+                if (val == null && params.data?.day_change_pct == null) return { textAlign: 'right' as const };
+                const n = val ?? 0;
+                if (n > 0) return { color: '#10b981', fontWeight: 'bold', textAlign: 'right' as const };
+                if (n < 0) return { color: '#ef4444', fontWeight: 'bold', textAlign: 'right' as const };
+                return { textAlign: 'right' as const };
             }
         },
         {
@@ -795,25 +798,25 @@ function initGrid(): void {
             maxWidth: 180,
             type: 'numericColumn',
             valueFormatter: (params: any) => {
-                const val = params.value || 0;
-                const pct = params.data?.five_day_pnl_pct || 0;
-                const isNegative = val < 0;
-                const absVal = Math.abs(val);
-                const absPct = Math.abs(pct);
-
-                if (isNegative) {
-                    // Negative: Red color (handled by style), no negative sign
-                    return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
-                } else {
-                    // Positive: Green color, no + sign
-                    return `${formatMoney(val)} ${pct.toFixed(1)}%`;
-                }
+                const val = params.value;
+                const pct = params.data?.five_day_pnl_pct;
+                // No prior snapshot (e.g. new position) — show "—" so we don't imply $0 profit
+                if (val == null && pct == null) return '—';
+                const n = val ?? 0;
+                const p = pct ?? 0;
+                const isNegative = n < 0;
+                const absVal = Math.abs(n);
+                const absPct = Math.abs(p);
+                if (isNegative) return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
+                return `${formatMoney(n)} ${p.toFixed(1)}%`;
             },
             cellStyle: (params: any) => {
-                const val = params.value || 0;
-                if (val > 0) return { color: '#10b981', fontWeight: 'bold', textAlign: 'right' };
-                if (val < 0) return { color: '#ef4444', fontWeight: 'bold', textAlign: 'right' };
-                return { textAlign: 'right' };
+                const val = params.value;
+                if (val == null && params.data?.five_day_pnl_pct == null) return { textAlign: 'right' as const };
+                const n = val ?? 0;
+                if (n > 0) return { color: '#10b981', fontWeight: 'bold', textAlign: 'right' as const };
+                if (n < 0) return { color: '#ef4444', fontWeight: 'bold', textAlign: 'right' as const };
+                return { textAlign: 'right' as const };
             }
         },
         { field: 'weight', headerName: 'Weight', flex: 0.6, minWidth: 70, maxWidth: 100, type: 'numericColumn', valueFormatter: (params: any) => (params.value || 0).toFixed(1) + '%' }

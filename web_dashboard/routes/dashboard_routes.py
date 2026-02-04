@@ -1,6 +1,7 @@
 
 from flask import Blueprint, jsonify, request, render_template, redirect, url_for, Response
 import logging
+import math
 import time
 import pandas as pd
 from datetime import datetime, timezone, timedelta
@@ -30,6 +31,30 @@ from flask_data_utils import (
 from web_dashboard.utils.logo_utils import get_ticker_logo_urls
 
 logger = logging.getLogger(__name__)
+
+
+def _json_safe_number(value: Any, default: float = 0.0) -> float:
+    """Return a JSON-serializable number; NaN/Inf become default (avoids invalid JSON)."""
+    if value is None:
+        return default
+    try:
+        x = float(value)
+        return x if math.isfinite(x) else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _json_safe_optional_number(value: Any) -> float | None:
+    """Return a finite float or None. Use for optional P&L (e.g. new position = no data).
+    None serializes as JSON null so the UI can show '—' instead of misleading $0."""
+    if value is None:
+        return None
+    try:
+        x = float(value)
+        return x if math.isfinite(x) else None
+    except (TypeError, ValueError):
+        return None
+
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -1249,25 +1274,34 @@ def get_holdings_data():
             cost_basis = getattr(row, 'cost_basis', 0) or 0
             current_price = getattr(row, 'current_price', 0) or 0
             
-            # Calculate average price
-            avg_price = (cost_basis / shares) if shares > 0 else 0
-            
+            # Calculate average price (sanitize for JSON)
+            avg_price = _json_safe_number((cost_basis / shares) if shares > 0 else 0)
+
             # Currency conversion
             curr_code = getattr(row, 'currency', 'CAD')
             rate = rate_map.get(str(curr_code).upper(), 1.0)
             
-            market_val = (getattr(row, 'market_value', 0) or 0) * rate
-            pnl = (getattr(row, 'unrealized_pnl', 0) or 0) * rate
-            day_pnl = (getattr(row, 'daily_pnl', 0) or 0) * rate
-            five_day_pnl = (getattr(row, 'five_day_pnl', 0) or 0) * rate
-            
-            # Use P&L percentages from view
-            pnl_pct = getattr(row, 'return_pct', 0) or 0
-            day_pnl_pct = getattr(row, 'daily_pnl_pct', 0) or 0
-            five_day_pnl_pct = getattr(row, 'five_day_pnl_pct', 0) or 0
+            rate_safe = _json_safe_number(rate, 1.0)
+            market_val = _json_safe_number((getattr(row, 'market_value', 0) or 0) * rate_safe)
+            pnl = _json_safe_number((getattr(row, 'unrealized_pnl', 0) or 0) * rate_safe)
+
+            # Optional P&L: null when no prior snapshot (e.g. new position) so UI shows "—" not "$0"
+            raw_day = _json_safe_optional_number(getattr(row, 'daily_pnl', None))
+            day_pnl = (raw_day * rate_safe) if raw_day is not None else None
+            day_pnl = _json_safe_optional_number(day_pnl) if day_pnl is not None else None
+            day_pnl_pct = _json_safe_optional_number(getattr(row, 'daily_pnl_pct', None))
+            raw_five = _json_safe_optional_number(getattr(row, 'five_day_pnl', None))
+            five_day_pnl = (raw_five * rate_safe) if raw_five is not None else None
+            five_day_pnl = _json_safe_optional_number(five_day_pnl) if five_day_pnl is not None else None
+            five_day_pnl_pct = _json_safe_optional_number(getattr(row, 'five_day_pnl_pct', None))
+
+            # Required numbers (never null)
+            pnl_pct = _json_safe_number(getattr(row, 'return_pct', 0) or 0)
 
             # Calculate weight
-            weight = (market_val / total_portfolio_value * 100) if total_portfolio_value > 0 else 0
+            weight = _json_safe_number(
+                (market_val / total_portfolio_value * 100) if total_portfolio_value > 0 else 0
+            )
             
             # Get opened date
             opened_date = None
@@ -1287,10 +1321,10 @@ def get_holdings_data():
                 "ticker": ticker,
                 "name": company_name,
                 "sector": sector,
-                "shares": shares,
+                "shares": int(_json_safe_number(shares, 0)),
                 "opened": opened_date,
-                "avg_price": avg_price * rate,  # Avg price in display currency
-                "price": current_price * rate,  # Current price in display currency
+                "avg_price": _json_safe_number(avg_price * rate_safe),
+                "price": _json_safe_number((current_price or 0) * rate_safe),
                 "value": market_val,
                 "day_change": day_pnl,
                 "day_change_pct": day_pnl_pct,
