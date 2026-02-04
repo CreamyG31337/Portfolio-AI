@@ -234,10 +234,10 @@
         <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-text-primary">Portfolio Performance</h3>
-                <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-                    <input type="checkbox" id="use-solid-lines"
-                        class="rounded border-border text-accent focus:ring-accent">
-                    <span>📱 Solid Lines Only (for mobile)</span>
+                <label class="inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="use-solid-lines" class="sr-only peer">
+                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent dark:peer-focus:ring-accent rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent"></div>
+                    <span class="ms-3 text-sm font-medium text-text-secondary">📱 Solid Lines Only (for mobile)</span>
                 </label>
             </div>
             <div class="w-full relative min-h-[500px]" id="performance-chart">
@@ -250,11 +250,10 @@
 
             <!-- Individual Stock Performance (below main chart, same card) -->
             <div class="border-t border-border mt-4 pt-4">
-                <label class="flex items-center gap-2 cursor-pointer mb-4">
-                    <input type="checkbox" id="show-individual-holdings"
-                        class="rounded border-border text-accent focus:ring-accent">
-                    <span class="text-base font-semibold text-text-primary">📊 Show Individual Stock
-                        Performance</span>
+                <label class="inline-flex items-center cursor-pointer mb-4">
+                    <input type="checkbox" id="show-individual-holdings" class="sr-only peer">
+                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent dark:peer-focus:ring-accent rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent"></div>
+                    <span class="ms-3 text-base font-semibold text-text-primary">📊 Show Individual Stock Performance</span>
                 </label>
 
                 <!-- Individual Holdings Controls (hidden by default) -->
@@ -380,10 +379,10 @@
             <!-- Currency Section -->
             <div class="flex justify-between items-center mb-4">
                 <h4 class="text-base font-semibold text-text-primary">Currency Exposure</h4>
-                <label class="flex items-center gap-2 cursor-pointer text-sm text-text-secondary">
-                    <input type="checkbox" id="inverse-exchange-rate"
-                        class="rounded border-border text-accent focus:ring-accent bg-dashboard-surface">
-                    <span>Show CAD/USD</span>
+                <label class="inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="inverse-exchange-rate" class="sr-only peer">
+                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent dark:peer-focus:ring-accent rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent"></div>
+                    <span class="ms-3 text-sm font-medium text-text-secondary">Show CAD/USD</span>
                 </label>
             </div>
 
