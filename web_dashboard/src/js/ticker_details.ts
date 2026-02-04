@@ -231,10 +231,15 @@ function appendFundParam(url: string): string {
 // Congress trades pagination state
 let allCongressTrades: CongressTickerTrade[] = [];
 let congressTradesCurrentPage: number = 0;
-const congressTradesPerPage: number = 25;
+const congressTradesPerPage: number = 20;
 let allInsiderTrades: InsiderTrade[] = [];
 let insiderTradesCurrentPage: number = 0;
-const insiderTradesPerPage: number = 25;
+const insiderTradesPerPage: number = 20;
+
+// ETF trades pagination state
+let allEtfTrades: EtfHoldingTrade[] = [];
+let etfTradesCurrentPage: number = 0;
+const etfTradesPerPage: number = 20;
 
 // Initialize page on load
 document.addEventListener('DOMContentLoaded', function (): void {
@@ -873,27 +878,49 @@ async function loadEtfTrades(ticker: string, range: string = '3m'): Promise<void
 
 function renderEtfTrades(trades: EtfHoldingTrade[]): void {
     const section = document.getElementById('etf-trades-section');
-    const tbody = document.getElementById('etf-trades-tbody');
     const emptyState = document.getElementById('etf-trades-empty');
     const countEl = document.getElementById('etf-trades-count');
 
-    if (!section || !tbody || !emptyState || !countEl) return;
+    if (!section || !emptyState || !countEl) return;
 
-    tbody.innerHTML = '';
     const hasTrades = Array.isArray(trades) && trades.length > 0;
 
     if (!hasTrades) {
         section.classList.remove('hidden');
         emptyState.classList.remove('hidden');
         countEl.textContent = '0 records';
+        allEtfTrades = [];
         return;
     }
 
     emptyState.classList.add('hidden');
     section.classList.remove('hidden');
-    countEl.textContent = `${trades.length} record${trades.length === 1 ? '' : 's'}`;
+    allEtfTrades = trades;
+    etfTradesCurrentPage = 0;
+    renderEtfTradesPage();
+}
 
-    trades.forEach(trade => {
+function renderEtfTradesPage(): void {
+    const tbody = document.getElementById('etf-trades-tbody');
+    const countEl = document.getElementById('etf-trades-count');
+
+    if (!tbody || !allEtfTrades || allEtfTrades.length === 0) return;
+
+    const totalPages = Math.ceil(allEtfTrades.length / etfTradesPerPage);
+    const start = (etfTradesCurrentPage * etfTradesPerPage) + 1;
+    const end = Math.min((etfTradesCurrentPage + 1) * etfTradesPerPage, allEtfTrades.length);
+
+    if (countEl) {
+        countEl.textContent = `${allEtfTrades.length} record${allEtfTrades.length === 1 ? '' : 's'} (Showing ${start}-${end})`;
+    }
+
+    tbody.innerHTML = '';
+
+    const startIndex = etfTradesCurrentPage * etfTradesPerPage;
+    const endIndex = Math.min(startIndex + etfTradesPerPage, allEtfTrades.length);
+    const pageTrades = allEtfTrades.slice(startIndex, endIndex);
+
+    pageTrades.forEach(trade => {
         const row = document.createElement('tr');
         const change = Number(trade.shares_change ?? 0);
         const after = Number(trade.shares_after ?? 0);
@@ -911,6 +938,121 @@ function renderEtfTrades(trades: EtfHoldingTrade[]): void {
         `;
         tbody.appendChild(row);
     });
+
+    renderEtfTradesPagination();
+}
+
+function renderEtfTradesPagination(): void {
+    const container = document.getElementById("etf-trades-pagination");
+    if (!container) return;
+
+    const totalPages = Math.ceil(allEtfTrades.length / etfTradesPerPage);
+
+    if (totalPages <= 1) {
+        container.innerHTML = "";
+        return;
+    }
+
+    container.innerHTML = "";
+
+    const prevLi = document.createElement("li");
+    prevLi.innerHTML = `
+        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${etfTradesCurrentPage === 0 ? "pointer-events-none opacity-50" : ""}">
+            <span class="sr-only">Previous</span>
+            <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
+            </svg>
+        </a>
+    `;
+    prevLi.onclick = (e) => {
+        e.preventDefault();
+        if (etfTradesCurrentPage > 0) {
+            etfTradesCurrentPage--;
+            renderEtfTradesPage();
+        }
+    };
+    container.appendChild(prevLi);
+
+    const maxVisiblePages = 7;
+    let startPage = Math.max(0, etfTradesCurrentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages - 1, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage < maxVisiblePages - 1) {
+        startPage = Math.max(0, endPage - maxVisiblePages + 1);
+    }
+
+    if (startPage > 0) {
+        const firstLi = document.createElement("li");
+        firstLi.innerHTML = `
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary">1</a>
+        `;
+        firstLi.onclick = (e) => {
+            e.preventDefault();
+            etfTradesCurrentPage = 0;
+            renderEtfTradesPage();
+        };
+        container.appendChild(firstLi);
+
+        if (startPage > 1) {
+            const ellipsisLi = document.createElement("li");
+            ellipsisLi.innerHTML = `
+                <span class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">...</span>
+            `;
+            container.appendChild(ellipsisLi);
+        }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        const pageLi = document.createElement("li");
+        pageLi.innerHTML = `
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary ${i === etfTradesCurrentPage ? "bg-accent text-white" : ""}">${i + 1}</a>
+        `;
+        pageLi.onclick = (e) => {
+            e.preventDefault();
+            etfTradesCurrentPage = i;
+            renderEtfTradesPage();
+        };
+        container.appendChild(pageLi);
+    }
+
+    if (endPage < totalPages - 1) {
+        if (endPage < totalPages - 2) {
+            const ellipsisLi = document.createElement("li");
+            ellipsisLi.innerHTML = `
+                <span class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">...</span>
+            `;
+            container.appendChild(ellipsisLi);
+        }
+
+        const lastLi = document.createElement("li");
+        lastLi.innerHTML = `
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary">${totalPages}</a>
+        `;
+        lastLi.onclick = (e) => {
+            e.preventDefault();
+            etfTradesCurrentPage = totalPages - 1;
+            renderEtfTradesPage();
+        };
+        container.appendChild(lastLi);
+    }
+
+    const nextLi = document.createElement("li");
+    nextLi.innerHTML = `
+        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${etfTradesCurrentPage === totalPages - 1 ? "pointer-events-none opacity-50" : ""}">
+            <span class="sr-only">Next</span>
+            <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 9l4-4-4-4"/>
+            </svg>
+        </a>
+    `;
+    nextLi.onclick = (e) => {
+        e.preventDefault();
+        if (etfTradesCurrentPage < totalPages - 1) {
+            etfTradesCurrentPage++;
+            renderEtfTradesPage();
+        }
+    };
+    container.appendChild(nextLi);
 }
 
 // Load price history for metrics
