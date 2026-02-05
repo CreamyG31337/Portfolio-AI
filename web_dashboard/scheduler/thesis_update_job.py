@@ -24,6 +24,9 @@ If you no longer have a GLM API key, you'll need to:
 3. Look at how other jobs (e.g., jobs_ticker_analysis.py) call Ollama
 
 GLM API key is loaded from: ZHIPU_API_KEY env var or .secrets/zhipu_api_key file
+
+NOTE: This job uses the GENERAL Zhipu endpoint (open.bigmodel.cn), not the coding API
+(api.z.ai), because thesis generation is text analysis, not code generation.
 """
 
 import json
@@ -57,7 +60,7 @@ def thesis_update_job() -> None:
 
     # Import dependencies here to avoid circular imports
     from supabase_client import SupabaseClient
-    from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
+    from glm_config import get_zhipu_api_key
 
     # Job tracking imports
     try:
@@ -481,7 +484,8 @@ def generate_thesis(fund_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Generate investment thesis using GLM AI.
 
     NOTE: This function uses GLM (Zhipu/Z.AI) API instead of Ollama.
-    If you need to switch back to Ollama, see the commented-out Ollama version below.
+    Uses the GENERAL endpoint (open.bigmodel.cn), not the coding API, because
+    thesis generation is text analysis, not code generation.
 
     Args:
         fund_data: Fund data dict from gather_fund_data
@@ -489,7 +493,10 @@ def generate_thesis(fund_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     Returns:
         Dict with thesis title, overview, and pillars, or None on failure
     """
-    from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
+    from glm_config import get_zhipu_api_key
+
+    # Use Z.AI coding API for GLM-4.7 (the general endpoint doesn't have this model)
+    ZHIPU_API_URL = "https://api.z.ai/api/coding/paas/v4"
 
     # Build context for AI
     context = format_thesis_context(fund_data)
@@ -520,19 +527,19 @@ You must respond with valid JSON only, no markdown or explanation outside the JS
 
     # GLM API call (OpenAI-compatible format)
     # Using glm-4-plus for best quality, or glm-4.5-air for faster response
-    url = f"{ZHIPU_BASE_URL.rstrip('/')}/chat/completions"
+    url = f"{ZHIPU_API_URL}/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "glm-4-plus",  # Best quality model
+        "model": "glm-4.7",  # User's model with available credits
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": full_prompt}
         ],
         "temperature": 0.3,
-        "max_tokens": 4096,
+        "max_tokens": 8192,
         # GLM doesn't have json_mode, but the system prompt instructs JSON output
     }
 
@@ -544,7 +551,13 @@ You must respond with valid JSON only, no markdown or explanation outside the JS
     for attempt in range(max_retries):
         try:
             logger.info(f"Calling GLM API for thesis generation (attempt {attempt + 1}/{max_retries})...")
-            response = requests.post(url, json=payload, headers=headers, timeout=120)
+            logger.info(f"URL: {url}")
+            response = requests.post(url, json=payload, headers=headers, timeout=180)
+
+            # Log actual response for debugging
+            logger.info(f"Response status: {response.status_code}")
+            if response.status_code != 200:
+                logger.error(f"Response body: {response.text[:500]}")
 
             # Handle rate limiting with retry
             if response.status_code == 429:
@@ -563,14 +576,18 @@ You must respond with valid JSON only, no markdown or explanation outside the JS
             choices = data.get("choices", [])
             if not choices:
                 logger.error("GLM returned no choices")
+                logger.error(f"Full response: {data}")
                 return None
 
             content = choices[0].get("message", {}).get("content", "")
+            finish_reason = choices[0].get("finish_reason", "unknown")
+
             if not content:
                 logger.error("GLM returned empty content")
+                logger.error(f"Full response: {data}")
                 return None
 
-            logger.info(f"GLM response received ({len(content)} chars)")
+            logger.info(f"GLM response received ({len(content)} chars, finish_reason={finish_reason})")
 
             # Parse JSON response
             thesis = parse_thesis_response(content)
@@ -734,9 +751,20 @@ def parse_thesis_response(response: str) -> Optional[Dict[str, Any]]:
     Returns:
         Parsed thesis dict or None
     """
+    # Strip markdown code blocks if present (GLM sometimes wraps JSON in ```json ... ```)
+    cleaned = response.strip()
+    if cleaned.startswith("```"):
+        # Remove opening fence (```json or ```)
+        lines = cleaned.split("\n", 1)
+        if len(lines) > 1:
+            cleaned = lines[1]
+        # Remove closing fence
+        if cleaned.rstrip().endswith("```"):
+            cleaned = cleaned.rstrip()[:-3].rstrip()
+
     try:
         # Try direct JSON parse
-        thesis = json.loads(response)
+        thesis = json.loads(cleaned)
 
         # Validate structure
         if not isinstance(thesis, dict):
