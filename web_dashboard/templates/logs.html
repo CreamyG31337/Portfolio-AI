@@ -98,17 +98,25 @@
     <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-4 mb-6">
         <div class="flex items-center justify-between">
             <div id="stats-text" class="text-sm text-text-secondary">Loading...</div>
-            <div id="pagination-controls" class="flex items-center space-x-2">
-                <button id="prev-btn"
-                    class="btn-pagination">
-                    <i class="fas fa-chevron-left"></i> Previous
-                </button>
-                <span id="page-info" class="text-sm text-text-secondary">Page 1 of 1</span>
-                <button id="next-btn"
-                    class="btn-pagination">
-                    Next <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
+            <nav id="pagination-controls" aria-label="Log pagination">
+                <ul class="inline-flex items-center -space-x-px text-sm">
+                    <li>
+                        <button id="prev-btn"
+                            class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                            <i class="fas fa-chevron-left w-2.5 h-2.5 me-1"></i> Previous
+                        </button>
+                    </li>
+                    <li>
+                        <span id="page-info" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">Page 1 of 1</span>
+                    </li>
+                    <li>
+                        <button id="next-btn"
+                            class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                            Next <i class="fas fa-chevron-right w-2.5 h-2.5 ms-1"></i>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
         </div>
     </div>
 
@@ -130,17 +138,25 @@
     <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-4 mt-6">
         <div class="flex items-center justify-between">
             <div id="stats-text-bottom" class="text-sm text-text-secondary">Loading...</div>
-            <div class="flex items-center space-x-2">
-                <button id="prev-btn-bottom"
-                    class="btn-pagination">
-                    <i class="fas fa-chevron-left"></i> Previous
-                </button>
-                <span id="page-info-bottom" class="text-sm text-text-secondary">Page 1 of 1</span>
-                <button id="next-btn-bottom"
-                    class="btn-pagination">
-                    Next <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
+            <nav aria-label="Log pagination bottom">
+                <ul class="inline-flex items-center -space-x-px text-sm">
+                    <li>
+                        <button id="prev-btn-bottom"
+                            class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                            <i class="fas fa-chevron-left w-2.5 h-2.5 me-1"></i> Previous
+                        </button>
+                    </li>
+                    <li>
+                        <span id="page-info-bottom" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">Page 1 of 1</span>
+                    </li>
+                    <li>
+                        <button id="next-btn-bottom"
+                            class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                            Next <i class="fas fa-chevron-right w-2.5 h-2.5 ms-1"></i>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
         </div>
     </div>
 </div>
@@ -185,17 +201,25 @@
     <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-4 mb-6">
         <div class="flex items-center justify-between">
             <div id="stats-text-ollama" class="text-sm text-text-secondary">Loading...</div>
-            <div id="pagination-controls-ollama" class="flex items-center space-x-2">
-                <button id="prev-btn-ollama"
-                    class="btn-pagination">
-                    <i class="fas fa-chevron-left"></i> Previous
-                </button>
-                <span id="page-info-ollama" class="text-sm text-text-secondary">Page 1 of 1</span>
-                <button id="next-btn-ollama"
-                    class="btn-pagination">
-                    Next <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
+            <nav id="pagination-controls-ollama" aria-label="Ollama log pagination">
+                <ul class="inline-flex items-center -space-x-px text-sm">
+                    <li>
+                        <button id="prev-btn-ollama"
+                            class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                            <i class="fas fa-chevron-left w-2.5 h-2.5 me-1"></i> Previous
+                        </button>
+                    </li>
+                    <li>
+                        <span id="page-info-ollama" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">Page 1 of 1</span>
+                    </li>
+                    <li>
+                        <button id="next-btn-ollama"
+                            class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                            Next <i class="fas fa-chevron-right w-2.5 h-2.5 ms-1"></i>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
         </div>
     </div>
 
@@ -217,17 +241,25 @@
     <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-4 mt-6">
         <div class="flex items-center justify-between">
             <div id="stats-text-ollama-bottom" class="text-sm text-text-secondary">Loading...</div>
-            <div class="flex items-center space-x-2">
-                <button id="prev-btn-ollama-bottom"
-                    class="btn-pagination">
-                    <i class="fas fa-chevron-left"></i> Previous
-                </button>
-                <span id="page-info-ollama-bottom" class="text-sm text-text-secondary">Page 1 of 1</span>
-                <button id="next-btn-ollama-bottom"
-                    class="btn-pagination">
-                    Next <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
+            <nav aria-label="Ollama log pagination bottom">
+                <ul class="inline-flex items-center -space-x-px text-sm">
+                    <li>
+                        <button id="prev-btn-ollama-bottom"
+                            class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-hover hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                            <i class="fas fa-chevron-left w-2.5 h-2.5 me-1"></i> Previous
+                        </button>
+                    </li>
+                    <li>
+                        <span id="page-info-ollama-bottom" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border">Page 1 of 1</span>
+                    </li>
+                    <li>
+                        <button id="next-btn-ollama-bottom"
+                            class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-hover hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                            Next <i class="fas fa-chevron-right w-2.5 h-2.5 ms-1"></i>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
         </div>
     </div>
 </div>
