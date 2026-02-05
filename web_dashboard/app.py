@@ -24,6 +24,7 @@ except ImportError:
     exit(1)
 
 import json
+import math
 import os
 import re
 from datetime import datetime, timedelta, date
@@ -2212,6 +2213,17 @@ def api_funds():
         # Return fallback funds on error
         return jsonify({"funds": ["Project Chimera", "RRSP Lance Webull", "TFSA", "TEST"]})
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Return a JSON-serializable float; NaN/Inf/None become default."""
+    if value is None:
+        return default
+    try:
+        x = float(value)
+        return x if math.isfinite(x) else default
+    except (TypeError, ValueError):
+        return default
+
+
 @app.route('/api/portfolio')
 @require_auth
 def api_portfolio():
@@ -2232,21 +2244,21 @@ def api_portfolio():
             # Supabase format - using latest_positions view with P&L calculations
             for _, row in data['portfolio'].iterrows():
                 # Calculate market value using correct column name
-                market_value = float(row['shares']) * float(row.get('current_price', row.get('price', 0)))
-                total_pnl = market_value - float(row['cost_basis'])
+                market_value = _safe_float(row['shares']) * _safe_float(row.get('current_price', row.get('price', 0)))
+                total_pnl = market_value - _safe_float(row['cost_basis'])
 
                 current_positions.append({
                     'ticker': row['ticker'],
-                    'shares': round(float(row['shares']), 4),
-                    'price': round(float(row.get('current_price', row.get('price', 0))), 2),
-                    'cost_basis': round(float(row['cost_basis']), 2),
+                    'shares': round(_safe_float(row['shares']), 4),
+                    'price': round(_safe_float(row.get('current_price', row.get('price', 0))), 2),
+                    'cost_basis': round(_safe_float(row['cost_basis']), 2),
                     'market_value': round(market_value, 2),
                     'total_pnl': round(total_pnl, 2),
-                    'total_pnl_pct': round((total_pnl / float(row['cost_basis']) * 100) if float(row['cost_basis']) > 0 else 0, 2),
-                    'daily_pnl': round(float(row.get('daily_pnl', 0)), 2),
-                    'daily_pnl_pct': round(float(row.get('daily_pnl_pct', 0)), 2),
-                    'five_day_pnl': round(float(row.get('five_day_pnl', 0)), 2),
-                    'five_day_pnl_pct': round(float(row.get('five_day_pnl_pct', 0)), 2),
+                    'total_pnl_pct': round((_safe_float(total_pnl) / _safe_float(row['cost_basis'], 1) * 100) if _safe_float(row['cost_basis']) > 0 else 0, 2),
+                    'daily_pnl': round(_safe_float(row.get('daily_pnl', 0)), 2),
+                    'daily_pnl_pct': round(_safe_float(row.get('daily_pnl_pct', 0)), 2),
+                    'five_day_pnl': round(_safe_float(row.get('five_day_pnl', 0)), 2),
+                    'five_day_pnl_pct': round(_safe_float(row.get('five_day_pnl_pct', 0)), 2),
                     'currency': row.get('currency', 'USD')
                 })
         else:
