@@ -14,6 +14,7 @@ MIGRATED_PAGES = {
     'etf_holdings': '/etf_holdings',
     'congress_trades': '/congress_trades',
     'insider_trades': '/insider_trades',
+    'newsletters': '/newsletters',
     'ticker_details': '/ticker',
     'ai_assistant': '/ai_assistant',
     'admin_funds': '/admin/funds',
@@ -43,6 +44,7 @@ def get_navigation_links() -> list:
     """
     links = [
         {'name': 'Research Repository', 'page': 'research', 'icon': '📚'},
+        {'name': 'Newsletters', 'page': 'newsletters', 'icon': '📧'},
         {'name': 'Social Sentiment', 'page': 'social_sentiment', 'icon': '💬'},
         {'name': 'Technical Signals', 'page': 'signals', 'icon': '📊'},
         {'name': 'ETF Holdings', 'page': 'etf_holdings', 'icon': '💼'},

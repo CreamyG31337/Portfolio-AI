@@ -5677,7 +5677,222 @@ def api_insider_trades_data():
         logger.error(f"Error in insider trades API: {e}", exc_info=True)
         return jsonify({"error": "An error occurred while fetching insider trades data. Please check the logs."}), 500
 
+# ============================================================================
+# Newsletter API Routes
+# ============================================================================
+
+@app.route('/api/webhooks/newsletter', methods=['POST'])
+def webhook_newsletter():
+    """Mailgun webhook endpoint for receiving newsletters
+    
+    Expected POST data from Mailgun:
+    - signature: HMAC-SHA256 signature for verification
+    - timestamp: Unix timestamp
+    - token: Random token
+    - sender: From email address  
+    - recipient: To email address
+    - subject: Email subject
+    - body-plain: Plain text body (optional)
+    - body-html: HTML body (optional)
+    - from: Sender name and email
+    - Message-Id: Mailgun message ID
+    """
+    try:
+        # Extract webhook data
+        form_data = request.form
+        
+        # Verify Mailgun signature
+        signature = form_data.get('signature')
+        timestamp = form_data.get('timestamp')
+        token = form_data.get('token')
+        
+        if not all([signature, timestamp, token]):
+            logger.warning("Missing signature fields in Mailgun webhook")
+            return jsonify({'error': 'Missing signature fields'}), 400
+        
+        # Initialize newsletter service
+        from newsletter_service import NewsletterService
+        service = NewsletterService()
+        
+        # Verify signature
+        if not service.verify_webhook_signature(token, timestamp, signature):
+            logger.error("Invalid Mailgun webhook signature")
+            return jsonify({'error': 'Invalid signature'}), 403
+        
+        # Extract email data
+        sender = form_data.get('sender') or form_data.get('From')
+        recipient = form_data.get('recipient')
+        subject = form_data.get('subject')
+        body_plain = form_data.get('body-plain')
+        body_html = form_data.get('body-html')
+        message_id = form_data.get('Message-Id')
+        
+        # Extract sender name (from "Name <email>" format)
+        sender_name = None
+        from_field = form_data.get('from') or form_data.get('From')
+        if from_field:
+            import re
+            match = re.match(r'^([^<]+)<([^>]+)>$', from_field.strip())
+            if match:
+                sender_name = match.group(1).strip()
+                if not sender:
+                    sender = match.group(2).strip()
+        
+        if not all([sender, recipient, subject]):
+            logger.warning(f"Missing required fields in newsletter webhook: sender={sender}, recipient={recipient}, subject={subject}")
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        # Process newsletter
+        logger.info(f"Processing newsletter from {sender}: {subject}")
+        processed_data = service.process_newsletter(
+            sender=sender,
+            recipient=recipient,
+            subject=subject,
+            body_plain=body_plain,
+            body_html=body_html,
+            sender_name=sender_name,
+            message_id=message_id,
+            timestamp=timestamp
+        )
+        
+        # Save to database
+        from newsletter_repository import NewsletterRepository
+        repo = NewsletterRepository()
+        
+        newsletter_id = repo.save_newsletter(**processed_data)
+        
+        if newsletter_id:
+            logger.info(f"✅ Newsletter saved: {newsletter_id}")
+            return jsonify({
+                'status': 'success',
+                'id': newsletter_id,
+                'tickers': processed_data.get('tickers', []),
+                'has_embedding': processed_data.get('embedding') is not None
+            }), 200
+        else:
+            logger.error("Failed to save newsletter to database")
+            return jsonify({'error': 'Failed to save newsletter'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error processing newsletter webhook: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/newsletters', methods=['GET'])
+@require_auth
+def get_newsletters():
+    """Get recent newsletters with pagination
+    
+    Query params:
+    - limit: Number of results (default 20, max 100)
+    - offset: Number to skip (default 0)
+    - ticker: Filter by ticker symbol (optional)
+    """
+    try:
+        # Parse query params
+        limit = min(int(request.args.get('limit', 20)), 100)
+        offset = int(request.args.get('offset', 0))
+        ticker = request.args.get('ticker')
+        
+        # Get newsletters from repository
+        from newsletter_repository import NewsletterRepository
+        repo = NewsletterRepository()
+        
+        newsletters = repo.get_recent_newsletters(
+            limit=limit,
+            offset=offset,
+            ticker=ticker.upper() if ticker else None
+        )
+        
+        # Get total count
+        total_count = repo.get_newsletter_count(ticker=ticker.upper() if ticker else None)
+        
+        # Format response
+        return jsonify({
+            'newsletters': newsletters,
+            'total': total_count,
+            'limit': limit,
+            'offset': offset
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error fetching newsletters: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/newsletters/<newsletter_id>', methods=['GET'])
+@require_auth
+def get_newsletter(newsletter_id):
+    """Get a single newsletter by ID"""
+    try:
+        from newsletter_repository import NewsletterRepository
+        repo = NewsletterRepository()
+        
+        newsletter = repo.get_newsletter_by_id(newsletter_id)
+        
+        if not newsletter:
+            return jsonify({'error': 'Newsletter not found'}), 404
+        
+        return jsonify(newsletter), 200
+        
+    except Exception as e:
+        logger.error(f"Error fetching newsletter {newsletter_id}: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/newsletters/search', methods=['POST'])
+@require_auth
+def search_newsletters():
+    """Search newsletters using semantic similarity
+    
+    POST body:
+    - query: Search query text
+    - limit: Number of results (default 10, max 50)
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'query' not in data:
+            return jsonify({'error': 'Missing query parameter'}), 400
+        
+        query = data['query']
+        limit = min(int(data.get('limit', 10)), 50)
+        
+        # Search newsletters
+        from newsletter_repository import NewsletterRepository
+        repo = NewsletterRepository()
+        
+        results = repo.search_newsletters(query_text=query, limit=limit)
+        
+        return jsonify({
+            'results': results,
+            'query': query,
+            'limit': limit
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error searching newsletters: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/newsletters', methods=['GET'])
+@require_auth
+def newsletters_page():
+    """Render newsletters page"""
+    try:
+        nav_context = get_navigation_context(current_page='newsletters')
+        return render_template('newsletters.html', **nav_context)
+    except Exception as e:
+        logger.error(f"Error rendering newsletters page: {e}", exc_info=True)
+        return render_template('error.html', error=str(e)), 500
+
+
+# ============================================================================
+# Main Application Entry Point
+# ============================================================================
+
 if __name__ == '__main__':
+
     # Run the app
     # Use port 5001 to avoid conflict with NFT calculator app on port 5000
     port = int(os.getenv('FLASK_PORT', '5001'))
