@@ -110,9 +110,12 @@ def thesis_update_job() -> None:
         logger.error(f"❌ {message}")
         return
 
-    # Get active funds
+    # Get production funds only (not TEST_ funds)
     try:
-        funds_result = supabase.supabase.table('funds').select('name, fund_type, description').execute()
+        funds_result = supabase.supabase.table('funds') \
+            .select('name, fund_type, description') \
+            .eq('is_production', True) \
+            .execute()
         funds = funds_result.data or []
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -138,6 +141,12 @@ def thesis_update_job() -> None:
         fund_type = fund_row.get('fund_type', 'investment')
         fund_description = fund_row.get('description', '')
 
+        # Skip test funds (TEST_* pattern) to avoid wasting API calls
+        # Only process real funds: TFSA, RRSP, Project Chimera, etc.
+        if fund_name.startswith('TEST_') or fund_name == 'TEST':
+            logger.debug(f"⏭️  Skipping test fund: {fund_name}")
+            continue
+
         try:
             logger.info(f"📝 Processing thesis for fund: {fund_name}")
 
@@ -156,6 +165,10 @@ def thesis_update_job() -> None:
                 save_thesis(supabase, fund_name, thesis)
                 processed += 1
                 logger.info(f"✅ Updated thesis for {fund_name}")
+
+                # Rate limit protection: wait 3s between successful API calls
+                # GLM has strict rate limits on the coding API
+                time.sleep(3)
             else:
                 failed += 1
                 logger.warning(f"❌ Failed to generate thesis for {fund_name}")
@@ -524,8 +537,9 @@ You must respond with valid JSON only, no markdown or explanation outside the JS
     }
 
     # Retry logic with exponential backoff for rate limiting (429)
-    max_retries = 3
-    base_delay = 5  # seconds
+    # GLM coding API has strict rate limits - be conservative
+    max_retries = 5
+    base_delay = 15  # seconds (longer delay for GLM's strict limits)
 
     for attempt in range(max_retries):
         try:
