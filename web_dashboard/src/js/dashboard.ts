@@ -577,7 +577,7 @@ function createLogoElement(
         size?: number;
     }
 ): HTMLImageElement {
-    const className = options?.className || 'inline-block w-6 h-6 mr-2 object-contain rounded';
+    const className = options?.className || 'inline-block w-6 h-6 mr-2 object-contain rounded align-middle';
     const size = options?.size || 24;
     const placeholder = `data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"%3E%3C/svg%3E`;
     
@@ -588,7 +588,6 @@ function createLogoElement(
     // Create image element
     const img = document.createElement('img');
     img.className = className;
-    img.style.verticalAlign = 'middle';
     img.alt = ticker;
     
     // Set up error handler BEFORE setting src
@@ -649,9 +648,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
 
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('div');
-        this.eGui.style.display = 'flex';
-        this.eGui.style.alignItems = 'center';
-        this.eGui.style.gap = '6px';
+        this.eGui.className = 'flex items-center gap-1.5';
 
         if (params.value && params.value !== 'N/A') {
             const ticker = params.value;
@@ -659,24 +656,17 @@ class TickerCellRenderer implements AgGridCellRenderer {
 
             // Always add logo image (or transparent placeholder) for consistent alignment
             // Use shared helper to handle caching, fallbacks, and error handling
-            const img = createLogoElement(ticker, logoUrl || '', { size: 24 });
-
-            // Apply specific grid styles
-            img.style.width = '24px';
-            img.style.height = '24px';
-            img.style.objectFit = 'contain';
-            img.style.borderRadius = '4px';
-            img.style.flexShrink = '0';
+            const img = createLogoElement(ticker, logoUrl || '', { 
+                size: 24,
+                className: 'w-6 h-6 object-contain rounded shrink-0'
+            });
 
             this.eGui.appendChild(img);
 
             // Add ticker text
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
-            tickerSpan.style.color = 'var(--color-accent)';
-            tickerSpan.style.fontWeight = 'bold';
-            tickerSpan.style.textDecoration = 'underline';
-            tickerSpan.style.cursor = 'pointer';
+            tickerSpan.className = 'text-accent font-bold underline cursor-pointer';
             tickerSpan.addEventListener('click', function (e: Event) {
                 e.stopPropagation();
                 if (ticker && ticker !== 'N/A') {
@@ -1482,14 +1472,14 @@ async function fetchActivity(): Promise<void> {
                 const tr = document.createElement('tr');
                 tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
 
-                // Action badge with DRIP support
+                // Action badge with DRIP support - using semantic theme tokens
                 let actionBadge: string;
                 if (row.action === 'DRIP') {
-                    actionBadge = '<span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">DRIP</span>';
+                    actionBadge = '<span class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2.5 py-0.5 rounded">DRIP</span>';
                 } else if (row.action === 'SELL') {
-                    actionBadge = '<span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-300">SELL</span>';
+                    actionBadge = '<span class="bg-theme-error-bg text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded">SELL</span>';
                 } else {
-                    actionBadge = '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-300">BUY</span>';
+                    actionBadge = '<span class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded">BUY</span>';
                 }
 
                 // Format shares to 4 decimal places
@@ -1748,10 +1738,10 @@ function renderActionQueue(data: ActionQueueData): void {
     // Render rows
     const rows = data.data.map((item, index) => {
         const actionColors: Record<string, string> = {
-            'BUY': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-            'SELL': 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-            'RISK': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-            'WATCH': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+            'BUY': 'bg-theme-success-bg text-theme-success-text',
+            'SELL': 'bg-theme-error-bg text-theme-error-text',
+            'RISK': 'bg-theme-warning-bg text-theme-warning-text',
+            'WATCH': 'bg-theme-info-bg text-theme-info-text'
         };
 
         const fearColors: Record<string, string> = {
@@ -2396,13 +2386,13 @@ function updateChangeMetric(valId: string, pctId: string, change: number, pct: n
     if (pctEl) {
         pctEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
 
-        // Color classes
+        // Color classes - using semantic theme tokens
         pctEl.className = `text-sm font-medium px-2 py-0.5 rounded ${change >= 0
-            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-            : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`;
+            ? 'bg-theme-success-bg text-theme-success-text'
+            : 'bg-theme-error-bg text-theme-error-text'}`;
 
         if (valEl) {
-            valEl.className = `text-2xl font-bold ${change >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`;
+            valEl.className = `text-2xl font-bold ${change >= 0 ? 'text-theme-success-text' : 'text-theme-error-text'}`;
         }
     }
 }
