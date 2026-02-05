@@ -1134,7 +1134,13 @@ class MarketDataFetcher:
             try:
                 div_series = ticker_obj.dividends
                 if div_series is not None and not div_series.empty and price and price > 0:
-                    recent = div_series[div_series.index >= pd.Timestamp.now() - pd.Timedelta(days=365)]
+                    # Handle timezone-aware dividend index (yfinance returns tz-aware datetimes)
+                    div_tz = getattr(div_series.index, 'tz', None)
+                    if div_tz:
+                        cutoff = pd.Timestamp.now(tz=div_tz) - pd.Timedelta(days=365)
+                    else:
+                        cutoff = pd.Timestamp.now() - pd.Timedelta(days=365)
+                    recent = div_series[div_series.index >= cutoff]
                     if not recent.empty:
                         annual_div = float(recent.sum())
                         if annual_div > 0:
@@ -1143,18 +1149,15 @@ class MarketDataFetcher:
                 computed_yield = None
             
             if computed_yield is not None:
-                fundamentals['dividendYield'] = f"{computed_yield:.1f}%"
+                fundamentals['dividendYield'] = f"{computed_yield:.2f}%"
             else:
-                # Normalize possibly inconsistent API fields
+                # yfinance dividendYield is already in percent format (e.g., 0.92 = 0.92%, 2.65 = 2.65%)
+                # DO NOT multiply by 100 - the API returns the value ready to display
                 div_yield = info.get('dividendYield')
                 if not div_yield:
                     div_yield = info.get('trailingAnnualDividendYield')
                 if div_yield and isinstance(div_yield, (int, float)) and div_yield > 0:
-                    if div_yield > 1.0:
-                        # Assume already percent
-                        fundamentals['dividendYield'] = f"{div_yield:.1f}%"
-                    else:
-                        fundamentals['dividendYield'] = f"{div_yield*100:.1f}%"
+                    fundamentals['dividendYield'] = f"{div_yield:.2f}%"
             
             # 52-week high/low
             high_52w = info.get('fiftyTwoWeekHigh')

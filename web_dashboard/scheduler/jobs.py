@@ -397,6 +397,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'default_interval_minutes': 1440,  # Once per day
         'enabled_by_default': True,
         'icon': '📋'
+    },
+    'thesis_update': {
+        'name': '📜 Fund Thesis Update',
+        'description': 'AI-driven update of fund investment thesis based on actual portfolio composition',
+        'default_interval_minutes': 10080,  # Weekly (7 days)
+        'enabled_by_default': True,
+        'icon': '📜',
+        'cron_triggers': [
+            {'day_of_week': 'sun', 'hour': 20, 'minute': 0, 'timezone': 'America/Los_Angeles'}  # Sunday 8 PM PT
+        ]
     }
 }
 
@@ -515,6 +525,9 @@ from scheduler.jobs_securities import refresh_securities_metadata_job
 # Import signals job
 from scheduler.jobs_signals import signal_scan_job
 
+# Import thesis update job
+from scheduler.thesis_update_job import thesis_update_job
+
 # Import shared utilities
 from scheduler.jobs_common import calculate_relevance_score
 
@@ -561,6 +574,8 @@ __all__ = [
     'refresh_securities_metadata_job',
     # Signals job
     'signal_scan_job',
+    # Thesis update job
+    'thesis_update_job',
     # Shared utilities
     'calculate_relevance_score',
     # Registry functions (defined in this file)
@@ -1314,3 +1329,26 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: refresh_securities_metadata (daily at 1:00 AM EST)")
+
+    # Fund Thesis Update - Weekly on Sunday at 8 PM PT
+    if AVAILABLE_JOBS.get('thesis_update', {}).get('enabled_by_default', True):
+        config = AVAILABLE_JOBS['thesis_update']
+        triggers = config.get('cron_triggers', [{'day_of_week': 'sun', 'hour': 20, 'minute': 0, 'timezone': 'America/Los_Angeles'}])
+        trigger_config = triggers[0]
+
+        scheduler.add_job(
+            thesis_update_job,
+            trigger=CronTrigger(
+                day_of_week=trigger_config.get('day_of_week', 'sun'),
+                hour=trigger_config['hour'],
+                minute=trigger_config['minute'],
+                timezone=trigger_config.get('timezone', 'America/Los_Angeles')
+            ),
+            id='thesis_update',
+            name=f"{get_job_icon('thesis_update')} Fund Thesis Update",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600  # 1 hour grace period
+        )
+        logger.info("Registered job: thesis_update (weekly on Sunday at 8:00 PM PT)")

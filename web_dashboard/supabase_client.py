@@ -976,7 +976,7 @@ class SupabaseClient:
             updates: List of dictionaries containing:
                 - ticker (required): Stock ticker symbol
                 - trailing_pe: P/E ratio
-                - dividend_yield: Dividend yield (as decimal, e.g., 0.025 for 2.5%)
+                - dividend_yield: Dividend yield as percent (e.g., 2.5 for 2.5%)
                 - fifty_two_week_high: 52-week high price
                 - fifty_two_week_low: 52-week low price
                 - last_updated: ISO timestamp (defaults to now if not provided)
