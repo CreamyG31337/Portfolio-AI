@@ -21,6 +21,24 @@ def dashboard():
                            user_email="test@example.com",
                            build_version="1.0.0") # _footer_content might use build_version
 
+@app.route('/jobs')
+def jobs():
+    return render_template('jobs.html',
+                           current_page='jobs',
+                           user_email="test@example.com",
+                           user_theme="light",
+                           build_version="1.0.0")
+
+@app.route('/settings')
+def settings():
+    return render_template('settings.html',
+                           current_page='settings',
+                           user_email="test@example.com",
+                           current_timezone="UTC",
+                           current_currency="USD",
+                           current_theme="light",
+                           build_version="1.0.0")
+
 @app.route('/assets/<path:filename>')
 def custom_static(filename):
     return app.send_static_file(filename)

@@ -752,7 +752,7 @@ function createJobCard(job: Job): string {
             <div class="mt-4 parameter-form hidden bg-dashboard-background p-4 rounded-md border border-border" id="params-${safeJobId}">
                 <div class="flex justify-between items-center mb-3">
                     <h4 class="text-sm font-bold text-text-primary">⚙️ Job Parameters</h4>
-                    <button class="text-xs text-text-secondary hover:text-text-primary" onclick="toggleParams('${safeJsJobId}')">
+                    <button class="text-xs text-text-secondary hover:text-text-primary" onclick="toggleParams('${safeJsJobId}')" aria-label="Close parameters">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -805,22 +805,22 @@ function createJobCard(job: Job): string {
                 <div class="flex space-x-2">
                     ${job.next_run
             ? `<button class="job-action-btn text-theme-warning-text hover:text-theme-warning-text/80 p-2" 
-                                data-action="pause" data-id="${safeActualId}" title="Pause Job">
+                                data-action="pause" data-id="${safeActualId}" title="Pause Job" aria-label="Pause Job">
                                 <i class="fas fa-pause"></i>
                            </button>`
             : `<button class="job-action-btn text-theme-success-text hover:text-theme-success-text/80 p-2" 
-                                data-action="resume" data-id="${safeActualId}" title="Resume Job">
+                                data-action="resume" data-id="${safeActualId}" title="Resume Job" aria-label="Resume Job">
                                 <i class="fas fa-play"></i>
                            </button>`
         }
                     
                     ${Object.keys(job.parameters || {}).length > 0
             ? `<button class="text-accent hover:text-accent-hover p-2" 
-                                onclick="toggleParams('${safeJsJobId}')" title="Run with Parameters">
+                                onclick="toggleParams('${safeJsJobId}')" title="Run with Parameters" aria-label="Run with Parameters">
                                 <i class="fas fa-cog"></i>
                            </button>`
             : `<button class="job-action-btn text-accent hover:text-accent-hover p-2" 
-                                data-action="run" data-id="${safeActualId}" title="Run Now">
+                                data-action="run" data-id="${safeActualId}" title="Run Now" aria-label="Run Now">
                                 <i class="fas fa-bolt"></i>
                            </button>`
         }
@@ -889,7 +889,8 @@ function showSchedulerToast(message: string, type: 'success' | 'error' | 'warnin
     const closeBtn = toast.querySelector('.toast-close-btn');
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
-            toast.style.opacity = '0';
+            toast.classList.remove('opacity-100');
+            toast.classList.add('opacity-0');
             setTimeout(() => {
                 toast.remove();
                 if (errorToastId === toastId) {
@@ -908,7 +909,8 @@ function showSchedulerToast(message: string, type: 'success' | 'error' | 'warnin
         // Auto-dismiss non-persistent toasts after 4 seconds
         setTimeout(() => {
             if (toast.parentElement) {
-                toast.style.opacity = '0';
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
                 setTimeout(() => {
                     toast.remove();
                 }, 300);
@@ -921,7 +923,8 @@ function dismissErrorToast(): void {
     if (errorToastId) {
         const toast = document.getElementById(errorToastId);
         if (toast) {
-            toast.style.opacity = '0';
+            toast.classList.remove('opacity-100');
+            toast.classList.add('opacity-0');
             setTimeout(() => {
                 toast.remove();
                 errorToastId = null;

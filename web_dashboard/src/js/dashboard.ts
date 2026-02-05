@@ -1776,7 +1776,7 @@ function renderActionQueue(data: ActionQueueData): void {
 
         // Logo HTML
         const logoHtml = safeLogoUrl
-            ? `<img src="${safeLogoUrl}" alt="${safeTicker}" class="w-5 h-5 rounded-full inline-block mr-1" onerror="this.style.display='none'">`
+            ? `<img src="${safeLogoUrl}" alt="${safeTicker}" class="w-5 h-5 rounded-full inline-block mr-1" onerror="this.classList.add('hidden')">`
             : '';
 
         return `
