@@ -667,7 +667,16 @@ class PersistentConversationSession:
             model: WebAI model to use (e.g., "gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.0-pro")
             system_prompt: Optional system prompt (will create a custom Gem if provided)
         """
-        self.session_id = session_id
+        self.session_id = str(session_id)
+
+        # Validate session_id to prevent path traversal
+        # Only allow alphanumeric characters, hyphens, and underscores
+        if not re.match(r'^[a-zA-Z0-9_-]+$', self.session_id):
+            # Log the attempt for security auditing
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Security Alert: Invalid session_id blocked: '{self.session_id}'")
+            raise ValueError("Invalid session_id: contains unsafe characters")
+
         self.model = model
         self.system_prompt = system_prompt
         self._client = WebAIClient(cookies_file=cookies_file, auto_refresh=auto_refresh)
