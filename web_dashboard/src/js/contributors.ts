@@ -33,36 +33,6 @@ const contributorManager = {
     currentContributions: [] as Contribution[]
 };
 
-// Tab management
-function initTabs(): void {
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
-
-    tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const targetTab = button.getAttribute('id')?.replace('tab-', 'tab-content-');
-
-            // Remove active class from all
-            tabButtons.forEach(btn => {
-                btn.classList.remove('active', 'border-accent', 'text-accent');
-                btn.classList.add('border-transparent', 'text-text-secondary');
-            });
-            tabContents.forEach(content => content.classList.remove('active'));
-
-            // Add active class to selected
-            button.classList.add('active', 'border-accent', 'text-accent');
-            button.classList.remove('border-transparent', 'text-text-secondary');
-
-            if (targetTab) {
-                const targetContent = document.getElementById(targetTab);
-                if (targetContent) {
-                    targetContent.classList.add('active');
-                }
-            }
-        });
-    });
-}
-
 // Load contributors
 async function loadContributors(): Promise<void> {
     const loadingEl = document.getElementById('loading-contributors');
@@ -848,7 +818,6 @@ function escapeHtml(text: string): string {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    initTabs();
     initSearch();
     loadContributors();
     loadContributorUsers();
