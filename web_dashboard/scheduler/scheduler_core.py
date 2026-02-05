@@ -580,6 +580,41 @@ def check_scheduler_health() -> bool:
         return False
 
 
+def clear_jobstore() -> None:
+    """Clear all jobs from the jobstore to prevent duplicate key violations.
+    
+    This should be called during scheduler initialization to remove any
+    stale jobs from previous runs. APScheduler's replace_existing=True has
+    a race condition where multiple concurrent INSERT calls can fail with
+    unique constraint violations.
+    
+    By clearing the jobstore first, we ensure a clean slate for job registration.
+    """
+    try:
+        from supabase_client import SupabaseClient
+        
+        client = SupabaseClient(use_service_role=True)
+        
+        # Delete all jobs from the apscheduler_jobs table
+        # This is safe because we'll immediately re-register all jobs
+        result = client.supabase.table("apscheduler_jobs")\
+            .delete()\
+            .neq("id", "___nonexistent___")\
+            .execute()
+        
+        # Count deleted jobs (if available in result)
+        deleted_count = len(result.data) if result.data else 0
+        
+        if deleted_count > 0:
+            logger.info(f"✅ Cleared {deleted_count} stale job(s) from jobstore")
+        else:
+            logger.debug("Jobstore was empty")
+            
+    except Exception as e:
+        # Non-fatal - scheduler can still start
+        logger.warning(f"⚠️ Failed to clear jobstore (non-fatal): {e}")
+
+
 def cleanup_stale_running_jobs() -> int:
     """Clean up stale 'running' jobs on startup and add to retry queue.
     
@@ -828,8 +863,17 @@ def start_scheduler() -> bool:
                     sys.path.insert(0, str(project_root))
                 from scheduler.jobs import register_default_jobs
             
+            # Clear the jobstore before registering to prevent duplicate key violations
+            # This removes stale jobs from previous runs and ensures a clean slate
+            logger.debug("  → Clearing jobstore...")
+            try:
+                clear_jobstore()
+            except Exception as e:
+                logger.warning(f"  ⚠️ Failed to clear jobstore (non-fatal): {e}")
+            
             logger.debug("  → Registering default jobs...")
             register_default_jobs(scheduler)
+
             
             # Start scheduler
             try:

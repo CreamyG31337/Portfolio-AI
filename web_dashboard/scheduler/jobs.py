@@ -298,6 +298,13 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '🧹'
     },
+    'test_funds_cleanup': {
+        'name': 'Test Funds Cleanup',
+        'description': 'Delete non-production TEST_* funds and related rows created by automated tests',
+        'default_interval_minutes': 1440,  # Once per day
+        'enabled_by_default': True,
+        'icon': '🧹'
+    },
     'rescore_congress_sessions': {
         'name': 'Rescore Congress Sessions (Manual)',
         'description': 'One-time backfill: Rescore 1000 sessions with new AI logic',
@@ -426,6 +433,10 @@ def get_job_icon(job_id: str) -> str:
     Returns:
         Icon emoji string, or empty string if not found
     """
+    # If job_id is defined directly, return it without modifications
+    if job_id in AVAILABLE_JOBS:
+        return AVAILABLE_JOBS[job_id].get('icon', '')
+
     # Handle special cases for job variants
     if job_id == 'update_portfolio_prices_close':
         job_id = 'update_portfolio_prices'
@@ -584,6 +595,8 @@ __all__ = [
     'register_default_jobs',
     # Log cleanup job
     'cleanup_log_files_job',
+    # Test funds cleanup job
+    'cleanup_test_funds_job',
 ]
 
 
@@ -695,6 +708,106 @@ def cleanup_log_files_job() -> None:
             logger.warning(f"Failed to log job execution error: {log_error}")
         mark_job_failed('log_cleanup', target_date, None, str(e), duration_ms=duration_ms)
         logger.error(f"❌ Log cleanup job failed: {e}", exc_info=True)
+
+
+def cleanup_test_funds_job() -> None:
+    """Daily cleanup job to delete test funds and their related data.
+
+    This is a safety net for test suites that create TEST_* funds but don't
+    reliably clean them up (e.g., interruptions or FK constraint failures).
+    """
+    import time
+
+    job_id = "test_funds_cleanup"
+    start_time = time.time()
+    target_date = datetime.now(timezone.utc).date()
+
+    try:
+        from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
+        mark_job_started(job_id, target_date)
+
+        from supabase_client import SupabaseClient
+        client = SupabaseClient(use_service_role=True)
+
+        funds_result = client.supabase.table("funds").select("id, name, is_production").execute()
+        funds = funds_result.data or []
+
+        test_funds = []
+        for fund in funds:
+            name = fund.get("name", "")
+            is_production = fund.get("is_production", False)
+            name_upper = name.upper()
+            if is_production:
+                continue
+            if name_upper.startswith("TEST_") or name_upper == "TEST" or name_upper == "TEST FUND":
+                test_funds.append(fund)
+
+        if not test_funds:
+            duration_ms = int((time.time() - start_time) * 1000)
+            message = "No test funds found"
+            log_job_execution(job_id, True, message, duration_ms)
+            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+            logger.info("✅ Test funds cleanup: no test funds found")
+            return
+
+        deleted_funds = []
+        errors = []
+
+        for fund in test_funds:
+            fund_id = fund.get("id")
+            fund_name = fund.get("name")
+            try:
+                # fund_thesis_pillars -> fund_thesis
+                thesis_result = client.supabase.table("fund_thesis").select("id").eq("fund", fund_name).execute()
+                thesis_ids = [row["id"] for row in (thesis_result.data or []) if row.get("id")]
+                if thesis_ids:
+                    client.supabase.table("fund_thesis_pillars").delete().in_("thesis_id", thesis_ids).execute()
+                client.supabase.table("fund_thesis").delete().eq("fund", fund_name).execute()
+
+                # Dependent rows with FK to funds.name
+                client.supabase.table("dividend_log").delete().eq("fund", fund_name).execute()
+                client.supabase.table("portfolio_positions").delete().eq("fund", fund_name).execute()
+                client.supabase.table("performance_metrics").delete().eq("fund", fund_name).execute()
+                client.supabase.table("cash_balances").delete().eq("fund", fund_name).execute()
+                client.supabase.table("trade_log").delete().eq("fund", fund_name).execute()
+
+                # Rows that reference fund by name or ID
+                client.supabase.table("fund_contributions").delete().eq("fund", fund_name).execute()
+                if fund_id is not None:
+                    client.supabase.table("fund_contributions").delete().eq("fund_id", fund_id).execute()
+
+                client.supabase.table("user_funds").delete().eq("fund_name", fund_name).execute()
+                if fund_id is not None:
+                    client.supabase.table("user_funds").delete().eq("fund_id", fund_id).execute()
+
+                # Delete the fund itself
+                if fund_id is not None:
+                    client.supabase.table("funds").delete().eq("id", fund_id).execute()
+                else:
+                    client.supabase.table("funds").delete().eq("name", fund_name).execute()
+
+                deleted_funds.append(fund_name)
+            except Exception as fund_error:
+                errors.append(f"{fund_name}: {fund_error}")
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = f"Deleted {len(deleted_funds)} test fund(s), {len(errors)} error(s)"
+        if errors:
+            logger.warning(f"Test funds cleanup errors: {errors[:5]}")
+        log_job_execution(job_id, True, message, duration_ms)
+        mark_job_completed(job_id, target_date, None, deleted_funds, duration_ms=duration_ms, message=message)
+        logger.info(f"✅ Test funds cleanup job completed: {message}")
+
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = f"Error: {str(e)}"
+        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        try:
+            from utils.job_tracking import mark_job_failed
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        except Exception:
+            pass
+        logger.error(f"❌ Test funds cleanup job failed: {e}", exc_info=True)
 
 
 def register_default_jobs(scheduler) -> None:
@@ -1065,6 +1178,23 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: log_cleanup (daily at 2:00 AM EST)")
+
+    # Test funds cleanup job - daily at 3:30 AM EST (after social metrics cleanup)
+    if AVAILABLE_JOBS.get('test_funds_cleanup', {}).get('enabled_by_default', True):
+        scheduler.add_job(
+            cleanup_test_funds_job,
+            trigger=CronTrigger(
+                hour=3,
+                minute=30,
+                timezone='America/New_York'
+            ),
+            id='test_funds_cleanup',
+            name=f"{get_job_icon('test_funds_cleanup')} Test Funds Cleanup",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: test_funds_cleanup (daily at 3:30 AM EST)")
     
     # Rescore Congress Sessions (Manual Only)
     # Always register this so it appears in UI, but it has no schedule
