@@ -40,6 +40,36 @@ def _normalize_fund_filter(fund: Optional[str]) -> Optional[str]:
     return fund_value
 
 
+def _get_yfinance_ticker_candidates(ticker: str) -> List[str]:
+    """Return yfinance symbol candidates for potentially ambiguous tickers.
+
+    Yahoo uses dash notation for class shares and may require exchange suffixes
+    for Canadian listings (e.g., TECK.B -> TECK-B.TO).
+    """
+    ticker_upper = ticker.upper().strip()
+    candidates: List[str] = []
+
+    def _add(symbol: Optional[str]) -> None:
+        if symbol and symbol not in candidates:
+            candidates.append(symbol)
+
+    _add(ticker_upper)
+
+    # Handle class-share notation such as BRK.B, TECK.B, TECK.B.TO
+    class_match = re.match(r"^([A-Z0-9]+)\.([A-Z])(?:\.(TO|V))?$", ticker_upper)
+    if class_match:
+        base_symbol, share_class, exchange_suffix = class_match.groups()
+        class_dash_symbol = f"{base_symbol}-{share_class}"
+        _add(class_dash_symbol)
+        if exchange_suffix:
+            _add(f"{class_dash_symbol}.{exchange_suffix}")
+        else:
+            # Most dot-class Canadian symbols in this app map to TSX on Yahoo.
+            _add(f"{class_dash_symbol}.TO")
+
+    return candidates
+
+
 def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[str]:
     """
     Aggregate unique tickers from all relevant database tables.
@@ -343,9 +373,24 @@ def get_ticker_info(
     if not result['basic_info']:
         try:
             import yfinance as yf
-            logger.info(f"Looking up {ticker_upper} from Yahoo Finance...")
-            ticker_obj = yf.Ticker(ticker_upper)
-            info = ticker_obj.info
+            yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
+            logger.info(
+                f"Looking up {ticker_upper} from Yahoo Finance candidates: {yf_candidates}"
+            )
+
+            info = None
+            for yf_symbol in yf_candidates:
+                try:
+                    ticker_obj = yf.Ticker(yf_symbol)
+                    candidate_info = ticker_obj.info
+                    if candidate_info and candidate_info.get("symbol"):
+                        info = candidate_info
+                        logger.info(f"Yahoo Finance lookup succeeded for {ticker_upper} via {yf_symbol}")
+                        break
+                except Exception as candidate_error:
+                    logger.debug(
+                        f"Yahoo Finance lookup failed for candidate {yf_symbol}: {candidate_error}"
+                    )
             
             if info and info.get('symbol'):
                 # Extract fields with multiple fallback attempts
@@ -430,10 +475,24 @@ def get_ticker_info(
     if result['basic_info'] and (result['basic_info'].get('sector') is None or result['basic_info'].get('industry') is None or result['basic_info'].get('trailing_pe') is None):
         try:
             import yfinance as yf
-            logger.info(f"Re-fetching {ticker_upper} from yfinance due to incomplete data")
-            
-            ticker_obj = yf.Ticker(ticker_upper)
-            info = ticker_obj.info
+            yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
+            logger.info(
+                f"Re-fetching {ticker_upper} from Yahoo Finance candidates due to incomplete data: {yf_candidates}"
+            )
+
+            info = None
+            for yf_symbol in yf_candidates:
+                try:
+                    ticker_obj = yf.Ticker(yf_symbol)
+                    candidate_info = ticker_obj.info
+                    if candidate_info and candidate_info.get("symbol"):
+                        info = candidate_info
+                        logger.info(f"Yahoo Finance enrichment succeeded for {ticker_upper} via {yf_symbol}")
+                        break
+                except Exception as candidate_error:
+                    logger.debug(
+                        f"Yahoo Finance enrichment failed for candidate {yf_symbol}: {candidate_error}"
+                    )
             
             if info and info.get('symbol'):
                 # Try to get missing fields
@@ -719,44 +778,57 @@ def get_ticker_price_history(
     # Fallback to yfinance if insufficient portfolio data
     try:
         import yfinance as yf
-        logger.info(f"Fetching {ticker_upper} price history from yfinance (last {days} days)")
+        yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
+        logger.info(
+            f"Fetching {ticker_upper} price history from Yahoo Finance candidates: {yf_candidates} (last {days} days)"
+        )
         
         # Add buffer days to ensure we get data
         buffer_start = start_date - timedelta(days=5)
         buffer_end = end_date + timedelta(days=2)
-        
-        ticker_obj = yf.Ticker(ticker_upper)
-        data = ticker_obj.history(start=buffer_start, end=buffer_end, auto_adjust=False)
-        
-        if data.empty:
-            logger.warning(f"No yfinance data available for {ticker_upper}")
-            return pd.DataFrame()
-        
-        # Convert to DataFrame
-        data = data.reset_index()
-        data['Date'] = pd.to_datetime(data['Date'])
-        
-        # Filter to date range
-        data = data[(data['Date'] >= start_date) & (data['Date'] <= end_date)]
-        
-        if data.empty:
-            logger.warning(f"No yfinance data in date range for {ticker_upper}")
-            return pd.DataFrame()
-        
-        # Use Close price
-        df = pd.DataFrame({
-            'date': data['Date'],
-            'price': data['Close']
-        })
-        df = df.sort_values('date')
-        
-        # Normalize to baseline 100 using first price
-        if len(df) > 0 and df['price'].iloc[0] > 0:
-            baseline_price = float(df['price'].iloc[0])
-            df['normalized'] = (df['price'].astype(float) / baseline_price) * 100
-            result_df = df[['date', 'price', 'normalized']].copy()
-            logger.info(f"Using yfinance data for {ticker_upper}: {len(result_df)} data points")
-            return result_df
+
+        for yf_symbol in yf_candidates:
+            try:
+                ticker_obj = yf.Ticker(yf_symbol)
+                data = ticker_obj.history(start=buffer_start, end=buffer_end, auto_adjust=False)
+
+                if data.empty:
+                    logger.debug(f"No Yahoo Finance data for candidate {yf_symbol}")
+                    continue
+
+                # Convert to DataFrame
+                data = data.reset_index()
+                data['Date'] = pd.to_datetime(data['Date'])
+
+                # Filter to date range
+                data = data[(data['Date'] >= start_date) & (data['Date'] <= end_date)]
+
+                if data.empty:
+                    logger.debug(f"No Yahoo Finance data in date range for candidate {yf_symbol}")
+                    continue
+
+                # Use Close price
+                df = pd.DataFrame({
+                    'date': data['Date'],
+                    'price': data['Close']
+                })
+                df = df.sort_values('date')
+
+                # Normalize to baseline 100 using first price
+                if len(df) > 0 and df['price'].iloc[0] > 0:
+                    baseline_price = float(df['price'].iloc[0])
+                    df['normalized'] = (df['price'].astype(float) / baseline_price) * 100
+                    result_df = df[['date', 'price', 'normalized']].copy()
+                    logger.info(
+                        f"Using Yahoo Finance data for {ticker_upper} via {yf_symbol}: {len(result_df)} data points"
+                    )
+                    return result_df
+            except Exception as candidate_error:
+                logger.debug(
+                    f"Error fetching Yahoo Finance price history for candidate {yf_symbol}: {candidate_error}"
+                )
+
+        logger.warning(f"No Yahoo Finance data available for any candidate of {ticker_upper}")
         
     except Exception as e:
         logger.error(f"Error fetching from yfinance for {ticker_upper}: {e}")

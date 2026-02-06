@@ -1788,7 +1788,7 @@ function renderActionQueue(data: ActionQueueData): void {
                 </td>
                 <td class="px-4 py-3 font-medium text-text-primary">
                     ${logoHtml}
-                    <a href="/ticker/${safeTicker}" class="hover:text-accent hover:underline">${safeTicker}</a>
+                    <a href="/ticker?ticker=${encodeURIComponent(item.ticker)}" class="hover:text-accent hover:underline">${safeTicker}</a>
                     ${item.is_held ? '<span class="ml-1 text-xs text-text-tertiary">(held)</span>' : ''}
                 </td>
                 <td class="px-4 py-3">

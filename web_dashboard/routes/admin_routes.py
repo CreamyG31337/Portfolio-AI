@@ -58,8 +58,9 @@ try:
     from data.models.trade import Trade as TradeModel
     from data.repositories.supabase_repository import SupabaseRepository
     from web_dashboard.utils.background_rebuild import trigger_background_rebuild
+    from cache_version import bump_cache_version
 except ImportError:
-    pass
+    bump_cache_version = lambda: None  # No-op fallback
 
 # AI Settings Imports
 try:
@@ -2099,6 +2100,9 @@ def api_submit_trade():
             processor = TradeProcessor(repository)
             # trade_already_saved=True because we just inserted it above
             processor.process_trade_entry(trade_obj, clear_caches=True, trade_already_saved=True)
+            
+            # Bump cache version to invalidate dashboard caches (Recent Activity, etc.)
+            bump_cache_version()
             
         except Exception as proc_e:
             logger.error(f"Portfolio processor error: {proc_e}", exc_info=True)
