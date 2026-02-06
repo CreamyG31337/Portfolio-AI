@@ -12,6 +12,7 @@ import re
 import pandas as pd
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import current_app
 
 try:
@@ -23,7 +24,9 @@ except ImportError:
         from web_dashboard.supabase_client import SupabaseClient
         from web_dashboard.postgres_client import PostgresClient
     except ImportError:
-        pass
+        # Define dummy classes or Any for type hinting if imports fail
+        SupabaseClient = Any
+        PostgresClient = Any
 
 logger = logging.getLogger(__name__)
 
@@ -214,129 +217,16 @@ def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[s
     return sorted(tickers)
 
 
-def get_ticker_info(
-    ticker: str,
-    supabase_client=None,
-    postgres_client=None,
-    fund: Optional[str] = None
-) -> Dict[str, Any]:
-    """Get comprehensive ticker information from all databases.
+def _fetch_basic_info(ticker_upper: str, supabase_client: Optional[SupabaseClient]) -> Dict[str, Any]:
+    """Fetch basic info from securities table, falling back to yfinance."""
+    result = {'basic_info': None, 'found': False}
     
-    Aggregates ticker data from multiple sources (Supabase and Postgres) including
-    basic security info, portfolio data, research articles, social sentiment,
-    congress trades, and watchlist status.
-    
-    Args:
-        ticker: Ticker symbol (e.g., "AAPL", "XMA.TO")
-        supabase_client: Optional SupabaseClient instance for accessing securities,
-            positions, trades, congress data, and watchlist
-        postgres_client: Optional PostgresClient instance for accessing research
-            articles and social sentiment metrics
-        fund: Optional fund name to filter portfolio data (positions/trades)
-        
-    Returns:
-        Dictionary with the following structure:
-        {
-            'ticker': str,  # Uppercase ticker symbol
-            'found': bool,  # True if any data found for this ticker
-            'basic_info': dict | None,  # From securities table
-                {
-                    'ticker': str,
-                    'company_name': str,
-                    'sector': str,
-                    'industry': str,
-                    'currency': str,  # 'USD', 'CAD', etc.
-                    'exchange': str,   # 'NASDAQ', 'NYSE', 'TSX', etc.
-                    'description': str  # Company business description (or ETF fund description)
-                }
-            'portfolio_data': dict | None,
-                {
-                    'positions': list[dict],  # Latest 100 positions
-                    'trades': list[dict],     # Latest 100 trades
-                    'has_positions': bool,
-                    'has_trades': bool
-                }
-            'research_articles': list[dict],  # Last 30 days, limit 50
-                [
-                    {
-                        'id': int,
-                        'title': str,
-                        'url': str,
-                        'summary': str,
-                        'source': str,
-                        'published_at': datetime,
-                        'fetched_at': datetime,
-                        'relevance_score': float,
-                        'sentiment': str,  # 'positive', 'negative', 'neutral'
-                        'sentiment_score': float,
-                        'article_type': str
-                    }
-                ]
-            'social_sentiment': dict | None,
-                {
-                    'latest_metrics': list[dict],  # Latest per platform
-                    'alerts': list[dict]           # Extreme alerts (24h)
-                }
-            'congress_trades': list[dict],  # Last 30 days, limit 50
-                [
-                    {
-                        'ticker': str,
-                        'politician': str,
-                        'chamber': str,  # 'House' or 'Senate'
-                        'party': str,
-                        'type': str,     # 'Purchase' or 'Sale'
-                        'amount': str,
-                        'transaction_date': date
-                    }
-                ]
-            'watchlist_status': dict | None,
-                {
-                    'ticker': str,
-                    'priority_tier': str,  # 'A', 'B', or 'C'
-                    'source': str,
-                    'is_active': bool
-                }
-        }
-    
-    Example:
-        >>> from supabase_client import SupabaseClient
-        >>> from postgres_client import PostgresClient
-        >>> 
-        >>> sb_client = SupabaseClient()
-        >>> pg_client = PostgresClient()
-        >>> 
-        >>> # Get info for Apple
-        >>> info = get_ticker_info("AAPL", sb_client, pg_client)
-        >>> print(info['basic_info']['company_name'])
-        'Apple Inc.'
-        >>> print(f"Found {len(info['research_articles'])} articles")
-        Found 15 articles
-        >>> 
-        >>> # Canadian ticker
-        >>> info = get_ticker_info("XMA.TO", sb_client, pg_client)
-        >>> print(info['basic_info']['exchange'])
-        'TSX'
-    
-    Note:
-        - Function makes 6 separate database queries (can be slow for large datasets)
-        - Returns empty lists/None for missing data rather than raising exceptions
-        - All timestamps should be timezone-aware (UTC)
-        - Warnings logged for individual query failures (doesn't fail entire function)
-    """
-    ticker_upper = ticker.upper().strip()
-    result = {
-        'ticker': ticker_upper,
-        'basic_info': None,
-        'portfolio_data': None,
-        'research_articles': [],
-        'social_sentiment': None,
-        'congress_trades': [],
-        'insider_trades': [],
-        'watchlist_status': None,
-        'found': False
-    }
-    
-    # 1. Get basic info from securities table
+    if not supabase_client:
+        # Fallback to yfinance if no client, just to return data structure
+        # But usually client is needed for DB cache. We can try yfinance anyway.
+        pass
+
+    # 1. Try DB
     if supabase_client:
         try:
             sec_result = supabase_client.supabase.table("securities")\
@@ -346,7 +236,9 @@ def get_ticker_info(
             
             if sec_result.data and len(sec_result.data) > 0:
                 result['basic_info'] = sec_result.data[0]
-                # Add logo URL for frontend display
+                result['found'] = True
+
+                # Add logo URL
                 try:
                     from web_dashboard.utils.logo_utils import get_ticker_logo_url
                     logo_url = get_ticker_logo_url(ticker_upper)
@@ -355,7 +247,7 @@ def get_ticker_info(
                 except Exception as e:
                     logger.warning(f"Error fetching logo URL for {ticker_upper}: {e}")
                 
-                # If no description exists, try to fetch it (async, won't block)
+                # Fetch description if missing
                 if not result['basic_info'].get('description'):
                     try:
                         from web_dashboard.utils.company_description import ensure_company_description
@@ -364,19 +256,15 @@ def get_ticker_info(
                             result['basic_info']['description'] = description
                     except Exception as e:
                         logger.debug(f"Could not fetch company description for {ticker_upper}: {e}")
-                
-                result['found'] = True
         except Exception as e:
             logger.warning(f"Error fetching basic info for {ticker_upper}: {e}")
-    
-    # If no basic info found, try fetching from yfinance
+
+    # 2. Fallback to yfinance
     if not result['basic_info']:
         try:
             import yfinance as yf
             yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
-            logger.info(
-                f"Looking up {ticker_upper} from Yahoo Finance candidates: {yf_candidates}"
-            )
+            logger.info(f"Looking up {ticker_upper} from Yahoo Finance candidates: {yf_candidates}")
 
             info = None
             for yf_symbol in yf_candidates:
@@ -388,54 +276,18 @@ def get_ticker_info(
                         logger.info(f"Yahoo Finance lookup succeeded for {ticker_upper} via {yf_symbol}")
                         break
                 except Exception as candidate_error:
-                    logger.debug(
-                        f"Yahoo Finance lookup failed for candidate {yf_symbol}: {candidate_error}"
-                    )
+                    logger.debug(f"Yahoo Finance lookup failed for candidate {yf_symbol}: {candidate_error}")
             
             if info and info.get('symbol'):
-                # Extract fields with multiple fallback attempts
-                company_name = (
-                    info.get('longName') or 
-                    info.get('shortName') or 
-                    info.get('displayName') or 
-                    ticker_upper
-                )
-                
-                # Sector - try multiple fields
-                sector = (
-                    info.get('sector') or 
-                    info.get('sectorDisp') or 
-                    info.get('sectorKey')
-                )
-                
-                # Industry - try multiple fields
-                industry = (
-                    info.get('industry') or 
-                    info.get('industryDisp') or 
-                    info.get('industryKey')
-                )
-                
-                # Currency
+                # Extract fields
+                company_name = (info.get('longName') or info.get('shortName') or info.get('displayName') or ticker_upper)
+                sector = (info.get('sector') or info.get('sectorDisp') or info.get('sectorKey'))
+                industry = (info.get('industry') or info.get('industryDisp') or info.get('industryKey'))
                 currency = info.get('currency') or info.get('financialCurrency') or 'USD'
-                
-                # Exchange
-                exchange = (
-                    info.get('exchange') or 
-                    info.get('exchangeName') or 
-                    info.get('fullExchangeName')
-                )
-                
-                # Trailing P/E
+                exchange = (info.get('exchange') or info.get('exchangeName') or info.get('fullExchangeName'))
                 trailing_pe = info.get('trailingPE')
+                company_description = (info.get('longBusinessSummary') or info.get('longDescription') or info.get('description'))
                 
-                # Get company description from yfinance
-                company_description = (
-                    info.get('longBusinessSummary') or 
-                    info.get('longDescription') or 
-                    info.get('description')
-                )
-                
-                # Create basic_info structure from yfinance data
                 result['basic_info'] = {
                     'ticker': ticker_upper,
                     'company_name': company_name,
@@ -458,27 +310,24 @@ def get_ticker_info(
                 
                 result['found'] = True
                 
-                # Save to database for future lookups
+                # Save to database
                 if supabase_client:
                     try:
                         supabase_client.supabase.table("securities").insert(result['basic_info']).execute()
                         logger.info(f"Saved ticker {ticker_upper} ({company_name}) to securities table from yfinance")
                     except Exception as insert_error:
-                        # If insert fails (e.g., duplicate), just log it - we still have the data
                         logger.warning(f"Could not save {ticker_upper} to database: {insert_error}")
             else:
                 logger.warning(f"Could not find ticker information for {ticker_upper} in yfinance")
         except Exception as e:
             logger.warning(f"Error fetching from yfinance for {ticker_upper}: {e}")
-    
-    # If we have basic_info but it's incomplete (None values for sector/industry/pe), try to enrich from yfinance
+
+    # 3. Enrich incomplete info
     if result['basic_info'] and (result['basic_info'].get('sector') is None or result['basic_info'].get('industry') is None or result['basic_info'].get('trailing_pe') is None):
         try:
             import yfinance as yf
             yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
-            logger.info(
-                f"Re-fetching {ticker_upper} from Yahoo Finance candidates due to incomplete data: {yf_candidates}"
-            )
+            logger.info(f"Re-fetching {ticker_upper} from Yahoo Finance candidates due to incomplete data: {yf_candidates}")
 
             info = None
             for yf_symbol in yf_candidates:
@@ -490,17 +339,13 @@ def get_ticker_info(
                         logger.info(f"Yahoo Finance enrichment succeeded for {ticker_upper} via {yf_symbol}")
                         break
                 except Exception as candidate_error:
-                    logger.debug(
-                        f"Yahoo Finance enrichment failed for candidate {yf_symbol}: {candidate_error}"
-                    )
+                    logger.debug(f"Yahoo Finance enrichment failed for candidate {yf_symbol}: {candidate_error}")
             
             if info and info.get('symbol'):
-                # Try to get missing fields
                 sector = result['basic_info'].get('sector') or info.get('sector') or info.get('sectorDisp') or info.get('sectorKey')
                 industry = result['basic_info'].get('industry') or info.get('industry') or info.get('industryDisp') or info.get('industryKey')
                 trailing_pe = result['basic_info'].get('trailingPE') or info.get('trailingPE')
                 
-                # Update if we got new data
                 if sector or industry or trailing_pe:
                     updates = {}
                     if sector:
@@ -513,209 +358,311 @@ def get_ticker_info(
                         result['basic_info']['trailing_pe'] = trailing_pe
                         updates['trailing_pe'] = trailing_pe
                     
-                    # Update database
                     if supabase_client and updates:
                         try:
-                            supabase_client.supabase.table("securities")\
-                                .update(updates)\
-                                .eq('ticker', ticker_upper)\
-                                .execute()
+                            supabase_client.supabase.table("securities").update(updates).eq('ticker', ticker_upper).execute()
                             logger.info(f"Updated {ticker_upper} with enriched data from yfinance: {list(updates.keys())}")
                         except Exception as update_error:
                             logger.warning(f"Could not update {ticker_upper}: {update_error}")
         except Exception as e:
             logger.warning(f"Error re-fetching data for {ticker_upper}: {e}")
+
+    return result
+
+
+def _fetch_portfolio_data(ticker_upper: str, supabase_client: Optional[SupabaseClient], fund_filter: Optional[str]) -> Dict[str, Any]:
+    """Fetch portfolio positions and trades."""
+    result = {'portfolio_data': None, 'found': False}
+    if not supabase_client:
+        return result
+
+    try:
+        # Get current positions
+        pos_query = supabase_client.supabase.table("portfolio_positions").select("*").eq("ticker", ticker_upper)
+        if fund_filter:
+            pos_query = pos_query.eq("fund", fund_filter)
+        pos_result = pos_query.order("date", desc=True).limit(100).execute()
+
+        # Get trade history
+        trade_query = supabase_client.supabase.table("trade_log").select("*").eq("ticker", ticker_upper)
+        if fund_filter:
+            trade_query = trade_query.eq("fund", fund_filter)
+        trade_result = trade_query.order("date", desc=True).limit(100).execute()
+
+        if pos_result.data or trade_result.data:
+            result['portfolio_data'] = {
+                'positions': pos_result.data if pos_result.data else [],
+                'trades': trade_result.data if trade_result.data else [],
+                'has_positions': len(pos_result.data) > 0 if pos_result.data else False,
+                'has_trades': len(trade_result.data) > 0 if trade_result.data else False
+            }
+            result['found'] = True
+    except Exception as e:
+        logger.warning(f"Error fetching portfolio data for {ticker_upper}: {e}")
     
+    return result
+
+
+def _fetch_research_articles(ticker_upper: str, postgres_client: Optional[PostgresClient]) -> Dict[str, Any]:
+    """Fetch research articles."""
+    result = {'research_articles': [], 'found': False}
+    if not postgres_client:
+        return result
+
+    try:
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        query = """
+            SELECT id, title, url, summary, source, published_at, fetched_at,
+                   relevance_score, sentiment, sentiment_score, article_type
+            FROM research_articles
+            WHERE (tickers @> ARRAY[%s]::text[] OR ticker = %s)
+            AND fetched_at >= %s
+            ORDER BY fetched_at DESC
+            LIMIT 50
+        """
+        articles = postgres_client.execute_query(
+            query,
+            (ticker_upper, ticker_upper, thirty_days_ago.isoformat())
+        )
+
+        if articles:
+            result['research_articles'] = articles
+            result['found'] = True
+    except Exception as e:
+        logger.warning(f"Error fetching research articles for {ticker_upper}: {e}")
+    
+    return result
+
+
+def _fetch_social_sentiment(ticker_upper: str, postgres_client: Optional[PostgresClient]) -> Dict[str, Any]:
+    """Fetch social sentiment metrics."""
+    result = {'social_sentiment': None, 'found': False}
+    if not postgres_client:
+        return result
+
+    try:
+        query = """
+            SELECT DISTINCT ON (platform)
+                ticker, platform, volume, sentiment_label, sentiment_score,
+                bull_bear_ratio, created_at
+            FROM social_metrics
+            WHERE ticker = %s
+            ORDER BY platform, created_at DESC
+            LIMIT 10
+        """
+        sentiment_data = postgres_client.execute_query(query, (ticker_upper,))
+
+        query_alerts = """
+            SELECT DISTINCT ON (platform, sentiment_label)
+                ticker, platform, sentiment_label, sentiment_score, created_at
+            FROM social_metrics
+            WHERE ticker = %s
+              AND sentiment_label IN ('EUPHORIC', 'FEARFUL', 'BULLISH')
+              AND created_at > NOW() - INTERVAL '24 hours'
+            ORDER BY platform, sentiment_label, created_at DESC
+            LIMIT 10
+        """
+        alerts = postgres_client.execute_query(query_alerts, (ticker_upper,))
+
+        if sentiment_data or alerts:
+            result['social_sentiment'] = {
+                'latest_metrics': sentiment_data if sentiment_data else [],
+                'alerts': alerts if alerts else []
+            }
+            result['found'] = True
+    except Exception as e:
+        logger.warning(f"Error fetching social sentiment for {ticker_upper}: {e}")
+    
+    return result
+
+
+def _fetch_congress_trades(ticker_upper: str, supabase_client: Optional[SupabaseClient], postgres_client: Optional[PostgresClient]) -> Dict[str, Any]:
+    """Fetch congress trades and analysis."""
+    result = {'congress_trades': [], 'found': False}
+    if not supabase_client:
+        return result
+
+    try:
+        congress_result = supabase_client.supabase.table("congress_trades_enriched")\
+            .select("*")\
+            .eq("ticker", ticker_upper)\
+            .order("transaction_date", desc=True)\
+            .execute()
+
+        if congress_result.data:
+            trades = congress_result.data
+            analysis_map = {}
+            if postgres_client:
+                trade_ids = [trade.get("id") for trade in trades if trade.get("id") is not None]
+                if trade_ids:
+                    try:
+                        analysis_rows = postgres_client.execute_query(
+                            "SELECT trade_id, conflict_score, reasoning "
+                            "FROM congress_trades_analysis "
+                            "WHERE trade_id = ANY(%s)",
+                            (trade_ids,)
+                        )
+                        for row in analysis_rows:
+                            analysis_map[row["trade_id"]] = row
+                    except Exception as e:
+                        logger.warning(f"Error fetching congress trade analysis for {ticker_upper}: {e}")
+
+            formatted_trades = []
+            for trade in trades:
+                trade_id = trade.get("id")
+                analysis = analysis_map.get(trade_id, {})
+                conflict_score = analysis.get("conflict_score")
+                reasoning = analysis.get("reasoning") or ""
+
+                if conflict_score is not None:
+                    score_val = float(conflict_score)
+                    if score_val >= 0.7:
+                        score_display = f"🔴 {score_val:.2f}"
+                    elif score_val >= 0.3:
+                        score_display = f"🟡 {score_val:.2f}"
+                    else:
+                        score_display = f"🟢 {score_val:.2f}"
+                else:
+                    score_display = "⚪ N/A"
+
+                reasoning_short = reasoning[:120] + "..." if reasoning and len(reasoning) > 120 else reasoning
+
+                formatted_trade = dict(trade)
+                formatted_trade["score_display"] = score_display
+                formatted_trade["analysis_reasoning"] = reasoning
+                formatted_trade["analysis_reasoning_short"] = reasoning_short
+                formatted_trades.append(formatted_trade)
+
+            result['congress_trades'] = formatted_trades
+            result['found'] = True
+    except Exception as e:
+        logger.warning(f"Error fetching congress trades for {ticker_upper}: {e}")
+
+    return result
+
+
+def _fetch_insider_trades(ticker_upper: str, supabase_client: Optional[SupabaseClient]) -> Dict[str, Any]:
+    """Fetch insider trades."""
+    result = {'insider_trades': [], 'found': False}
+    if not supabase_client:
+        return result
+
+    try:
+        from web_dashboard.utils.logo_utils import get_ticker_logo_url
+
+        insider_result = supabase_client.supabase.table("insider_trades")\
+            .select("ticker, insider_name, insider_title, transaction_date, disclosure_date, "
+                    "type, shares, price_per_share, value, shares_held_after, percent_change, notes, created_at")\
+            .eq("ticker", ticker_upper)\
+            .order("transaction_date", desc=True)\
+            .limit(50)\
+            .execute()
+
+        if insider_result.data:
+            logo_url = get_ticker_logo_url(ticker_upper)
+            formatted_trades = []
+            for trade in insider_result.data:
+                formatted_trade = dict(trade)
+                formatted_trade["_logo_url"] = logo_url
+                formatted_trades.append(formatted_trade)
+
+            result['insider_trades'] = formatted_trades
+            result['found'] = True
+    except Exception as e:
+        logger.warning(f"Error fetching insider trades for {ticker_upper}: {e}")
+    
+    return result
+
+
+def _fetch_watchlist_status(ticker_upper: str, supabase_client: Optional[SupabaseClient]) -> Dict[str, Any]:
+    """Fetch watchlist status."""
+    result = {'watchlist_status': None, 'found': False}
+    if not supabase_client:
+        return result
+
+    try:
+        watchlist_result = supabase_client.supabase.table("watched_tickers")\
+            .select("*")\
+            .eq("ticker", ticker_upper)\
+            .execute()
+
+        if watchlist_result.data and len(watchlist_result.data) > 0:
+            result['watchlist_status'] = watchlist_result.data[0]
+            result['found'] = True
+    except Exception as e:
+        logger.warning(f"Error fetching watchlist status for {ticker_upper}: {e}")
+
+    return result
+
+
+def get_ticker_info(
+    ticker: str,
+    supabase_client=None,
+    postgres_client=None,
+    fund: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get comprehensive ticker information from all databases.
+
+    Aggregates ticker data from multiple sources (Supabase and Postgres) including
+    basic security info, portfolio data, research articles, social sentiment,
+    congress trades, and watchlist status.
+
+    Args:
+        ticker: Ticker symbol (e.g., "AAPL", "XMA.TO")
+        supabase_client: Optional SupabaseClient instance for accessing securities,
+            positions, trades, congress data, and watchlist
+        postgres_client: Optional PostgresClient instance for accessing research
+            articles and social sentiment metrics
+        fund: Optional fund name to filter portfolio data (positions/trades)
+
+    Returns:
+        Dictionary with structure described in docstring.
+    """
+    ticker_upper = ticker.upper().strip()
+    result = {
+        'ticker': ticker_upper,
+        'basic_info': None,
+        'portfolio_data': None,
+        'research_articles': [],
+        'social_sentiment': None,
+        'congress_trades': [],
+        'insider_trades': [],
+        'watchlist_status': None,
+        'found': False
+    }
+
     fund_filter = _normalize_fund_filter(fund)
 
-    # 2. Get portfolio data (positions and trades)
-    if supabase_client:
-        try:
-            # Get current positions
-            pos_query = supabase_client.supabase.table("portfolio_positions")\
-                .select("*")\
-                .eq("ticker", ticker_upper)
-            if fund_filter:
-                pos_query = pos_query.eq("fund", fund_filter)
-            pos_result = pos_query.order("date", desc=True).limit(100).execute()
-            
-            # Get trade history
-            trade_query = supabase_client.supabase.table("trade_log")\
-                .select("*")\
-                .eq("ticker", ticker_upper)
-            if fund_filter:
-                trade_query = trade_query.eq("fund", fund_filter)
-            trade_result = trade_query.order("date", desc=True).limit(100).execute()
-            
-            if pos_result.data or trade_result.data:
-                result['portfolio_data'] = {
-                    'positions': pos_result.data if pos_result.data else [],
-                    'trades': trade_result.data if trade_result.data else [],
-                    'has_positions': len(pos_result.data) > 0 if pos_result.data else False,
-                    'has_trades': len(trade_result.data) > 0 if trade_result.data else False
-                }
-                result['found'] = True
-        except Exception as e:
-            logger.warning(f"Error fetching portfolio data for {ticker_upper}: {e}")
-    
-    # 3. Get research articles (last 30 days)
-    if postgres_client:
-        try:
-            thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-            query = """
-                SELECT id, title, url, summary, source, published_at, fetched_at,
-                       relevance_score, sentiment, sentiment_score, article_type
-                FROM research_articles
-                WHERE (tickers @> ARRAY[%s]::text[] OR ticker = %s)
-                AND fetched_at >= %s
-                ORDER BY fetched_at DESC
-                LIMIT 50
-            """
-            articles = postgres_client.execute_query(
-                query, 
-                (ticker_upper, ticker_upper, thirty_days_ago.isoformat())
-            )
-            
-            if articles:
-                result['research_articles'] = articles
-                result['found'] = True
-        except Exception as e:
-            logger.warning(f"Error fetching research articles for {ticker_upper}: {e}")
-    
-    # 4. Get social sentiment (latest metrics)
-    if postgres_client:
-        try:
-            query = """
-                SELECT DISTINCT ON (platform)
-                    ticker, platform, volume, sentiment_label, sentiment_score,
-                    bull_bear_ratio, created_at
-                FROM social_metrics
-                WHERE ticker = %s
-                ORDER BY platform, created_at DESC
-                LIMIT 10
-            """
-            sentiment_data = postgres_client.execute_query(query, (ticker_upper,))
-            
-            # Get extreme alerts (last 24 hours) - deduplicated by platform and sentiment_label
-            query_alerts = """
-                SELECT DISTINCT ON (platform, sentiment_label)
-                    ticker, platform, sentiment_label, sentiment_score, created_at
-                FROM social_metrics
-                WHERE ticker = %s
-                  AND sentiment_label IN ('EUPHORIC', 'FEARFUL', 'BULLISH')
-                  AND created_at > NOW() - INTERVAL '24 hours'
-                ORDER BY platform, sentiment_label, created_at DESC
-                LIMIT 10
-            """
-            alerts = postgres_client.execute_query(query_alerts, (ticker_upper,))
-            
-            if sentiment_data or alerts:
-                result['social_sentiment'] = {
-                    'latest_metrics': sentiment_data if sentiment_data else [],
-                    'alerts': alerts if alerts else []
-                }
-                result['found'] = True
-        except Exception as e:
-            logger.warning(f"Error fetching social sentiment for {ticker_upper}: {e}")
-    
-    # 5. Get congress trades (all trades for this ticker)
-    if supabase_client:
-        try:
-            congress_result = supabase_client.supabase.table("congress_trades_enriched")\
-                .select("*")\
-                .eq("ticker", ticker_upper)\
-                .order("transaction_date", desc=True)\
-                .execute()
-            
-            if congress_result.data:
-                trades = congress_result.data
-                analysis_map = {}
-                if postgres_client:
-                    trade_ids = [trade.get("id") for trade in trades if trade.get("id") is not None]
-                    if trade_ids:
-                        try:
-                            analysis_rows = postgres_client.execute_query(
-                                "SELECT trade_id, conflict_score, reasoning "
-                                "FROM congress_trades_analysis "
-                                "WHERE trade_id = ANY(%s)",
-                                (trade_ids,)
-                            )
-                            for row in analysis_rows:
-                                analysis_map[row["trade_id"]] = row
-                        except Exception as e:
-                            logger.warning(f"Error fetching congress trade analysis for {ticker_upper}: {e}")
+    # Execute fetches in parallel using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=7) as executor:
+        futures = {
+            executor.submit(_fetch_basic_info, ticker_upper, supabase_client): 'basic_info',
+            executor.submit(_fetch_portfolio_data, ticker_upper, supabase_client, fund_filter): 'portfolio_data',
+            executor.submit(_fetch_research_articles, ticker_upper, postgres_client): 'research_articles',
+            executor.submit(_fetch_social_sentiment, ticker_upper, postgres_client): 'social_sentiment',
+            executor.submit(_fetch_congress_trades, ticker_upper, supabase_client, postgres_client): 'congress_trades',
+            executor.submit(_fetch_insider_trades, ticker_upper, supabase_client): 'insider_trades',
+            executor.submit(_fetch_watchlist_status, ticker_upper, supabase_client): 'watchlist_status'
+        }
 
-                formatted_trades = []
-                for trade in trades:
-                    trade_id = trade.get("id")
-                    analysis = analysis_map.get(trade_id, {})
-                    conflict_score = analysis.get("conflict_score")
-                    reasoning = analysis.get("reasoning") or ""
+        for future in as_completed(futures):
+            try:
+                partial_result = future.result()
+                if partial_result:
+                    # Update result with data from partial result
+                    # Skip 'found' key during merge, handle it separately
+                    for key, value in partial_result.items():
+                        if key != 'found':
+                            result[key] = value
 
-                    if conflict_score is not None:
-                        score_val = float(conflict_score)
-                        if score_val >= 0.7:
-                            score_display = f"🔴 {score_val:.2f}"
-                        elif score_val >= 0.3:
-                            score_display = f"🟡 {score_val:.2f}"
-                        else:
-                            score_display = f"🟢 {score_val:.2f}"
-                    else:
-                        score_display = "⚪ N/A"
+                    # Update found flag if any partial result found data
+                    if partial_result.get('found'):
+                        result['found'] = True
 
-                    reasoning_short = reasoning[:120] + "..." if reasoning and len(reasoning) > 120 else reasoning
+            except Exception as e:
+                task_name = futures[future]
+                logger.error(f"Error in task {task_name} for {ticker_upper}: {e}", exc_info=True)
 
-                    formatted_trade = dict(trade)
-                    formatted_trade["score_display"] = score_display
-                    formatted_trade["analysis_reasoning"] = reasoning
-                    formatted_trade["analysis_reasoning_short"] = reasoning_short
-                    formatted_trades.append(formatted_trade)
-
-                result['congress_trades'] = formatted_trades
-                result['found'] = True
-        except Exception as e:
-            logger.warning(f"Error fetching congress trades for {ticker_upper}: {e}")
-
-    # 6. Get insider trades (recent for this ticker)
-    if supabase_client:
-        try:
-            from web_dashboard.utils.logo_utils import get_ticker_logo_url
-
-            insider_result = supabase_client.supabase.table("insider_trades")\
-                .select("ticker, insider_name, insider_title, transaction_date, disclosure_date, "
-                        "type, shares, price_per_share, value, shares_held_after, percent_change, notes, created_at")\
-                .eq("ticker", ticker_upper)\
-                .order("transaction_date", desc=True)\
-                .limit(50)\
-                .execute()
-
-            if insider_result.data:
-                logo_url = get_ticker_logo_url(ticker_upper)
-                formatted_trades = []
-                for trade in insider_result.data:
-                    formatted_trade = dict(trade)
-                    formatted_trade["_logo_url"] = logo_url
-                    formatted_trades.append(formatted_trade)
-
-                result['insider_trades'] = formatted_trades
-                result['found'] = True
-        except Exception as e:
-            logger.warning(f"Error fetching insider trades for {ticker_upper}: {e}")
-
-    # 7. Get watchlist status
-    if supabase_client:
-        try:
-            watchlist_result = supabase_client.supabase.table("watched_tickers")\
-                .select("*")\
-                .eq("ticker", ticker_upper)\
-                .execute()
-            
-            if watchlist_result.data and len(watchlist_result.data) > 0:
-                result['watchlist_status'] = watchlist_result.data[0]
-                result['found'] = True
-        except Exception as e:
-            logger.warning(f"Error fetching watchlist status for {ticker_upper}: {e}")
-    
     return result
 
 
