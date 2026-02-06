@@ -26,7 +26,7 @@ def get_supabase_client_flask() -> Optional[SupabaseClient]:
     which sets the Authorization header so RLS policies work correctly.
     """
     try:
-        from flask_auth_utils import get_supabase_access_token
+        from flask_auth_utils import get_supabase_access_token, get_refresh_token
         
         # Get the user's JWT token from cookies
         user_token = get_supabase_access_token()
@@ -36,8 +36,11 @@ def get_supabase_client_flask() -> Optional[SupabaseClient]:
             # Return client anyway, but queries on RLS tables will return empty
             return SupabaseClient()
         
-        logger.debug(f"[get_supabase_client_flask] Creating client with user token (length: {len(user_token)})")
-        return SupabaseClient(user_token=user_token)
+        # Also get refresh token so set_session() can work properly
+        refresh_token = get_refresh_token()
+        
+        logger.debug(f"[get_supabase_client_flask] Creating client with user token (length: {len(user_token)}), refresh_token: {bool(refresh_token)}")
+        return SupabaseClient(user_token=user_token, refresh_token=refresh_token)
         
     except Exception as e:
         logger.error(f"Error initializing Supabase client: {e}", exc_info=True)
@@ -71,7 +74,11 @@ def _get_available_funds_for_user(user_id: str) -> List[str]:
             logger.error("[get_available_funds_flask] Failed to create Supabase client")
             return []
 
-        result = client.supabase.table("user_funds").select("fund_name").eq("user_id", user_id).execute()
+        # Use get_user_accessible_funds() RPC - it's SECURITY DEFINER so it
+        # bypasses RLS on user_funds while still using auth.uid() internally.
+        # This is more reliable than a direct table query which requires
+        # both a valid Authorization header AND RLS policy evaluation.
+        result = client.supabase.rpc("get_user_accessible_funds").execute()
 
         if result and result.data:
             funds = [row.get('fund_name') for row in result.data if row.get('fund_name')]
