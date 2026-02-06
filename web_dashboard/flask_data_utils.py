@@ -69,16 +69,14 @@ def _get_available_funds_for_user(user_id: str) -> List[str]:
     try:
         logger.info(f"[get_available_funds_flask] Looking up funds for user_id: {user_id[:8]}...")
 
-        client = get_supabase_client_flask()
-        if not client:
-            logger.error("[get_available_funds_flask] Failed to create Supabase client")
-            return []
-
-        # Use get_user_accessible_funds() RPC - it's SECURITY DEFINER so it
-        # bypasses RLS on user_funds while still using auth.uid() internally.
-        # This is more reliable than a direct table query which requires
-        # both a valid Authorization header AND RLS policy evaluation.
-        result = client.supabase.rpc("get_user_accessible_funds").execute()
+        # Use a plain SupabaseClient (anon key) and call the SECURITY DEFINER
+        # RPC get_user_funds(user_uuid) which takes user_id as a parameter.
+        # This avoids all RLS/auth.uid() issues — we already verified the
+        # user's identity via the JWT in require_auth.
+        client = SupabaseClient()
+        result = client.supabase.rpc(
+            "get_user_funds", {"user_uuid": user_id}
+        ).execute()
 
         if result and result.data:
             funds = [row.get('fund_name') for row in result.data if row.get('fund_name')]
