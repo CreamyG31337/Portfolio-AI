@@ -204,6 +204,16 @@ function refreshData(): void {
     }
 }
 
+function escapeHtml(text: string | null | undefined): string {
+    if (text === null || text === undefined) return '';
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 // Initialize signals grid
 function initializeSignalsGrid(data: SignalRow[]): void {
     const gridDiv = document.querySelector('#signals-grid') as HTMLElement;
@@ -254,7 +264,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             headerName: 'Signal',
             minWidth: 120,
             cellRenderer: (params: any) => {
-                const signal = params.value || 'HOLD';
+                const signal = escapeHtml(params.value) || 'HOLD';
                 let badgeClass = 'px-3 py-1 rounded-full text-xs font-bold border ';
                 switch (signal) {
                     case 'BUY':
@@ -296,7 +306,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             headerName: 'Fear Level',
             minWidth: 130,
             cellRenderer: (params: any) => {
-                const level = params.value || 'LOW';
+                const level = escapeHtml(params.value) || 'LOW';
                 let badgeClass = 'px-2 py-1 rounded text-xs font-bold ';
                 switch (level) {
                     case 'EXTREME':
@@ -340,7 +350,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             headerName: 'Trend',
             minWidth: 120,
             cellRenderer: (params: any) => {
-                const trend = params.value || 'NEUTRAL';
+                const trend = escapeHtml(params.value) || 'NEUTRAL';
                 let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-medium border ';
                 switch (trend) {
                     case 'UPTREND':
