@@ -229,6 +229,34 @@ function appendFundParam(url: string): string {
     return `${url}${separator}fund=${encodeURIComponent(fund)}`;
 }
 
+function getRecordTimestamp<T, K extends keyof T>(
+    record: T,
+    dateFields: ReadonlyArray<K>
+): number {
+    for (const field of dateFields) {
+        const rawValue = record[field] as unknown;
+        if (typeof rawValue !== "string" || !rawValue) {
+            continue;
+        }
+
+        const parsed = Date.parse(rawValue);
+        if (!Number.isNaN(parsed)) {
+            return parsed;
+        }
+    }
+
+    return Number.NEGATIVE_INFINITY;
+}
+
+function sortRecordsByDateDesc<T, K extends keyof T>(
+    records: T[],
+    dateFields: ReadonlyArray<K>
+): T[] {
+    return [...records].sort((a, b) =>
+        getRecordTimestamp(b, dateFields) - getRecordTimestamp(a, dateFields)
+    );
+}
+
 // Congress trades pagination state
 let allCongressTrades: CongressTickerTrade[] = [];
 let congressTradesCurrentPage: number = 0;
@@ -743,7 +771,10 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
             const latestTickerPositions: Record<string, TickerPosition> = {};
             portfolioData.positions.forEach(pos => {
                 const fund = pos.fund || 'Unknown';
-                if (!latestTickerPositions[fund] || (pos.date && pos.date > (latestTickerPositions[fund].date || ''))) {
+                if (
+                    !latestTickerPositions[fund]
+                    || getRecordTimestamp(pos, ["date"]) > getRecordTimestamp(latestTickerPositions[fund], ["date"])
+                ) {
                     latestTickerPositions[fund] = pos;
                 }
             });
@@ -775,7 +806,8 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
         if (tbody) {
             tbody.innerHTML = '';
 
-            portfolioData.trades.slice(0, 20).forEach(trade => {
+            const sortedTrades = sortRecordsByDateDesc(portfolioData.trades, ["date"]);
+            sortedTrades.slice(0, 20).forEach(trade => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatDate(trade.date)}</td>
@@ -935,7 +967,7 @@ function renderEtfTrades(trades: EtfHoldingTrade[]): void {
 
     emptyState.classList.add('hidden');
     section.classList.remove('hidden');
-    allEtfTrades = trades;
+    allEtfTrades = sortRecordsByDateDesc(trades, ["trade_date"]);
     etfTradesCurrentPage = 0;
     renderEtfTradesPage();
 }
@@ -1231,7 +1263,8 @@ function renderSocialSentiment(sentiment: SocialSentiment): void {
         if (tbody) {
             tbody.innerHTML = '';
 
-            sentiment.latest_metrics.forEach(metric => {
+            const sortedMetrics = sortRecordsByDateDesc(sentiment.latest_metrics, ["created_at"]);
+            sortedMetrics.forEach(metric => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${(metric.platform || 'N/A').charAt(0).toUpperCase() + (metric.platform || '').slice(1)}</td>
@@ -1294,7 +1327,7 @@ function renderCongressTickerTrades(trades: CongressTickerTrade[]): void {
     }
 
     // Store all trades for pagination
-    allCongressTrades = trades;
+    allCongressTrades = sortRecordsByDateDesc(trades, ["transaction_date"]);
     congressTradesCurrentPage = 0;
 
     const section = document.getElementById('congress-section');
@@ -1518,7 +1551,7 @@ function renderInsiderTrades(trades: InsiderTrade[]): void {
         return;
     }
 
-    allInsiderTrades = trades;
+    allInsiderTrades = sortRecordsByDateDesc(trades, ["transaction_date", "disclosure_date"]);
     insiderTradesCurrentPage = 0;
 
     const section = document.getElementById("insider-trades-section");
