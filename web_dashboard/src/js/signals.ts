@@ -253,6 +253,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             field: 'overall_signal',
             headerName: 'Signal',
             minWidth: 120,
+            // Safe: values are server-generated enums (BUY/SELL/HOLD/WATCH) from signal_engine.py, never user input
             cellRenderer: (params: any) => {
                 const signal = params.value || 'HOLD';
                 let badgeClass = 'px-3 py-1 rounded-full text-xs font-bold border ';
@@ -295,6 +296,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             field: 'fear_level',
             headerName: 'Fear Level',
             minWidth: 130,
+            // Safe: values are server-generated enums (LOW/MODERATE/HIGH/EXTREME) from fear_risk_signal.py, never user input
             cellRenderer: (params: any) => {
                 const level = params.value || 'LOW';
                 let badgeClass = 'px-2 py-1 rounded text-xs font-bold ';
@@ -339,6 +341,7 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             field: 'trend',
             headerName: 'Trend',
             minWidth: 120,
+            // Safe: values are server-generated enums (UPTREND/NEUTRAL/DOWNTREND) from structure_signal.py, never user input
             cellRenderer: (params: any) => {
                 const trend = params.value || 'NEUTRAL';
                 let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-medium border ';
