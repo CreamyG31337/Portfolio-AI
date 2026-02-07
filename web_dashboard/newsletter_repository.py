@@ -319,6 +319,29 @@ class NewsletterRepository:
             logger.error(f"❌ Error searching newsletters: {e}")
             return []
     
+    def update_embedding(self, newsletter_id: str, embedding: List[float]) -> bool:
+        """Update a newsletter's embedding after initial save
+        
+        Args:
+            newsletter_id: UUID of the newsletter
+            embedding: Vector embedding (list of 768 floats)
+            
+        Returns:
+            True if updated, False otherwise
+        """
+        try:
+            embedding_str = "[" + ",".join(str(float(x)) for x in embedding) + "]"
+            query = """
+                UPDATE newsletters
+                SET embedding = %s::vector, processed_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """
+            rows_updated = self.client.execute_update(query, (embedding_str, newsletter_id))
+            return rows_updated > 0
+        except Exception as e:
+            logger.error(f"❌ Error updating embedding for newsletter {newsletter_id}: {e}")
+            return False
+    
     def delete_newsletter(self, newsletter_id: str) -> bool:
         """Delete a newsletter by ID
         

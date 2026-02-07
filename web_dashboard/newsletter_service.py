@@ -197,7 +197,8 @@ class NewsletterService:
         body_html: Optional[str] = None,
         sender_name: Optional[str] = None,
         message_id: Optional[str] = None,
-        timestamp: Optional[int] = None
+        timestamp: Optional[int] = None,
+        skip_embedding: bool = False
     ) -> Dict[str, Any]:
         """Process newsletter email and prepare for storage
         
@@ -210,6 +211,7 @@ class NewsletterService:
             sender_name: Sender display name
             message_id: Mailgun message ID
             timestamp: Unix timestamp when email was received
+            skip_embedding: If True, skip embedding generation (save first, embed later)
             
         Returns:
             Dictionary with processed newsletter data ready for storage
@@ -228,8 +230,8 @@ class NewsletterService:
             full_text = f"{subject}\n\n{text_content}"
             tickers = self.extract_tickers(full_text)
             
-            # Generate embedding
-            embedding = self.generate_embedding(text_content)
+            # Generate embedding (unless skipped)
+            embedding = None if skip_embedding else self.generate_embedding(text_content)
             
             # Convert timestamp to datetime
             received_at = None

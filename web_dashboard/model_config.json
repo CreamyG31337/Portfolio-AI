@@ -1,6 +1,6 @@
 {
     "default_config": {
-        "num_ctx": 4096,
+        "num_ctx": 32768,
         "num_predict": 2048,
         "temperature": 0.1,
         "note": "Fallback settings if model not found"
@@ -13,16 +13,16 @@
             "desc": "Best All-Rounder. High context, fits comfortably in VRAM."
         },
         "llama3.1:8b": {
-            "num_ctx": 65536,
+            "num_ctx": 40000,
             "num_predict": 8192,
             "temperature": 0.1,
-            "desc": "Strong general model with 64k context for long chat and analysis."
+            "desc": "Strong general model. 40k sweet spot on 16GB GPU."
         },
         "deepseek-r1:14b": {
-            "num_ctx": 8192,
+            "num_ctx": 16000,
             "num_predict": 2048,
             "temperature": 0.6,
-            "desc": "Reasoning Model. High Temp required. Good for deep logic."
+            "desc": "Reasoning model. 16k max before CPU spill on 16GB GPU."
         },
         "phi4-reasoning:14b": {
             "num_ctx": 8192,
@@ -37,10 +37,10 @@
             "desc": "Faster/lighter reasoning model with a cautious 32k context."
         },
         "qwen3:14b": {
-            "num_ctx": 8192,
+            "num_ctx": 40000,
             "num_predict": 2048,
             "temperature": 0.2,
-            "desc": "Excellent at math and numbers."
+            "desc": "MoE model with efficient KV cache. 40k sweet spot."
         },
         "gemma3:12b": {
             "num_ctx": 8192,
@@ -49,10 +49,10 @@
             "desc": "Strong alternative to Mistral."
         },
         "granite3.3:8b": {
-            "num_ctx": 65536,
+            "num_ctx": 32768,
             "num_predict": 4096,
             "temperature": 0.1,
-            "desc": "Enterprise grade, stable for chat/summarization with large context."
+            "desc": "Enterprise grade for chat/summarization. 32k is stable on 16GB GPU."
         },
         "phi4:14b": {
             "num_ctx": 8192,
@@ -61,29 +61,29 @@
             "desc": "Strong logic, non-reasoning variant."
         },
         "dolphin3:8b": {
-            "num_ctx": 16384,
+            "num_ctx": 40000,
             "num_predict": 4096,
             "temperature": 0.3,
-            "desc": "Uncensored. Good if other models refuse to analyze 'risky' stocks."
+            "desc": "Uncensored 8B model. 40k sweet spot on 16GB GPU."
         },
         "exaone-deep:7.8b": {
-            "num_ctx": 16384,
+            "num_ctx": 32768,
             "num_predict": 4096,
             "temperature": 0.1,
-            "desc": "Lightweight, good for simple tasks."
+            "desc": "Deep-thinking model. 32k max context (slow warm responses)."
         },
         "qwen3-coder:latest": {
-            "num_ctx": 65536,
+            "num_ctx": 8192,
             "num_predict": 4096,
             "temperature": 0.1,
-            "desc": "Optimized for coding/agent tasks. Uses 64k context intentionally.",
+            "desc": "30B+ MoE model; does not fully fit on 16GB GPU. Keep context low.",
             "hidden": true
         },
         "gpt-oss:20b": {
-            "num_ctx": 4096,
+            "num_ctx": 40000,
             "num_predict": 1024,
             "temperature": 0.2,
-            "desc": "Heavy. Low context required to fit 16GB VRAM."
+            "desc": "MoE model with low KV growth. 40k sweet spot on 16GB GPU."
         },
         "qwen3:30b-a3b": {
             "num_ctx": 2048,
@@ -98,10 +98,10 @@
             "desc": "Too big for GPU. Will be slow (CPU offload)."
         },
         "llama3.2:3b": {
-            "num_ctx": 8192,
+            "num_ctx": 40000,
             "num_predict": 512,
             "temperature": 0.1,
-            "desc": "Small, fast model optimized for summarization tasks"
+            "desc": "Small, fast model. 40k sweet spot on 16GB GPU."
         },
         "nomic-embed-text:latest": {
             "num_ctx": 2048,

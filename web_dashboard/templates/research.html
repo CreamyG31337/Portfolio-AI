@@ -151,6 +151,7 @@
                         Research Report</option>
                     <option value="Opportunity Discovery" {% if filters.article_type=='Opportunity Discovery'
                         %}selected{% endif %}>Opportunity Discovery</option>
+                    <option value="Newsletter" {% if filters.article_type=='Newsletter' %}selected{% endif %}>Newsletter</option>
                 </select>
             </div>
         </div>
@@ -228,6 +229,11 @@
                             <span
                                 class="bg-dashboard-surface-alt text-text-primary text-xs font-medium px-2.5 py-0.5 rounded border border-border">
                                 {{ article.article_type }}
+                            </span>
+                            {% endif %}
+                            {% if article.item_kind == 'newsletter' %}
+                            <span class="bg-purple-900/30 text-purple-300 text-xs font-medium px-2.5 py-0.5 rounded border border-purple-500/50">
+                                <i class="fas fa-envelope mr-1"></i>Email
                             </span>
                             {% endif %}
 

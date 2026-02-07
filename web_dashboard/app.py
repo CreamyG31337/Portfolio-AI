@@ -5760,7 +5760,7 @@ def webhook_newsletter():
             logger.warning(f"Missing required fields in newsletter webhook: sender={sender}, recipient={recipient}, subject={subject}")
             return jsonify({'error': 'Missing required fields'}), 400
         
-        # Process newsletter
+        # Process newsletter (without embedding first to avoid timeout)
         logger.info(f"Processing newsletter from {sender}: {subject}")
         processed_data = service.process_newsletter(
             sender=sender,
@@ -5770,26 +5770,45 @@ def webhook_newsletter():
             body_html=body_html,
             sender_name=sender_name,
             message_id=message_id,
-            timestamp=timestamp
+            timestamp=timestamp,
+            skip_embedding=True
         )
         
-        # Save to database
+        # Save to database immediately (so we never lose emails)
         from newsletter_repository import NewsletterRepository
         repo = NewsletterRepository()
         
         newsletter_id = repo.save_newsletter(**processed_data)
         
-        if newsletter_id:
-            logger.info(f"✅ Newsletter saved: {newsletter_id}")
-            return jsonify({
-                'status': 'success',
-                'id': newsletter_id,
-                'tickers': processed_data.get('tickers', []),
-                'has_embedding': processed_data.get('embedding') is not None
-            }), 200
-        else:
+        if not newsletter_id:
             logger.error("Failed to save newsletter to database")
             return jsonify({'error': 'Failed to save newsletter'}), 500
+        
+        logger.info(f"✅ Newsletter saved: {newsletter_id}")
+        
+        # Try to generate embedding after save (best-effort)
+        has_embedding = False
+        try:
+            text_content = body_plain or ""
+            if not text_content and body_html:
+                text_content = service.extract_text_from_html(body_html)
+            if text_content:
+                embedding = service.generate_embedding(text_content)
+                if embedding:
+                    repo.update_embedding(newsletter_id, embedding)
+                    has_embedding = True
+                    logger.info(f"✅ Embedding generated for newsletter {newsletter_id}")
+                else:
+                    logger.warning(f"Embedding generation skipped/failed for {newsletter_id} - will retry later")
+        except Exception as emb_err:
+            logger.warning(f"Embedding generation failed for {newsletter_id}: {emb_err}")
+        
+        return jsonify({
+            'status': 'success',
+            'id': newsletter_id,
+            'tickers': processed_data.get('tickers', []),
+            'has_embedding': has_embedding
+        }), 200
             
     except Exception as e:
         logger.error(f"Error processing newsletter webhook: {e}", exc_info=True)

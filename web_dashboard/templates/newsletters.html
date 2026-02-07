@@ -2,66 +2,75 @@
 
 {% block title %}Newsletter Inbox - Portfolio Dashboard{% endblock %}
 {% block page_title %}Newsletter Inbox{% endblock %}
-{% block page_subtitle %}AI-curated investment newsletters with semantic search{% endblock %}
+{% block page_subtitle %}Forward investment newsletters for AI processing{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
-    <!-- Search Form -->
+    <!-- How It Works -->
     <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
-        <h2 class="text-xl font-bold text-text-primary mb-4">🔍 Search Newsletters</h2>
-        <form id="search-form" class="space-y-4" onsubmit="handleSearch(event)">
-            <div class="flex gap-4">
-                <input 
-                    type="text" 
-                    id="search-query" 
-                    name="query" 
-                    required
-                    class="flex-1 px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-acc ent text-text-primary"
-                    placeholder="Search newsletters semantically...">
-                <button 
-                    type="submit"
-                    class="text-accent bg-transparent border border-accent hover:bg-accent/10 font-medium rounded-lg text-sm px-5 py-2.5">
-                    <i class="fas fa-search mr-2"></i>Search
-                </button>
+        <div class="flex items-start gap-4">
+            <div class="flex-shrink-0 w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center">
+                <i class="fas fa-info-circle text-accent text-lg"></i>
             </div>
-        </form>
-    </div>
-
-    <!-- Newsletters List -->
-    <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
-        <div class="flex items-center justify-between mb-6">
-            <h2 class="text-xl font-bold text-text-primary">📧 Recent Newsletters</h2>
-            <div class="text-sm text-text-secondary">
-                <span id="newsletter-count">0</span> total newsletters
+            <div>
+                <h2 class="text-lg font-bold text-text-primary mb-2">How to Use</h2>
+                <p class="text-sm text-text-secondary mb-3">
+                    Forward or subscribe your investment newsletters to
+                    <code class="bg-dashboard-background px-2 py-0.5 rounded text-accent font-mono text-sm border border-border">ai-research@drifting.space</code>
+                </p>
+                <ul class="text-sm text-text-secondary space-y-1.5">
+                    <li><i class="fas fa-bolt text-accent mr-2"></i>Emails are processed instantly when received &mdash; no waiting for a scheduled job.</li>
+                    <li><i class="fas fa-tags text-accent mr-2"></i>Ticker symbols are automatically extracted from the content.</li>
+                    <li><i class="fas fa-brain text-accent mr-2"></i>Each newsletter is vectorized with AI embeddings so you can search semantically.</li>
+                    <li><i class="fas fa-book-open text-accent mr-2"></i>Processed newsletters appear in the <a href="/research?article_type=Newsletter" class="text-accent hover:underline font-medium">Research Repository</a> alongside other articles.</li>
+                </ul>
             </div>
         </div>
+    </div>
 
-        <!-- Filters -->
-        <div class="mb-4 flex gap-4">
-            <select id="ticker-filter" class="px-4 py-2 bg-dashboard-background border border-border rounded-lg text-text-primary">
-                <option value="">All Tickers</option>
-            </select>
-            <button onclick="loadNewsletters()" class="text-accent border border-accent hover:bg-accent/10 px-4 py-2 rounded-lg text-sm">
-                <i class="fas fa-sync-alt mr-2"></i>Refresh
-            </button>
+    <!-- Ingestion Queue -->
+    <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xl font-bold text-text-primary"><i class="fas fa-inbox mr-2"></i>Received Emails</h2>
+            <div class="flex items-center gap-4">
+                <span class="text-sm text-text-secondary">
+                    <span id="newsletter-count">0</span> total
+                </span>
+                <button onclick="loadNewsletters()" class="text-accent border border-accent hover:bg-accent/10 px-3 py-1.5 rounded-lg text-sm">
+                    <i class="fas fa-sync-alt mr-1"></i>Refresh
+                </button>
+            </div>
         </div>
 
         <!-- Loading State -->
-        <div id="loading" class="hidden text-center py-12">
+        <div id="loading" class="text-center py-12">
             <i class="fas fa-spinner fa-spin text-4xl text-text-tertiary"></i>
-            <p class="text-text-secondary mt-4">Loading newsletters...</p>
+            <p class="text-text-secondary mt-4">Loading...</p>
         </div>
 
-        <!-- Newsletters Grid -->
-        <div id="newsletters-grid" class="grid grid-cols-1 gap-4">
-            <!-- Newsletters will be inserted here -->
+        <!-- Newsletters Table -->
+        <div id="newsletters-table" class="hidden overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="text-xs text-text-secondary uppercase border-b border-border">
+                    <tr>
+                        <th class="px-4 py-3">Date</th>
+                        <th class="px-4 py-3">From</th>
+                        <th class="px-4 py-3">Subject</th>
+                        <th class="px-4 py-3">Tickers</th>
+                        <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="newsletters-body" class="divide-y divide-border">
+                </tbody>
+            </table>
         </div>
 
         <!-- Empty State -->
         <div id="empty-state" class="hidden text-center py-12">
             <i class="fas fa-inbox text-5xl text-text-tertiary mb-4"></i>
             <h3 class="text-lg font-medium text-text-primary mb-2">No newsletters yet</h3>
-            <p class="text-text-secondary">Newsletters will appear here when they're received</p>
+            <p class="text-text-secondary">Send an email to <code class="text-accent">ai-research@drifting.space</code> to get started.</p>
         </div>
 
         <!-- Pagination -->
@@ -76,53 +85,31 @@
         </div>
     </div>
 </div>
-
-<!-- Newsletter Detail Modal -->
-<div id="newsletter-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
-    <div class="flex items-center justify-center min-h-screen">
-        <div class="relative w-full max-w-4xl max-h-[90vh] bg-dashboard-surface rounded-lg shadow border border-border">
-            <div class="flex items-center justify-between p-4 border-b border-border">
-                <h3 id="modal-title" class="text-xl font-semibold text-text-primary"></h3>
-                <button type="button" onclick="closeModal()" class="text-text-tertiary hover:text-text-primary rounded-lg text-sm w-8 h-8">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div id="modal-body" class="p-6 overflow-y-auto max-h-[calc(90vh-5rem)]">
-                <!-- Newsletter content will be inserted here -->
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
 let currentPage = 1;
 const pageSize = 20;
-let totalNewsletters = 0;
 
-// Load newsletters on page load
 document.addEventListener('DOMContentLoaded', () => {
     loadNewsletters();
-    loadTickers();
 });
 
 async function loadNewsletters(offset = 0) {
     const loading = document.getElementById('loading');
-    const grid = document.getElementById('newsletters-grid');
+    const table = document.getElementById('newsletters-table');
     const empty = document.getElementById('empty-state');
     const pagination = document.getElementById('pagination');
+    const tbody = document.getElementById('newsletters-body');
     
     loading.classList.remove('hidden');
-    grid.innerHTML = '';
+    table.classList.add('hidden');
     empty.classList.add('hidden');
     pagination.classList.add('hidden');
     
     try {
-        const ticker = document.getElementById('ticker-filter').value;
-        const url = `/api/newsletters?limit=${pageSize}&offset=${offset}${ticker ? `&ticker=${ticker}` : ''}`;
-        
-        const response = await fetch(url, { credentials: 'include' });
+        const response = await fetch(`/api/newsletters?limit=${pageSize}&offset=${offset}`, { credentials: 'include' });
         const data = await response.json();
         
         loading.classList.add('hidden');
@@ -132,15 +119,47 @@ async function loadNewsletters(offset = 0) {
             return;
         }
         
-        totalNewsletters = data.total;
         document.getElementById('newsletter-count').textContent = data.total;
         
-        // Render newsletters
-        data.newsletters.forEach(newsletter => {
-            grid.innerHTML += renderNewsletterCard(newsletter);
+        tbody.innerHTML = '';
+        data.newsletters.forEach(nl => {
+            const date = new Date(nl.received_at).toLocaleString();
+            const sender = nl.sender_name || nl.sender;
+            const tickers = (nl.tickers || []).map(t => 
+                `<span class="bg-theme-info-bg text-theme-info-text text-xs px-1.5 py-0.5 rounded border border-theme-info-text">$${t}</span>`
+            ).join(' ');
+            
+            const hasEmbedding = nl.has_embedding;
+            const hasSummary = nl.summary && nl.summary.length > 0;
+            
+            let status = '';
+            if (hasSummary && hasEmbedding) {
+                status = '<span class="text-theme-success-text"><i class="fas fa-check-circle mr-1"></i>Processed</span>';
+            } else if (hasEmbedding) {
+                status = '<span class="text-theme-warning-text"><i class="fas fa-brain mr-1"></i>Embedded</span>';
+            } else {
+                status = '<span class="text-text-tertiary"><i class="fas fa-clock mr-1"></i>Pending</span>';
+            }
+            
+            tbody.innerHTML += `
+                <tr class="hover:bg-dashboard-background/50">
+                    <td class="px-4 py-3 text-text-secondary whitespace-nowrap">${date}</td>
+                    <td class="px-4 py-3 text-text-primary">${sender}</td>
+                    <td class="px-4 py-3 text-text-primary font-medium">${nl.subject}</td>
+                    <td class="px-4 py-3">${tickers || '<span class="text-text-tertiary">—</span>'}</td>
+                    <td class="px-4 py-3 text-xs">${status}</td>
+                    <td class="px-4 py-3">
+                        <button onclick="reprocessNewsletter('${nl.id}')" 
+                            class="text-accent hover:text-accent-hover text-xs font-medium">
+                            <i class="fas fa-sync-alt mr-1"></i>Reprocess
+                        </button>
+                    </td>
+                </tr>
+            `;
         });
         
-        // Show pagination if needed
+        table.classList.remove('hidden');
+        
         if (data.total > pageSize) {
             pagination.classList.remove('hidden');
             document.getElementById('prev-btn').disabled = offset === 0;
@@ -151,139 +170,34 @@ async function loadNewsletters(offset = 0) {
     } catch (error) {
         console.error('Error loading newsletters:', error);
         loading.classList.add('hidden');
-        grid.innerHTML = '<div class="text-theme-error-text p-4">Error loading newsletters</div>';
+        document.getElementById('newsletters-body').innerHTML = 
+            '<tr><td colspan="6" class="px-4 py-8 text-center text-theme-error-text">Error loading newsletters</td></tr>';
+        document.getElementById('newsletters-table').classList.remove('hidden');
     }
 }
 
-function renderNewsletterCard(newsletter) {
-    const tickers = newsletter.tickers || [];
-    const tickerBadges = tickers.map(t => 
-        `<span class="bg-theme-info-bg text-theme-info-text text-xs px-2 py-0.5 rounded border border-theme-info-text">$${t}</span>`
-    ).join(' ');
-    
-    const date = new Date(newsletter.received_at).toLocaleString();
-    const preview = (newsletter.body_plain || '').substring(0, 200) + '...';
-    
-    return `
-        <div class="bg-dashboard-background rounded-lg p-4 border border-border hover:border-accent cursor-pointer transition-colors" onclick="viewNewsletter('${newsletter.id}')">
-            <div class="flex items-start justify-between mb-2">
-                <div class="flex-1">
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="text-xs text-text-secondary">${newsletter.sender_name || newsletter.sender}</span>
-                        <span class="text-xs text-text-tertiary">${date}</span>
-                    </div>
-                    <h3 class="text-lg font-semibold text-text-primary">${newsletter.subject}</h3>
-                </div>
-                ${newsletter.has_embedding ? '<i class="fas fa-brain text-accent text-sm" title="Vectorized for semantic search"></i>' : ''}
-            </div>
-            <p class="text-sm text-text-secondary mb-2">${preview}</p>
-            ${tickers.length > 0 ? `<div class="flex flex-wrap gap-1">${tickerBadges}</div>` : ''}
-        </div>
-    `;
-}
-
-async function viewNewsletter(id) {
-    const modal = document.getElementById('newsletter-modal');
-    const title = document.getElementById('modal-title');
-    const body = document.getElementById('modal-body');
-    
-    body.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl"></i></div>';
-    modal.classList.remove('hidden');
+async function reprocessNewsletter(id) {
+    if (!confirm('Re-analyze this newsletter with AI?')) return;
     
     try {
-        const response = await fetch(`/api/newsletters/${id}`, { credentials: 'include' });
-        const newsletter = await response.json();
-        
-        title.textContent = newsletter.subject;
-        
-        const tickers = newsletter.tickers || [];
-        const tickerBadges = tickers.map(t => 
-            `<span class="bg-theme-info-bg text-theme-info-text text-xs px-2 py-1 rounded border border-theme-info-text">$${t}</span>`
-        ).join(' ');
-        
-        const date = new Date(newsletter.received_at).toLocaleString();
-        
-        body.innerHTML = `
-            <div class="space-y-4">
-                <div class="text-sm text-text-secondary">
-                    <div><strong>From:</strong> ${newsletter.sender_name || newsletter.sender}</div>
-                    <div><strong>To:</strong> ${newsletter.recipient}</div>
-                    <div><strong>Date:</strong> ${date}</div>
-                </div>
-                ${tickers.length > 0 ? `<div class="flex flex-wrap gap-1"><strong class="text-text-primary mr-2">Tickers:</strong>${tickerBadges}</div>` : ''}
-                <hr class="border-border">
-                <div class="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
-                    ${newsletter.body_plain || newsletter.body_html || 'No content available'}
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error('Error loading newsletter:', error);
-        body.innerHTML = '<div class="text-theme-error-text">Error loading newsletter</div>';
-    }
-}
-
-function closeModal() {
-    document.getElementById('newsletter-modal').classList.add('hidden');
-}
-
-async function loadTickers() {
-    try {
-        const response = await fetch('/api/newsletters', { credentials: 'include' });
-        const data = await response.json();
-        
-        const tickerSet = new Set();
-        data.newsletters?.forEach(n => {
-            (n.tickers || []).forEach(t => tickerSet.add(t));
-        });
-        
-        const tickerFilter = document.getElementById('ticker-filter');
-        tickerFilter.innerHTML = '<option value="">All Tickers</option>';
-        
-        Array.from(tickerSet).sort().forEach(ticker => {
-            tickerFilter.innerHTML += `<option value="${ticker}">${ticker}</option>`;
-        });
-    } catch (error) {
-        console.error('Error loading tickers:', error);
-    }
-}
-
-async function handleSearch(event) {
-    event.preventDefault();
-    
-    const query = document.getElementById('search-query').value;
-    const grid = document.getElementById('newsletters-grid');
-    const loading = document.getElementById('loading');
-    
-    loading.classList.remove('hidden');
-    grid.innerHTML = '';
-    
-    try {
-        const response = await fetch('/api/newsletters/search', {
+        const response = await fetch('/api/research/reanalyze-newsletter', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ query })
+            body: JSON.stringify({ article_id: id })
         });
         
         const data = await response.json();
-        loading.classList.add('hidden');
         
-        if (!data.results || data.results.length === 0) {
-            grid.innerHTML = '<div class="text-center py-8 text-text-secondary">No results found</div>';
-            return;
+        if (data.success) {
+            alert('Newsletter reprocessed successfully!');
+            loadNewsletters((currentPage - 1) * pageSize);
+        } else {
+            alert('Error: ' + data.message);
         }
-        
-        data.results.forEach(newsletter => {
-            grid.innerHTML += renderNewsletterCard(newsletter);
-        });
-        
-        document.getElementById('pagination').classList.add('hidden');
-        
     } catch (error) {
-        console.error('Error searching:', error);
-        loading.classList.add('hidden');
-        grid.innerHTML = '<div class="text-theme-error-text p-4">Error searching newsletters</div>';
+        console.error('Error reprocessing:', error);
+        alert('Error reprocessing newsletter');
     }
 }
 
@@ -298,10 +212,5 @@ function prevPage() {
         loadNewsletters((currentPage - 1) * pageSize);
     }
 }
-
-// Close modal when clicking outside
-document.getElementById('newsletter-modal')?.addEventListener('click', (e) => {
-    if (e.target.id === 'newsletter-modal') closeModal();
-});
 </script>
 {% endblock %}

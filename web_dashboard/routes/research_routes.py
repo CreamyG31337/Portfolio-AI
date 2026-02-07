@@ -63,6 +63,92 @@ def _is_likely_junk(article: Dict[str, Any]) -> bool:
         return False
     return not any(validate_ticker_in_content(t, text) for t in tickers)
 
+
+def _get_sort_date(a: Dict[str, Any]) -> datetime:
+    """Return a timezone-aware datetime for sorting articles/newsletters."""
+    d = a.get('published_at') or a.get('fetched_at')
+    if d is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if isinstance(d, str):
+        try:
+            return datetime.fromisoformat(d)
+        except (ValueError, TypeError):
+            return datetime.min.replace(tzinfo=timezone.utc)
+    if d.tzinfo is None:
+        return d.replace(tzinfo=timezone.utc)
+    return d
+
+
+def _fetch_newsletters_as_articles(
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    ticker_filter: Optional[str] = None,
+    search_filter: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    """Fetch newsletters from the newsletters table, normalized as research article dicts."""
+    try:
+        from newsletter_repository import NewsletterRepository
+        repo = NewsletterRepository()
+
+        query = """
+            SELECT id, sender, sender_name, subject, body_plain, body_html,
+                   tickers, summary, received_at, processed_at,
+                   (embedding IS NOT NULL) as has_embedding
+            FROM newsletters
+            WHERE 1=1
+        """
+        params: list = []
+
+        if start_date:
+            query += " AND received_at >= %s"
+            params.append(start_date.isoformat())
+        if end_date:
+            query += " AND received_at <= %s"
+            params.append(end_date.isoformat())
+        if ticker_filter:
+            query += " AND %s = ANY(tickers)"
+            params.append(ticker_filter)
+        if search_filter:
+            query += " AND (subject ILIKE %s OR body_plain ILIKE %s)"
+            params.extend([f"%{search_filter}%", f"%{search_filter}%"])
+
+        query += " ORDER BY received_at DESC LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+
+        results = repo.client.execute_query(query, tuple(params))
+
+        articles = []
+        for nl in results:
+            articles.append({
+                'id': str(nl['id']),
+                'title': nl.get('subject', '(No subject)'),
+                'url': None,
+                'summary': nl.get('summary') or (nl.get('body_plain') or '')[:1000],
+                'content': nl.get('body_plain') or nl.get('body_html') or '',
+                'source': nl.get('sender_name') or nl.get('sender', 'Unknown'),
+                'article_type': 'Newsletter',
+                'tickers': nl.get('tickers') or [],
+                'published_at': nl.get('received_at'),
+                'fetched_at': nl.get('processed_at'),
+                'sector': None,
+                'relevance_score': None,
+                'sentiment': None,
+                'sentiment_score': None,
+                'logic_check': None,
+                'claims': None,
+                'fact_check': None,
+                'conclusion': None,
+                'has_embedding': nl.get('has_embedding', False),
+                'item_kind': 'newsletter',
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"Error fetching newsletters for research feed: {e}")
+        return []
+
+
 # Cached repository instance (resource caching)
 @cache_resource
 def get_research_repository():
@@ -244,17 +330,39 @@ def research_dashboard():
             articles = articles_filtered[start : start + per_page]
             logger.info(f"Research dashboard: Filtered to {len(articles_filtered)} likely-junk articles, page has {len(articles)}")
         else:
-            articles = get_cached_articles(
-                repo=repo,
-                start_date=start_date,
-                end_date=end_date,
-                article_type_filter=article_type_filter,
-                search_filter=search_filter,
-                ticker_filter=ticker_filter,
-                per_page=per_page,
-                offset=offset
-            )
-            logger.info(f"Research dashboard: Fetched {len(articles)} valid articles")
+            if article_type_filter == 'Newsletter':
+                articles = _fetch_newsletters_as_articles(
+                    start_date=start_date,
+                    end_date=end_date,
+                    ticker_filter=ticker_filter,
+                    search_filter=search_filter,
+                    limit=per_page,
+                    offset=offset
+                )
+            else:
+                articles = get_cached_articles(
+                    repo=repo,
+                    start_date=start_date,
+                    end_date=end_date,
+                    article_type_filter=article_type_filter,
+                    search_filter=search_filter,
+                    ticker_filter=ticker_filter,
+                    per_page=per_page,
+                    offset=offset
+                )
+                if article_type_filter is None:
+                    newsletters = _fetch_newsletters_as_articles(
+                        start_date=start_date,
+                        end_date=end_date,
+                        ticker_filter=ticker_filter,
+                        search_filter=search_filter,
+                        limit=per_page,
+                        offset=0
+                    )
+                    articles = articles + newsletters
+                    articles.sort(key=_get_sort_date, reverse=True)
+                    articles = articles[:per_page]
+            logger.info(f"Research dashboard: Fetched {len(articles)} items (incl. newsletters)")
             
         # Get common context
         from app import get_navigation_context  # Import here to avoid circular import
@@ -847,6 +955,67 @@ def reanalyze_article_stream():
             "success": False,
             "error": str(e)
         }), 500
+
+
+@research_bp.route('/api/research/reanalyze-newsletter', methods=['POST'])
+@require_auth
+def reanalyze_newsletter():
+    """Re-analyze a newsletter article (generate summary + embedding)"""
+    try:
+        data = request.get_json()
+        article_id = data.get('article_id')
+        model_name = data.get('model', 'granite3.2:8b')
+
+        if not article_id:
+            return jsonify({'success': False, 'message': 'article_id required'}), 400
+
+        from newsletter_repository import NewsletterRepository
+        from newsletter_service import NewsletterService
+        from ollama_client import generate_summary
+
+        nl_repo = NewsletterRepository()
+        nl_service = NewsletterService()
+
+        newsletter = nl_repo.get_newsletter_by_id(article_id)
+        if not newsletter:
+            return jsonify({'success': False, 'message': 'Newsletter not found'}), 404
+
+        content = newsletter.get('body_plain') or ''
+        if not content and newsletter.get('body_html'):
+            content = nl_service.extract_text_from_html(newsletter['body_html'])
+
+        if not content:
+            return jsonify({'success': False, 'message': 'Newsletter has no content'}), 400
+
+        summary_data = generate_summary(content, model=model_name)
+        summary = None
+        tickers: List[str] = []
+        if isinstance(summary_data, str):
+            summary = summary_data
+        elif isinstance(summary_data, dict):
+            summary = summary_data.get('summary', '')
+            tickers = summary_data.get('tickers', [])
+
+        update_query = """
+            UPDATE newsletters
+            SET summary = %s, tickers = %s, processed_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """
+        nl_repo.client.execute_update(update_query, (summary, tickers if tickers else None, article_id))
+
+        embedding = nl_service.generate_embedding(content)
+        if embedding:
+            nl_repo.update_embedding(article_id, embedding)
+
+        return jsonify({
+            'success': True,
+            'message': f'Newsletter re-analyzed with {model_name}',
+            'summary_preview': (summary or '')[:200]
+        })
+
+    except Exception as e:
+        logger.error(f"Error reanalyzing newsletter: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @research_bp.route('/api/research/search', methods=['POST'])
