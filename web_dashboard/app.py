@@ -1470,7 +1470,8 @@ def login():
             json={
                 "email": email,
                 "password": password
-            }
+            },
+            timeout=30
         )
 
         logger.info(f"Login attempt for {email}: Status {response.status_code}")
@@ -1786,7 +1787,8 @@ def magic_link():
                 "email": email,
                 "create_user": False,
                 "redirect_to": redirect_url
-            }
+            },
+            timeout=30
         )
 
         if response.status_code == 200:
@@ -1831,7 +1833,8 @@ def reset_password_request():
             json={
                 "email": email,
                 "redirect_to": redirect_url
-            }
+            },
+            timeout=30
         )
 
         if response.status_code >= 400:
@@ -1890,7 +1893,8 @@ def change_password():
             },
             json={
                 "password": new_password
-            }
+            },
+            timeout=30
         )
 
         if response.status_code == 200:
@@ -1935,7 +1939,8 @@ def register():
                 "user_metadata": {
                     "full_name": name
                 }
-            }
+            },
+            timeout=30
         )
 
         logger.info(f"Registration attempt for {email}: Status {response.status_code}")
@@ -2045,7 +2050,8 @@ def api_admin_users():
                 "apikey": os.getenv("SUPABASE_ANON_KEY"),
                 "Authorization": f"Bearer {os.getenv('SUPABASE_ANON_KEY')}",
                 "Content-Type": "application/json"
-            }
+            },
+            timeout=30
         )
 
         if response.status_code == 200:
@@ -2079,7 +2085,8 @@ def api_admin_funds():
                 "Authorization": f"Bearer {os.getenv('SUPABASE_ANON_KEY')}",
                 "Content-Type": "application/json"
             },
-            params={"select": "fund"}
+            params={"select": "fund"},
+            timeout=30
         )
 
         if response.status_code == 200:
@@ -2115,7 +2122,8 @@ def api_admin_assign_fund():
             json={
                 "user_email": user_email,
                 "fund_name": fund_name
-            }
+            },
+            timeout=30
         )
 
         if response.status_code == 200:
@@ -2159,7 +2167,8 @@ def api_admin_remove_fund():
                 "Authorization": f"Bearer {os.getenv('SUPABASE_ANON_KEY')}",
                 "Content-Type": "application/json"
             },
-            params={"email": f"eq.{user_email}", "select": "user_id"}
+            params={"email": f"eq.{user_email}", "select": "user_id"},
+            timeout=30
         )
 
         if user_response.status_code != 200 or not user_response.json():
@@ -2175,7 +2184,8 @@ def api_admin_remove_fund():
                 "Authorization": f"Bearer {os.getenv('SUPABASE_ANON_KEY')}",
                 "Content-Type": "application/json"
             },
-            params={"user_id": f"eq.{user_id}", "fund_name": f"eq.{fund_name}"}
+            params={"user_id": f"eq.{user_id}", "fund_name": f"eq.{fund_name}"},
+            timeout=30
         )
 
         if remove_response.status_code in [200, 204]:
@@ -2202,7 +2212,8 @@ def api_funds():
                     "apikey": os.getenv("SUPABASE_ANON_KEY"),
                     "Authorization": f"Bearer {os.getenv('SUPABASE_ANON_KEY')}",
                     "Content-Type": "application/json"
-                }
+                },
+                timeout=30
             )
             if response.status_code == 200:
                 data = response.json()
