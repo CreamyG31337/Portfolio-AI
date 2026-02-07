@@ -6,11 +6,15 @@ from unittest.mock import MagicMock, patch
 # This ensures frontend JS changes are tested alongside Flask route tests
 
 def test_index_redirects_to_auth(client):
-    """Test that the index page redirects to auth when not logged in."""
+    """Test that the index page sends unauthenticated users toward auth."""
     response = client.get('/')
-    # When not authenticated, should redirect to /auth
-    assert response.status_code == 302
-    assert '/auth' in response.headers['Location']
+    # Current behavior: serves a small HTML/JS redirect stub (200) to preserve URL hash
+    # for Supabase recovery flows. Older behavior was a plain HTTP redirect (302).
+    assert response.status_code in [200, 302]
+    if response.status_code == 302:
+        assert '/auth' in response.headers['Location']
+    else:
+        assert b"window.location.replace('/auth')" in response.data
 
 def test_auth_page_loads(client):
     """Test that the auth page loads successfully."""
@@ -98,7 +102,8 @@ def test_logs_debug_allows_admin_access(client):
          patch('supabase_client.SupabaseClient') as mock_client_class, \
          patch('flask_auth_utils.get_user_email_flask') as mock_get_email, \
          patch('flask_auth_utils.get_user_id_flask') as mock_get_id, \
-         patch('auth.is_admin') as mock_is_admin_helper:
+         patch('auth.is_admin') as mock_is_admin_helper, \
+         patch('auth.auth_manager.is_admin') as mock_auth_manager_is_admin:
         
         # Mock successful authentication
         mock_verify.return_value = {
@@ -131,6 +136,8 @@ def test_logs_debug_allows_admin_access(client):
         mock_get_email.return_value = 'admin@example.com'
         mock_get_id.return_value = 'admin-user-id'
         mock_is_admin_helper.return_value = True
+        # require_admin decorator fallback path uses auth_manager.is_admin
+        mock_auth_manager_is_admin.return_value = True
         
         # Set auth cookie
         client.set_cookie('auth_token', 'test.token.value')
