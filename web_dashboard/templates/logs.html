@@ -11,6 +11,11 @@
 {% block content %}
 <!-- Tabs (Flowbite) -->
 <div class="mb-6 border-b border-border">
+    <div class="flex justify-end mb-3">
+        <div class="text-xs md:text-sm text-text-secondary font-mono">
+            Current UTC: <span id="current-utc-time">--</span>
+        </div>
+    </div>
     <ul class="flex flex-wrap -mb-px text-sm font-medium text-center text-text-secondary" id="logs-tabs" role="tablist" data-tabs-toggle="#logs-tab-content" data-tabs-active-classes="text-accent border-accent" data-tabs-inactive-classes="text-text-secondary border-transparent hover:text-text-primary hover:border-border">
         <li class="me-2" role="presentation">
             <button class="inline-block p-4 border-b-2 border-accent rounded-t-lg text-accent focus:outline-hidden" id="application-tab"
@@ -719,7 +724,15 @@
         };
     }
 
+    function updateCurrentUtcTime() {
+        const utcEl = document.getElementById('current-utc-time');
+        if (!utcEl) return;
+        utcEl.textContent = new Date().toISOString().replace('T', ' ').replace('Z', ' UTC');
+    }
+
     // Initial load
+    updateCurrentUtcTime();
+    setInterval(updateCurrentUtcTime, 1000);
     fetchLogs();
 </script>
 {% endblock %}
