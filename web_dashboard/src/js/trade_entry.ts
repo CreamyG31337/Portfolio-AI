@@ -4,6 +4,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import { setupTickerAutocomplete, getCompanyName } from './ticker_autocomplete.js';
 
 // Type definitions
 interface Trade {
@@ -88,6 +89,20 @@ function showToastForTradeEntry(message: string, type: 'success' | 'error' | 'in
         toast.style.opacity = '0';
         setTimeout(() => toast.remove(), 300);
     }, 4000);
+}
+
+// Update the company name display below the ticker input
+function updateCompanyNameDisplay(companyName?: string): void {
+    const el = document.getElementById('ticker-company-name');
+    if (!el) return;
+
+    if (companyName) {
+        el.textContent = companyName;
+        el.classList.remove('hidden');
+    } else {
+        el.textContent = '';
+        el.classList.add('hidden');
+    }
 }
 
 // Get selected fund from global selector
@@ -281,6 +296,7 @@ async function handleManualSubmit(e: Event): Promise<void> {
         if (timeInput) timeInput.value = now.toTimeString().slice(0, 5);
 
         updateManualTotal();
+        updateCompanyNameDisplay();
 
         if (result.rebuild_job_id) {
             showToastForTradeEntry('⏳ Background rebuild started (backdated trade)', 'info');
@@ -339,6 +355,13 @@ async function handleEmailParse(): Promise<void> {
         const parsedResult = document.getElementById('parsed-result');
 
         if (previewTicker) previewTicker.textContent = result.trade.ticker;
+
+        // Show company name for parsed ticker
+        const previewCompanyName = document.getElementById('preview-company-name');
+        if (previewCompanyName) {
+            const companyName = getCompanyName(result.trade.ticker);
+            previewCompanyName.textContent = companyName || '';
+        }
 
         if (previewAction) {
             const action = result.trade.action || (result.trade.reason && result.trade.reason.toLowerCase().includes('sell') ? 'SELL' : 'BUY');
@@ -580,7 +603,17 @@ document.addEventListener('DOMContentLoaded', () => {
         priceInput.addEventListener('input', updateManualTotal);
     }
 
-    // Ticker auto-uppercase with visual feedback
+    // Set up ticker autocomplete with company names
+    setupTickerAutocomplete({
+        inputId: 'ticker',
+        dropdownId: 'ticker-autocomplete-dropdown',
+        showCompanyNames: true,
+        onSelect: (_ticker: string, companyName?: string) => {
+            updateCompanyNameDisplay(companyName);
+        }
+    });
+
+    // Also update company name on manual ticker change (blur)
     const tickerInput = document.getElementById('ticker') as HTMLInputElement | null;
     if (tickerInput) {
         tickerInput.addEventListener('change', () => {
@@ -594,6 +627,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     tickerInput.classList.remove('border-theme-success-text');
                 }, 300);
             }
+
+            // Show company name for manually typed tickers
+            const name = getCompanyName(tickerInput.value);
+            updateCompanyNameDisplay(name);
         });
     }
 

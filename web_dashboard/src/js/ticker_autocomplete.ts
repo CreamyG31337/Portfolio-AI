@@ -3,6 +3,7 @@ export { }; // Ensure file is treated as a module
 // API Response interface
 interface TickerListResponse {
     tickers: string[];
+    ticker_names?: Record<string, string>;
 }
 
 // Configuration interface for autocomplete setup
@@ -10,27 +11,34 @@ interface TickerAutocompleteConfig {
     inputId: string;
     dropdownId: string;
     hiddenInputId?: string;
-    onSelect?: (ticker: string) => void;
+    onSelect?: (ticker: string, companyName?: string) => void;
     allowAll?: boolean;
     initialValue?: string;
     tickerListUrl?: string;
     appendFundParam?: (url: string) => string;
+    showCompanyNames?: boolean;
 }
 
 // Global ticker list cache
 let tickerListCache: string[] = [];
+let tickerNamesCache: Record<string, string> = {};
 let tickerListLoaded: boolean = false;
 
 /**
  * Load ticker list from API endpoint
  */
-async function loadTickerList(url: string = '/api/v2/ticker/list', appendFundParam?: (url: string) => string): Promise<string[]> {
+async function loadTickerList(
+    url: string = '/api/v2/ticker/list',
+    appendFundParam?: (url: string) => string,
+    withNames: boolean = false
+): Promise<{ tickers: string[]; names: Record<string, string> }> {
     if (tickerListLoaded && tickerListCache.length > 0) {
-        return tickerListCache;
+        return { tickers: tickerListCache, names: tickerNamesCache };
     }
 
     try {
-        const finalUrl = appendFundParam ? appendFundParam(url) : url;
+        let finalUrl = withNames ? `${url}${url.includes('?') ? '&' : '?'}with_names=1` : url;
+        finalUrl = appendFundParam ? appendFundParam(finalUrl) : finalUrl;
         const response = await fetch(finalUrl, {
             credentials: 'include'
         });
@@ -41,12 +49,20 @@ async function loadTickerList(url: string = '/api/v2/ticker/list', appendFundPar
 
         const data: TickerListResponse = await response.json();
         tickerListCache = data.tickers || [];
+        tickerNamesCache = data.ticker_names || {};
         tickerListLoaded = true;
-        return tickerListCache;
+        return { tickers: tickerListCache, names: tickerNamesCache };
     } catch (error) {
         console.error('Error loading ticker list:', error);
-        return [];
+        return { tickers: [], names: {} };
     }
+}
+
+/**
+ * Get the cached company name for a ticker (if available)
+ */
+export function getCompanyName(ticker: string): string | undefined {
+    return tickerNamesCache[ticker.toUpperCase()];
 }
 
 /**
@@ -61,7 +77,8 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
         allowAll = false,
         initialValue,
         tickerListUrl = '/api/v2/ticker/list',
-        appendFundParam
+        appendFundParam,
+        showCompanyNames = false
     } = config;
 
     const inputEl = document.getElementById(inputId) as HTMLInputElement | null;
@@ -79,6 +96,7 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
     const hiddenInput: HTMLInputElement | null = hiddenInputEl;
     let selectedIndex = -1;
     let tickerList: string[] = [];
+    let tickerNames: Record<string, string> = {};
 
     // Set initial value if provided
     if (initialValue) {
@@ -88,15 +106,16 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
         }
     }
 
-    // Load ticker list
-    loadTickerList(tickerListUrl, appendFundParam).then((list) => {
-        tickerList = list;
+    // Load ticker list (with names if configured)
+    loadTickerList(tickerListUrl, appendFundParam, showCompanyNames).then((result) => {
+        tickerList = result.tickers;
+        tickerNames = result.names;
     });
 
     // Handle input changes
     input.addEventListener('input', () => {
         const query = input.value.toUpperCase().trim();
-        
+
         // Handle "All" option if allowed
         if (allowAll && (query.length === 0 || query === 'ALL')) {
             if (hiddenInput) {
@@ -111,9 +130,15 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
             return;
         }
 
-        // Filter tickers that start with the query
-        const matches = tickerList.filter(t => t.toUpperCase().startsWith(query)).slice(0, 20);
-        
+        // Filter tickers that start with the query, or whose company name contains the query
+        const matches = tickerList.filter(t => {
+            if (t.toUpperCase().startsWith(query)) return true;
+            if (showCompanyNames && tickerNames[t.toUpperCase()]) {
+                return tickerNames[t.toUpperCase()].toUpperCase().includes(query);
+            }
+            return false;
+        }).slice(0, 20);
+
         if (matches.length === 0) {
             hideAutocomplete();
             return;
@@ -126,7 +151,7 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
     // Handle keyboard navigation
     input.addEventListener('keydown', (e) => {
         const items = dropdown.querySelectorAll('[data-ticker]');
-        
+
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
@@ -161,7 +186,13 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
     input.addEventListener('focus', () => {
         const query = input.value.toUpperCase().trim();
         if (query.length > 0 && query !== 'ALL') {
-            const matches = tickerList.filter(t => t.toUpperCase().startsWith(query)).slice(0, 20);
+            const matches = tickerList.filter(t => {
+                if (t.toUpperCase().startsWith(query)) return true;
+                if (showCompanyNames && tickerNames[t.toUpperCase()]) {
+                    return tickerNames[t.toUpperCase()].toUpperCase().includes(query);
+                }
+                return false;
+            }).slice(0, 20);
             if (matches.length > 0) {
                 showAutocomplete(matches);
             }
@@ -170,7 +201,7 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
 
     function showAutocomplete(matches: string[]): void {
         dropdown.innerHTML = '';
-        
+
         // Add "All" option if allowed and no query or query is "all"
         if (allowAll && (input.value.trim().length === 0 || input.value.toUpperCase().trim() === 'ALL')) {
             const allItem = document.createElement('div');
@@ -186,9 +217,23 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
 
         matches.forEach((ticker) => {
             const item = document.createElement('div');
-            item.className = 'px-4 py-2 cursor-pointer hover:bg-dashboard-background text-text-primary';
+            item.className = 'px-4 py-2 cursor-pointer hover:bg-dashboard-background text-text-primary flex items-center justify-between gap-2';
             item.dataset.ticker = ticker;
-            item.textContent = ticker;
+
+            const tickerSpan = document.createElement('span');
+            tickerSpan.className = 'font-semibold';
+            tickerSpan.textContent = ticker;
+            item.appendChild(tickerSpan);
+
+            // Show company name if available
+            const companyName = tickerNames[ticker.toUpperCase()];
+            if (showCompanyNames && companyName) {
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'text-text-secondary text-xs truncate ml-2';
+                nameSpan.textContent = companyName;
+                item.appendChild(nameSpan);
+            }
+
             item.addEventListener('mousedown', (e) => {
                 e.preventDefault();
                 selectTicker(ticker);
@@ -223,17 +268,18 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
         } else {
             input.value = ticker;
         }
-        
+
         // Update hidden input if present
         if (hiddenInput) {
             hiddenInput.value = ticker;
         }
-        
+
         hideAutocomplete();
 
-        // Call custom callback if provided
+        // Call custom callback if provided (include company name)
         if (onSelect) {
-            onSelect(ticker);
+            const companyName = tickerNames[ticker.toUpperCase()];
+            onSelect(ticker, companyName);
         }
     }
 }

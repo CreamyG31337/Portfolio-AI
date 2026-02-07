@@ -3259,10 +3259,33 @@ def _normalize_fund_param(fund: Optional[str]) -> Optional[str]:
 @app.route('/api/v2/ticker/list')
 @require_auth
 def api_ticker_list():
-    """Get list of all available tickers for dropdown"""
+    """Get list of all available tickers for dropdown.
+
+    Query Parameters:
+        with_names (str): If '1' or 'true', include company names map in response.
+
+    Returns:
+        JSON with 'tickers' list, and optionally 'ticker_names' map {ticker: company_name}.
+    """
     try:
         tickers = _get_all_tickers_cached()
-        return jsonify({"tickers": tickers})
+        result: Dict[str, Any] = {"tickers": tickers}
+
+        # Optionally include company names for enhanced autocomplete
+        with_names = request.args.get('with_names', '').lower() in ('1', 'true')
+        if with_names and tickers:
+            try:
+                supabase_client = SupabaseClient()
+                cache_version = get_cache_version()
+                names_map = get_company_names_map_cached(
+                    supabase_client, tuple(tickers), cache_version
+                )
+                result["ticker_names"] = names_map
+            except Exception as e:
+                logger.warning(f"Error fetching company names for ticker list: {e}")
+                # Non-fatal: return tickers without names
+
+        return jsonify(result)
     except Exception as e:
         logger.error(f"Error fetching ticker list: {e}")
         import traceback

@@ -82,7 +82,13 @@
                                 <input type="text" id="ticker" name="ticker"
                                     class="border text-sm rounded-lg block w-full ps-10 p-2.5 uppercase transition-colors duration-300"
                                     placeholder="AAPL" autocomplete="off" aria-required="true" required>
+                                <!-- Autocomplete dropdown -->
+                                <div id="ticker-autocomplete-dropdown"
+                                    class="hidden absolute z-50 w-full mt-1 bg-dashboard-surface border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                </div>
                             </div>
+                            <!-- Company name display -->
+                            <p id="ticker-company-name" class="mt-1 text-xs text-text-secondary hidden"></p>
                         </div>
 
                         <div>
@@ -183,6 +189,7 @@
                         <div>
                             <p class="text-text-secondary">Ticker</p>
                             <p class="font-bold text-lg text-text-primary" id="preview-ticker">-</p>
+                            <p class="text-xs text-text-secondary" id="preview-company-name"></p>
                         </div>
                         <div>
                             <p class="text-text-secondary">Action</p>
