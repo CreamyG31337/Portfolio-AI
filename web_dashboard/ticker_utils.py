@@ -73,20 +73,45 @@ def _get_yfinance_ticker_candidates(ticker: str) -> List[str]:
 
 def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
                               extra_filter: Optional[Dict] = None) -> Set[str]:
-    """Fetch unique tickers from a single Supabase table."""
+    """Fetch unique tickers from a single Supabase table with pagination."""
     tickers: Set[str] = set()
     if not client:
         return tickers
     try:
         logger.debug(f"Fetching tickers from Supabase: {table}")
-        query = client.supabase.table(table).select(ticker_column)
-        if extra_filter:
-            for col, val in extra_filter.items():
-                query = query.eq(col, val)
-        result = query.execute()
-        if result.data:
-            tickers.update(row[ticker_column].upper() for row in result.data if row.get(ticker_column))
-            logger.debug(f"Fetched {len(tickers)} tickers from {table}")
+
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            query = client.supabase.table(table).select(ticker_column)
+            if extra_filter:
+                for col, val in extra_filter.items():
+                    query = query.eq(col, val)
+
+            # Use range for pagination to ensure we get all rows
+            result = query.range(offset, offset + batch_size - 1).execute()
+
+            if not result.data:
+                break
+
+            # Extract and normalize tickers
+            batch_tickers = [row[ticker_column].upper() for row in result.data if row.get(ticker_column)]
+            tickers.update(batch_tickers)
+
+            if len(result.data) < batch_size:
+                break
+
+            offset += batch_size
+
+            # Safety limit to prevent infinite loops on massive tables (e.g. 50k rows)
+            # This is a tradeoff: we might miss some tickers if the table is huge,
+            # but we prevent the function from running forever.
+            if offset > 50000:
+                logger.warning(f"Ticker fetch limit reached for {table} (50k rows)")
+                break
+
+        logger.debug(f"Fetched {len(tickers)} unique tickers from {table}")
     except Exception as e:
         logger.error(f"Error fetching tickers from {table}: {e}", exc_info=True)
     return tickers
@@ -181,14 +206,21 @@ def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[s
         futures = []
 
         # Supabase tasks
+        # Optimization: We rely on 'securities' as the master list.
+        # Tables like 'portfolio_positions', 'trade_log', and 'congress_trades' can be huge
+        # and scanning them for unique tickers is inefficient (O(N) vs O(1)).
+        # The application ensures that tickers in these tables are also added to 'securities'.
         futures.append(executor.submit(_fetch_tickers_from_table, sb_client, 'securities'))
-        futures.append(executor.submit(_fetch_tickers_from_table, sb_client, 'portfolio_positions'))
-        futures.append(executor.submit(_fetch_tickers_from_table, sb_client, 'trade_log'))
+
+        # We still fetch from watched_tickers as user might have added something new
         futures.append(executor.submit(
             _fetch_tickers_from_table, sb_client, 'watched_tickers',
             'ticker', {'is_active': True}
         ))
-        futures.append(executor.submit(_fetch_tickers_from_table, sb_client, 'congress_trades'))
+
+        # Removed: portfolio_positions, trade_log, congress_trades
+        # Reason: Performance optimization. These tables grow large (historical data)
+        # and should be covered by securities table.
 
         # Postgres tasks
         futures.append(executor.submit(_fetch_tickers_articles, pg_client))
