@@ -563,6 +563,14 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             except Exception:
                 pass
 
+        # Get user theme so base.html can set data-theme on <html>
+        user_theme = 'system'
+        try:
+            from user_preferences import get_user_theme
+            user_theme = get_user_theme() or 'system'
+        except Exception:
+            pass
+
         return {
             'navigation_links': nav_links,
             'is_admin': is_admin_value,
@@ -570,7 +578,8 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             'selected_fund': selected_fund,
             'allow_all_funds': allow_all_funds,
             'scheduler_status': scheduler_status,
-            'current_page': current_page
+            'current_page': current_page,
+            'user_theme': user_theme,
         }
     except Exception as e:
         logger.warning(f"Error building navigation context: {e}")
@@ -578,7 +587,8 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             'navigation_links': [],
             'is_admin': False,
             'available_funds': [],
-            'current_page': None
+            'current_page': None,
+            'user_theme': 'system',
         }
 
 
