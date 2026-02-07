@@ -13,10 +13,10 @@
             "desc": "Best All-Rounder. High context, fits comfortably in VRAM."
         },
         "llama3.1:8b": {
-            "num_ctx": 32768,
+            "num_ctx": 65536,
             "num_predict": 8192,
             "temperature": 0.1,
-            "desc": "Safest choice. Low VRAM usage allows massive context."
+            "desc": "Strong general model with 64k context for long chat and analysis."
         },
         "deepseek-r1:14b": {
             "num_ctx": 8192,
@@ -31,10 +31,10 @@
             "desc": "Reasoning Model. High Temp required."
         },
         "deepseek-r1:8b": {
-            "num_ctx": 16384,
+            "num_ctx": 32768,
             "num_predict": 4096,
             "temperature": 0.6,
-            "desc": "Faster/Lighter reasoning model."
+            "desc": "Faster/lighter reasoning model with a cautious 32k context."
         },
         "qwen3:14b": {
             "num_ctx": 8192,
@@ -49,10 +49,10 @@
             "desc": "Strong alternative to Mistral."
         },
         "granite3.3:8b": {
-            "num_ctx": 16384,
+            "num_ctx": 65536,
             "num_predict": 4096,
             "temperature": 0.1,
-            "desc": "Enterprise grade, very stable for RAG/Docs."
+            "desc": "Enterprise grade, stable for chat/summarization with large context."
         },
         "phi4:14b": {
             "num_ctx": 8192,
@@ -73,10 +73,10 @@
             "desc": "Lightweight, good for simple tasks."
         },
         "qwen3-coder:latest": {
-            "num_ctx": 16384,
+            "num_ctx": 65536,
             "num_predict": 4096,
             "temperature": 0.1,
-            "desc": "Optimized for code, but accurate with structured data/JSON.",
+            "desc": "Optimized for coding/agent tasks. Uses 64k context intentionally.",
             "hidden": true
         },
         "gpt-oss:20b": {

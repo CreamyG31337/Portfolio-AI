@@ -12,7 +12,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from auth import require_auth
 from flask_auth_utils import get_user_email_flask, get_user_id_flask
 from flask_cache_utils import cache_data
-from user_preferences import get_user_theme, get_user_ai_model, get_user_preference
+from user_preferences import get_user_ai_model, get_user_preference
 from flask_data_utils import (
     get_available_funds_flask, get_current_positions_flask, get_trade_log_flask,
     get_cash_balances_flask, calculate_portfolio_value_over_time_flask,
@@ -572,7 +572,6 @@ def ai_assistant_page():
     """AI Assistant chat interface page (Flask v2)"""
     try:
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
         default_model = get_user_ai_model()
         
         # Get available funds (cached)
@@ -609,7 +608,6 @@ def ai_assistant_page():
         
         return render_template('ai_assistant.html',
                              user_email=user_email,
-                             user_theme=user_theme,
                              default_model=default_model,
                              ollama_models=ollama_models,
                              ollama_available=ollama_available,
