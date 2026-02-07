@@ -2013,18 +2013,15 @@ def admin_funds_page():
     """Render the fund management page"""
     from flask import render_template
     from flask_auth_utils import get_user_email_flask
-    from user_preferences import get_user_theme
     from app import get_navigation_context
 
     user_email = get_user_email_flask()
-    user_theme = get_user_theme() or 'system'
 
     # Get navigation context
     nav_context = get_navigation_context(current_page='admin_funds')
 
     return render_template('funds.html',
                          user_email=user_email,
-                         user_theme=user_theme,
                          **nav_context)
 
 @app.route('/api/admin/users')
@@ -2821,7 +2818,6 @@ def settings_page():
                              current_timezone=current_timezone,
                              current_currency=current_currency,
                              current_theme=current_theme,
-                             user_theme=current_theme,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error loading settings page: {e}")
@@ -3215,11 +3211,10 @@ def ticker_details_page():
     try:
         from flask_auth_utils import get_user_email_flask
         from ollama_client import load_model_config
-        from user_preferences import get_user_ai_model, get_user_theme
+        from user_preferences import get_user_ai_model
 
         user_email = get_user_email_flask()
         ticker = request.args.get('ticker', '').upper().strip()
-        user_theme = get_user_theme() or 'system'
         default_model = get_user_ai_model()
         model_config = load_model_config()
 
@@ -3229,7 +3224,6 @@ def ticker_details_page():
         return render_template('ticker_details.html',
                                user_email=user_email,
                                ticker=ticker,
-                               user_theme=user_theme,
                                default_model=default_model,
                                model_config=model_config,
                                **nav_context)
@@ -4344,12 +4338,10 @@ def congress_trades_page():
     try:
         from flask_auth_utils import get_user_email_flask, get_auth_token
         from flask_data_utils import get_supabase_client_flask
-        from user_preferences import get_user_theme
         from cache_version import get_cache_version
         from auth import is_admin
 
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
 
         # Get refresh key from query params
         refresh_key = int(request.args.get('refresh_key', 0))
@@ -4365,7 +4357,6 @@ def congress_trades_page():
             nav_context = get_navigation_context(current_page='congress_trades')
             return render_template('congress_trades.html',
                                  user_email=user_email,
-                                 user_theme=user_theme,
                                  error="Congress Trades Database Unavailable",
                                  error_message="The congress trades database is not available. Check the logs or contact an administrator.",
                                  **nav_context)
@@ -4426,7 +4417,6 @@ def congress_trades_page():
 
         return render_template('congress_trades.html',
                              user_email=user_email,
-                             user_theme=user_theme,
                              refresh_key=refresh_key,
                              unique_tickers=unique_tickers,
                              unique_politicians=unique_politicians,
@@ -4459,7 +4449,6 @@ def congress_trades_page():
         nav_context = get_navigation_context(current_page='congress_trades')
         return render_template('congress_trades.html',
                              user_email='User',
-                             user_theme='system',
                              error=str(e),
                              error_message="An error occurred loading congress trades. Please check the logs.",
                              **nav_context), 500
@@ -5419,12 +5408,11 @@ def insider_trades_page():
     try:
         from flask_auth_utils import get_user_email_flask
         from flask_data_utils import get_supabase_client_flask
-        from user_preferences import get_user_theme, format_timestamp_in_user_timezone
+        from user_preferences import format_timestamp_in_user_timezone
         from cache_version import get_cache_version
         from auth import is_admin
 
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or "system"
 
         refresh_key = int(request.args.get("refresh_key", 0))
 
@@ -5438,7 +5426,6 @@ def insider_trades_page():
             nav_context = get_navigation_context(current_page='insider_trades')
             return render_template('insider_trades.html',
                                  user_email=user_email,
-                                 user_theme=user_theme,
                                  error="Insider Trades Database Unavailable",
                                  error_message="The insider trades database is not available. Check the logs or contact an administrator.",
                                  **nav_context)
@@ -5492,7 +5479,6 @@ def insider_trades_page():
 
         return render_template('insider_trades.html',
                              user_email=user_email,
-                             user_theme=user_theme,
                              refresh_key=refresh_key,
                              unique_insiders=unique_insiders,
                              newest_timestamp=latest_created_at or "N/A",
@@ -5519,7 +5505,6 @@ def insider_trades_page():
         nav_context = get_navigation_context(current_page='insider_trades')
         return render_template('insider_trades.html',
                              user_email='User',
-                             user_theme='system',
                              error=str(e),
                              error_message="An error occurred loading insider trades. Please check the logs.",
                              **nav_context), 500

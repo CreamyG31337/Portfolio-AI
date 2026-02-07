@@ -71,7 +71,6 @@ def dashboard_page():
         # but Flask handles all authentication
             
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
         
         # Determine initial fund from user preference
         selected_fund = get_user_selected_fund()
@@ -81,7 +80,6 @@ def dashboard_page():
         
         return render_template('dashboard.html',
                              user_email=user_email,
-                             user_theme=user_theme,
                              initial_fund=selected_fund,
                              **nav_context)
     except Exception as e:
@@ -114,7 +112,6 @@ def dashboard_page():
             nav_context = {}
         return render_template('dashboard.html', 
                              user_email='User',
-                             user_theme='system',
                              initial_fund=None,
                              **nav_context)
 

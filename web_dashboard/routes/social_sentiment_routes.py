@@ -383,7 +383,6 @@ def social_sentiment_page():
         from app import get_navigation_context  # Import here to avoid circular import
         
         user_email = get_user_email_flask()
-        user_theme = get_user_preference('theme', default='system')
         refresh_key = int(request.args.get('refresh_key', 0))
         cache_version = get_cache_version()
         
@@ -396,7 +395,6 @@ def social_sentiment_page():
             nav_context = get_navigation_context(current_page='social_sentiment')
             return render_template('social_sentiment.html',
                                  user_email=user_email,
-                                 user_theme=user_theme,
                                  error="Social Sentiment Database Unavailable",
                                  error_message="The social sentiment database is not available. Check the logs or contact an administrator.",
                                  refresh_key=refresh_key,
@@ -440,7 +438,6 @@ def social_sentiment_page():
         
         return render_template('social_sentiment.html',
                              user_email=user_email,
-                             user_theme=user_theme,
                              refresh_key=refresh_key,
                              watchlist_summary=watchlist_summary,
                              alerts_count=len(alerts),
@@ -452,11 +449,9 @@ def social_sentiment_page():
         logger.error(f"Error in social sentiment page: {e}", exc_info=True)
         from app import get_navigation_context
         user_email = get_user_email_flask()
-        user_theme = get_user_preference('theme', default='system')
         nav_context = get_navigation_context(current_page='social_sentiment')
         return render_template('social_sentiment.html',
                              user_email=user_email,
-                             user_theme=user_theme,
                              error="Error loading page",
                              error_message=str(e),
                              refresh_key=0,

@@ -260,7 +260,6 @@ def research_dashboard():
         from app import get_navigation_context  # Import here to avoid circular import
         from searxng_client import check_searxng_health
         user_email = get_user_email_flask()
-        user_theme = get_user_preference('theme', default='system')
         nav_context = get_navigation_context(current_page='research')
         searxng_available = check_searxng_health()
 
@@ -286,7 +285,6 @@ def research_dashboard():
                 'page': page
             },
             user_email=user_email,
-            user_theme=user_theme,
             searxng_available=searxng_available,
             **nav_context
         )
@@ -296,7 +294,6 @@ def research_dashboard():
         # Return error page with details
         from app import get_navigation_context  # Import here to avoid circular import
         user_email = get_user_email_flask()
-        user_theme = get_user_preference('theme', default='system')
         nav_context = get_navigation_context(current_page='research')
         
         return render_template(
@@ -305,7 +302,6 @@ def research_dashboard():
             error_message=str(e),
             error_details="Please check the logs for more information.",
             user_email=user_email,
-            user_theme=user_theme,
             **nav_context
         ), 500
 

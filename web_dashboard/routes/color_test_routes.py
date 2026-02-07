@@ -17,14 +17,12 @@ def color_test_page():
         from app import get_navigation_context
         
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
         
         # Navigation context
         nav_context = get_navigation_context(current_page='color_test')
         
         return render_template('color_test.html',
                              user_email=user_email,
-                             user_theme=user_theme,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error rendering color test page: {e}", exc_info=True)
@@ -36,5 +34,4 @@ def color_test_page():
             nav_context = {}
         return render_template('color_test.html', 
                              user_email='User',
-                             user_theme='system',
                              **nav_context)

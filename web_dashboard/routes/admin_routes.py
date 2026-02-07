@@ -288,10 +288,7 @@ def users_page():
     """Admin user & access management page (Flask v2)"""
     try:
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_theme
-        
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
         
         # Get navigation context
         from app import get_navigation_context
@@ -301,7 +298,6 @@ def users_page():
         
         return render_template('users.html', 
                              user_email=user_email,
-                             user_theme=user_theme,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error rendering users page: {e}", exc_info=True)
@@ -314,7 +310,6 @@ def users_page():
             nav_context = {}
         return render_template('users.html', 
                              user_email='Admin',
-                             user_theme='system',
                              **nav_context)
 
 # User management routes
@@ -887,10 +882,7 @@ def system_page():
     """System Monitoring Page"""
     try:
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_theme
-        
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
         
         # Get navigation context
         from app import get_navigation_context
@@ -898,7 +890,6 @@ def system_page():
         
         return render_template('system.html', 
                              user_email=user_email,
-                             user_theme=user_theme,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error rendering system page: {e}", exc_info=True)
@@ -911,7 +902,6 @@ def system_page():
             nav_context = {}
         return render_template('system.html', 
                              user_email='Admin',
-                             user_theme='system',
                              **nav_context)
 
 @admin_bp.route('/api/admin/system/status')
@@ -961,19 +951,16 @@ def logs_page():
     """Admin logs viewer page"""
     try:
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_theme
         
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
         
         # Get navigation context
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_logs')
+        template_context = {**nav_context, "user_email": user_email}
+        template_context.setdefault("user_theme", "system")
         
-        return render_template('logs.html', 
-                             user_email=user_email,
-                             user_theme=user_theme,
-                             **nav_context)
+        return render_template("logs.html", **template_context)
     except Exception as e:
         logger.error(f"Error rendering logs page: {e}", exc_info=True)
         # Fallback with minimal context
@@ -983,10 +970,9 @@ def logs_page():
         except Exception:
             # If navigation context also fails, use minimal fallback
             nav_context = {}
-        return render_template('logs.html', 
-                             user_email='Admin',
-                             user_theme='system',
-                             **nav_context)
+        fallback_context = {**nav_context, "user_email": "Admin"}
+        fallback_context.setdefault("user_theme", "system")
+        return render_template("logs.html", **fallback_context)
 
 VALID_LOG_LEVELS = frozenset({"DEBUG", "PERF", "INFO", "WARNING", "ERROR"})
 
@@ -1437,13 +1423,11 @@ def scheduler_page():
     try:
         logger.info("[Scheduler Page] Rendering scheduler page")
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_theme
         from app import get_navigation_context
         from scheduler.scheduler_core import is_scheduler_running
         
         user_email = get_user_email_flask()
         logger.debug(f"[Scheduler Page] User email: {user_email}")
-        user_theme = get_user_theme() or 'system'
         
         # Get navigation context
         logger.debug("[Scheduler Page] Getting navigation context...")
@@ -1453,7 +1437,6 @@ def scheduler_page():
         logger.info("[Scheduler Page] Rendering template...")
         return render_template('jobs.html', 
                              user_email=user_email,
-                             user_theme=user_theme,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error rendering scheduler page: {e}", exc_info=True)
@@ -1476,7 +1459,6 @@ def scheduler_page():
         nav_context['scheduler_status'] = scheduler_status
         return render_template('jobs.html', 
                              user_email='Admin',
-                             user_theme='system',
                              **nav_context)
 
 @admin_bp.route('/api/admin/scheduler/status')
@@ -1842,10 +1824,7 @@ def trade_entry_page():
     """Trade Entry Page"""
     try:
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_theme
-        
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
         
         # Get navigation context
         from app import get_navigation_context
@@ -1853,7 +1832,6 @@ def trade_entry_page():
         
         return render_template('trade_entry.html', 
                              user_email=user_email,
-                             user_theme=user_theme,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error rendering trade entry page: {e}", exc_info=True)
@@ -1866,7 +1844,6 @@ def trade_entry_page():
             nav_context = {}
         return render_template('trade_entry.html', 
                              user_email='Admin',
-                             user_theme='system',
                              **nav_context)
 
 @admin_bp.route('/api/admin/trades/preview-email', methods=['POST'])
@@ -2206,17 +2183,13 @@ def contributions_page():
     """Contributions Management Page"""
     try:
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_theme
-        
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
         
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_contributions')
         
         return render_template('contributions.html', 
                              user_email=user_email,
-                             user_theme=user_theme,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error rendering contributions page: {e}", exc_info=True)
@@ -2229,7 +2202,6 @@ def contributions_page():
             nav_context = {}
         return render_template('contributions.html', 
                              user_email='Admin',
-                             user_theme='system',
                              **nav_context)
 
 @admin_bp.route('/api/admin/contributions', methods=['GET'])
@@ -2445,17 +2417,13 @@ def ai_settings_page():
     """AI Settings Page"""
     try:
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_theme
-        
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or 'system'
         
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_ai_settings')
         
         return render_template('ai_settings.html', 
                              user_email=user_email,
-                             user_theme=user_theme,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error rendering AI settings page: {e}", exc_info=True)
@@ -2468,7 +2436,6 @@ def ai_settings_page():
             nav_context = {}
         return render_template('ai_settings.html', 
                              user_email='Admin',
-                             user_theme='system',
                              **nav_context)
 
 @admin_bp.route('/api/admin/ai/skip-list')
@@ -2590,17 +2557,14 @@ def security_metadata_page():
     """Security Metadata management page."""
     try:
         from flask_auth_utils import get_user_email_flask
-        from user_preferences import get_user_theme
         from app import get_navigation_context
 
         user_email = get_user_email_flask()
-        user_theme = get_user_theme() or "system"
         nav_context = get_navigation_context(current_page="admin_security_metadata")
 
         return render_template(
             "etf_metadata.html",
             user_email=user_email,
-            user_theme=user_theme,
             **nav_context
         )
     except Exception as e:
