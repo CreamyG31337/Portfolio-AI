@@ -1501,7 +1501,7 @@ async function fetchActivity(): Promise<void> {
                 tr.appendChild(dateCell);
 
                 const tickerCell = document.createElement('td');
-                tickerCell.className = 'px-6 py-4 font-bold text-blue-600 dark:text-blue-400';
+                tickerCell.className = 'px-6 py-4 font-bold text-accent';
                 tickerCell.appendChild(logoImg);
                 const tickerLink = document.createElement('a');
                 tickerLink.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
@@ -1897,7 +1897,7 @@ function renderDividends(data: DividendData): void {
 
                 // Ticker (clickable) with logo
                 const tickerCell = document.createElement('td');
-                tickerCell.className = 'px-4 py-2 text-blue-600 dark:text-blue-400 font-bold cursor-pointer hover:underline';
+                tickerCell.className = 'px-4 py-2 text-accent font-bold cursor-pointer hover:underline';
                 tickerCell.style.cursor = 'pointer';
 
                 // Create logo image using shared helper function (always create for consistent alignment)
@@ -2255,8 +2255,8 @@ function renderMovers(data: MoversData): void {
         const compareVal = val != null ? val : pct;
         if (compareVal == null) return '';
         return compareVal > 0
-            ? 'text-green-600 dark:text-green-400 font-bold'
-            : (compareVal < 0 ? 'text-red-600 dark:text-red-400 font-bold' : '');
+            ? 'text-theme-success-text font-bold'
+            : (compareVal < 0 ? 'text-theme-error-text font-bold' : '');
     };
 
     const renderTable = (tbody: HTMLElement, items: MoverItem[], isGainer: boolean) => {
@@ -2282,7 +2282,7 @@ function renderMovers(data: MoversData): void {
 
             // Use font-mono for numerical columns to ensure alignment
             const tickerCell = document.createElement('td');
-            tickerCell.className = 'px-4 py-3 font-bold text-blue-600 dark:text-blue-400';
+            tickerCell.className = 'px-4 py-3 font-bold text-accent';
             tickerCell.appendChild(logoImg);
             const tickerLink = document.createElement('a');
             tickerLink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;

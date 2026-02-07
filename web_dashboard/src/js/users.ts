@@ -201,12 +201,11 @@ document.addEventListener('DOMContentLoaded', (): void => {
     fetchUnregisteredContributors();
     fetchAccessRecords();
 
-    // Tab switching
-    if (elements.tabUsers) {
-        elements.tabUsers.addEventListener('click', () => switchUsersTab('users'));
-    }
+    // Tab switching - rely on Flowbite for UI, hook into events for data
     if (elements.tabAccess) {
-        elements.tabAccess.addEventListener('click', () => switchUsersTab('access'));
+        elements.tabAccess.addEventListener('click', () => {
+            fetchAccessRecords();
+        });
     }
 
     // User Management
@@ -232,47 +231,6 @@ document.addEventListener('DOMContentLoaded', (): void => {
         elements.revokeAccessBtn.addEventListener('click', handleRevokeAccess);
     }
 });
-
-// Tab Switching
-function switchUsersTab(tabName: 'users' | 'access'): void {
-    // Update tab buttons
-    if (tabName === 'users') {
-        if (elements.tabUsers) {
-            elements.tabUsers.classList.add('active', 'border-accent', 'text-accent');
-            elements.tabUsers.classList.remove('border-transparent', 'text-text-secondary');
-        }
-        if (elements.tabAccess) {
-            elements.tabAccess.classList.remove('active', 'border-accent', 'text-accent');
-            elements.tabAccess.classList.add('border-transparent', 'text-text-secondary');
-        }
-
-        if (elements.tabContentUsers) {
-            elements.tabContentUsers.classList.add('active');
-        }
-        if (elements.tabContentAccess) {
-            elements.tabContentAccess.classList.remove('active');
-        }
-    } else {
-        if (elements.tabAccess) {
-            elements.tabAccess.classList.add('active', 'border-accent', 'text-accent');
-            elements.tabAccess.classList.remove('border-transparent', 'text-text-secondary');
-        }
-        if (elements.tabUsers) {
-            elements.tabUsers.classList.remove('active', 'border-accent', 'text-accent');
-            elements.tabUsers.classList.add('border-transparent', 'text-text-secondary');
-        }
-
-        if (elements.tabContentAccess) {
-            elements.tabContentAccess.classList.add('active');
-        }
-        if (elements.tabContentUsers) {
-            elements.tabContentUsers.classList.remove('active');
-        }
-
-        // Load access data when switching to access tab
-        fetchAccessRecords();
-    }
-}
 
 // Fetch Users
 async function fetchUsers(): Promise<void> {
@@ -1118,7 +1076,8 @@ function showToast(message: string, type: 'success' | 'error' | 'warning' | 'inf
             type === 'info' ? 'ℹ️' :
                 '✅';
 
-    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border-l-4 ${borderColor} transition-opacity duration-300 opacity-100 border border-border`;
+    // Start with opacity-0 for fade-in effect
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border-l-4 ${borderColor} transition-opacity duration-300 opacity-0 border border-border`;
     toast.innerHTML = `
         <div class="ms-3 text-sm font-normal flex items-center gap-2">
             <span class="text-lg">${icon}</span>
@@ -1135,14 +1094,22 @@ function showToast(message: string, type: 'success' | 'error' | 'warning' | 'inf
     const closeBtn = toast.querySelector('button');
     if (closeBtn) {
         closeBtn.onclick = () => {
-            toast.style.opacity = '0';
+            toast.classList.remove('opacity-100');
+            toast.classList.add('opacity-0');
             setTimeout(() => toast.remove(), 300);
         };
     }
     container.appendChild(toast);
 
+    // Trigger fade in
+    requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0');
+        toast.classList.add('opacity-100');
+    });
+
     setTimeout(() => {
-        toast.style.opacity = '0';
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
         setTimeout(() => toast.remove(), 300);
     }, 4000);
 }

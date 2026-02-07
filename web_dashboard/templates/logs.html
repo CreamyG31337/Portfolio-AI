@@ -291,6 +291,14 @@
         'ERROR': '❌'
     };
 
+    const logColorMap = {
+        'DEBUG': 'text-log-debug',
+        'PERF': 'text-log-perf',
+        'INFO': 'text-log-info',
+        'WARNING': 'text-log-warning',
+        'ERROR': 'text-log-error'
+    };
+
     function getSelectedLevels() {
         const levels = [];
         document.querySelectorAll('.level-checkbox:checked').forEach(cb => levels.push(cb.value));
@@ -468,7 +476,7 @@
         data.logs.forEach(log => {
             const clone = template.content.cloneNode(true);
             const div = clone.querySelector('div');
-            div.classList.add(`log-${log.level}`);
+            div.classList.add(logColorMap[log.level] || 'text-text-primary');
 
             const emoji = emojiMap[log.level] || '•';
             const module = log.module.substring(0, 30).padEnd(30, ' ');
@@ -519,7 +527,7 @@
             const clone = template.content.cloneNode(true);
             const div = clone.querySelector('div');
             // Override class to ensure log-INFO color is used if needed, or rely on base template
-            div.classList.add('log-INFO');
+            div.classList.add('text-log-info');
 
             // Ollama logs may not have timestamps, so just show the message
             const displayText = log.timestamp
