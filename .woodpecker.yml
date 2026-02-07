@@ -49,6 +49,9 @@
 # - ai_service_web_url: (optional) Web interface URL for AI service (obfuscated)
 #                       Only needed if default fallback URL doesn't work
 #                       Set via environment variable when generating ai_service.keys.json
+# - mailgun_api_key: (optional) Mailgun API key for newsletter webhook verification
+# - mailgun_webhook_signing_key: (optional) Mailgun webhook HMAC signing key
+# - newsletter_email: (optional) Newsletter receiving email (default: ai-research@drifting.space)
 # - ollama_base_url: (optional) Ollama API URL (default: http://host.docker.internal:11434)
 # - ollama_model: (optional) Default AI model (default: mistral-nemo:12b)
 # - ollama_enabled: (optional) Enable AI assistant (default: true)
@@ -121,6 +124,12 @@ steps:
         from_secret: flask_secret_key
       JWT_SECRET:
         from_secret: jwt_secret
+      MAILGUN_API_KEY:
+        from_secret: mailgun_api_key
+      MAILGUN_WEBHOOK_SIGNING_KEY:
+        from_secret: mailgun_webhook_signing_key
+      NEWSLETTER_EMAIL:
+        from_secret: newsletter_email
     commands:
       # Set timezone (Pacific Time - handles PST/PDT automatically)
       - ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -400,6 +409,11 @@ steps:
           echo "⚠️  WARNING: WEBAI_COOKIES_JSON not set. WebAI Pro may not work until sidecar writes cookies."
         fi
         
+        # Add Mailgun/Newsletter settings
+        [ -n "$MAILGUN_API_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e MAILGUN_API_KEY=\"$MAILGUN_API_KEY\""
+        [ -n "$MAILGUN_WEBHOOK_SIGNING_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e MAILGUN_WEBHOOK_SIGNING_KEY=\"$MAILGUN_WEBHOOK_SIGNING_KEY\""
+        [ -n "$NEWSLETTER_EMAIL" ] && DOCKER_CMD="$DOCKER_CMD -e NEWSLETTER_EMAIL=\"$NEWSLETTER_EMAIL\""
+        
         # Add Ollama and Streamlit settings
         DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL=\"${OLLAMA_BASE_URL:-http://host.docker.internal:11434}\""
         DOCKER_CMD="$DOCKER_CMD -e OLLAMA_MODEL=\"${OLLAMA_MODEL:-mistral-nemo:12b}\""
@@ -449,6 +463,16 @@ steps:
           WEBAI_COOKIES_B64=$(echo -n "$WEBAI_COOKIES_JSON" | base64 -w 0)
           FLASK_CMD="$FLASK_CMD -e WEBAI_COOKIES_JSON_B64=$WEBAI_COOKIES_B64"
         fi
+        
+        # Add Mailgun/Newsletter settings
+        [ -n "$MAILGUN_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_API_KEY=\"$MAILGUN_API_KEY\""
+        [ -n "$MAILGUN_WEBHOOK_SIGNING_KEY" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_WEBHOOK_SIGNING_KEY=\"$MAILGUN_WEBHOOK_SIGNING_KEY\""
+        [ -n "$NEWSLETTER_EMAIL" ] && FLASK_CMD="$FLASK_CMD -e NEWSLETTER_EMAIL=\"$NEWSLETTER_EMAIL\""
+        
+        # Add Ollama settings for Flask
+        FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL=\"${OLLAMA_BASE_URL:-http://host.docker.internal:11434}\""
+        FLASK_CMD="$FLASK_CMD -e OLLAMA_MODEL=\"${OLLAMA_MODEL:-mistral-nemo:12b}\""
+        FLASK_CMD="$FLASK_CMD -e OLLAMA_ENABLED=\"${OLLAMA_ENABLED:-true}\""
         
         FLASK_CMD="$FLASK_CMD trading-dashboard-flask:latest"
         
