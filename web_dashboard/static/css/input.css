@@ -5,13 +5,287 @@
 @source "../../../node_modules/flowbite";
 
 @layer base {
+    /* =========================================================================
+     * THEME VARIABLES (consolidated from theme.css)
+     *
+     * CSS custom-property definitions are unaffected by @layer specificity, so
+     * placing them here is safe and keeps everything in the build pipeline.
+     * ======================================================================= */
+
+    /* Light Mode - default */
+    :root {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f9fafb;
+        --bg-tertiary: #f3f4f6;
+        --text-primary: #111827;
+        --text-secondary: #6b7280;
+        --text-tertiary: #9ca3af;
+        --border-color: #e5e7eb;
+        --border-hover: #d1d5db;
+        --gradient-from: #667eea;
+        --gradient-to: #764ba2;
+
+        /* Component colors */
+        --log-line-hover: #f9fafb;
+        --code-bg: #ffffff;
+        --code-border: #e5e7eb;
+
+        /* Accent Colors */
+        --color-accent: #7c3aed; /* purple-600 */
+        --color-accent-hover: #6d28d9; /* purple-700 */
+
+        /* Link Colors */
+        --color-link: #7c3aed; /* purple-600 */
+        --color-link-hover: #6d28d9; /* purple-700 */
+
+        /* Log level colors */
+        --log-debug: #6b7280;
+        --log-perf: #8b5cf6;
+        --log-info: #3b82f6;
+        --log-warning: #f59e0b;
+        --log-error: #ef4444;
+
+        /* Semantic Status Colors */
+        --color-success-bg: #dcfce7; /* green-100 */
+        --color-success-text: #166534; /* green-800 */
+        --color-error-bg: #fef2f2; /* red-50 */
+        --color-error-text: #991b1b; /* red-800 */
+        --color-warning-bg: #fef9c3; /* yellow-100 */
+        --color-warning-text: #854d0e; /* yellow-800 */
+        --color-info-bg: #dbeafe; /* blue-100 */
+        --color-info-text: #1e40af; /* blue-800 */
+
+        /* Input focus ring (accent @ 30% opacity) */
+        --color-accent-ring: rgba(124, 58, 237, 0.3);
+    }
+
+    /* Explicit Light Mode */
+    [data-theme="light"] {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f9fafb;
+        --bg-tertiary: #f3f4f6;
+        --text-primary: #111827;
+        --text-secondary: #6b7280;
+        --text-tertiary: #9ca3af;
+        --border-color: #e5e7eb;
+        --border-hover: #d1d5db;
+        --gradient-from: #667eea;
+        --gradient-to: #764ba2;
+        --log-line-hover: #f9fafb;
+        --code-bg: #ffffff;
+        --code-border: #e5e7eb;
+        --color-accent: #7c3aed;
+        --color-accent-hover: #6d28d9;
+        --color-link: #7c3aed;
+        --color-link-hover: #6d28d9;
+        --log-debug: #6b7280;
+        --log-perf: #8b5cf6;
+        --log-info: #3b82f6;
+        --log-warning: #f59e0b;
+        --log-error: #ef4444;
+        --color-success-bg: #dcfce7;
+        --color-success-text: #166534;
+        --color-error-bg: #fef2f2;
+        --color-error-text: #991b1b;
+        --color-warning-bg: #fef9c3;
+        --color-warning-text: #854d0e;
+        --color-info-bg: #dbeafe;
+        --color-info-text: #1e40af;
+    }
+
+    /* Dark Mode */
+    [data-theme="dark"] {
+        --bg-primary: #1f2937;
+        --bg-secondary: #111827;
+        --bg-tertiary: #374151;
+        --text-primary: #f9fafb;
+        --text-secondary: #d1d5db;
+        --text-tertiary: #9ca3af;
+        --border-color: #374151;
+        --border-hover: #4b5563;
+        --gradient-from: #4f46e5;
+        --gradient-to: #7c3aed;
+        --log-line-hover: #374151;
+        --code-bg: #1f2937;
+        --code-border: #374151;
+        --color-accent: #a78bfa; /* purple-400 */
+        --color-accent-hover: #c4b5fd; /* purple-300 */
+        --color-link: #a78bfa;
+        --color-link-hover: #c4b5fd;
+        --log-debug: #9ca3af;
+        --log-perf: #a78bfa;
+        --log-info: #60a5fa;
+        --log-warning: #fbbf24;
+        --log-error: #f87171;
+        --color-success-bg: rgba(34, 197, 94, 0.2);
+        --color-success-text: #86efac;
+        --color-error-bg: rgba(239, 68, 68, 0.2);
+        --color-error-text: #fca5a5;
+        --color-warning-bg: rgba(234, 179, 8, 0.2);
+        --color-warning-text: #fde047;
+        --color-info-bg: rgba(59, 130, 246, 0.2);
+        --color-info-text: #93c5fd;
+        --color-accent-ring: rgba(167, 139, 250, 0.3);
+    }
+
+    /* Midnight Tokyo - Cyberpunk/Neon */
+    [data-theme="midnight-tokyo"] {
+        --bg-primary: #24283b;
+        --bg-secondary: #1a1b26;
+        --bg-tertiary: #3b4261;
+        --text-primary: #c0caf5;
+        --text-secondary: #a9b1d6;
+        --text-tertiary: #565f89;
+        --border-color: #3b4261;
+        --border-hover: #545c7e;
+        --gradient-from: #800555;
+        --gradient-to: #004e7b;
+        --log-line-hover: #24283b;
+        --code-bg: #24283b;
+        --code-border: #3b4261;
+        --color-accent: #f000d0;
+        --color-accent-hover: #bd00b6;
+        --color-link: #bb9af7;
+        --color-link-hover: #c0caf5;
+        --log-debug: #565f89;
+        --log-perf: #bb9af7;
+        --log-info: #7dcfff;
+        --log-warning: #e0af68;
+        --log-error: #f7768e;
+        --color-success-bg: rgba(115, 218, 202, 0.15);
+        --color-success-text: #73daca;
+        --color-error-bg: rgba(247, 118, 142, 0.15);
+        --color-error-text: #f7768e;
+        --color-warning-bg: rgba(224, 175, 104, 0.15);
+        --color-warning-text: #e0af68;
+        --color-info-bg: rgba(125, 207, 255, 0.15);
+        --color-info-text: #7dcfff;
+        --color-accent-ring: rgba(240, 0, 208, 0.3);
+    }
+
+    /* Abyss - Deep Ocean/Void */
+    [data-theme="abyss"] {
+        --bg-primary: #000c18;
+        --bg-secondary: #060621;
+        --bg-tertiary: #071931;
+        --text-primary: #ccd6f6;
+        --text-secondary: #8892b0;
+        --text-tertiary: #4a5568;
+        --border-color: #233554;
+        --border-hover: #2a3f5f;
+        --gradient-from: #052248;
+        --gradient-to: #070632;
+        --log-line-hover: #000c18;
+        --code-bg: #060621;
+        --code-border: #233554;
+        --color-accent: #64ffda;
+        --color-accent-hover: #80ffe5;
+        --color-link: #64ffda;
+        --color-link-hover: #80ffe5;
+        --log-debug: #8892b0;
+        --log-perf: #7986cb;
+        --log-info: #64ffda;
+        --log-warning: #ffb74d;
+        --log-error: #e57373;
+        --color-success-bg: rgba(100, 255, 218, 0.1);
+        --color-success-text: #64ffda;
+        --color-error-bg: rgba(229, 115, 115, 0.1);
+        --color-error-text: #e57373;
+        --color-warning-bg: rgba(255, 183, 77, 0.1);
+        --color-warning-text: #ffb74d;
+        --color-info-bg: rgba(121, 134, 203, 0.1);
+        --color-info-text: #7986cb;
+        --color-accent-ring: rgba(100, 255, 218, 0.3);
+    }
+
+    /* System Theme - follows OS preference */
+    @media (prefers-color-scheme: light) {
+        [data-theme="system"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f9fafb;
+            --bg-tertiary: #f3f4f6;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --text-tertiary: #9ca3af;
+            --border-color: #e5e7eb;
+            --border-hover: #d1d5db;
+            --gradient-from: #667eea;
+            --gradient-to: #764ba2;
+            --log-line-hover: #f9fafb;
+            --code-bg: #ffffff;
+            --code-border: #e5e7eb;
+            --log-debug: #6b7280;
+            --log-perf: #8b5cf6;
+            --log-info: #3b82f6;
+            --log-warning: #f59e0b;
+            --log-error: #ef4444;
+            --color-success-bg: #dcfce7;
+            --color-success-text: #166534;
+            --color-error-bg: #fef2f2;
+            --color-error-text: #991b1b;
+            --color-warning-bg: #fef9c3;
+            --color-warning-text: #854d0e;
+            --color-info-bg: #dbeafe;
+            --color-info-text: #1e40af;
+            --color-accent-ring: rgba(124, 58, 237, 0.3);
+        }
+    }
+
+    @media (prefers-color-scheme: dark) {
+        [data-theme="system"] {
+            --bg-primary: #1f2937;
+            --bg-secondary: #111827;
+            --bg-tertiary: #374151;
+            --text-primary: #f9fafb;
+            --text-secondary: #d1d5db;
+            --text-tertiary: #9ca3af;
+            --border-color: #374151;
+            --border-hover: #4b5563;
+            --gradient-from: #4f46e5;
+            --gradient-to: #7c3aed;
+            --log-line-hover: #374151;
+            --code-bg: #1f2937;
+            --code-border: #374151;
+            --log-debug: #9ca3af;
+            --log-perf: #a78bfa;
+            --log-info: #60a5fa;
+            --log-warning: #fbbf24;
+            --log-error: #f87171;
+            --color-success-bg: rgba(34, 197, 94, 0.2);
+            --color-success-text: #86efac;
+            --color-error-bg: rgba(239, 68, 68, 0.2);
+            --color-error-text: #fca5a5;
+            --color-warning-bg: rgba(234, 179, 8, 0.2);
+            --color-warning-text: #fde047;
+            --color-info-bg: rgba(59, 130, 246, 0.2);
+            --color-info-text: #93c5fd;
+            --color-accent-ring: rgba(167, 139, 250, 0.3);
+        }
+    }
+
+    /* =========================================================================
+     * ELEMENT-LEVEL RESETS
+     * ======================================================================= */
+
     body {
         background-color: var(--bg-secondary);
         color: var(--text-primary);
         transition: background-color 0.3s ease, color 0.3s ease;
     }
 
-    input,
+    /* Text-like inputs — intentionally excludes checkbox, radio, range, etc. */
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="search"],
+    input[type="url"],
+    input[type="tel"],
+    input[type="date"],
+    input[type="datetime-local"],
+    input[type="time"],
+    input[type="month"],
+    input[type="week"],
     select,
     textarea {
         background-color: var(--bg-tertiary);
@@ -20,14 +294,25 @@
         transition: all 0.2s ease-in-out;
     }
 
-    input:focus,
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    input[type="password"]:focus,
+    input[type="number"]:focus,
+    input[type="search"]:focus,
+    input[type="url"]:focus,
+    input[type="tel"]:focus,
+    input[type="date"]:focus,
+    input[type="datetime-local"]:focus,
+    input[type="time"]:focus,
+    input[type="month"]:focus,
+    input[type="week"]:focus,
     select:focus,
     textarea:focus {
         outline: none;
         border-color: var(--color-accent);
     }
 
-    /* Consistent focus ring for button-like controls across the app */
+    /* Consistent focus ring for button-like controls */
     button:focus,
     button:focus-visible,
     input[type="button"]:focus,
@@ -43,13 +328,12 @@
         outline: none;
     }
 
-    /* Placeholder visibility */
     ::placeholder {
         color: var(--text-tertiary);
         opacity: 0.8;
     }
 
-    /* Fix for Chrome/Webkit autofill background forcing white/yellow */
+    /* Chrome/Webkit autofill background fix for dark themes */
     input:-webkit-autofill,
     input:-webkit-autofill:hover,
     input:-webkit-autofill:focus,
@@ -59,7 +343,7 @@
         transition: background-color 5000s ease-in-out 0s;
     }
 
-    /* Dark mode select icons (dropdown arrow) */
+    /* Dark mode select dropdown arrow */
     [data-theme="dark"] select,
     [data-theme="midnight-tokyo"] select,
     [data-theme="abyss"] select,
@@ -75,7 +359,6 @@
     }
 }
 
-/* Custom component styles extracted from inline template styles */
 @layer components {
     /* Sidebar collapse transitions */
     .sidebar-text {
@@ -100,7 +383,7 @@
         @apply px-3 py-1 bg-transparent text-text-primary border border-border rounded-md hover:bg-dashboard-surface-alt disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200;
     }
 
-    /* Global outline button hover/ring using currentColor; avoids per-button utility churn. */
+    /* Global outline button hover/ring using currentColor */
     button[class*="bg-transparent"][class*="border"]:not(:disabled):hover,
     a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):hover {
         background-color: color-mix(in srgb, currentColor 10%, transparent);
@@ -110,6 +393,23 @@
     a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):focus-visible {
         outline: none;
     }
+
+    /* Log component styles (from theme.css) */
+    .log-line {
+        border-bottom: 1px solid var(--border-color);
+    }
+    .log-line:hover {
+        background-color: var(--log-line-hover);
+    }
+    .log-container {
+        background: var(--code-bg);
+        border: 1px solid var(--code-border);
+    }
+    .log-DEBUG { color: var(--log-debug); }
+    .log-PERF { color: var(--log-perf); }
+    .log-INFO { color: var(--log-info); }
+    .log-WARNING { color: var(--log-warning); }
+    .log-ERROR { color: var(--log-error); }
 }
 
 @layer utilities {
@@ -119,4 +419,49 @@
             transform: none !important;
         }
     }
+}
+
+/* =============================================================================
+ * FORM CONTROL OVERRIDES — INTENTIONALLY OUTSIDE @layer
+ *
+ * These rules live outside any @layer so they beat Flowbite's layered styles in
+ * the CSS cascade. Moving them into @layer base (as attempted in PR #114)
+ * weakens them and can break form theming in dark/custom themes.
+ *
+ * History: form theming broke once before (2025-01-26) when these were removed.
+ *
+ * Before removing, test ALL themes (light/dark/midnight-tokyo/abyss) with ALL
+ * form types, autofill, focus states, and multi-select dropdowns.
+ * =========================================================================== */
+
+/* Force theme colors on inputs that carry a Flowbite/Tailwind utility class */
+input[type="text"].bg-dashboard-surface-alt,
+input[type="email"].bg-dashboard-surface-alt,
+input[type="password"].bg-dashboard-surface-alt,
+input[type="number"].bg-dashboard-surface-alt,
+input[type="search"].bg-dashboard-surface-alt,
+input[type="url"].bg-dashboard-surface-alt,
+input[type="tel"].bg-dashboard-surface-alt,
+input[type="date"].bg-dashboard-surface-alt,
+input[type="datetime-local"].bg-dashboard-surface-alt,
+input[type="time"].bg-dashboard-surface-alt,
+input[type="month"].bg-dashboard-surface-alt,
+input[type="week"].bg-dashboard-surface-alt,
+select.bg-dashboard-surface-alt,
+textarea.bg-dashboard-surface-alt {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* Multi-selects */
+select[multiple],
+select[size] {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+select[multiple] option,
+select[size] option {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
 }
