@@ -1141,7 +1141,7 @@ async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Pr
         const days = rangeDays[range] || 90;
 
         // Update metric label based on range
-        const changeLabelEl = document.querySelector('#chart-metrics .metric-card:last-child .text-sm');
+        const changeLabelEl = document.getElementById('period-change-label');
         if (changeLabelEl) {
             const rangeLabels: { [key: string]: string } = {
                 '3m': 'Change (3M)',
@@ -1165,17 +1165,45 @@ async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Pr
         const prices = data.data || [];
 
         if (prices.length > 0) {
-            const firstPrice = prices[0].price || 0;
-            const lastPrice = prices[prices.length - 1].price || 0;
-            const priceChange = lastPrice - firstPrice;
+            const priceValues = prices
+                .map((point) => Number(point.price || 0))
+                .filter((value) => value > 0);
+
+            if (priceValues.length === 0) {
+                return;
+            }
+
+            const firstPrice = priceValues[0];
+            const currentPrice = priceValues[priceValues.length - 1];
+            const previousPrice = priceValues.length >= 2 ? priceValues[priceValues.length - 2] : null;
+            const periodLow = Math.min(...priceValues);
+            const periodHigh = Math.max(...priceValues);
+            const priceChange = currentPrice - firstPrice;
             const priceChangePct = firstPrice > 0 ? (priceChange / firstPrice * 100) : 0;
+            const dayChangePct = previousPrice && previousPrice > 0
+                ? ((currentPrice - previousPrice) / previousPrice) * 100
+                : null;
 
             const firstPriceEl = document.getElementById('first-price');
-            const lastPriceEl = document.getElementById('last-price');
+            const currentPriceEl = document.getElementById('current-price');
+            const dayChangeEl = document.getElementById('day-change');
+            const rangeLowEl = document.getElementById('range-low');
+            const rangeHighEl = document.getElementById('range-high');
             const changeEl = document.getElementById('price-change');
 
             if (firstPriceEl) firstPriceEl.textContent = formatCurrency(firstPrice);
-            if (lastPriceEl) lastPriceEl.textContent = formatCurrency(lastPrice);
+            if (currentPriceEl) currentPriceEl.textContent = formatCurrency(currentPrice);
+            if (rangeLowEl) rangeLowEl.textContent = formatCurrency(periodLow);
+            if (rangeHighEl) rangeHighEl.textContent = formatCurrency(periodHigh);
+            if (dayChangeEl) {
+                if (dayChangePct === null) {
+                    dayChangeEl.textContent = "N/A";
+                    dayChangeEl.className = "text-xl font-semibold text-text-primary";
+                } else {
+                    dayChangeEl.textContent = `${dayChangePct >= 0 ? '+' : ''}${dayChangePct.toFixed(2)}%`;
+                    dayChangeEl.className = `text-xl font-semibold ${dayChangePct >= 0 ? 'text-theme-success-text' : 'text-theme-error-text'}`;
+                }
+            }
             if (changeEl) {
                 changeEl.textContent = `${priceChangePct >= 0 ? '+' : ''}${priceChangePct.toFixed(2)}%`;
                 changeEl.className = `text-xl font-semibold ${priceChangePct >= 0 ? 'text-theme-success-text' : 'text-theme-error-text'}`;

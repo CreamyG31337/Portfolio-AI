@@ -200,17 +200,29 @@
         <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-accent"></div>
     </div>
     <div id="chart-container" class="overflow-x-auto"></div>
-    <div id="chart-metrics" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+    <div id="chart-metrics" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mt-4">
         <div class="bg-dashboard-background p-4 rounded-lg">
-            <div class="text-sm text-text-secondary">First Price</div>
+            <div id="first-price-label" class="text-sm text-text-secondary">First Price</div>
             <div id="first-price" class="text-xl font-semibold text-text-primary">-</div>
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">
-            <div class="text-sm text-text-secondary">Last Price</div>
-            <div id="last-price" class="text-xl font-semibold text-text-primary">-</div>
+            <div id="current-price-label" class="text-sm text-text-secondary">Current Price</div>
+            <div id="current-price" class="text-xl font-semibold text-text-primary">-</div>
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">
-            <div class="text-sm text-text-secondary">Change (3M)</div>
+            <div id="day-change-label" class="text-sm text-text-secondary">1D Change</div>
+            <div id="day-change" class="text-xl font-semibold text-text-primary">-</div>
+        </div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div id="range-low-label" class="text-sm text-text-secondary">Range Low</div>
+            <div id="range-low" class="text-xl font-semibold text-text-primary">-</div>
+        </div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div id="range-high-label" class="text-sm text-text-secondary">Range High</div>
+            <div id="range-high" class="text-xl font-semibold text-text-primary">-</div>
+        </div>
+        <div class="bg-dashboard-background p-4 rounded-lg">
+            <div id="period-change-label" class="text-sm text-text-secondary">Change (3M)</div>
             <div id="price-change" class="text-xl font-semibold">-</div>
         </div>
     </div>
