@@ -319,7 +319,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
                 return;
             }
 
-            const originalText = submitBtn.textContent || 'Update Password';
+            const originalHtml = submitBtn.innerHTML || 'Update Password';
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
 
@@ -347,7 +347,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
                 showSettingsError('password-error', 'An unexpected error occurred');
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = originalText;
+                submitBtn.innerHTML = originalHtml;
             }
         });
     }
