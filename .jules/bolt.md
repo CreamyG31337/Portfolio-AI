@@ -11,3 +11,9 @@
 1. First find the *latest specific date* using `.select("date").lte(...).order("date", desc=True).limit(1)`.
 2. Then fetch rows for that *exact* date using `.eq("date", found_date)`.
 3. This reduces fetch volume from "All History" to "Single Snapshot" (O(1) relative to history).
+
+## 2026-02-23 - Ticker Fetch Optimization & Pagination
+**Learning:** `get_all_unique_tickers` was fetching only the first 1000 rows of large tables (e.g. `congress_trades`) due to missing pagination, resulting in incorrect/incomplete data. It was also unnecessarily scanning large historical tables for tickers.
+**Action:**
+1. When fetching "all" items from Supabase, ALWAYS use a pagination loop with `.range(offset, offset + limit)` to bypass the 1000-row default limit.
+2. For aggregate lists (like tickers), prioritize master metadata tables (e.g. `securities`) over scanning large transaction logs.
