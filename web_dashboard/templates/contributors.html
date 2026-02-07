@@ -6,46 +6,46 @@
 {% block page_subtitle %}Manage contributors (investors) and their fund contributions{% endblock %}
 
 {% block extra_head %}
-<style>
-    .tab-content {
-        display: none;
-    }
-
-    .tab-content.active {
-        display: block;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
 <!-- Tabs -->
 <div class="mb-6 border-b border-border">
-    <nav class="flex space-x-8" aria-label="Tabs">
-        <button id="tab-view"
-            class="tab-button active border-b-2 border-accent py-4 px-1 text-sm font-medium text-accent transition-colors cursor-pointer">
-            📋 View Contributors
-        </button>
-        <button id="tab-split"
-            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border transition-colors cursor-pointer">
-            ✂️ Split Contributor
-        </button>
-        <button id="tab-merge"
-            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border transition-colors cursor-pointer">
-            🔗 Merge Contributors
-        </button>
-        <button id="tab-edit"
-            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border transition-colors cursor-pointer">
-            ✏️ Edit Contributor
-        </button>
-        <button id="tab-access"
-            class="tab-button border-b-2 border-transparent py-4 px-1 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border transition-colors cursor-pointer">
-            👥 User Access
-        </button>
-    </nav>
+    <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="contributors-tab" data-tabs-toggle="#contributors-tab-content" role="tablist"
+        data-active-classes="border-accent text-accent"
+        data-inactive-classes="border-transparent text-text-secondary hover:text-text-primary hover:border-border">
+
+        <li class="me-2" role="presentation">
+            <button class="inline-block px-6 py-2 border-b-2 rounded-t-lg transform transition-colors duration-200" id="tab-view" data-tabs-target="#tab-content-view" type="button" role="tab" aria-controls="tab-content-view" aria-selected="true">
+                📋 View Contributors
+            </button>
+        </li>
+        <li class="me-2" role="presentation">
+            <button class="inline-block px-6 py-2 border-b-2 rounded-t-lg transform transition-colors duration-200" id="tab-split" data-tabs-target="#tab-content-split" type="button" role="tab" aria-controls="tab-content-split" aria-selected="false">
+                ✂️ Split Contributor
+            </button>
+        </li>
+        <li class="me-2" role="presentation">
+            <button class="inline-block px-6 py-2 border-b-2 rounded-t-lg transform transition-colors duration-200" id="tab-merge" data-tabs-target="#tab-content-merge" type="button" role="tab" aria-controls="tab-content-merge" aria-selected="false">
+                🔗 Merge Contributors
+            </button>
+        </li>
+        <li class="me-2" role="presentation">
+            <button class="inline-block px-6 py-2 border-b-2 rounded-t-lg transform transition-colors duration-200" id="tab-edit" data-tabs-target="#tab-content-edit" type="button" role="tab" aria-controls="tab-content-edit" aria-selected="false">
+                ✏️ Edit Contributor
+            </button>
+        </li>
+        <li class="me-2" role="presentation">
+            <button class="inline-block px-6 py-2 border-b-2 rounded-t-lg transform transition-colors duration-200" id="tab-access" data-tabs-target="#tab-content-access" type="button" role="tab" aria-controls="tab-content-access" aria-selected="false">
+                👥 User Access
+            </button>
+        </li>
+    </ul>
 </div>
 
+<div id="contributors-tab-content">
 <!-- View Contributors Tab -->
-<div id="tab-content-view" class="tab-content active">
+<div id="tab-content-view" role="tabpanel" aria-labelledby="tab-view" class="animate-fade-in">
     <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
         <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-text-primary">All Contributors</h3>
@@ -83,7 +83,7 @@
 </div>
 
 <!-- Split Contributor Tab -->
-<div id="tab-content-split" class="tab-content">
+<div id="tab-content-split" role="tabpanel" aria-labelledby="tab-split" class="hidden animate-fade-in">
     <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
         <h3 class="text-lg font-semibold mb-4 text-text-primary">✂️ Split Contributor</h3>
         <p class="text-sm text-text-secondary mb-4">Split a contributor into two separate accounts by reassigning
@@ -130,7 +130,7 @@
 </div>
 
 <!-- Merge Contributors Tab -->
-<div id="tab-content-merge" class="tab-content">
+<div id="tab-content-merge" role="tabpanel" aria-labelledby="tab-merge" class="hidden animate-fade-in">
     <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
         <h3 class="text-lg font-semibold mb-4 text-text-primary">🔗 Merge Contributors</h3>
         <p class="text-sm text-text-secondary mb-4">Merge two contributors into one (moves all contributions to the
@@ -169,7 +169,7 @@
 </div>
 
 <!-- Edit Contributor Tab -->
-<div id="tab-content-edit" class="tab-content">
+<div id="tab-content-edit" role="tabpanel" aria-labelledby="tab-edit" class="hidden animate-fade-in">
     <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 border border-border">
         <h3 class="text-lg font-semibold mb-4 text-text-primary">✏️ Edit Contributor</h3>
 
@@ -205,7 +205,7 @@
 </div>
 
 <!-- User Access Tab -->
-<div id="tab-content-access" class="tab-content">
+<div id="tab-content-access" role="tabpanel" aria-labelledby="tab-access" class="hidden animate-fade-in">
     <!-- Grant Access Section -->
     <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
         <h3 class="text-lg font-semibold mb-4 text-text-primary">Grant User Access</h3>
@@ -297,6 +297,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 {% endblock %}
 
