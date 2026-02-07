@@ -16,7 +16,7 @@
                 <h2 class="text-lg font-bold text-text-primary mb-2">How to Use</h2>
                 <p class="text-sm text-text-secondary mb-3">
                     Forward or subscribe your investment newsletters to
-                    <code class="bg-dashboard-background px-2 py-0.5 rounded text-accent font-mono text-sm border border-border">ai-research@drifting.space</code>
+                    <code class="bg-dashboard-background px-2 py-0.5 rounded text-accent font-mono text-sm border border-border">{{ newsletter_email }}</code>
                 </p>
                 <ul class="text-sm text-text-secondary space-y-1.5">
                     <li><i class="fas fa-bolt text-accent mr-2"></i>Emails are processed instantly when received &mdash; no waiting for a scheduled job.</li>
@@ -70,7 +70,7 @@
         <div id="empty-state" class="hidden text-center py-12">
             <i class="fas fa-inbox text-5xl text-text-tertiary mb-4"></i>
             <h3 class="text-lg font-medium text-text-primary mb-2">No newsletters yet</h3>
-            <p class="text-text-secondary">Send an email to <code class="text-accent">ai-research@drifting.space</code> to get started.</p>
+            <p class="text-text-secondary">Send an email to <code class="text-accent">{{ newsletter_email }}</code> to get started.</p>
         </div>
 
         <!-- Pagination -->

@@ -5918,7 +5918,8 @@ def newsletters_page():
     """Render newsletters page"""
     try:
         nav_context = get_navigation_context(current_page='newsletters')
-        return render_template('newsletters.html', **nav_context)
+        newsletter_email = os.getenv('NEWSLETTER_EMAIL', 'newsletters@yourdomain.com')
+        return render_template('newsletters.html', newsletter_email=newsletter_email, **nav_context)
     except Exception as e:
         logger.error(f"Error rendering newsletters page: {e}", exc_info=True)
         return render_template('error.html', error=str(e)), 500

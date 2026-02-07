@@ -11,7 +11,7 @@ MAILGUN_API_KEY=your_mailgun_api_key_here
 MAILGUN_WEBHOOK_SIGNING_KEY=your_mailgun_signing_key_here
 
 # Newsletter Email Address
-NEWSLETTER_EMAIL=ai-research@drifting.space
+NEWSLETTER_EMAIL=your-newsletter-address@yourdomain.com
 ```
 
 ### 2. Run Database Migration
@@ -34,8 +34,8 @@ EOF
 ### 3. Configure Mailgun Route
 
 In Mailgun dashboard:
-- **Expression**: `match_recipient("ai-research@drifting.space")`
-- **Action**: Forward to webhook: `https://ai-trading.drifting.space/api/webhooks/newsletter`
+- **Expression**: `match_recipient("your-newsletter-address@yourdomain.com")`
+- **Action**: Forward to webhook: `https://your-app-domain.com/api/webhooks/newsletter`
 
 ### 4. Ensure Ollama Model is Available
 
@@ -48,7 +48,7 @@ ollama pull nomic-embed-text
 Add these secrets to Woodpecker:
 - `mailgun_api_key` - Your Mailgun API key
 - `mailgun_webhook_signing_key` - Your Mailgun webhook signing key
-- `newsletter_email` - The email address (`ai-research@drifting.space`)
+- `newsletter_email` - The email address for receiving newsletters
 
 These will be mapped to environment variables in your deployment config.
 
@@ -71,7 +71,7 @@ These will be mapped to environment variables in your deployment config.
 
 ## Testing
 
-Send a test email to `ai-research@drifting.space` and check:
+Send a test email to your configured newsletter address and check:
 1. Webhook logs: `tail -f app.log | grep newsletter`
 2. Database: `psql <research_db> -c "SELECT COUNT(*) FROM newsletters;"`
 3. Web UI: Visit `/newsletters` page
