@@ -744,11 +744,11 @@ function initGrid(): void {
                     return `${formatMoney(val)} ${pct.toFixed(1)}%`;
                 }
             },
-            cellStyle: (params: any) => {
+            cellClass: (params: any) => {
                 const val = params.value || 0;
-                if (val > 0) return { color: '#10b981', fontWeight: 'bold', textAlign: 'right' };
-                if (val < 0) return { color: '#ef4444', fontWeight: 'bold', textAlign: 'right' };
-                return { textAlign: 'right' };
+                if (val > 0) return 'text-theme-success-text font-bold text-right';
+                if (val < 0) return 'text-theme-error-text font-bold text-right';
+                return 'text-right';
             }
         },
         {
@@ -771,13 +771,13 @@ function initGrid(): void {
                 if (isNegative) return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
                 return `${formatMoney(n)} ${p.toFixed(1)}%`;
             },
-            cellStyle: (params: any) => {
+            cellClass: (params: any) => {
                 const val = params.value;
-                if (val == null && params.data?.day_change_pct == null) return { textAlign: 'right' as const };
+                if (val == null && params.data?.day_change_pct == null) return 'text-right';
                 const n = val ?? 0;
-                if (n > 0) return { color: '#10b981', fontWeight: 'bold', textAlign: 'right' as const };
-                if (n < 0) return { color: '#ef4444', fontWeight: 'bold', textAlign: 'right' as const };
-                return { textAlign: 'right' as const };
+                if (n > 0) return 'text-theme-success-text font-bold text-right';
+                if (n < 0) return 'text-theme-error-text font-bold text-right';
+                return 'text-right';
             }
         },
         {
@@ -800,13 +800,13 @@ function initGrid(): void {
                 if (isNegative) return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
                 return `${formatMoney(n)} ${p.toFixed(1)}%`;
             },
-            cellStyle: (params: any) => {
+            cellClass: (params: any) => {
                 const val = params.value;
-                if (val == null && params.data?.five_day_pnl_pct == null) return { textAlign: 'right' as const };
+                if (val == null && params.data?.five_day_pnl_pct == null) return 'text-right';
                 const n = val ?? 0;
-                if (n > 0) return { color: '#10b981', fontWeight: 'bold', textAlign: 'right' as const };
-                if (n < 0) return { color: '#ef4444', fontWeight: 'bold', textAlign: 'right' as const };
-                return { textAlign: 'right' as const };
+                if (n > 0) return 'text-theme-success-text font-bold text-right';
+                if (n < 0) return 'text-theme-error-text font-bold text-right';
+                return 'text-right';
             }
         },
         { field: 'weight', headerName: 'Weight', flex: 0.6, minWidth: 70, maxWidth: 100, type: 'numericColumn', valueFormatter: (params: any) => (params.value || 0).toFixed(1) + '%' }
@@ -1235,7 +1235,7 @@ async function fetchPerformanceChart(): Promise<void> {
         if (chartEl) {
             const traceback = (error as any)?.traceback;
             const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
-            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading chart: ${errorMsg}</p>${tracebackHtml}</div>`;
+            chartEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error loading chart: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
@@ -1298,7 +1298,7 @@ async function fetchSectorChart(): Promise<void> {
         if (chartEl) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
-            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading sector chart: ${errorMsg}</p>${tracebackHtml}</div>`;
+            chartEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error loading sector chart: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
@@ -1413,7 +1413,7 @@ async function fetchHoldings(): Promise<void> {
         const gridEl = document.getElementById('holdings-grid');
         if (gridEl) {
             const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
-            gridEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading holdings: ${errorMsg}</p>${tracebackHtml}</div>`;
+            gridEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error loading holdings: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
@@ -1501,7 +1501,7 @@ async function fetchActivity(): Promise<void> {
                 tr.appendChild(dateCell);
 
                 const tickerCell = document.createElement('td');
-                tickerCell.className = 'px-6 py-4 font-bold text-blue-600 dark:text-blue-400';
+                tickerCell.className = 'px-6 py-4 font-bold text-link dark:text-link';
                 tickerCell.appendChild(logoImg);
                 const tickerLink = document.createElement('a');
                 tickerLink.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
@@ -1568,7 +1568,7 @@ async function fetchActivity(): Promise<void> {
         if (tableBody) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
-            tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-red-500 py-4"><p>Error loading activity: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-theme-error-text py-4"><p>Error loading activity: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
         }
     }
 }
@@ -1745,10 +1745,10 @@ function renderActionQueue(data: ActionQueueData): void {
         };
 
         const fearColors: Record<string, string> = {
-            'EXTREME': 'text-red-600 dark:text-red-400',
-            'HIGH': 'text-orange-600 dark:text-orange-400',
-            'MODERATE': 'text-yellow-600 dark:text-yellow-400',
-            'LOW': 'text-green-600 dark:text-green-400'
+            'EXTREME': 'text-theme-error-text',
+            'HIGH': 'text-orange-500 dark:text-orange-400',
+            'MODERATE': 'text-theme-warning-text',
+            'LOW': 'text-theme-success-text'
         };
 
         const fearIcons: Record<string, string> = {
@@ -1897,7 +1897,7 @@ function renderDividends(data: DividendData): void {
 
                 // Ticker (clickable) with logo
                 const tickerCell = document.createElement('td');
-                tickerCell.className = 'px-4 py-2 text-blue-600 dark:text-blue-400 font-bold cursor-pointer hover:underline';
+                tickerCell.className = 'px-4 py-2 text-link dark:text-link font-bold cursor-pointer hover:underline';
                 tickerCell.style.cursor = 'pointer';
 
                 // Create logo image using shared helper function (always create for consistent alignment)
@@ -1936,7 +1936,7 @@ function renderDividends(data: DividendData): void {
 
                 // Net ($)
                 const netCell = document.createElement('td');
-                netCell.className = 'px-4 py-2 text-right font-medium text-green-600 dark:text-green-400';
+                netCell.className = 'px-4 py-2 text-right font-medium text-theme-success-text';
                 netCell.textContent = formatMoney(row.amount, currency);
                 tr.appendChild(netCell);
 
@@ -2255,8 +2255,8 @@ function renderMovers(data: MoversData): void {
         const compareVal = val != null ? val : pct;
         if (compareVal == null) return '';
         return compareVal > 0
-            ? 'text-green-600 dark:text-green-400 font-bold'
-            : (compareVal < 0 ? 'text-red-600 dark:text-red-400 font-bold' : '');
+            ? 'text-theme-success-text font-bold'
+            : (compareVal < 0 ? 'text-theme-error-text font-bold' : '');
     };
 
     const renderTable = (tbody: HTMLElement, items: MoverItem[], isGainer: boolean) => {
@@ -2282,7 +2282,7 @@ function renderMovers(data: MoversData): void {
 
             // Use font-mono for numerical columns to ensure alignment
             const tickerCell = document.createElement('td');
-            tickerCell.className = 'px-4 py-3 font-bold text-blue-600 dark:text-blue-400';
+            tickerCell.className = 'px-4 py-3 font-bold text-link dark:text-link';
             tickerCell.appendChild(logoImg);
             const tickerLink = document.createElement('a');
             tickerLink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;
@@ -2417,7 +2417,7 @@ function renderPerformanceChart(data: PerformanceChartData): void {
     const Plotly = (window as any).Plotly;
     if (!Plotly) {
         console.error('[Dashboard] Plotly not loaded');
-        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error: Plotly library not loaded</p></div>';
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error: Plotly library not loaded</p></div>';
         return;
     }
 
@@ -2493,7 +2493,7 @@ function renderPerformanceChart(data: PerformanceChartData): void {
         console.log('[Dashboard] Performance chart rendered with Plotly (fullscreen enabled)');
     } catch (error) {
         console.error('[Dashboard] Error rendering Plotly chart:', error);
-        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error rendering chart</p></div>';
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error rendering chart</p></div>';
     }
 }
 
@@ -2550,7 +2550,7 @@ async function fetchIndividualHoldingsChart(): Promise<void> {
         const chartEl = document.getElementById('individual-holdings-chart');
         if (chartEl) {
             const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
-            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error loading chart: ${errorMsg}</p>${tracebackHtml}</div>`;
+            chartEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error loading chart: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
@@ -2574,7 +2574,7 @@ function renderIndividualHoldingsChart(data: IndividualHoldingsChartData): void 
     const Plotly = (window as any).Plotly;
     if (!Plotly) {
         console.error('[Dashboard] Plotly not loaded');
-        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error: Plotly library not loaded</p></div>';
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error: Plotly library not loaded</p></div>';
         return;
     }
 
@@ -2599,7 +2599,7 @@ function renderIndividualHoldingsChart(data: IndividualHoldingsChartData): void 
         }
     } catch (error) {
         console.error('[Dashboard] Error rendering individual holdings chart:', error);
-        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error rendering chart</p></div>';
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error rendering chart</p></div>';
     }
 }
 
@@ -2678,7 +2678,7 @@ function renderSectorChart(data: AllocationChartData): void {
     const Plotly = (window as any).Plotly;
     if (!Plotly) {
         console.error('[Dashboard] Plotly not loaded');
-        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error: Plotly library not loaded</p></div>';
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error: Plotly library not loaded</p></div>';
         return;
     }
 
@@ -2716,7 +2716,7 @@ function renderSectorChart(data: AllocationChartData): void {
 
     } catch (error) {
         console.error('[Dashboard] Error rendering Plotly sector chart:', error);
-        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error rendering chart</p></div>';
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error rendering chart</p></div>';
     }
 }
 
@@ -2740,7 +2740,7 @@ function renderPnlChart(data: PnlChartData): void {
     const Plotly = (window as any).Plotly;
     if (!Plotly) {
         console.error('[Dashboard] Plotly not loaded');
-        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error: Plotly library not loaded</p></div>';
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error: Plotly library not loaded</p></div>';
         return;
     }
 
@@ -2785,7 +2785,7 @@ function renderPnlChart(data: PnlChartData): void {
 
     } catch (error) {
         console.error('[Dashboard] Error rendering Plotly P&L chart:', error);
-        chartEl.innerHTML = '<div class="text-center text-red-500 py-8"><p>Error rendering chart</p></div>';
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error rendering chart</p></div>';
     }
 }
 
@@ -2849,7 +2849,7 @@ async function loadPnlChart(fund: string): Promise<void> {
         if (chartEl) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
-            chartEl.innerHTML = `<div class="text-center text-red-500 py-8"><p>Error: ${errorMsg}</p>${tracebackHtml}</div>`;
+            chartEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error: ${errorMsg}</p>${tracebackHtml}</div>`;
         }
     }
 }
