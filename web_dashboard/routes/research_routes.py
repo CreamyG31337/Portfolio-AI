@@ -692,6 +692,16 @@ def delete_article_endpoint():
             logger.info(f"[RESEARCH] Article {article_id} deleted by admin")
             return jsonify({"success": True})
 
+        # Fall back to newsletters table (newsletters appear in the research feed)
+        try:
+            from newsletter_repository import NewsletterRepository
+            nl_repo = NewsletterRepository()
+            if nl_repo.delete_newsletter(article_id):
+                logger.info(f"[RESEARCH] Newsletter {article_id} deleted by admin (via research delete)")
+                return jsonify({"success": True})
+        except Exception as nl_err:
+            logger.warning(f"Newsletter fallback delete failed for {article_id}: {nl_err}")
+
         logger.warning(f"[RESEARCH] Article {article_id} not found for deletion")
         return jsonify({"success": False, "error": "Article not found"}), 404
 

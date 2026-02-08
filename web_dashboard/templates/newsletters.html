@@ -149,10 +149,18 @@ async function loadNewsletters(offset = 0) {
                     <td class="px-4 py-3">${tickers || '<span class="text-text-tertiary">—</span>'}</td>
                     <td class="px-4 py-3 text-xs">${status}</td>
                     <td class="px-4 py-3">
-                        <button onclick="reprocessNewsletter('${nl.id}')"
-                            class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors">
-                            <i class="fas fa-sync-alt mr-1.5"></i>Reprocess
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="reprocessNewsletter('${nl.id}')"
+                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors">
+                                <i class="fas fa-sync-alt mr-1.5"></i>Reprocess
+                            </button>
+                            {% if is_admin %}
+                            <button onclick="deleteNewsletter('${nl.id}', '${nl.subject.replace(/'/g, "\\'")}')"
+                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-theme-error-text text-theme-error-text bg-transparent hover:bg-theme-error-bg focus:ring-2 focus:ring-theme-error-text/40 focus:outline-none transition-colors">
+                                <i class="fas fa-trash-alt mr-1.5"></i>Delete
+                            </button>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
             `;
@@ -235,6 +243,42 @@ function reprocessNewsletter(id) {
         }
     });
 }
+
+{% if is_admin %}
+function deleteNewsletter(id, subject) {
+    window.showConfirmModal({
+        title: 'Delete Newsletter',
+        message: 'Permanently delete "' + subject + '"? This cannot be undone.',
+        confirmLabel: 'Delete',
+        danger: true,
+        onConfirm: async function() {
+            try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]');
+                const headers = {};
+                if (csrfToken) headers['X-CSRFToken'] = csrfToken.getAttribute('content');
+
+                const response = await fetch('/api/newsletters/' + id, {
+                    method: 'DELETE',
+                    headers: headers,
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Newsletter deleted.', 'success');
+                    loadNewsletters((currentPage - 1) * pageSize);
+                } else {
+                    showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting newsletter:', error);
+                showToast('Error deleting newsletter', 'error');
+            }
+        }
+    });
+}
+{% endif %}
 
 function nextPage() {
     currentPage++;

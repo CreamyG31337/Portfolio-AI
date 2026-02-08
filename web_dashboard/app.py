@@ -5938,6 +5938,24 @@ def get_newsletter(newsletter_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/newsletters/<newsletter_id>', methods=['DELETE'])
+@require_admin
+def delete_newsletter(newsletter_id):
+    """Delete a newsletter by ID (admin only)"""
+    try:
+        from newsletter_repository import NewsletterRepository
+        repo = NewsletterRepository()
+
+        deleted = repo.delete_newsletter(newsletter_id)
+        if deleted:
+            logger.info(f"Newsletter {newsletter_id} deleted by admin")
+            return jsonify({'success': True}), 200
+        return jsonify({'success': False, 'error': 'Newsletter not found'}), 404
+    except Exception as e:
+        logger.error(f"Error deleting newsletter {newsletter_id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/newsletters/search', methods=['POST'])
 @require_auth
 def search_newsletters():
