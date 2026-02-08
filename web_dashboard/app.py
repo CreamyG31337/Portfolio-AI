@@ -6,7 +6,7 @@ A Flask web app to display trading bot portfolio performance using Supabase
 
 # Check critical dependencies first
 try:
-    from flask import Flask, render_template, jsonify, request, redirect, url_for, session, Response
+    from flask import Flask, render_template, jsonify, request, redirect, url_for, session, Response, copy_current_request_context
 except ImportError as e:
     print(f"❌ ERROR: {e}")
     print("🔔 SOLUTION: Activate the virtual environment first!")
@@ -883,10 +883,32 @@ def load_portfolio_data(fund_name=None) -> Dict:
         if not fund_name and available_funds:
             fund_name = available_funds[0]
 
-        # Load data components using modern utils
-        portfolio_df = get_current_positions_flask(fund=fund_name)
-        trades_df = get_trade_log_flask(limit=500, fund=fund_name)
-        cash_balances = get_cash_balances_flask(fund=fund_name)
+        # Load data components using modern utils (parallelized)
+        # Use ThreadPoolExecutor to fetch independent data components concurrently
+        # reducing total latency from sum(t1,t2,t3) to max(t1,t2,t3)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            # Wrap functions to preserve request context (required for cookies/auth access)
+            @copy_current_request_context
+            def fetch_positions():
+                return get_current_positions_flask(fund=fund_name)
+
+            @copy_current_request_context
+            def fetch_trades():
+                return get_trade_log_flask(limit=500, fund=fund_name)
+
+            @copy_current_request_context
+            def fetch_cash():
+                return get_cash_balances_flask(fund=fund_name)
+
+            # Submit tasks
+            future_portfolio = executor.submit(fetch_positions)
+            future_trades = executor.submit(fetch_trades)
+            future_cash = executor.submit(fetch_cash)
+
+            # Gather results (blocking until all complete)
+            portfolio_df = future_portfolio.result()
+            trades_df = future_trades.result()
+            cash_balances = future_cash.result()
 
         return {
             "portfolio": portfolio_df,
