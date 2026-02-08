@@ -88,21 +88,21 @@ try:
     # Disable default CSRF checking so we can manually control it
     app.config['WTF_CSRF_CHECK_DEFAULT'] = False
 
+    # Paths exempt from CSRF protection (external webhooks that use their own auth)
+    CSRF_EXEMPT_PATHS = [
+        '/api/webhooks/',
+    ]
+
     # Manually protect all state-changing routes in before_request
     @app.before_request
     def csrf_protect_routes():
-        """Apply CSRF protection to all routes"""
+        """Apply CSRF protection to all routes (except external webhooks)"""
         # Only check CSRF for state-changing methods
         if request.method in app.config.get('WTF_CSRF_METHODS', ['POST', 'PUT', 'PATCH', 'DELETE']):
-            # #region agent log
-            import json as _dbg_json, time as _dbg_time
-            _dbg_path = r"c:\Users\cream\OneDrive\Documents\LLM-Micro-Cap-trading-bot\.cursor\debug.log"
-            try:
-                with open(_dbg_path, "a", encoding="utf-8") as _f:
-                    _f.write(_dbg_json.dumps({"hypothesisId":"A","location":"app.py:csrf_protect_routes","message":"CSRF check triggered","data":{"path":request.path,"method":request.method,"content_type":request.content_type},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
-            except Exception:
-                pass
-            # #endregion
+            # Skip CSRF for external webhook endpoints (they use their own signature verification)
+            for exempt_path in CSRF_EXEMPT_PATHS:
+                if request.path.startswith(exempt_path):
+                    return
             csrf.protect()
 
     logger.info("CSRF protection enabled for all state-changing routes")
@@ -327,20 +327,6 @@ def internal_server_error(e):
             </body>
         </html>
         """, 500
-
-# #region agent log
-@app.errorhandler(400)
-def handle_bad_request_debug(e):
-    """Debug handler to catch 400 errors including CSRF failures"""
-    import json as _dbg_json, time as _dbg_time
-    _dbg_path = r"c:\Users\cream\OneDrive\Documents\LLM-Micro-Cap-trading-bot\.cursor\debug.log"
-    try:
-        with open(_dbg_path, "a", encoding="utf-8") as _f:
-            _f.write(_dbg_json.dumps({"hypothesisId":"A","location":"app.py:handle_bad_request_debug","message":"400 error caught","data":{"path":request.path,"error_type":type(e).__name__,"error_desc":str(e),"is_csrf":("csrf" in type(e).__name__.lower() or "csrf" in str(e).lower())},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
-    except Exception:
-        pass
-    return e
-# #endregion
 
 @app.errorhandler(Exception)
 def handle_exception(e):
@@ -5739,27 +5725,10 @@ def webhook_newsletter():
     - Message-Id: Mailgun message ID
     """
     try:
-        # #region agent log
-        import json as _dbg_json, time as _dbg_time
-        _dbg_path = r"c:\Users\cream\OneDrive\Documents\LLM-Micro-Cap-trading-bot\.cursor\debug.log"
-        try:
-            with open(_dbg_path, "a", encoding="utf-8") as _f:
-                _f.write(_dbg_json.dumps({"hypothesisId":"A-pass","location":"app.py:webhook_newsletter:entry","message":"Webhook handler REACHED (CSRF passed)","data":{"content_type":request.content_type,"content_length":request.content_length},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
-        except Exception:
-            pass
-        # #endregion
         logger.info(f"Newsletter webhook received: content_type={request.content_type}, content_length={request.content_length}")
         
         # Extract webhook data
         form_data = request.form
-        
-        # #region agent log
-        try:
-            with open(_dbg_path, "a", encoding="utf-8") as _f:
-                _f.write(_dbg_json.dumps({"hypothesisId":"B,D","location":"app.py:webhook_newsletter:form_data","message":"Form data keys","data":{"keys":list(form_data.keys())[:30],"has_signature":bool(form_data.get('signature')),"has_timestamp":bool(form_data.get('timestamp')),"has_token":bool(form_data.get('token'))},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
-        except Exception:
-            pass
-        # #endregion
         
         logger.info(f"Newsletter webhook form keys: {list(form_data.keys())[:20]}")
         
@@ -5769,13 +5738,6 @@ def webhook_newsletter():
         token = form_data.get('token')
         
         if not all([signature, timestamp, token]):
-            # #region agent log
-            try:
-                with open(_dbg_path, "a", encoding="utf-8") as _f:
-                    _f.write(_dbg_json.dumps({"hypothesisId":"B","location":"app.py:webhook_newsletter:sig_check","message":"Missing signature fields","data":{"signature":bool(signature),"timestamp":bool(timestamp),"token":bool(token)},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
-            except Exception:
-                pass
-            # #endregion
             logger.warning(f"Missing signature fields in Mailgun webhook: signature={bool(signature)}, timestamp={bool(timestamp)}, token={bool(token)}")
             return jsonify({'error': 'Missing signature fields'}), 400
         
@@ -5808,13 +5770,6 @@ def webhook_newsletter():
                     sender = match.group(2).strip()
         
         if not all([sender, recipient, subject]):
-            # #region agent log
-            try:
-                with open(_dbg_path, "a", encoding="utf-8") as _f:
-                    _f.write(_dbg_json.dumps({"hypothesisId":"C","location":"app.py:webhook_newsletter:required_fields","message":"Missing required fields","data":{"sender":sender,"recipient":recipient,"subject":subject},"timestamp":int(_dbg_time.time()*1000)}) + "\n")
-            except Exception:
-                pass
-            # #endregion
             logger.warning(f"Missing required fields in newsletter webhook: sender={sender}, recipient={recipient}, subject={subject}")
             return jsonify({'error': 'Missing required fields'}), 400
         
