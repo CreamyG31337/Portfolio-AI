@@ -576,6 +576,24 @@ Return JSON with these fields:
 }}
 
 The confidence_score (0.0-1.0) indicates how certain you are about the conflict_score. Use high confidence (>0.8) for clear-cut cases, medium (0.5-0.8) for typical cases, and low (<0.5) for ambiguous situations."""
+                                    try:
+                                        from skill_loader import build_enhanced_prompt
+
+                                        trade_context = (
+                                            f"{politician} {party} {chamber} {sector} "
+                                            f"{company_name} {ticker} {trade_type} "
+                                            f"{committees_str}"
+                                        )
+                                        prompt = build_enhanced_prompt(
+                                            prompt,
+                                            trade_context,
+                                            "congress_trades",
+                                        )
+                                    except Exception as exc:
+                                        logger.warning(
+                                            "Skill injection failed for congress trades prompt (falling back to base): %s",
+                                            exc,
+                                        )
 
                                     # Query Ollama (non-streaming for structured response)
                                     # Get model from settings (defaults to granite3.3:8b from model_config.json)

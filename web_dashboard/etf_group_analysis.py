@@ -189,6 +189,18 @@ class ETFGroupAnalysisService:
                 changes_table=changes_table,
                 etf_context=etf_context
             )
+            try:
+                from skill_loader import build_enhanced_prompt
+
+                prompt_context = f"{changes_table}\n\n{etf_context}"
+                prompt = build_enhanced_prompt(
+                    prompt,
+                    prompt_context,
+                    "etf_analysis",
+                    article_type="ETF Analysis",
+                )
+            except Exception as exc:
+                logger.warning("Skill injection failed for ETF analysis prompt (falling back to base): %s", exc)
         except ImportError:
             logger.error("ETF_GROUP_ANALYSIS_PROMPT not found in ai_prompts.py")
             return None

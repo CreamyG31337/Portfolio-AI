@@ -9,8 +9,32 @@ from typing import Any, Dict
 logger = logging.getLogger(__name__)
 
 
-def get_summary_system_prompt() -> str:
-    return _SUMMARY_SYSTEM_PROMPT
+def get_summary_system_prompt(article_text: str = "", article_type: str = "") -> str:
+    """Return base summary prompt augmented with matching markdown skills.
+
+    Falls back to the unenhanced ``_SUMMARY_SYSTEM_PROMPT`` if skill_loader
+    is unavailable or raises.  The fallback is logged at WARNING so silent
+    degradation is visible in logs.
+
+    Args:
+        article_text: The article body used for keyword-based skill matching.
+        article_type: Optional type string (e.g. "Newsletter") used for
+            article_types-based skill matching.  Most callers do not pass
+            this yet — skills relying solely on article_types triggers will
+            only activate when this is provided.
+    """
+    try:
+        from skill_loader import build_enhanced_prompt
+
+        return build_enhanced_prompt(
+            _SUMMARY_SYSTEM_PROMPT,
+            article_text,
+            "summary",
+            article_type=article_type,
+        )
+    except Exception as exc:
+        logger.warning("Skill injection failed for summary prompt (falling back to base): %s", exc)
+        return _SUMMARY_SYSTEM_PROMPT
 
 
 def _sanitize_summary_tickers(raw_tickers: Any) -> list[str]:

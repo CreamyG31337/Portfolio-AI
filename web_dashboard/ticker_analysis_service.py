@@ -866,6 +866,12 @@ class TickerAnalysisService:
             try:
                 from ai_prompts import TICKER_ANALYSIS_PROMPT
                 prompt = TICKER_ANALYSIS_PROMPT.format(ticker=ticker_upper, context=context)
+                try:
+                    from skill_loader import build_enhanced_prompt
+
+                    prompt = build_enhanced_prompt(prompt, context, "ticker_analysis")
+                except Exception as exc:
+                    logger.warning("Skill injection failed for ticker analysis prompt (falling back to base): %s", exc)
             except ImportError:
                 logger.error("TICKER_ANALYSIS_PROMPT not found in ai_prompts.py")
                 return None

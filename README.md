@@ -32,6 +32,22 @@ The dashboard includes a dedicated **AI Assistant** and **Research Hub**:
 *   **Smart Summaries**: AI-generated summaries of complex financial news, automatically tagged by sector and ticker.
 *   **AI Audit Trail**: Every AI inference call (summaries, sentiment analysis, embeddings) is written to daily JSONL audit logs in `web_dashboard/logs/ai_audit/` with model, caller, latency, success/error state, and input/output metadata.
 
+### Markdown-Based Analysis Skills (New)
+The AI layer now supports a **Dexter-inspired markdown skills system** that injects domain-specific guidance into prompts at runtime, without changing response formats.
+
+*   **Skill loader**: `web_dashboard/skill_loader.py` parses markdown files with YAML frontmatter, caches them, matches them by triggers, and enforces a token budget.
+*   **Skill files**: `web_dashboard/skills/*.md` (12 skills across micro-cap red flags, biotech catalysts, earnings analysis, Canadian market context, insider/congress, ETF flow, social sentiment, technical analysis, multi-source synthesis, and more).
+*   **Matching rules**: Per-skill `target_prompts`, `keywords`, `article_types`, `always`, `priority`, and `max_tokens`.
+*   **Budgeting**: Skills are selected by priority and capped by total token budget to stay compatible with smaller context-window models.
+*   **Prompt injection points**:
+    *   Article summaries (`summary_common.py` + `ollama_client.py` wrappers for Ollama/WebAI/GLM)
+    *   Ticker analysis (`ticker_analysis_service.py`)
+    *   ETF group analysis (`etf_group_analysis.py`)
+    *   Crowd sentiment (`ollama_client.py`)
+    *   Congress trades analysis (`scheduler/jobs_congress.py`)
+
+This allows adding new domain guidance by creating/editing markdown files only, with no prompt code changes required.
+
 > For detailed Web Dashboard documentation, see [web_dashboard/README.md](web_dashboard/README.md).
 > For the AI Research System deep dive, see [web_dashboard/AI_RESEARCH_SYSTEM.md](web_dashboard/AI_RESEARCH_SYSTEM.md).
 

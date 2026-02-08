@@ -496,6 +496,17 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
   "reasoning": "One concise sentence explaining why (e.g., 'Users are excited about upcoming earnings' or 'Panic due to recent drop')."
 }}"""
         
+        try:
+            from skill_loader import build_enhanced_prompt
+
+            system_prompt = build_enhanced_prompt(
+                system_prompt,
+                combined_text,
+                "crowd_sentiment",
+            )
+        except Exception as exc:
+            logger.warning("Skill injection failed for crowd sentiment prompt (falling back to base): %s", exc)
+
         # User prompt with the actual posts
         user_prompt = f"Analyze the sentiment for {ticker} based on these posts:\n\n{combined_text}"
         
@@ -636,14 +647,36 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             text = text[:max_chars] + "..."
             logger.debug(f"Truncated text to {max_chars} characters for summarization")
 
-        system_prompt = get_summary_system_prompt()
+        # NOTE: article_type is not threaded here — skills that trigger only via
+        # article_types (e.g. newsletter_evaluation.md) won't activate through
+        # this path.  To enable that, add article_type to generate_summary() and
+        # pass it from the scheduler jobs.  Keyword triggers still work fine.
+        system_prompt = get_summary_system_prompt(article_text=text)
 
         # Get model settings
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get('temperature', 0.3)
         effective_ctx = model_settings.get('num_ctx', 4096)
         effective_max_tokens = model_settings.get('num_predict', 1024)  # Increased for more comprehensive summaries
-        
+
+        # Warn if skill-enhanced prompt + article + output may overflow context
+        prompt_tokens_est = len(system_prompt) // 4
+        article_tokens_est = len(text) // 4
+        total_est = prompt_tokens_est + article_tokens_est + effective_max_tokens
+        if total_est > effective_ctx:
+            logger.warning(
+                "Context window likely exceeded for model=%s: "
+                "system≈%d + article≈%d + output=%d = ~%d tokens vs ctx=%d. "
+                "Consider increasing num_ctx or reducing skill budget.",
+                model, prompt_tokens_est, article_tokens_est,
+                effective_max_tokens, total_est, effective_ctx,
+            )
+        elif total_est > effective_ctx * 0.85:
+            logger.info(
+                "Context window >85%% full for model=%s: ~%d/%d tokens",
+                model, total_est, effective_ctx,
+            )
+
         # Prepare request payload
         payload = {
             "model": model,
@@ -732,14 +765,33 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             text = text[:max_chars] + "..."
             logger.debug(f"Truncated text to {max_chars} characters for summarization")
         
-        system_prompt = get_summary_system_prompt()
+        # NOTE: article_type not threaded here — see comment in generate_summary()
+        system_prompt = get_summary_system_prompt(article_text=text)
 
         # Get model settings
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get("temperature", 0.3)
         effective_ctx = model_settings.get("num_ctx", 4096)
         effective_max_tokens = model_settings.get("num_predict", 1024)
-        
+
+        # Warn if skill-enhanced prompt + article + output may overflow context
+        prompt_tokens_est = len(system_prompt) // 4
+        article_tokens_est = len(text) // 4
+        total_est = prompt_tokens_est + article_tokens_est + effective_max_tokens
+        if total_est > effective_ctx:
+            logger.warning(
+                "Context window likely exceeded (streaming) for model=%s: "
+                "system≈%d + article≈%d + output=%d = ~%d tokens vs ctx=%d. "
+                "Consider increasing num_ctx or reducing skill budget.",
+                model, prompt_tokens_est, article_tokens_est,
+                effective_max_tokens, total_est, effective_ctx,
+            )
+        elif total_est > effective_ctx * 0.85:
+            logger.info(
+                "Context window >85%% full (streaming) for model=%s: ~%d/%d tokens",
+                model, total_est, effective_ctx,
+            )
+
         # Prepare streaming request payload
         payload = {
             "model": model,
@@ -1004,7 +1056,7 @@ def _generate_summary_via_webai(
         text = text[:max_chars] + "..."
         logger.debug(f"Truncated text from {original_len} to {max_chars} characters for web-based AI summarization")
 
-    system_prompt = get_summary_system_prompt()
+    system_prompt = get_summary_system_prompt(article_text=text)
     total_chars = len(system_prompt) + len(text)
     logger.debug(f"Web-based AI prompt length: {total_chars} chars (system: {len(system_prompt)}, user: {len(text)})")
 
@@ -1089,7 +1141,7 @@ def _generate_summary_via_zhipu(
         text = text[:max_chars] + "..."
         logger.debug(f"Truncated text from {original_len} to {max_chars} characters for Z.AI summarization")
 
-    system_prompt = get_summary_system_prompt()
+    system_prompt = get_summary_system_prompt(article_text=text)
     messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
     total_chars = len(system_prompt) + len(text)
     logger.debug(f"Z.AI prompt length: {total_chars} chars (system: {len(system_prompt)}, user: {len(text)})")
