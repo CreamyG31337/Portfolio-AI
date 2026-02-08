@@ -632,6 +632,13 @@
 {% endif %}
 
 <script>
+    function _csrfHeaders(extra) {
+        var h = extra ? Object.assign({}, extra) : {};
+        var m = document.querySelector('meta[name="csrf-token"]');
+        if (m) h['X-CSRFToken'] = m.getAttribute('content');
+        return h;
+    }
+
     let availableModels = [];
     let defaultModel = '';
 
@@ -863,9 +870,7 @@
                 // Use Server-Sent Events for streaming progress
                 const response = await fetch('/api/research/reanalyze/stream', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({
                         article_id: articleId,
                         model_name: modelName
@@ -979,13 +984,16 @@
         if (!articleId) return;
         window.showConfirmModal({
             title: 'Delete this article?',
-            message: 'This action cannot be undone. The article will be permanently removed from the research repository.',
-            confirmLabel: 'Delete permanently',
+            message: 'This action cannot be undone. The article will be permanently removed.',
+            confirmLabel: 'Delete',
             danger: true,
             onConfirm: function() {
+                var headers = { 'Content-Type': 'application/json' };
+                var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                if (csrfMeta) headers['X-CSRFToken'] = csrfMeta.getAttribute('content');
                 return fetch('/api/research/delete', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: headers,
                     credentials: 'include',
                     body: JSON.stringify({ article_id: articleId })
                 })
@@ -1213,9 +1221,7 @@
         try {
             const response = await fetch('/api/research/search', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     query: query,
                     search_type: searchType,
@@ -1376,7 +1382,7 @@
         try {
             const response = await fetch('/api/research/scrape', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({ url: result.url })
             });
 
@@ -1422,7 +1428,7 @@
         try {
             const response = await fetch('/api/research/summarize', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     content: result.data.content,
                     model: model || searchDefaultModel
@@ -1468,7 +1474,7 @@
         try {
             const response = await fetch('/api/research/analyze', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     content: result.data.content,
                     model: model || searchDefaultModel
@@ -1527,7 +1533,7 @@
         try {
             const response = await fetch('/api/research/save', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     url: result.url,
                     title: result.data.title || result.title,

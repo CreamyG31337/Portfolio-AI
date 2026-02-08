@@ -1,4 +1,5 @@
 export { }; // Ensure file is treated as a module
+import { getCsrfHeaders } from './csrf.js';
 
 type SecurityMode = "etf" | "stock" | "portfolio";
 
@@ -333,6 +334,7 @@ async function fetchFromYfinance(ticker: string): Promise<void> {
     try {
         const response = await fetch(`/api/admin/security-metadata/${encodeURIComponent(ticker)}/fetch`, {
             method: "POST",
+            headers: { ...getCsrfHeaders() },
             credentials: "include"
         });
 
@@ -376,7 +378,8 @@ async function saveSecurityMetadata(ticker: string): Promise<void> {
         const response = await fetch(`/api/admin/security-metadata/${encodeURIComponent(ticker)}`, {
             method: "PUT",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                ...getCsrfHeaders()
             },
             credentials: "include",
             body: JSON.stringify({

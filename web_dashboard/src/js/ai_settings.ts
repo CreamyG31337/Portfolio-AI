@@ -1373,6 +1373,7 @@ function removeFromSkipList(ticker: string): void {
             try {
                 const response = await fetch(`/api/admin/ai/skip-list/${encodeURIComponent(ticker)}`, {
                     method: 'DELETE',
+                    headers: { ...getCsrfHeaders() },
                     credentials: 'include'
                 });
                 if (response.ok) {

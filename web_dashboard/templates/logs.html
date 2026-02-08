@@ -561,7 +561,9 @@
             danger: true,
             onConfirm: async function() {
                 try {
-                    const response = await fetch('/api/logs/clear', { method: 'POST' });
+                    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                    var csrfHeaders = csrfMeta ? { 'X-CSRFToken': csrfMeta.getAttribute('content') } : {};
+                    const response = await fetch('/api/logs/clear', { method: 'POST', headers: csrfHeaders });
                     const data = await response.json();
                     if (data.success) {
                         alert('✅ Logs cleared successfully');

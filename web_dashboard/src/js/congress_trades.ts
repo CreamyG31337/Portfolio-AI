@@ -704,7 +704,7 @@ function saveModelPreference(model: string): void {
     // Also save to user preferences
     fetch('/api/settings/ai_model', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
         body: JSON.stringify({ model: model })
     }).catch((err: Error) => {
         console.error('Error saving model preference:', err);

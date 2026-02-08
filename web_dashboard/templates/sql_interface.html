@@ -224,11 +224,12 @@
         resultsContainer.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl mb-4"></i><p>Executing query...</p></div>';
 
         // Execute query
+        var _csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var _headers = { 'Content-Type': 'application/json' };
+        if (_csrfMeta) _headers['X-CSRFToken'] = _csrfMeta.getAttribute('content');
         fetch('/api/dev/query', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: _headers,
             body: JSON.stringify({ query: query })
         })
             .then(response => response.json())
