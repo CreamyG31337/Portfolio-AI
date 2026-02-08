@@ -5716,8 +5716,12 @@ def webhook_newsletter():
     - Message-Id: Mailgun message ID
     """
     try:
+        logger.info(f"Newsletter webhook received: content_type={request.content_type}, content_length={request.content_length}")
+        
         # Extract webhook data
         form_data = request.form
+        
+        logger.info(f"Newsletter webhook form keys: {list(form_data.keys())[:20]}")
         
         # Verify Mailgun signature
         signature = form_data.get('signature')
@@ -5725,7 +5729,7 @@ def webhook_newsletter():
         token = form_data.get('token')
         
         if not all([signature, timestamp, token]):
-            logger.warning("Missing signature fields in Mailgun webhook")
+            logger.warning(f"Missing signature fields in Mailgun webhook: signature={bool(signature)}, timestamp={bool(timestamp)}, token={bool(token)}")
             return jsonify({'error': 'Missing signature fields'}), 400
         
         # Initialize newsletter service
