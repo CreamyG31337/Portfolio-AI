@@ -30,6 +30,7 @@ The dashboard includes a dedicated **AI Assistant** and **Research Hub**:
 *   **Automated News Collection**: Background jobs (SearXNG) continuously scour the web for market news, ticker updates, and ETF sector trends.
 *   **Semantic Search**: Vector embeddings (via Ollama) allow for natural language searching through thousands of financial articles.
 *   **Smart Summaries**: AI-generated summaries of complex financial news, automatically tagged by sector and ticker.
+*   **AI Audit Trail**: Every AI inference call (summaries, sentiment analysis, embeddings) is written to daily JSONL audit logs in `web_dashboard/logs/ai_audit/` with model, caller, latency, success/error state, and input/output metadata.
 
 > For detailed Web Dashboard documentation, see [web_dashboard/README.md](web_dashboard/README.md).
 > For the AI Research System deep dive, see [web_dashboard/AI_RESEARCH_SYSTEM.md](web_dashboard/AI_RESEARCH_SYSTEM.md).

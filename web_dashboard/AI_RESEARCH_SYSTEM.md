@@ -19,19 +19,26 @@ The AI Research System is an automated intelligence gathering and analysis platf
    - Generates article summaries with structured metadata
    - Creates vector embeddings (768 dimensions) for semantic search
    - Extracts tickers, sectors, and key themes from articles
+   - Writes JSONL audit records for AI inference calls (summary, crowd sentiment, embeddings)
 
-3. **Research Repository** (`research_repository.py`)
+3. **AI Audit Trail** (`ai_audit.py`)
+   - Lightweight, thread-safe JSONL logging for AI inference events
+   - Daily log files in `web_dashboard/logs/ai_audit/YYYY-MM-DD.jsonl`
+   - Captures model/provider, caller, duration, success/error, and compact input/output metadata
+   - Includes automatic log retention cleanup (default 30 days)
+
+4. **Research Repository** (`research_repository.py`)
    - PostgreSQL database for storing articles
    - Vector similarity search using pgvector
    - CRUD operations for research articles
    - Handles ETF ticker lookups (returns sector articles)
 
-4. **Research Utils** (`research_utils.py`)
+5. **Research Utils** (`research_utils.py`)
    - Content extraction using Trafilatura
    - Domain blacklist management
    - Article content cleaning and normalization
 
-5. **Domain Health Tracker** (`research_domain_health.py`)
+6. **Domain Health Tracker** (`research_domain_health.py`)
    - Monitors domain reliability
    - Auto-blacklists domains with repeated failures
    - Tracks success/failure rates per domain
