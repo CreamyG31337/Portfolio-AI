@@ -39,6 +39,7 @@ class NewsletterRepository:
         sender_name: Optional[str] = None,
         tickers: Optional[List[str]] = None,
         summary: Optional[str] = None,
+        article_url: Optional[str] = None,
         embedding: Optional[List[float]] = None,
         message_id: Optional[str] = None,
         received_at: Optional[datetime] = None
@@ -86,9 +87,9 @@ class NewsletterRepository:
                 query = """
                     INSERT INTO newsletters (
                         sender, sender_name, recipient, subject, body_plain, body_html,
-                        tickers, summary, embedding, message_id, received_at, processed_at
+                        tickers, summary, article_url, embedding, message_id, received_at, processed_at
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, CURRENT_TIMESTAMP
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, CURRENT_TIMESTAMP
                     )
                     ON CONFLICT (message_id) DO UPDATE SET
                         sender = EXCLUDED.sender,
@@ -99,6 +100,7 @@ class NewsletterRepository:
                         body_html = EXCLUDED.body_html,
                         tickers = EXCLUDED.tickers,
                         summary = EXCLUDED.summary,
+                        article_url = EXCLUDED.article_url,
                         embedding = EXCLUDED.embedding,
                         processed_at = CURRENT_TIMESTAMP
                     RETURNING id
@@ -112,6 +114,7 @@ class NewsletterRepository:
                     body_html,
                     tickers_array,
                     summary,
+                    article_url,
                     embedding_str,
                     message_id,
                     received_at_str
@@ -120,9 +123,9 @@ class NewsletterRepository:
                 query = """
                     INSERT INTO newsletters (
                         sender, sender_name, recipient, subject, body_plain, body_html,
-                        tickers, summary, message_id, received_at
+                        tickers, summary, article_url, message_id, received_at
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (message_id) DO UPDATE SET
                         sender = EXCLUDED.sender,
@@ -132,7 +135,8 @@ class NewsletterRepository:
                         body_plain = EXCLUDED.body_plain,
                         body_html = EXCLUDED.body_html,
                         tickers = EXCLUDED.tickers,
-                        summary = EXCLUDED.summary
+                        summary = EXCLUDED.summary,
+                        article_url = EXCLUDED.article_url
                     RETURNING id
                 """
                 params = (
@@ -144,6 +148,7 @@ class NewsletterRepository:
                     body_html,
                     tickers_array,
                     summary,
+                    article_url,
                     message_id,
                     received_at_str
                 )
@@ -185,7 +190,7 @@ class NewsletterRepository:
         try:
             query = """
                 SELECT id, sender, sender_name, recipient, subject,
-                       body_plain, body_html, tickers, summary,
+                       body_plain, body_html, tickers, summary, article_url,
                        received_at, processed_at, message_id,
                        (embedding IS NOT NULL) as has_embedding
                 FROM newsletters
@@ -229,7 +234,7 @@ class NewsletterRepository:
         try:
             query = """
                 SELECT id, sender, sender_name, recipient, subject,
-                       body_plain, body_html, tickers, summary,
+                       body_plain, body_html, tickers, summary, article_url,
                        received_at, processed_at, message_id,
                        (embedding IS NOT NULL) as has_embedding
                 FROM newsletters
@@ -292,7 +297,7 @@ class NewsletterRepository:
             # <=> is the cosine distance operator in pgvector (lower is more similar)
             query = """
                 SELECT id, sender, sender_name, recipient, subject,
-                       body_plain, body_html, tickers, summary,
+                       body_plain, body_html, tickers, summary, article_url,
                        received_at, processed_at, message_id,
                        (1 - (embedding <=> %s::vector)) as similarity_score
                 FROM newsletters

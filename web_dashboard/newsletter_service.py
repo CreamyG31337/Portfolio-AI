@@ -182,6 +182,107 @@ class NewsletterService:
             logger.error(f"Error extracting text from HTML: {e}")
             return html  # Return raw HTML as fallback
     
+    def extract_article_url(
+        self,
+        body_html: Optional[str] = None,
+        body_plain: Optional[str] = None
+    ) -> Optional[str]:
+        """Extract the most likely 'read on web' / 'read the article' link from an email
+        
+        Searches for links whose visible text or href indicate a 'read online'
+        action. Falls back to plain-text URL extraction when HTML yields no
+        results.
+        
+        Args:
+            body_html: HTML email body
+            body_plain: Plain text email body
+            
+        Returns:
+            Best article URL found, or None
+        """
+        # Patterns for link visible text (case-insensitive)
+        _TEXT_PATTERNS = [
+            r"read\s+(this\s+)?(on\s+the\s+web|online|in\s+browser|the\s+full\s+article|the\s+article|more)",
+            r"view\s+(this\s+)?(in\s+browser|online|on\s+the\s+web|email\s+in\s+browser)",
+            r"open\s+in\s+browser",
+            r"continue\s+reading",
+            r"read\s+on\s+web",
+        ]
+        _text_re = re.compile(
+            "|".join(f"(?:{p})" for p in _TEXT_PATTERNS),
+            re.IGNORECASE,
+        )
+
+        # Patterns for href substrings
+        _HREF_PATTERNS = [
+            "view-in-browser",
+            "read-online",
+            "view-online",
+            "open-in-browser",
+            "read-in-browser",
+            "view-email",
+            "webversion",
+            "web-version",
+            "browser-view",
+            "emailview",
+        ]
+
+        def _is_bad_url(url: str) -> bool:
+            """Return True if the URL should be excluded."""
+            if not url:
+                return True
+            low = url.strip().lower()
+            if low.startswith(("mailto:", "javascript:", "#", "tel:")):
+                return True
+            bad_keywords = [
+                "unsubscribe", "opt-out", "optout", "manage-preferences",
+                "email-preferences", "notification-settings",
+                "tracking-pixel", "open-tracking", "/track/",
+                "share/facebook", "share/twitter", "share/linkedin",
+                "share/email", "sharer.php", "intent/tweet",
+            ]
+            return any(kw in low for kw in bad_keywords)
+
+        try:
+            if body_html:
+                soup = BeautifulSoup(body_html, 'html.parser')
+
+                # Strategy 1: match visible link text
+                for tag in soup.find_all("a", href=True):
+                    link_text = tag.get_text(strip=True)
+                    if link_text and _text_re.search(link_text):
+                        href = tag["href"].strip()
+                        if not _is_bad_url(href):
+                            logger.debug(f"Extracted article URL via link text: {href}")
+                            return href
+
+                # Strategy 2: match href patterns
+                for tag in soup.find_all("a", href=True):
+                    href = tag["href"].strip()
+                    href_lower = href.lower()
+                    if any(pat in href_lower for pat in _HREF_PATTERNS):
+                        if not _is_bad_url(href):
+                            logger.debug(f"Extracted article URL via href pattern: {href}")
+                            return href
+
+            # Strategy 3: fall back to plain text
+            if body_plain:
+                url_re = re.compile(r"https?://\S+", re.IGNORECASE)
+                for match in url_re.finditer(body_plain):
+                    url = match.group(0).rstrip(".,;:!?)>\"'")
+                    url_lower = url.lower()
+                    if any(pat in url_lower for pat in _HREF_PATTERNS):
+                        if not _is_bad_url(url):
+                            logger.debug(f"Extracted article URL from plain text: {url}")
+                            return url
+
+            logger.debug("No article URL found in email body")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error extracting article URL: {e}")
+            return None
+    
     def extract_tickers(self, text: str) -> List[str]:
         """Extract stock ticker symbols from text
         
@@ -388,6 +489,9 @@ class NewsletterService:
                 text_content = ""
                 logger.warning("Newsletter has no body content")
             
+            # Extract article URL from email body
+            article_url = self.extract_article_url(body_html, body_plain)
+            
             # Extract ticker symbols from combined subject + body
             full_text = f"{clean_subj}\n\n{text_content}"
             tickers = self.extract_tickers(full_text)
@@ -414,6 +518,7 @@ class NewsletterService:
                 'body_plain': text_content if body_plain else body_plain,
                 'body_html': body_html,
                 'tickers': tickers if tickers else None,
+                'article_url': article_url,
                 'embedding': embedding,
                 'message_id': message_id,
                 'received_at': received_at

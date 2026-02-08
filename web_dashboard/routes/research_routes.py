@@ -94,7 +94,7 @@ def _fetch_newsletters_as_articles(
 
         query = """
             SELECT id, sender, sender_name, subject, body_plain, body_html,
-                   tickers, summary, received_at, processed_at,
+                   tickers, summary, article_url, received_at, processed_at,
                    (embedding IS NOT NULL) as has_embedding
             FROM newsletters
             WHERE 1=1
@@ -124,7 +124,7 @@ def _fetch_newsletters_as_articles(
             articles.append({
                 'id': str(nl['id']),
                 'title': nl.get('subject', '(No subject)'),
-                'url': None,
+                'url': nl.get('article_url'),
                 'summary': nl.get('summary') or (nl.get('body_plain') or '')[:1000],
                 'content': nl.get('body_plain') or nl.get('body_html') or '',
                 'source': nl.get('sender_name') or nl.get('sender', 'Unknown'),
@@ -1150,14 +1150,44 @@ def reanalyze_newsletter():
         extracted_tickers = nl_service.extract_tickers(f"{clean_subj}\n\n{content}")
         all_tickers = sorted(set(tickers) | set(extracted_tickers)) if tickers else extracted_tickers
 
+        # Reprocess should be non-destructive: never wipe existing summary/tickers on weak AI output.
+        existing_summary = (newsletter.get("summary") or "").strip()
+        generated_summary = (summary or "").strip()
+        final_summary = generated_summary if generated_summary else existing_summary
+        if not final_summary:
+            return jsonify({
+                'success': False,
+                'message': 'Reprocess produced empty summary and no previous summary exists'
+            }), 422
+
+        existing_tickers = newsletter.get("tickers") or []
+        final_tickers = all_tickers if all_tickers else existing_tickers
+
+        # Backfill article_url from body if missing.
+        extracted_article_url = nl_service.extract_article_url(
+            body_html=newsletter.get("body_html"),
+            body_plain=content,
+        )
+        final_article_url = extracted_article_url or newsletter.get("article_url")
+
         update_query = """
             UPDATE newsletters
-            SET summary = %s, tickers = %s, processed_at = CURRENT_TIMESTAMP
+            SET subject = %s,
+                summary = %s,
+                tickers = %s,
+                article_url = %s,
+                processed_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """
         nl_repo.client.execute_update(
             update_query,
-            (summary, all_tickers if all_tickers else None, article_id),
+            (
+                clean_subj,
+                final_summary,
+                final_tickers if final_tickers else None,
+                final_article_url,
+                article_id,
+            ),
         )
 
         embedding = nl_service.generate_embedding(content)
@@ -1167,7 +1197,7 @@ def reanalyze_newsletter():
         return jsonify({
             'success': True,
             'message': f'Newsletter re-analyzed with {model_name}',
-            'summary_preview': (summary or '')[:200]
+            'summary_preview': final_summary[:200]
         })
 
     except Exception as e:

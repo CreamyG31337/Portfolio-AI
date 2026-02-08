@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS newsletters (
     -- Extracted/processed data
     tickers TEXT[], -- Array of ticker symbols mentioned
     summary TEXT, -- AI-generated summary (optional)
+    article_url TEXT, -- URL to original article on the web
     
     -- Vector embedding for semantic search (768 dimensions for nomic-embed-text)
     embedding vector(768),

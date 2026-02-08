@@ -112,15 +112,72 @@ def _delete_existing_articles(repo: ResearchRepository, etf_ticker: str, target_
     return len(rows)
 
 
-def reprocess_for_date(target_date: datetime, tickers: Optional[list[str]]) -> int:
+def _delete_existing_snapshot_rows(pc: PostgresClient, etf_ticker: str, target_date: datetime) -> int:
+    """Delete all existing holdings rows for this ETF/date so reprocess is a true replacement."""
+    rows = pc.execute_query(
+        """
+        DELETE FROM etf_holdings_log
+        WHERE etf_ticker = %s
+          AND date::date = %s
+        RETURNING holding_ticker
+        """,
+        (etf_ticker, target_date.strftime("%Y-%m-%d")),
+    )
+    return len(rows)
+
+
+def _get_raw_dates(raw_root: Path) -> list[str]:
+    if not raw_root.exists():
+        return []
+    return sorted([p.name for p in raw_root.iterdir() if p.is_dir()])
+
+
+def _get_snapshot_etfs_for_date(pc: PostgresClient, target_date: datetime) -> set[str]:
+    rows = pc.execute_query(
+        """
+        SELECT DISTINCT etf_ticker
+        FROM etf_holdings_log
+        WHERE date::date = %s
+        """,
+        (target_date.strftime("%Y-%m-%d"),),
+    )
+    return {str(r["etf_ticker"]).upper() for r in rows}
+
+
+def audit_recoverable_gaps(raw_dates: list[str]) -> list[tuple[str, str]]:
+    """Return (date, etf) tuples where raw file exists but DB snapshot is missing."""
+    pc = PostgresClient()
+    raw_root = Path(__file__).resolve().parent.parent / "logs" / "etf_raw_data"
+    gaps: list[tuple[str, str]] = []
+
+    for d in raw_dates:
+        date_obj = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        present = _get_snapshot_etfs_for_date(pc, date_obj)
+        date_dir = raw_root / d
+        raw_etfs = {p.stem.upper() for p in date_dir.iterdir() if p.is_file()}
+        for etf in ETF_CONFIGS.keys():
+            if etf in raw_etfs and etf not in present:
+                gaps.append((d, etf))
+    return gaps
+
+
+def reprocess_for_date(
+    target_date: datetime,
+    tickers: Optional[list[str]],
+    only_missing: bool = False,
+) -> int:
     db = SupabaseClient(use_service_role=True)
     pc = PostgresClient()
     repo = ResearchRepository()
 
     to_process = [t for t in (tickers or ETF_CONFIGS.keys()) if t in ETF_CONFIGS]
+    existing_for_date = _get_snapshot_etfs_for_date(pc, target_date) if only_missing else set()
     processed = 0
 
     for etf_ticker in to_process:
+        if only_missing and etf_ticker in existing_for_date:
+            logger.info(f"Skipping {etf_ticker}: snapshot already exists for {target_date.strftime('%Y-%m-%d')}")
+            continue
         logger.info(f"=== Reprocessing {etf_ticker} ({target_date.strftime('%Y-%m-%d')}) ===")
         holdings = _load_holdings_from_raw(etf_ticker, target_date)
         if holdings is None or holdings.empty:
@@ -130,6 +187,13 @@ def reprocess_for_date(target_date: datetime, tickers: Optional[list[str]]) -> i
         deleted = _delete_existing_articles(repo, etf_ticker, target_date)
         if deleted:
             logger.info(f"Deleted {deleted} existing ETF Change article(s) for {etf_ticker}")
+
+        deleted_snapshot = _delete_existing_snapshot_rows(pc, etf_ticker, target_date)
+        if deleted_snapshot:
+            logger.info(
+                f"Deleted {deleted_snapshot} existing snapshot row(s) for "
+                f"{etf_ticker} on {target_date.strftime('%Y-%m-%d')}"
+            )
 
         previous = get_previous_holdings(pc, etf_ticker, target_date)
         if not previous.empty:
@@ -161,13 +225,49 @@ def reprocess_for_date(target_date: datetime, tickers: Optional[list[str]]) -> i
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Reprocess ETF holdings/articles from saved raw files")
-    parser.add_argument("--date", required=True, help="Date folder in YYYY-MM-DD format under logs/etf_raw_data")
+    parser.add_argument("--date", help="Date folder in YYYY-MM-DD format under logs/etf_raw_data")
+    parser.add_argument("--all-dates", action="store_true", help="Process every available raw-data date folder")
+    parser.add_argument("--date-from", help="Inclusive lower bound for --all-dates (YYYY-MM-DD)")
+    parser.add_argument("--date-to", help="Inclusive upper bound for --all-dates (YYYY-MM-DD)")
     parser.add_argument("--etf", nargs="*", help="Optional ETF ticker list (default: all configured)")
+    parser.add_argument(
+        "--only-missing",
+        action="store_true",
+        help="Only process ETF/date combinations missing from etf_holdings_log",
+    )
+    parser.add_argument("--audit-only", action="store_true", help="Only print recoverable gaps, no writes")
     args = parser.parse_args()
 
-    target_date = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     tickers = [t.upper() for t in args.etf] if args.etf else None
-    reprocess_for_date(target_date, tickers)
+    raw_root = Path(__file__).resolve().parent.parent / "logs" / "etf_raw_data"
+    raw_dates = _get_raw_dates(raw_root)
+
+    if args.all_dates:
+        selected_dates = raw_dates
+        if args.date_from:
+            selected_dates = [d for d in selected_dates if d >= args.date_from]
+        if args.date_to:
+            selected_dates = [d for d in selected_dates if d <= args.date_to]
+        if not selected_dates:
+            logger.warning("No raw-date folders matched filters.")
+            return
+    else:
+        if not args.date:
+            raise SystemExit("Either --date or --all-dates is required")
+        selected_dates = [args.date]
+
+    if args.audit_only:
+        gaps = audit_recoverable_gaps(selected_dates)
+        print(f"recoverable_gaps={len(gaps)}")
+        for d, etf in gaps:
+            print(d, etf)
+        return
+
+    total_processed = 0
+    for d in selected_dates:
+        target_date = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        total_processed += reprocess_for_date(target_date, tickers, only_missing=args.only_missing)
+    logger.info(f"Done. Total ETFs processed across {len(selected_dates)} date(s): {total_processed}")
 
 
 if __name__ == "__main__":
