@@ -10,6 +10,7 @@ Migrated from app.py to follow the blueprint pattern.
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -70,6 +71,38 @@ except ImportError:
     pass
 
 logger = logging.getLogger(__name__)
+
+_AI_AUDIT_LOG_DIR = Path(__file__).resolve().parent.parent / "logs" / "ai_audit"
+_AI_AUDIT_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _is_valid_ai_audit_date(date_str: str) -> bool:
+    """Validate YYYY-MM-DD date values used for ai_audit JSONL file names."""
+    if not _AI_AUDIT_DATE_PATTERN.fullmatch(date_str):
+        return False
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
+
+def _parse_ai_audit_timestamp(timestamp: object) -> datetime:
+    """Best-effort timestamp parse for sorting entries newest-first."""
+    if not isinstance(timestamp, str):
+        return datetime.min
+
+    value = timestamp.strip()
+    if not value:
+        return datetime.min
+
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return datetime.min
 
 # Helper function for FIFO P&L calculation
 def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: float, existing_trades: list = None) -> float:
@@ -2437,6 +2470,137 @@ def ai_settings_page():
         return render_template('ai_settings.html', 
                              user_email='Admin',
                              **nav_context)
+
+
+@admin_bp.route('/admin/ai-audit')
+@require_admin
+def ai_audit_page():
+    """AI audit log viewer page."""
+    try:
+        from app import get_navigation_context
+        nav_context = get_navigation_context(current_page='admin_ai_audit')
+        return render_template('ai_audit.html', **nav_context)
+    except Exception as e:
+        logger.error(f"Error rendering AI audit page: {e}", exc_info=True)
+        return render_template('ai_audit.html')
+
+
+@admin_bp.route('/api/admin/ai-audit/dates')
+@require_admin
+def api_ai_audit_dates():
+    """Return list of dates that have AI audit JSONL files, newest first."""
+    try:
+        if not _AI_AUDIT_LOG_DIR.exists():
+            return jsonify({"dates": []})
+
+        dates: list[str] = []
+        for file_path in _AI_AUDIT_LOG_DIR.glob("*.jsonl"):
+            stem = file_path.stem
+            if _is_valid_ai_audit_date(stem):
+                dates.append(stem)
+
+        dates.sort(reverse=True)
+        return jsonify({"dates": dates})
+    except Exception as e:
+        logger.error(f"Error listing AI audit dates: {e}", exc_info=True)
+        return jsonify({"error": "Failed to list AI audit dates"}), 500
+
+
+@admin_bp.route('/api/admin/ai-audit/entries')
+@require_admin
+def api_ai_audit_entries():
+    """Return AI audit entries for a date with optional filters."""
+    date_str = (request.args.get("date") or "").strip()
+    function_filter = (request.args.get("function") or "").strip()
+    model_filter = (request.args.get("model") or "").strip()
+    provider_filter = (request.args.get("provider") or "").strip().lower()
+    success_filter_raw = (request.args.get("success") or "").strip().lower()
+
+    if not _is_valid_ai_audit_date(date_str):
+        return jsonify({"error": "Invalid date format. Expected YYYY-MM-DD"}), 400
+
+    if success_filter_raw not in {"", "true", "false"}:
+        return jsonify({"error": "Invalid success filter. Use true or false"}), 400
+
+    success_filter: Optional[bool] = None
+    if success_filter_raw == "true":
+        success_filter = True
+    elif success_filter_raw == "false":
+        success_filter = False
+
+    try:
+        # Defense in depth: regex/date validation + resolved path under expected directory.
+        base_dir = _AI_AUDIT_LOG_DIR.resolve()
+        file_path = (_AI_AUDIT_LOG_DIR / f"{date_str}.jsonl").resolve()
+        if file_path.parent != base_dir:
+            return jsonify({"error": "Invalid date value"}), 400
+
+        if not file_path.exists():
+            return jsonify({"error": f"No AI audit file found for {date_str}"}), 404
+
+        entries: list[dict] = []
+        malformed_lines = 0
+
+        with file_path.open("r", encoding="utf-8") as log_file:
+            for line_number, line in enumerate(log_file, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    malformed_lines += 1
+                    logger.warning(
+                        f"Skipping malformed AI audit JSONL line {line_number} in {file_path.name}"
+                    )
+                    continue
+
+                if not isinstance(entry, dict):
+                    continue
+
+                if function_filter and str(entry.get("function", "")).strip() != function_filter:
+                    continue
+                if model_filter and str(entry.get("model", "")).strip() != model_filter:
+                    continue
+                if provider_filter and str(entry.get("provider", "")).strip().lower() != provider_filter:
+                    continue
+
+                if success_filter is not None:
+                    entry_success = entry.get("success")
+                    if isinstance(entry_success, str):
+                        entry_success = entry_success.strip().lower() == "true"
+                    else:
+                        entry_success = bool(entry_success)
+                    if entry_success != success_filter:
+                        continue
+
+                entries.append(entry)
+
+        entries.sort(key=lambda item: _parse_ai_audit_timestamp(item.get("timestamp")), reverse=True)
+
+        filters_applied: dict[str, str] = {}
+        if function_filter:
+            filters_applied["function"] = function_filter
+        if model_filter:
+            filters_applied["model"] = model_filter
+        if provider_filter:
+            filters_applied["provider"] = provider_filter
+        if success_filter_raw:
+            filters_applied["success"] = success_filter_raw
+
+        response = {
+            "date": date_str,
+            "entries": entries,
+            "total": len(entries),
+            "filters_applied": filters_applied,
+        }
+        if malformed_lines:
+            response["malformed_lines_skipped"] = malformed_lines
+        return jsonify(response)
+    except Exception as e:
+        logger.error(f"Error reading AI audit entries: {e}", exc_info=True)
+        return jsonify({"error": "Failed to read AI audit entries"}), 500
 
 @admin_bp.route('/api/admin/ai/skip-list')
 @require_admin
