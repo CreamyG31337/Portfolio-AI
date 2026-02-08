@@ -463,6 +463,10 @@ class OllamaClient:
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
                 model = "granite3.3:8b"
+
+        audit_start = time.time()
+        result: Dict[str, Any] = {}
+        audit_error: Optional[str] = None
         
         # Combine texts into single prompt
         combined_text = "\n\n---\n\n".join(texts[:5])  # Limit to top 5
@@ -536,18 +540,43 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 logger.warning(f"Invalid sentiment label '{sentiment}', defaulting to NEUTRAL")
                 sentiment = "NEUTRAL"
             
-            return {
+            result = {
                 "sentiment": sentiment,
                 "reasoning": parsed.get("reasoning", "Sentiment analysis completed")
             }
+            return result
             
         except json.JSONDecodeError as e:
+            audit_error = str(e)
             logger.error(f"❌ Failed to parse JSON from Ollama response: {e}")
             logger.debug(f"Response was: {full_response[:500]}")
-            return {"sentiment": "NEUTRAL", "reasoning": "Failed to parse AI response"}
+            result = {"sentiment": "NEUTRAL", "reasoning": "Failed to parse AI response"}
+            return result
         except Exception as e:
+            audit_error = str(e)
             logger.error(f"❌ Error analyzing crowd sentiment: {e}", exc_info=True)
-            return {"sentiment": "NEUTRAL", "reasoning": f"Error: {str(e)}"}
+            result = {"sentiment": "NEUTRAL", "reasoning": f"Error: {str(e)}"}
+            return result
+        finally:
+            try:
+                from ai_audit import _compute_input_hash, _detect_caller, log_inference
+
+                log_inference(
+                    function="analyze_crowd_sentiment",
+                    model=model,
+                    provider="ollama",
+                    input_chars=len(combined_text),
+                    input_hash=_compute_input_hash(combined_text),
+                    output_summary=json.dumps(result, default=str)[:200] if result else "",
+                    duration_ms=int((time.time() - audit_start) * 1000),
+                    success=bool(result.get("sentiment")),
+                    error=audit_error,
+                    sentiment=result.get("sentiment"),
+                    ticker=ticker,
+                    caller=_detect_caller(),
+                )
+            except Exception:
+                pass
     
     def generate_summary(self, text: str, model: Optional[str] = None) -> Dict[str, Any]:
         """Generate a comprehensive summary with Chain of Thought analysis, sentiment categorization, and relationship extraction.
@@ -803,6 +832,9 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             "model": model,
             "prompt": text
         }
+        audit_start = time.time()
+        embedding: List[float] = []
+        audit_error: Optional[str] = None
         
         try:
             logger.debug(f"Generating embedding with model {model}")
@@ -824,14 +856,35 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             return embedding
             
         except requests.exceptions.Timeout:
+            audit_error = f"timeout after {self.timeout}s"
             logger.error(f"❌ Ollama embedding request timed out after {self.timeout}s")
             return []
         except requests.exceptions.ConnectionError as e:
+            audit_error = str(e)
             logger.error(f"[ERROR] Cannot connect to Ollama API at {self.base_url}: {e}")
             return []
         except Exception as e:
+            audit_error = str(e)
             logger.error(f"❌ Error generating embedding: {e}", exc_info=True)
             return []
+        finally:
+            try:
+                from ai_audit import _compute_input_hash, _detect_caller, log_inference
+
+                log_inference(
+                    function="generate_embedding",
+                    model=model,
+                    provider="ollama",
+                    input_chars=len(text),
+                    input_hash=_compute_input_hash(text),
+                    output_summary=f"embedding_dims={len(embedding)}" if embedding else "empty",
+                    duration_ms=int((time.time() - audit_start) * 1000),
+                    success=bool(embedding),
+                    error=audit_error,
+                    caller=_detect_caller(),
+                )
+            except Exception:
+                pass
     
     def query_ollama_chat(
         self,
@@ -1288,41 +1341,86 @@ def _generate_summary_once(
     progress_callback=None,
 ) -> Dict[str, Any]:
     """Generate a summary once for the specified model/provider."""
-    # Web-based AI service
-    try:
-        from webai_wrapper import is_webai_model
+    start_ms = time.time()
+    result: Dict[str, Any] = {}
+    error_msg: Optional[str] = None
 
-        if is_webai_model(model):
-            return _generate_summary_via_webai(
+    try:
+        # Web-based AI service
+        try:
+            from webai_wrapper import is_webai_model
+
+            if is_webai_model(model):
+                result = _generate_summary_via_webai(
+                    text,
+                    model,
+                    progress_callback=progress_callback,
+                    stream=False,
+                )
+                return result
+        except ImportError:
+            pass
+
+        # GLM via Z.AI
+        if model.startswith("glm-"):
+            result = _generate_summary_via_zhipu(
                 text,
                 model,
                 progress_callback=progress_callback,
-                stream=False,
+                stream=stream,
             )
-    except ImportError:
-        pass
+            return result
 
-    # GLM via Z.AI
-    if model.startswith("glm-"):
-        return _generate_summary_via_zhipu(
-            text,
-            model,
-            progress_callback=progress_callback,
-            stream=stream,
-        )
+        # Ollama model
+        client = get_ollama_client()
+        if not client:
+            logger.warning("Ollama client unavailable for model=%s", model)
+            return {}
+        if stream:
+            result = client.generate_summary_streaming(
+                text,
+                model=model,
+                progress_callback=progress_callback,
+            )
+            return result
+        result = client.generate_summary(text, model=model)
+        return result
+    except Exception as e:
+        error_msg = str(e)
+        raise
+    finally:
+        try:
+            from ai_audit import (
+                _compute_input_hash,
+                _detect_caller,
+                _detect_provider,
+                get_audit_context,
+                log_inference,
+            )
 
-    # Ollama model
-    client = get_ollama_client()
-    if not client:
-        logger.warning("Ollama client unavailable for model=%s", model)
-        return {}
-    if stream:
-        return client.generate_summary_streaming(
-            text,
-            model=model,
-            progress_callback=progress_callback,
-        )
-    return client.generate_summary(text, model=model)
+            context = get_audit_context()
+            log_inference(
+                function="generate_summary",
+                model=model,
+                provider=_detect_provider(model),
+                input_chars=len(text),
+                input_hash=_compute_input_hash(text),
+                output_summary=(result.get("summary", "") or "")[:200]
+                if isinstance(result, dict)
+                else "",
+                duration_ms=int((time.time() - start_ms) * 1000),
+                success=bool(result) and error_msg is None,
+                error=error_msg,
+                tickers_extracted=result.get("tickers") if isinstance(result, dict) else None,
+                sentiment=result.get("sentiment") if isinstance(result, dict) else None,
+                logic_check=result.get("logic_check") if isinstance(result, dict) else None,
+                market_relevance=result.get("market_relevance") if isinstance(result, dict) else None,
+                caller=_detect_caller(),
+                article_url=context.get("article_url"),
+                article_title=context.get("article_title"),
+            )
+        except Exception:
+            pass
 
 
 def list_available_models(include_hidden: bool = False) -> List[str]:
