@@ -8,9 +8,11 @@ Helper functions for extracting and processing research articles.
 
 import logging
 import re
+import os
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 from urllib.parse import urlparse
+from pathlib import Path
 
 try:
     import trafilatura
@@ -19,6 +21,43 @@ except ImportError:
     logging.warning("trafilatura not installed - article extraction will fail")
 
 logger = logging.getLogger(__name__)
+
+ACCESS_CHALLENGE_PATTERNS = [
+    r"access to this page has been denied",
+    r"before we continue",
+    r"press\s*&?\s*hold to confirm you are\s*a human",
+    r"reference id [a-f0-9-]{8,}",
+    r"checking your browser before accessing",
+    r"verify you are human",
+    r"please enable javascript and cookies to continue",
+]
+
+
+def contains_access_challenge(content: str) -> bool:
+    """Detect anti-bot / access challenge pages that are not valid article content."""
+    if not content:
+        return False
+
+    content_lower = content.lower()
+
+    # Strong indicators: a single match is enough
+    strong_indicators = [
+        "access to this page has been denied",
+        "press & hold to confirm you are a human",
+        "press and hold to confirm you are a human",
+    ]
+    if any(indicator in content_lower for indicator in strong_indicators):
+        return True
+
+    # Weaker indicators require at least two matches to reduce false positives
+    matches = 0
+    for pattern in ACCESS_CHALLENGE_PATTERNS:
+        if re.search(pattern, content, re.IGNORECASE):
+            matches += 1
+            if matches >= 2:
+                return True
+
+    return False
 
 
 def is_domain_blacklisted(url: str, blacklist: list[str]) -> tuple[bool, str]:
@@ -42,6 +81,28 @@ def is_domain_blacklisted(url: str, blacklist: list[str]) -> tuple[bool, str]:
     return (False, domain)
 
 
+def _get_flaresolverr_url() -> str:
+    """Get FlareSolverr URL, loading common .env locations if needed."""
+    flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip()
+    if flaresolverr_url:
+        return flaresolverr_url
+
+    # Best-effort fallback: load env files if variable is missing
+    try:
+        from dotenv import load_dotenv
+
+        project_root = Path(__file__).resolve().parent.parent
+        load_dotenv(project_root / ".env")
+        load_dotenv(project_root / "web_dashboard" / ".env")
+        flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip()
+    except Exception:
+        # Keep silent fallback behavior; caller logs if unavailable
+        flaresolverr_url = ""
+
+    # Use localhost as a practical default for local/dev environments
+    return flaresolverr_url or "http://localhost:8191"
+
+
 def extract_article_content(url: str) -> Dict[str, Any]:
 
     """Extract article content from URL using Trafilatura.
@@ -56,7 +117,7 @@ def extract_article_content(url: str) -> Dict[str, Any]:
         - published_at: Published date (datetime or None)
         - source: Source name extracted from URL
         - success: Boolean indicating success
-        - error: Error type if failed ('download_failed', 'extraction_empty', 'extraction_error')
+        - error: Error type if failed ('download_failed', 'extraction_empty', 'extraction_error', 'access_challenge')
     """
     if not trafilatura:
         logger.error("trafilatura not installed - cannot extract article content")
@@ -73,10 +134,9 @@ def extract_article_content(url: str) -> Dict[str, Any]:
         # Try FlareSolverr first to bypass Cloudflare protection
         downloaded = None
         try:
-            from os import getenv
             import requests
-            
-            flaresolverr_url = getenv("FLARESOLVERR_URL", "http://host.docker.internal:8191")
+
+            flaresolverr_url = _get_flaresolverr_url()
             flaresolverr_endpoint = f"{flaresolverr_url}/v1"
             
             payload = {
@@ -130,6 +190,18 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                 'success': False,
                 'error': 'download_failed'
             }
+
+        # Reject anti-bot challenge pages before extraction
+        if contains_access_challenge(downloaded):
+            logger.warning(f"Access challenge detected in downloaded HTML: {url}")
+            return {
+                'title': '',
+                'content': '',
+                'published_at': None,
+                'source': extract_source_from_url(url),
+                'success': False,
+                'error': 'access_challenge'
+            }
         
         # Extract article data
         extracted = trafilatura.extract(
@@ -149,6 +221,18 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                 'source': extract_source_from_url(url),
                 'success': False,
                 'error': 'extraction_empty'
+            }
+
+        # Reject challenge text that survived extraction
+        if contains_access_challenge(extracted):
+            logger.warning(f"Access challenge detected in extracted content: {url}")
+            return {
+                'title': '',
+                'content': '',
+                'published_at': None,
+                'source': extract_source_from_url(url),
+                'success': False,
+                'error': 'access_challenge'
             }
         
         # Extract metadata
