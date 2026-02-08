@@ -2889,7 +2889,8 @@ def api_get_ai_settings():
             # Table might not exist yet, return defaults
             settings = {
                 "auto_blacklist_threshold": "0.15",
-                "max_research_batch_size": "50"
+                "max_research_batch_size": "50",
+                "ai_summarizing_fallback_models": []
             }
             
         return jsonify(settings)
@@ -2912,7 +2913,7 @@ def api_update_ai_settings():
         for key, value in data.items():
             client.supabase.table("system_settings").upsert({
                 "key": key, 
-                "value": str(value),
+                "value": value,
                 "updated_at": datetime.now().isoformat()
             }).execute()
             

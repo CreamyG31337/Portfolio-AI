@@ -458,9 +458,12 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
             except ImportError:
                 return False, "GLM support not available"
         else:
-            # Ollama models require Ollama to be available
+            # Primary may be Ollama, but shared summarization now supports provider fallback.
             if not check_ollama_health():
-                return False, "Ollama is not available. Please check the connection."
+                logger.warning(
+                    "Primary Ollama model health check failed for %s; continuing with fallback chain",
+                    model_name,
+                )
         
         # Get article from repository
         # Query handles both old (ticker) and new (tickers) schema
@@ -863,8 +866,7 @@ def reanalyze_article_stream():
                         return
                 else:
                     if not check_ollama_health():
-                        yield f"data: {json.dumps({'error': 'Ollama is not available'})}\n\n"
-                        return
+                        yield f"data: {json.dumps({'status': 'warning', 'message': 'Primary Ollama unavailable, trying fallback models...'})}\n\n"
 
                 # Send initial status
                 yield f"data: {json.dumps({'status': 'fetching', 'message': 'Fetching article...'})}\n\n"
@@ -1114,7 +1116,8 @@ def reanalyze_newsletter():
     try:
         data = request.get_json()
         article_id = data.get('article_id')
-        model_name = data.get('model', 'granite3.2:8b')
+        from settings import get_summarizing_model
+        model_name = data.get('model') or get_summarizing_model()
 
         if not article_id:
             return jsonify({'success': False, 'message': 'article_id required'}), 400
@@ -1137,6 +1140,13 @@ def reanalyze_newsletter():
         if not content:
             return jsonify({'success': False, 'message': 'Newsletter has no content'}), 400
 
+        logger.info(
+            "Newsletter reprocess start: id=%s model=%s content_len=%s has_html=%s",
+            article_id,
+            model_name,
+            len(content),
+            bool(newsletter.get("body_html")),
+        )
         summary_data = generate_summary(content, model=model_name)
         summary = None
         tickers: List[str] = []
@@ -1145,20 +1155,32 @@ def reanalyze_newsletter():
         elif isinstance(summary_data, dict):
             summary = summary_data.get('summary', '')
             tickers = nl_service.sanitize_ai_tickers(summary_data.get('tickers', []))
+        logger.info(
+            "Newsletter reprocess AI result: id=%s type=%s summary_len=%s ai_ticker_count=%s",
+            article_id,
+            type(summary_data).__name__,
+            len((summary or "").strip()),
+            len(tickers),
+        )
 
         clean_subj = nl_service.clean_subject(newsletter.get("subject") or "")
         extracted_tickers = nl_service.extract_tickers(f"{clean_subj}\n\n{content}")
         all_tickers = sorted(set(tickers) | set(extracted_tickers)) if tickers else extracted_tickers
 
-        # Reprocess should be non-destructive: never wipe existing summary/tickers on weak AI output.
-        existing_summary = (newsletter.get("summary") or "").strip()
         generated_summary = (summary or "").strip()
-        final_summary = generated_summary if generated_summary else existing_summary
-        if not final_summary:
-            return jsonify({
-                'success': False,
-                'message': 'Reprocess produced empty summary and no previous summary exists'
-            }), 422
+        if not generated_summary:
+            logger.error(
+                "Newsletter reprocess produced empty summary after fallback chain: id=%s model=%s",
+                article_id,
+                model_name,
+            )
+            return jsonify(
+                {
+                    "success": False,
+                    "message": "Reprocess produced empty summary after trying fallback models",
+                }
+            ), 500
+        final_summary = generated_summary
 
         existing_tickers = newsletter.get("tickers") or []
         final_tickers = all_tickers if all_tickers else existing_tickers
@@ -1169,6 +1191,13 @@ def reanalyze_newsletter():
             body_plain=content,
         )
         final_article_url = extracted_article_url or newsletter.get("article_url")
+        logger.info(
+            "Newsletter reprocess extracted data: id=%s regex_ticker_count=%s final_ticker_count=%s article_url_found=%s",
+            article_id,
+            len(extracted_tickers),
+            len(final_tickers) if isinstance(final_tickers, list) else 0,
+            bool(final_article_url),
+        )
 
         update_query = """
             UPDATE newsletters
@@ -1301,20 +1330,13 @@ def api_research_summarize():
         if not content:
             return jsonify({"success": False, "error": "Content is required"}), 400
 
-        from ollama_client import get_ollama_client, check_ollama_health
+        from ollama_client import generate_summary
         from settings import get_summarizing_model
 
-        if not check_ollama_health():
-            return jsonify({"success": False, "error": "Ollama is not available"}), 503
-
-        client = get_ollama_client()
-        if not client:
-            return jsonify({"success": False, "error": "Ollama client not initialized"}), 503
-
-        # Use provided model or default
+        # Use provided model or system default
         model_name = model or get_summarizing_model()
 
-        summary_data = client.generate_summary(content, model=model_name)
+        summary_data = generate_summary(content, model=model_name)
 
         if not summary_data:
             return jsonify({"success": False, "error": "Failed to generate summary"}), 500
@@ -1361,21 +1383,14 @@ def api_research_analyze():
         if not content:
             return jsonify({"success": False, "error": "Content is required"}), 400
 
-        from ollama_client import get_ollama_client, check_ollama_health
+        from ollama_client import generate_summary
         from settings import get_summarizing_model
         from research_utils import validate_ticker_format, normalize_ticker
 
-        if not check_ollama_health():
-            return jsonify({"success": False, "error": "Ollama is not available"}), 503
-
-        client = get_ollama_client()
-        if not client:
-            return jsonify({"success": False, "error": "Ollama client not initialized"}), 503
-
-        # Use provided model or default
+        # Use provided model or system default
         model_name = model or get_summarizing_model()
 
-        summary_data = client.generate_summary(content, model=model_name)
+        summary_data = generate_summary(content, model=model_name)
 
         if not summary_data:
             return jsonify({"success": False, "error": "Failed to generate analysis"}), 500

@@ -33,6 +33,13 @@
         <div class="flex items-center justify-between mb-6">
             <h2 class="text-xl font-bold text-text-primary"><i class="fas fa-inbox mr-2"></i>Received Emails</h2>
             <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <label for="newsletter-model-select" class="text-sm text-text-secondary">Model</label>
+                    <select id="newsletter-model-select"
+                        class="text-sm border border-border rounded-lg bg-dashboard-surface text-text-primary px-2 py-1.5">
+                        <option value="">Loading models...</option>
+                    </select>
+                </div>
                 <span class="text-sm text-text-secondary">
                     <span id="newsletter-count">0</span> total
                 </span>
@@ -91,10 +98,66 @@
 <script>
 let currentPage = 1;
 const pageSize = 20;
+let newsletterModels = [];
+let newsletterDefaultModel = '';
+const NEWSLETTER_MODEL_STORAGE_KEY = 'newsletters_reprocess_model';
 
 document.addEventListener('DOMContentLoaded', () => {
+    loadNewsletterModels();
     loadNewsletters();
 });
+
+async function loadNewsletterModels() {
+    const select = document.getElementById('newsletter-model-select');
+    if (!select) return;
+
+    try {
+        const [modelsRes, prefsRes] = await Promise.all([
+            fetch('/api/research/models', { credentials: 'include' }),
+            fetch('/api/settings/preferences', { credentials: 'include' })
+        ]);
+        const data = await modelsRes.json();
+        const prefsData = await prefsRes.json();
+
+        if (!data.success || !Array.isArray(data.models) || data.models.length === 0) {
+            select.innerHTML = '<option value="">System default</option>';
+            return;
+        }
+
+        newsletterModels = data.models;
+        newsletterDefaultModel = data.default_model || '';
+        const userPreferredModel = (
+            prefsData &&
+            prefsData.success &&
+            prefsData.preferences &&
+            typeof prefsData.preferences.ai_model === 'string'
+        ) ? prefsData.preferences.ai_model : '';
+        const savedModel = localStorage.getItem(NEWSLETTER_MODEL_STORAGE_KEY);
+        const selectedModel = (savedModel && newsletterModels.includes(savedModel))
+            ? savedModel
+            : ((userPreferredModel && newsletterModels.includes(userPreferredModel))
+                ? userPreferredModel
+                : newsletterDefaultModel);
+
+        select.innerHTML = '';
+        newsletterModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            if (model === selectedModel) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+
+        select.addEventListener('change', () => {
+            localStorage.setItem(NEWSLETTER_MODEL_STORAGE_KEY, select.value || '');
+        });
+    } catch (error) {
+        console.error('Error loading newsletter models:', error);
+        select.innerHTML = '<option value="">System default</option>';
+    }
+}
 
 async function loadNewsletters(offset = 0) {
     const loading = document.getElementById('loading');
@@ -211,9 +274,14 @@ function showToast(message, type) {
 }
 
 function reprocessNewsletter(id) {
+    const modelSelect = document.getElementById('newsletter-model-select');
+    const selectedModel = modelSelect && modelSelect.value ? modelSelect.value : '';
+
     window.showConfirmModal({
         title: 'Reprocess Newsletter',
-        message: 'Re-analyze this newsletter with AI? This will regenerate the summary, tickers, and embedding.',
+        message: selectedModel
+            ? ('Re-analyze this newsletter with AI using ' + selectedModel + '? This will regenerate the summary, tickers, and embedding.')
+            : 'Re-analyze this newsletter with AI? This will regenerate the summary, tickers, and embedding.',
         confirmLabel: 'Reprocess',
         onConfirm: async function() {
             try {
@@ -221,11 +289,16 @@ function reprocessNewsletter(id) {
                 const headers = { 'Content-Type': 'application/json' };
                 if (csrfToken) headers['X-CSRFToken'] = csrfToken.getAttribute('content');
 
+                const payload = { article_id: id };
+                if (selectedModel) {
+                    payload.model = selectedModel;
+                }
+
                 const response = await fetch('/api/research/reanalyze-newsletter', {
                     method: 'POST',
                     headers: headers,
                     credentials: 'include',
-                    body: JSON.stringify({ article_id: id })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();

@@ -57,7 +57,7 @@ def opportunity_discovery_job() -> None:
         try:
             from searxng_client import get_searxng_client, check_searxng_health
             from research_utils import extract_article_content
-            from ollama_client import get_ollama_client
+            from ollama_client import get_ollama_client, generate_summary
             from research_repository import ResearchRepository
             from settings import get_discovery_search_queries
         except ImportError as e:
@@ -216,46 +216,46 @@ def opportunity_discovery_job() -> None:
                 extracted_sector = None
                 embedding = None
                 
+                summary_data = generate_summary(content)
+
+                if isinstance(summary_data, str):
+                    summary = summary_data
+                elif isinstance(summary_data, dict) and summary_data:
+                    summary = summary_data.get("summary", "")
+
+                    # Extract ticker and sector
+                    tickers = summary_data.get("tickers", [])
+                    sectors = summary_data.get("sectors", [])
+
+                    extracted_tickers = []
+                    if tickers:
+                        from research_utils import validate_ticker_format, normalize_ticker
+                        for t in tickers:
+                            if not validate_ticker_format(t):
+                                continue
+                            normalized = normalize_ticker(t)
+                            if normalized and normalized not in extracted_tickers:
+                                extracted_tickers.append(normalized)
+
+                    if extracted_tickers:
+                        extracted_ticker = extracted_tickers[0]
+                        logger.info(f"  🎯 Discovered ticker: {extracted_ticker}")
+
+                    if sectors:
+                        extracted_sector = sectors[0]
+
+                    market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                    if not extracted_ticker and market_relevance == "NOT_MARKET_RELATED":
+                        reason = summary_data.get("market_relevance_reason", "")
+                        articles_irrelevant += 1
+                        logger.info(
+                            f"  🚫 Skipping non-market opportunity: {title[:50]}... "
+                            f"Reason: {reason or 'No market relevance detected'}"
+                        )
+                        continue
+
+                # Embedding is Ollama-only
                 if ollama_client:
-                    summary_data = ollama_client.generate_summary(content)
-                    
-                    if isinstance(summary_data, str):
-                        summary = summary_data
-                    elif isinstance(summary_data, dict) and summary_data:
-                        summary = summary_data.get("summary", "")
-                        
-                        # Extract ticker and sector
-                        tickers = summary_data.get("tickers", [])
-                        sectors = summary_data.get("sectors", [])
-
-                        extracted_tickers = []
-                        if tickers:
-                            from research_utils import validate_ticker_format, normalize_ticker
-                            for t in tickers:
-                                if not validate_ticker_format(t):
-                                    continue
-                                normalized = normalize_ticker(t)
-                                if normalized and normalized not in extracted_tickers:
-                                    extracted_tickers.append(normalized)
-
-                        if extracted_tickers:
-                            extracted_ticker = extracted_tickers[0]
-                            logger.info(f"  🎯 Discovered ticker: {extracted_ticker}")
-                        
-                        if sectors:
-                            extracted_sector = sectors[0]
-
-                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                        if not extracted_ticker and market_relevance == "NOT_MARKET_RELATED":
-                            reason = summary_data.get("market_relevance_reason", "")
-                            articles_irrelevant += 1
-                            logger.info(
-                                f"  🚫 Skipping non-market opportunity: {title[:50]}... "
-                                f"Reason: {reason or 'No market relevance detected'}"
-                            )
-                            continue
-                    
-                    # Generate embedding
                     embedding = ollama_client.generate_embedding(content[:6000])
                 
                 # Extract logic_check for relationship confidence scoring

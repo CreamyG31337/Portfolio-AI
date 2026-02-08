@@ -83,6 +83,21 @@
                         class="border rounded-lg block w-full p-2.5" required>
                 </div>
 
+                <div>
+                    <label for="ai_summarizing_fallback_model"
+                        class="block mb-2 text-sm font-medium text-text-primary">Summarization Fallback Model</label>
+                    <select id="ai_summarizing_fallback_model" name="ai_summarizing_fallback_model"
+                        class="border rounded-lg block w-full p-2.5">
+                        <option value="">None</option>
+                        <option value="glm-4.5-air">GLM 4.5 Air</option>
+                        <option value="glm-4.7">GLM 4.7</option>
+                    </select>
+                    <p class="mt-1 text-xs text-text-tertiary">
+                        Used if the primary summarization model fails. Stored in <code
+                            class="px-1 py-0.5 bg-dashboard-surface-alt rounded text-xs">system_settings.ai_summarizing_fallback_models</code>.
+                    </p>
+                </div>
+
                 <button type="submit" id="save-settings-btn"
                     class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 focus:outline-hidden transition-colors duration-200">
                     💾 Save Configuration

@@ -156,6 +156,36 @@ def get_summarizing_model() -> str:
     return "granite3.3:8b"
 
 
+def get_summarizing_fallback_models() -> list[str]:
+    """Get fallback models for summarization in priority order.
+
+    Source:
+    1. system_settings.ai_summarizing_fallback_models (list or comma/newline string)
+    """
+    configured = get_system_setting("ai_summarizing_fallback_models", default=None)
+    models: list[str] = []
+
+    if isinstance(configured, list):
+        for m in configured:
+            s = str(m).strip()
+            if s:
+                models.append(s)
+    elif isinstance(configured, str):
+        for m in configured.replace("\n", ",").split(","):
+            s = m.strip()
+            if s:
+                models.append(s)
+
+    # Stable de-dup preserving order
+    seen: set[str] = set()
+    unique: list[str] = []
+    for m in models:
+        if m not in seen:
+            seen.add(m)
+            unique.append(m)
+    return unique
+
+
 def get_research_domain_blacklist() -> list[str]:
     """Get the list of blacklisted domains for research article extraction.
     

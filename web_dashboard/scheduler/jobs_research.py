@@ -80,7 +80,7 @@ def market_research_job() -> None:
         try:
             from searxng_client import get_searxng_client, check_searxng_health
             from research_utils import extract_article_content
-            from ollama_client import get_ollama_client
+            from ollama_client import get_ollama_client, generate_summary
             from research_repository import ResearchRepository
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
@@ -297,73 +297,73 @@ def market_research_job() -> None:
                     logger.warning(f"⏱️  Not enough time for AI processing ({remaining_time:.1f}s remaining) - skipping: {title[:50]}...")
                     continue
                 
-                # Generate summary and embedding using Ollama (if available)
+                # Generate summary via shared AI fallback chain; embedding remains Ollama-only
                 summary = None
                 summary_data = {}
                 extracted_tickers = []
                 extracted_sector = None
                 embedding = None
+                logger.info(f"  Generating summary for: {title[:50]}...")
+                summary_data = generate_summary(content)
+
+                # Handle backward compatibility: if old string format is returned
+                if isinstance(summary_data, str):
+                    summary = summary_data
+                    logger.debug("Received old string format summary, using as-is")
+                elif isinstance(summary_data, dict) and summary_data:
+                    summary = summary_data.get("summary", "")
+
+                    # Extract ticker and sector from structured data
+                    tickers = summary_data.get("tickers", [])
+                    sectors = summary_data.get("sectors", [])
+
+                    # Extract all validated tickers
+                    from research_utils import validate_ticker_format, normalize_ticker
+                    for ticker in tickers:
+                        # Validate format only (reject company names, invalid formats)
+                        # NOTE: We no longer check if ticker appears in content, because AI infers tickers
+                        # from company names (e.g., "Apple" -> "AAPL"). The AI marks uncertain tickers with '?'
+                        if not validate_ticker_format(ticker):
+                            logger.warning(f"Rejected invalid ticker format: {ticker} (likely company name or invalid format)")
+                            continue
+                        normalized = normalize_ticker(ticker)
+                        if normalized:
+                            extracted_tickers.append(normalized)
+                            logger.debug(f"Extracted ticker from article: {normalized}")
+
+                    if extracted_tickers:
+                        logger.info(f"Extracted {len(extracted_tickers)} validated ticker(s): {extracted_tickers}")
+
+                    # Use first sector if available
+                    if sectors:
+                        extracted_sector = sectors[0]
+                        logger.info(f"Extracted sector from article: {extracted_sector}")
+
+                    # Log extracted metadata
+                    if tickers or sectors:
+                        logger.debug(f"Extracted metadata - Tickers: {tickers}, Sectors: {sectors}, Themes: {summary_data.get('key_themes', [])}")
+
+                if not summary:
+                    logger.warning(f"Failed to generate summary for {title[:50]}...")
+
+                market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
+                    reason = summary_data.get("market_relevance_reason", "")
+                    articles_irrelevant += 1
+                    logger.info(
+                        f"  🚫 Skipping non-market article: {title[:50]}... "
+                        f"Reason: {reason or 'No market relevance detected'}"
+                    )
+                    continue
+
+                # Generate embedding for semantic search (Ollama-only)
                 if ollama_client:
-                    logger.info(f"  Generating summary for: {title[:50]}...")
-                    summary_data = ollama_client.generate_summary(content)
-                    
-                    # Handle backward compatibility: if old string format is returned
-                    if isinstance(summary_data, str):
-                        summary = summary_data
-                        logger.debug("Received old string format summary, using as-is")
-                    elif isinstance(summary_data, dict) and summary_data:
-                        summary = summary_data.get("summary", "")
-                        
-                        # Extract ticker and sector from structured data
-                        tickers = summary_data.get("tickers", [])
-                        sectors = summary_data.get("sectors", [])
-                        
-                        # Extract all validated tickers
-                        from research_utils import validate_ticker_format, normalize_ticker
-                        for ticker in tickers:
-                            # Validate format only (reject company names, invalid formats)
-                            # NOTE: We no longer check if ticker appears in content, because AI infers tickers
-                            # from company names (e.g., "Apple" -> "AAPL"). The AI marks uncertain tickers with '?'
-                            if not validate_ticker_format(ticker):
-                                logger.warning(f"Rejected invalid ticker format: {ticker} (likely company name or invalid format)")
-                                continue
-                            normalized = normalize_ticker(ticker)
-                            if normalized:
-                                extracted_tickers.append(normalized)
-                                logger.debug(f"Extracted ticker from article: {normalized}")
-                        
-                        if extracted_tickers:
-                            logger.info(f"Extracted {len(extracted_tickers)} validated ticker(s): {extracted_tickers}")
-                        
-                        # Use first sector if available
-                        if sectors:
-                            extracted_sector = sectors[0]
-                            logger.info(f"Extracted sector from article: {extracted_sector}")
-                        
-                        # Log extracted metadata
-                        if tickers or sectors:
-                            logger.debug(f"Extracted metadata - Tickers: {tickers}, Sectors: {sectors}, Themes: {summary_data.get('key_themes', [])}")
-                    
-                    if not summary:
-                        logger.warning(f"Failed to generate summary for {title[:50]}...")
-
-                    market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                    if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
-                        reason = summary_data.get("market_relevance_reason", "")
-                        articles_irrelevant += 1
-                        logger.info(
-                            f"  🚫 Skipping non-market article: {title[:50]}... "
-                            f"Reason: {reason or 'No market relevance detected'}"
-                        )
-                        continue
-
-                    # Generate embedding for semantic search
                     logger.debug(f"Generating embedding for: {title[:50]}...")
                     embedding = ollama_client.generate_embedding(content[:6000])  # Truncate to avoid token limits
                     if not embedding:
                         logger.warning(f"Failed to generate embedding for {title[:50]}...")
                 else:
-                    logger.debug("Ollama not available - skipping summary and embedding generation")
+                    logger.debug("Ollama not available - skipping embedding generation")
                 
                 # Calculate relevance score (market_research_job doesn't check owned tickers - always 0.5 for general market news)
                 relevance_score = calculate_relevance_score(extracted_tickers, extracted_sector, owned_tickers=None)
@@ -496,7 +496,7 @@ def rss_feed_ingest_job() -> None:
         try:
             from rss_utils import get_rss_client
             from research_utils import extract_article_content
-            from ollama_client import get_ollama_client
+            from ollama_client import get_ollama_client, generate_summary
             from research_repository import ResearchRepository
             from postgres_client import PostgresClient
         except ImportError as e:
@@ -660,41 +660,41 @@ def rss_feed_ingest_job() -> None:
                         extracted_sector = None
                         embedding = None
                         
-                        if ollama_client:
-                            summary_data = ollama_client.generate_summary(content)
-                            
-                            if isinstance(summary_data, str):
-                                summary = summary_data
-                            elif isinstance(summary_data, dict) and summary_data:
-                                summary = summary_data.get("summary", "")
-                                
-                                # Extract tickers from AI if not already from RSS
-                                if not extracted_tickers:
-                                    ai_tickers = summary_data.get("tickers", [])
-                                    from research_utils import validate_ticker_format, normalize_ticker
-                                    for ticker in ai_tickers:
-                                        # Only validate format, trust AI inference (AI marks uncertain tickers with '?')
-                                        if validate_ticker_format(ticker):
-                                            normalized = normalize_ticker(ticker)
-                                            if normalized:
-                                                extracted_tickers.append(normalized)
-                                
-                                # Extract sector
-                                sectors = summary_data.get("sectors", [])
-                                if sectors:
-                                    extracted_sector = sectors[0]
-                            
-                            market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                            if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
-                                reason = summary_data.get("market_relevance_reason", "")
-                                total_articles_irrelevant += 1
-                                logger.info(
-                                    f"  🚫 Skipping non-market RSS item: {title[:40]}... "
-                                    f"Reason: {reason or 'No market relevance detected'}"
-                                )
-                                continue
+                        summary_data = generate_summary(content)
 
-                            # Generate embedding
+                        if isinstance(summary_data, str):
+                            summary = summary_data
+                        elif isinstance(summary_data, dict) and summary_data:
+                            summary = summary_data.get("summary", "")
+
+                            # Extract tickers from AI if not already from RSS
+                            if not extracted_tickers:
+                                ai_tickers = summary_data.get("tickers", [])
+                                from research_utils import validate_ticker_format, normalize_ticker
+                                for ticker in ai_tickers:
+                                    # Only validate format, trust AI inference (AI marks uncertain tickers with '?')
+                                    if validate_ticker_format(ticker):
+                                        normalized = normalize_ticker(ticker)
+                                        if normalized:
+                                            extracted_tickers.append(normalized)
+
+                            # Extract sector
+                            sectors = summary_data.get("sectors", [])
+                            if sectors:
+                                extracted_sector = sectors[0]
+
+                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                        if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
+                            reason = summary_data.get("market_relevance_reason", "")
+                            total_articles_irrelevant += 1
+                            logger.info(
+                                f"  🚫 Skipping non-market RSS item: {title[:40]}... "
+                                f"Reason: {reason or 'No market relevance detected'}"
+                            )
+                            continue
+
+                        # Generate embedding (Ollama-only)
+                        if ollama_client:
                             embedding = ollama_client.generate_embedding(content[:6000])
                         
                         # Calculate relevance score
@@ -848,7 +848,7 @@ def ticker_research_job() -> None:
         try:
             from searxng_client import get_searxng_client, check_searxng_health
             from research_utils import extract_article_content
-            from ollama_client import get_ollama_client
+            from ollama_client import get_ollama_client, generate_summary
             from research_repository import ResearchRepository
             from supabase_client import SupabaseClient
         except ImportError as e:
@@ -1056,15 +1056,15 @@ def ticker_research_job() -> None:
                         summary = None
                         summary_data = {}
                         embedding = None
+                        summary_data = generate_summary(content)
+
+                        if isinstance(summary_data, str):
+                            summary = summary_data
+                        elif isinstance(summary_data, dict) and summary_data:
+                            summary = summary_data.get("summary", "")
+
+                        # Generate embedding for semantic search (Ollama-only)
                         if ollama_client:
-                            summary_data = ollama_client.generate_summary(content)
-                            
-                            if isinstance(summary_data, str):
-                                summary = summary_data
-                            elif isinstance(summary_data, dict) and summary_data:
-                                summary = summary_data.get("summary", "")
-                            
-                            # Generate embedding for semantic search
                             embedding = ollama_client.generate_embedding(content[:6000])
                             if not embedding:
                                 logger.warning(f"Failed to generate embedding for sector {sector}")
@@ -1225,47 +1225,47 @@ def ticker_research_job() -> None:
                         extracted_tickers = []
                         extracted_sector = None
                         embedding = None
+                        summary_data = generate_summary(content)
+
+                        # Handle backward compatibility: if old string format is returned
+                        if isinstance(summary_data, str):
+                            summary = summary_data
+                            logger.debug("Received old string format summary, using as-is")
+                        elif isinstance(summary_data, dict) and summary_data:
+                            summary = summary_data.get("summary", "")
+
+                            # Extract ticker and sector from structured data
+                            tickers = summary_data.get("tickers", [])
+                            sectors = summary_data.get("sectors", [])
+
+                            # Extract all validated tickers
+                            from research_utils import validate_ticker_in_content, validate_ticker_format
+                            for candidate_ticker in tickers:
+                                # First validate format (reject company names, invalid formats)
+                                if not validate_ticker_format(candidate_ticker):
+                                    logger.warning(f"Rejected invalid ticker format: {candidate_ticker} (likely company name or invalid format)")
+                                    continue
+                                # Then validate it appears in content
+                                if validate_ticker_in_content(candidate_ticker, content):
+                                    extracted_tickers.append(candidate_ticker)
+                                    logger.debug(f"Extracted ticker from article: {candidate_ticker} (validated in content)")
+                                else:
+                                    logger.warning(f"Ticker {candidate_ticker} not found in article content - skipping")
+
+                            if extracted_tickers:
+                                logger.info(f"Extracted {len(extracted_tickers)} validated ticker(s): {extracted_tickers}")
+
+                            # Use first sector if available
+                            if sectors:
+                                extracted_sector = sectors[0]
+                                logger.info(f"Extracted sector from article: {extracted_sector}")
+
+                            # Log extracted metadata
+                            if tickers or sectors or summary_data.get("key_themes"):
+                                logger.debug(f"Extracted metadata - Tickers: {tickers}, Sectors: {sectors}, Themes: {summary_data.get('key_themes', [])}")
+
+                        # Generate embedding for semantic search (Ollama-only)
                         if ollama_client:
-                            summary_data = ollama_client.generate_summary(content)
-                            
-                            # Handle backward compatibility: if old string format is returned
-                            if isinstance(summary_data, str):
-                                summary = summary_data
-                                logger.debug("Received old string format summary, using as-is")
-                            elif isinstance(summary_data, dict) and summary_data:
-                                summary = summary_data.get("summary", "")
-                                
-                                # Extract ticker and sector from structured data
-                                tickers = summary_data.get("tickers", [])
-                                sectors = summary_data.get("sectors", [])
-                                
-                                # Extract all validated tickers
-                                from research_utils import validate_ticker_in_content, validate_ticker_format
-                                for candidate_ticker in tickers:
-                                    # First validate format (reject company names, invalid formats)
-                                    if not validate_ticker_format(candidate_ticker):
-                                        logger.warning(f"Rejected invalid ticker format: {candidate_ticker} (likely company name or invalid format)")
-                                        continue
-                                    # Then validate it appears in content
-                                    if validate_ticker_in_content(candidate_ticker, content):
-                                        extracted_tickers.append(candidate_ticker)
-                                        logger.debug(f"Extracted ticker from article: {candidate_ticker} (validated in content)")
-                                    else:
-                                        logger.warning(f"Ticker {candidate_ticker} not found in article content - skipping")
-                                
-                                if extracted_tickers:
-                                    logger.info(f"Extracted {len(extracted_tickers)} validated ticker(s): {extracted_tickers}")
-                                
-                                # Use first sector if available
-                                if sectors:
-                                    extracted_sector = sectors[0]
-                                    logger.info(f"Extracted sector from article: {extracted_sector}")
-                                
-                                # Log extracted metadata
-                                if tickers or sectors or summary_data.get("key_themes"):
-                                    logger.debug(f"Extracted metadata - Tickers: {tickers}, Sectors: {sectors}, Themes: {summary_data.get('key_themes', [])}")
-                            
-                            # Generate embedding for semantic search
                             embedding = ollama_client.generate_embedding(content[:6000])  # Truncate to avoid token limits
                             if not embedding:
                                 logger.warning(f"Failed to generate embedding for {ticker}")
@@ -1405,7 +1405,7 @@ def archive_retry_job() -> None:
             from research_utils import extract_article_content
             from archive_service import check_archived, get_archived_content
             from paywall_detector import is_paywalled_article
-            from ollama_client import get_ollama_client
+            from ollama_client import get_ollama_client, generate_summary
             from postgres_client import PostgresClient
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
@@ -1523,29 +1523,29 @@ def archive_retry_job() -> None:
                                 extracted_sector = None
                                 embedding = None
                                 
+                                summary_data = generate_summary(extracted_content)
+
+                                if isinstance(summary_data, str):
+                                    summary = summary_data
+                                elif isinstance(summary_data, dict) and summary_data:
+                                    summary = summary_data.get("summary", "")
+
+                                    # Extract tickers
+                                    ai_tickers = summary_data.get("tickers", [])
+                                    from research_utils import validate_ticker_format, normalize_ticker
+                                    for ticker in ai_tickers:
+                                        if validate_ticker_format(ticker):
+                                            normalized = normalize_ticker(ticker)
+                                            if normalized:
+                                                extracted_tickers.append(normalized)
+
+                                    # Extract sector
+                                    sectors = summary_data.get("sectors", [])
+                                    if sectors:
+                                        extracted_sector = sectors[0]
+
+                                # Generate embedding (Ollama-only)
                                 if ollama_client:
-                                    summary_data = ollama_client.generate_summary(extracted_content)
-                                    
-                                    if isinstance(summary_data, str):
-                                        summary = summary_data
-                                    elif isinstance(summary_data, dict) and summary_data:
-                                        summary = summary_data.get("summary", "")
-                                        
-                                        # Extract tickers
-                                        ai_tickers = summary_data.get("tickers", [])
-                                        from research_utils import validate_ticker_format, normalize_ticker
-                                        for ticker in ai_tickers:
-                                            if validate_ticker_format(ticker):
-                                                normalized = normalize_ticker(ticker)
-                                                if normalized:
-                                                    extracted_tickers.append(normalized)
-                                        
-                                        # Extract sector
-                                        sectors = summary_data.get("sectors", [])
-                                        if sectors:
-                                            extracted_sector = sectors[0]
-                                    
-                                    # Generate embedding
                                     embedding = ollama_client.generate_embedding(extracted_content[:6000])
                                 
                                 # Calculate relevance score
@@ -1663,7 +1663,7 @@ def process_research_reports_job() -> None:
                 parse_filename_date
             )
             from file_parsers import parse_pdf
-            from ollama_client import get_ollama_client
+            from ollama_client import get_ollama_client, generate_summary
             from research_repository import ResearchRepository
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
@@ -1677,11 +1677,7 @@ def process_research_reports_job() -> None:
         ollama_client = get_ollama_client()
         
         if not ollama_client:
-            duration_ms = int((time.time() - start_time) * 1000)
-            message = "Ollama client not available - cannot generate embeddings"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
-            logger.warning(f"⚠️ {message}")
-            return
+            logger.warning("Ollama client not available - continuing with summary fallback; embeddings will be skipped")
         
         # Scan for PDF files
         pdf_files = scan_research_folder()
@@ -1741,7 +1737,7 @@ def process_research_reports_job() -> None:
                 summary_result = {}
                 
                 try:
-                    summary_result = ollama_client.generate_summary(text_content)
+                    summary_result = generate_summary(text_content)
                 except Exception as e:
                     logger.warning(f"  AI summary failed: {e}")
                 

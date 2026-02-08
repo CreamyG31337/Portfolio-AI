@@ -3000,6 +3000,7 @@ def update_ai_model():
         logger.error(f"Error updating AI model: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
 
+
 @app.route('/api/settings/preferences', methods=['GET'])
 @require_auth
 def get_preferences():

@@ -1174,53 +1174,155 @@ def _generate_summary_via_zhipu(
 def generate_summary(
     text: str, model: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Module-level entry: routes to web-based AI, Z.AI for glm-*, or OllamaClient.generate_summary."""
-    if model is None:
-        try:
-            from settings import get_summarizing_model
-            model = get_summarizing_model()
-        except Exception:
-            model = "granite3.3:8b"
-    # Web-based AI service: use cookie-based service
-    try:
-        from webai_wrapper import is_webai_model
-        if is_webai_model(model):
-            return _generate_summary_via_webai(text, model, stream=False)
-    except ImportError:
-        pass
-    # GLM: use Z.AI
-    if model and str(model).startswith("glm-"):
-        return _generate_summary_via_zhipu(text, model, stream=False)
-    client = get_ollama_client()
-    if not client:
+    """Module-level summary entry with provider/model fallback support."""
+    model_chain = _get_summary_model_chain(model)
+    if not model_chain:
+        logger.error("No summary models available for generation")
         return {}
-    return client.generate_summary(text, model=model)
+
+    for idx, candidate in enumerate(model_chain, start=1):
+        logger.info(
+            "Summary attempt %s/%s using model=%s",
+            idx,
+            len(model_chain),
+            candidate,
+        )
+        result = _generate_summary_once(
+            text=text,
+            model=candidate,
+            stream=False,
+            progress_callback=None,
+        )
+        if _has_summary_output(result):
+            logger.info("Summary generated successfully with model=%s", candidate)
+            return result
+        logger.warning("Summary attempt failed/empty for model=%s", candidate)
+
+    logger.error("All summary attempts failed across model chain: %s", model_chain)
+    return {}
 
 
 def generate_summary_streaming(
     text: str, model: Optional[str] = None, progress_callback=None
 ) -> Dict[str, Any]:
-    """Module-level entry: routes to web-based AI, Z.AI for glm-*, or OllamaClient.generate_summary_streaming."""
-    if model is None:
-        try:
-            from settings import get_summarizing_model
-            model = get_summarizing_model()
-        except Exception:
-            model = "granite3.3:8b"
-    # Web-based AI service: use cookie-based service (note: doesn't support streaming)
+    """Module-level streaming summary entry with provider/model fallback support."""
+    model_chain = _get_summary_model_chain(model)
+    if not model_chain:
+        logger.error("No summary models available for streaming generation")
+        return {}
+
+    for idx, candidate in enumerate(model_chain, start=1):
+        logger.info(
+            "Streaming summary attempt %s/%s using model=%s",
+            idx,
+            len(model_chain),
+            candidate,
+        )
+        result = _generate_summary_once(
+            text=text,
+            model=candidate,
+            stream=True,
+            progress_callback=progress_callback,
+        )
+        if _has_summary_output(result):
+            logger.info("Streaming summary generated successfully with model=%s", candidate)
+            return result
+        logger.warning("Streaming summary attempt failed/empty for model=%s", candidate)
+
+    logger.error("All streaming summary attempts failed across model chain: %s", model_chain)
+    return {}
+
+
+def _has_summary_output(result: Any) -> bool:
+    """True when a summary result is non-empty and usable."""
+    if isinstance(result, str):
+        return bool(result.strip())
+    if isinstance(result, dict):
+        summary = result.get("summary", "")
+        return isinstance(summary, str) and bool(summary.strip())
+    return False
+
+
+def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
+    """Build ordered model chain: primary model followed by configured/provider fallbacks."""
+    primary = requested_model
+    fallback_models: List[str] = []
+    try:
+        from settings import get_summarizing_model, get_summarizing_fallback_models
+
+        if not primary:
+            primary = get_summarizing_model()
+        fallback_models = get_summarizing_fallback_models()
+    except Exception as e:
+        logger.warning("Could not load summarization settings: %s", e)
+        if not primary:
+            primary = "granite3.3:8b"
+        fallback_models = []
+
+    defaults: List[str] = []
+    p = (primary or "").strip()
+    if p.startswith("glm-"):
+        defaults = ["granite3.3:8b"]
+    else:
+        defaults = ["glm-4.5-air"]
+
+    chain = [primary] + fallback_models + defaults
+    ordered: List[str] = []
+    seen: set[str] = set()
+    for m in chain:
+        if not m:
+            continue
+        s = str(m).strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        ordered.append(s)
+    return ordered
+
+
+def _generate_summary_once(
+    text: str,
+    model: str,
+    *,
+    stream: bool,
+    progress_callback=None,
+) -> Dict[str, Any]:
+    """Generate a summary once for the specified model/provider."""
+    # Web-based AI service
     try:
         from webai_wrapper import is_webai_model
+
         if is_webai_model(model):
-            return _generate_summary_via_webai(text, model, progress_callback=progress_callback, stream=False)
+            return _generate_summary_via_webai(
+                text,
+                model,
+                progress_callback=progress_callback,
+                stream=False,
+            )
     except ImportError:
         pass
-    # GLM: use Z.AI
-    if model and str(model).startswith("glm-"):
-        return _generate_summary_via_zhipu(text, model, progress_callback=progress_callback, stream=True)
+
+    # GLM via Z.AI
+    if model.startswith("glm-"):
+        return _generate_summary_via_zhipu(
+            text,
+            model,
+            progress_callback=progress_callback,
+            stream=stream,
+        )
+
+    # Ollama model
     client = get_ollama_client()
     if not client:
+        logger.warning("Ollama client unavailable for model=%s", model)
         return {}
-    return client.generate_summary_streaming(text, model=model, progress_callback=progress_callback)
+    if stream:
+        return client.generate_summary_streaming(
+            text,
+            model=model,
+            progress_callback=progress_callback,
+        )
+    return client.generate_summary(text, model=model)
 
 
 def list_available_models(include_hidden: bool = False) -> List[str]:

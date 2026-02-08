@@ -77,7 +77,7 @@ def symbol_article_scraper_job() -> None:
                 is_paywalled_content,
             )
             from research_utils import extract_article_content, extract_source_from_url
-            from ollama_client import get_ollama_client
+            from ollama_client import get_ollama_client, generate_summary
             from research_repository import ResearchRepository
             from supabase_client import SupabaseClient
         except ImportError as e:
@@ -276,9 +276,9 @@ def symbol_article_scraper_job() -> None:
                         embedding = None
                         
                         # Only generate AI summary if content is substantial (not just paywall message)
-                        if len(content) > 500 and ollama_client:
+                        if len(content) > 500:
                             try:
-                                summary_data = ollama_client.generate_summary(content)
+                                summary_data = generate_summary(content)
                                 
                                 if isinstance(summary_data, str):
                                     summary = summary_data
@@ -299,8 +299,9 @@ def symbol_article_scraper_job() -> None:
                                     if sectors:
                                         extracted_sector = sectors[0]
                                 
-                                # Generate embedding
-                                embedding = ollama_client.generate_embedding(content[:6000])
+                                # Embedding is Ollama-only
+                                if ollama_client:
+                                    embedding = ollama_client.generate_embedding(content[:6000])
                             except Exception as e:
                                 logger.warning(f"  ⚠️ AI processing failed: {e}")
                         

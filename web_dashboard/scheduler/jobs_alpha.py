@@ -64,7 +64,7 @@ def alpha_research_job() -> None:
         try:
             from searxng_client import get_searxng_client, check_searxng_health
             from research_utils import extract_article_content
-            from ollama_client import get_ollama_client
+            from ollama_client import get_ollama_client, generate_summary
             from research_repository import ResearchRepository
             from settings import get_alpha_research_domains, get_alpha_search_queries
         except ImportError as e:
@@ -209,45 +209,45 @@ def alpha_research_job() -> None:
                 extracted_sector = None
                 embedding = None
                 
-                if ollama_client:
-                    summary_data = ollama_client.generate_summary(content)
-                    
-                    if isinstance(summary_data, str):
-                        summary = summary_data
-                    elif isinstance(summary_data, dict) and summary_data:
-                        summary = summary_data.get("summary", "")
-                        
-                        # Extract ticker and sector
-                        tickers = summary_data.get("tickers", [])
-                        sectors = summary_data.get("sectors", [])
-                        
-                        # Extract all validated tickers
-                        from research_utils import validate_ticker_format, normalize_ticker
-                        for ticker in tickers:
-                            # Validate format only
-                            if not validate_ticker_format(ticker):
-                                continue
-                            normalized = normalize_ticker(ticker)
-                            if normalized:
-                                extracted_tickers.append(normalized)
-                        
-                        if extracted_tickers:
-                            logger.info(f"  🎯 Discovered ticker(s): {extracted_tickers}")
-                        
-                        if sectors:
-                            extracted_sector = sectors[0]
+                summary_data = generate_summary(content)
 
-                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                        if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
-                            reason = summary_data.get("market_relevance_reason", "")
-                            articles_irrelevant += 1
-                            logger.info(
-                                f"  🚫 Skipping non-market alpha article: {title[:50]}... "
-                                f"Reason: {reason or 'No market relevance detected'}"
-                            )
+                if isinstance(summary_data, str):
+                    summary = summary_data
+                elif isinstance(summary_data, dict) and summary_data:
+                    summary = summary_data.get("summary", "")
+
+                    # Extract ticker and sector
+                    tickers = summary_data.get("tickers", [])
+                    sectors = summary_data.get("sectors", [])
+
+                    # Extract all validated tickers
+                    from research_utils import validate_ticker_format, normalize_ticker
+                    for ticker in tickers:
+                        # Validate format only
+                        if not validate_ticker_format(ticker):
                             continue
-                    
-                    # Generate embedding
+                        normalized = normalize_ticker(ticker)
+                        if normalized:
+                            extracted_tickers.append(normalized)
+
+                    if extracted_tickers:
+                        logger.info(f"  🎯 Discovered ticker(s): {extracted_tickers}")
+
+                    if sectors:
+                        extracted_sector = sectors[0]
+
+                    market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                    if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
+                        reason = summary_data.get("market_relevance_reason", "")
+                        articles_irrelevant += 1
+                        logger.info(
+                            f"  🚫 Skipping non-market alpha article: {title[:50]}... "
+                            f"Reason: {reason or 'No market relevance detected'}"
+                        )
+                        continue
+
+                # Embedding is Ollama-only
+                if ollama_client:
                     embedding = ollama_client.generate_embedding(content[:6000])
                 
                 # Extract logic_check

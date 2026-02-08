@@ -28,7 +28,8 @@ interface StatusResponse {
 interface SettingsResponse {
     auto_blacklist_threshold: string;
     max_research_batch_size: string;
-    [key: string]: string;
+    ai_summarizing_fallback_models?: string[] | string;
+    [key: string]: unknown;
 }
 
 interface BlacklistEntry {
@@ -91,6 +92,7 @@ const postgresMessage = document.getElementById('postgres-message');
 const settingsForm = document.getElementById('settings-form') as HTMLFormElement | null;
 const autoBlacklistInput = document.getElementById('auto_blacklist_threshold') as HTMLInputElement | null;
 const maxBatchSizeInput = document.getElementById('max_research_batch_size') as HTMLInputElement | null;
+const fallbackModelSelect = document.getElementById('ai_summarizing_fallback_model') as HTMLSelectElement | null;
 const saveSettingsBtn = document.getElementById('save-settings-btn');
 
 const addDomainInput = document.getElementById('add-domain-input') as HTMLInputElement | null;
@@ -1117,6 +1119,17 @@ async function loadSettings() {
             maxBatchSizeInput.value = data.max_research_batch_size;
         }
 
+        if (fallbackModelSelect) {
+            const fallbackRaw = data.ai_summarizing_fallback_models;
+            let fallbackModel = '';
+            if (Array.isArray(fallbackRaw) && fallbackRaw.length > 0) {
+                fallbackModel = String(fallbackRaw[0] ?? '').trim();
+            } else if (typeof fallbackRaw === 'string') {
+                fallbackModel = fallbackRaw.split(',')[0]?.trim() || '';
+            }
+            fallbackModelSelect.value = fallbackModel;
+        }
+
     } catch (error) {
         console.error('Error loading settings:', error);
     }
@@ -1132,6 +1145,7 @@ async function saveSettings() {
     try {
         const autoBlacklistThreshold = autoBlacklistInput?.value || '10';
         const maxResearchBatchSize = maxBatchSizeInput?.value || '100';
+        const fallbackModel = fallbackModelSelect?.value?.trim() || '';
 
         const response = await fetch('/api/admin/ai/settings', {
             method: 'POST',
@@ -1141,7 +1155,8 @@ async function saveSettings() {
             },
             body: JSON.stringify({
                 auto_blacklist_threshold: autoBlacklistThreshold,
-                max_research_batch_size: maxResearchBatchSize
+                max_research_batch_size: maxResearchBatchSize,
+                ai_summarizing_fallback_models: fallbackModel ? [fallbackModel] : []
             })
         });
 
