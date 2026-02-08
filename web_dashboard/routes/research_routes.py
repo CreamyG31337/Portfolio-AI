@@ -642,6 +642,21 @@ def get_article_full_text(article_id: str):
             WHERE id = %s
         """
         rows = repo.client.execute_query(query, (article_id,))
+
+        # Fall back to newsletters table if not found in research_articles
+        if not rows:
+            try:
+                from newsletter_repository import NewsletterRepository
+                nl_repo = NewsletterRepository()
+                nl_query = """
+                    SELECT subject AS title, body_plain AS content, summary
+                    FROM newsletters
+                    WHERE id = %s
+                """
+                rows = nl_repo.client.execute_query(nl_query, (article_id,))
+            except Exception as nl_err:
+                logger.warning(f"Newsletter fallback lookup failed for {article_id}: {nl_err}")
+
         if not rows:
             return jsonify({"success": False, "error": "Article not found"}), 404
         row = rows[0]

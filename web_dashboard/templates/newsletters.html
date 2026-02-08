@@ -149,9 +149,9 @@ async function loadNewsletters(offset = 0) {
                     <td class="px-4 py-3">${tickers || '<span class="text-text-tertiary">—</span>'}</td>
                     <td class="px-4 py-3 text-xs">${status}</td>
                     <td class="px-4 py-3">
-                        <button onclick="reprocessNewsletter('${nl.id}')" 
-                            class="text-accent hover:text-accent-hover text-xs font-medium">
-                            <i class="fas fa-sync-alt mr-1"></i>Reprocess
+                        <button onclick="reprocessNewsletter('${nl.id}')"
+                            class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors">
+                            <i class="fas fa-sync-alt mr-1.5"></i>Reprocess
                         </button>
                     </td>
                 </tr>
@@ -176,29 +176,64 @@ async function loadNewsletters(offset = 0) {
     }
 }
 
-async function reprocessNewsletter(id) {
-    if (!confirm('Re-analyze this newsletter with AI?')) return;
-    
-    try {
-        const response = await fetch('/api/research/reanalyze-newsletter', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ article_id: id })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            alert('Newsletter reprocessed successfully!');
-            loadNewsletters((currentPage - 1) * pageSize);
-        } else {
-            alert('Error: ' + data.message);
-        }
-    } catch (error) {
-        console.error('Error reprocessing:', error);
-        alert('Error reprocessing newsletter');
+function showToast(message, type) {
+    type = type || 'success';
+    var container = document.getElementById('toast-container-newsletters');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container-newsletters';
+        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
+        document.body.appendChild(container);
     }
+    var colors = {
+        success: 'bg-theme-success-bg text-theme-success-text border-theme-success-text',
+        error: 'bg-theme-error-bg text-theme-error-text border-theme-error-text',
+        info: 'bg-theme-info-bg text-theme-info-text border-theme-info-text'
+    };
+    var icons = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle' };
+    var toast = document.createElement('div');
+    toast.className = 'flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg text-sm font-medium transition-all duration-300 ' + (colors[type] || colors.info);
+    toast.innerHTML = '<i class="fas ' + (icons[type] || icons.info) + '"></i><span>' + message + '</span>';
+    container.appendChild(toast);
+    setTimeout(function() {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100%)';
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 4000);
+}
+
+function reprocessNewsletter(id) {
+    window.showConfirmModal({
+        title: 'Reprocess Newsletter',
+        message: 'Re-analyze this newsletter with AI? This will regenerate the summary, tickers, and embedding.',
+        confirmLabel: 'Reprocess',
+        onConfirm: async function() {
+            try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]');
+                const headers = { 'Content-Type': 'application/json' };
+                if (csrfToken) headers['X-CSRFToken'] = csrfToken.getAttribute('content');
+
+                const response = await fetch('/api/research/reanalyze-newsletter', {
+                    method: 'POST',
+                    headers: headers,
+                    credentials: 'include',
+                    body: JSON.stringify({ article_id: id })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Newsletter reprocessed successfully!', 'success');
+                    loadNewsletters((currentPage - 1) * pageSize);
+                } else {
+                    showToast('Error: ' + (data.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error reprocessing:', error);
+                showToast('Error reprocessing newsletter', 'error');
+            }
+        }
+    });
 }
 
 function nextPage() {

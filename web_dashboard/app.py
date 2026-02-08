@@ -5799,28 +5799,76 @@ def webhook_newsletter():
         
         logger.info(f"✅ Newsletter saved: {newsletter_id}")
         
-        # Try to generate embedding after save (best-effort)
-        has_embedding = False
-        try:
-            text_content = body_plain or ""
-            if not text_content and body_html:
-                text_content = service.extract_text_from_html(body_html)
-            if text_content:
-                embedding = service.generate_embedding(text_content)
+        # Kick off AI processing in a background thread so Mailgun gets a fast response.
+        # The scheduled newsletter_ai_processing job acts as a safety net for any that fail here.
+        import threading
+
+        def _process_newsletter_ai(nl_id: str) -> None:
+            """Background thread: generate AI summary, tickers, and embedding."""
+            try:
+                from newsletter_repository import NewsletterRepository as NLRepo
+                from newsletter_service import NewsletterService as NLService
+                from ollama_client import generate_summary
+
+                bg_repo = NLRepo()
+                bg_service = NLService()
+
+                nl = bg_repo.get_newsletter_by_id(nl_id)
+                if not nl:
+                    logger.warning(f"BG: Newsletter {nl_id} not found for AI processing")
+                    return
+
+                content = nl.get("body_plain") or ""
+                if not content and nl.get("body_html"):
+                    content = bg_service.extract_text_from_html(nl["body_html"])
+                content = bg_service.clean_forwarded_body(content)
+                if not content:
+                    logger.warning(f"BG: Newsletter {nl_id} has no content — skipping AI")
+                    return
+
+                # AI summary
+                summary_data = generate_summary(content)
+                summary = None
+                ai_tickers: list = []
+                if isinstance(summary_data, str):
+                    summary = summary_data
+                elif isinstance(summary_data, dict):
+                    summary = summary_data.get("summary", "")
+                    ai_tickers = summary_data.get("tickers", [])
+
+                # Re-extract tickers from cleaned text
+                clean_subj = bg_service.clean_subject(nl.get("subject") or "")
+                extracted = bg_service.extract_tickers(f"{clean_subj}\n\n{content}")
+                all_tickers = sorted(set(ai_tickers) | set(extracted)) if ai_tickers else extracted
+
+                # Embedding
+                embedding = bg_service.generate_embedding(content)
+
+                # Persist
+                bg_repo.client.execute_update(
+                    "UPDATE newsletters SET summary=%s, tickers=%s, processed_at=CURRENT_TIMESTAMP WHERE id=%s",
+                    (summary, all_tickers if all_tickers else None, nl_id),
+                )
                 if embedding:
-                    repo.update_embedding(newsletter_id, embedding)
-                    has_embedding = True
-                    logger.info(f"✅ Embedding generated for newsletter {newsletter_id}")
-                else:
-                    logger.warning(f"Embedding generation skipped/failed for {newsletter_id} - will retry later")
-        except Exception as emb_err:
-            logger.warning(f"Embedding generation failed for {newsletter_id}: {emb_err}")
+                    bg_repo.update_embedding(nl_id, embedding)
+
+                logger.info(f"✅ BG: Newsletter {nl_id} AI processing complete")
+            except Exception as bg_err:
+                logger.error(f"❌ BG: Newsletter {nl_id} AI processing failed: {bg_err}", exc_info=True)
+
+        thread = threading.Thread(
+            target=_process_newsletter_ai,
+            args=(newsletter_id,),
+            daemon=True,
+            name=f"newsletter-ai-{newsletter_id[:8]}",
+        )
+        thread.start()
+        logger.info(f"🧵 Background AI processing started for newsletter {newsletter_id}")
         
         return jsonify({
             'status': 'success',
             'id': newsletter_id,
             'tickers': processed_data.get('tickers', []),
-            'has_embedding': has_embedding
         }), 200
             
     except Exception as e:

@@ -414,6 +414,13 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'cron_triggers': [
             {'day_of_week': 'sun', 'hour': 20, 'minute': 0, 'timezone': 'America/Los_Angeles'}  # Sunday 8 PM PT
         ]
+    },
+    'newsletter_ai_processing': {
+        'name': '📰 Newsletter AI Processing',
+        'description': 'Safety-net: summarize any newsletters still missing an AI summary (primary processing happens inline after webhook)',
+        'default_interval_minutes': 60,  # Hourly safety net (webhook triggers immediate processing)
+        'enabled_by_default': True,
+        'icon': '📰'
     }
 }
 
@@ -539,6 +546,9 @@ from scheduler.jobs_signals import signal_scan_job
 # Import thesis update job
 from scheduler.thesis_update_job import thesis_update_job
 
+# Import newsletter AI processing job
+from scheduler.jobs_newsletter import newsletter_ai_processing_job
+
 # Import shared utilities
 from scheduler.jobs_common import calculate_relevance_score
 
@@ -587,6 +597,8 @@ __all__ = [
     'signal_scan_job',
     # Thesis update job
     'thesis_update_job',
+    # Newsletter AI processing job
+    'newsletter_ai_processing_job',
     # Shared utilities
     'calculate_relevance_score',
     # Registry functions (defined in this file)
@@ -1482,3 +1494,18 @@ def register_default_jobs(scheduler) -> None:
             misfire_grace_time=3600  # 1 hour grace period
         )
         logger.info("Registered job: thesis_update (weekly on Sunday at 8:00 PM PT)")
+
+    # Newsletter AI Processing - every 10 minutes
+    if AVAILABLE_JOBS.get('newsletter_ai_processing', {}).get('enabled_by_default', True):
+        scheduler.add_job(
+            newsletter_ai_processing_job,
+            trigger=IntervalTrigger(
+                minutes=AVAILABLE_JOBS['newsletter_ai_processing']['default_interval_minutes']
+            ),
+            id='newsletter_ai_processing',
+            name=f"{get_job_icon('newsletter_ai_processing')} Newsletter AI Processing",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: newsletter_ai_processing (hourly safety net)")

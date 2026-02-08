@@ -73,6 +73,61 @@ class NewsletterService:
             logger.error(f"Error verifying Mailgun signature: {e}")
             return False
     
+    @staticmethod
+    def clean_subject(subject: str) -> str:
+        """Strip forwarding/reply prefixes from email subjects.
+
+        Removes repeated Fwd:, Fw:, Re: prefixes (case-insensitive) so that
+        stored subjects show the original newsletter title.
+
+        Args:
+            subject: Raw email subject line
+
+        Returns:
+            Cleaned subject with prefixes removed
+        """
+        if not subject:
+            return subject
+        return re.sub(r'^(?:(?:Fwd?|Re)\s*:\s*)+', '', subject, flags=re.IGNORECASE).strip()
+
+    @staticmethod
+    def clean_forwarded_body(text: str) -> str:
+        """Strip forwarded-message header blocks and invisible whitespace.
+
+        Removes the ``---------- Forwarded message ---------`` header block
+        (through the blank line after the last header like To:/Subject:),
+        leading/trailing zero-width characters, and collapses excessive blank
+        lines.
+
+        Args:
+            text: Raw plain-text email body
+
+        Returns:
+            Cleaned body text
+        """
+        if not text:
+            return text
+
+        # Remove forwarded-message header block
+        # Pattern: "---------- Forwarded message ---------" followed by
+        # header lines (From:, Date:, Subject:, To:) until a blank line
+        text = re.sub(
+            r'-{5,}\s*Forwarded message\s*-{5,}\s*\n'
+            r'(?:(?:From|Date|Subject|To|Cc|Bcc):.*\n)*'
+            r'\s*\n?',
+            '',
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        # Strip zero-width / invisible Unicode whitespace characters
+        text = re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff]+', '', text)
+
+        # Collapse 3+ consecutive newlines down to 2
+        text = re.sub(r'\n{3,}', '\n\n', text)
+
+        return text.strip()
+
     def extract_text_from_html(self, html: str) -> str:
         """Extract clean text from HTML email body
         
@@ -121,16 +176,42 @@ class NewsletterService:
             # Avoid common words that look like tickers
             pattern = r'\b([A-Z]{1,5})\b'
             
-            # Common words to exclude (not comprehensive, but helps)
+            # Common words/abbreviations to exclude (not stock tickers)
             exclude_words = {
+                # Single-letter & short common words
                 'A', 'I', 'AT', 'TO', 'IN', 'ON', 'IT', 'IS', 'BE', 'OR', 'AN',
                 'AS', 'BY', 'FOR', 'THE', 'AND', 'BUT', 'NOT', 'YOU', 'ALL',
                 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'OUT', 'ARE', 'FROM', 'THAT',
                 'THIS', 'WITH', 'HAVE', 'WILL', 'YOUR', 'MAY', 'NEW', 'US', 'IF',
                 'WOULD', 'BEEN', 'WHICH', 'THEIR', 'ABOUT', 'MORE', 'THAN', 'ALSO',
-                'CEO', 'CFO', 'IPO', 'ETF', 'GDP', 'CPI', 'FED', 'SEC', 'API',
-                'USA', 'UK', 'EU', 'AI', 'ML', 'AR', 'VR', 'IT', 'HR', 'PR',
-                'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'HKD'
+                'SO', 'DO', 'NO', 'UP', 'GO', 'HE', 'WE', 'MY', 'ME', 'OF',
+                # C-suite / corporate titles
+                'CEO', 'CFO', 'COO', 'CTO', 'VP', 'SVP', 'EVP',
+                # Financial / economic terms
+                'IPO', 'ETF', 'GDP', 'CPI', 'FED', 'SEC', 'API',
+                'IRA', 'JOLTS', 'FOMC', 'FDIC', 'FINRA', 'GAAP', 'EBIT',
+                'EBITA', 'YTD', 'QOQ', 'YOY', 'ROI', 'ROE', 'ROA', 'PE',
+                'EPS', 'NAV', 'AUM', 'SPAC', 'OTC',
+                # Currencies
+                'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'HKD',
+                # Countries / regions
+                'USA', 'UK', 'EU',
+                # Tech abbreviations
+                'AI', 'ML', 'AR', 'VR', 'IT', 'HR', 'PR',
+                'FAQ', 'PDF', 'URL', 'HTML', 'CSS', 'HTTP', 'API',
+                # News / media networks
+                'CNBC', 'WSJ', 'BBC', 'CNN', 'NBC', 'CBS', 'ABC', 'PBS', 'NPR',
+                'FOX',
+                # Time / date words
+                'AM', 'PM',
+                'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN',
+                'JAN', 'FEB', 'MAR', 'APR', 'JUN', 'JUL', 'AUG', 'SEP',
+                'OCT', 'NOV', 'DEC',
+                # Business entity types
+                'LLC', 'INC', 'LTD', 'CORP', 'PLC',
+                # Email / misc abbreviations
+                'FWD', 'RE', 'CC', 'BCC', 'FYI', 'ASAP', 'RIP', 'DIY',
+                'PSA', 'TBD', 'ETC', 'VS', 'NA', 'TBA',
             }
             
             matches = re.findall(pattern, text)
@@ -217,9 +298,12 @@ class NewsletterService:
             Dictionary with processed newsletter data ready for storage
         """
         try:
+            # Clean subject (strip Fwd:/Re: prefixes)
+            clean_subj = self.clean_subject(subject)
+
             # Use plain text if available, otherwise extract from HTML
             if body_plain:
-                text_content = body_plain
+                text_content = self.clean_forwarded_body(body_plain)
             elif body_html:
                 text_content = self.extract_text_from_html(body_html)
             else:
@@ -227,7 +311,7 @@ class NewsletterService:
                 logger.warning("Newsletter has no body content")
             
             # Extract ticker symbols from combined subject + body
-            full_text = f"{subject}\n\n{text_content}"
+            full_text = f"{clean_subj}\n\n{text_content}"
             tickers = self.extract_tickers(full_text)
             
             # Generate embedding (unless skipped)
@@ -248,8 +332,8 @@ class NewsletterService:
                 'sender': sender,
                 'sender_name': sender_name,
                 'recipient': recipient,
-                'subject': subject,
-                'body_plain': body_plain,
+                'subject': clean_subj,
+                'body_plain': text_content if body_plain else body_plain,
                 'body_html': body_html,
                 'tickers': tickers if tickers else None,
                 'embedding': embedding,
