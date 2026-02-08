@@ -1,5 +1,6 @@
 numpy>=1.26.0
 pandas>=2.2.0
+openpyxl>=3.1.0
 pyarrow>=16.0.0
 python-dotenv>=1.0.0
 pytz>=2024.0

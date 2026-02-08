@@ -3,6 +3,7 @@
 
 import json
 import logging
+import re
 from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
@@ -10,6 +11,47 @@ logger = logging.getLogger(__name__)
 
 def get_summary_system_prompt() -> str:
     return _SUMMARY_SYSTEM_PROMPT
+
+
+def _sanitize_summary_tickers(raw_tickers: Any) -> list[str]:
+    """Normalize and validate ticker list returned by LLM summary responses."""
+    if isinstance(raw_tickers, str):
+        tokens = re.split(r"[\s,;|]+", raw_tickers.strip())
+        items = [t.strip("'\"") for t in tokens if t.strip()]
+    elif isinstance(raw_tickers, list):
+        items = raw_tickers
+    else:
+        return []
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    invalid_tokens = {"", "?", "$", "$?", "N/A", "NONE", "UNKNOWN", "NULL", "-"}
+
+    for item in items:
+        if not isinstance(item, str):
+            continue
+
+        ticker = item.strip().upper()
+        if not ticker:
+            continue
+
+        # Normalize common LLM artifacts
+        ticker = ticker.lstrip("$")
+        ticker = ticker.rstrip("?.,;:!")
+        ticker = ticker.strip()
+
+        if ticker in invalid_tokens:
+            continue
+
+        # Must start with a letter; allow letters/digits/dot/dash after.
+        if not re.fullmatch(r"[A-Z][A-Z0-9\.-]{0,19}", ticker):
+            continue
+
+        if ticker not in seen:
+            seen.add(ticker)
+            cleaned.append(ticker)
+
+    return cleaned
 
 
 def parse_summary_response(raw_response: str) -> Dict[str, Any]:
@@ -106,7 +148,7 @@ def parse_summary_response(raw_response: str) -> Dict[str, Any]:
             "sentiment": sentiment,
             "sentiment_score": sentiment_score,
             "logic_check": logic_check,
-            "tickers": [t.upper() for t in extract_strings(parsed.get("tickers"), [])],
+            "tickers": _sanitize_summary_tickers(parsed.get("tickers")),
             "sectors": extract_strings(parsed.get("sectors"), []),
             "key_themes": extract_strings(parsed.get("key_themes"), []),
             "companies": extract_strings(parsed.get("companies"), []),
@@ -205,7 +247,8 @@ EXTRACTION REQUIREMENTS:
    - First, look for explicit ticker symbols mentioned in the article
    - If no explicit tickers found BUT the article is clearly about specific companies, infer the likely ticker(s)
    - For well-known companies, provide your best guess of the ticker symbol
-   - If you're uncertain about a ticker, add a '?' suffix (e.g., "RKLB?" for Rocket Lab)
+   - Do NOT use placeholders or uncertain forms like "$?", "-", "UNKNOWN", or "RKLB?"
+   - If uncertain, omit the ticker instead of guessing with markers
    - Examples: "Apple" → "AAPL", "Microsoft" → "MSFT", "Tesla" → "TSLA", "NVIDIA" → "NVDA"
 3. Identify all sectors/industries discussed (e.g., "Financial Services", "Technology", "Healthcare")
 4. List key themes and topics (e.g., "crypto revenue", "subscription growth", "market expansion")
@@ -250,7 +293,7 @@ Return your response as a valid JSON object with these exact fields:
   "conclusion": "Net impact on ticker(s): What does this article mean for the stock? Specific price impact or business implications.",
   "sentiment": "VERY_BULLISH" | "BULLISH" | "NEUTRAL" | "BEARISH" | "VERY_BEARISH",
   "logic_check": "DATA_BACKED" | "HYPE_DETECTED" | "NEUTRAL",
-  "tickers": ["TICKER1", "TICKER2", "INFERRED?"],
+  "tickers": ["TICKER1", "TICKER2"],
   "sectors": ["Sector1", "Sector2"],
   "key_themes": ["theme1", "theme2"],
   "companies": ["Company1", "Company2"],

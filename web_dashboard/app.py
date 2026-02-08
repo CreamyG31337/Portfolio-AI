@@ -5834,7 +5834,7 @@ def webhook_newsletter():
                     summary = summary_data
                 elif isinstance(summary_data, dict):
                     summary = summary_data.get("summary", "")
-                    ai_tickers = summary_data.get("tickers", [])
+                    ai_tickers = bg_service.sanitize_ai_tickers(summary_data.get("tickers", []))
 
                 # Re-extract tickers from cleaned text
                 clean_subj = bg_service.clean_subject(nl.get("subject") or "")

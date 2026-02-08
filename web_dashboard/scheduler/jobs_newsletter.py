@@ -116,7 +116,7 @@ def newsletter_ai_processing_job() -> None:
                     summary = summary_data
                 elif isinstance(summary_data, dict):
                     summary = summary_data.get("summary", "")
-                    tickers = summary_data.get("tickers", [])
+                    tickers = service.sanitize_ai_tickers(summary_data.get("tickers", []))
 
                 # Also re-extract tickers from cleaned subject+body
                 clean_subj = service.clean_subject(subject)

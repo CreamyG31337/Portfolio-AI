@@ -47,6 +47,7 @@ beyond the 1000-row limit appear as "new" positions.
 import logging
 import sys
 import base64
+import re
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple
@@ -200,6 +201,27 @@ EXCLUDED_TICKER_PATTERNS = [
 ]
 
 
+def normalize_holding_ticker(ticker: str) -> str:
+    """Normalize raw ETF holding ticker strings from provider files."""
+    if ticker is None:
+        return ""
+
+    t = str(ticker).upper().strip()
+    if not t:
+        return ""
+
+    # Remove common formatting noise
+    t = t.lstrip("$")
+    t = re.sub(r"\s+", " ", t).strip()
+
+    # Bloomberg-style exchange suffixes (e.g., "DKNG UW", "NVDA US")
+    m = re.match(r"^([A-Z0-9\.\-\/]+)\s+(US|UW|UQ|UN|LN|CN|HK|JP|NA)$", t)
+    if m:
+        t = m.group(1)
+
+    return t
+
+
 def is_stock_ticker(ticker: str) -> bool:
     """Check if a ticker represents a tradeable stock (not cash/futures/derivatives).
     
@@ -212,7 +234,9 @@ def is_stock_ticker(ticker: str) -> bool:
     if not ticker or not isinstance(ticker, str):
         return False
     
-    ticker_upper = ticker.upper().strip()
+    ticker_upper = normalize_holding_ticker(ticker)
+    if not ticker_upper:
+        return False
     
     # Check explicit exclusions
     if ticker_upper in EXCLUDED_TICKERS:
@@ -229,6 +253,11 @@ def is_stock_ticker(ticker: str) -> bool:
     
     # Exclude very long tickers (usually derivatives or internal codes)
     if len(ticker_upper) > 10:
+        return False
+
+    # Enforce ticker shape while allowing common ETF-feed variants (slash, dot, dash).
+    # Must start with a letter so malformed tokens like "-USD" or "-" are rejected.
+    if not re.fullmatch(r"[A-Z][A-Z0-9\.\-\/ ]{0,14}", ticker_upper):
         return False
     
     return True
@@ -332,8 +361,11 @@ def fetch_ishares_holdings(etf_ticker: str, csv_url: str, date: Optional[datetim
             
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '-']
+        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
+        # Filter to valid stock tickers only (exclude cash/futures/malformed symbols)
+        df = df[df['ticker'].apply(is_stock_ticker)]
         # Truncate ticker to avoid DB errors (max 50 chars)
-        df['ticker'] = df['ticker'].astype(str).str.upper().str.strip().str.slice(0, 50)
+        df['ticker'] = df['ticker'].astype(str).str.slice(0, 50)
         df['shares'] = pd.to_numeric(df['shares'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         
         if 'weight_percent' in df.columns:
@@ -403,7 +435,8 @@ def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str, date: Optional[datetime]
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].astype(str).str.upper().str.strip()
+        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
+        df = df[df['ticker'].apply(is_stock_ticker)]
         
         # Convert numeric columns
         if 'shares' in df.columns:
@@ -492,7 +525,8 @@ def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str, date: Optiona
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].astype(str).str.upper().str.strip()
+        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
+        df = df[df['ticker'].apply(is_stock_ticker)]
         
         # Convert numeric columns (remove commas)
         if 'shares' in df.columns:
@@ -577,7 +611,8 @@ def fetch_ark_holdings(etf_ticker: str, csv_url: str, date: Optional[datetime] =
         # Clean data
         df = df[df['ticker'].notna()]  # Remove empty rows
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].str.upper().str.strip()
+        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
+        df = df[df['ticker'].apply(is_stock_ticker)]
         
         # Convert shares to numeric (remove commas first)
         if 'shares' in df.columns:
@@ -657,7 +692,8 @@ def fetch_direxion_holdings(etf_ticker: str, csv_url: str, date: Optional[dateti
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].astype(str).str.upper().str.strip()
+        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
+        df = df[df['ticker'].apply(is_stock_ticker)]
         
         # Filter to valid stock tickers only (exclude cash, futures, etc.)
         df = df[df['ticker'].apply(is_stock_ticker)]
@@ -771,9 +807,7 @@ def fetch_vaneck_holdings(etf_ticker: str, xlsx_url: str, date: Optional[datetim
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        
-        # Clean ticker (VanEck uses "NVDA US" format - extract just ticker)
-        df['ticker'] = df['ticker'].astype(str).str.split().str[0].str.upper().str.strip()
+        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
         
         # Filter to valid stock tickers only
         df = df[df['ticker'].apply(is_stock_ticker)]
@@ -1107,7 +1141,12 @@ def upsert_etf_metadata(db: SupabaseClient, etf_ticker: str, provider: str):
         logger.error(f"❌ Error upserting ETF metadata for {etf_ticker}: {e}")
 
 
-def log_significant_changes(repo: ResearchRepository, changes: List[Dict], etf_ticker: str):
+def log_significant_changes(
+    repo: ResearchRepository,
+    changes: List[Dict],
+    etf_ticker: str,
+    source_url: Optional[str] = None,
+):
     """Log significant ETF changes to research_articles.
     
     Args:
@@ -1115,6 +1154,11 @@ def log_significant_changes(repo: ResearchRepository, changes: List[Dict], etf_t
         changes: List of change dicts
         etf_ticker: ETF ticker
     """
+    if not changes:
+        return
+
+    # Final guardrail: never emit malformed ticker rows in generated article text.
+    changes = [c for c in changes if is_stock_ticker(str(c.get("ticker", "")))]
     if not changes:
         return
     
@@ -1140,7 +1184,7 @@ def log_significant_changes(repo: ResearchRepository, changes: List[Dict], etf_t
     # Save to research_articles
     repo.save_article(
         title=f"{etf_ticker} Daily Holdings Update",
-        url=f"{_ARK_BASE.replace('assets.', '')}/funds/{etf_ticker.lower()}",  # Generic URL
+        url=source_url or f"https://www.google.com/search?q={etf_ticker}+etf+holdings",
         content=content,
         summary=f"{etf_ticker} made {len(changes)} significant changes today",
         source="ETF Watchtower",
@@ -1257,7 +1301,12 @@ def etf_watchtower_job():
                             # More than 90% of holdings changed = likely bad comparison data
                             logger.warning(f"⚠️ {etf_ticker}: Skipping article - {num_changes}/{num_holdings} holdings changed ({change_ratio:.1%}), likely incomplete historical data")
                         else:
-                            log_significant_changes(repo, changes, etf_ticker)
+                            log_significant_changes(
+                                repo,
+                                changes,
+                                etf_ticker,
+                                source_url=config.get("url"),
+                            )
                             total_changes += num_changes
                 else:
                     logger.info(f"ℹ️ {etf_ticker}: First snapshot - saving holdings but skipping article generation (no historical data to compare)")

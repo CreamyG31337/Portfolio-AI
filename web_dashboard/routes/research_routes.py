@@ -474,7 +474,57 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
         articles = repo.client.execute_query(query, (article_id,))
         
         if not articles:
-            return False, "Article not found"
+            # Fallback: newsletter IDs shown in research feed live in newsletters table
+            try:
+                from newsletter_repository import NewsletterRepository
+                from newsletter_service import NewsletterService
+
+                nl_repo = NewsletterRepository()
+                nl_service = NewsletterService()
+                newsletter = nl_repo.get_newsletter_by_id(article_id)
+                if not newsletter:
+                    return False, "Article not found"
+
+                content = newsletter.get("body_plain") or ""
+                if not content and newsletter.get("body_html"):
+                    content = nl_service.extract_text_from_html(newsletter["body_html"])
+                if not content:
+                    return False, "Newsletter has no content to analyze"
+
+                summary_data = generate_summary(content, model=model_name)
+                if not summary_data:
+                    return False, "Failed to generate summary"
+
+                summary = summary_data if isinstance(summary_data, str) else summary_data.get("summary", "")
+                ai_tickers = (
+                    nl_service.sanitize_ai_tickers(summary_data.get("tickers", []))
+                    if isinstance(summary_data, dict)
+                    else []
+                )
+                clean_subj = nl_service.clean_subject(newsletter.get("subject") or "")
+                extracted = nl_service.extract_tickers(f"{clean_subj}\n\n{content}")
+                all_tickers = sorted(set(ai_tickers) | set(extracted)) if ai_tickers else extracted
+
+                nl_repo.client.execute_update(
+                    """
+                    UPDATE newsletters
+                    SET summary = %s, tickers = %s, processed_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (summary, all_tickers if all_tickers else None, article_id),
+                )
+
+                embedding = None
+                ollama_client = get_ollama_client()
+                if ollama_client:
+                    embedding = ollama_client.generate_embedding(content[:6000])
+                if embedding:
+                    nl_repo.update_embedding(article_id, embedding)
+
+                return True, f"Newsletter re-analyzed successfully with {model_name}"
+            except Exception as nl_err:
+                logger.error(f"Error re-analyzing newsletter {article_id}: {nl_err}", exc_info=True)
+                return False, f"Error: {str(nl_err)}"
         
         article = articles[0]
         # Normalize ticker data (handle both array and single value)
@@ -830,8 +880,83 @@ def reanalyze_article_stream():
                 articles = repo.client.execute_query(query, (article_id,))
                 
                 if not articles:
-                    yield f"data: {json.dumps({'error': 'Article not found'})}\n\n"
-                    return
+                    # Fallback to newsletters table for newsletter IDs from research feed
+                    try:
+                        from newsletter_repository import NewsletterRepository
+                        from newsletter_service import NewsletterService
+
+                        nl_repo = NewsletterRepository()
+                        nl_service = NewsletterService()
+                        newsletter = nl_repo.get_newsletter_by_id(article_id)
+                        if not newsletter:
+                            yield f"data: {json.dumps({'error': 'Article not found'})}\n\n"
+                            return
+
+                        content = newsletter.get("body_plain") or ""
+                        if not content and newsletter.get("body_html"):
+                            content = nl_service.extract_text_from_html(newsletter["body_html"])
+                        if not content:
+                            yield f"data: {json.dumps({'error': 'Newsletter has no content'})}\n\n"
+                            return
+
+                        yield f"data: {json.dumps({'status': 'initializing', 'message': 'Initializing AI model...'})}\n\n"
+
+                        def progress_callback(tokens, progress):
+                            nonlocal progress_queue
+                            progress_queue.put({
+                                "status": "generating",
+                                "message": f"Generating summary... {progress}%",
+                                "progress": progress,
+                                "tokens": tokens,
+                            })
+
+                        progress_queue = queue.Queue()
+                        yield f"data: {json.dumps({'status': 'generating', 'message': 'Generating summary...', 'progress': 0})}\n\n"
+
+                        summary_data = generate_summary_streaming(
+                            content, model=model_name, progress_callback=progress_callback
+                        )
+                        while not progress_queue.empty():
+                            progress_update = progress_queue.get()
+                            yield f"data: {json.dumps(progress_update)}\n\n"
+
+                        if not summary_data:
+                            yield f"data: {json.dumps({'error': 'Failed to generate summary'})}\n\n"
+                            return
+
+                        yield f"data: {json.dumps({'status': 'processing', 'message': 'Processing summary data...', 'progress': 100})}\n\n"
+                        summary = summary_data if isinstance(summary_data, str) else summary_data.get("summary", "")
+                        ai_tickers = (
+                            nl_service.sanitize_ai_tickers(summary_data.get("tickers", []))
+                            if isinstance(summary_data, dict)
+                            else []
+                        )
+                        clean_subj = nl_service.clean_subject(newsletter.get("subject") or "")
+                        extracted = nl_service.extract_tickers(f"{clean_subj}\n\n{content}")
+                        all_tickers = sorted(set(ai_tickers) | set(extracted)) if ai_tickers else extracted
+
+                        yield f"data: {json.dumps({'status': 'embedding', 'message': 'Generating embedding...'})}\n\n"
+                        _ollama = get_ollama_client()
+                        embedding = _ollama.generate_embedding(content[:6000]) if _ollama else None
+
+                        yield f"data: {json.dumps({'status': 'saving', 'message': 'Saving to database...'})}\n\n"
+                        nl_repo.client.execute_update(
+                            """
+                            UPDATE newsletters
+                            SET summary = %s, tickers = %s, processed_at = CURRENT_TIMESTAMP
+                            WHERE id = %s
+                            """,
+                            (summary, all_tickers if all_tickers else None, article_id),
+                        )
+                        if embedding:
+                            nl_repo.update_embedding(article_id, embedding)
+
+                        yield f"data: {json.dumps({'status': 'complete', 'message': f'Successfully re-analyzed newsletter with {model_name}', 'success': True})}\n\n"
+                        return
+                    except Exception as nl_err:
+                        logger.error(f"Error in newsletter SSE reanalyze: {nl_err}", exc_info=True)
+                        yield f"data: {json.dumps({'error': str(nl_err)})}\n\n"
+                        return
                 
                 article = articles[0]
                 if 'tickers' in article and article['tickers'] is not None:
@@ -1019,14 +1144,21 @@ def reanalyze_newsletter():
             summary = summary_data
         elif isinstance(summary_data, dict):
             summary = summary_data.get('summary', '')
-            tickers = summary_data.get('tickers', [])
+            tickers = nl_service.sanitize_ai_tickers(summary_data.get('tickers', []))
+
+        clean_subj = nl_service.clean_subject(newsletter.get("subject") or "")
+        extracted_tickers = nl_service.extract_tickers(f"{clean_subj}\n\n{content}")
+        all_tickers = sorted(set(tickers) | set(extracted_tickers)) if tickers else extracted_tickers
 
         update_query = """
             UPDATE newsletters
             SET summary = %s, tickers = %s, processed_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """
-        nl_repo.client.execute_update(update_query, (summary, tickers if tickers else None, article_id))
+        nl_repo.client.execute_update(
+            update_query,
+            (summary, all_tickers if all_tickers else None, article_id),
+        )
 
         embedding = nl_service.generate_embedding(content)
         if embedding:

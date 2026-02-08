@@ -77,8 +77,10 @@ class NewsletterService:
     def clean_subject(subject: str) -> str:
         """Strip forwarding/reply prefixes from email subjects.
 
-        Removes repeated Fwd:, Fw:, Re: prefixes (case-insensitive) so that
-        stored subjects show the original newsletter title.
+        Removes repeated Fwd:, Fw:, Re: prefixes (case-insensitive), including
+        variants with extra whitespace and delimiter variants (``:``, ``：``,
+        ``-``). Also supports subjects where these prefixes appear after
+        leading bracket tags such as ``[External]``.
 
         Args:
             subject: Raw email subject line
@@ -88,7 +90,25 @@ class NewsletterService:
         """
         if not subject:
             return subject
-        return re.sub(r'^(?:(?:Fwd?|Re)\s*:\s*)+', '', subject, flags=re.IGNORECASE).strip()
+
+        cleaned = subject.strip()
+
+        # Preserve any leading bracket tags while stripping forwarding prefixes
+        # that appear after them (e.g., "[External] Fwd: ...").
+        leading_tags_match = re.match(r"^(?P<tags>(?:\[[^\]]+\]\s*)+)", cleaned)
+        leading_tags = ""
+        if leading_tags_match:
+            leading_tags = leading_tags_match.group("tags")
+            cleaned = cleaned[len(leading_tags):]
+
+        cleaned = re.sub(
+            r"^(?:(?:FWD?|RE)\s*(?::|：|-)\s*)+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        return f"{leading_tags}{cleaned}".strip()
 
     @staticmethod
     def clean_forwarded_body(text: str) -> str:
@@ -228,6 +248,64 @@ class NewsletterService:
         except Exception as e:
             logger.error(f"Error extracting tickers: {e}")
             return []
+
+    @staticmethod
+    def sanitize_ai_tickers(raw_tickers: Any) -> List[str]:
+        """Normalize and validate AI-extracted ticker candidates.
+
+        AI output can include uncertain/noisy values (e.g., ``"$?"``). This
+        helper keeps only valid ticker-like symbols and removes markers.
+
+        Args:
+            raw_tickers: Arbitrary AI output, typically a list of ticker strings
+
+        Returns:
+            Deduplicated list of normalized ticker symbols
+        """
+        if isinstance(raw_tickers, str):
+            # Accept common AI formats:
+            # "$BTCS, $NTRB" or "['$BTCS', '$NTRB']" or "$BTCS $NTRB"
+            normalized = raw_tickers.strip()
+            if normalized.startswith("[") and normalized.endswith("]"):
+                normalized = normalized[1:-1]
+            tokens = re.split(r"[\s,;|]+", normalized)
+            raw_items: List[Any] = [t.strip("'\"") for t in tokens if t.strip()]
+        elif isinstance(raw_tickers, list):
+            raw_items = raw_tickers
+        else:
+            return []
+
+        cleaned: List[str] = []
+        seen: set[str] = set()
+        invalid_tokens = {"", "?", "$", "$?", "N/A", "NONE", "UNKNOWN", "NULL"}
+
+        for item in raw_items:
+            if not isinstance(item, str):
+                continue
+
+            ticker = item.strip().upper()
+            if not ticker:
+                continue
+
+            # Common AI formatting artifacts
+            if ticker.startswith("$"):
+                ticker = ticker[1:]
+            if ticker.endswith("?"):
+                ticker = ticker[:-1]
+            ticker = ticker.strip()
+
+            if ticker in invalid_tokens:
+                continue
+
+            # Match common ticker formats (US + common global forms)
+            if not re.fullmatch(r"[A-Z][A-Z0-9\.-]{0,19}", ticker):
+                continue
+
+            if ticker not in seen:
+                seen.add(ticker)
+                cleaned.append(ticker)
+
+        return cleaned
     
     def generate_embedding(self, text: str) -> Optional[List[float]]:
         """Generate vector embedding for text using Ollama
