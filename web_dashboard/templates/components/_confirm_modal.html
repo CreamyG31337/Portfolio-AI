@@ -23,8 +23,7 @@
                     </button>
                     <!-- Danger Action Button -->
                     <button type="button" id="confirm-modal-submit-danger"
-                        style="display:none"
-                        class="px-4 py-2.5 text-sm font-medium rounded-lg border border-theme-error-text text-theme-error-text bg-theme-error-bg hover:bg-theme-error-text hover:text-theme-error-bg focus:ring-2 focus:ring-theme-error-text/40 focus:outline-hidden transition-colors inline-flex items-center justify-center gap-2">
+                        class="px-4 py-2.5 text-sm font-medium rounded-lg border border-theme-error-text text-theme-error-text bg-theme-error-bg hover:bg-theme-error-text hover:text-theme-error-bg focus:ring-2 focus:ring-theme-error-text/40 focus:outline-hidden transition-colors inline-flex items-center justify-center gap-2 hidden">
                         Confirm
                     </button>
                 </div>
@@ -66,12 +65,12 @@
         if (cancelEl) cancelEl.textContent = cancelLabel;
 
         if (activeBtn) {
-            activeBtn.style.display = '';
+            activeBtn.classList.remove('hidden');
             activeBtn.innerHTML = '<span>' + confirmLabel + '</span>';
             activeBtn.disabled = false;
         }
         if (inactiveBtn) {
-            inactiveBtn.style.display = 'none';
+            inactiveBtn.classList.add('hidden');
         }
 
         if (iconWrap) {
@@ -84,22 +83,29 @@
             if (hideBtn) hideBtn.click();
         }
 
-        if (activeBtn && onConfirm) {
-            activeBtn.onclick = function() {
-                if (activeBtn.disabled) return;
-                activeBtn.disabled = true;
-                activeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span class="ml-2">Please wait…</span>';
-                var result = onConfirm();
-                var p = result && typeof result.then === 'function' ? result : Promise.resolve();
-                p.then(function() {
+        if (activeBtn) {
+            if (onConfirm) {
+                activeBtn.onclick = function() {
+                    if (activeBtn.disabled) return;
+                    activeBtn.disabled = true;
+                    activeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span class="ml-2">Please wait…</span>';
+                    var result = onConfirm();
+                    var p = result && typeof result.then === 'function' ? result : Promise.resolve();
+                    p.then(function() {
+                        closeModal();
+                        activeBtn.disabled = false;
+                        activeBtn.innerHTML = '<span>' + confirmLabel + '</span>';
+                    }).catch(function() {
+                        activeBtn.disabled = false;
+                        activeBtn.innerHTML = '<span>' + confirmLabel + '</span>';
+                    });
+                };
+            } else {
+                // If no onConfirm provided, just close the modal
+                activeBtn.onclick = function() {
                     closeModal();
-                    activeBtn.disabled = false;
-                    activeBtn.innerHTML = '<span>' + confirmLabel + '</span>';
-                }).catch(function() {
-                    activeBtn.disabled = false;
-                    activeBtn.innerHTML = '<span>' + confirmLabel + '</span>';
-                });
-            };
+                };
+            }
         }
 
         var trigger = document.getElementById(triggerId);
