@@ -6,6 +6,8 @@ Handles CRUD operations for research articles stored in local Postgres
 
 import json
 import logging
+import threading
+from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -17,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 class ResearchRepository:
     """Repository for research articles stored in local Postgres"""
+
+    # In-process URL guard to prevent duplicate concurrent processing across job threads.
+    _processing_urls_lock = threading.Lock()
+    _processing_urls: set[str] = set()
     
     def __init__(self, postgres_client: Optional[PostgresClient] = None):
         """Initialize research repository
@@ -80,6 +86,47 @@ class ResearchRepository:
             article['tickers'] = None
         
         return article
+
+    @staticmethod
+    def _normalize_processing_url(url: str) -> str:
+        """Normalize URL key for in-process processing lock."""
+        return (url or "").strip()
+
+    def claim_processing_url(self, url: str) -> bool:
+        """Try to claim a URL for processing in this process."""
+        key = self._normalize_processing_url(url)
+        if not key:
+            return False
+        cls = type(self)
+        with cls._processing_urls_lock:
+            if key in cls._processing_urls:
+                return False
+            cls._processing_urls.add(key)
+            return True
+
+    def release_processing_url(self, url: str) -> None:
+        """Release a previously claimed processing URL."""
+        key = self._normalize_processing_url(url)
+        if not key:
+            return
+        cls = type(self)
+        with cls._processing_urls_lock:
+            cls._processing_urls.discard(key)
+
+    @contextmanager
+    def processing_guard(self, url: str):
+        """Context manager that yields True only for the first concurrent processor.
+
+        This is an in-process guard (thread-safe) and complements database URL dedup.
+        It prevents multiple scheduler threads from spending AI compute on the same URL
+        at the same time before one of them persists it.
+        """
+        claimed = self.claim_processing_url(url)
+        try:
+            yield claimed
+        finally:
+            if claimed:
+                self.release_processing_url(url)
     
     def save_article(
         self,

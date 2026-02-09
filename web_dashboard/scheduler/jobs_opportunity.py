@@ -5,6 +5,7 @@ import time
 import sys
 import os
 from pathlib import Path
+from scheduler.scheduler_core import log_job_execution
 
 # Add project root to path for utils imports
 current_dir = Path(__file__).resolve().parent
@@ -33,7 +34,7 @@ def opportunity_discovery_job() -> None:
     # Import job tracking at the start
     from datetime import datetime, timezone
     target_date = datetime.now(timezone.utc).date()
-    from scheduler.jobs_common import has_strong_market_signal
+    from scheduler.jobs_common import claim_recent_summary_input, has_strong_market_signal
 
     # Global AI lock (SearXNG + Ollama workload)
     try:
@@ -147,11 +148,19 @@ def opportunity_discovery_job() -> None:
                 break
 
             article_start = time.time()
+            processing_claimed = False
+            url = ""
             try:
                 url = result.get('url', '')
                 title = result.get('title', '')
                 
                 if not url or not title:
+                    continue
+
+                processing_claimed = research_repo.claim_processing_url(url)
+                if not processing_claimed:
+                    logger.debug(f"Article already being processed by another job thread: {title[:40]}...")
+                    articles_skipped += 1
                     continue
                 
                 # Check robots.txt compliance (if enabled)
@@ -221,6 +230,11 @@ def opportunity_discovery_job() -> None:
                 embedding = None
                 
                 summary_input = f"Title: {title}\n\n{content}" if title else content
+                should_summarize, summary_hash = claim_recent_summary_input(summary_input)
+                if not should_summarize:
+                    logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
+                    articles_skipped += 1
+                    continue
                 summary_data = generate_summary(summary_input, article_type="Opportunity Discovery")
 
                 if isinstance(summary_data, str):
@@ -342,6 +356,9 @@ def opportunity_discovery_job() -> None:
             except Exception as e:
                 logger.error(f"Error processing discovery article: {e}")
                 continue
+            finally:
+                if processing_claimed:
+                    research_repo.release_processing_url(url)
         
         duration_ms = int((time.time() - start_time) * 1000)
         message = (

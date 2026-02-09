@@ -5,7 +5,10 @@ Shared Utilities for Scheduled Jobs
 Common functions and utilities used across multiple job modules.
 """
 
+import hashlib
 import re
+import threading
+import time
 from typing import List, Optional, Sequence
 
 
@@ -46,6 +49,36 @@ _MARKET_SIGNAL_PATTERN = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+
+_SUMMARY_INPUT_HASHES_LOCK = threading.Lock()
+_SUMMARY_INPUT_HASHES: dict[str, float] = {}
+_SUMMARY_INPUT_TTL_SECONDS = 6 * 60 * 60
+
+
+def claim_recent_summary_input(text: str, ttl_seconds: int = _SUMMARY_INPUT_TTL_SECONDS) -> tuple[bool, str]:
+    """Claim a summary input hash within a TTL window.
+
+    Returns:
+        (True, hash) if this input was not seen recently and should be summarized.
+        (False, hash) if it was already summarized recently and can be skipped.
+    """
+    input_hash = hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()[:8]
+    now = time.time()
+    ttl = max(int(ttl_seconds), 1)
+    cutoff = now - ttl
+
+    with _SUMMARY_INPUT_HASHES_LOCK:
+        # Lazy cleanup of stale hashes to keep memory bounded.
+        stale_hashes = [key for key, ts in _SUMMARY_INPUT_HASHES.items() if ts < cutoff]
+        for key in stale_hashes:
+            _SUMMARY_INPUT_HASHES.pop(key, None)
+
+        last_seen = _SUMMARY_INPUT_HASHES.get(input_hash)
+        if last_seen is not None and (now - last_seen) < ttl:
+            return False, input_hash
+
+        _SUMMARY_INPUT_HASHES[input_hash] = now
+        return True, input_hash
 
 
 def has_strong_market_signal(

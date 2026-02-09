@@ -40,6 +40,11 @@ if str(web_dashboard_dir) not in sys.path:
 logger = logging.getLogger(__name__)
 
 AI_JOB_NAMES = {
+    # Research/news ingestion jobs (high AI usage, can overlap on same URLs)
+    'market_research',
+    'ticker_research',
+    'opportunity_discovery',
+    'alpha_research',
     'ticker_analysis',
     'etf_group_analysis',
     'analyze_congress_trades',

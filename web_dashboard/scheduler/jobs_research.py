@@ -36,7 +36,11 @@ elif sys.path[0] != str(project_root):
     sys.path.insert(0, str(project_root))
 
 from scheduler.scheduler_core import log_job_execution
-from scheduler.jobs_common import calculate_relevance_score, has_strong_market_signal
+from scheduler.jobs_common import (
+    calculate_relevance_score,
+    claim_recent_summary_input,
+    has_strong_market_signal,
+)
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -180,12 +184,20 @@ def market_research_job() -> None:
             
             article_start = time.time()
             logger.info(f"📰 Processing article {idx}/{total_results}: {result.get('title', 'Unknown')[:50]}...")
+            processing_claimed = False
+            url = ""
             try:
                 url = result.get('url', '')
                 title = result.get('title', '')
                 
                 if not url or not title:
                     logger.debug("Skipping result with missing URL or title")
+                    continue
+
+                processing_claimed = research_repo.claim_processing_url(url)
+                if not processing_claimed:
+                    logger.debug(f"Article already being processed by another job thread: {title[:50]}...")
+                    articles_skipped += 1
                     continue
                 
                 # Check robots.txt compliance (if enabled)
@@ -305,6 +317,11 @@ def market_research_job() -> None:
                 embedding = None
                 logger.info(f"  Generating summary for: {title[:50]}...")
                 summary_input = f"Title: {title}\n\n{content}" if title else content
+                should_summarize, summary_hash = claim_recent_summary_input(summary_input)
+                if not should_summarize:
+                    logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:50]}...")
+                    articles_skipped += 1
+                    continue
                 summary_data = generate_summary(summary_input, article_type="Market News")
 
                 # Handle backward compatibility: if old string format is returned
@@ -465,6 +482,9 @@ def market_research_job() -> None:
                 title_safe = result.get('title', 'Unknown')[:50] if result else 'Unknown'
                 logger.error(f"❌ Error processing article after {article_duration:.1f}s '{title_safe}...': {e}")
                 continue
+            finally:
+                if processing_claimed:
+                    research_repo.release_processing_url(url)
         
         duration_ms = int((time.time() - start_time) * 1000)
         duration_min = duration_ms / 60000
@@ -682,6 +702,11 @@ def rss_feed_ingest_job() -> None:
                         embedding = None
                         
                         summary_input = f"Title: {title}\n\n{content}" if title else content
+                        should_summarize, summary_hash = claim_recent_summary_input(summary_input)
+                        if not should_summarize:
+                            logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
+                            total_articles_skipped += 1
+                            continue
                         summary_data = generate_summary(summary_input, article_type="Market News")
 
                         if isinstance(summary_data, str):
@@ -1022,6 +1047,7 @@ def ticker_research_job() -> None:
         owned_tickers = set(targets.keys())
         
         articles_saved = 0
+        articles_skipped = 0
         articles_failed = 0
         tickers_processed = 0
         sectors_researched = 0
@@ -1057,6 +1083,8 @@ def ticker_research_job() -> None:
                     if item_elapsed > MAX_ITEM_DURATION:
                         logger.warning(f"⏱️  Sector timeout ({item_elapsed:.1f}s) - stopping sector: {sector}")
                         break
+                    processing_claimed = False
+                    url = ""
                     try:
                         url = result.get('url', '')
                         title = result.get('title', '')
@@ -1081,6 +1109,12 @@ def ticker_research_job() -> None:
                             logger.debug(f"Skipping blacklisted: {domain}")
                             continue
 
+                        processing_claimed = research_repo.claim_processing_url(url)
+                        if not processing_claimed:
+                            logger.debug(f"Article already being processed by another job thread: {title[:40]}...")
+                            articles_skipped += 1
+                            continue
+
                         # Deduplicate
                         if research_repo.article_exists(url):
                             continue
@@ -1098,6 +1132,11 @@ def ticker_research_job() -> None:
                         summary_data = {}
                         embedding = None
                         summary_input = f"Title: {title}\n\n{content}" if title else content
+                        should_summarize, summary_hash = claim_recent_summary_input(summary_input)
+                        if not should_summarize:
+                            logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
+                            articles_skipped += 1
+                            continue
                         summary_data = generate_summary(summary_input, article_type="Ticker News")
 
                         if isinstance(summary_data, str):
@@ -1199,6 +1238,9 @@ def ticker_research_job() -> None:
                     except Exception as e:
                         logger.error(f"Error processing sector article for {sector}: {e}")
                         articles_failed += 1
+                    finally:
+                        if processing_claimed:
+                            research_repo.release_processing_url(url)
                 
                 sectors_researched += 1
                 
@@ -1242,6 +1284,8 @@ def ticker_research_job() -> None:
                     if item_elapsed > MAX_ITEM_DURATION:
                         logger.warning(f"⏱️  Ticker timeout ({item_elapsed:.1f}s) - stopping: {ticker}")
                         break
+                    processing_claimed = False
+                    url = ""
                     try:
                         url = result.get('url', '')
                         title = result.get('title', '')
@@ -1266,6 +1310,12 @@ def ticker_research_job() -> None:
                             logger.debug(f"Skipping blacklisted: {domain}")
                             continue
 
+                        processing_claimed = research_repo.claim_processing_url(url)
+                        if not processing_claimed:
+                            logger.debug(f"Article already being processed by another job thread: {title[:40]}...")
+                            articles_skipped += 1
+                            continue
+
                          # Deduplicate
                         if research_repo.article_exists(url):
                             continue
@@ -1285,6 +1335,11 @@ def ticker_research_job() -> None:
                         extracted_sector = None
                         embedding = None
                         summary_input = f"Title: {title}\n\n{content}" if title else content
+                        should_summarize, summary_hash = claim_recent_summary_input(summary_input)
+                        if not should_summarize:
+                            logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
+                            articles_skipped += 1
+                            continue
                         summary_data = generate_summary(summary_input, article_type="Ticker News")
 
                         # Handle backward compatibility: if old string format is returned
@@ -1436,6 +1491,9 @@ def ticker_research_job() -> None:
                     except Exception as e:
                         logger.error(f"Error processing article for {ticker}: {e}")
                         articles_failed += 1
+                    finally:
+                        if processing_claimed:
+                            research_repo.release_processing_url(url)
                 
                 tickers_processed += 1
                 
@@ -1450,6 +1508,8 @@ def ticker_research_job() -> None:
         if sectors_researched > 0:
             message_parts.append(f"{sectors_researched} sectors (for ETFs)")
         message_parts.append(f"Saved {articles_saved} new articles")
+        if articles_skipped > 0:
+            message_parts.append(f"Skipped {articles_skipped} duplicate/in-flight articles")
         if articles_irrelevant > 0:
             message_parts.append(f"Skipped {articles_irrelevant} non-market articles")
         message = ". ".join(message_parts) + "."
