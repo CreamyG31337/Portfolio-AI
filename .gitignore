@@ -271,6 +271,8 @@ import_data/
 *.exe
 # Scheduler lock file (runtime cross-process coordination)
 web_dashboard/logs/.scheduler_lock
+# AI audit logs (runtime JSONL files)
+web_dashboard/logs/ai_audit/*
 # ETF raw data files (downloaded CSV/Excel files for reprocessing)
 web_dashboard/logs/etf_raw_data/
 # Supabase credentials (keep secure)

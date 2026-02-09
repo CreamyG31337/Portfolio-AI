@@ -5861,7 +5861,9 @@ def webhook_newsletter():
                     return
 
                 # AI summary
-                summary_data = generate_summary(content)
+                clean_subj = bg_service.clean_subject(nl.get("subject") or "")
+                summary_input = f"Subject: {clean_subj}\n\n{content}" if clean_subj else content
+                summary_data = generate_summary(summary_input, article_type="Newsletter")
                 summary = None
                 ai_tickers: list = []
                 if isinstance(summary_data, str):
@@ -5869,10 +5871,25 @@ def webhook_newsletter():
                 elif isinstance(summary_data, dict):
                     summary = summary_data.get("summary", "")
                     ai_tickers = bg_service.sanitize_ai_tickers(summary_data.get("tickers", []))
+                    try:
+                        from ticker_inference import infer_tickers_from_companies, infer_tickers_from_text
+                        ai_tickers = sorted(
+                            set(ai_tickers)
+                            | set(infer_tickers_from_companies(summary_data.get("companies", [])))
+                            | set(infer_tickers_from_text(nl.get("subject") or ""))
+                        )
+                    except Exception as infer_err:
+                        logger.warning(f"BG: Company->ticker inference failed for newsletter {nl_id}: {infer_err}")
 
                 # Re-extract tickers from cleaned text
-                clean_subj = bg_service.clean_subject(nl.get("subject") or "")
-                extracted = bg_service.extract_tickers(f"{clean_subj}\n\n{content}")
+                known_tickers = bg_service.get_known_tickers_for_validation()
+                extracted = bg_service.extract_tickers(
+                    f"{clean_subj}\n\n{content}",
+                    validate_known_tickers=True,
+                    known_tickers=known_tickers,
+                )
+                # AI tickers are inference-first; keep sanitized AI outputs even when
+                # symbols are not explicitly present in text. Extraction remains a backstop.
                 all_tickers = sorted(set(ai_tickers) | set(extracted)) if ai_tickers else extracted
 
                 # Embedding

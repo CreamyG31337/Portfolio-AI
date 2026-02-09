@@ -304,7 +304,8 @@ def market_research_job() -> None:
                 extracted_sector = None
                 embedding = None
                 logger.info(f"  Generating summary for: {title[:50]}...")
-                summary_data = generate_summary(content)
+                summary_input = f"Title: {title}\n\n{content}" if title else content
+                summary_data = generate_summary(summary_input)
 
                 # Handle backward compatibility: if old string format is returned
                 if isinstance(summary_data, str):
@@ -315,6 +316,11 @@ def market_research_job() -> None:
 
                     # Extract ticker and sector from structured data
                     tickers = summary_data.get("tickers", [])
+                    try:
+                        from ticker_inference import infer_tickers_from_companies
+                        tickers = list(set(tickers) | set(infer_tickers_from_companies(summary_data.get("companies", []))))
+                    except Exception as infer_err:
+                        logger.warning(f"Company->ticker inference failed: {infer_err}")
                     sectors = summary_data.get("sectors", [])
 
                     # Extract all validated tickers
@@ -333,6 +339,14 @@ def market_research_job() -> None:
 
                     if extracted_tickers:
                         logger.info(f"Extracted {len(extracted_tickers)} validated ticker(s): {extracted_tickers}")
+                    else:
+                        try:
+                            from ticker_inference import infer_tickers_from_text
+                            extracted_tickers = infer_tickers_from_text(title)
+                            if extracted_tickers:
+                                logger.info(f"Inferred ticker(s) from title/company match: {extracted_tickers}")
+                        except Exception as infer_err:
+                            logger.warning(f"Title/company ticker inference failed: {infer_err}")
 
                     # Use first sector if available
                     if sectors:
@@ -660,7 +674,8 @@ def rss_feed_ingest_job() -> None:
                         extracted_sector = None
                         embedding = None
                         
-                        summary_data = generate_summary(content)
+                        summary_input = f"Title: {title}\n\n{content}" if title else content
+                        summary_data = generate_summary(summary_input)
 
                         if isinstance(summary_data, str):
                             summary = summary_data
@@ -670,6 +685,11 @@ def rss_feed_ingest_job() -> None:
                             # Extract tickers from AI if not already from RSS
                             if not extracted_tickers:
                                 ai_tickers = summary_data.get("tickers", [])
+                                try:
+                                    from ticker_inference import infer_tickers_from_companies
+                                    ai_tickers = list(set(ai_tickers) | set(infer_tickers_from_companies(summary_data.get("companies", []))))
+                                except Exception as infer_err:
+                                    logger.warning(f"Company->ticker inference failed: {infer_err}")
                                 from research_utils import validate_ticker_format, normalize_ticker
                                 for ticker in ai_tickers:
                                     # Only validate format, trust AI inference (AI marks uncertain tickers with '?')
@@ -677,6 +697,12 @@ def rss_feed_ingest_job() -> None:
                                         normalized = normalize_ticker(ticker)
                                         if normalized:
                                             extracted_tickers.append(normalized)
+                                if not extracted_tickers:
+                                    try:
+                                        from ticker_inference import infer_tickers_from_text
+                                        extracted_tickers = infer_tickers_from_text(title)
+                                    except Exception as infer_err:
+                                        logger.warning(f"Title/company ticker inference failed: {infer_err}")
 
                             # Extract sector
                             sectors = summary_data.get("sectors", [])
@@ -1056,7 +1082,8 @@ def ticker_research_job() -> None:
                         summary = None
                         summary_data = {}
                         embedding = None
-                        summary_data = generate_summary(content)
+                        summary_input = f"Title: {title}\n\n{content}" if title else content
+                        summary_data = generate_summary(summary_input)
 
                         if isinstance(summary_data, str):
                             summary = summary_data
@@ -1225,7 +1252,8 @@ def ticker_research_job() -> None:
                         extracted_tickers = []
                         extracted_sector = None
                         embedding = None
-                        summary_data = generate_summary(content)
+                        summary_input = f"Title: {title}\n\n{content}" if title else content
+                        summary_data = generate_summary(summary_input)
 
                         # Handle backward compatibility: if old string format is returned
                         if isinstance(summary_data, str):
@@ -1236,24 +1264,35 @@ def ticker_research_job() -> None:
 
                             # Extract ticker and sector from structured data
                             tickers = summary_data.get("tickers", [])
+                            try:
+                                from ticker_inference import infer_tickers_from_companies
+                                tickers = list(set(tickers) | set(infer_tickers_from_companies(summary_data.get("companies", []))))
+                            except Exception as infer_err:
+                                logger.warning(f"Company->ticker inference failed: {infer_err}")
                             sectors = summary_data.get("sectors", [])
 
                             # Extract all validated tickers
-                            from research_utils import validate_ticker_in_content, validate_ticker_format
+                            from research_utils import validate_ticker_format, normalize_ticker
                             for candidate_ticker in tickers:
                                 # First validate format (reject company names, invalid formats)
                                 if not validate_ticker_format(candidate_ticker):
                                     logger.warning(f"Rejected invalid ticker format: {candidate_ticker} (likely company name or invalid format)")
                                     continue
-                                # Then validate it appears in content
-                                if validate_ticker_in_content(candidate_ticker, content):
-                                    extracted_tickers.append(candidate_ticker)
-                                    logger.debug(f"Extracted ticker from article: {candidate_ticker} (validated in content)")
-                                else:
-                                    logger.warning(f"Ticker {candidate_ticker} not found in article content - skipping")
+                                normalized = normalize_ticker(candidate_ticker)
+                                if normalized:
+                                    extracted_tickers.append(normalized)
+                                    logger.debug(f"Extracted ticker from article: {normalized}")
 
                             if extracted_tickers:
                                 logger.info(f"Extracted {len(extracted_tickers)} validated ticker(s): {extracted_tickers}")
+                            else:
+                                try:
+                                    from ticker_inference import infer_tickers_from_text
+                                    extracted_tickers = infer_tickers_from_text(title)
+                                    if extracted_tickers:
+                                        logger.info(f"Inferred ticker(s) from title/company match: {extracted_tickers}")
+                                except Exception as infer_err:
+                                    logger.warning(f"Title/company ticker inference failed: {infer_err}")
 
                             # Use first sector if available
                             if sectors:
@@ -1523,7 +1562,8 @@ def archive_retry_job() -> None:
                                 extracted_sector = None
                                 embedding = None
                                 
-                                summary_data = generate_summary(extracted_content)
+                                summary_input = f"Title: {title}\n\n{extracted_content}" if title else extracted_content
+                                summary_data = generate_summary(summary_input)
 
                                 if isinstance(summary_data, str):
                                     summary = summary_data
@@ -1532,12 +1572,23 @@ def archive_retry_job() -> None:
 
                                     # Extract tickers
                                     ai_tickers = summary_data.get("tickers", [])
+                                    try:
+                                        from ticker_inference import infer_tickers_from_companies
+                                        ai_tickers = list(set(ai_tickers) | set(infer_tickers_from_companies(summary_data.get("companies", []))))
+                                    except Exception as infer_err:
+                                        logger.warning(f"Company->ticker inference failed: {infer_err}")
                                     from research_utils import validate_ticker_format, normalize_ticker
                                     for ticker in ai_tickers:
                                         if validate_ticker_format(ticker):
                                             normalized = normalize_ticker(ticker)
                                             if normalized:
                                                 extracted_tickers.append(normalized)
+                                    if not extracted_tickers:
+                                        try:
+                                            from ticker_inference import infer_tickers_from_text
+                                            extracted_tickers = infer_tickers_from_text(title)
+                                        except Exception as infer_err:
+                                            logger.warning(f"Title/company ticker inference failed: {infer_err}")
 
                                     # Extract sector
                                     sectors = summary_data.get("sectors", [])
@@ -1737,7 +1788,8 @@ def process_research_reports_job() -> None:
                 summary_result = {}
                 
                 try:
-                    summary_result = generate_summary(text_content)
+                    summary_input = f"Title: {title}\n\n{text_content}" if title else text_content
+                    summary_result = generate_summary(summary_input, article_type="Research Report")
                 except Exception as e:
                     logger.warning(f"  AI summary failed: {e}")
                 
@@ -1747,6 +1799,11 @@ def process_research_reports_job() -> None:
                 
                 if isinstance(summary_result, dict):
                     ai_tickers = summary_result.get("tickers", [])
+                    try:
+                        from ticker_inference import infer_tickers_from_companies
+                        ai_tickers = list(set(ai_tickers) | set(infer_tickers_from_companies(summary_result.get("companies", []))))
+                    except Exception as infer_err:
+                        logger.warning(f"Company->ticker inference failed: {infer_err}")
                     for ticker in ai_tickers:
                         # Validate format only (reject company names, invalid formats)
                         # NOTE: We no longer check if ticker appears in content, because AI infers tickers
@@ -1765,6 +1822,12 @@ def process_research_reports_job() -> None:
                     if folder_ticker and folder_ticker not in extracted_tickers:
                         extracted_tickers.append(folder_ticker)
                         logger.debug(f"Added folder ticker to extracted list: {folder_ticker}")
+                elif not extracted_tickers:
+                    try:
+                        from ticker_inference import infer_tickers_from_text
+                        extracted_tickers = infer_tickers_from_text(title)
+                    except Exception as infer_err:
+                        logger.warning(f"Title/company ticker inference failed: {infer_err}")
                 
                 if extracted_tickers:
                     logger.info(f"  📊 Extracted {len(extracted_tickers)} ticker(s): {', '.join(extracted_tickers)}")

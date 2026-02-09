@@ -64,6 +64,11 @@
         <!-- Settings Form -->
         <div class="p-6 bg-dashboard-surface border border-border rounded-lg shadow-xs">
             <h2 class="mb-4 text-xl font-bold tracking-tight text-text-primary">⚙️ System Configuration</h2>
+            <p class="mb-4 text-xs text-text-tertiary">
+                Model runtime settings are resolved in this order: <code class="px-1 py-0.5 bg-dashboard-surface-alt rounded text-xs">system_settings</code>
+                per-model overrides (for example <code class="px-1 py-0.5 bg-dashboard-surface-alt rounded text-xs">model_granite3.3:8b_num_ctx</code>)
+                then <code class="px-1 py-0.5 bg-dashboard-surface-alt rounded text-xs">web_dashboard/model_config.json</code> defaults.
+            </p>
             <form id="settings-form" class="space-y-4">
                 <div>
                     <label for="auto_blacklist_threshold"
@@ -133,6 +138,39 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- Model Runtime Visibility -->
+    <div class="mt-6 p-6 bg-dashboard-surface border border-border rounded-lg shadow-xs">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+                <h2 class="text-xl font-bold tracking-tight text-text-primary">🧠 Model Runtime Settings</h2>
+                <p class="text-sm text-text-secondary mt-1">
+                    Read-only view of base config, DB overrides, and effective runtime values.
+                </p>
+            </div>
+            <span id="model-runtime-updated" class="text-xs text-text-tertiary">Loading...</span>
+        </div>
+
+        <div class="relative overflow-x-auto max-h-[420px]">
+            <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
+                <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0">
+                    <tr>
+                        <th scope="col" class="px-4 py-3">Model</th>
+                        <th scope="col" class="px-4 py-3">Provider</th>
+                        <th scope="col" class="px-4 py-3">Base</th>
+                        <th scope="col" class="px-4 py-3">Override</th>
+                        <th scope="col" class="px-4 py-3">Effective</th>
+                        <th scope="col" class="px-4 py-3">Source</th>
+                    </tr>
+                </thead>
+                <tbody id="model-runtime-table-body">
+                    <tr>
+                        <td colspan="6" class="px-4 py-4 text-center text-text-secondary">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 

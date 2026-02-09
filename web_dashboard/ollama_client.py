@@ -33,6 +33,11 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 
+# Keep summarization output bounded so prompt + article + output fits model context.
+SUMMARY_MIN_PREDICT = 256
+SUMMARY_DEFAULT_PREDICT = 1024
+SUMMARY_CONTEXT_MARGIN = 256
+
 
 def load_model_config() -> Dict[str, Any]:
     """Load model configuration from JSON file.
@@ -53,6 +58,40 @@ def load_model_config() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error loading model config: {e}")
         return {}
+
+
+def _fit_summary_num_predict(
+    *,
+    model: str,
+    effective_ctx: int,
+    prompt_tokens_est: int,
+    article_tokens_est: int,
+    requested_num_predict: int,
+) -> int:
+    """Cap summary output tokens to reduce context overflow failures."""
+    # Reserve a small margin for tokenizer variance and response framing overhead.
+    available = effective_ctx - prompt_tokens_est - article_tokens_est - SUMMARY_CONTEXT_MARGIN
+    if available < SUMMARY_MIN_PREDICT:
+        logger.warning(
+            "Very tight context budget for model=%s: ctx=%d, system≈%d, article≈%d. "
+            "Forcing num_predict=%d.",
+            model,
+            effective_ctx,
+            prompt_tokens_est,
+            article_tokens_est,
+            SUMMARY_MIN_PREDICT,
+        )
+        return SUMMARY_MIN_PREDICT
+
+    fitted = min(requested_num_predict, available)
+    if fitted < requested_num_predict:
+        logger.info(
+            "Adjusted summary num_predict for model=%s: %d -> %d (ctx fit)",
+            model,
+            requested_num_predict,
+            fitted,
+        )
+    return max(SUMMARY_MIN_PREDICT, fitted)
 
 
 class OllamaClient:
@@ -589,7 +628,12 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             except Exception:
                 pass
     
-    def generate_summary(self, text: str, model: Optional[str] = None) -> Dict[str, Any]:
+    def generate_summary(
+        self,
+        text: str,
+        model: Optional[str] = None,
+        article_type: str = ""
+    ) -> Dict[str, Any]:
         """Generate a comprehensive summary with Chain of Thought analysis, sentiment categorization, and relationship extraction.
         
         Uses a 3-step Chain of Thought process: Identify Claims, Fact Check, Conclusion.
@@ -634,12 +678,12 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         try:
             from webai_wrapper import is_webai_model
             if is_webai_model(model):
-                return _generate_summary_via_webai(text, model, stream=False)
+                return _generate_summary_via_webai(text, model, article_type=article_type, stream=False)
         except ImportError:
             pass
         # GLM: use Z.AI, not Ollama (Ollama would 404 for glm-*)
         if model and str(model).startswith("glm-"):
-            return _generate_summary_via_zhipu(text, model, stream=False)
+            return _generate_summary_via_zhipu(text, model, article_type=article_type, stream=False)
 
         # Truncate text to ~6000 characters
         max_chars = 6000
@@ -647,21 +691,24 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             text = text[:max_chars] + "..."
             logger.debug(f"Truncated text to {max_chars} characters for summarization")
 
-        # NOTE: article_type is not threaded here — skills that trigger only via
-        # article_types (e.g. newsletter_evaluation.md) won't activate through
-        # this path.  To enable that, add article_type to generate_summary() and
-        # pass it from the scheduler jobs.  Keyword triggers still work fine.
-        system_prompt = get_summary_system_prompt(article_text=text)
+        system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
 
         # Get model settings
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get('temperature', 0.3)
         effective_ctx = model_settings.get('num_ctx', 4096)
-        effective_max_tokens = model_settings.get('num_predict', 1024)  # Increased for more comprehensive summaries
+        requested_max_tokens = model_settings.get("num_predict", SUMMARY_DEFAULT_PREDICT)
 
         # Warn if skill-enhanced prompt + article + output may overflow context
         prompt_tokens_est = len(system_prompt) // 4
         article_tokens_est = len(text) // 4
+        effective_max_tokens = _fit_summary_num_predict(
+            model=model,
+            effective_ctx=effective_ctx,
+            prompt_tokens_est=prompt_tokens_est,
+            article_tokens_est=article_tokens_est,
+            requested_num_predict=requested_max_tokens,
+        )
         total_est = prompt_tokens_est + article_tokens_est + effective_max_tokens
         if total_est > effective_ctx:
             logger.warning(
@@ -722,7 +769,13 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             logger.error(f"❌ Error generating summary: {e}", exc_info=True)
             return {}
     
-    def generate_summary_streaming(self, text: str, model: Optional[str] = None, progress_callback=None) -> Dict[str, Any]:
+    def generate_summary_streaming(
+        self,
+        text: str,
+        model: Optional[str] = None,
+        article_type: str = "",
+        progress_callback=None
+    ) -> Dict[str, Any]:
         """Generate a comprehensive summary with streaming progress updates.
 
         Same as generate_summary but yields progress updates during generation.
@@ -748,12 +801,24 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         try:
             from webai_wrapper import is_webai_model
             if is_webai_model(model):
-                return _generate_summary_via_webai(text, model, progress_callback=progress_callback, stream=False)
+                return _generate_summary_via_webai(
+                    text,
+                    model,
+                    article_type=article_type,
+                    progress_callback=progress_callback,
+                    stream=False,
+                )
         except ImportError:
             pass
         # GLM: use Z.AI, not Ollama
         if model and str(model).startswith("glm-"):
-            return _generate_summary_via_zhipu(text, model, progress_callback=progress_callback, stream=True)
+            return _generate_summary_via_zhipu(
+                text,
+                model,
+                article_type=article_type,
+                progress_callback=progress_callback,
+                stream=True,
+            )
 
         if not self.enabled:
             logger.warning("Ollama summary generation rejected: AI assistant disabled")
@@ -765,18 +830,24 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             text = text[:max_chars] + "..."
             logger.debug(f"Truncated text to {max_chars} characters for summarization")
         
-        # NOTE: article_type not threaded here — see comment in generate_summary()
-        system_prompt = get_summary_system_prompt(article_text=text)
+        system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
 
         # Get model settings
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get("temperature", 0.3)
         effective_ctx = model_settings.get("num_ctx", 4096)
-        effective_max_tokens = model_settings.get("num_predict", 1024)
+        requested_max_tokens = model_settings.get("num_predict", SUMMARY_DEFAULT_PREDICT)
 
         # Warn if skill-enhanced prompt + article + output may overflow context
         prompt_tokens_est = len(system_prompt) // 4
         article_tokens_est = len(text) // 4
+        effective_max_tokens = _fit_summary_num_predict(
+            model=model,
+            effective_ctx=effective_ctx,
+            prompt_tokens_est=prompt_tokens_est,
+            article_tokens_est=article_tokens_est,
+            requested_num_predict=requested_max_tokens,
+        )
         total_est = prompt_tokens_est + article_tokens_est + effective_max_tokens
         if total_est > effective_ctx:
             logger.warning(
@@ -1040,7 +1111,12 @@ def check_ollama_health() -> bool:
 
 
 def _generate_summary_via_webai(
-    text: str, model: str, *, progress_callback=None, stream: bool = False
+    text: str,
+    model: str,
+    *,
+    article_type: str = "",
+    progress_callback=None,
+    stream: bool = False
 ) -> Dict[str, Any]:
     """Run article summarization via web-based AI service (cookie-based). Used for WebAI models."""
     try:
@@ -1056,7 +1132,7 @@ def _generate_summary_via_webai(
         text = text[:max_chars] + "..."
         logger.debug(f"Truncated text from {original_len} to {max_chars} characters for web-based AI summarization")
 
-    system_prompt = get_summary_system_prompt(article_text=text)
+    system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
     total_chars = len(system_prompt) + len(text)
     logger.debug(f"Web-based AI prompt length: {total_chars} chars (system: {len(system_prompt)}, user: {len(text)})")
 
@@ -1120,7 +1196,12 @@ def _generate_summary_via_webai(
 
 
 def _generate_summary_via_zhipu(
-    text: str, model: str, *, progress_callback=None, stream: bool = False
+    text: str,
+    model: str,
+    *,
+    article_type: str = "",
+    progress_callback=None,
+    stream: bool = False
 ) -> Dict[str, Any]:
     """Run article summarization via Z.AI /chat/completions. Used when model.startswith('glm-')."""
     try:
@@ -1141,7 +1222,7 @@ def _generate_summary_via_zhipu(
         text = text[:max_chars] + "..."
         logger.debug(f"Truncated text from {original_len} to {max_chars} characters for Z.AI summarization")
 
-    system_prompt = get_summary_system_prompt(article_text=text)
+    system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
     messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
     total_chars = len(system_prompt) + len(text)
     logger.debug(f"Z.AI prompt length: {total_chars} chars (system: {len(system_prompt)}, user: {len(text)})")
@@ -1277,7 +1358,7 @@ def _generate_summary_via_zhipu(
 
 
 def generate_summary(
-    text: str, model: Optional[str] = None
+    text: str, model: Optional[str] = None, article_type: str = ""
 ) -> Dict[str, Any]:
     """Module-level summary entry with provider/model fallback support."""
     model_chain = _get_summary_model_chain(model)
@@ -1295,6 +1376,7 @@ def generate_summary(
         result = _generate_summary_once(
             text=text,
             model=candidate,
+            article_type=article_type,
             stream=False,
             progress_callback=None,
         )
@@ -1308,7 +1390,10 @@ def generate_summary(
 
 
 def generate_summary_streaming(
-    text: str, model: Optional[str] = None, progress_callback=None
+    text: str,
+    model: Optional[str] = None,
+    article_type: str = "",
+    progress_callback=None
 ) -> Dict[str, Any]:
     """Module-level streaming summary entry with provider/model fallback support."""
     model_chain = _get_summary_model_chain(model)
@@ -1326,6 +1411,7 @@ def generate_summary_streaming(
         result = _generate_summary_once(
             text=text,
             model=candidate,
+            article_type=article_type,
             stream=True,
             progress_callback=progress_callback,
         )
@@ -1389,6 +1475,7 @@ def _generate_summary_once(
     text: str,
     model: str,
     *,
+    article_type: str = "",
     stream: bool,
     progress_callback=None,
 ) -> Dict[str, Any]:
@@ -1406,6 +1493,7 @@ def _generate_summary_once(
                 result = _generate_summary_via_webai(
                     text,
                     model,
+                    article_type=article_type,
                     progress_callback=progress_callback,
                     stream=False,
                 )
@@ -1418,6 +1506,7 @@ def _generate_summary_once(
             result = _generate_summary_via_zhipu(
                 text,
                 model,
+                article_type=article_type,
                 progress_callback=progress_callback,
                 stream=stream,
             )
@@ -1432,10 +1521,11 @@ def _generate_summary_once(
             result = client.generate_summary_streaming(
                 text,
                 model=model,
+                article_type=article_type,
                 progress_callback=progress_callback,
             )
             return result
-        result = client.generate_summary(text, model=model)
+        result = client.generate_summary(text, model=model, article_type=article_type)
         return result
     except Exception as e:
         error_msg = str(e)
@@ -1468,6 +1558,7 @@ def _generate_summary_once(
                 logic_check=result.get("logic_check") if isinstance(result, dict) else None,
                 market_relevance=result.get("market_relevance") if isinstance(result, dict) else None,
                 caller=_detect_caller(),
+                article_type=article_type or None,
                 article_url=context.get("article_url"),
                 article_title=context.get("article_title"),
             )

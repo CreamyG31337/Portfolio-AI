@@ -29,7 +29,23 @@ interface SettingsResponse {
     auto_blacklist_threshold: string;
     max_research_batch_size: string;
     ai_summarizing_fallback_models?: string[] | string;
+    model_runtime?: ModelRuntimeEntry[];
+    model_runtime_generated_at?: string;
     [key: string]: unknown;
+}
+
+interface ModelSettingTriplet {
+    num_ctx: number | null;
+    num_predict: number | null;
+    temperature: number | null;
+}
+
+interface ModelRuntimeEntry {
+    model: string;
+    provider: string;
+    base: ModelSettingTriplet;
+    override: ModelSettingTriplet;
+    effective: ModelSettingTriplet;
 }
 
 interface BlacklistEntry {
@@ -94,6 +110,8 @@ const autoBlacklistInput = document.getElementById('auto_blacklist_threshold') a
 const maxBatchSizeInput = document.getElementById('max_research_batch_size') as HTMLInputElement | null;
 const fallbackModelSelect = document.getElementById('ai_summarizing_fallback_model') as HTMLSelectElement | null;
 const saveSettingsBtn = document.getElementById('save-settings-btn');
+const modelRuntimeTableBody = document.getElementById('model-runtime-table-body');
+const modelRuntimeUpdated = document.getElementById('model-runtime-updated');
 
 const addDomainInput = document.getElementById('add-domain-input') as HTMLInputElement | null;
 const addDomainBtn = document.getElementById('add-domain-btn');
@@ -1130,9 +1148,70 @@ async function loadSettings() {
             fallbackModelSelect.value = fallbackModel;
         }
 
+        renderModelRuntime(data.model_runtime || []);
+
+        if (modelRuntimeUpdated) {
+            const stamp = data.model_runtime_generated_at;
+            if (typeof stamp === 'string' && stamp.trim()) {
+                const parsed = new Date(stamp);
+                modelRuntimeUpdated.textContent = Number.isNaN(parsed.getTime())
+                    ? `Generated: ${stamp}`
+                    : `Generated: ${parsed.toLocaleString()}`;
+            } else {
+                modelRuntimeUpdated.textContent = 'Generated: unknown';
+            }
+        }
+
     } catch (error) {
         console.error('Error loading settings:', error);
     }
+}
+
+function formatModelSetting(value: number | null): string {
+    if (value === null || value === undefined) {
+        return 'n/a';
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return Number.isInteger(value) ? value.toString() : value.toFixed(3);
+    }
+    return String(value);
+}
+
+function formatTriplet(triplet: ModelSettingTriplet): string {
+    return `ctx ${formatModelSetting(triplet.num_ctx)} | out ${formatModelSetting(triplet.num_predict)} | temp ${formatModelSetting(triplet.temperature)}`;
+}
+
+function hasAnyOverride(triplet: ModelSettingTriplet): boolean {
+    return triplet.num_ctx !== null || triplet.num_predict !== null || triplet.temperature !== null;
+}
+
+function renderModelRuntime(rows: ModelRuntimeEntry[]): void {
+    if (!modelRuntimeTableBody) {
+        return;
+    }
+
+    if (!rows || rows.length === 0) {
+        modelRuntimeTableBody.innerHTML = '<tr><td colspan="6" class="px-4 py-4 text-center text-text-secondary">No model runtime data found</td></tr>';
+        return;
+    }
+
+    modelRuntimeTableBody.innerHTML = rows.map((row) => {
+        const overridden = hasAnyOverride(row.override);
+        const sourceBadge = overridden
+            ? '<span class="px-2 py-1 text-xs rounded border border-amber-400 text-amber-600">system_settings override</span>'
+            : '<span class="px-2 py-1 text-xs rounded border border-green-500 text-green-600">model_config default</span>';
+
+        return `
+            <tr class="bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt">
+                <td class="px-4 py-3 text-text-primary font-medium">${escapeHtml(row.model || 'unknown')}</td>
+                <td class="px-4 py-3 text-text-primary">${escapeHtml(row.provider || 'ollama')}</td>
+                <td class="px-4 py-3 text-text-primary">${escapeHtml(formatTriplet(row.base))}</td>
+                <td class="px-4 py-3 text-text-primary">${escapeHtml(formatTriplet(row.override))}</td>
+                <td class="px-4 py-3 text-text-primary font-medium">${escapeHtml(formatTriplet(row.effective))}</td>
+                <td class="px-4 py-3">${sourceBadge}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 async function saveSettings() {

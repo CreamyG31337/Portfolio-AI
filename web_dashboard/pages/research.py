@@ -875,7 +875,7 @@ try:
     total_articles, embedded_articles = get_cached_embedding_stats(repo, st.session_state.refresh_key)
     embedding_pct = (embedded_articles / total_articles * 100) if total_articles > 0 else 0
     
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric("Total Articles", total_articles)
@@ -890,10 +890,6 @@ try:
         st.metric("Ticker News", ticker_news)
     
     with col4:
-        earnings = type_counts.get('earnings', 0)
-        st.metric("Earnings", earnings)
-    
-    with col5:
         st.metric("Embedded (RAG)", f"{embedded_articles}", delta=f"{embedding_pct:.0f}%")
     
     # Charts

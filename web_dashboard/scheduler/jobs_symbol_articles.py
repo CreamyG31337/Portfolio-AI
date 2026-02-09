@@ -278,7 +278,8 @@ def symbol_article_scraper_job() -> None:
                         # Only generate AI summary if content is substantial (not just paywall message)
                         if len(content) > 500:
                             try:
-                                summary_data = generate_summary(content)
+                                summary_input = f"Title: {title}\n\n{content}" if title else content
+                                summary_data = generate_summary(summary_input, article_type="Symbol Article")
                                 
                                 if isinstance(summary_data, str):
                                     summary = summary_data
@@ -287,6 +288,11 @@ def symbol_article_scraper_job() -> None:
                                     
                                     # Extract additional tickers from content
                                     tickers = summary_data.get("tickers", [])
+                                    try:
+                                        from ticker_inference import infer_tickers_from_companies
+                                        tickers = list(set(tickers) | set(infer_tickers_from_companies(summary_data.get("companies", []))))
+                                    except Exception as infer_err:
+                                        logger.warning(f"  ⚠️ Company->ticker inference failed: {infer_err}")
                                     sectors = summary_data.get("sectors", [])
                                     
                                     from research_utils import validate_ticker_format, normalize_ticker

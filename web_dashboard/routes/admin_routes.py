@@ -3056,7 +3056,69 @@ def api_get_ai_settings():
                 "max_research_batch_size": "50",
                 "ai_summarizing_fallback_models": []
             }
-            
+        
+        # Add read-only model runtime visibility so admins can see effective values.
+        try:
+            from ollama_client import load_model_config
+
+            model_config = load_model_config() or {}
+            default_cfg = model_config.get("default_config", {}) or {}
+            model_entries = model_config.get("models", {}) or {}
+            model_runtime = []
+
+            for model_name, base_cfg in model_entries.items():
+                base_cfg = base_cfg or {}
+                override_ctx_key = f"model_{model_name}_num_ctx"
+                override_predict_key = f"model_{model_name}_num_predict"
+                override_temp_key = f"model_{model_name}_temperature"
+
+                base_num_ctx = base_cfg.get("num_ctx", default_cfg.get("num_ctx"))
+                base_num_predict = base_cfg.get("num_predict", default_cfg.get("num_predict"))
+                base_temperature = base_cfg.get("temperature", default_cfg.get("temperature"))
+
+                override_num_ctx = settings.get(override_ctx_key)
+                override_num_predict = settings.get(override_predict_key)
+                override_temperature = settings.get(override_temp_key)
+
+                effective_num_ctx = (
+                    override_num_ctx if override_num_ctx is not None else base_num_ctx
+                )
+                effective_num_predict = (
+                    override_num_predict if override_num_predict is not None else base_num_predict
+                )
+                effective_temperature = (
+                    override_temperature if override_temperature is not None else base_temperature
+                )
+
+                model_runtime.append(
+                    {
+                        "model": model_name,
+                        "provider": base_cfg.get("provider", "ollama"),
+                        "base": {
+                            "num_ctx": base_num_ctx,
+                            "num_predict": base_num_predict,
+                            "temperature": base_temperature,
+                        },
+                        "override": {
+                            "num_ctx": override_num_ctx,
+                            "num_predict": override_num_predict,
+                            "temperature": override_temperature,
+                        },
+                        "effective": {
+                            "num_ctx": effective_num_ctx,
+                            "num_predict": effective_num_predict,
+                            "temperature": effective_temperature,
+                        },
+                    }
+                )
+
+            model_runtime.sort(key=lambda item: str(item.get("model", "")).lower())
+            settings["model_runtime"] = model_runtime
+            settings["model_runtime_generated_at"] = datetime.now().isoformat()
+        except Exception as runtime_err:
+            logger.warning(f"Failed to build model_runtime visibility payload: {runtime_err}")
+            settings["model_runtime"] = []
+
         return jsonify(settings)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

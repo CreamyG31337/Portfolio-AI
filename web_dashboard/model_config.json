@@ -49,10 +49,10 @@
             "desc": "Strong alternative to Mistral."
         },
         "granite3.3:8b": {
-            "num_ctx": 32768,
+            "num_ctx": 39000,
             "num_predict": 4096,
             "temperature": 0.1,
-            "desc": "Enterprise grade for chat/summarization. 32k is stable on 16GB GPU."
+            "desc": "Enterprise grade for chat/summarization. 39k target keeps a small VRAM safety margin on 16GB GPU."
         },
         "phi4:14b": {
             "num_ctx": 8192,

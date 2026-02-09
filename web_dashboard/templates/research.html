@@ -34,7 +34,7 @@
     <h2 class="text-2xl font-bold text-text-primary mb-6">📊 Statistics</h2>
 
     <!-- Metrics Row -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-6">
         <div class="bg-dashboard-background rounded-lg p-2 border border-border">
             <div class="text-xs text-text-secondary mb-0.5">Total Articles</div>
             <div class="text-lg font-bold text-text-primary">{{ total_articles|default(0) }}</div>
@@ -50,12 +50,6 @@
             <div class="text-xs text-text-secondary mb-0.5">Ticker News</div>
             <div class="text-lg font-bold text-text-primary">{% if stats.by_type and
                 stats.by_type.ticker_news %}{{ stats.by_type.ticker_news }}{% else %}0{% endif %}</div>
-        </div>
-
-        <div class="bg-dashboard-background rounded-lg p-2 border border-border">
-            <div class="text-xs text-text-secondary mb-0.5">Earnings</div>
-            <div class="text-lg font-bold text-text-primary">{% if stats.by_type and stats.by_type.earnings
-                %}{{ stats.by_type.earnings }}{% else %}0{% endif %}</div>
         </div>
 
         <div class="bg-dashboard-background rounded-lg p-2 border border-border">

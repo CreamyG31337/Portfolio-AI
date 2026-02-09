@@ -9,7 +9,8 @@ import re
 import hmac
 import hashlib
 import logging
-from typing import Optional, List, Dict, Any
+import time
+from typing import Optional, List, Dict, Any, Set
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
@@ -23,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 class NewsletterService:
     """Service for processing newsletter emails from Mailgun"""
+
+    _KNOWN_TICKERS_CACHE_TTL_SECONDS = 3600
+    _known_tickers_cache: Optional[Set[str]] = None
+    _known_tickers_cache_at: float = 0.0
     
     def __init__(self):
         """Initialize newsletter service"""
@@ -283,7 +288,44 @@ class NewsletterService:
             logger.error(f"Error extracting article URL: {e}")
             return None
     
-    def extract_tickers(self, text: str) -> List[str]:
+    @classmethod
+    def get_known_tickers_for_validation(cls) -> Set[str]:
+        """Return cached known tickers used for newsletter extraction filtering.
+
+        The known list comes from the application's aggregated ticker universe
+        (securities + watched + research/social sources). This is cached to
+        avoid repeated DB/network lookups during webhook processing.
+        """
+        now = time.time()
+        if (
+            cls._known_tickers_cache is not None
+            and (now - cls._known_tickers_cache_at) < cls._KNOWN_TICKERS_CACHE_TTL_SECONDS
+        ):
+            return cls._known_tickers_cache
+
+        try:
+            from ticker_utils import get_all_unique_tickers
+
+            tickers = get_all_unique_tickers()
+            normalized = {
+                str(ticker).upper().strip()
+                for ticker in (tickers or [])
+                if isinstance(ticker, str) and str(ticker).strip()
+            }
+            cls._known_tickers_cache = normalized
+            cls._known_tickers_cache_at = now
+            logger.info(f"Loaded {len(normalized)} known tickers for newsletter validation")
+            return normalized
+        except Exception as e:
+            logger.warning(f"Failed to load known tickers for newsletter validation: {e}")
+            return set()
+
+    def extract_tickers(
+        self,
+        text: str,
+        validate_known_tickers: bool = False,
+        known_tickers: Optional[Set[str]] = None
+    ) -> List[str]:
         """Extract stock ticker symbols from text
         
         Args:
@@ -293,10 +335,6 @@ class NewsletterService:
             List of unique ticker symbols found
         """
         try:
-            # Pattern for ticker symbols: 1-5 uppercase letters
-            # Avoid common words that look like tickers
-            pattern = r'\b([A-Z]{1,5})\b'
-            
             # Common words/abbreviations to exclude (not stock tickers)
             exclude_words = {
                 # Single-letter & short common words
@@ -334,17 +372,83 @@ class NewsletterService:
                 'FWD', 'RE', 'CC', 'BCC', 'FYI', 'ASAP', 'RIP', 'DIY',
                 'PSA', 'TBD', 'ETC', 'VS', 'NA', 'TBA',
             }
-            
-            matches = re.findall(pattern, text)
-            
-            # Filter out excluded words and ensure 2-5 characters (most tickers)
-            tickers = [
-                ticker for ticker in set(matches)
-                if ticker not in exclude_words and 2 <= len(ticker) <= 5
-            ]
-            
-            # Sort alphabetically
-            return sorted(tickers)
+
+            # Candidate extraction:
+            # - "$AAPL" style (high confidence)
+            # - "NASDAQ: AAPL" style (high confidence)
+            # - "(AAPL)" style (medium confidence)
+            # - generic uppercase tokens (lower confidence)
+            dollar_pattern = re.compile(
+                r"(?<![A-Za-z0-9])\$([A-Z][A-Z0-9]{0,4}(?:[.-][A-Z]{1,3})?)\b"
+            )
+            exchange_pattern = re.compile(
+                r"\b(?:NYSE|NASDAQ|AMEX|TSX|TSXV|CSE|OTC|NYSEARCA|NYSEAMERICAN)"
+                r"\s*[:\-]\s*([A-Z][A-Z0-9]{0,4}(?:[.-][A-Z]{1,3})?)\b"
+            )
+            parenthetical_pattern = re.compile(
+                r"\(([A-Z][A-Z0-9]{0,4}(?:[.-][A-Z]{1,3})?)\)"
+            )
+            generic_pattern = re.compile(
+                r"\b([A-Z][A-Z0-9]{1,4}(?:[.-][A-Z]{1,3})?)\b"
+            )
+
+            candidate_count: Dict[str, int] = {}
+            candidate_score: Dict[str, int] = {}
+            explicit_candidates: Set[str] = set()
+
+            def add_candidate(ticker: str, score: int, is_explicit: bool = False) -> None:
+                normalized = ticker.upper().strip()
+                if not normalized:
+                    return
+                candidate_count[normalized] = candidate_count.get(normalized, 0) + 1
+                candidate_score[normalized] = max(score, candidate_score.get(normalized, 0))
+                if is_explicit:
+                    explicit_candidates.add(normalized)
+
+            for match in dollar_pattern.findall(text):
+                add_candidate(match, score=3, is_explicit=True)
+            for match in exchange_pattern.findall(text):
+                add_candidate(match, score=3, is_explicit=True)
+            for match in parenthetical_pattern.findall(text):
+                add_candidate(match, score=2, is_explicit=True)
+            for match in generic_pattern.findall(text):
+                add_candidate(match, score=1, is_explicit=False)
+
+            validated_known_tickers: Set[str] = set()
+            if validate_known_tickers:
+                validated_known_tickers = known_tickers or self.get_known_tickers_for_validation()
+
+            filtered: List[str] = []
+            for ticker in sorted(candidate_count.keys()):
+                if ticker in exclude_words:
+                    continue
+
+                # Allow common ticker shapes:
+                # AAPL, BRK.B, BRK-B, SHOP.TO
+                if not re.fullmatch(r"[A-Z][A-Z0-9]{1,4}(?:[.-][A-Z]{1,3})?", ticker):
+                    continue
+
+                if validate_known_tickers and validated_known_tickers:
+                    if ticker in validated_known_tickers:
+                        filtered.append(ticker)
+                        continue
+
+                    # Keep high-confidence unknown symbols to avoid false negatives.
+                    if ticker in explicit_candidates:
+                        filtered.append(ticker)
+                        continue
+
+                    # Keep repeated unknown symbols (mentioned multiple times).
+                    if candidate_count.get(ticker, 0) >= 2:
+                        filtered.append(ticker)
+                        continue
+
+                    # Otherwise drop as likely noise.
+                    continue
+
+                filtered.append(ticker)
+
+            return filtered
             
         except Exception as e:
             logger.error(f"Error extracting tickers: {e}")
@@ -440,7 +544,8 @@ class NewsletterService:
             
             if len(embedding) != 768:
                 logger.warning(f"Unexpected embedding dimension: {len(embedding)} (expected 768)")
-            
+                return None
+
             logger.debug(f"Generated {len(embedding)}-dimension embedding")
             return embedding
             

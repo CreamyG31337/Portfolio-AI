@@ -109,7 +109,9 @@ def newsletter_ai_processing_job() -> None:
                     continue
 
                 # Generate AI summary
-                summary_data = generate_summary(content)
+                clean_subj = service.clean_subject(subject)
+                summary_input = f"Subject: {clean_subj}\n\n{content}" if clean_subj else content
+                summary_data = generate_summary(summary_input, article_type="Newsletter")
                 summary = None
                 tickers = []
                 if isinstance(summary_data, str):
@@ -117,9 +119,17 @@ def newsletter_ai_processing_job() -> None:
                 elif isinstance(summary_data, dict):
                     summary = summary_data.get("summary", "")
                     tickers = service.sanitize_ai_tickers(summary_data.get("tickers", []))
+                    try:
+                        from ticker_inference import infer_tickers_from_companies, infer_tickers_from_text
+                        tickers = sorted(
+                            set(tickers)
+                            | set(infer_tickers_from_companies(summary_data.get("companies", [])))
+                            | set(infer_tickers_from_text(subject))
+                        )
+                    except Exception as infer_err:
+                        logger.warning(f"Company->ticker inference failed for newsletter {nl_id}: {infer_err}")
 
                 # Also re-extract tickers from cleaned subject+body
-                clean_subj = service.clean_subject(subject)
                 extracted_tickers = service.extract_tickers(f"{clean_subj}\n\n{content}")
                 # Merge AI-detected tickers with regex-extracted ones (deduplicated)
                 all_tickers = sorted(set(tickers) | set(extracted_tickers)) if tickers else extracted_tickers

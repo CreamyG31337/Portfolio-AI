@@ -85,7 +85,7 @@ class ResearchRepository:
         self,
         tickers: Optional[List[str]] = None,
         sector: Optional[str] = None,
-        article_type: str = "ticker_news",
+        article_type: str = "Ticker News",
         title: str = "",
         url: str = "",
         summary: Optional[str] = None,
@@ -1060,14 +1060,21 @@ class ResearchRepository:
             total_result = self.client.execute_query("SELECT COUNT(*) as count FROM research_articles")
             stats['total_count'] = total_result[0]['count'] if total_result else 0
             
-            # Count by type
+            # Count by type (normalize keys to lowercase_underscore for consistent lookups)
             type_result = self.client.execute_query("""
                 SELECT article_type, COUNT(*) as count
                 FROM research_articles
                 GROUP BY article_type
                 ORDER BY count DESC
             """)
-            stats['by_type'] = {row['article_type']: row['count'] for row in type_result} if type_result else {}
+            by_type: dict[str, int] = {}
+            if type_result:
+                for row in type_result:
+                    raw_key = row['article_type']
+                    # Normalize "Market News" -> "market_news", "ticker_news" stays "ticker_news"
+                    key = raw_key.lower().replace(' ', '_') if raw_key else 'unknown'
+                    by_type[key] = by_type.get(key, 0) + row['count']
+            stats['by_type'] = by_type
             
             # Count by source
             source_result = self.client.execute_query("""
