@@ -31,6 +31,7 @@ def alpha_research_job() -> None:
     """
     job_id = 'alpha_research'
     start_time = time.time()
+    from scheduler.jobs_common import has_strong_market_signal
 
     # Global AI lock (SearXNG + Ollama workload)
     try:
@@ -115,7 +116,8 @@ def alpha_research_job() -> None:
         base_query = queries[query_index]
         
         # Full query with site restrictions
-        final_query = f'{base_query} ({site_dork})'
+        negative_keywords = "-astrology -horoscope -zodiac -restaurant -recipe -celebrity -movie -tv -sports"
+        final_query = f'{base_query} ({site_dork}) {negative_keywords}'
         
         logger.info(f"🔭 Alpha Query: '{final_query}'")
         
@@ -209,7 +211,8 @@ def alpha_research_job() -> None:
                 extracted_sector = None
                 embedding = None
                 
-                summary_data = generate_summary(content)
+                summary_input = f"Title: {title}\n\n{content}" if title else content
+                summary_data = generate_summary(summary_input, article_type="Alpha Research")
 
                 if isinstance(summary_data, str):
                     summary = summary_data
@@ -236,15 +239,22 @@ def alpha_research_job() -> None:
                     if sectors:
                         extracted_sector = sectors[0]
 
-                    market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                    if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
-                        reason = summary_data.get("market_relevance_reason", "")
-                        articles_irrelevant += 1
-                        logger.info(
-                            f"  🚫 Skipping non-market alpha article: {title[:50]}... "
-                            f"Reason: {reason or 'No market relevance detected'}"
-                        )
-                        continue
+                market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                has_market_signal = has_strong_market_signal(
+                    title=title,
+                    content=content,
+                    tickers=extracted_tickers,
+                )
+                if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
+                    reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
+                    if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
+                        reason = reason or "No strong market signals detected in article text"
+                    articles_irrelevant += 1
+                    logger.info(
+                        f"  🚫 Skipping non-market alpha article: {title[:50]}... "
+                        f"Reason: {reason or 'No market relevance detected'}"
+                    )
+                    continue
 
                 # Embedding is Ollama-only
                 if ollama_client:

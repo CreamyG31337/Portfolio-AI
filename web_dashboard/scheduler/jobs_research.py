@@ -36,7 +36,7 @@ elif sys.path[0] != str(project_root):
     sys.path.insert(0, str(project_root))
 
 from scheduler.scheduler_core import log_job_execution
-from scheduler.jobs_common import calculate_relevance_score
+from scheduler.jobs_common import calculate_relevance_score, has_strong_market_signal
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -305,7 +305,7 @@ def market_research_job() -> None:
                 embedding = None
                 logger.info(f"  Generating summary for: {title[:50]}...")
                 summary_input = f"Title: {title}\n\n{content}" if title else content
-                summary_data = generate_summary(summary_input)
+                summary_data = generate_summary(summary_input, article_type="Market News")
 
                 # Handle backward compatibility: if old string format is returned
                 if isinstance(summary_data, str):
@@ -361,8 +361,15 @@ def market_research_job() -> None:
                     logger.warning(f"Failed to generate summary for {title[:50]}...")
 
                 market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
-                    reason = summary_data.get("market_relevance_reason", "")
+                has_market_signal = has_strong_market_signal(
+                    title=title,
+                    content=content,
+                    tickers=extracted_tickers,
+                )
+                if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
+                    reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
+                    if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
+                        reason = reason or "No strong market signals detected in article text"
                     articles_irrelevant += 1
                     logger.info(
                         f"  🚫 Skipping non-market article: {title[:50]}... "
@@ -675,7 +682,7 @@ def rss_feed_ingest_job() -> None:
                         embedding = None
                         
                         summary_input = f"Title: {title}\n\n{content}" if title else content
-                        summary_data = generate_summary(summary_input)
+                        summary_data = generate_summary(summary_input, article_type="Market News")
 
                         if isinstance(summary_data, str):
                             summary = summary_data
@@ -710,8 +717,15 @@ def rss_feed_ingest_job() -> None:
                                 extracted_sector = sectors[0]
 
                         market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                        if not extracted_tickers and market_relevance == "NOT_MARKET_RELATED":
-                            reason = summary_data.get("market_relevance_reason", "")
+                        has_market_signal = has_strong_market_signal(
+                            title=title,
+                            content=content,
+                            tickers=extracted_tickers,
+                        )
+                        if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
+                            reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
+                            if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
+                                reason = reason or "No strong market signals detected in RSS content"
                             total_articles_irrelevant += 1
                             logger.info(
                                 f"  🚫 Skipping non-market RSS item: {title[:40]}... "
@@ -1011,6 +1025,7 @@ def ticker_research_job() -> None:
         articles_failed = 0
         tickers_processed = 0
         sectors_researched = 0
+        articles_irrelevant = 0
 
         # Safety timeouts (avoid runaway jobs)
         MAX_JOB_DURATION = 60 * 60  # 60 minutes total
@@ -1083,12 +1098,29 @@ def ticker_research_job() -> None:
                         summary_data = {}
                         embedding = None
                         summary_input = f"Title: {title}\n\n{content}" if title else content
-                        summary_data = generate_summary(summary_input)
+                        summary_data = generate_summary(summary_input, article_type="Ticker News")
 
                         if isinstance(summary_data, str):
                             summary = summary_data
                         elif isinstance(summary_data, dict) and summary_data:
                             summary = summary_data.get("summary", "")
+
+                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                        has_market_signal = has_strong_market_signal(
+                            title=title,
+                            content=content,
+                            required_terms=[sector],
+                        )
+                        if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
+                            reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
+                            if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
+                                reason = reason or "No strong market signals detected for sector query"
+                            articles_irrelevant += 1
+                            logger.info(
+                                f"  🚫 Skipping non-market sector article: {title[:40]}... "
+                                f"Reason: {reason or 'No market relevance detected'}"
+                            )
+                            continue
 
                         # Generate embedding for semantic search (Ollama-only)
                         if ollama_client:
@@ -1253,7 +1285,7 @@ def ticker_research_job() -> None:
                         extracted_sector = None
                         embedding = None
                         summary_input = f"Title: {title}\n\n{content}" if title else content
-                        summary_data = generate_summary(summary_input)
+                        summary_data = generate_summary(summary_input, article_type="Ticker News")
 
                         # Handle backward compatibility: if old string format is returned
                         if isinstance(summary_data, str):
@@ -1302,6 +1334,27 @@ def ticker_research_job() -> None:
                             # Log extracted metadata
                             if tickers or sectors or summary_data.get("key_themes"):
                                 logger.debug(f"Extracted metadata - Tickers: {tickers}, Sectors: {sectors}, Themes: {summary_data.get('key_themes', [])}")
+
+                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+                        required_terms = [ticker]
+                        if company and company.lower() != "none":
+                            required_terms.append(company)
+                        has_market_signal = has_strong_market_signal(
+                            title=title,
+                            content=content,
+                            tickers=extracted_tickers,
+                            required_terms=required_terms,
+                        )
+                        if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
+                            reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
+                            if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
+                                reason = reason or "No strong market signals detected for ticker query"
+                            articles_irrelevant += 1
+                            logger.info(
+                                f"  🚫 Skipping non-market ticker article: {title[:40]}... "
+                                f"Reason: {reason or 'No market relevance detected'}"
+                            )
+                            continue
 
                         # Generate embedding for semantic search (Ollama-only)
                         if ollama_client:
@@ -1397,6 +1450,8 @@ def ticker_research_job() -> None:
         if sectors_researched > 0:
             message_parts.append(f"{sectors_researched} sectors (for ETFs)")
         message_parts.append(f"Saved {articles_saved} new articles")
+        if articles_irrelevant > 0:
+            message_parts.append(f"Skipped {articles_irrelevant} non-market articles")
         message = ". ".join(message_parts) + "."
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         mark_job_completed('ticker_research', target_date, None, [], duration_ms=duration_ms, message=message)
