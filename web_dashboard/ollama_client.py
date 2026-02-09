@@ -578,7 +578,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                     provider="ollama",
                     input_chars=len(combined_text),
                     input_hash=_compute_input_hash(combined_text),
-                    output_summary=json.dumps(result, default=str)[:200] if result else "",
+                    output_summary=json.dumps(result, default=str) if result else "",
                     duration_ms=int((time.time() - audit_start) * 1000),
                     success=bool(result.get("sentiment")),
                     error=audit_error,
@@ -1457,7 +1457,7 @@ def _generate_summary_once(
                 provider=_detect_provider(model),
                 input_chars=len(text),
                 input_hash=_compute_input_hash(text),
-                output_summary=(result.get("summary", "") or "")[:200]
+                output_summary=(result.get("summary", "") or "")
                 if isinstance(result, dict)
                 else "",
                 duration_ms=int((time.time() - start_ms) * 1000),

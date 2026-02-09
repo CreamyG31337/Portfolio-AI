@@ -555,12 +555,32 @@ class SocialSentimentService:
             
             if texts_for_ai and self.ollama:
                 try:
+                    # Attach top Reddit post context so AI audit logs show source URL/title.
+                    if top_5_posts:
+                        try:
+                            from ai_audit import set_audit_context
+
+                            top_post = top_5_posts[0]
+                            set_audit_context(
+                                article_url=top_post.get("url"),
+                                article_title=top_post.get("title"),
+                            )
+                        except Exception:
+                            pass
+
                     result = self.ollama.analyze_crowd_sentiment(texts_for_ai, ticker)
                     sentiment_label = result.get('sentiment', 'NEUTRAL')
                     reasoning = result.get('reasoning', '')
                     sentiment_score = self.map_sentiment_label_to_score(sentiment_label)
                 except Exception as e:
                     logger.warning(f"Ollama sentiment analysis failed for {ticker}: {e}")
+                finally:
+                    try:
+                        from ai_audit import clear_audit_context
+
+                        clear_audit_context()
+                    except Exception:
+                        pass
             
             # Prepare raw_data (top 3 posts)
             raw_data = None
