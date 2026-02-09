@@ -4,7 +4,7 @@
 import json
 import logging
 import re
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,168 @@ def _sanitize_summary_tickers(raw_tickers: Any) -> list[str]:
     return cleaned
 
 
-def parse_summary_response(raw_response: str) -> Dict[str, Any]:
+def _decode_json_string(raw_value: str) -> str:
+    """Decode a JSON-escaped string fragment safely."""
+    try:
+        return json.loads(f"\"{raw_value}\"")
+    except Exception:
+        return (
+            raw_value.replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace("\\r", "\r")
+            .replace('\\"', '"')
+        )
+
+
+def _extract_json_string_field(payload: str, key: str) -> str | None:
+    """Extract a quoted JSON string value for a key from JSON-like text."""
+    pattern = rf'"{re.escape(key)}"\s*:\s*"((?:\\.|[^"\\])*)"'
+    match = re.search(pattern, payload, flags=re.DOTALL)
+    if not match:
+        return None
+    return _decode_json_string(match.group(1)).strip()
+
+
+def _split_loose_array_items(raw_array: str) -> list[str]:
+    """Split a JSON-like array body by commas, preserving quoted commas."""
+    items: list[str] = []
+    current: list[str] = []
+    in_quote = False
+    escaping = False
+
+    for char in raw_array:
+        if escaping:
+            current.append(char)
+            escaping = False
+            continue
+        if in_quote and char == "\\":
+            current.append(char)
+            escaping = True
+            continue
+        if char == '"':
+            current.append(char)
+            in_quote = not in_quote
+            continue
+        if char == "," and not in_quote:
+            token = "".join(current).strip()
+            if token:
+                items.append(token)
+            current = []
+            continue
+        current.append(char)
+
+    token = "".join(current).strip()
+    if token:
+        items.append(token)
+    return items
+
+
+def _extract_loose_string_array(payload: str, key: str) -> list[str]:
+    """Extract a string array from malformed JSON where some items may be unquoted."""
+    pattern = rf'"{re.escape(key)}"\s*:\s*\[(.*?)\]'
+    match = re.search(pattern, payload, flags=re.DOTALL)
+    if not match:
+        return []
+
+    values: list[str] = []
+    for token in _split_loose_array_items(match.group(1)):
+        token = token.strip()
+        if not token:
+            continue
+        if token.startswith('"') and token.endswith('"'):
+            try:
+                value = json.loads(token)
+            except Exception:
+                value = token.strip('"')
+        else:
+            value = token.strip().strip('"').strip("'")
+
+        value_str = str(value).strip()
+        if not value_str:
+            continue
+        if value_str.lower() in {"null", "none"}:
+            continue
+        values.append(value_str)
+
+    return values
+
+
+def _extract_relationships_array(payload: str) -> list[dict[str, str]]:
+    """Best-effort extraction of relationships from malformed JSON-like payloads."""
+    pattern = r'"relationships"\s*:\s*\[(.*?)\]'
+    match = re.search(pattern, payload, flags=re.DOTALL)
+    if not match:
+        return []
+
+    body = match.group(1).strip()
+    if not body:
+        return []
+
+    try:
+        parsed = json.loads(f"[{body}]")
+    except Exception:
+        return []
+
+    relationships: list[dict[str, str]] = []
+    for rel in parsed:
+        if isinstance(rel, dict):
+            source = str(rel.get("source", "")).strip().upper()
+            target = str(rel.get("target", "")).strip().upper()
+            rel_type = str(rel.get("type", "")).strip().upper()
+            if source and target and rel_type:
+                relationships.append({"source": source, "target": target, "type": rel_type})
+    return relationships
+
+
+def _parse_summary_response_loose(raw_response: str) -> dict[str, Any] | None:
+    """Recover core fields from malformed JSON-like model output."""
+    summary_text = _extract_json_string_field(raw_response, "summary")
+    if not summary_text:
+        return None
+
+    sentiment = (_extract_json_string_field(raw_response, "sentiment") or "NEUTRAL").upper()
+    if sentiment not in ("VERY_BULLISH", "BULLISH", "NEUTRAL", "BEARISH", "VERY_BEARISH"):
+        sentiment = "NEUTRAL"
+
+    logic_check = (_extract_json_string_field(raw_response, "logic_check") or "NEUTRAL").upper()
+    if logic_check not in ("DATA_BACKED", "HYPE_DETECTED", "NEUTRAL"):
+        logic_check = "NEUTRAL"
+
+    market_relevance = (
+        _extract_json_string_field(raw_response, "market_relevance") or "UNKNOWN"
+    ).upper()
+    if market_relevance not in ("MARKET_RELATED", "NOT_MARKET_RELATED"):
+        market_relevance = "UNKNOWN"
+
+    sentiment_score_map = {
+        "VERY_BULLISH": 2.0,
+        "BULLISH": 1.0,
+        "NEUTRAL": 0.0,
+        "BEARISH": -1.0,
+        "VERY_BEARISH": -2.0,
+    }
+
+    return {
+        "summary": summary_text.strip(),
+        "claims": _extract_loose_string_array(raw_response, "claims"),
+        "fact_check": (_extract_json_string_field(raw_response, "fact_check") or "").strip(),
+        "conclusion": (_extract_json_string_field(raw_response, "conclusion") or "").strip(),
+        "sentiment": sentiment,
+        "sentiment_score": sentiment_score_map.get(sentiment, 0.0),
+        "logic_check": logic_check,
+        "tickers": _sanitize_summary_tickers(_extract_loose_string_array(raw_response, "tickers")),
+        "sectors": _extract_loose_string_array(raw_response, "sectors"),
+        "key_themes": _extract_loose_string_array(raw_response, "key_themes"),
+        "companies": _extract_loose_string_array(raw_response, "companies"),
+        "market_relevance": market_relevance,
+        "market_relevance_reason": (
+            _extract_json_string_field(raw_response, "market_relevance_reason") or ""
+        ).strip(),
+        "relationships": _extract_relationships_array(raw_response),
+    }
+
+
+def parse_summary_response(raw_response: str) -> dict[str, Any]:
     """Parse JSON from model output into the standard summary dict. Handles markdown code blocks and fallback."""
     if not raw_response or not raw_response.strip():
         return {}
@@ -106,7 +267,7 @@ def parse_summary_response(raw_response: str) -> Dict[str, Any]:
             for item in value:
                 if isinstance(item, str) and item.strip():
                     result.append(item.strip())
-                elif isinstance(item, (int, float)):
+                elif isinstance(item, int | float):
                     result.append(str(item).strip())
             return result
 
@@ -181,6 +342,14 @@ def parse_summary_response(raw_response: str) -> Dict[str, Any]:
             "relationships": relationships,
         }
     except json.JSONDecodeError as e:
+        recovered = _parse_summary_response_loose(raw_response)
+        if recovered is not None:
+            logger.warning(
+                "Strict JSON parse failed for summary response; recovered with loose parser: %s",
+                e,
+            )
+            return recovered
+
         logger.warning(f"Failed to parse JSON from summary response, falling back to text-only: {e}")
         logger.debug(f"Raw response (first 500 chars): {raw_response[:500]}")
         return {
@@ -259,7 +428,11 @@ MARKET RELEVANCE CHECK:
 Determine whether the article is related to public markets or market-relevant economics.
 - "MARKET_RELATED": The article is about publicly traded companies, stock/credit/crypto markets, ETFs, earnings, IPOs, M&A, SEC/regulatory actions, macroeconomic policy likely to impact markets (rates, inflation, fiscal policy), or industry news tied to listed companies.
 - "NOT_MARKET_RELATED": The article is about unrelated topics (sports, celebrity, weather, local crime, lifestyle, travel, etc.) with no meaningful market/financial relevance.
-If uncertain, choose "MARKET_RELATED".
+CRITICAL RULES:
+1. Do NOT classify as market-related just because an article mentions generic words like "investment", "economy", "jobs", "funding", or "business".
+2. Require an explicit tie to public markets, listed securities, market instruments, or named/publicly-traded companies.
+3. Lifestyle/entertainment/local-policy/human-interest stories are NOT_MARKET_RELATED even if they mention money or investment plans.
+4. If uncertain, choose "NOT_MARKET_RELATED".
 
 EXTRACTION REQUIREMENTS:
 1. Generate a comprehensive summary with 5-7+ bullet points covering all key information
