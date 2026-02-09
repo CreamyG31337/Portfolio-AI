@@ -29,9 +29,9 @@ interface ThemeRequest {
 function showSuccess(elementId: string): void {
     const element = document.getElementById(elementId);
     if (element) {
-        element.style.display = 'block';
+        element.classList.remove('hidden');
         setTimeout(() => {
-            element.style.display = 'none';
+            element.classList.add('hidden');
         }, 3000);
     }
 }
@@ -48,9 +48,9 @@ function showSettingsError(elementId: string, errorMessage?: string): void {
         if (errorMessage) {
             element.textContent = '❌ ' + errorMessage;
         }
-        element.style.display = 'block';
+        element.classList.remove('hidden');
         setTimeout(() => {
-            element.style.display = 'none';
+            element.classList.add('hidden');
         }, 5000);
     }
 }

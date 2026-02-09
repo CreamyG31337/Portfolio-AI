@@ -196,19 +196,19 @@ async function updateSchedulerBadge(): Promise<void> {
         if (hasRunningJob) {
             // Priority 1: Job is running - show pulsing amber badge
             badge.textContent = 'Running';
-            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-amber-800 bg-amber-100 rounded-full dark:bg-amber-900 dark:text-amber-300 animate-pulse sidebar-badge';
+            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium bg-theme-warning-bg text-theme-warning-text rounded-full animate-pulse sidebar-badge';
         } else if (hasErrors) {
             // Priority 2: Errors exist but no jobs running - show solid red badge
             badge.textContent = 'Errors';
-            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-red-800 bg-red-100 rounded-full dark:bg-red-900 dark:text-red-300 sidebar-badge';
+            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium bg-theme-error-bg text-theme-error-text rounded-full sidebar-badge';
         } else if (data.scheduler_running) {
             // Priority 3: Scheduler running, no jobs running, no errors - show solid green badge
             badge.textContent = 'Running';
-            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-green-800 bg-green-100 rounded-full dark:bg-green-900 dark:text-green-300 sidebar-badge';
+            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium bg-theme-success-bg text-theme-success-text rounded-full sidebar-badge';
         } else {
             // Priority 4: Scheduler stopped - show solid red badge
             badge.textContent = 'Stopped';
-            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-red-800 bg-red-100 rounded-full dark:bg-red-900 dark:text-red-300 sidebar-badge';
+            badge.className = 'inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium bg-theme-error-bg text-theme-error-text rounded-full sidebar-badge';
         }
     } catch (error) {
         // Silently fail - badge will show server-rendered status
