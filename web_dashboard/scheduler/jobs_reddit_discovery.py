@@ -87,7 +87,7 @@ def subreddit_scanner_job() -> None:
                             article_type="Reddit Discovery",
                             title=f"[{sub}] {item.get('title')}",
                             url=item.get('url'),
-                            summary=f"AI Analysis: {item.get('reasoning')}",
+                            summary=item.get('reasoning', ''),
                             content=item.get('full_text', f"Full text unavailable. Score: {item.get('score')}"),
                             published_at=datetime.now(timezone.utc),
                             relevance_score=confidence,
