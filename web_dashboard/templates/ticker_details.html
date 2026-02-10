@@ -13,17 +13,23 @@
 <!-- Ticker Search -->
 <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
     <label for="ticker-search-input" class="block text-sm font-medium text-text-primary mb-2">
-        Search Ticker
+        Search Ticker or Company
     </label>
-    <div class="relative w-full md:w-1/3">
-        <input type="text" id="ticker-search-input"
-            inputmode="text"
-            autocomplete="off"
-            autocapitalize="characters"
-            placeholder="Type ticker symbol..."
-            class="w-full px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
-        <div id="ticker-autocomplete-dropdown"
-            class="hidden absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-dashboard-surface border border-border rounded-lg shadow-lg">
+    <div class="relative w-full md:w-1/2">
+        <div class="relative">
+            <input type="text" id="ticker-search-input"
+                inputmode="text"
+                autocomplete="off"
+                placeholder="Search by ticker or company name..."
+                class="w-full px-4 py-2 pr-10 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+            <div id="ticker-search-spinner" class="hidden absolute right-3 top-1/2 -translate-y-1/2">
+                <div class="animate-spin h-5 w-5 border-2 border-accent border-t-transparent rounded-full"></div>
+            </div>
+        </div>
+        <p class="text-xs text-text-secondary mt-1">Press Enter to search</p>
+        <!-- Search results dropdown -->
+        <div id="ticker-search-results"
+            class="hidden absolute z-50 w-full mt-1 max-h-80 overflow-y-auto bg-dashboard-surface border border-border rounded-lg shadow-lg">
         </div>
     </div>
 </div>
@@ -42,7 +48,7 @@
 <!-- Placeholder Message -->
 <div id="placeholder-message"
     class="bg-theme-info-bg border border-theme-info-text text-theme-info-text px-4 py-3 rounded mb-6">
-    <p>Enter a ticker symbol above to view detailed information.</p>
+    <p>Enter a ticker symbol or company name above and press Enter to search.</p>
 </div>
 
 <!-- Basic Info Section -->

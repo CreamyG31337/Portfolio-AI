@@ -3372,6 +3372,78 @@ def api_ticker_list():
             "type": type(e).__name__
         }), 500
 
+
+@app.route('/api/v2/ticker/search')
+@require_auth
+def api_ticker_search():
+    """Search for tickers by company name or symbol using Yahoo Finance.
+
+    Query Parameters:
+        q (str): Search query (company name or ticker symbol).
+
+    Returns:
+        JSON with 'results' list of {symbol, name, exchange, type} and 'exact_match' bool.
+    """
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify({"results": [], "exact_match": False, "error": "No query provided"}), 400
+
+    try:
+        # Check if query is an exact ticker match in our database
+        known_tickers = _get_all_tickers_cached()
+        query_upper = query.upper()
+        if query_upper in known_tickers:
+            # Try to get company name from securities table
+            name = query_upper
+            try:
+                supabase_client = SupabaseClient()
+                sec_resp = supabase_client.client.table("securities").select(
+                    "company_name"
+                ).eq("ticker", query_upper).limit(1).execute()
+                if sec_resp.data and sec_resp.data[0].get("company_name"):
+                    name = sec_resp.data[0]["company_name"]
+            except Exception:
+                pass
+            return jsonify({
+                "results": [{"symbol": query_upper, "name": name, "exchange": "", "type": "EQUITY"}],
+                "exact_match": True
+            })
+
+        # Use yfinance Search to find matches
+        import yfinance as yf
+        search = yf.Search(
+            query,
+            max_results=10,
+            news_count=0,
+            enable_fuzzy_query=True
+        )
+        quotes = search.quotes if hasattr(search, 'quotes') else []
+
+        results = []
+        for q_item in quotes:
+            # Filter to equities and ETFs only
+            quote_type = q_item.get("quoteType", q_item.get("typeDisp", ""))
+            if quote_type.upper() not in ("EQUITY", "ETF", "MUTUALFUND", "INDEX"):
+                continue
+            results.append({
+                "symbol": q_item.get("symbol", ""),
+                "name": q_item.get("longname") or q_item.get("shortname", ""),
+                "exchange": q_item.get("exchDisp", q_item.get("exchange", "")),
+                "type": quote_type,
+            })
+
+        # Check if top result is an exact symbol match
+        exact = (
+            len(results) == 1
+            or (len(results) > 0 and results[0]["symbol"].upper() == query_upper)
+        )
+
+        return jsonify({"results": results, "exact_match": exact})
+    except Exception as e:
+        logger.error(f"Error in ticker search for '{query}': {e}", exc_info=True)
+        return jsonify({"results": [], "exact_match": False, "error": str(e)}), 500
+
+
 @cache_data(ttl=300)
 def _get_ticker_info_cached(
     ticker: str,
