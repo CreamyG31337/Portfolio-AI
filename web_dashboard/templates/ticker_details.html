@@ -626,6 +626,174 @@
                 </div>
             </div>
 
+            <!-- Momentum Signal -->
+            <div class="mt-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <h3 class="text-lg font-semibold text-text-primary">Momentum Signal</h3>
+                    <span id="momentum-bias-badge" class="px-2.5 py-0.5 rounded text-xs font-bold border bg-dashboard-surface-alt text-text-secondary border-border">-</span>
+                    <span id="momentum-composite" class="text-sm font-semibold text-text-primary">-</span>
+                </div>
+                <!-- Composite score bar -->
+                <div class="w-full bg-dashboard-background rounded-full h-2.5 mb-4">
+                    <div id="momentum-composite-bar" class="h-2.5 rounded-full bg-accent transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <!-- Trend Following -->
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Trend Following
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    EMA alignment and ADX trend strength.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="mom-trend-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
+                        <div class="text-xs text-text-tertiary mt-1">EMA: <span id="mom-trend-ema">-</span></div>
+                    </div>
+                    <!-- Momentum -->
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Momentum
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Returns over 1m/3m/6m and MACD histogram direction.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="mom-momentum-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
+                        <div class="text-xs text-text-tertiary mt-1">MACD: <span id="mom-momentum-macd">-</span></div>
+                        <div class="text-xs text-text-tertiary">1m: <span id="mom-momentum-1m">-</span> | 3m: <span id="mom-momentum-3m">-</span></div>
+                    </div>
+                    <!-- Mean Reversion -->
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Mean Reversion
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Z-score, Bollinger %B, and RSI deviation from extremes.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="mom-meanrev-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
+                        <div class="text-xs text-text-tertiary mt-1">Z: <span id="mom-meanrev-z">-</span> | BB %B: <span id="mom-meanrev-bb">-</span></div>
+                        <div class="text-xs text-text-tertiary">RSI: <span id="mom-meanrev-rsi">-</span></div>
+                    </div>
+                    <!-- Volatility -->
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Volatility
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Volatility ratio and annualized volatility assessment.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="mom-vol-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
+                        <div class="text-xs text-text-tertiary mt-1">Ratio: <span id="mom-vol-ratio">-</span></div>
+                        <div class="text-xs text-text-tertiary">Ann: <span id="mom-vol-ann">-</span></div>
+                    </div>
+                    <!-- Oscillators -->
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Oscillators
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Stochastic %K, Williams %R, and Rate of Change.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="mom-osc-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
+                        <div class="text-xs text-text-tertiary mt-1">Stoch %K: <span id="mom-osc-stoch">-</span></div>
+                        <div class="text-xs text-text-tertiary">W%R: <span id="mom-osc-wr">-</span> | ROC: <span id="mom-osc-roc">-</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fundamental Signal -->
+            <div class="mt-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <h3 class="text-lg font-semibold text-text-primary">Fundamental Signal</h3>
+                    <span id="fund-quality-badge" class="px-2.5 py-0.5 rounded text-xs font-bold border bg-dashboard-surface-alt text-text-secondary border-border">-</span>
+                    <span id="fund-composite" class="text-sm font-semibold text-text-primary">-</span>
+                    <span id="fund-metrics-count" class="text-xs text-text-tertiary">-</span>
+                </div>
+                <!-- Composite score bar -->
+                <div class="w-full bg-dashboard-background rounded-full h-2.5 mb-4">
+                    <div id="fund-composite-bar" class="h-2.5 rounded-full bg-accent transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <!-- Profitability -->
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Profitability
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Return on equity, net margin, and operating margin.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="fund-profit-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
+                        <div class="text-xs text-text-tertiary mt-1">ROE: <span id="fund-profit-roe">-</span></div>
+                        <div class="text-xs text-text-tertiary">Net Margin: <span id="fund-profit-margin">-</span></div>
+                        <div class="text-xs text-text-tertiary">Op Margin: <span id="fund-profit-op">-</span></div>
+                    </div>
+                    <!-- Growth -->
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Growth
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Revenue growth and earnings growth rates.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="fund-growth-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
+                        <div class="text-xs text-text-tertiary mt-1">Revenue: <span id="fund-growth-rev">-</span></div>
+                        <div class="text-xs text-text-tertiary">Earnings: <span id="fund-growth-earn">-</span></div>
+                    </div>
+                    <!-- Financial Health -->
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Financial Health
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    Current ratio, debt-to-equity, and free cash flow.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="fund-health-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
+                        <div class="text-xs text-text-tertiary mt-1">Current Ratio: <span id="fund-health-cr">-</span></div>
+                        <div class="text-xs text-text-tertiary">D/E: <span id="fund-health-de">-</span></div>
+                        <div class="text-xs text-text-tertiary">FCF: <span id="fund-health-fcf">-</span></div>
+                    </div>
+                    <!-- Valuation -->
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="text-sm text-text-secondary flex items-center gap-1">
+                            Valuation
+                            <div class="group relative inline-block">
+                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
+                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                    P/E, P/B, P/S, and PEG valuation multiples.
+                                </div>
+                            </div>
+                        </div>
+                        <div id="fund-val-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
+                        <div class="text-xs text-text-tertiary mt-1">P/E: <span id="fund-val-pe">-</span></div>
+                        <div class="text-xs text-text-tertiary">P/B: <span id="fund-val-pb">-</span></div>
+                        <div class="text-xs text-text-tertiary">P/S: <span id="fund-val-ps">-</span> | PEG: <span id="fund-val-peg">-</span></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- AI Explanation -->
             <div class="mt-6">
                 <h3 class="text-lg font-semibold mb-3 text-text-primary">AI Insight</h3>

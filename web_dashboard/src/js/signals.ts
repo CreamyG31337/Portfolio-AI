@@ -10,6 +10,10 @@ interface SignalRow {
     fear_level: string;
     risk_score: number;
     trend: string;
+    momentum_bias?: string;
+    momentum_score?: number;
+    fundamental_quality?: string;
+    fundamental_score?: number;
     analysis_date?: string;
     cached?: boolean;
     analyzed?: boolean;
@@ -359,6 +363,54 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             }
         },
         {
+            field: 'momentum_bias',
+            headerName: 'Momentum',
+            minWidth: 120,
+            // Safe: values are server-generated enums (BULLISH/BEARISH/NEUTRAL) from momentum_signal.py
+            cellRenderer: (params: any) => {
+                const bias = params.value || 'NEUTRAL';
+                let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-medium border ';
+                switch (bias) {
+                    case 'BULLISH':
+                        badgeClass += 'bg-green-500/10 text-green-500 border-green-500/30';
+                        break;
+                    case 'BEARISH':
+                        badgeClass += 'bg-red-500/10 text-red-500 border-red-500/30';
+                        break;
+                    default:
+                        badgeClass += 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30';
+                }
+                return `<span class="${badgeClass}">${bias}</span>`;
+            }
+        },
+        {
+            field: 'fundamental_quality',
+            headerName: 'Quality',
+            minWidth: 120,
+            // Safe: values are server-generated enums (STRONG/GOOD/FAIR/WEAK/UNKNOWN) from fundamental_signal.py
+            cellRenderer: (params: any) => {
+                const quality = params.value || 'UNKNOWN';
+                let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-medium border ';
+                switch (quality) {
+                    case 'STRONG':
+                        badgeClass += 'bg-green-500/10 text-green-500 border-green-500/30';
+                        break;
+                    case 'GOOD':
+                        badgeClass += 'bg-blue-500/10 text-blue-500 border-blue-500/30';
+                        break;
+                    case 'FAIR':
+                        badgeClass += 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30';
+                        break;
+                    case 'WEAK':
+                        badgeClass += 'bg-red-500/10 text-red-500 border-red-500/30';
+                        break;
+                    default:
+                        badgeClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
+                }
+                return `<span class="${badgeClass}">${quality}</span>`;
+            }
+        },
+        {
             field: 'analysis_date',
             headerName: 'Last Updated',
             minWidth: 180,
@@ -531,6 +583,70 @@ function renderModalSignals(signals: any): void {
     if (rsiEl) rsiEl.textContent = timing.rsi !== undefined ? timing.rsi.toFixed(1) : 'N/A';
     if (cciEl) cciEl.textContent = timing.cci !== undefined ? timing.cci.toFixed(1) : 'N/A';
 
+    // Momentum signal
+    const momentum = signals.momentum || {};
+    const momBiasEl = document.getElementById('signals-modal-momentum-bias');
+    const momScoreEl = document.getElementById('signals-modal-momentum-score');
+    if (momBiasEl) {
+        const bias = momentum.bias || 'NEUTRAL';
+        let biasClass = 'px-2.5 py-0.5 rounded text-xs font-bold border ';
+        switch (bias) {
+            case 'BULLISH':
+                biasClass += 'bg-green-500/10 text-green-500 border-green-500/30';
+                break;
+            case 'BEARISH':
+                biasClass += 'bg-red-500/10 text-red-500 border-red-500/30';
+                break;
+            default:
+                biasClass += 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30';
+        }
+        momBiasEl.innerHTML = `<span class="${biasClass}">${bias}</span>`;
+    }
+    if (momScoreEl) {
+        const score = momentum.composite_score ?? 0;
+        momScoreEl.textContent = `${(score * 100).toFixed(0)}%`;
+    }
+    const momEmaEl = document.getElementById('signals-modal-momentum-ema');
+    if (momEmaEl) {
+        const tf = momentum.trend_following || {};
+        momEmaEl.textContent = tf.ema_alignment || 'N/A';
+    }
+
+    // Fundamental signal
+    const fundamental = signals.fundamental || {};
+    const fundQualityEl = document.getElementById('signals-modal-fund-quality');
+    const fundScoreEl = document.getElementById('signals-modal-fund-score');
+    const fundMetricsEl = document.getElementById('signals-modal-fund-metrics');
+    if (fundQualityEl) {
+        const quality = fundamental.quality || 'UNKNOWN';
+        let qualityClass = 'px-2.5 py-0.5 rounded text-xs font-bold border ';
+        switch (quality) {
+            case 'STRONG':
+                qualityClass += 'bg-green-500/10 text-green-500 border-green-500/30';
+                break;
+            case 'GOOD':
+                qualityClass += 'bg-blue-500/10 text-blue-500 border-blue-500/30';
+                break;
+            case 'FAIR':
+                qualityClass += 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30';
+                break;
+            case 'WEAK':
+                qualityClass += 'bg-red-500/10 text-red-500 border-red-500/30';
+                break;
+            default:
+                qualityClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
+        }
+        fundQualityEl.innerHTML = `<span class="${qualityClass}">${quality}</span>`;
+    }
+    if (fundScoreEl) {
+        const score = fundamental.composite_score ?? 0;
+        fundScoreEl.textContent = `${(score * 100).toFixed(0)}%`;
+    }
+    if (fundMetricsEl) {
+        const metricsAvail = fundamental.metrics_available ?? 0;
+        fundMetricsEl.textContent = `${metricsAvail} metrics`;
+    }
+
     if (explanationEl && signals.explanation) {
         explanationEl.textContent = signals.explanation;
     }
@@ -554,6 +670,10 @@ function updateGridRowFromSignals(ticker: string, signals: any): void {
         node.setDataValue('fear_level', signals.fear_risk?.fear_level || 'LOW');
         node.setDataValue('risk_score', signals.fear_risk?.risk_score || 0);
         node.setDataValue('trend', signals.structure?.trend || 'NEUTRAL');
+        node.setDataValue('momentum_bias', signals.momentum?.bias || 'NEUTRAL');
+        node.setDataValue('momentum_score', signals.momentum?.composite_score || 0);
+        node.setDataValue('fundamental_quality', signals.fundamental?.quality || 'UNKNOWN');
+        node.setDataValue('fundamental_score', signals.fundamental?.composite_score || 0);
         node.setDataValue('analysis_date', signals.analysis_date);
         node.setDataValue('explanation', signals.explanation || null);
         node.setDataValue('analyzed', !!signals.explanation);

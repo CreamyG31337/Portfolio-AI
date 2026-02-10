@@ -295,6 +295,57 @@
                     </div>
                 </div>
 
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="flex items-center gap-2">
+                            <h4 class="text-sm font-semibold text-text-primary">Momentum</h4>
+                            <button type="button" data-tooltip-target="momentum-tooltip"
+                                class="text-text-tertiary hover:text-text-primary">
+                                <i class="fas fa-circle-info"></i>
+                            </button>
+                            <div id="momentum-tooltip" role="tooltip"
+                                class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700">
+                                Weighted composite of trend following, momentum, mean reversion, volatility, and oscillator scores.
+                                <div class="tooltip-arrow" data-popper-arrow></div>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-xs text-text-secondary">Bias:</span>
+                            <span id="signals-modal-momentum-bias" class="ml-1">-</span>
+                        </div>
+                        <div class="text-sm text-text-secondary">
+                            Composite: <span id="signals-modal-momentum-score" class="font-semibold text-text-primary">-</span>
+                        </div>
+                        <div class="text-sm text-text-secondary">
+                            EMA Alignment: <span id="signals-modal-momentum-ema">-</span>
+                        </div>
+                    </div>
+                    <div class="bg-dashboard-background p-4 rounded-lg">
+                        <div class="flex items-center gap-2">
+                            <h4 class="text-sm font-semibold text-text-primary">Fundamental Quality</h4>
+                            <button type="button" data-tooltip-target="fundamental-tooltip"
+                                class="text-text-tertiary hover:text-text-primary">
+                                <i class="fas fa-circle-info"></i>
+                            </button>
+                            <div id="fundamental-tooltip" role="tooltip"
+                                class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700">
+                                Scores profitability, growth, financial health, and valuation from fundamental data.
+                                <div class="tooltip-arrow" data-popper-arrow></div>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-xs text-text-secondary">Quality:</span>
+                            <span id="signals-modal-fund-quality" class="ml-1">-</span>
+                        </div>
+                        <div class="text-sm text-text-secondary">
+                            Composite: <span id="signals-modal-fund-score" class="font-semibold text-text-primary">-</span>
+                        </div>
+                        <div class="text-sm text-text-secondary">
+                            Available: <span id="signals-modal-fund-metrics">-</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="bg-dashboard-background p-4 rounded-lg">
                     <div class="flex items-center gap-2 mb-2">
                         <h4 class="text-sm font-semibold text-text-primary">AI Explanation</h4>

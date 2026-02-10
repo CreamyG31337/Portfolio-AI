@@ -174,6 +174,24 @@ interface SignalAnalysis {
         risk_score?: number;
         recommendation?: string;
     };
+    momentum?: {
+        bias?: string;
+        composite_score?: number;
+        trend_following?: any;
+        momentum?: any;
+        mean_reversion?: any;
+        volatility?: any;
+        oscillators?: any;
+    };
+    fundamental?: {
+        quality?: string;
+        composite_score?: number;
+        metrics_available?: number;
+        profitability?: any;
+        growth?: any;
+        health?: any;
+        valuation?: any;
+    };
     overall_signal?: string;
     confidence?: number;
     analysis_date?: string;
@@ -1940,6 +1958,14 @@ function renderSignals(signals: SignalAnalysis): void {
         recommendationEl.textContent = recommendation;
     }
 
+    // Momentum signal
+    const momentum = signals.momentum || {} as any;
+    renderMomentumSignal(momentum);
+
+    // Fundamental signal
+    const fundamental = signals.fundamental || {} as any;
+    renderFundamentalSignal(fundamental);
+
     // AI explanation
     const explanationEl = document.getElementById('signals-explanation');
     if (explanationEl) {
@@ -1949,6 +1975,261 @@ function renderSignals(signals: SignalAnalysis): void {
             explanationEl.innerHTML = '<span class="text-gray-500 dark:text-gray-400">No AI explanation available yet.</span>';
         }
     }
+}
+
+// Helper: color-code a score element by value
+function colorScoreEl(el: HTMLElement, score: number): void {
+    el.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500');
+    if (score >= 0.7) {
+        el.classList.add('text-green-500');
+    } else if (score >= 0.5) {
+        el.classList.add('text-yellow-500');
+    } else {
+        el.classList.add('text-red-500');
+    }
+}
+
+function fmtPct(v: number | undefined | null): string {
+    if (v === undefined || v === null) return 'N/A';
+    return `${(v * 100).toFixed(1)}%`;
+}
+
+function fmtDec(v: number | undefined | null, digits: number = 2): string {
+    if (v === undefined || v === null) return 'N/A';
+    return v.toFixed(digits);
+}
+
+function renderMomentumSignal(momentum: any): void {
+    // Bias badge
+    const biasBadge = document.getElementById('momentum-bias-badge');
+    if (biasBadge) {
+        const bias = momentum.bias || 'N/A';
+        let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-bold border ';
+        switch (bias) {
+            case 'BULLISH':
+                badgeClass += 'bg-green-500/10 text-green-500 border-green-500/30';
+                break;
+            case 'BEARISH':
+                badgeClass += 'bg-red-500/10 text-red-500 border-red-500/30';
+                break;
+            case 'NEUTRAL':
+                badgeClass += 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30';
+                break;
+            default:
+                badgeClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
+        }
+        biasBadge.className = badgeClass;
+        biasBadge.textContent = bias;
+    }
+
+    // Composite score
+    const compositeEl = document.getElementById('momentum-composite');
+    const compositeBar = document.getElementById('momentum-composite-bar');
+    const score = momentum.composite_score ?? 0;
+    if (compositeEl) {
+        compositeEl.textContent = `${(score * 100).toFixed(0)}%`;
+        colorScoreEl(compositeEl, score);
+    }
+    if (compositeBar) {
+        compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
+        compositeBar.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-accent');
+        if (score >= 0.7) compositeBar.classList.add('bg-green-500');
+        else if (score >= 0.5) compositeBar.classList.add('bg-yellow-500');
+        else compositeBar.classList.add('bg-red-500');
+    }
+
+    // Trend Following
+    const tf = momentum.trend_following || {};
+    const trendScoreEl = document.getElementById('mom-trend-score');
+    if (trendScoreEl) {
+        const s = tf.score ?? 0;
+        trendScoreEl.textContent = fmtPct(s);
+        colorScoreEl(trendScoreEl, s);
+    }
+    const trendEmaEl = document.getElementById('mom-trend-ema');
+    if (trendEmaEl) trendEmaEl.textContent = tf.ema_alignment || 'N/A';
+
+    // Momentum category
+    const mom = momentum.momentum || {};
+    const momScoreEl = document.getElementById('mom-momentum-score');
+    if (momScoreEl) {
+        const s = mom.score ?? 0;
+        momScoreEl.textContent = fmtPct(s);
+        colorScoreEl(momScoreEl, s);
+    }
+    const momMacdEl = document.getElementById('mom-momentum-macd');
+    if (momMacdEl) momMacdEl.textContent = fmtDec(mom.macd_histogram, 4);
+    const mom1mEl = document.getElementById('mom-momentum-1m');
+    if (mom1mEl) mom1mEl.textContent = fmtPct(mom.return_1m);
+    const mom3mEl = document.getElementById('mom-momentum-3m');
+    if (mom3mEl) mom3mEl.textContent = fmtPct(mom.return_3m);
+
+    // Mean Reversion
+    const mr = momentum.mean_reversion || {};
+    const mrScoreEl = document.getElementById('mom-meanrev-score');
+    if (mrScoreEl) {
+        const s = mr.score ?? 0;
+        mrScoreEl.textContent = fmtPct(s);
+        colorScoreEl(mrScoreEl, s);
+    }
+    const mrZEl = document.getElementById('mom-meanrev-z');
+    if (mrZEl) mrZEl.textContent = fmtDec(mr.z_score);
+    const mrBbEl = document.getElementById('mom-meanrev-bb');
+    if (mrBbEl) mrBbEl.textContent = fmtDec(mr.bb_percent_b);
+    const mrRsiEl = document.getElementById('mom-meanrev-rsi');
+    if (mrRsiEl) mrRsiEl.textContent = fmtDec(mr.rsi, 1);
+
+    // Volatility
+    const vol = momentum.volatility || {};
+    const volScoreEl = document.getElementById('mom-vol-score');
+    if (volScoreEl) {
+        const s = vol.score ?? 0;
+        volScoreEl.textContent = fmtPct(s);
+        colorScoreEl(volScoreEl, s);
+    }
+    const volRatioEl = document.getElementById('mom-vol-ratio');
+    if (volRatioEl) volRatioEl.textContent = fmtDec(vol.vol_ratio);
+    const volAnnEl = document.getElementById('mom-vol-ann');
+    if (volAnnEl) volAnnEl.textContent = fmtPct(vol.annualized_vol);
+
+    // Oscillators
+    const osc = momentum.oscillators || {};
+    const oscScoreEl = document.getElementById('mom-osc-score');
+    if (oscScoreEl) {
+        const s = osc.score ?? 0;
+        oscScoreEl.textContent = fmtPct(s);
+        colorScoreEl(oscScoreEl, s);
+    }
+    const oscStochEl = document.getElementById('mom-osc-stoch');
+    if (oscStochEl) oscStochEl.textContent = fmtDec(osc.stochastic_k, 1);
+    const oscWrEl = document.getElementById('mom-osc-wr');
+    if (oscWrEl) oscWrEl.textContent = fmtDec(osc.williams_r, 1);
+    const oscRocEl = document.getElementById('mom-osc-roc');
+    if (oscRocEl) oscRocEl.textContent = fmtPct(osc.roc);
+}
+
+function renderFundamentalSignal(fundamental: any): void {
+    // Quality badge
+    const qualityBadge = document.getElementById('fund-quality-badge');
+    if (qualityBadge) {
+        const quality = fundamental.quality || 'UNKNOWN';
+        let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-bold border ';
+        switch (quality) {
+            case 'STRONG':
+                badgeClass += 'bg-green-500/10 text-green-500 border-green-500/30';
+                break;
+            case 'GOOD':
+                badgeClass += 'bg-blue-500/10 text-blue-500 border-blue-500/30';
+                break;
+            case 'FAIR':
+                badgeClass += 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30';
+                break;
+            case 'WEAK':
+                badgeClass += 'bg-red-500/10 text-red-500 border-red-500/30';
+                break;
+            default:
+                badgeClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
+        }
+        qualityBadge.className = badgeClass;
+        qualityBadge.textContent = quality;
+    }
+
+    // Composite score
+    const compositeEl = document.getElementById('fund-composite');
+    const compositeBar = document.getElementById('fund-composite-bar');
+    const score = fundamental.composite_score ?? 0;
+    if (compositeEl) {
+        compositeEl.textContent = `${(score * 100).toFixed(0)}%`;
+        colorScoreEl(compositeEl, score);
+    }
+    if (compositeBar) {
+        compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
+        compositeBar.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-accent');
+        if (score >= 0.7) compositeBar.classList.add('bg-green-500');
+        else if (score >= 0.5) compositeBar.classList.add('bg-yellow-500');
+        else compositeBar.classList.add('bg-red-500');
+    }
+
+    // Metrics count
+    const metricsEl = document.getElementById('fund-metrics-count');
+    if (metricsEl) {
+        const count = fundamental.metrics_available ?? 0;
+        metricsEl.textContent = `${count} metrics available`;
+    }
+
+    // Profitability
+    const profit = fundamental.profitability || {};
+    const profitScoreEl = document.getElementById('fund-profit-score');
+    if (profitScoreEl) {
+        const s = profit.score ?? 0;
+        profitScoreEl.textContent = fmtPct(s);
+        colorScoreEl(profitScoreEl, s);
+    }
+    const profitRoeEl = document.getElementById('fund-profit-roe');
+    if (profitRoeEl) profitRoeEl.textContent = fmtPct(profit.return_on_equity);
+    const profitMarginEl = document.getElementById('fund-profit-margin');
+    if (profitMarginEl) profitMarginEl.textContent = fmtPct(profit.net_margin);
+    const profitOpEl = document.getElementById('fund-profit-op');
+    if (profitOpEl) profitOpEl.textContent = fmtPct(profit.operating_margin);
+
+    // Growth
+    const growth = fundamental.growth || {};
+    const growthScoreEl = document.getElementById('fund-growth-score');
+    if (growthScoreEl) {
+        const s = growth.score ?? 0;
+        growthScoreEl.textContent = fmtPct(s);
+        colorScoreEl(growthScoreEl, s);
+    }
+    const growthRevEl = document.getElementById('fund-growth-rev');
+    if (growthRevEl) growthRevEl.textContent = fmtPct(growth.revenue_growth);
+    const growthEarnEl = document.getElementById('fund-growth-earn');
+    if (growthEarnEl) growthEarnEl.textContent = fmtPct(growth.earnings_growth);
+
+    // Financial Health
+    const health = fundamental.health || {};
+    const healthScoreEl = document.getElementById('fund-health-score');
+    if (healthScoreEl) {
+        const s = health.score ?? 0;
+        healthScoreEl.textContent = fmtPct(s);
+        colorScoreEl(healthScoreEl, s);
+    }
+    const healthCrEl = document.getElementById('fund-health-cr');
+    if (healthCrEl) healthCrEl.textContent = fmtDec(health.current_ratio);
+    const healthDeEl = document.getElementById('fund-health-de');
+    if (healthDeEl) healthDeEl.textContent = fmtDec(health.debt_to_equity);
+    const healthFcfEl = document.getElementById('fund-health-fcf');
+    if (healthFcfEl) {
+        const fcf = health.free_cash_flow;
+        if (fcf !== undefined && fcf !== null) {
+            // Format large numbers (e.g. 1.2B, 340M)
+            const abs = Math.abs(fcf);
+            let formatted: string;
+            if (abs >= 1e9) formatted = `${(fcf / 1e9).toFixed(1)}B`;
+            else if (abs >= 1e6) formatted = `${(fcf / 1e6).toFixed(0)}M`;
+            else if (abs >= 1e3) formatted = `${(fcf / 1e3).toFixed(0)}K`;
+            else formatted = fcf.toFixed(0);
+            healthFcfEl.textContent = formatted;
+        } else {
+            healthFcfEl.textContent = 'N/A';
+        }
+    }
+
+    // Valuation
+    const val = fundamental.valuation || {};
+    const valScoreEl = document.getElementById('fund-val-score');
+    if (valScoreEl) {
+        const s = val.score ?? 0;
+        valScoreEl.textContent = fmtPct(s);
+        colorScoreEl(valScoreEl, s);
+    }
+    const valPeEl = document.getElementById('fund-val-pe');
+    if (valPeEl) valPeEl.textContent = fmtDec(val.trailing_pe);
+    const valPbEl = document.getElementById('fund-val-pb');
+    if (valPbEl) valPbEl.textContent = fmtDec(val.price_to_book);
+    const valPsEl = document.getElementById('fund-val-ps');
+    if (valPsEl) valPsEl.textContent = fmtDec(val.price_to_sales);
+    const valPegEl = document.getElementById('fund-val-peg');
+    if (valPegEl) valPegEl.textContent = fmtDec(val.peg_ratio);
 }
 
 function setSignalsLoading(isLoading: boolean, message: string): void {
