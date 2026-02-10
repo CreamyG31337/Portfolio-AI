@@ -210,11 +210,12 @@ class NewsletterService:
         """
         # ── Link-text patterns (case-insensitive) ──
         _TEXT_PATTERNS = [
-            r"read\s+(this\s+)?(on\s+the\s+web|online|in\s+browser|the\s+full\s+article|the\s+article|more|on\s+substack)",
+            r"read\s+(this\s+)?(on\s+the\s+web|online|in\s+browser|the\s+full\s+article|the\s+article|more|on\s+substack|in\s+app)",
             r"view\s+(this\s+)?(in\s+browser|online|on\s+the\s+web|email\s+in\s+browser|post\s+on\s+the\s+web)",
             r"open\s+in\s+browser",
             r"continue\s+reading",
             r"read\s+on\s+web",
+            r"read\s+in\s+app",
             r"read\s+the\s+full\s+(post|story|newsletter)",
             r"see\s+the\s+full\s+(post|story|newsletter)",
             r"click\s+here\s+to\s+read",
@@ -241,18 +242,21 @@ class NewsletterService:
 
         # ── Known newsletter platform post-page patterns ──
         # Match URLs that look like actual article/post pages on known platforms.
+        # IMPORTANT: Do NOT include generic redirect patterns (e.g. substack.com/redirect/)
+        # because they can redirect to subscribe, share, or unsubscribe pages.
         _PLATFORM_POST_RE = re.compile(
             r"https?://[^/]*(?:"
-            r"substack\.com/p/"           # Substack post
-            r"|substack\.com/redirect/"   # Substack redirect (common in emails)
-            r"|beehiiv\.com/p/"           # Beehiiv post
-            r"|mail\.beehiiv\.com/"       # Beehiiv email links
-            r"|ghost\.io/.+/"             # Ghost post
-            r"|mailchi\.mp/"              # Mailchimp campaign view
-            r"|campaign-archive\.com/"    # Mailchimp archive
-            r"|convertkit\.com/"          # ConvertKit
-            r"|buttondown\.email/"        # Buttondown
-            r"|revue\.email/"             # Revue
+            r"substack\.com/p/"                  # Substack post (custom domain)
+            r"|substack\.com/app-link/post\?"    # Substack app-link to a specific post
+            r"|open\.substack\.com/pub/"          # Substack "open in app" article link
+            r"|beehiiv\.com/p/"                  # Beehiiv post
+            r"|mail\.beehiiv\.com/"              # Beehiiv email links
+            r"|ghost\.io/.+/"                    # Ghost post
+            r"|mailchi\.mp/"                     # Mailchimp campaign view
+            r"|campaign-archive\.com/"           # Mailchimp archive
+            r"|convertkit\.com/"                 # ConvertKit
+            r"|buttondown\.email/"               # Buttondown
+            r"|revue\.email/"                    # Revue
             r")",
             re.IGNORECASE,
         )
@@ -272,6 +276,8 @@ class NewsletterService:
                 "share/email", "sharer.php", "intent/tweet",
                 "/cdn-cgi/", "/beacon/", "list-manage.com",
                 "/pixel", "doubleclick", "google-analytics",
+                "/subscribe", "/donate", "/checkout",
+                "action=share", "submitlike=true", "comments=true",
             ]
             return any(kw in low for kw in bad_keywords)
 
@@ -330,11 +336,22 @@ class NewsletterService:
 
                 # Strategy 4: first prominent article-like link in the body
                 # Look for <a> tags that have meaningful visible text (>10 chars)
-                # and point to an article-like URL.  Skip tiny/icon links.
+                # and point to an article-like URL.  Skip tiny/icon links and
+                # links whose text signals non-article actions (subscribe, share, etc.).
+                _BAD_LINK_TEXT_RE = re.compile(
+                    r"^(subscribe|pledge|donate|unsubscribe|share|restack|"
+                    r"like|comment|buy\s+me|paypal|support|manage|"
+                    r"update\s+preferences|view\s+subscription)",
+                    re.IGNORECASE,
+                )
                 for tag in soup.find_all("a", href=True):
                     href = tag["href"].strip()
                     link_text = tag.get_text(strip=True)
-                    if len(link_text) > 10 and _is_article_like_url(href):
+                    if (
+                        len(link_text) > 10
+                        and _is_article_like_url(href)
+                        and not _BAD_LINK_TEXT_RE.search(link_text)
+                    ):
                         logger.debug(f"Extracted article URL via prominent-link heuristic: {href}")
                         return href
 
@@ -524,8 +541,12 @@ class NewsletterService:
                 # Financial / economic terms
                 'IPO', 'ETF', 'GDP', 'CPI', 'FED', 'SEC', 'API',
                 'IRA', 'JOLTS', 'FOMC', 'FDIC', 'FINRA', 'GAAP', 'EBIT',
-                'EBITA', 'YTD', 'QOQ', 'YOY', 'ROI', 'ROE', 'ROA', 'PE',
+                'EBITA', 'EBITDA', 'YTD', 'QOQ', 'YOY', 'ROI', 'ROE', 'ROA', 'PE',
                 'EPS', 'NAV', 'AUM', 'SPAC', 'OTC',
+                'CAGR', 'EV', 'FCF', 'TBV', 'ALM', 'CAPEX', 'OPEX',
+                'RAAS', 'SAAS', 'PAAS', 'IAAS', 'ARR', 'MRR', 'TAM', 'SAM',
+                'AWS', 'GCP', 'LBO', 'DCF', 'IRR', 'WACC', 'ROIC',
+                'PMB', 'RFP', 'SLA', 'KPI', 'OKR', 'NPS',
                 # Currencies
                 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'HKD',
                 # Countries / regions

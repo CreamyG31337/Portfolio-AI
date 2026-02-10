@@ -94,7 +94,8 @@ def _fetch_newsletters_as_articles(
 
         query = """
             SELECT id, sender, sender_name, subject, body_plain, body_html,
-                   tickers, summary, article_url, received_at, processed_at,
+                   tickers, summary, article_url, ticker_sentiment,
+                   received_at, processed_at,
                    (embedding IS NOT NULL) as has_embedding
             FROM newsletters
             WHERE 1=1
@@ -153,6 +154,7 @@ def _fetch_newsletters_as_articles(
                 'source': nl.get('sender_name') or nl.get('sender', 'Unknown'),
                 'article_type': 'Newsletter',
                 'tickers': nl.get('tickers') or [],
+                'ticker_sentiment': nl.get('ticker_sentiment') or [],
                 'published_at': nl.get('received_at'),
                 'fetched_at': nl.get('processed_at'),
                 'sector': None,
@@ -544,13 +546,22 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
                 extracted = nl_service.extract_tickers(f"{clean_subj}\n\n{content}")
                 all_tickers = sorted(set(ai_tickers) | set(extracted)) if ai_tickers else extracted
 
+                import json as _json
+                _ts_data = (
+                    summary_data.get("ticker_sentiment", [])
+                    if isinstance(summary_data, dict) else []
+                )
+                _ts_json = _json.dumps(_ts_data) if _ts_data else None
+
                 nl_repo.client.execute_update(
                     """
                     UPDATE newsletters
-                    SET summary = %s, tickers = %s, processed_at = CURRENT_TIMESTAMP
+                    SET summary = %s, tickers = %s,
+                        ticker_sentiment = %s::jsonb,
+                        processed_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     """,
-                    (summary, all_tickers if all_tickers else None, article_id),
+                    (summary, all_tickers if all_tickers else None, _ts_json, article_id),
                 )
 
                 embedding = None
@@ -675,7 +686,8 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
             fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
             conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
             sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-            sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None
+            sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+            ticker_sentiment=summary_data.get("ticker_sentiment") if isinstance(summary_data, dict) else None,
         )
         
         if success:
@@ -978,13 +990,20 @@ def reanalyze_article_stream():
                         embedding = _ollama.generate_embedding(content[:6000]) if _ollama else None
 
                         yield f"data: {json.dumps({'status': 'saving', 'message': 'Saving to database...'})}\n\n"
+                        _ts_data_sse = (
+                            summary_data.get("ticker_sentiment", [])
+                            if isinstance(summary_data, dict) else []
+                        )
+                        _ts_json_sse = json.dumps(_ts_data_sse) if _ts_data_sse else None
                         nl_repo.client.execute_update(
                             """
                             UPDATE newsletters
-                            SET summary = %s, tickers = %s, processed_at = CURRENT_TIMESTAMP
+                            SET summary = %s, tickers = %s,
+                                ticker_sentiment = %s::jsonb,
+                                processed_at = CURRENT_TIMESTAMP
                             WHERE id = %s
                             """,
-                            (summary, all_tickers if all_tickers else None, article_id),
+                            (summary, all_tickers if all_tickers else None, _ts_json_sse, article_id),
                         )
                         if embedding:
                             nl_repo.update_embedding(article_id, embedding)
@@ -1116,7 +1135,8 @@ def reanalyze_article_stream():
                     fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
                     conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
                     sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-                    sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None
+                    sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+                    ticker_sentiment=summary_data.get("ticker_sentiment") if isinstance(summary_data, dict) else None,
                 )
                 
                 if success:
@@ -1200,8 +1220,16 @@ def reanalyze_newsletter():
         )
 
         clean_subj = nl_service.clean_subject(newsletter.get("subject") or "")
-        extracted_tickers = nl_service.extract_tickers(f"{clean_subj}\n\n{content}")
-        all_tickers = sorted(set(tickers) | set(extracted_tickers)) if tickers else extracted_tickers
+
+        # Prefer LLM-extracted tickers — they are far more accurate for
+        # newsletters because the regex extractor picks up financial
+        # abbreviations (CAGR, EV, FCF, TBV …) as false-positive tickers.
+        # Fall back to regex only when the LLM returned nothing.
+        if tickers:
+            all_tickers = tickers
+        else:
+            extracted_tickers = nl_service.extract_tickers(f"{clean_subj}\n\n{content}")
+            all_tickers = extracted_tickers
 
         generated_summary = (summary or "").strip()
         if not generated_summary:
@@ -1236,12 +1264,24 @@ def reanalyze_newsletter():
             bool(final_article_url),
         )
 
+        # Extract per-ticker sentiment from LLM response (may be empty for old models)
+        import json as _json
+        ticker_sentiment_data = (
+            summary_data.get("ticker_sentiment", [])
+            if isinstance(summary_data, dict)
+            else []
+        )
+        ticker_sentiment_json = (
+            _json.dumps(ticker_sentiment_data) if ticker_sentiment_data else None
+        )
+
         update_query = """
             UPDATE newsletters
             SET subject = %s,
                 summary = %s,
                 tickers = %s,
                 article_url = %s,
+                ticker_sentiment = %s::jsonb,
                 processed_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """
@@ -1252,6 +1292,7 @@ def reanalyze_newsletter():
                 final_summary,
                 final_tickers if final_tickers else None,
                 final_article_url,
+                ticker_sentiment_json,
                 article_id,
             ),
         )

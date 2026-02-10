@@ -25,7 +25,8 @@ CREATE TABLE research_articles (
     logic_check VARCHAR(20),
     archive_submitted_at TIMESTAMP,
     archive_checked_at TIMESTAMP,
-    archive_url TEXT
+    archive_url TEXT,
+    ticker_sentiment JSONB
 ,
     PRIMARY KEY (id)
 );

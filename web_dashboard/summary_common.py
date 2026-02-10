@@ -78,6 +78,38 @@ def _sanitize_summary_tickers(raw_tickers: Any) -> list[str]:
     return cleaned
 
 
+_VALID_TICKER_SENTIMENTS = {"VERY_BULLISH", "BULLISH", "NEUTRAL", "BEARISH", "VERY_BEARISH"}
+
+
+def _sanitize_ticker_sentiment(raw: Any) -> list[dict[str, str]]:
+    """Validate and normalize a ``ticker_sentiment`` array from LLM output.
+
+    Each entry must have ``ticker`` (str), ``sentiment`` (valid enum), and
+    ``reason`` (str).  Invalid entries are silently dropped.
+    """
+    if not isinstance(raw, list):
+        return []
+
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ticker = str(item.get("ticker", "")).strip().upper()
+        sentiment = str(item.get("sentiment", "")).strip().upper()
+        reason = str(item.get("reason", "")).strip()
+
+        if not ticker or not sentiment:
+            continue
+        if sentiment not in _VALID_TICKER_SENTIMENTS:
+            continue
+        if ticker in seen:
+            continue
+        seen.add(ticker)
+        result.append({"ticker": ticker, "sentiment": sentiment, "reason": reason})
+    return result
+
+
 def _decode_json_string(raw_value: str) -> str:
     """Decode a JSON-escaped string fragment safely."""
     try:
@@ -191,6 +223,25 @@ def _extract_relationships_array(payload: str) -> list[dict[str, str]]:
     return relationships
 
 
+def _extract_ticker_sentiment_loose(payload: str) -> list[dict[str, str]]:
+    """Best-effort extraction of ticker_sentiment array from malformed JSON."""
+    pattern = r'"ticker_sentiment"\s*:\s*\[(.*?)\]'
+    match = re.search(pattern, payload, flags=re.DOTALL)
+    if not match:
+        return []
+
+    body = match.group(1).strip()
+    if not body:
+        return []
+
+    try:
+        parsed = json.loads(f"[{body}]")
+    except Exception:
+        return []
+
+    return _sanitize_ticker_sentiment(parsed)
+
+
 def _parse_summary_response_loose(raw_response: str) -> dict[str, Any] | None:
     """Recover core fields from malformed JSON-like model output."""
     summary_text = _extract_json_string_field(raw_response, "summary")
@@ -228,6 +279,7 @@ def _parse_summary_response_loose(raw_response: str) -> dict[str, Any] | None:
         "sentiment_score": sentiment_score_map.get(sentiment, 0.0),
         "logic_check": logic_check,
         "tickers": _sanitize_summary_tickers(_extract_loose_string_array(raw_response, "tickers")),
+        "ticker_sentiment": _extract_ticker_sentiment_loose(raw_response),
         "sectors": _extract_loose_string_array(raw_response, "sectors"),
         "key_themes": _extract_loose_string_array(raw_response, "key_themes"),
         "companies": _extract_loose_string_array(raw_response, "companies"),
@@ -334,6 +386,7 @@ def parse_summary_response(raw_response: str) -> dict[str, Any]:
             "sentiment_score": sentiment_score,
             "logic_check": logic_check,
             "tickers": _sanitize_summary_tickers(parsed.get("tickers")),
+            "ticker_sentiment": _sanitize_ticker_sentiment(parsed.get("ticker_sentiment")),
             "sectors": extract_strings(parsed.get("sectors"), []),
             "key_themes": extract_strings(parsed.get("key_themes"), []),
             "companies": extract_strings(parsed.get("companies"), []),
@@ -361,6 +414,7 @@ def parse_summary_response(raw_response: str) -> dict[str, Any]:
             "sentiment_score": 0.0,
             "logic_check": "NEUTRAL",
             "tickers": [],
+            "ticker_sentiment": [],
             "sectors": [],
             "key_themes": [],
             "companies": [],
@@ -379,6 +433,7 @@ def parse_summary_response(raw_response: str) -> dict[str, Any]:
             "sentiment_score": 0.0,
             "logic_check": "NEUTRAL",
             "tickers": [],
+            "ticker_sentiment": [],
             "sectors": [],
             "key_themes": [],
             "companies": [],
@@ -403,14 +458,14 @@ Keep this simple - you're a fact checker, not a PhD economist. Focus on filterin
 Step 3 - Conclusion: Summarize the net impact on the stock ticker(s). What does this article actually mean for the stock? Be specific about potential price impact or business implications.
 
 SENTIMENT CATEGORIZATION:
-Categorize the article's sentiment into exactly ONE of these buckets:
+Categorize the article's overall sentiment into exactly ONE of these buckets:
 - "VERY_BULLISH" - Game-changing positive news (e.g., massive earnings beat, breakthrough product, major acquisition)
-- "BULLISH" - Good news (e.g., price target upgrade, partnership announcement, positive guidance)
-- "NEUTRAL" - Noise, standard reporting, mixed results, routine updates
-- "BEARISH" - Bad news (e.g., missed earnings, minor lawsuit, downgrade)
+- "BULLISH" - Good news or analysis making a clear positive case (e.g., price target upgrade, partnership, positive guidance, data-backed argument that a stock is undervalued or has superior growth)
+- "NEUTRAL" - Noise, standard reporting, mixed results, routine updates, balanced analysis with no clear directional thesis
+- "BEARISH" - Bad news or analysis making a clear negative case (e.g., missed earnings, downgrade, data-backed argument that a stock is overvalued or faces headwinds)
 - "VERY_BEARISH" - Catastrophic news (e.g., fraud investigation, CEO fired, bankruptcy filing)
 
-Most articles should be "NEUTRAL" - only categorize as BULLISH/BEARISH if there's significant news.
+Most articles should be "NEUTRAL" - only categorize as BULLISH/BEARISH if there's significant news OR the analysis makes a clear directional case backed by data. For comparative analyses (e.g., "Stock A vs Stock B"), assign sentiment based on the overall investment thesis: if the article argues one company is clearly better positioned with supporting data, that's BULLISH.
 
 LOGIC CHECK CATEGORIZATION:
 Categorize the article's quality/reliability into exactly ONE of these buckets:
@@ -434,6 +489,13 @@ CRITICAL RULES:
 3. Lifestyle/entertainment/local-policy/human-interest stories are NOT_MARKET_RELATED even if they mention money or investment plans.
 4. If uncertain, choose "NOT_MARKET_RELATED".
 
+PER-TICKER SENTIMENT:
+For EACH ticker you extract, provide an individual sentiment assessment:
+- ticker: the ticker symbol (must match one from the "tickers" array)
+- sentiment: "BULLISH", "BEARISH", or "NEUTRAL"
+- reason: one sentence explaining the directional thesis for THIS specific ticker based on the article
+This is especially important for comparative articles (e.g., "Stock A vs Stock B") where overall sentiment may be NEUTRAL but individual tickers have clear directional signals.
+
 EXTRACTION REQUIREMENTS:
 1. Generate a comprehensive summary with 5-7+ bullet points covering all key information
 2. Extract all stock ticker symbols mentioned (e.g., HOOD, NVDA, AAPL, XMA.TO)
@@ -441,7 +503,14 @@ EXTRACTION REQUIREMENTS:
    - May include exchange suffixes like .TO, .V, .CN, .TSX
    - Do NOT extract company names (e.g., "Apple Inc" is NOT a ticker, "AAPL" is)
    - Do NOT extract long phrases or descriptions
-   - First, look for explicit ticker symbols mentioned in the article
+   - CRITICAL: Do NOT extract financial abbreviations, metrics, or jargon as tickers.
+     Common FALSE POSITIVES to avoid: CAGR (growth rate), EV (enterprise value),
+     FCF (free cash flow), TBV (tangible book value), PE (price-earnings ratio),
+     EBITDA, ROI, ROE, ROA, CAPEX, OPEX, ARR (annual recurring revenue),
+     MRR, TAM, SAM, AWS (Amazon Web Services), GCP (Google Cloud Platform),
+     WACC, DCF, IRR, ROIC, NIM, NAV, AUM, SPAC, LBO, RAAS, SAAS, PAAS, IAAS.
+     These are financial TERMS, not stock symbols. When in doubt, omit.
+   - First, look for explicit ticker symbols mentioned in the article (e.g., $AMZN, (WMT))
    - If no explicit tickers found BUT the article is clearly about specific companies, infer the likely ticker(s)
    - For well-known companies, provide your best guess of the ticker symbol
    - Do NOT use placeholders or uncertain forms like "$?", "-", "UNKNOWN", or "RKLB?"
@@ -491,6 +560,7 @@ Return your response as a valid JSON object with these exact fields:
   "sentiment": "VERY_BULLISH" | "BULLISH" | "NEUTRAL" | "BEARISH" | "VERY_BEARISH",
   "logic_check": "DATA_BACKED" | "HYPE_DETECTED" | "NEUTRAL",
   "tickers": ["TICKER1", "TICKER2"],
+  "ticker_sentiment": [{"ticker": "TICKER1", "sentiment": "BULLISH", "reason": "One sentence reason"}, {"ticker": "TICKER2", "sentiment": "BEARISH", "reason": "One sentence reason"}],
   "sectors": ["Sector1", "Sector2"],
   "key_themes": ["theme1", "theme2"],
   "companies": ["Company1", "Company2"],
@@ -499,4 +569,4 @@ Return your response as a valid JSON object with these exact fields:
   "relationships": [{"source": "TICKER1", "target": "TICKER2", "type": "SUPPLIER"}, ...]
 }
 
-If no tickers, sectors, themes, companies, or relationships are found, use empty arrays []. The sentiment, logic_check, and market_relevance fields are REQUIRED and must be exactly one of the values listed above. Return ONLY the JSON object, nothing else."""
+If no tickers, sectors, themes, companies, or relationships are found, use empty arrays []. The ticker_sentiment array should have one entry per ticker (same tickers as the "tickers" array). The sentiment, logic_check, and market_relevance fields are REQUIRED and must be exactly one of the values listed above. Return ONLY the JSON object, nothing else."""

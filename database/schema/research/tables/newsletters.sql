@@ -15,7 +15,8 @@ CREATE TABLE newsletters (
     received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP,
     message_id VARCHAR(500),
-    article_url TEXT
+    article_url TEXT,
+    ticker_sentiment JSONB
 ,
     PRIMARY KEY (id)
 );

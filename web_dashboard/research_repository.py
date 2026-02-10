@@ -666,7 +666,8 @@ class ResearchRepository:
         conclusion: Optional[str] = None,
         sentiment: Optional[str] = None,
         sentiment_score: Optional[float] = None,
-        logic_check: Optional[str] = None
+        logic_check: Optional[str] = None,
+        ticker_sentiment: Optional[list] = None
     ) -> bool:
         """Update AI-generated fields of an article (summary, tickers, sector, embedding, relevance_score, Chain of Thought fields).
         
@@ -751,7 +752,12 @@ class ResearchRepository:
             if logic_check is not None:
                 updates.append("logic_check = %s")
                 params.append(logic_check)
-            
+
+            if ticker_sentiment is not None:
+                ts_json = json.dumps(ticker_sentiment) if ticker_sentiment else None
+                updates.append("ticker_sentiment = %s::jsonb")
+                params.append(ts_json)
+
             if not updates:
                 logger.warning(f"No fields to update for article {article_id}")
                 return False
@@ -1233,6 +1239,7 @@ class ResearchRepository:
                 SELECT id, {ticker_column}, sector, article_type, title, url, summary, content,
                        source, published_at, fetched_at, relevance_score, fund,
                        claims, fact_check, conclusion, sentiment, sentiment_score,
+                       ticker_sentiment,
                        archive_url, archive_submitted_at, archive_checked_at,
                        (embedding IS NOT NULL) as has_embedding
                 FROM research_articles
@@ -1322,6 +1329,7 @@ class ResearchRepository:
             query = f"""
                 SELECT id, {ticker_column}, sector, article_type, title, url, summary, content,
                        source, published_at, fetched_at, relevance_score, fund,
+                       ticker_sentiment,
                        archive_url, archive_submitted_at, archive_checked_at,
                        (embedding IS NOT NULL) as has_embedding
                 FROM research_articles

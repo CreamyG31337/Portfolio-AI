@@ -262,13 +262,36 @@
                         </p>
                     </div>
 
-                    <!-- Tickers -->
+                    <!-- Tickers (color-coded by per-ticker sentiment) -->
+                    {% set ts_lookup = {} %}
+                    {% for ts in article.ticker_sentiment|default([]) %}
+                        {% if ts.ticker and ts.sentiment %}
+                            {% set _ = ts_lookup.update({ts.ticker: ts}) %}
+                        {% endif %}
+                    {% endfor %}
                     <div class="flex flex-wrap gap-1 justify-end max-w-xs">
                         {% for ticker in article.tickers|default([]) %}
+                        {% set ts_entry = ts_lookup.get(ticker, {}) %}
+                        {% set ts_sent = ts_entry.get('sentiment', '')|upper %}
+                        {% if ts_sent in ('BULLISH', 'VERY_BULLISH') %}
                         <a href="/ticker?ticker={{ ticker }}"
-                            class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2 py-0.5 rounded border border-theme-info-text hover:bg-theme-info-bg/80">
+                            class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2 py-0.5 rounded border border-theme-success-text hover:opacity-80"
+                            title="{{ ts_entry.get('reason', '') }}">
                             ${{ ticker }}
                         </a>
+                        {% elif ts_sent in ('BEARISH', 'VERY_BEARISH') %}
+                        <a href="/ticker?ticker={{ ticker }}"
+                            class="bg-theme-error-bg text-theme-error-text text-xs font-medium px-2 py-0.5 rounded border border-theme-error-text hover:opacity-80"
+                            title="{{ ts_entry.get('reason', '') }}">
+                            ${{ ticker }}
+                        </a>
+                        {% else %}
+                        <a href="/ticker?ticker={{ ticker }}"
+                            class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2 py-0.5 rounded border border-theme-info-text hover:bg-theme-info-bg/80"
+                            {% if ts_entry.get('reason') %}title="{{ ts_entry.get('reason', '') }}"{% endif %}>
+                            ${{ ticker }}
+                        </a>
+                        {% endif %}
                         {% endfor %}
                     </div>
                 </div>
