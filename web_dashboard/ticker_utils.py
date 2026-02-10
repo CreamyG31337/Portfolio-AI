@@ -220,9 +220,11 @@ def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[s
             'ticker', {'is_active': True}
         ))
 
-        # Removed: portfolio_positions, trade_log, congress_trades
-        # Reason: Performance optimization. These tables grow large (historical data)
-        # and should be covered by securities table.
+        # Note: portfolio_positions and trade_log are covered by securities table,
+        # but congress_trades can have tickers not in the user's portfolio.
+        futures.append(executor.submit(
+            _fetch_tickers_from_table, sb_client, 'congress_trades',
+        ))
 
         # Postgres tasks
         futures.append(executor.submit(_fetch_tickers_articles, pg_client))

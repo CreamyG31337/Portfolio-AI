@@ -223,18 +223,18 @@
                             {% endif %}
 
                             <!-- Sentiment Badge -->
-                            {% if article.sentiment == 'positive' or article.sentiment == 'bullish' %}
+                            {% set sent_lower = (article.sentiment or '')|lower %}
+                            {% if sent_lower in ('positive', 'bullish', 'very_bullish') %}
                             <span
                                 class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-success-text">
-                                <i class="fas fa-arrow-up mr-1 user-select-none"></i>Bullish
+                                <i class="fas fa-arrow-up mr-1 user-select-none"></i>{{ 'Very Bullish' if sent_lower == 'very_bullish' else 'Bullish' }}
                             </span>
-                            {% elif article.sentiment == 'negative' or article.sentiment == 'bearish' %}
+                            {% elif sent_lower in ('negative', 'bearish', 'very_bearish') %}
                             <span
                                 class="bg-theme-error-bg text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-error-text">
-                                <i class="fas fa-arrow-down mr-1 user-select-none"></i>Bearish
+                                <i class="fas fa-arrow-down mr-1 user-select-none"></i>{{ 'Very Bearish' if sent_lower == 'very_bearish' else 'Bearish' }}
                             </span>
-                            {% elif article.sentiment and (article.sentiment|lower == 'neutral' or
-                            article.sentiment|lower == 'mixed') %}
+                            {% elif sent_lower in ('neutral', 'mixed') %}
                             <span
                                 class="bg-theme-warning-bg text-theme-warning-text text-xs font-medium px-2.5 py-0.5 rounded border border-theme-warning-text">
                                 {{ article.sentiment|title }}
@@ -258,7 +258,7 @@
                             {% endif %}
                         </h3>
                         <p class="text-sm text-text-secondary">
-                            <i class="far fa-calendar-alt mr-1"></i> {{ article.published_at|default('Unknown Date') }}
+                            <i class="far fa-calendar-alt mr-1"></i> {{ (article.published_at or article.fetched_at)|fmt_date }}
                         </p>
                     </div>
 

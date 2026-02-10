@@ -94,7 +94,9 @@ def _fetch_newsletters_as_articles(
 
         query = """
             SELECT id, sender, sender_name, subject, body_plain, body_html,
-                   tickers, summary, article_url, ticker_sentiment,
+                   tickers, summary, article_url,
+                   sentiment, sentiment_score, claims, fact_check, conclusion,
+                   logic_check, ticker_sentiment,
                    received_at, processed_at,
                    (embedding IS NOT NULL) as has_embedding
             FROM newsletters
@@ -159,12 +161,12 @@ def _fetch_newsletters_as_articles(
                 'fetched_at': nl.get('processed_at'),
                 'sector': None,
                 'relevance_score': None,
-                'sentiment': None,
-                'sentiment_score': None,
-                'logic_check': None,
-                'claims': None,
-                'fact_check': None,
-                'conclusion': None,
+                'sentiment': nl.get('sentiment'),
+                'sentiment_score': nl.get('sentiment_score'),
+                'logic_check': nl.get('logic_check'),
+                'claims': nl.get('claims'),
+                'fact_check': nl.get('fact_check'),
+                'conclusion': nl.get('conclusion'),
                 'has_embedding': nl.get('has_embedding', False),
                 'item_kind': 'newsletter',
             })
@@ -271,12 +273,15 @@ def get_cached_articles(
         # Filter out any None articles and ensure valid structure
         articles = [a for a in articles if a is not None]
         
-        # Ensure each article has tickers and ticker_sentiment fields
+        # Ensure each article has tickers, ticker_sentiment, and date fields
         for article in articles:
             if 'tickers' not in article or article['tickers'] is None:
                 article['tickers'] = []
             if article.get('ticker_sentiment') is None:
                 article['ticker_sentiment'] = []
+            # Fallback: if published_at is None, use fetched_at so the template always has a date
+            if article.get('published_at') is None and article.get('fetched_at') is not None:
+                article['published_at'] = article['fetched_at']
         
         return articles
     except Exception as e:
@@ -554,16 +559,35 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
                     if isinstance(summary_data, dict) else []
                 )
                 _ts_json = _json.dumps(_ts_data) if _ts_data else None
+                _claims = summary_data.get("claims", []) if isinstance(summary_data, dict) else []
+                _claims_json = _json.dumps(_claims) if _claims else None
 
                 nl_repo.client.execute_update(
                     """
                     UPDATE newsletters
                     SET summary = %s, tickers = %s,
+                        sentiment = %s,
+                        sentiment_score = %s,
+                        claims = %s::jsonb,
+                        fact_check = %s,
+                        conclusion = %s,
+                        logic_check = %s,
                         ticker_sentiment = %s::jsonb,
                         processed_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     """,
-                    (summary, all_tickers if all_tickers else None, _ts_json, article_id),
+                    (
+                        summary,
+                        all_tickers if all_tickers else None,
+                        summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
+                        summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+                        _claims_json,
+                        summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
+                        summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
+                        summary_data.get("logic_check") if isinstance(summary_data, dict) else None,
+                        _ts_json,
+                        article_id,
+                    ),
                 )
 
                 embedding = None
@@ -689,6 +713,7 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
             conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
             sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
             sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+            logic_check=summary_data.get("logic_check") if isinstance(summary_data, dict) else None,
             ticker_sentiment=summary_data.get("ticker_sentiment") if isinstance(summary_data, dict) else None,
         )
         
@@ -997,15 +1022,34 @@ def reanalyze_article_stream():
                             if isinstance(summary_data, dict) else []
                         )
                         _ts_json_sse = json.dumps(_ts_data_sse) if _ts_data_sse else None
+                        _claims_sse = summary_data.get("claims", []) if isinstance(summary_data, dict) else []
+                        _claims_json_sse = json.dumps(_claims_sse) if _claims_sse else None
                         nl_repo.client.execute_update(
                             """
                             UPDATE newsletters
                             SET summary = %s, tickers = %s,
+                                sentiment = %s,
+                                sentiment_score = %s,
+                                claims = %s::jsonb,
+                                fact_check = %s,
+                                conclusion = %s,
+                                logic_check = %s,
                                 ticker_sentiment = %s::jsonb,
                                 processed_at = CURRENT_TIMESTAMP
                             WHERE id = %s
                             """,
-                            (summary, all_tickers if all_tickers else None, _ts_json_sse, article_id),
+                            (
+                                summary,
+                                all_tickers if all_tickers else None,
+                                summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
+                                summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+                                _claims_json_sse,
+                                summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
+                                summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
+                                summary_data.get("logic_check") if isinstance(summary_data, dict) else None,
+                                _ts_json_sse,
+                                article_id,
+                            ),
                         )
                         if embedding:
                             nl_repo.update_embedding(article_id, embedding)
@@ -1138,6 +1182,7 @@ def reanalyze_article_stream():
                     conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
                     sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
                     sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+                    logic_check=summary_data.get("logic_check") if isinstance(summary_data, dict) else None,
                     ticker_sentiment=summary_data.get("ticker_sentiment") if isinstance(summary_data, dict) else None,
                 )
                 
@@ -1227,6 +1272,7 @@ def reanalyze_newsletter():
         # newsletters because the regex extractor picks up financial
         # abbreviations (CAGR, EV, FCF, TBV …) as false-positive tickers.
         # Fall back to regex only when the LLM returned nothing.
+        extracted_tickers: List[str] = []
         if tickers:
             all_tickers = tickers
         else:
@@ -1266,7 +1312,7 @@ def reanalyze_newsletter():
             bool(final_article_url),
         )
 
-        # Extract per-ticker sentiment from LLM response (may be empty for old models)
+        # Extract analysis fields from LLM response
         import json as _json
         ticker_sentiment_data = (
             summary_data.get("ticker_sentiment", [])
@@ -1276,6 +1322,13 @@ def reanalyze_newsletter():
         ticker_sentiment_json = (
             _json.dumps(ticker_sentiment_data) if ticker_sentiment_data else None
         )
+        claims_data = summary_data.get("claims", []) if isinstance(summary_data, dict) else []
+        claims_json = _json.dumps(claims_data) if claims_data else None
+        nl_sentiment = summary_data.get("sentiment") if isinstance(summary_data, dict) else None
+        nl_sentiment_score = summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None
+        nl_fact_check = summary_data.get("fact_check") if isinstance(summary_data, dict) else None
+        nl_conclusion = summary_data.get("conclusion") if isinstance(summary_data, dict) else None
+        nl_logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
 
         update_query = """
             UPDATE newsletters
@@ -1283,6 +1336,12 @@ def reanalyze_newsletter():
                 summary = %s,
                 tickers = %s,
                 article_url = %s,
+                sentiment = %s,
+                sentiment_score = %s,
+                claims = %s::jsonb,
+                fact_check = %s,
+                conclusion = %s,
+                logic_check = %s,
                 ticker_sentiment = %s::jsonb,
                 processed_at = CURRENT_TIMESTAMP
             WHERE id = %s
@@ -1294,6 +1353,12 @@ def reanalyze_newsletter():
                 final_summary,
                 final_tickers if final_tickers else None,
                 final_article_url,
+                nl_sentiment,
+                nl_sentiment_score,
+                claims_json,
+                nl_fact_check,
+                nl_conclusion,
+                nl_logic_check,
                 ticker_sentiment_json,
                 article_id,
             ),

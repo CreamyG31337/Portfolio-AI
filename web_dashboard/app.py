@@ -463,6 +463,36 @@ def inject_build_timestamp():
 
     return {'build_timestamp': build_timestamp}
 
+
+@app.template_filter('fmt_date')
+def fmt_date_filter(value):
+    """Format a datetime for display on the research page.
+
+    Rules:
+    - None → 'Unknown Date'
+    - datetime with time 00:00:00 → date only  (e.g. '2026-02-09')
+    - datetime with real time     → date + HH:MM (e.g. '2026-02-09 19:29')
+    - string fallback             → strip microseconds / tz suffix
+    """
+    if value is None:
+        return "Unknown Date"
+    if isinstance(value, datetime):
+        if value.hour == 0 and value.minute == 0 and value.second == 0:
+            return value.strftime("%Y-%m-%d")
+        return value.strftime("%Y-%m-%d %H:%M")
+    # String fallback — strip microseconds and +00:00
+    s = str(value)
+    # Remove microseconds  (.123456)
+    import re as _re
+    s = _re.sub(r'\.\d+', '', s)
+    # Remove timezone offset (+00:00 or +00)
+    s = _re.sub(r'[+-]\d{2}:\d{2}$', '', s)
+    s = _re.sub(r'[+-]\d{2}$', '', s)
+    # Remove seconds if they are :00
+    s = _re.sub(r':00$', '', s)
+    return s.strip()
+
+
 def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
     """Get navigation context for Flask templates"""
     try:

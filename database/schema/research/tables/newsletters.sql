@@ -16,6 +16,12 @@ CREATE TABLE newsletters (
     processed_at TIMESTAMP,
     message_id VARCHAR(500),
     article_url TEXT,
+    sentiment VARCHAR(20),
+    sentiment_score DOUBLE PRECISION,
+    claims JSONB,
+    fact_check TEXT,
+    conclusion TEXT,
+    logic_check VARCHAR(20),
     ticker_sentiment JSONB
 ,
     PRIMARY KEY (id)

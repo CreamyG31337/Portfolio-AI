@@ -1239,7 +1239,7 @@ class ResearchRepository:
                 SELECT id, {ticker_column}, sector, article_type, title, url, summary, content,
                        source, published_at, fetched_at, relevance_score, fund,
                        claims, fact_check, conclusion, sentiment, sentiment_score,
-                       ticker_sentiment,
+                       logic_check, ticker_sentiment,
                        archive_url, archive_submitted_at, archive_checked_at,
                        (embedding IS NOT NULL) as has_embedding
                 FROM research_articles
@@ -1329,7 +1329,8 @@ class ResearchRepository:
             query = f"""
                 SELECT id, {ticker_column}, sector, article_type, title, url, summary, content,
                        source, published_at, fetched_at, relevance_score, fund,
-                       ticker_sentiment,
+                       claims, fact_check, conclusion, sentiment, sentiment_score,
+                       logic_check, ticker_sentiment,
                        archive_url, archive_submitted_at, archive_checked_at,
                        (embedding IS NOT NULL) as has_embedding
                 FROM research_articles
