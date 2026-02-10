@@ -262,17 +262,26 @@
                         </p>
                     </div>
 
-                    <!-- Tickers (color-coded by per-ticker sentiment) -->
+                    <!-- Tickers (color-coded by per-ticker sentiment, fallback to article sentiment) -->
                     {% set ts_lookup = {} %}
                     {% for ts in (article.ticker_sentiment or []) %}
                         {% if ts.ticker and ts.sentiment %}
                             {% set _ = ts_lookup.update({ts.ticker: ts}) %}
                         {% endif %}
                     {% endfor %}
+                    {% set article_sent = (article.sentiment or '')|lower %}
                     <div class="flex flex-wrap gap-1 justify-end max-w-xs">
                         {% for ticker in article.tickers|default([]) %}
                         {% set ts_entry = ts_lookup.get(ticker, {}) %}
                         {% set ts_sent = ts_entry.get('sentiment', '')|upper %}
+                        {# Fallback: if no per-ticker sentiment, use article-level sentiment #}
+                        {% if not ts_sent and article_sent %}
+                            {% if article_sent in ('bullish', 'very_bullish', 'positive') %}
+                                {% set ts_sent = 'BULLISH' %}
+                            {% elif article_sent in ('bearish', 'very_bearish', 'negative') %}
+                                {% set ts_sent = 'BEARISH' %}
+                            {% endif %}
+                        {% endif %}
                         {% if ts_sent in ('BULLISH', 'VERY_BULLISH') %}
                         <a href="/ticker?ticker={{ ticker }}"
                             class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2 py-0.5 rounded border border-theme-success-text hover:opacity-80"
