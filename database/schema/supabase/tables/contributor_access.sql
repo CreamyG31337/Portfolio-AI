@@ -15,9 +15,9 @@ CREATE TABLE contributor_access (
 );
 
 -- Foreign Keys
-ALTER TABLE contributor_access ADD CONSTRAINT contributor_access_contributor_id_fkey FOREIGN KEY (contributor_id) REFERENCES contributors(id) ON DELETE CASCADE;
-ALTER TABLE contributor_access ADD CONSTRAINT contributor_access_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES auth.users(id);
-ALTER TABLE contributor_access ADD CONSTRAINT contributor_access_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE contributor_access ADD CONSTRAINT contributor_access_contributor_id_fkey FOREIGN KEY (contributor_id) REFERENCES contributors(id);
+ALTER TABLE contributor_access ADD CONSTRAINT contributor_access_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES users(id);
+ALTER TABLE contributor_access ADD CONSTRAINT contributor_access_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
 
 -- Indexes
 CREATE UNIQUE INDEX contributor_access_contributor_id_user_id_key ON contributor_access (contributor_id, user_id);

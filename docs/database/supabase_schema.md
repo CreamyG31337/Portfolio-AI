@@ -1,20 +1,21 @@
 # Supabase Production Database Schema
 
-**Generated:** 2026-01-15 02:40:52
+**Generated:** 2026-02-09 18:51:48
 
-**Total Tables:** 29
+**Total Tables:** 32
 
 ---
 
 ## Table of Contents
 
+- [ai_analysis_queue](#ai-analysis-queue)
+- [ai_analysis_skip_list](#ai-analysis-skip-list)
 - [apscheduler_jobs](#apscheduler-jobs)
 - [benchmark_data](#benchmark-data)
 - [cash_balances](#cash-balances)
 - [committee_assignments](#committee-assignments)
 - [committees](#committees)
 - [congress_trades](#congress-trades)
-- [congress_trades_staging](#congress-trades-staging)
 - [contributor_access](#contributor-access)
 - [contributors](#contributors)
 - [dividend_log](#dividend-log)
@@ -24,6 +25,7 @@
 - [fund_thesis](#fund-thesis)
 - [fund_thesis_pillars](#fund-thesis-pillars)
 - [funds](#funds)
+- [insider_trades](#insider-trades)
 - [job_executions](#job-executions)
 - [job_retry_queue](#job-retry-queue)
 - [performance_metrics](#performance-metrics)
@@ -32,11 +34,74 @@
 - [research_domain_health](#research-domain-health)
 - [rss_feeds](#rss-feeds)
 - [securities](#securities)
+- [signal_analysis](#signal-analysis)
 - [system_settings](#system-settings)
 - [trade_log](#trade-log)
 - [user_funds](#user-funds)
 - [user_profiles](#user-profiles)
 - [watched_tickers](#watched-tickers)
+
+---
+
+## ai_analysis_queue
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `analysis_type` | VARCHAR(30) | ✗ | - |
+| `target_key` | VARCHAR(50) | ✗ | - |
+| `priority` | INTEGER | ✓ | 0 |
+| `status` | VARCHAR(20) | ✓ | 'pending'::character varying |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `started_at` | TIMESTAMP | ✓ | - |
+| `completed_at` | TIMESTAMP | ✓ | - |
+| `error_message` | TEXT | ✓ | - |
+| `retry_count` | INTEGER | ✓ | 0 |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_analysis_queue_pending` | `status`, `priority`, `created_at` | ✗ |
+| `idx_analysis_queue_recent` | `completed_at` | ✗ |
+| `idx_analysis_queue_type_key` | `analysis_type`, `target_key` | ✗ |
+| `unique_pending_analysis` | `analysis_type`, `target_key`, `status` | ✓ |
+
+---
+
+## ai_analysis_skip_list
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `ticker` | VARCHAR(10) | ✗ | - |
+| `reason` | TEXT | ✓ | - |
+| `first_failed_at` | TIMESTAMP | ✓ | now() |
+| `last_failed_at` | TIMESTAMP | ✓ | now() |
+| `failure_count` | INTEGER | ✓ | 1 |
+| `skip_until` | TIMESTAMP | ✓ | - |
+| `added_by` | VARCHAR(100) | ✓ | - |
+| `notes` | TEXT | ✓ | - |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `ai_analysis_skip_list_ticker_key` | `ticker` | ✓ |
+| `idx_skip_list_last_failed` | `last_failed_at` | ✗ |
+| `idx_skip_list_ticker` | `ticker` | ✗ |
 
 ---
 
@@ -229,55 +294,9 @@
 | `idx_congress_party` | `party` | ✗ |
 | `idx_congress_state` | `state` | ✗ |
 | `idx_congress_ticker` | `ticker` | ✗ |
+| `idx_congress_ticker_date` | `ticker`, `transaction_date` | ✗ |
 | `idx_congress_trades_politician_id` | `politician_id` | ✗ |
 | `idx_congress_transaction_date` | `transaction_date` | ✗ |
-
----
-
-## congress_trades_staging
-
-### Columns
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|----------|
-| `id` | INTEGER | ✗ | nextval('congress_trades_staging_id_seq'::regclass) |
-| `ticker` | VARCHAR(20) | ✗ | - |
-| `politician` | VARCHAR(200) | ✗ | - |
-| `chamber` | VARCHAR(20) | ✗ | - |
-| `transaction_date` | DATE | ✗ | - |
-| `disclosure_date` | DATE | ✗ | - |
-| `type` | VARCHAR(20) | ✗ | - |
-| `amount` | VARCHAR(100) | ✓ | - |
-| `price` | NUMERIC(10, 2) | ✓ | NULL::numeric |
-| `asset_type` | VARCHAR(50) | ✓ | - |
-| `party` | VARCHAR(50) | ✓ | - |
-| `state` | VARCHAR(2) | ✓ | - |
-| `owner` | VARCHAR(100) | ✓ | - |
-| `conflict_score` | DOUBLE PRECISION | ✓ | - |
-| `notes` | TEXT | ✓ | - |
-| `import_batch_id` | UUID | ✓ | gen_random_uuid() |
-| `import_timestamp` | TIMESTAMP | ✓ | now() |
-| `validation_status` | VARCHAR(20) | ✓ | 'pending'::character varying |
-| `validation_notes` | TEXT | ✓ | - |
-| `promoted_to_production` | BOOLEAN | ✓ | false |
-| `promoted_at` | TIMESTAMP | ✓ | - |
-| `source_url` | TEXT | ✓ | - |
-| `raw_data` | JSONB | ✓ | - |
-
-### Primary Key
-
-- `id`
-
-### Indexes
-
-| Name | Columns | Unique |
-|------|---------|--------|
-| `idx_staging_batch` | `import_batch_id` | ✗ |
-| `idx_staging_date` | `transaction_date` | ✗ |
-| `idx_staging_politician` | `politician` | ✗ |
-| `idx_staging_promoted` | `promoted_to_production` | ✗ |
-| `idx_staging_status` | `validation_status` | ✗ |
-| `idx_staging_ticker` | `ticker` | ✗ |
 
 ---
 
@@ -418,6 +437,7 @@
 
 | Name | Columns | Unique |
 |------|---------|--------|
+| `idx_ehl_holding_date` | `holding_ticker`, `date` | ✗ |
 | `idx_etf_holdings_date` | `date` | ✗ |
 | `idx_etf_holdings_etf` | `etf_ticker`, `date` | ✗ |
 | `idx_etf_holdings_ticker` | `holding_ticker` | ✗ |
@@ -480,6 +500,7 @@
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `fund` | `funds`.`name` | NO ACTION | NO ACTION |
+| `contributor_id` | `contributors`.`id` | NO ACTION | NO ACTION |
 | `fund_id` | `funds`.`id` | NO ACTION | NO ACTION |
 
 ### Indexes
@@ -585,6 +606,46 @@
 | `funds_name_key` | `name` | ✓ |
 | `idx_funds_base_currency` | `base_currency` | ✗ |
 | `idx_funds_is_production` | `is_production` | ✗ |
+
+---
+
+## insider_trades
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | INTEGER | ✗ | nextval('insider_trades_id_seq'::regclass) |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `insider_name` | VARCHAR(255) | ✗ | - |
+| `insider_title` | VARCHAR(255) | ✓ | - |
+| `transaction_date` | DATE | ✗ | - |
+| `disclosure_date` | TIMESTAMP | ✗ | - |
+| `type` | VARCHAR(20) | ✗ | - |
+| `shares` | BIGINT | ✓ | - |
+| `price_per_share` | NUMERIC(10, 2) | ✓ | - |
+| `value` | NUMERIC(15, 2) | ✓ | - |
+| `shares_held_after` | BIGINT | ✓ | - |
+| `percent_change` | NUMERIC(10, 4) | ✓ | - |
+| `notes` | TEXT | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_insider_disclosure_date` | `disclosure_date` | ✗ |
+| `idx_insider_name` | `insider_name` | ✗ |
+| `idx_insider_ticker` | `ticker` | ✗ |
+| `idx_insider_transaction_date` | `transaction_date` | ✗ |
+| `idx_insider_type` | `type` | ✗ |
+| `idx_insider_value` | `value` | ✗ |
+| `insider_trades_unique_key` | `ticker`, `insider_name`, `transaction_date`, `type`, `shares`, `price_per_share` | ✓ |
 
 ---
 
@@ -862,6 +923,7 @@
 | `dividend_yield` | NUMERIC | ✓ | - |
 | `fifty_two_week_high` | NUMERIC | ✓ | - |
 | `fifty_two_week_low` | NUMERIC | ✓ | - |
+| `description` | TEXT | ✓ | - |
 
 ### Primary Key
 
@@ -872,9 +934,42 @@
 | Name | Columns | Unique |
 |------|---------|--------|
 | `idx_securities_currency` | `currency` | ✗ |
+| `idx_securities_description` | `ticker` | ✗ |
 | `idx_securities_industry` | `industry` | ✗ |
 | `idx_securities_last_updated` | `last_updated` | ✗ |
 | `idx_securities_sector` | `sector` | ✗ |
+
+---
+
+## signal_analysis
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | INTEGER | ✗ | nextval('signal_analysis_id_seq'::regclass) |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `analysis_date` | TIMESTAMP | ✗ | - |
+| `structure_signal` | JSONB | ✓ | - |
+| `timing_signal` | JSONB | ✓ | - |
+| `fear_risk_signal` | JSONB | ✓ | - |
+| `overall_signal` | VARCHAR(10) | ✓ | - |
+| `confidence_score` | DOUBLE PRECISION | ✓ | - |
+| `explanation` | TEXT | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_signal_analysis_fear_level` | `None` | ✗ |
+| `idx_signal_analysis_signal` | `overall_signal` | ✗ |
+| `idx_signal_analysis_ticker_date` | `ticker`, `analysis_date` | ✗ |
+| `signal_analysis_ticker_analysis_date_key` | `ticker`, `analysis_date` | ✓ |
 
 ---
 

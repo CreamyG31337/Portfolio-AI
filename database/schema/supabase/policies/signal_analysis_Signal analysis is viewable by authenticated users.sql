@@ -1,0 +1,1 @@
+CREATE POLICY "Signal analysis is viewable by authenticated users" ON "signal_analysis" FOR SELECT TO authenticated USING (true);

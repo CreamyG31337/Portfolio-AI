@@ -1,67 +1,17 @@
-# Congress Trades Migration Scripts
+# Congress Trades Pipeline
 
-## ✅ Recommended Script
+## Current Production Workflow
 
-**`safe_migrate_staging_to_production.py`** - Safe migration that preserves AI analysis
+Congress trades are fetched directly from the FMP (Financial Modeling Prep) API and inserted into the `congress_trades` table. There is no staging step.
 
-### Usage:
-```bash
-# Dry run (see what would change)
-python web_dashboard/scripts/safe_migrate_staging_to_production.py --dry-run
+### Scheduled Jobs:
+1. **`fetch_congress_trades_job`** - Fetches trades from FMP API, analyzes with AI, upserts to `congress_trades`
+2. **`analyze_congress_trades_job`** - Scores unanalyzed trades via Ollama
+3. **`scrape_congress_trades_job`** (manual) - Scrapes from external source via `seed_congress_trades.py`
 
-# Real migration
-python web_dashboard/scripts/safe_migrate_staging_to_production.py
-```
-
-### How it works:
-1. **UPDATE** existing trades (preserves IDs → AI analysis stays valid)
-2. **INSERT** new trades (auto-generates new IDs)
-3. No data loss, AI analysis foreign keys remain intact
-
-### Safe for:
-- ✅ Incremental updates
-- ✅ Preserving AI analysis
-- ✅ Production use
-
----
-
-## ⚠️ Deprecated Scripts
-
-**`full_migration_supabase_only.py`** - DANGEROUS, causes data loss
-
-### Why deprecated:
-- ❌ Deletes ALL production data
-- ❌ Reloads without preserving IDs
-- ❌ BREAKS AI analysis foreign keys
-- ❌ Loses hours of GPU computation time
-
-### When to use:
-- Only if you want to completely wipe and start fresh
-- You must delete AI analysis manually afterward
-- **Not recommended for normal operations**
-
----
-
-## Migration Workflow
-
-1. **Scrape to staging:**
-   ```bash
-   python web_dashboard/scripts/seed_congress_trades_staging.py
-   ```
-
-2. **Validate staging:**
-   ```bash
-   python web_dashboard/scripts/validate_staging_batch.py <batch-id>
-   ```
-
-3. **Migrate safely:**
-   ```bash
-   python web_dashboard/scripts/safe_migrate_staging_to_production.py
-   ```
-
-4. **Verify:**
-   - Check production count
-   - Verify AI analysis still works (0/N shouldn't be 0/N anymore)
+### Manual Scripts:
+- `seed_congress_trades.py` - Manual import from external source
+- `analyze_congress_trades_batch.py` - Batch AI analysis
 
 ---
 
@@ -75,3 +25,10 @@ python web_dashboard/scripts/fix_ai_analysis_references.py
 ```
 
 This deletes orphaned analyses - they'll regenerate on next AI run.
+
+---
+
+## Historical Note
+
+The `congress_trades_staging` table and staging-to-production workflow were removed in Feb 2026.
+The old workflow (scrape -> staging -> validate -> promote) was replaced by the current direct-insert pipeline.

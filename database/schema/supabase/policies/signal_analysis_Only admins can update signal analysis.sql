@@ -1,0 +1,1 @@
+CREATE POLICY "Only admins can update signal analysis" ON "signal_analysis" FOR UPDATE TO authenticated USING (is_admin(auth.uid()));

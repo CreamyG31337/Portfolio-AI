@@ -561,7 +561,7 @@ def main():
         'user_funds', 'user_profiles', 'fund_thesis', 'fund_thesis_pillars',
         'fund_contributions', 'exchange_rates', 'user_preferences', 'rss_feeds',
         'job_executions', 'social_metrics', 'social_posts', 'sentiment_sessions',
-        'congress_trades', 'congress_trades_staging', 'congress_trade_sessions',
+        'congress_trades', 'congress_trade_sessions',
         'committees', 'watchlist', 'politicians'
     }
     

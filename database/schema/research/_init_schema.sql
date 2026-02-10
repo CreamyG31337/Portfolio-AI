@@ -1,5 +1,5 @@
 -- Master Init Schema
--- Generated: 2026-01-15 02:59:23
+-- Generated: 2026-02-09 18:51:35
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -21,6 +21,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/etf_holdings_log.sql
 \i tables/extracted_tickers.sql
 \i tables/market_relationships.sql
+\i tables/newsletters.sql
 \i tables/post_summaries.sql
 \i tables/research_articles.sql
 \i tables/rss_feeds.sql
@@ -29,6 +30,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/social_metrics.sql
 \i tables/social_posts.sql
 \i tables/social_sentiment_analysis.sql
+\i tables/ticker_analysis.sql
 
 -- FUNCTIONS
 \i functions/array_to_halfvec.sql
@@ -36,6 +38,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/array_to_vector.sql
 \i functions/binary_quantize.sql
 \i functions/cosine_distance.sql
+\i functions/get_etf_holding_trades.sql
+\i functions/get_etf_holding_trades_batch.sql
 \i functions/halfvec.sql
 \i functions/halfvec_accum.sql
 \i functions/halfvec_add.sql
@@ -122,9 +126,6 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/vector_to_halfvec.sql
 \i functions/vector_to_sparsevec.sql
 \i functions/vector_typmod_in.sql
-
--- CUSTOM FUNCTIONS (ETF)
-\i functions/get_etf_holding_trades.sql
 
 -- VIEWS
 \i views/etf_holdings_changes.sql

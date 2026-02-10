@@ -1,5 +1,5 @@
 -- Master Init Schema
--- Generated: 2026-01-15 02:59:22
+-- Generated: 2026-02-09 18:51:34
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -8,21 +8,23 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i sequences/committee_assignments_id_seq.sql
 \i sequences/committees_id_seq.sql
 \i sequences/congress_trades_id_seq.sql
-\i sequences/congress_trades_staging_id_seq.sql
 \i sequences/funds_id_seq.sql
+\i sequences/insider_trades_id_seq.sql
 \i sequences/job_executions_id_seq.sql
 \i sequences/job_retry_queue_id_seq.sql
 \i sequences/politicians_id_seq.sql
 \i sequences/rss_feeds_id_seq.sql
+\i sequences/signal_analysis_id_seq.sql
 
 -- TABLES
+\i tables/ai_analysis_queue.sql
+\i tables/ai_analysis_skip_list.sql
 \i tables/apscheduler_jobs.sql
 \i tables/benchmark_data.sql
 \i tables/cash_balances.sql
 \i tables/committee_assignments.sql
 \i tables/committees.sql
 \i tables/congress_trades.sql
-\i tables/congress_trades_staging.sql
 \i tables/contributor_access.sql
 \i tables/contributors.sql
 \i tables/dividend_log.sql
@@ -32,6 +34,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/fund_thesis.sql
 \i tables/fund_thesis_pillars.sql
 \i tables/funds.sql
+\i tables/insider_trades.sql
 \i tables/job_executions.sql
 \i tables/job_retry_queue.sql
 \i tables/performance_metrics.sql
@@ -40,6 +43,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/research_domain_health.sql
 \i tables/rss_feeds.sql
 \i tables/securities.sql
+\i tables/signal_analysis.sql
 \i tables/system_settings.sql
 \i tables/trade_log.sql
 \i tables/user_funds.sql
@@ -53,6 +57,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/can_modify_data.sql
 \i functions/create_user_profile.sql
 \i functions/delete_user_safe.sql
+\i functions/get_etf_holding_trades.sql
+\i functions/get_etf_holding_trades_batch.sql
 \i functions/get_exchange_rate_for_date.sql
 \i functions/get_fund_thesis.sql
 \i functions/get_latest_exchange_rate.sql
@@ -71,15 +77,17 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/revoke_contributor_access.sql
 \i functions/set_portfolio_position_date_only.sql
 \i functions/set_user_preference.sql
+\i functions/set_user_role.sql
 \i functions/update_updated_at_column.sql
 \i functions/user_has_contributor_access.sql
 \i functions/user_has_fund_access.sql
-\i functions/get_etf_holding_trades.sql
 
 -- VIEWS
 \i views/congress_trades_enriched.sql
 \i views/contributor_ownership.sql
 \i views/daily_portfolio_snapshots.sql
+\i views/etf_holdings_changes.sql
+\i views/etf_holdings_changes_view.sql
 \i views/fund_contributor_summary.sql
 \i views/fund_thesis_with_pillars.sql
 \i views/latest_positions.sql
@@ -106,7 +114,6 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/committees_Service role can manage committees.sql
 \i policies/congress_trades_Allow authenticated users to read congress_trades.sql
 \i policies/congress_trades_Service role can manage congress_trades.sql
-\i policies/congress_trades_staging_Service role can manage congress_trades_staging.sql
 \i policies/contributor_access_Admins can manage all contributor access.sql
 \i policies/contributor_access_Admins can view all contributor access.sql
 \i policies/contributor_access_Owners can grant access to their contributors.sql
@@ -144,6 +151,10 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/rss_feeds_Service role can manage rss_feeds.sql
 \i policies/securities_Allow read access to securities.sql
 \i policies/securities_Service role can manage securities.sql
+\i policies/signal_analysis_Only admins can insert signal analysis.sql
+\i policies/signal_analysis_Only admins can update signal analysis.sql
+\i policies/signal_analysis_Service role can manage signal_analysis.sql
+\i policies/signal_analysis_Signal analysis is viewable by authenticated users.sql
 \i policies/system_settings_Anyone can view system settings.sql
 \i policies/system_settings_Only admins can modify system settings.sql
 \i policies/trade_log_Admins can view all trades.sql

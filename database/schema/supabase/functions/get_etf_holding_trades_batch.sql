@@ -1,25 +1,24 @@
-CREATE OR REPLACE FUNCTION public.get_etf_holding_trades(p_holding_ticker text, p_start_date date, p_end_date date, p_etf_ticker text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION public.get_etf_holding_trades_batch(p_holding_tickers text[], p_start_date date, p_end_date date, p_limit integer DEFAULT 100)
  RETURNS TABLE(trade_date date, etf_ticker text, holding_ticker text, trade_type text, shares_change numeric, shares_after numeric)
  LANGUAGE sql
  STABLE
 AS $function$
 WITH in_range_etfs AS (
-  -- Get distinct ETFs that hold this ticker in the date range
-  SELECT DISTINCT e.etf_ticker
+  -- Get distinct ETF/holding pairs that appear in the date range
+  SELECT DISTINCT e.etf_ticker, e.holding_ticker
   FROM etf_holdings_log e
-  WHERE e.holding_ticker = p_holding_ticker
-    AND (p_etf_ticker IS NULL OR e.etf_ticker = p_etf_ticker)
+  WHERE e.holding_ticker = ANY(p_holding_tickers)
     AND e.date BETWEEN p_start_date AND p_end_date
 ),
 seed_prev AS (
-  -- Bring in the last row before the start date per ETF (if it exists)
+  -- Bring in the last row before the start date per ETF/holding pair (if it exists)
   -- This ensures the first row in range has a valid previous value for comparison
   SELECT prev.*
   FROM in_range_etfs t
   JOIN LATERAL (
     SELECT e.*
     FROM etf_holdings_log e
-    WHERE e.holding_ticker = p_holding_ticker
+    WHERE e.holding_ticker = t.holding_ticker
       AND e.etf_ticker = t.etf_ticker
       AND e.date < p_start_date
     ORDER BY e.date DESC
@@ -30,8 +29,7 @@ data AS (
   -- Combine in-range data with seed previous rows
   SELECT e.date, e.etf_ticker, e.holding_ticker, COALESCE(e.shares_held, 0) AS shares_after
   FROM etf_holdings_log e
-  WHERE e.holding_ticker = p_holding_ticker
-    AND (p_etf_ticker IS NULL OR e.etf_ticker = p_etf_ticker)
+  WHERE e.holding_ticker = ANY(p_holding_tickers)
     AND e.date BETWEEN p_start_date AND p_end_date
 
   UNION ALL
@@ -44,7 +42,7 @@ calc AS (
   SELECT
     d.*,
     d.shares_after - LAG(d.shares_after) OVER (
-      PARTITION BY d.etf_ticker, d.holding_ticker 
+      PARTITION BY d.etf_ticker, d.holding_ticker
       ORDER BY d.date
     ) AS shares_change
   FROM data d
@@ -64,5 +62,6 @@ FROM calc c
 WHERE c.date BETWEEN p_start_date AND p_end_date
   AND c.shares_change IS NOT NULL
   AND c.shares_change <> 0
-ORDER BY c.date ASC, c.etf_ticker ASC;
+ORDER BY c.date DESC, c.etf_ticker ASC
+LIMIT p_limit;
 $function$;

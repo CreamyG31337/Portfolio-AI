@@ -1,0 +1,1 @@
+CREATE POLICY "Only admins can insert signal analysis" ON "signal_analysis" FOR INSERT TO authenticated WITH CHECK (is_admin(auth.uid()));

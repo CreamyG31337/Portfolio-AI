@@ -85,16 +85,6 @@ CREATE POLICY "Service role can manage congress_trades" ON congress_trades
     USING (true)
     WITH CHECK (true);
 
--- Congress trades staging - Admin/service role only (staging data)
-ALTER TABLE congress_trades_staging ENABLE ROW LEVEL SECURITY;
-
--- Only service role can access staging (admin operations)
-CREATE POLICY "Service role can manage congress_trades_staging" ON congress_trades_staging
-    FOR ALL
-    TO service_role
-    USING (true)
-    WITH CHECK (true);
-
 -- RSS feeds - Admin/service role only (configuration data)
 ALTER TABLE rss_feeds ENABLE ROW LEVEL SECURITY;
 
@@ -158,7 +148,6 @@ DECLARE
         'committees',
         'committee_assignments',
         'congress_trades',
-        'congress_trades_staging',
         'rss_feeds'
     ];
     table_name TEXT;

@@ -1,8 +1,8 @@
 # Research Database Database Schema
 
-**Generated:** 2026-01-15 02:41:49
+**Generated:** 2026-02-09 18:52:50
 
-**Total Tables:** 13
+**Total Tables:** 15
 
 ---
 
@@ -13,6 +13,7 @@
 - [etf_holdings_log](#etf-holdings-log)
 - [extracted_tickers](#extracted-tickers)
 - [market_relationships](#market-relationships)
+- [newsletters](#newsletters)
 - [post_summaries](#post-summaries)
 - [research_articles](#research-articles)
 - [rss_feeds](#rss-feeds)
@@ -21,6 +22,7 @@
 - [social_metrics](#social-metrics)
 - [social_posts](#social-posts)
 - [social_sentiment_analysis](#social-sentiment-analysis)
+- [ticker_analysis](#ticker-analysis)
 
 ---
 
@@ -129,6 +131,7 @@
 
 | Name | Columns | Unique |
 |------|---------|--------|
+| `idx_ehl_holding_date` | `holding_ticker`, `date` | ✗ |
 | `idx_etf_holdings_date` | `date` | ✗ |
 | `idx_etf_holdings_etf` | `etf_ticker`, `date` | ✗ |
 | `idx_etf_holdings_ticker` | `holding_ticker` | ✗ |
@@ -198,6 +201,43 @@
 | `idx_relationships_target` | `target_ticker` | ✗ |
 | `idx_relationships_type` | `relationship_type` | ✗ |
 | `unique_relationship` | `source_ticker`, `target_ticker`, `relationship_type` | ✓ |
+
+---
+
+## newsletters
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `sender` | VARCHAR(500) | ✗ | - |
+| `sender_name` | VARCHAR(500) | ✓ | - |
+| `recipient` | VARCHAR(500) | ✗ | - |
+| `subject` | TEXT | ✗ | - |
+| `body_plain` | TEXT | ✓ | - |
+| `body_html` | TEXT | ✓ | - |
+| `tickers` | ARRAY | ✓ | - |
+| `summary` | TEXT | ✓ | - |
+| `embedding` | NULL | ✓ | - |
+| `received_at` | TIMESTAMP | ✓ | CURRENT_TIMESTAMP |
+| `processed_at` | TIMESTAMP | ✓ | - |
+| `message_id` | VARCHAR(500) | ✓ | - |
+| `article_url` | TEXT | ✓ | - |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_newsletters_embedding` | `embedding` | ✗ |
+| `idx_newsletters_received_at` | `received_at` | ✗ |
+| `idx_newsletters_sender` | `sender` | ✗ |
+| `idx_newsletters_tickers` | `tickers` | ✗ |
+| `newsletters_message_id_unique` | `message_id` | ✓ |
 
 ---
 
@@ -448,6 +488,62 @@
 ### Primary Key
 
 - `id`
+
+---
+
+## ticker_analysis
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `ticker` | VARCHAR(10) | ✗ | - |
+| `analysis_type` | VARCHAR(20) | ✗ | 'standard'::character varying |
+| `analysis_date` | DATE | ✗ | - |
+| `data_start_date` | DATE | ✗ | - |
+| `data_end_date` | DATE | ✗ | - |
+| `sentiment` | VARCHAR(20) | ✓ | - |
+| `sentiment_score` | NUMERIC(3, 2) | ✓ | - |
+| `confidence_score` | NUMERIC(3, 2) | ✓ | - |
+| `themes` | ARRAY | ✓ | - |
+| `summary` | TEXT | ✓ | - |
+| `analysis_text` | TEXT | ✓ | - |
+| `reasoning` | TEXT | ✓ | - |
+| `input_context` | TEXT | ✓ | - |
+| `etf_changes_count` | INTEGER | ✓ | 0 |
+| `congress_trades_count` | INTEGER | ✓ | 0 |
+| `research_articles_count` | INTEGER | ✓ | 0 |
+| `embedding` | NULL | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+| `model_used` | VARCHAR(50) | ✓ | 'granite3.3:8b'::character varying |
+| `analysis_version` | INTEGER | ✓ | 1 |
+| `requested_by` | VARCHAR(100) | ✓ | - |
+| `stance` | VARCHAR(10) | ✓ | - |
+| `timeframe` | VARCHAR(20) | ✓ | - |
+| `entry_zone` | VARCHAR(50) | ✓ | - |
+| `target_price` | VARCHAR(20) | ✓ | - |
+| `stop_loss` | VARCHAR(20) | ✓ | - |
+| `key_levels` | JSONB | ✓ | - |
+| `catalysts` | ARRAY | ✓ | - |
+| `risks` | ARRAY | ✓ | - |
+| `invalidation` | TEXT | ✓ | - |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_ticker_analysis_date` | `analysis_date` | ✗ |
+| `idx_ticker_analysis_embedding` | `embedding` | ✗ |
+| `idx_ticker_analysis_stance` | `stance` | ✗ |
+| `idx_ticker_analysis_ticker` | `ticker` | ✗ |
+| `idx_ticker_analysis_updated` | `updated_at` | ✗ |
+| `unique_ticker_analysis` | `ticker`, `analysis_type`, `analysis_date` | ✓ |
 
 ---
 

@@ -1,1 +1,0 @@
-CREATE SEQUENCE congress_trades_staging_id_seq;

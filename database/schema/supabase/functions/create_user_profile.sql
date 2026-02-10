@@ -20,7 +20,7 @@ BEGIN
     VALUES (
         NEW.id,
         NEW.email,
-        NULLIF(BTRIM(COALESCE(NEW.raw_user_meta_data->>'full_name', '')), ''),
+        COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
         user_role
     );
     

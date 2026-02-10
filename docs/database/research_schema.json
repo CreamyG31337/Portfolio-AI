@@ -1,6 +1,6 @@
 {
   "database_name": "Research Database",
-  "generated_at": "2026-01-15T02:41:50.375622",
+  "generated_at": "2026-02-09T18:52:51.290417",
   "tables": {
     "research_articles": {
       "columns": [
@@ -532,6 +532,135 @@
       "foreign_keys": [],
       "indexes": []
     },
+    "newsletters": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "sender",
+          "type": "VARCHAR(500)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "sender_name",
+          "type": "VARCHAR(500)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "recipient",
+          "type": "VARCHAR(500)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "subject",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "body_plain",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "body_html",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "tickers",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "summary",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "embedding",
+          "type": "NULL",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "received_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "processed_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "message_id",
+          "type": "VARCHAR(500)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "article_url",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_newsletters_embedding",
+          "columns": [
+            "embedding"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_newsletters_received_at",
+          "columns": [
+            "received_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_newsletters_sender",
+          "columns": [
+            "sender"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_newsletters_tickers",
+          "columns": [
+            "tickers"
+          ],
+          "unique": false
+        },
+        {
+          "name": "newsletters_message_id_unique",
+          "columns": [
+            "message_id"
+          ],
+          "unique": true
+        }
+      ]
+    },
     "congress_trades_analysis": {
       "columns": [
         {
@@ -1029,6 +1158,252 @@
       "foreign_keys": [],
       "indexes": []
     },
+    "ticker_analysis": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "analysis_type",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": "'standard'::character varying"
+        },
+        {
+          "name": "analysis_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "data_start_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "data_end_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "sentiment",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sentiment_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "confidence_score",
+          "type": "NUMERIC(3, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "themes",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "summary",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "analysis_text",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "reasoning",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "input_context",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "etf_changes_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "congress_trades_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "research_articles_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "embedding",
+          "type": "NULL",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "model_used",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": "'granite3.3:8b'::character varying"
+        },
+        {
+          "name": "analysis_version",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "1"
+        },
+        {
+          "name": "requested_by",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "stance",
+          "type": "VARCHAR(10)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "timeframe",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "entry_zone",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "target_price",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "stop_loss",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "key_levels",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "catalysts",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "risks",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "invalidation",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_ticker_analysis_date",
+          "columns": [
+            "analysis_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_ticker_analysis_embedding",
+          "columns": [
+            "embedding"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_ticker_analysis_stance",
+          "columns": [
+            "stance"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_ticker_analysis_ticker",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_ticker_analysis_updated",
+          "columns": [
+            "updated_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "unique_ticker_analysis",
+          "columns": [
+            "ticker",
+            "analysis_type",
+            "analysis_date"
+          ],
+          "unique": true
+        }
+      ]
+    },
     "rss_feeds": {
       "columns": [
         {
@@ -1373,6 +1748,14 @@
       ],
       "foreign_keys": [],
       "indexes": [
+        {
+          "name": "idx_ehl_holding_date",
+          "columns": [
+            "holding_ticker",
+            "date"
+          ],
+          "unique": false
+        },
         {
           "name": "idx_etf_holdings_date",
           "columns": [

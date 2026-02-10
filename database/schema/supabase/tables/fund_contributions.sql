@@ -20,6 +20,7 @@ CREATE TABLE fund_contributions (
 
 -- Foreign Keys
 ALTER TABLE fund_contributions ADD CONSTRAINT fk_fund_contributions_fund FOREIGN KEY (fund) REFERENCES funds(name);
+ALTER TABLE fund_contributions ADD CONSTRAINT fund_contributions_contributor_id_fkey FOREIGN KEY (contributor_id) REFERENCES contributors(id);
 ALTER TABLE fund_contributions ADD CONSTRAINT fund_contributions_fund_id_fkey FOREIGN KEY (fund_id) REFERENCES funds(id);
 
 -- Indexes

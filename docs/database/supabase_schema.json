@@ -1,123 +1,7 @@
 {
   "database_name": "Supabase Production",
-  "generated_at": "2026-01-15T02:41:21.416187",
+  "generated_at": "2026-02-09T18:52:19.924746",
   "tables": {
-    "securities": {
-      "columns": [
-        {
-          "name": "ticker",
-          "type": "VARCHAR(20)",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "company_name",
-          "type": "TEXT",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "sector",
-          "type": "TEXT",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "industry",
-          "type": "TEXT",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "country",
-          "type": "VARCHAR(50)",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "market_cap",
-          "type": "TEXT",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "currency",
-          "type": "VARCHAR(3)",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "last_updated",
-          "type": "TIMESTAMP",
-          "nullable": true,
-          "default": "now()"
-        },
-        {
-          "name": "created_at",
-          "type": "TIMESTAMP",
-          "nullable": true,
-          "default": "now()"
-        },
-        {
-          "name": "trailing_pe",
-          "type": "NUMERIC",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "dividend_yield",
-          "type": "NUMERIC",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "fifty_two_week_high",
-          "type": "NUMERIC",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "fifty_two_week_low",
-          "type": "NUMERIC",
-          "nullable": true,
-          "default": null
-        }
-      ],
-      "primary_key": [
-        "ticker"
-      ],
-      "foreign_keys": [],
-      "indexes": [
-        {
-          "name": "idx_securities_currency",
-          "columns": [
-            "currency"
-          ],
-          "unique": false
-        },
-        {
-          "name": "idx_securities_industry",
-          "columns": [
-            "industry"
-          ],
-          "unique": false
-        },
-        {
-          "name": "idx_securities_last_updated",
-          "columns": [
-            "last_updated"
-          ],
-          "unique": false
-        },
-        {
-          "name": "idx_securities_sector",
-          "columns": [
-            "sector"
-          ],
-          "unique": false
-        }
-      ]
-    },
     "cash_balances": {
       "columns": [
         {
@@ -1007,6 +891,17 @@
           "referenced_table": "funds",
           "referenced_columns": [
             "name"
+          ],
+          "on_delete": null,
+          "on_update": null
+        },
+        {
+          "columns": [
+            "contributor_id"
+          ],
+          "referenced_table": "contributors",
+          "referenced_columns": [
+            "id"
           ],
           "on_delete": null,
           "on_update": null
@@ -2383,6 +2278,14 @@
           "unique": false
         },
         {
+          "name": "idx_congress_ticker_date",
+          "columns": [
+            "ticker",
+            "transaction_date"
+          ],
+          "unique": false
+        },
+        {
           "name": "idx_congress_trades_politician_id",
           "columns": [
             "politician_id"
@@ -2393,196 +2296,6 @@
           "name": "idx_congress_transaction_date",
           "columns": [
             "transaction_date"
-          ],
-          "unique": false
-        }
-      ]
-    },
-    "congress_trades_staging": {
-      "columns": [
-        {
-          "name": "id",
-          "type": "INTEGER",
-          "nullable": false,
-          "default": "nextval('congress_trades_staging_id_seq'::regclass)"
-        },
-        {
-          "name": "ticker",
-          "type": "VARCHAR(20)",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "politician",
-          "type": "VARCHAR(200)",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "chamber",
-          "type": "VARCHAR(20)",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "transaction_date",
-          "type": "DATE",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "disclosure_date",
-          "type": "DATE",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "type",
-          "type": "VARCHAR(20)",
-          "nullable": false,
-          "default": null
-        },
-        {
-          "name": "amount",
-          "type": "VARCHAR(100)",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "price",
-          "type": "NUMERIC(10, 2)",
-          "nullable": true,
-          "default": "NULL::numeric"
-        },
-        {
-          "name": "asset_type",
-          "type": "VARCHAR(50)",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "party",
-          "type": "VARCHAR(50)",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "state",
-          "type": "VARCHAR(2)",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "owner",
-          "type": "VARCHAR(100)",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "conflict_score",
-          "type": "DOUBLE PRECISION",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "notes",
-          "type": "TEXT",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "import_batch_id",
-          "type": "UUID",
-          "nullable": true,
-          "default": "gen_random_uuid()"
-        },
-        {
-          "name": "import_timestamp",
-          "type": "TIMESTAMP",
-          "nullable": true,
-          "default": "now()"
-        },
-        {
-          "name": "validation_status",
-          "type": "VARCHAR(20)",
-          "nullable": true,
-          "default": "'pending'::character varying"
-        },
-        {
-          "name": "validation_notes",
-          "type": "TEXT",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "promoted_to_production",
-          "type": "BOOLEAN",
-          "nullable": true,
-          "default": "false"
-        },
-        {
-          "name": "promoted_at",
-          "type": "TIMESTAMP",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "source_url",
-          "type": "TEXT",
-          "nullable": true,
-          "default": null
-        },
-        {
-          "name": "raw_data",
-          "type": "JSONB",
-          "nullable": true,
-          "default": null
-        }
-      ],
-      "primary_key": [
-        "id"
-      ],
-      "foreign_keys": [],
-      "indexes": [
-        {
-          "name": "idx_staging_batch",
-          "columns": [
-            "import_batch_id"
-          ],
-          "unique": false
-        },
-        {
-          "name": "idx_staging_date",
-          "columns": [
-            "transaction_date"
-          ],
-          "unique": false
-        },
-        {
-          "name": "idx_staging_politician",
-          "columns": [
-            "politician"
-          ],
-          "unique": false
-        },
-        {
-          "name": "idx_staging_promoted",
-          "columns": [
-            "promoted_to_production"
-          ],
-          "unique": false
-        },
-        {
-          "name": "idx_staging_status",
-          "columns": [
-            "validation_status"
-          ],
-          "unique": false
-        },
-        {
-          "name": "idx_staging_ticker",
-          "columns": [
-            "ticker"
           ],
           "unique": false
         }
@@ -2662,6 +2375,106 @@
           "name": "rss_feeds_url_key",
           "columns": [
             "url"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "signal_analysis": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('signal_analysis_id_seq'::regclass)"
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "analysis_date",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "structure_signal",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "timing_signal",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "fear_risk_signal",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "overall_signal",
+          "type": "VARCHAR(10)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "confidence_score",
+          "type": "DOUBLE PRECISION",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "explanation",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_signal_analysis_fear_level",
+          "columns": [
+            null
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_signal_analysis_signal",
+          "columns": [
+            "overall_signal"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_signal_analysis_ticker_date",
+          "columns": [
+            "ticker",
+            "analysis_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "signal_analysis_ticker_analysis_date_key",
+          "columns": [
+            "ticker",
+            "analysis_date"
           ],
           "unique": true
         }
@@ -3046,6 +2859,14 @@
       "foreign_keys": [],
       "indexes": [
         {
+          "name": "idx_ehl_holding_date",
+          "columns": [
+            "holding_ticker",
+            "date"
+          ],
+          "unique": false
+        },
+        {
           "name": "idx_etf_holdings_date",
           "columns": [
             "date"
@@ -3066,6 +2887,477 @@
             "holding_ticker"
           ],
           "unique": false
+        }
+      ]
+    },
+    "ai_analysis_skip_list": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "reason",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "first_failed_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "last_failed_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "failure_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "1"
+        },
+        {
+          "name": "skip_until",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "added_by",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ai_analysis_skip_list_ticker_key",
+          "columns": [
+            "ticker"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_skip_list_last_failed",
+          "columns": [
+            "last_failed_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_skip_list_ticker",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "ai_analysis_queue": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "analysis_type",
+          "type": "VARCHAR(30)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "target_key",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "priority",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "default": "'pending'::character varying"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "started_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "completed_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "error_message",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "retry_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": "0"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_analysis_queue_pending",
+          "columns": [
+            "status",
+            "priority",
+            "created_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_analysis_queue_recent",
+          "columns": [
+            "completed_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_analysis_queue_type_key",
+          "columns": [
+            "analysis_type",
+            "target_key"
+          ],
+          "unique": false
+        },
+        {
+          "name": "unique_pending_analysis",
+          "columns": [
+            "analysis_type",
+            "target_key",
+            "status"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "securities": {
+      "columns": [
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "company_name",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sector",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "industry",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "country",
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "market_cap",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "currency",
+          "type": "VARCHAR(3)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "last_updated",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "trailing_pe",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "dividend_yield",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "fifty_two_week_high",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "fifty_two_week_low",
+          "type": "NUMERIC",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_key": [
+        "ticker"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_securities_currency",
+          "columns": [
+            "currency"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_securities_description",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_securities_industry",
+          "columns": [
+            "industry"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_securities_last_updated",
+          "columns": [
+            "last_updated"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_securities_sector",
+          "columns": [
+            "sector"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "insider_trades": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "nextval('insider_trades_id_seq'::regclass)"
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "insider_name",
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "insider_title",
+          "type": "VARCHAR(255)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "transaction_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "disclosure_date",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "type",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "shares",
+          "type": "BIGINT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "price_per_share",
+          "type": "NUMERIC(10, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "value",
+          "type": "NUMERIC(15, 2)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "shares_held_after",
+          "type": "BIGINT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "percent_change",
+          "type": "NUMERIC(10, 4)",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_insider_disclosure_date",
+          "columns": [
+            "disclosure_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_insider_name",
+          "columns": [
+            "insider_name"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_insider_ticker",
+          "columns": [
+            "ticker"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_insider_transaction_date",
+          "columns": [
+            "transaction_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_insider_type",
+          "columns": [
+            "type"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_insider_value",
+          "columns": [
+            "value"
+          ],
+          "unique": false
+        },
+        {
+          "name": "insider_trades_unique_key",
+          "columns": [
+            "ticker",
+            "insider_name",
+            "transaction_date",
+            "type",
+            "shares",
+            "price_per_share"
+          ],
+          "unique": true
         }
       ]
     }

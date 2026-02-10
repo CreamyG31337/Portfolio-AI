@@ -30,8 +30,7 @@ def main():
         'congress_trade_analysis',
         'trade_analysis',
         'analysis',
-        'congress_trades', # maybe it's a column here?
-        'congress_trades_staging'
+        'congress_trades' # maybe it's a column here?
     ]
     
     for table in candidates:

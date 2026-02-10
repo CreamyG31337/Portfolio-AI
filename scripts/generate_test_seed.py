@@ -365,7 +365,6 @@ def generate_supabase_seed(supabase_url, output_path):
                 ("committee_assignments", "committee_assignments_id_seq"),
                 ("committees", "committees_id_seq"),
                 ("congress_trades", "congress_trades_id_seq"),
-                ("congress_trades_staging", "congress_trades_staging_id_seq"),
             ]
 
             for table, seq_name in sequence_queries:
