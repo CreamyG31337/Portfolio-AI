@@ -11,6 +11,7 @@ interface User {
     email: string;
     full_name?: string;
     role?: string;
+    last_sign_in_at?: string | null;
     funds?: string[];
 }
 
@@ -425,7 +426,7 @@ function renderUsers(): void {
 
 function createUserCard(user: User): string {
     const email = user.email || '';
-    const fullName = user.full_name || 'N/A';
+    const fullName = (user.full_name || '').trim() || email || 'N/A';
     const role = user.role || 'user';
     const fundsList = user.funds || [];
     const isAdmin = role === 'admin';
@@ -440,6 +441,7 @@ function createUserCard(user: User): string {
 
     const roleClass = isAdmin ? 'role-admin' : isReadonly ? 'role-readonly' : 'role-user';
     const roleLabel = isAdmin ? '🔑 Admin' : isReadonly ? '👁️ Read-Only' : '👤 User';
+    const lastLoginText = formatLastLogin(user.last_sign_in_at);
 
     return `
         <div class="user-card bg-dashboard-surface rounded-lg shadow p-6 border border-border">
@@ -452,11 +454,12 @@ function createUserCard(user: User): string {
                         </span>
                     </div>
                     <p class="text-sm text-text-secondary mb-2">${escapeHtmlForUsers(email)}</p>
+                    <p class="text-sm text-text-secondary mb-2">🕒 Last login: ${escapeHtmlForUsers(lastLoginText)}</p>
                     <p class="text-sm text-text-secondary">📊 ${escapeHtmlForUsers(fundsStr)}</p>
                 </div>
                 <div class="action-popover">
                     <button class="user-action-btn bg-dashboard-background hover:bg-dashboard-hover px-3 py-2 rounded-md text-sm border border-border text-text-primary"
-                            data-email="${escapeHtmlForUsers(email)}" data-role="${role}" data-is-self="${isSelf}">
+                            data-user-id="${escapeHtmlForUsers(user.user_id || '')}" data-email="${escapeHtmlForUsers(email)}" data-role="${role}" data-is-self="${isSelf}">
                         <i class="fas fa-cog mr-1"></i>Actions
                     </button>
                 </div>
@@ -468,6 +471,7 @@ function createUserCard(user: User): string {
 // Handle User Actions
 async function handleUserAction(e: Event): Promise<void> {
     const btn = e.currentTarget as HTMLButtonElement;
+    const userId = btn.dataset.userId || '';
     const email = btn.dataset.email || '';
     const role = btn.dataset.role || '';
     const isSelf = btn.dataset.isSelf === 'true';
@@ -478,6 +482,9 @@ async function handleUserAction(e: Event): Promise<void> {
 
     // Handle the action
     switch (action) {
+        case 'edit-name':
+            await showEditNameDialog(userId, email);
+            break;
         case 'set-admin':
             await setUserRole(email, 'admin');
             break;
@@ -559,6 +566,9 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
                     <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="send-invite">
                         <i class="fas fa-envelope mr-2 text-theme-info-text"></i>Send Invite
                     </button>
+                    <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="edit-name">
+                        <i class="fas fa-id-card mr-2 text-theme-info-text"></i>Edit Display Name
+                    </button>
                     <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-theme-error-text font-medium" data-action="delete">
                         <i class="fas fa-trash-alt mr-2"></i>Delete User
                     </button>
@@ -596,6 +606,54 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
 }
 
 // User Actions
+async function showEditNameDialog(userId: string, email: string): Promise<void> {
+    if (!userId || !email) {
+        showToast('Missing user identifier', 'error');
+        return;
+    }
+
+    const user = users.find((u) => u.user_id === userId || u.email === email);
+    const currentName = (user?.full_name || '').trim();
+    const newNameInput = prompt(`Set display name for ${email}:`, currentName);
+
+    if (newNameInput === null) {
+        return;
+    }
+
+    const newName = newNameInput.trim();
+    if (!newName) {
+        showToast('Display name cannot be empty', 'warning');
+        return;
+    }
+    if (newName.length > 255) {
+        showToast('Display name must be 255 characters or fewer', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/admin/users/update-name', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({
+                user_id: userId,
+                user_email: email,
+                full_name: newName
+            })
+        });
+
+        const data: ApiResponse = await response.json();
+        if (response.ok && data.success) {
+            showToast(data.message || 'Display name updated', 'success');
+            fetchUsers();
+            fetchAccessRecords();
+        } else {
+            showToast(data.error || data.message || 'Failed to update display name', 'error');
+        }
+    } catch (error) {
+        showToast(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+}
+
 function setUserRole(email: string, newRole: string): void {
     const roleLabels: Record<string, string> = {
         'admin': 'Full Admin',
@@ -693,17 +751,22 @@ async function showRemoveFundDialog(email: string): Promise<void> {
     }
 }
 
-function sendInvite(email: string): void {
+function sendInvite(email: string, fullName?: string): void {
     (window as any).showConfirmModal({
         title: 'Send invite',
         message: `Send invite email to ${email}?`,
         confirmLabel: 'Send invite',
         onConfirm: async () => {
             try {
+                const payload: Record<string, string> = { user_email: email };
+                if (fullName && fullName.trim()) {
+                    payload.full_name = fullName.trim();
+                }
+
                 const response = await fetch('/api/admin/users/send-invite', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
-                    body: JSON.stringify({ user_email: email })
+                    body: JSON.stringify(payload)
                 });
                 const data: ApiResponse = await response.json();
                 if (response.ok && data.success) {
@@ -762,7 +825,7 @@ function updateContributorSelect(): void {
 
     // Add registered users
     users.forEach(u => {
-        const name = u.full_name || u.email || '';
+        const name = (u.full_name || '').trim() || u.email || '';
         const email = u.email || '';
         const display = name && email ? `${name} (${email}) [Registered User]` : `${email} [Registered User]`;
         const data: ContributorSelectData = { type: 'user', id: u.user_id, name, email };
@@ -868,8 +931,8 @@ function renderUnregisteredContributors(): void {
                 </div>
                 <div>
                     ${hasEmail
-                ? `<button class="send-invite-btn text-purple-600 dark:text-purple-400 bg-transparent border border-purple-600 dark:border-purple-400 hover:bg-purple-600/10 dark:hover:bg-purple-400/10 focus:ring-4 focus:ring-purple-600/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200" 
-                                 data-email="${escapeHtmlForUsers(contrib.email || '')}">
+                ? `<button class="send-invite-btn text-purple-600 dark:text-purple-400 bg-transparent border border-purple-600 dark:border-purple-400 hover:bg-purple-600/10 dark:hover:bg-purple-400/10 focus:ring-4 focus:ring-purple-600/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200"
+                                 data-email="${escapeHtmlForUsers(contrib.email || '')}" data-name="${escapeHtmlForUsers(contrib.contributor || '')}">
                             <i class="fas fa-envelope mr-1"></i>Send Invite
                           </button>`
                 : `<span class="text-theme-warning-text text-sm">⚠️ Add email to invite</span>`}
@@ -883,9 +946,11 @@ function renderUnregisteredContributors(): void {
     // Attach event listeners
     document.querySelectorAll('.send-invite-btn').forEach(btn => {
         btn.addEventListener('click', (e: Event) => {
-            const email = (e.currentTarget as HTMLElement).dataset.email;
+            const target = e.currentTarget as HTMLElement;
+            const email = target.dataset.email;
+            const name = target.dataset.name;
             if (email) {
-                sendInvite(email);
+                sendInvite(email, name);
             }
         });
     });
@@ -1115,6 +1180,19 @@ function showToast(message: string, type: 'success' | 'error' | 'warning' | 'inf
 }
 
 // Helper Functions
+function formatLastLogin(lastSignInAt?: string | null): string {
+    if (!lastSignInAt || !lastSignInAt.trim()) {
+        return 'Never';
+    }
+
+    const parsed = new Date(lastSignInAt);
+    if (Number.isNaN(parsed.getTime())) {
+        return 'Unknown';
+    }
+
+    return parsed.toLocaleString();
+}
+
 function escapeHtmlForUsers(text: string): string {
     const div = document.createElement('div');
     div.textContent = text;

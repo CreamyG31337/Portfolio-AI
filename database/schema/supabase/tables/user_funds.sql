@@ -12,8 +12,8 @@ CREATE TABLE user_funds (
 );
 
 -- Foreign Keys
-ALTER TABLE user_funds ADD CONSTRAINT user_funds_fund_id_fkey FOREIGN KEY (fund_id) REFERENCES funds(id);
-ALTER TABLE user_funds ADD CONSTRAINT user_funds_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
+ALTER TABLE user_funds ADD CONSTRAINT user_funds_fund_id_fkey FOREIGN KEY (fund_id) REFERENCES funds(id) ON DELETE CASCADE;
+ALTER TABLE user_funds ADD CONSTRAINT user_funds_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 -- Indexes
 CREATE INDEX idx_user_funds_fund_id ON user_funds (fund_id);

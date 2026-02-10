@@ -15,7 +15,7 @@ CREATE TABLE user_profiles (
 );
 
 -- Foreign Keys
-ALTER TABLE user_profiles ADD CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id);
+ALTER TABLE user_profiles ADD CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 -- Indexes
 CREATE INDEX idx_user_profiles_preferences ON user_profiles (preferences);

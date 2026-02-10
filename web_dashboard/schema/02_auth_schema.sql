@@ -182,7 +182,7 @@ BEGIN
     VALUES (
         NEW.id,
         NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+        NULLIF(BTRIM(COALESCE(NEW.raw_user_meta_data->>'full_name', '')), ''),
         user_role
     );
     RETURN NEW;
@@ -355,6 +355,8 @@ RETURNS TABLE(
     user_id UUID,
     email TEXT,
     full_name TEXT,
+    role TEXT,
+    last_sign_in_at TIMESTAMP WITH TIME ZONE,
     funds TEXT[]
 ) AS $$
 BEGIN
@@ -363,10 +365,13 @@ BEGIN
         up.user_id,
         up.email,
         up.full_name,
+        up.role,
+        au.last_sign_in_at,
         ARRAY_AGG(uf.fund_name) as funds
     FROM user_profiles up
+    LEFT JOIN auth.users au ON au.id = up.user_id
     LEFT JOIN user_funds uf ON up.user_id = uf.user_id
-    GROUP BY up.user_id, up.email, up.full_name
+    GROUP BY up.user_id, up.email, up.full_name, up.role, au.last_sign_in_at
     ORDER BY up.email;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

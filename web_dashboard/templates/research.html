@@ -175,21 +175,15 @@
     </form>
 </div>
 
-<!-- Re-Analyze Controls -->
+<!-- Reprocess Controls -->
 <div class="bg-dashboard-surface rounded-lg shadow-xs p-4 mb-6 border border-border">
-    <div class="flex items-center justify-between flex-wrap gap-4">
-        <div class="flex items-center gap-4 flex-1">
-            <label for="reanalysis-model" class="text-sm font-medium text-text-primary">Re-Analysis Model:</label>
+    <div class="flex items-center gap-4 flex-wrap">
+            <label for="reanalysis-model" class="text-sm text-text-secondary">Model</label>
             <select id="reanalysis-model"
-                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent px-3 py-2 min-w-[200px]">
+                class="text-sm border border-border rounded-lg bg-dashboard-surface text-text-primary px-2 py-1.5 min-w-[200px] focus:ring-2 focus:ring-accent/30 focus:border-accent">
                 <option value="">Loading models...</option>
             </select>
-            <span id="selected-count" class="text-sm text-text-secondary hidden">0 articles selected</span>
-        </div>
-        <button id="reanalyze-btn" disabled
-            class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-hidden disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
-            <i class="fas fa-sync-alt mr-2"></i>Re-Analyze Selected
-        </button>
+        <p class="text-sm text-text-secondary">Use each article's Reprocess button below.</p>
     </div>
     <div id="reanalyze-progress" class="hidden mt-4">
         <div class="w-full bg-border rounded-full h-2.5">
@@ -207,10 +201,7 @@
     <div id="article-card-{{ article.id }}" data-article-id="{{ article.id }}"
         class="bg-dashboard-surface rounded-lg shadow-xs border border-border hover:shadow-md transition-shadow duration-200">
         <div class="p-6">
-            <div class="flex items-start gap-3 mb-4">
-                <input type="checkbox"
-                    class="article-checkbox mt-1 w-4 h-4 text-accent bg-dashboard-background border-border rounded focus:ring-accent"
-                    data-article-id="{{ article.id }}" onchange="updateSelectedCount()">
+            <div class="flex items-start mb-4">
                 <div class="flex justify-between items-start flex-1">
                     <div>
                         <!-- Badges -->
@@ -328,14 +319,22 @@
                         View full text
                     </button>
                 </div>
-                {% if is_admin %}
-                <button type="button"
-                    onclick="deleteArticle('{{ article.id }}')"
-                    class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-theme-error-text text-theme-error-text hover:bg-theme-error-bg focus:outline-hidden focus:ring-2 focus:ring-theme-error-text/40">
-                    <i class="fas fa-trash-alt mr-1"></i>
-                    Delete
-                </button>
-                {% endif %}
+                <div class="flex items-center gap-2">
+                    <button type="button"
+                        class="reanalyze-article-btn inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        data-article-id="{{ article.id }}">
+                        <i class="fas fa-sync-alt mr-1.5"></i>
+                        Reprocess
+                    </button>
+                    {% if is_admin %}
+                    <button type="button"
+                        onclick="deleteArticle('{{ article.id }}')"
+                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-theme-error-text text-theme-error-text bg-transparent hover:bg-theme-error-bg focus:ring-2 focus:ring-theme-error-text/40 focus:outline-none transition-colors">
+                        <i class="fas fa-trash-alt mr-1.5"></i>
+                        Delete
+                    </button>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -635,6 +634,7 @@
 
     let availableModels = [];
     let defaultModel = '';
+    let reanalyzeInProgress = false;
 
     // Check if summary actually needs truncation and hide button if not needed
     function checkSummaryOverflow() {
@@ -662,7 +662,7 @@
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function () {
         loadAvailableModels();
-        setupReanalyzeButton();
+        setupArticleReanalyzeButtons();
         initResearchTabs();
         initSearchTab();
         // Small delay to ensure content is fully rendered before checking overflow
@@ -762,57 +762,57 @@
             });
     }
 
-    function updateSelectedCount() {
-        const checkboxes = document.querySelectorAll('.article-checkbox:checked');
-        const count = checkboxes.length;
-        const countSpan = document.getElementById('selected-count');
-        const reanalyzeBtn = document.getElementById('reanalyze-btn');
-
-        if (count > 0) {
-            countSpan.textContent = `${count} article${count !== 1 ? 's' : ''} selected`;
-            countSpan.classList.remove('hidden');
-            reanalyzeBtn.disabled = false;
-        } else {
-            countSpan.classList.add('hidden');
-            reanalyzeBtn.disabled = true;
-        }
-    }
-
-    function setupReanalyzeButton() {
-        const btn = document.getElementById('reanalyze-btn');
-        btn.addEventListener('click', function () {
-            const checkboxes = document.querySelectorAll('.article-checkbox:checked');
-            const selectedIds = Array.from(checkboxes).map(cb => cb.dataset.articleId);
-            const modelSelect = document.getElementById('reanalysis-model');
-            const modelName = modelSelect.value;
-
-            if (selectedIds.length === 0) {
-                showMessage('Please select at least one article.', 'warning');
-                return;
-            }
-
-            if (!modelName) {
-                showMessage('Please select a model.', 'warning');
-                return;
-            }
-
-            reanalyzeArticles(selectedIds, modelName);
+    function setAllReanalyzeButtonsDisabled(disabled) {
+        document.querySelectorAll('.reanalyze-article-btn').forEach(button => {
+            button.disabled = disabled;
         });
     }
 
-    function reanalyzeArticles(articleIds, modelName) {
+    function setupArticleReanalyzeButtons() {
+        document.querySelectorAll('.reanalyze-article-btn').forEach(button => {
+            button.addEventListener('click', function () {
+                if (reanalyzeInProgress) {
+                    showMessage('A reprocess job is already running. Please wait.', 'warning');
+                    return;
+                }
+
+                const articleId = button.dataset.articleId;
+                if (!articleId) {
+                    showMessage('Could not determine article ID for reprocessing.', 'error');
+                    return;
+                }
+
+                const modelSelect = document.getElementById('reanalysis-model');
+                const modelName = modelSelect ? modelSelect.value : '';
+
+                if (!modelName) {
+                    showMessage('Please select a model.', 'warning');
+                    return;
+                }
+
+                reanalyzeArticles([articleId], modelName, button);
+            });
+        });
+    }
+
+    function reanalyzeArticles(articleIds, modelName, triggerButton) {
         const progressDiv = document.getElementById('reanalyze-progress');
         const progressBar = document.getElementById('reanalyze-progress-bar');
         const statusText = document.getElementById('reanalyze-status');
         const messagesDiv = document.getElementById('reanalyze-messages');
-        const reanalyzeBtn = document.getElementById('reanalyze-btn');
+        const activeButton = triggerButton instanceof HTMLElement ? triggerButton : null;
+        const activeButtonLabel = activeButton ? activeButton.innerHTML : '';
 
         // Show progress
         progressDiv.classList.remove('hidden');
         progressBar.style.width = '0%';
-        statusText.textContent = 'Starting re-analysis...';
+        statusText.textContent = 'Starting reprocessing...';
         messagesDiv.innerHTML = '';
-        reanalyzeBtn.disabled = true;
+        reanalyzeInProgress = true;
+        setAllReanalyzeButtonsDisabled(true);
+        if (activeButton) {
+            activeButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Reprocessing...';
+        }
 
         let successCount = 0;
         let errorCount = 0;
@@ -825,19 +825,23 @@
                 // All done
                 progressBar.style.width = '100%';
                 progressBar.classList.remove('animate-pulse');
-                statusText.textContent = `✅ Re-analysis complete! (${successCount} succeeded, ${errorCount} failed)`;
-                reanalyzeBtn.disabled = false;
+                statusText.textContent = `✅ Reprocessing complete! (${successCount} succeeded, ${errorCount} failed)`;
+                reanalyzeInProgress = false;
+                setAllReanalyzeButtonsDisabled(false);
+                if (activeButton) {
+                    activeButton.innerHTML = activeButtonLabel;
+                }
 
                 // Show summary
                 if (successCount > 0) {
-                    showMessage(`✅ Successfully re-analyzed ${successCount} article${successCount !== 1 ? 's' : ''}`, 'success');
+                    showMessage(`✅ Successfully reprocessed ${successCount} article${successCount !== 1 ? 's' : ''}`, 'success');
                     // Reload page after a short delay ONLY if there were successes
                     setTimeout(() => {
                         window.location.reload();
                     }, 2000);
                 }
                 if (errorCount > 0) {
-                    showMessage(`❌ Failed to re-analyze ${errorCount} article${errorCount !== 1 ? 's' : ''}`, 'error');
+                    showMessage(`❌ Failed to reprocess ${errorCount} article${errorCount !== 1 ? 's' : ''}`, 'error');
                 }
                 return;
             }
@@ -971,7 +975,16 @@
         }
 
         // Start processing
-        processNext(0);
+        processNext(0).catch(error => {
+            progressBar.classList.remove('animate-pulse');
+            reanalyzeInProgress = false;
+            setAllReanalyzeButtonsDisabled(false);
+            if (activeButton) {
+                activeButton.innerHTML = activeButtonLabel;
+            }
+            console.error('Unexpected reprocess error:', error);
+            showMessage(`❌ Reprocess failed: ${error.message}`, 'error');
+        });
     }
 
     function deleteArticle(articleId) {
@@ -1329,7 +1342,7 @@
                 <button onclick="reanalyzeResult('${result.id}')" id="btn-reanalyze-${result.id}"
                     class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-hidden transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled>
-                    <i class="fas fa-sync-alt mr-1"></i>Re-Analyze
+                    <i class="fas fa-sync-alt mr-1"></i>Reprocess
                 </button>
                 <button onclick="saveResult('${result.id}')" id="btn-save-${result.id}"
                     class="px-3 py-1.5 text-xs font-medium rounded border border-accent text-accent hover:bg-accent/10 focus:outline-hidden transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

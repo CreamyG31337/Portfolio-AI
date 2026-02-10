@@ -12,7 +12,7 @@ CREATE TABLE system_settings (
 );
 
 -- Foreign Keys
-ALTER TABLE system_settings ADD CONSTRAINT system_settings_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id);
+ALTER TABLE system_settings ADD CONSTRAINT system_settings_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES auth.users(id);
 
 -- Indexes
 CREATE INDEX idx_system_settings_updated_at ON system_settings (updated_at);

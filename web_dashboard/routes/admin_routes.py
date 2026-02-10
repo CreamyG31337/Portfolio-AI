@@ -526,6 +526,98 @@ def api_admin_set_role():
         logger.error(f"Error setting user role: {e}", exc_info=True)
         return jsonify({"error": "Failed to set role"}), 500
 
+@admin_bp.route('/api/admin/users/update-name', methods=['POST'])
+@require_admin
+def api_admin_update_user_name():
+    """Update a user's display name in user_profiles (and auth metadata when possible)."""
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot update user names"}), 403
+
+        data = request.get_json() or {}
+        user_id = (data.get('user_id') or '').strip()
+        user_email = (data.get('user_email') or '').strip()
+        full_name = (data.get('full_name') or '').strip()
+
+        if not full_name:
+            return jsonify({"error": "Full name is required"}), 400
+        if len(full_name) > 255:
+            return jsonify({"error": "Full name must be 255 characters or fewer"}), 400
+        if not user_id and not user_email:
+            return jsonify({"error": "User ID or email is required"}), 400
+
+        from app import get_supabase_client
+        client = get_supabase_client()
+        if not client:
+            return jsonify({"error": "Failed to connect to database"}), 500
+
+        target_user_id = user_id
+        if not target_user_id:
+            lookup_result = (
+                client.supabase
+                .table("user_profiles")
+                .select("user_id")
+                .eq("email", user_email)
+                .limit(1)
+                .execute()
+            )
+            if not lookup_result.data:
+                return jsonify({"error": f"User profile not found for {user_email}"}), 404
+            target_user_id = lookup_result.data[0].get("user_id")
+
+        update_result = (
+            client.supabase
+            .table("user_profiles")
+            .update({"full_name": full_name})
+            .eq("user_id", target_user_id)
+            .execute()
+        )
+        if update_result.data is not None and len(update_result.data) == 0:
+            return jsonify({"error": f"User profile not found for user_id {target_user_id}"}), 404
+
+        updates_made = ["user_profiles.full_name"]
+
+        # Keep auth metadata in sync when service role credentials are available.
+        try:
+            from supabase import create_client
+            supabase_url = os.getenv("SUPABASE_URL")
+            service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+            if supabase_url and service_key:
+                admin_client = create_client(supabase_url, service_key)
+                auth_update_response = admin_client.auth.admin.update_user_by_id(
+                    target_user_id,
+                    {"user_metadata": {"full_name": full_name}}
+                )
+                if auth_update_response:
+                    updates_made.append("auth.users.raw_user_meta_data.full_name")
+            else:
+                logger.warning(
+                    "Skipping auth.users metadata update for user_id %s: missing Supabase service key",
+                    target_user_id,
+                )
+        except Exception as auth_error:
+            logger.warning(
+                "Could not update auth.users metadata for user_id %s: %s",
+                target_user_id,
+                auth_error,
+            )
+
+        if hasattr(_get_cached_users_flask, "clear_all_cache"):
+            _get_cached_users_flask.clear_all_cache()
+
+        return jsonify({
+            "success": True,
+            "message": f"Updated display name for {user_email or target_user_id}",
+            "updates_made": updates_made,
+            "user_id": target_user_id,
+            "full_name": full_name,
+        }), 200
+    except Exception as e:
+        logger.error(f"Error updating user name: {e}", exc_info=True)
+        return jsonify({"error": "Failed to update user name"}), 500
+
 @admin_bp.route('/api/admin/users/delete', methods=['POST'])
 @require_admin
 def api_admin_delete_user():
@@ -579,8 +671,9 @@ def api_admin_send_invite():
     """Send magic link invite to a user"""
     try:
         from flask_auth_utils import can_modify_data_flask, get_user_email_flask
-        data = request.get_json()
+        data = request.get_json() or {}
         user_email = data.get('user_email')
+        full_name = (data.get('full_name') or '').strip()
         
         if not user_email:
             return jsonify({"error": "User email required"}), 400
@@ -607,11 +700,16 @@ def api_admin_send_invite():
         redirect_url = os.getenv("MAGIC_LINK_REDIRECT_URL", f"https://{app_domain}/auth_callback.html")
         
         supabase = create_client(supabase_url, publishable_key)
+        otp_options = {
+            "email_redirect_to": redirect_url
+        }
+        if full_name:
+            # Supabase uses `data` as user metadata for users created through OTP invite.
+            otp_options["data"] = {"full_name": full_name}
+
         response = supabase.auth.sign_in_with_otp({
             "email": user_email,
-            "options": {
-                "email_redirect_to": redirect_url
-            }
+            "options": otp_options
         })
         
         if response:
