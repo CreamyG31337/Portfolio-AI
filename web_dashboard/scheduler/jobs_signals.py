@@ -204,9 +204,23 @@ def signal_scan_job() -> None:
                     logger.warning(f"No price data for {ticker}")
                     errors += 1
                     continue
+
+                # Fetch fundamentals from securities table (for fundamental signal)
+                fundamentals = None
+                try:
+                    sec_result = supabase_client.supabase.table("securities") \
+                        .select("*") \
+                        .eq("ticker", ticker.upper()) \
+                        .execute()
+                    if sec_result.data:
+                        fundamentals = sec_result.data[0]
+                except Exception as fund_err:
+                    logger.debug(f"No fundamentals for {ticker}: {fund_err}")
                 
-                # Generate signals
-                signals = signal_engine.evaluate(ticker, price_data.df)
+                # Generate signals (pass fundamentals if available)
+                signals = signal_engine.evaluate(
+                    ticker, price_data.df, fundamentals=fundamentals
+                )
                 
                 # Store in database
                 analysis_date = datetime.now(timezone.utc)
@@ -240,6 +254,8 @@ def signal_scan_job() -> None:
                         'structure_signal': signals.get('structure', {}),
                         'timing_signal': signals.get('timing', {}),
                         'fear_risk_signal': signals.get('fear_risk', {}),
+                        'momentum_signal': signals.get('momentum', {}),
+                        'fundamental_signal': signals.get('fundamental', {}),
                         'overall_signal': signals.get('overall_signal', 'HOLD'),
                         'confidence_score': signals.get('confidence', 0.0),
                         'explanation': explanation

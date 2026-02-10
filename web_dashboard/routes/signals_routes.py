@@ -139,6 +139,8 @@ def get_cached_watchlist_signals(
                 if signal:
                     # Use cached signal from database
                     explanation = signal.get('explanation')
+                    mom_sig = signal.get('momentum_signal') or {}
+                    fund_sig = signal.get('fundamental_signal') or {}
                     results.append({
                         'ticker': ticker,
                         'company_name': company_names_map.get(ticker.upper()),
@@ -148,6 +150,10 @@ def get_cached_watchlist_signals(
                         'fear_level': signal.get('fear_risk_signal', {}).get('fear_level', 'LOW') if isinstance(signal.get('fear_risk_signal'), dict) else 'LOW',
                         'risk_score': signal.get('fear_risk_signal', {}).get('risk_score', 0.0) if isinstance(signal.get('fear_risk_signal'), dict) else 0.0,
                         'trend': signal.get('structure_signal', {}).get('trend', 'NEUTRAL') if isinstance(signal.get('structure_signal'), dict) else 'NEUTRAL',
+                        'momentum_bias': mom_sig.get('bias', 'NEUTRAL') if isinstance(mom_sig, dict) else 'NEUTRAL',
+                        'momentum_score': mom_sig.get('composite_score', 0.5) if isinstance(mom_sig, dict) else 0.5,
+                        'fundamental_quality': fund_sig.get('quality', 'UNKNOWN') if isinstance(fund_sig, dict) else 'UNKNOWN',
+                        'fundamental_score': fund_sig.get('composite_score', 0.5) if isinstance(fund_sig, dict) else 0.5,
                         'analysis_date': signal.get('analysis_date'),
                         'explanation': explanation,
                         'analyzed': bool(explanation),
@@ -158,6 +164,8 @@ def get_cached_watchlist_signals(
                     price_data = data_fetcher.fetch_price_data(ticker, period="6mo")
                     if not price_data.df.empty:
                         signals = signal_engine.evaluate(ticker, price_data.df)
+                        mom = signals.get('momentum', {})
+                        fund = signals.get('fundamental', {})
                         results.append({
                             'ticker': ticker,
                             'company_name': company_names_map.get(ticker.upper()),
@@ -167,6 +175,10 @@ def get_cached_watchlist_signals(
                             'fear_level': signals.get('fear_risk', {}).get('fear_level', 'LOW'),
                             'risk_score': signals.get('fear_risk', {}).get('risk_score', 0.0),
                             'trend': signals.get('structure', {}).get('trend', 'NEUTRAL'),
+                            'momentum_bias': mom.get('bias', 'NEUTRAL'),
+                            'momentum_score': mom.get('composite_score', 0.5),
+                            'fundamental_quality': fund.get('quality', 'UNKNOWN'),
+                            'fundamental_score': fund.get('composite_score', 0.5),
                             'analysis_date': signals.get('analysis_date'),
                             'explanation': None,
                             'analyzed': False,
@@ -296,6 +308,8 @@ def api_analyze_ticker(ticker: str):
                             'structure': stored.get('structure_signal', {}),
                             'timing': stored.get('timing_signal', {}),
                             'fear_risk': stored.get('fear_risk_signal', {}),
+                            'momentum': stored.get('momentum_signal', {}),
+                            'fundamental': stored.get('fundamental_signal', {}),
                             'overall_signal': stored.get('overall_signal', 'HOLD'),
                             'confidence': stored.get('confidence_score', 0.0),
                             'explanation': stored.get('explanation'),
@@ -319,9 +333,24 @@ def api_analyze_ticker(ticker: str):
                 'error': f'No price data available for {ticker}'
             }), 404
         
+        # Fetch fundamentals for this ticker (if available)
+        fundamentals = None
+        if supabase_client:
+            try:
+                sec_result = supabase_client.supabase.table("securities") \
+                    .select("*") \
+                    .eq("ticker", ticker) \
+                    .execute()
+                if sec_result.data:
+                    fundamentals = sec_result.data[0]
+            except Exception as fund_err:
+                logger.debug(f"No fundamentals for {ticker}: {fund_err}")
+
         # Generate signals
         signal_engine = SignalEngine()
-        signals = signal_engine.evaluate(ticker, price_data.df)
+        signals = signal_engine.evaluate(
+            ticker, price_data.df, fundamentals=fundamentals
+        )
         analysis_date = datetime.now(timezone.utc)
         signals['analysis_date'] = analysis_date.isoformat()
 
@@ -342,6 +371,8 @@ def api_analyze_ticker(ticker: str):
                     'structure_signal': signals.get('structure', {}),
                     'timing_signal': signals.get('timing', {}),
                     'fear_risk_signal': signals.get('fear_risk', {}),
+                    'momentum_signal': signals.get('momentum', {}),
+                    'fundamental_signal': signals.get('fundamental', {}),
                     'overall_signal': signals.get('overall_signal', 'HOLD'),
                     'confidence_score': signals.get('confidence', 0.0),
                     'explanation': explanation

@@ -15,7 +15,25 @@ CREATE TABLE securities (
     dividend_yield NUMERIC,
     fifty_two_week_high NUMERIC,
     fifty_two_week_low NUMERIC,
-    description TEXT
+    description TEXT,
+    forward_pe NUMERIC,
+    price_to_book NUMERIC,
+    price_to_sales NUMERIC,
+    peg_ratio NUMERIC,
+    return_on_equity NUMERIC,
+    net_margin NUMERIC,
+    operating_margin NUMERIC,
+    gross_margin NUMERIC,
+    revenue_growth NUMERIC,
+    earnings_growth NUMERIC,
+    current_ratio NUMERIC,
+    debt_to_equity NUMERIC,
+    free_cash_flow NUMERIC,
+    short_ratio NUMERIC,
+    short_percent_of_float NUMERIC,
+    ebitda NUMERIC,
+    trailing_eps NUMERIC,
+    forward_eps NUMERIC
 ,
     PRIMARY KEY (ticker)
 );

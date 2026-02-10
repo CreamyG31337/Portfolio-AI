@@ -11,7 +11,9 @@ CREATE TABLE signal_analysis (
     overall_signal VARCHAR(10),
     confidence_score DOUBLE PRECISION,
     explanation TEXT,
-    created_at TIMESTAMP DEFAULT now()
+    created_at TIMESTAMP DEFAULT now(),
+    momentum_signal JSONB,
+    fundamental_signal JSONB
 ,
     PRIMARY KEY (id)
 );

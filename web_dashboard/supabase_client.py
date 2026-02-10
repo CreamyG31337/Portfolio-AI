@@ -377,6 +377,39 @@ class SupabaseClient:
                         )
                         if company_description:
                             metadata['description'] = company_description.strip()
+
+                        # Populate fundamental metrics (all optional, skip on None)
+                        _YFINANCE_FUNDAMENTAL_MAP = {
+                            'trailingPE': 'trailing_pe',
+                            'dividendYield': 'dividend_yield',
+                            'fiftyTwoWeekHigh': 'fifty_two_week_high',
+                            'fiftyTwoWeekLow': 'fifty_two_week_low',
+                            'forwardPE': 'forward_pe',
+                            'priceToBook': 'price_to_book',
+                            'priceToSalesTrailing12Months': 'price_to_sales',
+                            'pegRatio': 'peg_ratio',
+                            'returnOnEquity': 'return_on_equity',
+                            'profitMargins': 'net_margin',
+                            'operatingMargins': 'operating_margin',
+                            'grossMargins': 'gross_margin',
+                            'revenueGrowth': 'revenue_growth',
+                            'earningsGrowth': 'earnings_growth',
+                            'currentRatio': 'current_ratio',
+                            'debtToEquity': 'debt_to_equity',
+                            'freeCashflow': 'free_cash_flow',
+                            'shortRatio': 'short_ratio',
+                            'shortPercentOfFloat': 'short_percent_of_float',
+                            'ebitda': 'ebitda',
+                            'trailingEps': 'trailing_eps',
+                            'forwardEps': 'forward_eps',
+                        }
+                        for yf_key, db_col in _YFINANCE_FUNDAMENTAL_MAP.items():
+                            raw = info.get(yf_key)
+                            if raw is not None:
+                                try:
+                                    metadata[db_col] = float(raw)
+                                except (TypeError, ValueError):
+                                    pass
                         
                         logger.debug(f"Fetched metadata for {ticker}: {metadata.get('company_name')}, sector={metadata.get('sector')}, industry={metadata.get('industry')}")
                     else:

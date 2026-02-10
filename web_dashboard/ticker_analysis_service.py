@@ -141,36 +141,53 @@ class TickerAnalysisService:
                 return None
 
             fundamentals = result.data[0]
-            missing_fields = [
-                fundamentals.get('trailing_pe'),
-                fundamentals.get('dividend_yield'),
-                fundamentals.get('fifty_two_week_high'),
-                fundamentals.get('fifty_two_week_low')
-            ]
-            if any(value is None for value in missing_fields) and HAS_YFINANCE:
+            # Mapping of yfinance .info keys -> securities table column names
+            _YFINANCE_FUNDAMENTAL_MAP: dict[str, str] = {
+                'trailingPE': 'trailing_pe',
+                'dividendYield': 'dividend_yield',
+                'fiftyTwoWeekHigh': 'fifty_two_week_high',
+                'fiftyTwoWeekLow': 'fifty_two_week_low',
+                'forwardPE': 'forward_pe',
+                'priceToBook': 'price_to_book',
+                'priceToSalesTrailing12Months': 'price_to_sales',
+                'pegRatio': 'peg_ratio',
+                'returnOnEquity': 'return_on_equity',
+                'profitMargins': 'net_margin',
+                'operatingMargins': 'operating_margin',
+                'grossMargins': 'gross_margin',
+                'revenueGrowth': 'revenue_growth',
+                'earningsGrowth': 'earnings_growth',
+                'currentRatio': 'current_ratio',
+                'debtToEquity': 'debt_to_equity',
+                'freeCashflow': 'free_cash_flow',
+                'shortRatio': 'short_ratio',
+                'shortPercentOfFloat': 'short_percent_of_float',
+                'ebitda': 'ebitda',
+                'trailingEps': 'trailing_eps',
+                'forwardEps': 'forward_eps',
+            }
+
+            # Check if any fundamental columns are missing
+            db_columns = list(_YFINANCE_FUNDAMENTAL_MAP.values())
+            has_missing = any(fundamentals.get(col) is None for col in db_columns)
+
+            if has_missing and HAS_YFINANCE:
                 try:
                     ticker_upper = ticker.upper().strip()
                     ticker_obj = yf.Ticker(ticker_upper)
                     info = ticker_obj.info or {}
 
-                    updates = {}
-                    trailing_pe = info.get('trailingPE')
-                    dividend_yield = info.get('dividendYield')
-                    high_52w = info.get('fiftyTwoWeekHigh')
-                    low_52w = info.get('fiftyTwoWeekLow')
-
-                    if trailing_pe is not None:
-                        updates['trailing_pe'] = float(trailing_pe)
-                        fundamentals['trailing_pe'] = float(trailing_pe)
-                    if dividend_yield is not None:
-                        updates['dividend_yield'] = float(dividend_yield)
-                        fundamentals['dividend_yield'] = float(dividend_yield)
-                    if high_52w is not None:
-                        updates['fifty_two_week_high'] = float(high_52w)
-                        fundamentals['fifty_two_week_high'] = float(high_52w)
-                    if low_52w is not None:
-                        updates['fifty_two_week_low'] = float(low_52w)
-                        fundamentals['fifty_two_week_low'] = float(low_52w)
+                    updates: dict[str, float] = {}
+                    for yf_key, db_col in _YFINANCE_FUNDAMENTAL_MAP.items():
+                        if fundamentals.get(db_col) is None:
+                            raw = info.get(yf_key)
+                            if raw is not None:
+                                try:
+                                    val = float(raw)
+                                    updates[db_col] = val
+                                    fundamentals[db_col] = val
+                                except (TypeError, ValueError):
+                                    pass
 
                     if updates:
                         self.supabase.supabase.table('securities') \
