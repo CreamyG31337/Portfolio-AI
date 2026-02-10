@@ -92,6 +92,55 @@
         </div>
     </div>
 </div>
+
+<!-- Email View Modal -->
+<div id="email-view-modal" class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" onclick="closeEmailModal()"></div>
+    <div class="fixed inset-4 md:inset-8 lg:inset-12 flex items-stretch justify-center">
+        <div class="bg-dashboard-surface rounded-xl shadow-2xl border border-border w-full max-w-5xl flex flex-col overflow-hidden">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+                <div class="min-w-0 flex-1 mr-4">
+                    <h3 id="email-modal-subject" class="text-lg font-bold text-text-primary truncate"></h3>
+                    <div class="flex items-center gap-4 mt-1 text-sm text-text-secondary">
+                        <span><i class="fas fa-user mr-1"></i><span id="email-modal-from"></span></span>
+                        <span><i class="fas fa-clock mr-1"></i><span id="email-modal-date"></span></span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <button id="email-toggle-html" onclick="toggleEmailView('html')"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg border border-accent text-accent hover:bg-accent/10 transition-colors">
+                        <i class="fas fa-code mr-1"></i>HTML
+                    </button>
+                    <button id="email-toggle-plain" onclick="toggleEmailView('plain')"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-text-secondary hover:bg-dashboard-surface-alt transition-colors">
+                        <i class="fas fa-align-left mr-1"></i>Plain
+                    </button>
+                    <button onclick="closeEmailModal()"
+                        class="ml-2 w-8 h-8 flex items-center justify-center rounded-lg text-text-tertiary hover:text-text-primary hover:bg-dashboard-surface-alt transition-colors">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- Modal Body -->
+            <div class="flex-1 overflow-auto p-0">
+                <!-- Loading -->
+                <div id="email-modal-loading" class="flex items-center justify-center py-20">
+                    <i class="fas fa-spinner fa-spin text-3xl text-text-tertiary"></i>
+                </div>
+                <!-- HTML view (rendered in sandboxed iframe) -->
+                <iframe id="email-modal-html" class="hidden w-full h-full border-0" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" style="min-height: 400px;"></iframe>
+                <!-- Plain text view -->
+                <pre id="email-modal-plain" class="hidden whitespace-pre-wrap break-words text-sm text-text-primary p-6 m-0 font-mono leading-relaxed"></pre>
+                <!-- Error -->
+                <div id="email-modal-error" class="hidden text-center py-20">
+                    <i class="fas fa-exclamation-triangle text-3xl text-theme-error-text mb-3"></i>
+                    <p class="text-theme-error-text">Failed to load email content.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -208,11 +257,17 @@ async function loadNewsletters(offset = 0) {
                 <tr class="hover:bg-dashboard-background/50">
                     <td class="px-4 py-3 text-text-secondary whitespace-nowrap">${date}</td>
                     <td class="px-4 py-3 text-text-primary">${sender}</td>
-                    <td class="px-4 py-3 text-text-primary font-medium">${nl.subject}</td>
+                    <td class="px-4 py-3 text-text-primary font-medium">
+                        <a href="javascript:void(0)" onclick="viewEmail('${nl.id}')" class="hover:text-accent hover:underline transition-colors">${nl.subject}</a>
+                    </td>
                     <td class="px-4 py-3">${tickers || '<span class="text-text-tertiary">—</span>'}</td>
                     <td class="px-4 py-3 text-xs">${status}</td>
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-2">
+                            <button onclick="viewEmail('${nl.id}')"
+                                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-theme-info-text text-theme-info-text bg-transparent hover:bg-theme-info-bg focus:ring-2 focus:ring-theme-info-text/30 focus:outline-none transition-colors">
+                                <i class="fas fa-envelope-open-text mr-1.5"></i>View
+                            </button>
                             <button onclick="reprocessNewsletter('${nl.id}')"
                                 class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-none transition-colors">
                                 <i class="fas fa-sync-alt mr-1.5"></i>Reprocess
@@ -364,5 +419,150 @@ function prevPage() {
         loadNewsletters((currentPage - 1) * pageSize);
     }
 }
+
+/* ── Email View Modal ── */
+let currentEmailData = null;
+let currentEmailView = 'html';
+
+async function viewEmail(id) {
+    const modal = document.getElementById('email-view-modal');
+    const loading = document.getElementById('email-modal-loading');
+    const htmlView = document.getElementById('email-modal-html');
+    const plainView = document.getElementById('email-modal-plain');
+    const errorView = document.getElementById('email-modal-error');
+
+    // Reset state
+    loading.classList.remove('hidden');
+    htmlView.classList.add('hidden');
+    plainView.classList.add('hidden');
+    errorView.classList.add('hidden');
+    currentEmailData = null;
+
+    // Show modal
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+
+    try {
+        const response = await fetch('/api/newsletters/' + id, { credentials: 'include' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        currentEmailData = data;
+
+        // Populate header
+        document.getElementById('email-modal-subject').textContent = data.subject || '(no subject)';
+        document.getElementById('email-modal-from').textContent = data.sender_name || data.sender || 'Unknown';
+        document.getElementById('email-modal-date').textContent = data.received_at
+            ? new Date(data.received_at).toLocaleString()
+            : '';
+
+        loading.classList.add('hidden');
+
+        // Show toggle buttons based on available content
+        const htmlBtn = document.getElementById('email-toggle-html');
+        const plainBtn = document.getElementById('email-toggle-plain');
+        htmlBtn.classList.toggle('hidden', !data.body_html);
+        plainBtn.classList.toggle('hidden', !data.body_plain);
+
+        // Default to HTML if available, else plain
+        if (data.body_html) {
+            toggleEmailView('html');
+        } else if (data.body_plain) {
+            toggleEmailView('plain');
+        } else {
+            errorView.classList.remove('hidden');
+            document.querySelector('#email-modal-error p').textContent = 'No email content available.';
+        }
+    } catch (err) {
+        console.error('Error loading email:', err);
+        loading.classList.add('hidden');
+        errorView.classList.remove('hidden');
+    }
+}
+
+function toggleEmailView(view) {
+    if (!currentEmailData) return;
+    currentEmailView = view;
+
+    const htmlView = document.getElementById('email-modal-html');
+    const plainView = document.getElementById('email-modal-plain');
+    const htmlBtn = document.getElementById('email-toggle-html');
+    const plainBtn = document.getElementById('email-toggle-plain');
+
+    // Update button styles
+    const activeClasses = 'border-accent text-accent';
+    const inactiveClasses = 'border-border text-text-secondary';
+
+    htmlBtn.className = htmlBtn.className.replace(/border-\S+/g, '').replace(/text-\S+/g, '').trim();
+    plainBtn.className = plainBtn.className.replace(/border-\S+/g, '').replace(/text-\S+/g, '').trim();
+
+    if (view === 'html') {
+        htmlBtn.classList.add('border-accent', 'text-accent');
+        plainBtn.classList.add('border-border', 'text-text-secondary');
+
+        // Render HTML in sandboxed iframe
+        htmlView.classList.remove('hidden');
+        plainView.classList.add('hidden');
+
+        const doc = htmlView.contentDocument || htmlView.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                   margin: 16px; color: #e0e0e0; background: #1a1a2e; line-height: 1.6; font-size: 14px; }
+            a { color: #64b5f6; }
+            img { max-width: 100%; height: auto; }
+            table { max-width: 100%; }
+        </style></head><body>${currentEmailData.body_html}</body></html>`);
+        doc.close();
+
+        // Auto-resize iframe to content height
+        htmlView.onload = function() {
+            try {
+                const h = htmlView.contentDocument.documentElement.scrollHeight;
+                htmlView.style.minHeight = Math.max(400, h) + 'px';
+            } catch(e) {}
+        };
+        // Also try immediately
+        setTimeout(function() {
+            try {
+                const h = htmlView.contentDocument.documentElement.scrollHeight;
+                htmlView.style.minHeight = Math.max(400, h) + 'px';
+            } catch(e) {}
+        }, 100);
+
+    } else {
+        plainBtn.classList.add('border-accent', 'text-accent');
+        htmlBtn.classList.add('border-border', 'text-text-secondary');
+
+        plainView.classList.remove('hidden');
+        htmlView.classList.add('hidden');
+        plainView.textContent = currentEmailData.body_plain || '(no plain text content)';
+    }
+}
+
+function closeEmailModal() {
+    const modal = document.getElementById('email-view-modal');
+    modal.classList.add('hidden');
+    document.body.style.overflow = '';
+    currentEmailData = null;
+
+    // Clear iframe
+    const htmlView = document.getElementById('email-modal-html');
+    try {
+        const doc = htmlView.contentDocument || htmlView.contentWindow.document;
+        doc.open();
+        doc.write('');
+        doc.close();
+    } catch(e) {}
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('email-view-modal');
+        if (!modal.classList.contains('hidden')) {
+            closeEmailModal();
+        }
+    }
+});
 </script>
 {% endblock %}
