@@ -271,10 +271,12 @@ def get_cached_articles(
         # Filter out any None articles and ensure valid structure
         articles = [a for a in articles if a is not None]
         
-        # Ensure each article has tickers field
+        # Ensure each article has tickers and ticker_sentiment fields
         for article in articles:
             if 'tickers' not in article or article['tickers'] is None:
                 article['tickers'] = []
+            if article.get('ticker_sentiment') is None:
+                article['ticker_sentiment'] = []
         
         return articles
     except Exception as e:

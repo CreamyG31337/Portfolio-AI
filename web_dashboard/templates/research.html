@@ -264,7 +264,7 @@
 
                     <!-- Tickers (color-coded by per-ticker sentiment) -->
                     {% set ts_lookup = {} %}
-                    {% for ts in article.ticker_sentiment|default([]) %}
+                    {% for ts in (article.ticker_sentiment or []) %}
                         {% if ts.ticker and ts.sentiment %}
                             {% set _ = ts_lookup.update({ts.ticker: ts}) %}
                         {% endif %}
