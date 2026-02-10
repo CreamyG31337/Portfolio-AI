@@ -129,7 +129,7 @@
                     <i class="fas fa-spinner fa-spin text-3xl text-text-tertiary"></i>
                 </div>
                 <!-- HTML view (rendered in sandboxed iframe) -->
-                <iframe id="email-modal-html" class="hidden w-full h-full border-0" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" style="min-height: 400px;"></iframe>
+                <iframe id="email-modal-html" class="hidden w-full h-full border-0 min-h-[400px]" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
                 <!-- Plain text view -->
                 <pre id="email-modal-plain" class="hidden whitespace-pre-wrap break-words text-sm text-text-primary p-6 m-0 font-mono leading-relaxed"></pre>
                 <!-- Error -->
@@ -318,12 +318,16 @@ function showToast(message, type) {
     };
     var icons = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle' };
     var toast = document.createElement('div');
-    toast.className = 'flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg text-sm font-medium transition-all duration-300 ' + (colors[type] || colors.info);
+    // Using Tailwind classes for transitions: transition-all duration-300 opacity-100 translate-x-0
+    // Initial state (entering)
+    toast.className = 'flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg text-sm font-medium transition-all duration-300 opacity-100 translate-x-0 ' + (colors[type] || colors.info);
     toast.innerHTML = '<i class="fas ' + (icons[type] || icons.info) + '"></i><span>' + message + '</span>';
     container.appendChild(toast);
+
     setTimeout(function() {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateX(100%)';
+        // Leaving state
+        toast.classList.remove('opacity-100', 'translate-x-0');
+        toast.classList.add('opacity-0', 'translate-x-full');
         setTimeout(function() { toast.remove(); }, 300);
     }, 4000);
 }
@@ -505,13 +509,27 @@ function toggleEmailView(view) {
 
         const doc = htmlView.contentDocument || htmlView.contentWindow.document;
         doc.open();
+        // Use CSS variables from the parent theme if possible, but for isolation we inject values that match
+        // the parent's current theme. However, standard email clients often default to white.
+        // Let's use CSS variables and fallbacks to ensure it respects the theme.
         doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                   margin: 16px; color: #e0e0e0; background: #1a1a2e; line-height: 1.6; font-size: 14px; }
-            a { color: #64b5f6; }
+                   margin: 16px;
+                   color: var(--text-primary, #e0e0e0);
+                   background: var(--bg-secondary, #1a1a2e);
+                   line-height: 1.6; font-size: 14px; }
+            a { color: var(--color-link, #64b5f6); }
             img { max-width: 100%; height: auto; }
             table { max-width: 100%; }
         </style></head><body>${currentEmailData.body_html}</body></html>`);
+
+        // Inject parent's CSS variables into iframe's root
+        const parentStyles = window.getComputedStyle(document.documentElement);
+        const vars = ['--text-primary', '--bg-secondary', '--color-link'];
+        vars.forEach(v => {
+            doc.documentElement.style.setProperty(v, parentStyles.getPropertyValue(v));
+        });
+
         doc.close();
 
         // Auto-resize iframe to content height

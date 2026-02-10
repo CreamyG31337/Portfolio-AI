@@ -82,6 +82,10 @@ let latestTrades: InsiderTrade[] = [];
 const failedLogoCache = new Set<string>();
 const darkThemes = new Set(["dark", "midnight-tokyo", "abyss"]);
 
+function getThemeColor(variable: string): string {
+    return getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+}
+
 function getCurrentTheme(): string {
     const themeManager = (window as any).themeManager;
     if (themeManager?.getTheme) {
@@ -118,9 +122,7 @@ class TickerCellRenderer {
 
     init(params: AgGridParams): void {
         this.eGui = document.createElement("div");
-        this.eGui.style.display = "flex";
-        this.eGui.style.alignItems = "center";
-        this.eGui.style.gap = "6px";
+        this.eGui.className = "flex items-center gap-1.5";
 
         const ticker = (params.value || "").toString();
         if (ticker && ticker !== "N/A") {
@@ -129,11 +131,7 @@ class TickerCellRenderer {
             const logoUrl = params.data?._logo_url;
 
             const img = document.createElement("img");
-            img.style.width = "24px";
-            img.style.height = "24px";
-            img.style.objectFit = "contain";
-            img.style.borderRadius = "4px";
-            img.style.flexShrink = "0";
+            img.className = "w-6 h-6 object-contain rounded shrink-0";
 
             if (failedLogoCache.has(cacheKey) || !logoUrl) {
                 img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3C/svg%3E";
@@ -169,10 +167,7 @@ class TickerCellRenderer {
 
             const tickerSpan = document.createElement("span");
             tickerSpan.innerText = ticker;
-            tickerSpan.style.color = "var(--accent-color)";
-            tickerSpan.style.fontWeight = "bold";
-            tickerSpan.style.textDecoration = "underline";
-            tickerSpan.style.cursor = "pointer";
+            tickerSpan.className = "text-accent font-bold underline cursor-pointer";
             tickerSpan.addEventListener("click", function (e: Event) {
                 e.stopPropagation();
                 window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
@@ -198,12 +193,10 @@ class TypeCellRenderer {
 
         if (lower === "purchase") {
             this.eGui.innerText = "🟢 Purchase";
-            this.eGui.style.color = "var(--theme-success-text)";
-            this.eGui.style.fontWeight = "600";
+            this.eGui.className = "text-theme-success-text font-semibold";
         } else if (lower === "sale") {
             this.eGui.innerText = "🔴 Sale";
-            this.eGui.style.color = "var(--theme-error-text)";
-            this.eGui.style.fontWeight = "600";
+            this.eGui.className = "text-theme-error-text font-semibold";
         } else {
             this.eGui.innerText = value || "N/A";
         }
@@ -521,14 +514,14 @@ function renderVolumeChart(trades: InsiderTrade[]): void {
             y: purchases,
             type: "bar",
             name: "Purchases",
-            marker: { color: "#00C853" }
+            marker: { color: getThemeColor('--color-success-text') || "#00C853" }
         },
         {
             x: dates,
             y: sales,
             type: "bar",
             name: "Sales",
-            marker: { color: "#FF5252" }
+            marker: { color: getThemeColor('--color-error-text') || "#FF5252" }
         }
     ];
 
@@ -620,7 +613,7 @@ function renderTopInsidersChart(trades: InsiderTrade[]): void {
             hoverinfo: "x+y",
             type: "bar",
             orientation: "h",
-            marker: { color: "#64B5F6" }
+            marker: { color: getThemeColor('--color-info-text') || "#64B5F6" }
         }
     ];
 
@@ -662,7 +655,7 @@ function renderTypeDistributionChart(trades: InsiderTrade[]): void {
             labels: ["Purchase", "Sale"],
             values: [purchaseCount, saleCount],
             type: "pie",
-            marker: { colors: ["#00C853", "#FF5252"] },
+            marker: { colors: [getThemeColor('--color-success-text') || "#00C853", getThemeColor('--color-error-text') || "#FF5252"] },
             textinfo: "percent"
         }
     ];

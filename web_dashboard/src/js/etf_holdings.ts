@@ -403,8 +403,8 @@ export function initializeEtfGrid(holdingsData: any[], viewMode: string) {
         paginationPageSizeSelector: [100, 250, 500, 1000],
         animateRows: true,
         overlayNoRowsTemplate: viewMode === 'changes'
-            ? '<span style="padding: 20px; font-size: 14px; color: #666;">📭 No changes found for the selected date and filters. Try selecting a different date or change type.</span>'
-            : '<span style="padding: 20px; font-size: 14px; color: #666;">📭 No holdings data available. This ETF may not have data for the selected date.</span>',
+            ? '<span class="p-5 text-sm text-text-secondary">📭 No changes found for the selected date and filters. Try selecting a different date or change type.</span>'
+            : '<span class="p-5 text-sm text-text-secondary">📭 No holdings data available. This ETF may not have data for the selected date.</span>',
 
         // Row styling: light backgrounds for BUY/SELL, border highlight for positions we own
         rowClassRules: {

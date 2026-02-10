@@ -5,16 +5,6 @@
 {% block page_subtitle %}Monitor system health and manage cache{% endblock %}
 
 {% block extra_head %}
-<style>
-    .status-card {
-        transition: all 0.2s;
-    }
-
-    .status-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -22,7 +12,7 @@
 <div id="content-status">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <!-- Database Status -->
-        <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 status-card">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
             <h3 class="text-lg font-semibold text-text-primary mb-2">Database Connection</h3>
             <div id="status-db" class="flex items-center">
                 <div class="animate-pulse bg-dashboard-background h-6 w-24 rounded"></div>
@@ -31,7 +21,7 @@
         </div>
 
         <!-- Postgres Status -->
-        <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 status-card">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
             <h3 class="text-lg font-semibold text-text-primary mb-2">Research Repository</h3>
             <div id="status-postgres" class="flex items-center">
                 <div class="animate-pulse bg-dashboard-background h-6 w-24 rounded"></div>
@@ -40,7 +30,7 @@
         </div>
 
         <!-- Exchange Rates -->
-        <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 status-card">
+        <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
             <h3 class="text-lg font-semibold text-text-primary mb-2">Exchange Rates</h3>
             <div id="status-rates">
                 <div class="animate-pulse bg-dashboard-background h-6 w-24 rounded"></div>
