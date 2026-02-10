@@ -192,33 +192,40 @@ class NewsletterService:
         body_html: Optional[str] = None,
         body_plain: Optional[str] = None
     ) -> Optional[str]:
-        """Extract the most likely 'read on web' / 'read the article' link from an email
-        
-        Searches for links whose visible text or href indicate a 'read online'
-        action. Falls back to plain-text URL extraction when HTML yields no
-        results.
-        
+        """Extract the most likely original-article / 'read on web' link from an email.
+
+        Strategies (tried in order of confidence):
+          1. Link text matches "read online / view in browser" phrases
+          2. Href contains view-in-browser / webversion-style slugs
+          3. Link points to a known newsletter platform post page
+          4. First prominent non-junk article-like URL in the HTML body
+          5. Plain-text URL fallback (broadened)
+
         Args:
             body_html: HTML email body
             body_plain: Plain text email body
-            
+
         Returns:
             Best article URL found, or None
         """
-        # Patterns for link visible text (case-insensitive)
+        # ── Link-text patterns (case-insensitive) ──
         _TEXT_PATTERNS = [
-            r"read\s+(this\s+)?(on\s+the\s+web|online|in\s+browser|the\s+full\s+article|the\s+article|more)",
-            r"view\s+(this\s+)?(in\s+browser|online|on\s+the\s+web|email\s+in\s+browser)",
+            r"read\s+(this\s+)?(on\s+the\s+web|online|in\s+browser|the\s+full\s+article|the\s+article|more|on\s+substack)",
+            r"view\s+(this\s+)?(in\s+browser|online|on\s+the\s+web|email\s+in\s+browser|post\s+on\s+the\s+web)",
             r"open\s+in\s+browser",
             r"continue\s+reading",
             r"read\s+on\s+web",
+            r"read\s+the\s+full\s+(post|story|newsletter)",
+            r"see\s+the\s+full\s+(post|story|newsletter)",
+            r"click\s+here\s+to\s+read",
+            r"read\s+on\s+\w+",  # "Read on Substack", "Read on Beehiiv", etc.
         ]
         _text_re = re.compile(
             "|".join(f"(?:{p})" for p in _TEXT_PATTERNS),
             re.IGNORECASE,
         )
 
-        # Patterns for href substrings
+        # ── Href slug patterns ──
         _HREF_PATTERNS = [
             "view-in-browser",
             "read-online",
@@ -231,6 +238,24 @@ class NewsletterService:
             "browser-view",
             "emailview",
         ]
+
+        # ── Known newsletter platform post-page patterns ──
+        # Match URLs that look like actual article/post pages on known platforms.
+        _PLATFORM_POST_RE = re.compile(
+            r"https?://[^/]*(?:"
+            r"substack\.com/p/"           # Substack post
+            r"|substack\.com/redirect/"   # Substack redirect (common in emails)
+            r"|beehiiv\.com/p/"           # Beehiiv post
+            r"|mail\.beehiiv\.com/"       # Beehiiv email links
+            r"|ghost\.io/.+/"             # Ghost post
+            r"|mailchi\.mp/"              # Mailchimp campaign view
+            r"|campaign-archive\.com/"    # Mailchimp archive
+            r"|convertkit\.com/"          # ConvertKit
+            r"|buttondown\.email/"        # Buttondown
+            r"|revue\.email/"             # Revue
+            r")",
+            re.IGNORECASE,
+        )
 
         def _is_bad_url(url: str) -> bool:
             """Return True if the URL should be excluded."""
@@ -245,10 +270,36 @@ class NewsletterService:
                 "tracking-pixel", "open-tracking", "/track/",
                 "share/facebook", "share/twitter", "share/linkedin",
                 "share/email", "sharer.php", "intent/tweet",
+                "/cdn-cgi/", "/beacon/", "list-manage.com",
+                "/pixel", "doubleclick", "google-analytics",
             ]
             return any(kw in low for kw in bad_keywords)
 
+        def _is_article_like_url(url: str) -> bool:
+            """Heuristic: URL looks like an article page (has path depth)."""
+            if not url:
+                return False
+            low = url.strip().lower()
+            # Must be http(s)
+            if not low.startswith(("http://", "https://")):
+                return False
+            # Filter out obvious non-article URLs
+            if _is_bad_url(url):
+                return False
+            # Reject bare domains (no meaningful path) or very short paths
+            from urllib.parse import urlparse
+            parsed = urlparse(low)
+            path = parsed.path.strip("/")
+            # Need at least some path (e.g., /p/article-slug)
+            if not path or len(path) < 3:
+                return False
+            # Reject image/asset URLs
+            if path.endswith((".png", ".jpg", ".jpeg", ".gif", ".svg", ".css", ".js", ".ico", ".woff", ".woff2")):
+                return False
+            return True
+
         try:
+            soup = None
             if body_html:
                 soup = BeautifulSoup(body_html, 'html.parser')
 
@@ -261,7 +312,7 @@ class NewsletterService:
                             logger.debug(f"Extracted article URL via link text: {href}")
                             return href
 
-                # Strategy 2: match href patterns
+                # Strategy 2: match href slug patterns
                 for tag in soup.find_all("a", href=True):
                     href = tag["href"].strip()
                     href_lower = href.lower()
@@ -270,16 +321,46 @@ class NewsletterService:
                             logger.debug(f"Extracted article URL via href pattern: {href}")
                             return href
 
-            # Strategy 3: fall back to plain text
+                # Strategy 3: known newsletter platform post URLs
+                for tag in soup.find_all("a", href=True):
+                    href = tag["href"].strip()
+                    if _PLATFORM_POST_RE.search(href) and not _is_bad_url(href):
+                        logger.debug(f"Extracted article URL via platform pattern: {href}")
+                        return href
+
+                # Strategy 4: first prominent article-like link in the body
+                # Look for <a> tags that have meaningful visible text (>10 chars)
+                # and point to an article-like URL.  Skip tiny/icon links.
+                for tag in soup.find_all("a", href=True):
+                    href = tag["href"].strip()
+                    link_text = tag.get_text(strip=True)
+                    if len(link_text) > 10 and _is_article_like_url(href):
+                        logger.debug(f"Extracted article URL via prominent-link heuristic: {href}")
+                        return href
+
+            # Strategy 5: plain-text URL fallback (broadened)
             if body_plain:
                 url_re = re.compile(r"https?://\S+", re.IGNORECASE)
+                # First pass: look for known platform URLs
+                for match in url_re.finditer(body_plain):
+                    url = match.group(0).rstrip(".,;:!?)>\"'")
+                    if _PLATFORM_POST_RE.search(url) and not _is_bad_url(url):
+                        logger.debug(f"Extracted article URL from plain text (platform): {url}")
+                        return url
+                # Second pass: look for href-slug patterns
                 for match in url_re.finditer(body_plain):
                     url = match.group(0).rstrip(".,;:!?)>\"'")
                     url_lower = url.lower()
                     if any(pat in url_lower for pat in _HREF_PATTERNS):
                         if not _is_bad_url(url):
-                            logger.debug(f"Extracted article URL from plain text: {url}")
+                            logger.debug(f"Extracted article URL from plain text (slug): {url}")
                             return url
+                # Third pass: first article-like URL
+                for match in url_re.finditer(body_plain):
+                    url = match.group(0).rstrip(".,;:!?)>\"'")
+                    if _is_article_like_url(url):
+                        logger.debug(f"Extracted article URL from plain text (heuristic): {url}")
+                        return url
 
             logger.debug("No article URL found in email body")
             return None
@@ -287,7 +368,101 @@ class NewsletterService:
         except Exception as e:
             logger.error(f"Error extracting article URL: {e}")
             return None
-    
+
+    def extract_article_url_via_llm(
+        self,
+        body_plain: Optional[str] = None,
+        body_html: Optional[str] = None,
+    ) -> Optional[str]:
+        """Ask the LLM to find the original article URL in a newsletter body.
+
+        This is expensive and should only be used as a fallback when regex
+        extraction fails.  Returns a single URL string or None.
+        """
+        text = body_plain
+        if not text and body_html:
+            text = self.extract_text_from_html(body_html)
+        if not text or len(text.strip()) < 50:
+            return None
+
+        # Truncate to avoid blowing context on huge newsletters
+        truncated = text[:4000]
+
+        prompt = (
+            "The following is the body of an email newsletter.\n"
+            "Your ONLY task is to find the URL that links to the original article "
+            "or 'read on the web' version of this newsletter.\n"
+            "Return ONLY the URL as plain text, nothing else.\n"
+            "If you cannot find a suitable URL, return exactly the word NONE.\n\n"
+            f"---\n{truncated}\n---"
+        )
+
+        try:
+            from ollama_client import get_ollama_client
+            from settings import get_summarizing_model
+
+            client = get_ollama_client()
+            if not client or not client.enabled:
+                return None
+
+            model = get_summarizing_model()
+            response_text = client.generate_completion(
+                prompt=prompt,
+                model=model,
+                temperature=0.0,
+            )
+
+            if not response_text:
+                return None
+
+            # The LLM might return the URL wrapped in quotes, markdown, or extra text
+            candidate = response_text.strip().strip('"').strip("'").strip("<>").strip()
+            # Handle case where LLM returns "NONE" or similar
+            if candidate.upper() in ("NONE", "N/A", "NOT FOUND", "NO URL FOUND"):
+                return None
+
+            # Extract URL if LLM returned extra text around it
+            url_match = re.search(r"https?://\S+", candidate)
+            if url_match:
+                url = url_match.group(0).rstrip(".,;:!?)>\"'")
+                return url
+
+            return None
+        except Exception as e:
+            logger.debug(f"LLM article URL extraction failed: {e}")
+            return None
+
+    def extract_article_url_with_llm_fallback(
+        self,
+        body_html: Optional[str] = None,
+        body_plain: Optional[str] = None,
+        newsletter_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """Try regex extraction first, fall back to LLM if regex finds nothing.
+
+        When the LLM fallback is used successfully, a WARNING is logged with
+        the extracted URL so the regex patterns can be improved over time.
+        """
+        url = self.extract_article_url(body_html=body_html, body_plain=body_plain)
+        if url:
+            return url
+
+        # Regex failed — try LLM
+        llm_url = self.extract_article_url_via_llm(
+            body_plain=body_plain, body_html=body_html,
+        )
+        if llm_url:
+            logger.warning(
+                "Regex article-URL extraction failed but LLM found a URL "
+                "(consider adding a regex pattern for this). "
+                "newsletter_id=%s url=%s",
+                newsletter_id,
+                llm_url,
+            )
+            return llm_url
+
+        return None
+
     @classmethod
     def get_known_tickers_for_validation(cls) -> Set[str]:
         """Return cached known tickers used for newsletter extraction filtering.
@@ -594,8 +769,12 @@ class NewsletterService:
                 text_content = ""
                 logger.warning("Newsletter has no body content")
             
-            # Extract article URL from email body
-            article_url = self.extract_article_url(body_html, body_plain)
+            # Extract article URL from email body (regex first, LLM fallback)
+            article_url = self.extract_article_url_with_llm_fallback(
+                body_html=body_html,
+                body_plain=body_plain,
+                newsletter_id=message_id,
+            )
             
             # Extract ticker symbols from combined subject + body
             full_text = f"{clean_subj}\n\n{text_content}"

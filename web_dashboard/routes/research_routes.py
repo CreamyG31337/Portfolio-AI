@@ -119,12 +119,35 @@ def _fetch_newsletters_as_articles(
 
         results = repo.client.execute_query(query, tuple(params))
 
+        # Lazy-init URL extractor only if needed
+        nl_service = None
+        ids_to_backfill: list[tuple[str, str]] = []  # (id, url) pairs
+
         articles = []
         for nl in results:
+            article_url = nl.get('article_url')
+
+            # On-the-fly extraction when article_url is missing (regex only
+            # on the page-load path to keep it fast; LLM fallback runs during
+            # explicit reprocessing)
+            if not article_url and (nl.get('body_html') or nl.get('body_plain')):
+                try:
+                    if nl_service is None:
+                        from newsletter_service import NewsletterService
+                        nl_service = NewsletterService()
+                    article_url = nl_service.extract_article_url(
+                        body_html=nl.get('body_html'),
+                        body_plain=nl.get('body_plain'),
+                    )
+                    if article_url:
+                        ids_to_backfill.append((str(nl['id']), article_url))
+                except Exception as e:
+                    logger.debug(f"On-the-fly article URL extraction failed for {nl['id']}: {e}")
+
             articles.append({
                 'id': str(nl['id']),
                 'title': nl.get('subject', '(No subject)'),
-                'url': nl.get('article_url'),
+                'url': article_url,
                 'summary': nl.get('summary') or (nl.get('body_plain') or '')[:1000],
                 'content': nl.get('body_plain') or nl.get('body_html') or '',
                 'source': nl.get('sender_name') or nl.get('sender', 'Unknown'),
@@ -143,6 +166,19 @@ def _fetch_newsletters_as_articles(
                 'has_embedding': nl.get('has_embedding', False),
                 'item_kind': 'newsletter',
             })
+
+        # Backfill extracted URLs to the database so future page loads are instant
+        if ids_to_backfill:
+            try:
+                for nl_id, url in ids_to_backfill:
+                    repo.client.execute_update(
+                        "UPDATE newsletters SET article_url = %s WHERE id = %s AND article_url IS NULL",
+                        (url, nl_id),
+                    )
+                logger.info(f"Backfilled article_url for {len(ids_to_backfill)} newsletter(s)")
+            except Exception as e:
+                logger.warning(f"Failed to backfill newsletter article_url: {e}")
+
         return articles
     except Exception as e:
         logger.warning(f"Error fetching newsletters for research feed: {e}")
@@ -1186,9 +1222,10 @@ def reanalyze_newsletter():
         final_tickers = all_tickers if all_tickers else existing_tickers
 
         # Backfill article_url from body if missing.
-        extracted_article_url = nl_service.extract_article_url(
+        extracted_article_url = nl_service.extract_article_url_with_llm_fallback(
             body_html=newsletter.get("body_html"),
             body_plain=content,
+            newsletter_id=article_id,
         )
         final_article_url = extracted_article_url or newsletter.get("article_url")
         logger.info(

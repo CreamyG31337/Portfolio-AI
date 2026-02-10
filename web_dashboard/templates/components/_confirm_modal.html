@@ -21,9 +21,11 @@
                         class="px-4 py-2.5 text-sm font-medium rounded-lg border border-accent text-accent bg-transparent hover:bg-accent/10 focus:ring-2 focus:ring-accent/30 focus:outline-hidden transition-colors inline-flex items-center justify-center gap-2">
                         Confirm
                     </button>
-                    <!-- Danger Action Button -->
+                    <!-- Danger Action Button (use style.display, not Tailwind hidden, because
+                         hidden loses specificity to inline-flex in Tailwind v4 CSS layers) -->
                     <button type="button" id="confirm-modal-submit-danger"
-                        class="px-4 py-2.5 text-sm font-medium rounded-lg border border-theme-error-text text-theme-error-text bg-theme-error-bg hover:bg-theme-error-text hover:text-theme-error-bg focus:ring-2 focus:ring-theme-error-text/40 focus:outline-hidden transition-colors inline-flex items-center justify-center gap-2 hidden">
+                        style="display:none"
+                        class="px-4 py-2.5 text-sm font-medium rounded-lg border border-theme-error-text text-theme-error-text bg-theme-error-bg hover:bg-theme-error-text hover:text-theme-error-bg focus:ring-2 focus:ring-theme-error-text/40 focus:outline-hidden transition-colors inline-flex items-center justify-center gap-2">
                         Confirm
                     </button>
                 </div>
@@ -65,12 +67,12 @@
         if (cancelEl) cancelEl.textContent = cancelLabel;
 
         if (activeBtn) {
-            activeBtn.classList.remove('hidden');
+            activeBtn.style.display = '';
             activeBtn.innerHTML = '<span>' + confirmLabel + '</span>';
             activeBtn.disabled = false;
         }
         if (inactiveBtn) {
-            inactiveBtn.classList.add('hidden');
+            inactiveBtn.style.display = 'none';
         }
 
         if (iconWrap) {
