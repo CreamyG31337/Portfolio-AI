@@ -8,10 +8,159 @@ Settings are stored in the `system_settings` table as key-value pairs.
 """
 
 from typing import Optional, Any
-import json
+from copy import deepcopy
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_FUND_PROFILE_SETTINGS: dict[str, dict[str, Any]] = {
+    "DEFAULT": {
+        "signal_alert_min_confidence": 0.72,
+        "signal_alert_fear_levels": ["HIGH", "EXTREME"],
+        "signal_alert_cooldown_minutes": 240,
+        "opportunity_min_evidence_count": 2,
+        "opportunity_max_staleness_hours": 72,
+        "opportunity_min_ai_score": 0.70,
+        "rebalance_max_position_pct": 15.0,
+        "rebalance_max_top3_pct": 50.0,
+        "rebalance_min_positions": 3,
+        "rebalance_min_cash_pct": 5.0,
+        "rebalance_max_cash_pct": 35.0,
+        "rebalance_review_days": 14,
+    },
+    "TFSA": {
+        "signal_alert_min_confidence": 0.70,
+        "signal_alert_fear_levels": ["HIGH", "EXTREME"],
+        "signal_alert_cooldown_minutes": 180,
+        "opportunity_min_evidence_count": 2,
+        "opportunity_max_staleness_hours": 72,
+        "opportunity_min_ai_score": 0.70,
+        "rebalance_max_position_pct": 12.0,
+        "rebalance_max_top3_pct": 40.0,
+        "rebalance_min_positions": 4,
+        "rebalance_min_cash_pct": 3.0,
+        "rebalance_max_cash_pct": 30.0,
+        "rebalance_review_days": 7,
+    },
+    "RRSP": {
+        "signal_alert_min_confidence": 0.78,
+        "signal_alert_fear_levels": ["EXTREME"],
+        "signal_alert_cooldown_minutes": 720,
+        "opportunity_min_evidence_count": 3,
+        "opportunity_max_staleness_hours": 168,
+        "opportunity_min_ai_score": 0.75,
+        "rebalance_max_position_pct": 8.0,
+        "rebalance_max_top3_pct": 35.0,
+        "rebalance_min_positions": 5,
+        "rebalance_min_cash_pct": 2.0,
+        "rebalance_max_cash_pct": 25.0,
+        "rebalance_review_days": 30,
+    },
+}
+
+
+def normalize_fund_type(fund_type: Optional[str]) -> str:
+    """Normalize fund_type labels to canonical profile keys."""
+    if not fund_type:
+        return "DEFAULT"
+    normalized = str(fund_type).strip().upper()
+    aliases = {
+        "SHORT_TERM": "TFSA",
+        "LONG_TERM": "RRSP",
+        "INVESTMENT": "DEFAULT",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def get_fund_profile_settings(fund_type: Optional[str] = None) -> dict[str, Any]:
+    """Get merged fund profile settings from defaults + system settings override.
+
+    System setting key:
+        - fund_profile_settings: object keyed by profile name
+    """
+    profile_key = normalize_fund_type(fund_type)
+    base = deepcopy(DEFAULT_FUND_PROFILE_SETTINGS["DEFAULT"])
+    profile_defaults = DEFAULT_FUND_PROFILE_SETTINGS.get(profile_key)
+    if profile_defaults:
+        base.update(profile_defaults)
+
+    configured = get_system_setting("fund_profile_settings", default={})
+    if isinstance(configured, dict):
+        configured_default = configured.get("DEFAULT")
+        if isinstance(configured_default, dict):
+            base.update(configured_default)
+
+        configured_profile = configured.get(profile_key)
+        if isinstance(configured_profile, dict):
+            base.update(configured_profile)
+
+    base["profile_key"] = profile_key
+    return base
+
+
+def get_signal_alert_policy(fund_type: Optional[str] = None) -> dict[str, Any]:
+    """Get typed signal alert policy for a fund profile."""
+    profile = get_fund_profile_settings(fund_type)
+
+    min_confidence_raw = profile.get("signal_alert_min_confidence", 0.72)
+    try:
+        min_confidence = float(min_confidence_raw)
+    except (TypeError, ValueError):
+        min_confidence = 0.72
+
+    cooldown_raw = profile.get("signal_alert_cooldown_minutes", 240)
+    try:
+        cooldown_minutes = int(cooldown_raw)
+    except (TypeError, ValueError):
+        cooldown_minutes = 240
+
+    levels_raw = profile.get("signal_alert_fear_levels", ["HIGH", "EXTREME"])
+    fear_levels: list[str] = []
+    if isinstance(levels_raw, list):
+        fear_levels = [str(level).strip().upper() for level in levels_raw if str(level).strip()]
+    elif isinstance(levels_raw, str):
+        fear_levels = [chunk.strip().upper() for chunk in levels_raw.split(",") if chunk.strip()]
+
+    if not fear_levels:
+        fear_levels = ["HIGH", "EXTREME"]
+
+    return {
+        "profile_key": profile.get("profile_key", "DEFAULT"),
+        "min_confidence": min_confidence,
+        "fear_levels": fear_levels,
+        "cooldown_minutes": cooldown_minutes,
+    }
+
+
+def get_rebalance_policy(fund_type: Optional[str] = None) -> dict[str, Any]:
+    """Get typed portfolio rebalance policy for a fund profile."""
+    profile = get_fund_profile_settings(fund_type)
+
+    def _float_value(key: str, default: float) -> float:
+        raw = profile.get(key, default)
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return default
+
+    def _int_value(key: str, default: int) -> int:
+        raw = profile.get(key, default)
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "profile_key": profile.get("profile_key", "DEFAULT"),
+        "max_position_pct": _float_value("rebalance_max_position_pct", 15.0),
+        "max_top3_pct": _float_value("rebalance_max_top3_pct", 50.0),
+        "min_positions": _int_value("rebalance_min_positions", 3),
+        "min_cash_pct": _float_value("rebalance_min_cash_pct", 5.0),
+        "max_cash_pct": _float_value("rebalance_max_cash_pct", 35.0),
+        "review_days": _int_value("rebalance_review_days", 14),
+    }
 
 
 def get_system_setting(key: str, default: Any = None) -> Any:

@@ -9,6 +9,7 @@ Utility functions for database operations across Supabase and PostgreSQL.
 import streamlit as st
 from supabase_client import SupabaseClient
 from postgres_client import PostgresClient
+from web_dashboard.watchlist_access import get_active_watchlist_tickers
 import logging
 
 logger = logging.getLogger(__name__)
@@ -64,11 +65,12 @@ def get_all_unique_tickers() -> list[str]:
                 if row.get('ticker'):
                     tickers.add(row['ticker'].upper())
 
-            # From watched_tickers (active only)
-            watched = sb_client.supabase.table('watched_tickers').select('ticker').eq('is_active', True).execute()
-            for row in watched.data:
-                if row.get('ticker'):
-                    tickers.add(row['ticker'].upper())
+            # From watched_tickers (active only, via shared accessor)
+            try:
+                watched_tickers = get_active_watchlist_tickers(sb_client)
+                tickers.update(watched_tickers)
+            except Exception as e:
+                logger.warning(f"Error fetching watchlist tickers: {e}")
 
             # From congress_trades
             congress = sb_client.supabase.table('congress_trades').select('ticker').execute()

@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
+from typing import Any, Optional
 
 # Add parent directory to path if needed
 current_dir = Path(__file__).resolve().parent
@@ -34,6 +35,8 @@ elif sys.path[0] != str(project_root):
     sys.path.insert(0, str(project_root))
 
 from scheduler.scheduler_core import log_job_execution
+from settings import get_signal_alert_policy, normalize_fund_type
+from watchlist_access import get_active_watchlist_rows
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -44,6 +47,60 @@ AI_EXPLANATION_MIN_CONFIDENCE = 0.7
 AI_EXPLANATION_SIGNALS = {"BUY", "SELL"}
 AI_EXPLANATION_FEAR_LEVELS = {"HIGH", "EXTREME"}
 AI_EXPLANATION_MAX_PER_RUN = 10
+
+
+def _build_global_alert_policy(policies: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build conservative global alert policy when watchlist lacks fund scope."""
+    if not policies:
+        return get_signal_alert_policy(None)
+
+    min_confidence = max(float(policy.get("min_confidence", 0.72)) for policy in policies)
+    cooldown_minutes = max(int(policy.get("cooldown_minutes", 240)) for policy in policies)
+
+    fear_sets: list[set[str]] = []
+    for policy in policies:
+        raw = policy.get("fear_levels", [])
+        if isinstance(raw, list):
+            fear_sets.append({str(level).strip().upper() for level in raw if str(level).strip()})
+
+    if fear_sets:
+        common_fear_levels = set.intersection(*fear_sets) if len(fear_sets) > 1 else fear_sets[0]
+        if not common_fear_levels:
+            common_fear_levels = set.union(*fear_sets)
+    else:
+        common_fear_levels = {"HIGH", "EXTREME"}
+
+    return {
+        "profile_key": "GLOBAL_STRICT",
+        "min_confidence": min_confidence,
+        "fear_levels": sorted(common_fear_levels),
+        "cooldown_minutes": cooldown_minutes,
+    }
+
+
+def _resolve_global_alert_policy(supabase_client: Any) -> dict[str, Any]:
+    """Resolve active profile policies and collapse to a conservative global gate."""
+    try:
+        result = supabase_client.supabase.table("funds").select(
+            "fund_type, is_production"
+        ).execute()
+        rows = result.data or []
+
+        production_rows = [row for row in rows if row.get("is_production") is True]
+        scoped_rows = production_rows if production_rows else rows
+
+        profile_keys = {
+            normalize_fund_type(row.get("fund_type"))
+            for row in scoped_rows
+            if row.get("fund_type")
+        }
+        if profile_keys:
+            policies = [get_signal_alert_policy(profile_key) for profile_key in sorted(profile_keys)]
+            return _build_global_alert_policy(policies)
+    except Exception as e:
+        logger.warning(f"Failed to load fund profile alert policy: {e}")
+
+    return get_signal_alert_policy(None)
 
 
 def signal_scan_job() -> None:
@@ -99,25 +156,7 @@ def signal_scan_job() -> None:
         data_fetcher = MarketDataFetcher()
         signal_engine = SignalEngine()
         
-        # Get watchlist from watched_tickers table
-        watchlist = []
-        try:
-            result = supabase_client.supabase.table("watched_tickers")\
-                .select("ticker, priority_tier, is_active, source, created_at")\
-                .eq("is_active", True)\
-                .execute()
-            
-            if result.data:
-                for item in result.data:
-                    ticker = item.get('ticker', '').upper().strip()
-                    if ticker:
-                        watchlist.append({
-                            'ticker': ticker,
-                            'priority_tier': item.get('priority_tier', 'C'),
-                            'created_at': item.get('created_at')
-                        })
-        except Exception as e:
-            logger.warning(f"Error fetching watched_tickers: {e}")
+        watchlist = get_active_watchlist_rows(supabase_client)
         
         if not watchlist:
             logger.warning("No watchlist tickers found")
@@ -125,7 +164,14 @@ def signal_scan_job() -> None:
             message = "No watchlist tickers to process"
             try:
                 log_job_execution(job_id, True, message, duration_ms)
-                mark_job_completed('signal_scan', target_date)
+                mark_job_completed(
+                    'signal_scan',
+                    target_date,
+                    None,
+                    [],
+                    duration_ms=duration_ms,
+                    message=message,
+                )
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
             return
@@ -136,6 +182,13 @@ def signal_scan_job() -> None:
         errors = 0
         alerts_sent = 0
         ai_explanations = 0
+        global_alert_policy = _resolve_global_alert_policy(supabase_client)
+        logger.info(
+            "Signal alert policy: profile=%s min_confidence=%.2f fear_levels=%s",
+            global_alert_policy.get("profile_key", "DEFAULT"),
+            float(global_alert_policy.get("min_confidence", 0.72)),
+            ",".join(global_alert_policy.get("fear_levels", [])),
+        )
         
         # Process each ticker
         for ticker_data in watchlist:
@@ -159,7 +212,7 @@ def signal_scan_job() -> None:
                 analysis_date = datetime.now(timezone.utc)
                 
                 # Check if signal should trigger alert
-                should_alert = _should_alert(signals)
+                should_alert = _should_alert(signals, policy=global_alert_policy)
 
                 # Optionally generate AI explanation (limited per run)
                 explanation = None
@@ -216,7 +269,14 @@ def signal_scan_job() -> None:
         
         try:
             log_job_execution(job_id, True, message, duration_ms)
-            mark_job_completed('signal_scan', target_date)
+            mark_job_completed(
+                'signal_scan',
+                target_date,
+                None,
+                [],
+                duration_ms=duration_ms,
+                message=message,
+            )
         except Exception as log_error:
             logger.warning(f"Failed to log job execution: {log_error}")
         
@@ -227,27 +287,36 @@ def signal_scan_job() -> None:
         message = f"Job failed: {str(e)}"
         try:
             log_job_execution(job_id, False, message, duration_ms)
-            mark_job_failed('signal_scan', target_date, str(e))
+            mark_job_failed('signal_scan', target_date, None, str(e), duration_ms=duration_ms)
         except Exception as log_error:
             logger.warning(f"Failed to log job execution: {log_error}")
         logger.error(f"❌ {message}", exc_info=True)
 
 
-def _should_alert(signals: dict) -> bool:
+def _should_alert(signals: dict[str, Any], policy: Optional[dict[str, Any]] = None) -> bool:
     """Determine if alert should be sent for this signal.
     
     Args:
         signals: Signal analysis dictionary
+        policy: Optional alert policy thresholds
     
     Returns:
         True if alert should be sent
     """
+    if policy is None:
+        policy = get_signal_alert_policy(None)
+
     overall = signals.get('overall_signal', 'HOLD')
     confidence = signals.get('confidence', 0.0)
-    fear_level = signals.get('fear_risk', {}).get('fear_level', 'LOW')
+    fear_level = str(signals.get('fear_risk', {}).get('fear_level', 'LOW')).upper()
+    min_confidence = float(policy.get("min_confidence", 0.72))
+    fear_levels = {
+        str(level).strip().upper()
+        for level in policy.get("fear_levels", ["HIGH", "EXTREME"])
+    }
     
     # Alert on strong signals or high fear
     return (
-        (overall in ['BUY', 'SELL'] and confidence > 0.7) or
-        fear_level in ['HIGH', 'EXTREME']
+        (overall in ['BUY', 'SELL'] and confidence >= min_confidence) or
+        fear_level in fear_levels
     )

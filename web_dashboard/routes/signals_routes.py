@@ -25,6 +25,7 @@ from cache_version import get_cache_version
 from auth import is_admin
 from market_data.data_fetcher import MarketDataFetcher
 from web_dashboard.signals.signal_engine import SignalEngine
+from web_dashboard.watchlist_access import get_active_watchlist_rows
 
 logger = logging.getLogger('signals')
 
@@ -63,22 +64,17 @@ def get_cached_watchlist_signals(
         watchlist = []
         if _supabase_client:
             try:
-                result = _supabase_client.supabase.table("watched_tickers")\
-                    .select("ticker, priority_tier, is_active, source, created_at")\
-                    .eq("is_active", True)\
-                    .execute()
-                
-                if result.data:
-                    for item in result.data:
-                        ticker = item.get('ticker', '').upper().strip()
-                        if ticker:
-                            watchlist.append({
-                                'ticker': ticker,
-                                'priority_tier': item.get('priority_tier', 'C'),
-                                'created_at': item.get('created_at')
-                            })
+                rows = get_active_watchlist_rows(_supabase_client)
+                for item in rows:
+                    ticker = item.get('ticker', '').upper().strip()
+                    if ticker:
+                        watchlist.append({
+                            'ticker': ticker,
+                            'priority_tier': item.get('priority_tier', 'C'),
+                            'created_at': item.get('created_at')
+                        })
             except Exception as e:
-                logger.warning(f"Error fetching watched_tickers: {e}")
+                logger.warning(f"Error fetching watchlist: {e}")
         
         # Batch fetch logo URLs for all tickers (caching-friendly pattern)
         logo_urls_map = {}

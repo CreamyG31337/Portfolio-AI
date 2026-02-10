@@ -1,0 +1,175 @@
+import os
+
+import web_dashboard.watchlist_access as wa
+from web_dashboard.watchlist_access import get_active_watchlist_rows, get_active_watchlist_tickers
+
+
+class _Result:
+    def __init__(self, data):
+        self.data = data
+
+
+class _Query:
+    def __init__(self, data):
+        self._data = data
+
+    def select(self, *_args, **_kwargs):
+        return self
+
+    def eq(self, *_args, **_kwargs):
+        return self
+
+    def execute(self):
+        return _Result(self._data)
+
+
+class _Supabase:
+    def __init__(self, table_data, fail_v2=False):
+        self._table_data = table_data
+        self._fail_v2 = fail_v2
+
+    def table(self, name):
+        if self._fail_v2 and name == "watched_tickers_v2":
+            raise RuntimeError("missing table")
+        return _Query(self._table_data.get(name, []))
+
+
+class _Client:
+    def __init__(self, table_data, fail_v2=False):
+        self.supabase = _Supabase(table_data, fail_v2=fail_v2)
+
+
+def _reset_strict_mode():
+    """Reset the cached strict mode flag so env changes take effect."""
+    wa._STRICT_MODE = None
+
+
+def test_watchlist_access_uses_v2_when_available() -> None:
+    _reset_strict_mode()
+    client = _Client(
+        {
+            "watched_tickers_v2": [
+                {"fund": "TEST", "ticker": "abc", "priority_tier": "A", "is_active": True},
+                {"fund": "TEST", "ticker": "ABC", "priority_tier": "B", "is_active": True},
+            ],
+            "watched_tickers": [{"ticker": "ZZZ", "priority_tier": "C", "is_active": True}],
+        }
+    )
+
+    rows = get_active_watchlist_rows(client, fund="TEST")
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "ABC"
+    assert rows[0]["fund"] == "TEST"
+
+
+def test_watchlist_access_falls_back_to_legacy_when_v2_missing() -> None:
+    _reset_strict_mode()
+    client = _Client(
+        {"watched_tickers": [{"ticker": "msft", "priority_tier": "B", "is_active": True}]},
+        fail_v2=True,
+    )
+
+    tickers = get_active_watchlist_tickers(client, fund="RRSP")
+    assert tickers == ["MSFT"]
+
+
+def test_fallback_when_v2_empty() -> None:
+    _reset_strict_mode()
+    client = _Client(
+        {
+            "watched_tickers_v2": [],
+            "watched_tickers": [
+                {"ticker": "GOOG", "priority_tier": "A", "is_active": True},
+            ],
+        }
+    )
+
+    rows = get_active_watchlist_rows(client, fund="TEST")
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "GOOG"
+
+
+def test_no_fallback_when_fallback_disabled() -> None:
+    _reset_strict_mode()
+    client = _Client(
+        {
+            "watched_tickers_v2": [],
+            "watched_tickers": [
+                {"ticker": "GOOG", "priority_tier": "A", "is_active": True},
+            ],
+        }
+    )
+
+    rows = get_active_watchlist_rows(client, fund="TEST", fallback_if_empty=False)
+    assert rows == []
+
+
+def test_strict_mode_disables_fallback() -> None:
+    _reset_strict_mode()
+    os.environ["WATCHLIST_STRICT"] = "1"
+    try:
+        wa._STRICT_MODE = None
+        client = _Client(
+            {
+                "watched_tickers_v2": [],
+                "watched_tickers": [
+                    {"ticker": "AAPL", "priority_tier": "A", "is_active": True},
+                ],
+            }
+        )
+
+        rows = get_active_watchlist_rows(client, fund="TEST")
+        assert rows == []
+    finally:
+        os.environ.pop("WATCHLIST_STRICT", None)
+        wa._STRICT_MODE = None
+
+
+def test_strict_mode_returns_empty_on_v2_failure() -> None:
+    _reset_strict_mode()
+    os.environ["WATCHLIST_STRICT"] = "1"
+    try:
+        wa._STRICT_MODE = None
+        client = _Client(
+            {"watched_tickers": [{"ticker": "AAPL", "is_active": True}]},
+            fail_v2=True,
+        )
+
+        rows = get_active_watchlist_rows(client, fund="TEST")
+        assert rows == []
+    finally:
+        os.environ.pop("WATCHLIST_STRICT", None)
+        wa._STRICT_MODE = None
+
+
+def test_get_active_watchlist_tickers_sorted() -> None:
+    _reset_strict_mode()
+    client = _Client(
+        {
+            "watched_tickers_v2": [
+                {"fund": "TEST", "ticker": "ZZZ", "is_active": True},
+                {"fund": "TEST", "ticker": "AAA", "is_active": True},
+                {"fund": "TEST", "ticker": "MMM", "is_active": True},
+            ],
+        }
+    )
+
+    tickers = get_active_watchlist_tickers(client, fund="TEST")
+    assert tickers == ["AAA", "MMM", "ZZZ"]
+
+
+def test_no_fund_filter_returns_all_funds() -> None:
+    _reset_strict_mode()
+    client = _Client(
+        {
+            "watched_tickers_v2": [
+                {"fund": "TFSA", "ticker": "AAPL", "is_active": True},
+                {"fund": "RRSP", "ticker": "MSFT", "is_active": True},
+            ],
+        }
+    )
+
+    rows = get_active_watchlist_rows(client)
+    assert len(rows) == 2
+    tickers = {r["ticker"] for r in rows}
+    assert tickers == {"AAPL", "MSFT"}

@@ -26,6 +26,8 @@ except ImportError:
     except ImportError:
         pass
 
+from web_dashboard.watchlist_access import get_active_watchlist_rows
+
 logger = logging.getLogger(__name__)
 
 
@@ -630,14 +632,12 @@ def _fetch_watchlist_status(ticker_upper: str, supabase_client) -> Dict[str, Any
         return result
 
     try:
-        watchlist_result = supabase_client.supabase.table("watched_tickers")\
-            .select("*")\
-            .eq("ticker", ticker_upper)\
-            .execute()
-
-        if watchlist_result.data and len(watchlist_result.data) > 0:
-            result['watchlist_status'] = watchlist_result.data[0]
-            result['found'] = True
+        rows = get_active_watchlist_rows(supabase_client)
+        for row in rows:
+            if row.get("ticker") == ticker_upper:
+                result['watchlist_status'] = row
+                result['found'] = True
+                break
     except Exception as e:
         logger.warning(f"Error fetching watchlist status for {ticker_upper}: {e}")
 

@@ -49,6 +49,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/user_funds.sql
 \i tables/user_profiles.sql
 \i tables/watched_tickers.sql
+\i tables/watched_tickers_v2.sql
 
 -- FUNCTIONS
 \i functions/assign_fund_to_user.sql
@@ -170,3 +171,5 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/user_profiles_Users can view own profile.sql
 \i policies/watched_tickers_Allow authenticated users to read watched_tickers.sql
 \i policies/watched_tickers_Service role can manage watched_tickers.sql
+\i policies/watched_tickers_v2_Service role can manage watched_tickers_v2.sql
+\i policies/watched_tickers_v2_Users can view watchlist for their funds.sql

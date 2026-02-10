@@ -36,6 +36,11 @@ from supabase_client import SupabaseClient
 from aggrid_utils import display_aggrid_with_ticker_navigation
 from streamlit_utils import CACHE_VERSION
 
+try:
+    from web_dashboard.watchlist_access import get_active_watchlist_rows
+except ImportError:
+    from watchlist_access import get_active_watchlist_rows
+
 logger = logging.getLogger(__name__)
 
 # Page configuration
@@ -126,12 +131,9 @@ def get_watchlist_tickers(_supabase_client, _refresh_key: int, _cache_version: s
     try:
         if _supabase_client is None:
             return []
-        result = _supabase_client.supabase.table("watched_tickers")\
-            .select("ticker, priority_tier, is_active, source, created_at")\
-            .eq("is_active", True)\
-            .order("priority_tier, ticker")\
-            .execute()
-        return result.data if result.data else []
+        rows = get_active_watchlist_rows(_supabase_client)
+        rows.sort(key=lambda r: (r.get("priority_tier") or "C", r.get("ticker") or ""))
+        return rows
     except Exception as e:
         logger.error(f"Error fetching watchlist: {e}", exc_info=True)
         return []
@@ -164,30 +166,25 @@ def get_dynamic_watchlist_tickers(
         # Dictionary to track tickers and their sources
         ticker_data: Dict[str, Dict[str, Any]] = {}
         
-        # 1. Get tickers from watched_tickers table (TRADELOG source)
+        # 1. Get tickers from watchlist (TRADELOG source)
         if _supabase_client:
             try:
-                result = _supabase_client.supabase.table("watched_tickers")\
-                    .select("ticker, priority_tier, is_active, source, created_at")\
-                    .eq("is_active", True)\
-                    .execute()
-                
-                if result.data:
-                    for item in result.data:
-                        ticker = item.get('ticker', '').upper().strip()
-                        if ticker:
-                            if ticker not in ticker_data:
-                                ticker_data[ticker] = {
-                                    'ticker': ticker,
-                                    'sources': [],
-                                    'source_count': 0,
-                                    'priority_tier': item.get('priority_tier', 'C'),
-                                    'created_at': item.get('created_at')
-                                }
-                            ticker_data[ticker]['sources'].append('TRADELOG')
-                            ticker_data[ticker]['source_count'] = len(ticker_data[ticker]['sources'])
+                watchlist_rows = get_active_watchlist_rows(_supabase_client)
+                for item in watchlist_rows:
+                    ticker = item.get('ticker', '').upper().strip()
+                    if ticker:
+                        if ticker not in ticker_data:
+                            ticker_data[ticker] = {
+                                'ticker': ticker,
+                                'sources': [],
+                                'source_count': 0,
+                                'priority_tier': item.get('priority_tier', 'C'),
+                                'created_at': item.get('created_at')
+                            }
+                        ticker_data[ticker]['sources'].append('TRADELOG')
+                        ticker_data[ticker]['source_count'] = len(ticker_data[ticker]['sources'])
             except Exception as e:
-                logger.warning(f"Error fetching watched_tickers: {e}")
+                logger.warning(f"Error fetching watchlist: {e}")
         
         # 2. Get tickers from congress_trades_enriched (last 30 days)
         if _supabase_client:

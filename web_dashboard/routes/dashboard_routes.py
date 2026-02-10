@@ -29,8 +29,67 @@ from flask_data_utils import (
     get_positions_as_of_date_flask
 )
 from web_dashboard.utils.logo_utils import get_ticker_logo_urls
+from web_dashboard.watchlist_access import get_active_watchlist_rows
+from settings import get_signal_alert_policy, normalize_fund_type
 
 logger = logging.getLogger(__name__)
+
+
+def _build_global_dashboard_alert_policy(policies: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build conservative policy for global watchlist usage in dashboard queue."""
+    if not policies:
+        return get_signal_alert_policy(None)
+
+    min_confidence = max(float(policy.get("min_confidence", 0.72)) for policy in policies)
+    fear_sets: List[set[str]] = []
+    for policy in policies:
+        raw = policy.get("fear_levels", [])
+        if isinstance(raw, list):
+            fear_sets.append({str(level).strip().upper() for level in raw if str(level).strip()})
+
+    if fear_sets:
+        common_levels = set.intersection(*fear_sets) if len(fear_sets) > 1 else fear_sets[0]
+        if not common_levels:
+            common_levels = set.union(*fear_sets)
+    else:
+        common_levels = {"HIGH", "EXTREME"}
+
+    return {
+        "profile_key": "GLOBAL_STRICT",
+        "min_confidence": min_confidence,
+        "fear_levels": sorted(common_levels),
+    }
+
+
+def _resolve_dashboard_alert_policy(supabase_client, fund: str | None) -> Dict[str, Any]:
+    """Resolve alert policy for selected fund, or strict global policy when fund is not selected."""
+    try:
+        if fund:
+            fund_result = supabase_client.supabase.table("funds").select(
+                "fund_type"
+            ).eq("name", fund).limit(1).execute()
+            if fund_result.data:
+                fund_type = fund_result.data[0].get("fund_type")
+                return get_signal_alert_policy(normalize_fund_type(fund_type))
+
+        rows_result = supabase_client.supabase.table("funds").select(
+            "fund_type, is_production"
+        ).execute()
+        rows = rows_result.data or []
+        production_rows = [row for row in rows if row.get("is_production") is True]
+        scoped_rows = production_rows if production_rows else rows
+        profile_keys = {
+            normalize_fund_type(row.get("fund_type"))
+            for row in scoped_rows
+            if row.get("fund_type")
+        }
+        if profile_keys:
+            policies = [get_signal_alert_policy(profile_key) for profile_key in sorted(profile_keys)]
+            return _build_global_dashboard_alert_policy(policies)
+    except Exception as e:
+        logger.warning(f"[Dashboard API] Failed resolving alert policy: {e}")
+
+    return get_signal_alert_policy(None)
 
 
 def _json_safe_number(value: Any, default: float = 0.0) -> float:
@@ -343,25 +402,7 @@ def get_action_queue():
                 .tolist()
             )
 
-        # Watchlist tickers (active)
-        watchlist = []
-        try:
-            result = supabase_client.supabase.table("watched_tickers") \
-                .select("ticker, priority_tier, is_active, source, created_at") \
-                .eq("is_active", True) \
-                .execute()
-            if result.data:
-                for item in result.data:
-                    ticker = (item.get("ticker") or "").upper().strip()
-                    if ticker:
-                        watchlist.append({
-                            "ticker": ticker,
-                            "priority_tier": item.get("priority_tier") or "C",
-                            "source": item.get("source"),
-                            "created_at": item.get("created_at")
-                        })
-        except Exception as e:
-            logger.warning(f"[Dashboard API] Error fetching watched_tickers: {e}")
+        watchlist = get_active_watchlist_rows(supabase_client, fund=fund)
 
         if not watchlist:
             return jsonify({
@@ -418,10 +459,18 @@ def get_action_queue():
         except Exception as e:
             logger.warning(f"[Dashboard API] Error fetching logo URLs: {e}")
 
+        alert_policy = _resolve_dashboard_alert_policy(supabase_client, fund)
+        min_confidence = float(alert_policy.get("min_confidence", 0.72))
+        risk_fear_levels = {
+            str(level).strip().upper()
+            for level in alert_policy.get("fear_levels", ["HIGH", "EXTREME"])
+        }
+        watch_confidence_floor = max(min_confidence - 0.10, 0.50)
+
         def _get_fear_level(signal_row: Dict[str, Any]) -> str:
             fear = signal_row.get("fear_risk_signal")
             if isinstance(fear, dict):
-                return fear.get("fear_level") or "LOW"
+                return str(fear.get("fear_level") or "LOW").upper()
             return "LOW"
 
         def _get_trend(signal_row: Dict[str, Any]) -> str:
@@ -478,13 +527,13 @@ def get_action_queue():
             priority_tier = item.get("priority_tier") or "C"
 
             action = None
-            if overall_signal == "SELL" and is_held:
+            if overall_signal == "SELL" and is_held and confidence >= min_confidence:
                 action = "SELL"
-            elif overall_signal == "BUY" and not is_held:
+            elif overall_signal == "BUY" and not is_held and confidence >= min_confidence:
                 action = "BUY"
-            elif fear_level in ["HIGH", "EXTREME"]:
+            elif fear_level in risk_fear_levels:
                 action = "RISK"
-            elif overall_signal == "WATCH":
+            elif overall_signal == "WATCH" and confidence >= watch_confidence_floor:
                 action = "WATCH"
 
             if not action:

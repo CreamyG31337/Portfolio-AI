@@ -31,6 +31,10 @@ from ai_context_builder import (
     format_trades
 )
 from settings import get_summarizing_model
+try:
+    from web_dashboard.watchlist_access import get_active_watchlist_tickers
+except ImportError:
+    from watchlist_access import get_active_watchlist_tickers
 
 # Try importing yfinance for price data
 try:
@@ -1077,12 +1081,8 @@ class TickerAnalysisService:
         
         # 3. Watched tickers (lower priority)
         try:
-            watched_result = self.supabase.supabase.table('watched_tickers') \
-                .select('ticker') \
-                .eq('is_active', True) \
-                .execute()
-            for row in watched_result.data or []:
-                ticker = row.get('ticker')
+            watched_tickers = get_active_watchlist_tickers(self.supabase)
+            for ticker in watched_tickers:
                 if ticker and ticker not in seen:
                     seen.add(ticker)
                     tickers.append((ticker, 10))

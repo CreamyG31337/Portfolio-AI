@@ -39,6 +39,10 @@ FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "http://host.docker.internal:81
 from postgres_client import PostgresClient
 from supabase_client import SupabaseClient
 from ollama_client import OllamaClient, get_ollama_client
+try:
+    from web_dashboard.watchlist_access import get_active_watchlist_tickers
+except ImportError:
+    from watchlist_access import get_active_watchlist_tickers
 
 
 class SocialSentimentService:
@@ -195,19 +199,14 @@ class SocialSentimentService:
             logger.warning(f"Unexpected error with FlareSolverr: {e} - will fallback to direct request")
             return None
     
-    def get_watched_tickers(self) -> List[str]:
-        """Get list of active tickers from watched_tickers table
+    def get_watched_tickers(self, fund: Optional[str] = None) -> List[str]:
+        """Get active tickers from fund-scoped watchlist (with legacy fallback).
         
         Returns:
             List of ticker symbols to monitor
         """
         try:
-            result = self.supabase.supabase.table("watched_tickers")\
-                .select("ticker")\
-                .eq("is_active", True)\
-                .execute()
-            
-            tickers = [row['ticker'] for row in result.data if row.get('ticker')]
+            tickers = get_active_watchlist_tickers(self.supabase, fund=fund)
             logger.debug(f"Found {len(tickers)} active watched tickers")
             return tickers
             

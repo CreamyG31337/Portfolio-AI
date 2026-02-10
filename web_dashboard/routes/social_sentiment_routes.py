@@ -25,6 +25,7 @@ from flask_cache_utils import cache_resource, cache_data
 from user_preferences import get_user_preference
 from cache_version import get_cache_version
 from auth import is_admin
+from web_dashboard.watchlist_access import get_active_watchlist_rows
 
 # Try to import zoneinfo for timezone conversion (Python 3.9+)
 try:
@@ -128,28 +129,20 @@ def get_cached_dynamic_watchlist(
         
         # 1. Get tickers from watched_tickers table (TRADELOG source)
         if _supabase_client:
-            try:
-                result = _supabase_client.supabase.table("watched_tickers")\
-                    .select("ticker, priority_tier, is_active, source, created_at")\
-                    .eq("is_active", True)\
-                    .execute()
-                
-                if result.data:
-                    for item in result.data:
-                        ticker = item.get('ticker', '').upper().strip()
-                        if ticker:
-                            if ticker not in ticker_data:
-                                ticker_data[ticker] = {
-                                    'ticker': ticker,
-                                    'sources': [],
-                                    'source_count': 0,
-                                    'priority_tier': item.get('priority_tier', 'C'),
-                                    'created_at': item.get('created_at')
-                                }
-                            ticker_data[ticker]['sources'].append('TRADELOG')
-                            ticker_data[ticker]['source_count'] = len(ticker_data[ticker]['sources'])
-            except Exception as e:
-                logger.warning(f"Error fetching watched_tickers: {e}")
+            rows = get_active_watchlist_rows(_supabase_client)
+            for item in rows:
+                ticker = item.get('ticker', '').upper().strip()
+                if ticker:
+                    if ticker not in ticker_data:
+                        ticker_data[ticker] = {
+                            'ticker': ticker,
+                            'sources': [],
+                            'source_count': 0,
+                            'priority_tier': item.get('priority_tier', 'C'),
+                            'created_at': item.get('created_at')
+                        }
+                    ticker_data[ticker]['sources'].append('TRADELOG')
+                    ticker_data[ticker]['source_count'] = len(ticker_data[ticker]['sources'])
         
         # 2. Get tickers from congress_trades_enriched (last 30 days)
         if _supabase_client:

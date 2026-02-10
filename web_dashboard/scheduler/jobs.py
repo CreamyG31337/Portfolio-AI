@@ -415,6 +415,26 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'day_of_week': 'sun', 'hour': 20, 'minute': 0, 'timezone': 'America/Los_Angeles'}  # Sunday 8 PM PT
         ]
     },
+    'rebalance_recommendation_tfsa': {
+        'name': '⚖️ TFSA Rebalance Review',
+        'description': 'Advisory-only concentration and cash drift review for TFSA funds',
+        'default_interval_minutes': 10080,  # Weekly
+        'enabled_by_default': True,
+        'icon': '⚖️',
+        'cron_triggers': [
+            {'day_of_week': 'sun', 'hour': 18, 'minute': 0, 'timezone': 'America/Los_Angeles'}  # Sunday 6 PM PT
+        ]
+    },
+    'rebalance_recommendation_rrsp': {
+        'name': '⚖️ RRSP Rebalance Review',
+        'description': 'Advisory-only concentration and cash drift review for RRSP funds',
+        'default_interval_minutes': 43200,  # Monthly (30 days approximation)
+        'enabled_by_default': True,
+        'icon': '⚖️',
+        'cron_triggers': [
+            {'day': 1, 'hour': 18, 'minute': 30, 'timezone': 'America/Los_Angeles'}  # 1st day of month
+        ]
+    },
     'newsletter_ai_processing': {
         'name': '📰 Newsletter AI Processing',
         'description': 'Safety-net: summarize any newsletters still missing an AI summary (primary processing happens inline after webhook)',
@@ -546,6 +566,12 @@ from scheduler.jobs_signals import signal_scan_job
 # Import thesis update job
 from scheduler.thesis_update_job import thesis_update_job
 
+# Import rebalance recommendation jobs
+from scheduler.jobs_rebalance import (
+    rebalance_recommendation_tfsa_job,
+    rebalance_recommendation_rrsp_job,
+)
+
 # Import newsletter AI processing job
 from scheduler.jobs_newsletter import newsletter_ai_processing_job
 
@@ -597,6 +623,9 @@ __all__ = [
     'signal_scan_job',
     # Thesis update job
     'thesis_update_job',
+    # Rebalance recommendation jobs
+    'rebalance_recommendation_tfsa_job',
+    'rebalance_recommendation_rrsp_job',
     # Newsletter AI processing job
     'newsletter_ai_processing_job',
     # Shared utilities
@@ -1494,6 +1523,52 @@ def register_default_jobs(scheduler) -> None:
             misfire_grace_time=3600  # 1 hour grace period
         )
         logger.info("Registered job: thesis_update (weekly on Sunday at 8:00 PM PT)")
+
+    # TFSA Rebalance Recommendation - weekly advisory run
+    if AVAILABLE_JOBS.get('rebalance_recommendation_tfsa', {}).get('enabled_by_default', True):
+        config = AVAILABLE_JOBS['rebalance_recommendation_tfsa']
+        triggers = config.get('cron_triggers', [{'day_of_week': 'sun', 'hour': 18, 'minute': 0, 'timezone': 'America/Los_Angeles'}])
+        trigger_config = triggers[0]
+
+        scheduler.add_job(
+            rebalance_recommendation_tfsa_job,
+            trigger=CronTrigger(
+                day_of_week=trigger_config.get('day_of_week', 'sun'),
+                hour=trigger_config['hour'],
+                minute=trigger_config['minute'],
+                timezone=trigger_config.get('timezone', 'America/Los_Angeles')
+            ),
+            id='rebalance_recommendation_tfsa',
+            name=f"{get_job_icon('rebalance_recommendation_tfsa')} TFSA Rebalance Review",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600
+        )
+        logger.info("Registered job: rebalance_recommendation_tfsa (weekly Sunday 6:00 PM PT)")
+
+    # RRSP Rebalance Recommendation - monthly advisory run
+    if AVAILABLE_JOBS.get('rebalance_recommendation_rrsp', {}).get('enabled_by_default', True):
+        config = AVAILABLE_JOBS['rebalance_recommendation_rrsp']
+        triggers = config.get('cron_triggers', [{'day': 1, 'hour': 18, 'minute': 30, 'timezone': 'America/Los_Angeles'}])
+        trigger_config = triggers[0]
+
+        scheduler.add_job(
+            rebalance_recommendation_rrsp_job,
+            trigger=CronTrigger(
+                day=trigger_config.get('day', 1),
+                hour=trigger_config['hour'],
+                minute=trigger_config['minute'],
+                timezone=trigger_config.get('timezone', 'America/Los_Angeles')
+            ),
+            id='rebalance_recommendation_rrsp',
+            name=f"{get_job_icon('rebalance_recommendation_rrsp')} RRSP Rebalance Review",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600
+        )
+        logger.info("Registered job: rebalance_recommendation_rrsp (monthly on day 1 at 6:30 PM PT)")
 
     # Newsletter AI Processing - every 10 minutes
     if AVAILABLE_JOBS.get('newsletter_ai_processing', {}).get('enabled_by_default', True):
