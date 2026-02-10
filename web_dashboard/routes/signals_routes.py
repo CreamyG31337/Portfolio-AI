@@ -163,7 +163,21 @@ def get_cached_watchlist_signals(
                     # Calculate on the fly if not in database
                     price_data = data_fetcher.fetch_price_data(ticker, period="6mo")
                     if not price_data.df.empty:
-                        signals = signal_engine.evaluate(ticker, price_data.df)
+                        # Fetch fundamentals from securities table if available
+                        fly_fundamentals = None
+                        if _supabase_client:
+                            try:
+                                sec_row = _supabase_client.supabase.table("securities") \
+                                    .select("*") \
+                                    .eq("ticker", ticker.upper()) \
+                                    .execute()
+                                if sec_row.data:
+                                    fly_fundamentals = sec_row.data[0]
+                            except Exception:
+                                pass
+                        signals = signal_engine.evaluate(
+                            ticker, price_data.df, fundamentals=fly_fundamentals
+                        )
                         mom = signals.get('momentum', {})
                         fund = signals.get('fundamental', {})
                         results.append({
