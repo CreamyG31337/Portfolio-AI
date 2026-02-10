@@ -9,7 +9,7 @@ triggers:
   article_types: []
   always: false
 priority: 3
-max_tokens: 520
+max_tokens: 240
 ---
 ## Sector Frameworks Cheat Sheet
 

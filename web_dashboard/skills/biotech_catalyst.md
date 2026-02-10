@@ -9,7 +9,7 @@ triggers:
   article_types: []
   always: false
 priority: 1
-max_tokens: 560
+max_tokens: 380
 ---
 ## Biotech Catalyst Framework
 

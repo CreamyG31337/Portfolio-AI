@@ -9,7 +9,7 @@ triggers:
   article_types: []
   always: false
 priority: 1
-max_tokens: 520
+max_tokens: 360
 ---
 ## Micro-Cap Red Flag Checklist
 

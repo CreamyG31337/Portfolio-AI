@@ -8,7 +8,7 @@ triggers:
   article_types: [Newsletter]
   always: false
 priority: 3
-max_tokens: 460
+max_tokens: 210
 ---
 ## Newsletter Credibility Framework
 

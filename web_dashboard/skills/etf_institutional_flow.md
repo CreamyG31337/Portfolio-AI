@@ -11,7 +11,7 @@ triggers:
   always: false
   always_for: [etf_analysis]
 priority: 2
-max_tokens: 500
+max_tokens: 220
 ---
 ## ETF and Institutional Flow Framework
 

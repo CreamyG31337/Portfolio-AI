@@ -9,7 +9,7 @@ triggers:
   article_types: []
   always: false
 priority: 2
-max_tokens: 460
+max_tokens: 260
 ---
 ## Canadian Market Lens
 

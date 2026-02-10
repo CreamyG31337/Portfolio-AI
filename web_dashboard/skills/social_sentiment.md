@@ -8,7 +8,7 @@ triggers:
   article_types: []
   always: true
 priority: 2
-max_tokens: 520
+max_tokens: 240
 ---
 ## Crowd Sentiment Reliability Framework
 

@@ -9,7 +9,7 @@ triggers:
   article_types: []
   always: false
 priority: 2
-max_tokens: 520
+max_tokens: 250
 ---
 ## Merger and Special Situations Framework
 

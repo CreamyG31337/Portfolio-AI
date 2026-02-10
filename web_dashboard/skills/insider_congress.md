@@ -11,7 +11,7 @@ triggers:
   always: false
   always_for: [congress_trades]
 priority: 2
-max_tokens: 520
+max_tokens: 310
 ---
 ## Insider and Congressional Signal Framework
 

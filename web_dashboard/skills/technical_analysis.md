@@ -8,7 +8,7 @@ triggers:
   article_types: []
   always: true
 priority: 3
-max_tokens: 500
+max_tokens: 220
 ---
 ## Technical Analysis Context
 
