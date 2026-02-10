@@ -21,18 +21,45 @@ def build_signal_explanation_prompt(ticker: str, signals: Dict[str, Any]) -> str
     structure = signals.get("structure", {})
     timing = signals.get("timing", {})
     fear_risk = signals.get("fear_risk", {})
+    momentum = signals.get("momentum", {})
+    fundamental = signals.get("fundamental", {})
     overall_signal = signals.get("overall_signal", "HOLD")
     confidence = signals.get("confidence", 0.0)
+
+    # Build optional sections only when data exists
+    optional_sections = ""
+    if momentum:
+        optional_sections += f',\n  "momentum": {momentum}'
+    if fundamental:
+        optional_sections += f',\n  "fundamental": {fundamental}'
+
+    # Adjust bullet count and requirements based on available data
+    has_momentum = bool(momentum and momentum.get("bias"))
+    has_fundamental = bool(fundamental and fundamental.get("quality"))
+    bullet_count = 3
+    extra_requirements = ""
+    if has_momentum and has_fundamental:
+        bullet_count = 5
+        extra_requirements = (
+            "- Comment on momentum bias and what the composite score implies\n"
+            "- Comment on fundamental quality and any standout metrics\n"
+        )
+    elif has_momentum:
+        bullet_count = 4
+        extra_requirements = "- Comment on momentum bias and what the composite score implies\n"
+    elif has_fundamental:
+        bullet_count = 4
+        extra_requirements = "- Comment on fundamental quality and any standout metrics\n"
 
     prompt = f"""
 You are a trading assistant. Explain the technical signals for {ticker} in plain English.
 Keep it short and practical for a dashboard user.
 
 Requirements:
-- 3 to 4 bullet points only
+- {bullet_count} to {bullet_count + 1} bullet points only
 - Each bullet is one sentence
 - Mention trend, timing, and fear/risk at least once
-- End with a short verdict matching the overall signal
+{extra_requirements}- End with a short verdict matching the overall signal
 - No financial advice disclaimer
 
 Signals (JSON):
@@ -41,7 +68,7 @@ Signals (JSON):
   "confidence": {confidence},
   "structure": {structure},
   "timing": {timing},
-  "fear_risk": {fear_risk}
+  "fear_risk": {fear_risk}{optional_sections}
 }}
 """.strip()
     return prompt
