@@ -1,5 +1,6 @@
 
 
+
 import logging
 import time
 import sys
@@ -19,22 +20,23 @@ logger = logging.getLogger(__name__)
 
 def opportunity_discovery_job() -> None:
     """Hunt for new investment opportunities using targeted search queries.
-    
+
     This job:
     1. Rotates through a list of "hunting" queries (e.g., "undervalued microcaps")
     2. Searches for relevant news using SearXNG
     3. Saves articles with article_type="opportunity_discovery"
-    
+
     Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
     When enabled, checks robots.txt before accessing article URLs from search results.
     """
     job_id = 'opportunity_discovery'
     start_time = time.time()
-    
+
     # Import job tracking at the start
     from datetime import datetime, timezone
     target_date = datetime.now(timezone.utc).date()
     from scheduler.jobs_common import claim_recent_summary_input, has_strong_market_signal
+    from utils.job_tracking import log_job_step
 
     # Global AI lock (SearXNG + Ollama workload)
     try:
@@ -45,16 +47,17 @@ def opportunity_discovery_job() -> None:
             return
     except Exception as e:
         logger.warning(f"AI lock check failed (continuing): {e}")
-    
+
     try:
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
         mark_job_started(job_id, target_date)
     except Exception as e:
         logger.warning(f"Could not mark job started: {e}")
-    
+
     try:
+        log_job_step(job_id, "init", "Starting opportunity discovery job")
         logger.info("Starting opportunity discovery job...")
-        
+
         # Import dependencies
         try:
             from searxng_client import get_searxng_client, check_searxng_health
@@ -65,6 +68,7 @@ def opportunity_discovery_job() -> None:
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
+            log_job_step(job_id, "init", message, status="failed")
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             try:
                 mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
@@ -72,11 +76,13 @@ def opportunity_discovery_job() -> None:
                 pass
             logger.error(f"❌ {message}")
             return
-        
+
         # Check SearXNG health
+        log_job_step(job_id, "searxng_check", "Checking SearXNG health...")
         if not check_searxng_health():
             duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG is not available - skipping opportunity discovery"
+            log_job_step(job_id, "searxng_check", message, status="skipped")
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             try:
                 mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
@@ -84,52 +90,59 @@ def opportunity_discovery_job() -> None:
                 pass
             logger.info(f"ℹ️ {message}")
             return
-        
+        log_job_step(job_id, "searxng_check", "SearXNG is healthy", status="success")
+
         # Get clients
         searxng_client = get_searxng_client()
         ollama_client = get_ollama_client()
-        
+
         if not searxng_client:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG client not initialized"
+            log_job_step(job_id, "init", message, status="failed")
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
             return
-        
+
         # Initialize research repository
         research_repo = ResearchRepository()
-        
+
         # Load domain blacklist
         from settings import get_research_domain_blacklist
         blacklist = get_research_domain_blacklist()
-        
+
         # Get discovery queries
         queries = get_discovery_search_queries()
         logger.info(f"Using {len(queries)} discovery queries")
-        
+
         # Rotate through queries (pick one per run to avoid overwhelming the system)
-        # Use the current hour to deterministically select which query to use
         from datetime import datetime
         query_index = datetime.now().hour % len(queries)
         selected_query = queries[query_index]
-        
+
         negative_keywords = "-astrology -horoscope -zodiac -restaurant -recipe -celebrity -movie -tv -sports"
         final_query = f"{selected_query} {negative_keywords}"
+
+        log_job_step(job_id, "search", f"Searching: '{selected_query}'")
         logger.info(f"🔭 Discovery Query: '{final_query}'")
-        
+
         # Search
         search_results = searxng_client.search_news(
             query=final_query,
-            max_results=8  # Get more results for discovery
+            max_results=8
         )
-        
+
         if not search_results or not search_results.get('results'):
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"No results for query: {selected_query}"
+            log_job_step(job_id, "search", message, status="skipped")
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             logger.info(f"ℹ️ {message}")
             return
-        
+
+        total_results = len(search_results['results'])
+        log_job_step(job_id, "search", f"Found {total_results} results", status="success")
+
         articles_processed = 0
         articles_saved = 0
         articles_skipped = 0
@@ -139,11 +152,12 @@ def opportunity_discovery_job() -> None:
         # Safety timeouts (avoid runaway jobs)
         MAX_JOB_DURATION = 40 * 60  # 40 minutes total
         MAX_ARTICLE_DURATION = 4 * 60  # 4 minutes per article
-        
-        for result in search_results['results']:
+
+        for idx, result in enumerate(search_results['results'], 1):
             # Check overall job timeout
             elapsed = time.time() - start_time
             if elapsed > MAX_JOB_DURATION:
+                log_job_step(job_id, "timeout", f"Job timeout reached ({elapsed/60:.1f}m)", status="failed")
                 logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Stopping opportunity discovery")
                 break
 
@@ -153,7 +167,7 @@ def opportunity_discovery_job() -> None:
             try:
                 url = result.get('url', '')
                 title = result.get('title', '')
-                
+
                 if not url or not title:
                     continue
 
@@ -162,7 +176,7 @@ def opportunity_discovery_job() -> None:
                     logger.debug(f"Article already being processed by another job thread: {title[:40]}...")
                     articles_skipped += 1
                     continue
-                
+
                 # Check robots.txt compliance (if enabled)
                 try:
                     from robots_utils import check_url_allowed
@@ -171,9 +185,8 @@ def opportunity_discovery_job() -> None:
                         articles_skipped += 1
                         continue
                 except ImportError:
-                    # robots_utils not available, skip check
                     pass
-                
+
                 # Check blacklist
                 from research_utils import is_domain_blacklisted
                 is_blocked, domain = is_domain_blacklisted(url, blacklist)
@@ -186,14 +199,15 @@ def opportunity_discovery_job() -> None:
                 if time.time() - article_start > MAX_ARTICLE_DURATION:
                     logger.warning(f"⏱️  Article timeout - skipping: {title[:40]}...")
                     continue
-                
+
                 # Check if already exists
                 if research_repo.article_exists(url):
                     logger.debug(f"Article already exists: {title[:50]}...")
                     articles_skipped += 1
                     continue
-                
+
                 # Extract content
+                log_job_step(job_id, "extract", f"Extracting article {idx}/{total_results}: {title[:60]}")
                 logger.info(f"  💎 Extracting: {title[:40]}...")
                 extracted = extract_article_content(url)
 
@@ -202,12 +216,12 @@ def opportunity_discovery_job() -> None:
                 tracker = DomainHealthTracker()
                 from settings import get_system_setting
                 threshold = get_system_setting("auto_blacklist_threshold", default=4)
-                
+
                 content = extracted.get('content', '')
                 if not content or not extracted.get('success'):
                     error_reason = extracted.get('error', 'unknown')
                     failure_count = tracker.record_failure(url, error_reason)
-                    
+
                     if tracker.should_auto_blacklist(url):
                         if tracker.auto_blacklist_domain(url):
                             logger.warning(f"🚫 AUTO-BLACKLISTED: {domain}")
@@ -218,9 +232,9 @@ def opportunity_discovery_job() -> None:
                 if time.time() - article_start > MAX_ARTICLE_DURATION:
                     logger.warning(f"⏱️  Article timeout after extraction - skipping: {title[:40]}...")
                     continue
-                
+
                 tracker.record_success(url)
-                
+
                 # Generate summary and embedding
                 summary = None
                 summary_data = {}
@@ -228,13 +242,15 @@ def opportunity_discovery_job() -> None:
                 extracted_ticker = None
                 extracted_sector = None
                 embedding = None
-                
+
                 summary_input = f"Title: {title}\n\n{content}" if title else content
                 should_summarize, summary_hash = claim_recent_summary_input(summary_input)
                 if not should_summarize:
                     logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
                     articles_skipped += 1
                     continue
+
+                log_job_step(job_id, "ai_summary", f"Generating AI summary for: {title[:60]}")
                 summary_data = generate_summary(summary_input, article_type="Opportunity Discovery")
 
                 if isinstance(summary_data, str):
@@ -282,10 +298,10 @@ def opportunity_discovery_job() -> None:
                 # Embedding is Ollama-only
                 if ollama_client:
                     embedding = ollama_client.generate_embedding(content[:6000])
-                
+
                 # Extract logic_check for relationship confidence scoring
                 logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
-                
+
                 # Save article with opportunity_discovery type
                 article_id = research_repo.save_article(
                     tickers=[extracted_ticker] if extracted_ticker else None,
@@ -306,22 +322,23 @@ def opportunity_discovery_job() -> None:
                     sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
                     logic_check=logic_check
                 )
-                
+
                 if article_id:
                     articles_saved += 1
+                    article_dur = time.time() - article_start
+                    log_job_step(job_id, "save", f"Saved: {title[:60]} ({article_dur:.0f}s)", status="success",
+                                metadata={"tickers": extracted_tickers} if extracted_tickers else None)
                     logger.info(f"  ✅ Saved opportunity: {title[:30]}")
-                    
+
                     # Extract and save relationships (GraphRAG edges)
                     if isinstance(summary_data, dict) and logic_check and logic_check != "HYPE_DETECTED":
                         relationships = summary_data.get("relationships", [])
                         if relationships and isinstance(relationships, list):
-                            # Calculate initial confidence based on logic_check
                             if logic_check == "DATA_BACKED":
                                 initial_confidence = 0.8
                             else:  # NEUTRAL
                                 initial_confidence = 0.4
-                            
-                            # Normalize and save each relationship
+
                             from research_utils import normalize_relationship
                             relationships_saved = 0
                             for rel in relationships:
@@ -329,12 +346,9 @@ def opportunity_discovery_job() -> None:
                                     source = rel.get("source", "").strip()
                                     target = rel.get("target", "").strip()
                                     rel_type = rel.get("type", "").strip()
-                                    
+
                                     if source and target and rel_type:
-                                        # Normalize relationship direction (Option A: Supplier -> Buyer)
                                         norm_source, norm_target, norm_type = normalize_relationship(source, target, rel_type)
-                                        
-                                        # Save relationship
                                         rel_id = research_repo.save_relationship(
                                             source_ticker=norm_source,
                                             target_ticker=norm_target,
@@ -344,42 +358,43 @@ def opportunity_discovery_job() -> None:
                                         )
                                         if rel_id:
                                             relationships_saved += 1
-                            
+
                             if relationships_saved > 0:
                                 logger.info(f"  ✅ Saved {relationships_saved} relationship(s) from opportunity article: {title[:30]}")
-                
+
                 articles_processed += 1
-                
+
                 # Delay between articles
                 time.sleep(1)
-                
+
             except Exception as e:
+                log_job_step(job_id, "error", f"Error processing article: {str(e)[:100]}", status="failed")
                 logger.error(f"Error processing discovery article: {e}")
                 continue
             finally:
                 if processing_claimed:
                     research_repo.release_processing_url(url)
-        
+
         duration_ms = int((time.time() - start_time) * 1000)
         message = (
             f"Query: '{selected_query[:50]}...' - Processed {articles_processed}: {articles_saved} saved, "
             f"{articles_skipped} skipped, {articles_blacklisted} blacklisted, {articles_irrelevant} non-market"
         )
+        log_job_step(job_id, "complete", message, status="success")
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         try:
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
         except:
             pass
         logger.info(f"✅ {message}")
-        
+
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Error: {str(e)}"
+        log_job_step(job_id, "fatal", message, status="failed")
         log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
         try:
             mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
         except:
             pass
         logger.error(f"❌ Opportunity discovery job failed: {e}", exc_info=True)
-
-

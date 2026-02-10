@@ -60,6 +60,7 @@ def market_research_job() -> None:
     job_id = 'market_research'
     start_time = time.time()
     target_date = datetime.now(timezone.utc).date()
+    from utils.job_tracking import log_job_step
 
     # Global AI lock (SearXNG + Ollama workload)
     try:
@@ -70,11 +71,12 @@ def market_research_job() -> None:
             return
     except Exception as e:
         logger.warning(f"AI lock check failed (continuing): {e}")
-    
+
     try:
         # Import job tracking
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
-        
+
+        log_job_step(job_id, "init", "Starting market research job")
         logger.info("Starting market research job...")
         
         # Mark job as started in database
@@ -94,12 +96,15 @@ def market_research_job() -> None:
             return
         
         # Check if SearXNG is available
+        log_job_step(job_id, "searxng_check", "Checking SearXNG health...")
         if not check_searxng_health():
             duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG is not available - skipping research job"
+            log_job_step(job_id, "searxng_check", message, status="skipped")
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             logger.info(f"ℹ️ {message}")
             return
+        log_job_step(job_id, "searxng_check", "SearXNG is healthy", status="success")
         
         # Get clients
         searxng_client = get_searxng_client()
@@ -147,6 +152,7 @@ def market_research_job() -> None:
         negative_keywords = "-astrology -horoscope -zodiac -lottery"
         final_query = f"{base_query} {negative_keywords}"
         
+        log_job_step(job_id, "search", f"Searching: '{base_query}'")
         logger.info(f"Fetching market news with query: '{final_query}'")
         search_results = searxng_client.search_news(
             query=final_query,
@@ -156,10 +162,13 @@ def market_research_job() -> None:
         if not search_results or not search_results.get('results'):
             duration_ms = int((time.time() - start_time) * 1000)
             message = "No search results found"
+            log_job_step(job_id, "search", message, status="skipped")
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             logger.info(f"ℹ️ {message}")
             return
-        
+
+        log_job_step(job_id, "search", f"Found {len(search_results.get('results', []))} results", status="success")
+
         articles_processed = 0
         articles_saved = 0
         articles_skipped = 0
@@ -179,6 +188,7 @@ def market_research_job() -> None:
             elapsed = time.time() - start_time
             if elapsed > MAX_JOB_DURATION:
                 remaining = total_results - idx + 1
+                log_job_step(job_id, "timeout", f"Job timeout reached ({elapsed/60:.1f}m). {remaining} remaining", status="failed")
                 logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Skipping {remaining} remaining articles")
                 break
             
@@ -233,6 +243,7 @@ def market_research_job() -> None:
                     continue
                 
                 # Extract article content
+                log_job_step(job_id, "extract", f"Extracting article {idx}/{total_results}: {title[:60]}")
                 logger.info(f"  Extracting content: {title[:50]}...")
                 extracted = extract_article_content(url)
                 
@@ -315,6 +326,7 @@ def market_research_job() -> None:
                 extracted_tickers = []
                 extracted_sector = None
                 embedding = None
+                log_job_step(job_id, "ai_summary", f"Generating AI summary for: {title[:60]}")
                 logger.info(f"  Generating summary for: {title[:50]}...")
                 summary_input = f"Title: {title}\n\n{content}" if title else content
                 should_summarize, summary_hash = claim_recent_summary_input(summary_input)
@@ -434,6 +446,8 @@ def market_research_job() -> None:
                 
                 if article_id:
                     articles_saved += 1
+                    log_job_step(job_id, "save", f"Saved: {title[:60]} ({article_duration:.0f}s)", status="success",
+                                metadata={"tickers": extracted_tickers} if extracted_tickers else None)
                     logger.info(f"✅ Saved article in {article_duration:.1f}s: {title[:50]}...")
                     
                     # Extract and save relationships (GraphRAG edges)
@@ -480,6 +494,7 @@ def market_research_job() -> None:
             except Exception as e:
                 article_duration = time.time() - article_start
                 title_safe = result.get('title', 'Unknown')[:50] if result else 'Unknown'
+                log_job_step(job_id, "error", f"Error processing article: {str(e)[:100]}", status="failed")
                 logger.error(f"❌ Error processing article after {article_duration:.1f}s '{title_safe}...': {e}")
                 continue
             finally:
@@ -493,13 +508,15 @@ def market_research_job() -> None:
             f"{articles_skipped} skipped, {articles_blacklisted} blacklisted, "
             f"{articles_irrelevant} non-market"
         )
+        log_job_step(job_id, "complete", message, status="success")
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         mark_job_completed('market_research', target_date, None, [], duration_ms=duration_ms, message=message)
         logger.info(f"✅ {message} in {duration_min:.1f} minutes")
-        
+
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Error: {str(e)}"
+        log_job_step(job_id, "fatal", message, status="failed")
         log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
         try:
             mark_job_failed('market_research', target_date, None, message, duration_ms=duration_ms)

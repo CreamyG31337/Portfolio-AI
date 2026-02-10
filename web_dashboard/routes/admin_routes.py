@@ -1945,6 +1945,18 @@ def api_resume_job(job_id):
         logger.error(f"Error resuming job: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
+@admin_bp.route('/api/admin/scheduler/jobs/<job_id>/steps')
+@require_admin
+def api_job_steps(job_id):
+    """Get live step log for a running (or recently completed) job"""
+    try:
+        from utils.job_tracking import get_job_steps
+        steps = get_job_steps(job_id)
+        return jsonify({"success": True, "steps": steps})
+    except Exception as e:
+        logger.error(f"Error fetching job steps: {e}", exc_info=True)
+        return jsonify({"error": str(e), "steps": []}), 500
+
 # ==========================================
 # Trade Entry Routes
 # ==========================================

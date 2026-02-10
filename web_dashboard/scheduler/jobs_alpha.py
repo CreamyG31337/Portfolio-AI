@@ -19,19 +19,20 @@ logger = logging.getLogger(__name__)
 
 def alpha_research_job() -> None:
     """Targeted 'Alpha Hunter' job that searches specific high-value domains.
-    
+
     This job:
     1. Gets specific 'alpha' domains from configuration
     2. Gets specific 'opportunity' queries
     3. Constructs 'site:' dork queries to find high-quality analysis
     4. Saves articles with article_type="alpha_research"
-    
+
     Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
     When enabled, checks robots.txt before accessing article URLs from search results.
     """
     job_id = 'alpha_research'
     start_time = time.time()
     from scheduler.jobs_common import claim_recent_summary_input, has_strong_market_signal
+    from utils.job_tracking import log_job_step
 
     # Global AI lock (SearXNG + Ollama workload)
     try:
@@ -42,25 +43,21 @@ def alpha_research_job() -> None:
             return
     except Exception as e:
         logger.warning(f"AI lock check failed (continuing): {e}")
-    
-    # We need to import log_job_execution and mark_job_* functions
-    # Assuming they are available or we need to import them like in other jobs
-    # For now, following the pattern in jobs_opportunity.py
-    
+
     try:
         from scheduler.scheduler_core import log_job_execution
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
-        
+
         # Mark started
         target_date = datetime.now(timezone.utc).date()
-        # Note: mark_job_started might fail if job not in DB constraints, but usually okay
         try:
              mark_job_started(job_id, target_date)
         except Exception:
-             pass # Job might not be tracked in main table yet
-        
+             pass
+
+        log_job_step(job_id, "init", "Starting Alpha Research job")
         logger.info("Starting Alpha Research job...")
-        
+
         # Import dependencies
         try:
             from searxng_client import get_searxng_client, check_searxng_health
@@ -71,69 +68,80 @@ def alpha_research_job() -> None:
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
+            log_job_step(job_id, "init", message, status="failed")
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
             return
-        
+
         # Check SearXNG health
+        log_job_step(job_id, "searxng_check", "Checking SearXNG health...")
         if not check_searxng_health():
             duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG is not available - skipping alpha research"
+            log_job_step(job_id, "searxng_check", message, status="skipped")
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             logger.info(f"ℹ️ {message}")
             return
-        
+        log_job_step(job_id, "searxng_check", "SearXNG is healthy", status="success")
+
         # Get clients
         searxng_client = get_searxng_client()
         ollama_client = get_ollama_client()
-        
+
         if not searxng_client:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG client not initialized"
+            log_job_step(job_id, "init", message, status="failed")
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
             return
-        
+
         # Initialize research repository
         research_repo = ResearchRepository()
-        
+
         # Load config
         domains = get_alpha_research_domains()
         queries = get_alpha_search_queries()
-        
+
         if not domains or not queries:
             message = "No alpha domains or queries configured"
+            log_job_step(job_id, "init", message, status="skipped")
             logger.warning(message)
             return
 
         logger.info(f"Using {len(domains)} alpha domains and {len(queries)} queries")
-        
+
         # Construct Search Dorks
         site_dork = " OR ".join([f"site:{d}" for d in domains])
-        
+
         # Rotate queries based on hour to avoid hammering
         query_index = datetime.now().hour % len(queries)
         base_query = queries[query_index]
-        
+
         # Full query with site restrictions
         negative_keywords = "-astrology -horoscope -zodiac -restaurant -recipe -celebrity -movie -tv -sports"
         final_query = f'{base_query} ({site_dork}) {negative_keywords}'
-        
+
+        log_job_step(job_id, "search", f"Searching: '{base_query}'")
         logger.info(f"🔭 Alpha Query: '{final_query}'")
-        
+
         # Search
         search_results = searxng_client.search_news(
             query=final_query,
             max_results=10  # Get decent chunk
         )
-        
+
         if not search_results or not search_results.get('results'):
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"No results for alpha query: {base_query}"
+            log_job_step(job_id, "search", message, status="skipped")
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             logger.info(f"ℹ️ {message}")
             return
-        
+
+        total_results = len(search_results['results'])
+        log_job_step(job_id, "search", f"Found {total_results} results", status="success")
+
         articles_processed = 0
         articles_saved = 0
         articles_skipped = 0
@@ -142,15 +150,16 @@ def alpha_research_job() -> None:
         # Safety timeouts (avoid runaway jobs)
         MAX_JOB_DURATION = 40 * 60  # 40 minutes total
         MAX_ARTICLE_DURATION = 4 * 60  # 4 minutes per article
-        
+
         # Load blacklist for safety (even though we are targeting specific sites, redundancy is good)
         from settings import get_research_domain_blacklist
         blacklist = get_research_domain_blacklist()
-        
-        for result in search_results['results']:
+
+        for idx, result in enumerate(search_results['results'], 1):
             # Check overall job timeout
             elapsed = time.time() - start_time
             if elapsed > MAX_JOB_DURATION:
+                log_job_step(job_id, "timeout", f"Job timeout reached ({elapsed/60:.1f}m)", status="failed")
                 logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Stopping alpha research")
                 break
 
@@ -160,7 +169,7 @@ def alpha_research_job() -> None:
             try:
                 url = result.get('url', '')
                 title = result.get('title', '')
-                
+
                 if not url or not title:
                     continue
 
@@ -169,7 +178,7 @@ def alpha_research_job() -> None:
                     logger.debug(f"Article already being processed by another job thread: {title[:40]}...")
                     articles_skipped += 1
                     continue
-                
+
                 # Check robots.txt compliance (if enabled)
                 try:
                     from robots_utils import check_url_allowed
@@ -180,7 +189,7 @@ def alpha_research_job() -> None:
                 except ImportError:
                     # robots_utils not available, skip check
                     pass
-                
+
                 # Check blacklist
                 from research_utils import is_domain_blacklisted
                 is_blocked, domain = is_domain_blacklisted(url, blacklist)
@@ -192,17 +201,18 @@ def alpha_research_job() -> None:
                 if time.time() - article_start > MAX_ARTICLE_DURATION:
                     logger.warning(f"⏱️  Article timeout - skipping: {title[:40]}...")
                     continue
-                
+
                 # Check if already exists
                 if research_repo.article_exists(url):
                     logger.debug(f"Article already exists: {title[:50]}...")
                     articles_skipped += 1
                     continue
-                
+
                 # Extract content
+                log_job_step(job_id, "extract", f"Extracting article {idx}/{total_results}: {title[:60]}")
                 logger.info(f"  💎 Extracting Alpha: {title[:40]}...")
                 extracted = extract_article_content(url)
-                
+
                 content = extracted.get('content', '')
                 if not content or not extracted.get('success'):
                     continue
@@ -211,20 +221,22 @@ def alpha_research_job() -> None:
                 if time.time() - article_start > MAX_ARTICLE_DURATION:
                     logger.warning(f"⏱️  Article timeout after extraction - skipping: {title[:40]}...")
                     continue
-                
+
                 # Generate summary and embedding
                 summary = None
                 summary_data = {}
                 extracted_tickers = []
                 extracted_sector = None
                 embedding = None
-                
+
                 summary_input = f"Title: {title}\n\n{content}" if title else content
                 should_summarize, summary_hash = claim_recent_summary_input(summary_input)
                 if not should_summarize:
                     logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
                     articles_skipped += 1
                     continue
+
+                log_job_step(job_id, "ai_summary", f"Generating AI summary for: {title[:60]}")
                 summary_data = generate_summary(summary_input, article_type="Alpha Research")
 
                 if isinstance(summary_data, str):
@@ -272,10 +284,10 @@ def alpha_research_job() -> None:
                 # Embedding is Ollama-only
                 if ollama_client:
                     embedding = ollama_client.generate_embedding(content[:6000])
-                
+
                 # Extract logic_check
                 logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
-                
+
                 # Save article with alpha_research type
                 article_id = research_repo.save_article(
                     tickers=extracted_tickers if extracted_tickers else None,
@@ -296,36 +308,42 @@ def alpha_research_job() -> None:
                     sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
                     logic_check=logic_check
                 )
-                
+
                 if article_id:
                     articles_saved += 1
+                    article_dur = time.time() - article_start
+                    log_job_step(job_id, "save", f"Saved: {title[:60]} ({article_dur:.0f}s)", status="success",
+                                metadata={"tickers": extracted_tickers} if extracted_tickers else None)
                     logger.info(f"  ✅ Saved Alpha Research: {title[:30]}")
-                
+
                 articles_processed += 1
                 time.sleep(1) # Be gentle
-                
+
             except Exception as e:
+                log_job_step(job_id, "error", f"Error processing article: {str(e)[:100]}", status="failed")
                 logger.error(f"Error processing alpha article: {e}")
                 continue
             finally:
                 if processing_claimed:
                     research_repo.release_processing_url(url)
-        
+
         duration_ms = int((time.time() - start_time) * 1000)
         message = (
             f"Query: '{base_query}' - Processed {articles_processed}: {articles_saved} saved, "
             f"{articles_skipped} skipped, {articles_irrelevant} non-market"
         )
+        log_job_step(job_id, "complete", message, status="success")
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         try:
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
         except Exception:
             pass
         logger.info(f"✅ {message}")
-        
+
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Error: {str(e)}"
+        log_job_step(job_id, "fatal", message, status="failed")
         try:
              log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
         except:

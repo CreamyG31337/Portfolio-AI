@@ -28,9 +28,12 @@ from etf_group_analysis import ETFGroupAnalysisService
 
 logger = logging.getLogger(__name__)
 
+# Safety timeout (was missing entirely - bug fix)
+MAX_JOB_DURATION = 40 * 60  # 40 minutes total
+
 def get_pending_etf_analysis() -> List[Dict]:
     """Get pending ETF group analysis items from queue.
-    
+
     Returns:
         List of queue items
     """
@@ -55,20 +58,20 @@ def queue_todays_etf_analysis():
         db = SupabaseClient(use_service_role=True)
         today = datetime.now(timezone.utc).date()
         today_str = today.strftime('%Y-%m-%d')
-        
+
         # Get all ETFs with changes today
         result = db.supabase.from_('etf_holdings_changes') \
             .select('etf_ticker') \
             .eq('date', today_str) \
             .execute()
-        
+
         # Get distinct tickers
         etf_tickers = list(set([row['etf_ticker'] for row in result.data or []]))
-        
+
         if not etf_tickers:
             logger.info("No ETF changes found for today")
             return
-        
+
         # Queue each ETF
         queue_items = []
         for etf_ticker in etf_tickers:
@@ -79,14 +82,14 @@ def queue_todays_etf_analysis():
                 'priority': 0,  # Default priority
                 'status': 'pending'
             })
-        
+
         # Insert in batch
         if queue_items:
             db.supabase.table('ai_analysis_queue') \
                 .insert(queue_items) \
                 .execute()
             logger.info(f"Queued {len(queue_items)} ETF groups for analysis")
-        
+
     except Exception as e:
         logger.error(f"Error queueing ETF analysis: {e}", exc_info=True)
 
@@ -144,7 +147,9 @@ def etf_group_analysis_job() -> None:
     """Analyze ETF changes as groups. Resumable via queue."""
     job_id = 'etf_group_analysis'
     start_time = time.time()
-    
+
+    from utils.job_tracking import log_job_step
+
     # Global AI lock (prevent overlapping AI jobs)
     try:
         from utils.job_tracking import get_running_ai_job
@@ -163,70 +168,85 @@ def etf_group_analysis_job() -> None:
             .eq('job_name', job_id) \
             .eq('status', 'running') \
             .execute()
-        
+
         if running_check.data:
             logger.info(f"⏸️  Job {job_id} is already running. Skipping to prevent concurrent execution.")
             return
     except Exception as e:
         logger.warning(f"Could not check if job is running: {e}")
         # Continue anyway - better to run twice than fail silently
-    
+
     try:
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
         target_date = datetime.now(timezone.utc).date()
         mark_job_started(job_id, target_date)
     except Exception as e:
         logger.warning(f"Could not mark job started: {e}")
-    
+
+    log_job_step(job_id, "init", "Starting ETF Group Analysis Job")
     logger.info("Starting ETF Group Analysis Job...")
-    
+
     # Initialize clients
     try:
         supabase = SupabaseClient(use_service_role=True)
         postgres = PostgresClient()
         ollama = get_ollama_client()
         repo = ResearchRepository(postgres_client=postgres)
-        
+
         if not ollama:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "Ollama client not available"
+            log_job_step(job_id, "init", message, status="failed")
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
             return
-        
+
         service = ETFGroupAnalysisService(ollama, supabase, repo)
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Failed to initialize clients: {e}"
+        log_job_step(job_id, "init", message, status="failed")
         log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
         logger.error(f"❌ {message}")
         return
-    
+
     # Check queue for pending work
+    log_job_step(job_id, "queue_check", "Checking analysis queue for pending work...")
     pending = get_pending_etf_analysis()
-    
+
     if not pending:
         # Queue today's analysis
+        log_job_step(job_id, "queue_check", "No pending items, queueing today's ETF changes...")
         queue_todays_etf_analysis()
         pending = get_pending_etf_analysis()
-    
+
     if not pending:
         duration_ms = int((time.time() - start_time) * 1000)
         message = "No ETF groups to analyze"
+        log_job_step(job_id, "queue_check", message, status="skipped")
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         logger.info(f"ℹ️ {message}")
         return
-    
-    logger.info(f"Processing {len(pending)} ETF groups...")
-    
+
+    total = len(pending)
+    log_job_step(job_id, "queue_check", f"Found {total} ETF groups to analyze", status="success")
+    logger.info(f"Processing {total} ETF groups...")
+
     processed = 0
     failed = 0
-    
-    for item in pending:
+
+    for idx, item in enumerate(pending, 1):
+        # Check overall job timeout
+        elapsed = time.time() - start_time
+        if elapsed > MAX_JOB_DURATION:
+            log_job_step(job_id, "timeout", f"Job timeout reached ({elapsed/60:.1f}m). {total - idx + 1} items remaining.", status="failed")
+            logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Stopping ETF analysis.")
+            break
+
         try:
             queue_id = item['id']
             target_key = item['target_key']
-            
+
             # Parse ETF ticker and date from target_key (format: "IWC_2026-01-15")
             parts = target_key.split('_')
             if len(parts) < 2:
@@ -234,7 +254,7 @@ def etf_group_analysis_job() -> None:
                 mark_analysis_failed(queue_id, f"Invalid target_key format: {target_key}")
                 failed += 1
                 continue
-            
+
             etf_ticker = parts[0]
             date_str = '_'.join(parts[1:])  # Handle dates with underscores if needed
             try:
@@ -244,29 +264,34 @@ def etf_group_analysis_job() -> None:
                 mark_analysis_failed(queue_id, f"Invalid date format: {date_str}")
                 failed += 1
                 continue
-            
+
             # Mark as started
             mark_analysis_started(queue_id)
-            
+
             # Analyze
+            log_job_step(job_id, "analyze", f"Analyzing ETF group {idx}/{total}: {etf_ticker} on {date_str}")
             logger.info(f"Analyzing {etf_ticker} on {date_str}...")
             result = service.analyze_group(etf_ticker, analysis_date)
-            
+
             if result:
                 mark_analysis_completed(queue_id)
                 processed += 1
+                log_job_step(job_id, "analyze", f"Completed: {etf_ticker} on {date_str}", status="success")
                 logger.info(f"✅ Analyzed {etf_ticker} on {date_str}")
             else:
                 mark_analysis_failed(queue_id, "No changes found or analysis returned None")
                 failed += 1
+                log_job_step(job_id, "analyze", f"No result for {etf_ticker} on {date_str}", status="skipped")
                 logger.warning(f"⚠️ No analysis result for {etf_ticker} on {date_str}")
-                
+
         except Exception as e:
             logger.error(f"Error analyzing {item.get('target_key', 'unknown')}: {e}", exc_info=True)
+            log_job_step(job_id, "error", f"Error analyzing {item.get('target_key', 'unknown')}: {str(e)[:100]}", status="failed")
             mark_analysis_failed(item['id'], str(e))
             failed += 1
-    
+
     duration_ms = int((time.time() - start_time) * 1000)
     message = f"Processed {processed} ETF groups, {failed} failed"
+    log_job_step(job_id, "complete", message, status="success")
     log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
     logger.info(f"✅ ETF Group Analysis complete: {message}")

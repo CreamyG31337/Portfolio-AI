@@ -1770,7 +1770,19 @@ def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
                             logger.debug(f"Error parsing running_since for {job_id}: {e}")
     except Exception as e:
         logger.warning(f"Failed to batch query running jobs: {e}")
-    
+
+    # Batch query 1b: Get live steps for running jobs only
+    running_job_names = [jid for jid, status in job_statuses.items() if status.get('is_running')]
+    if running_job_names:
+        try:
+            from utils.job_tracking import get_job_steps
+            for job_id in running_job_names:
+                job_name = job_id_to_name.get(job_id, job_id)
+                steps = get_job_steps(job_name, limit=20)
+                job_statuses[job_id]['live_steps'] = steps
+        except Exception as e:
+            logger.debug(f"Failed to fetch live steps for running jobs: {e}")
+
     # Batch query 2: Get most recent execution status (to check for errors vs success)
     try:
         from supabase_client import SupabaseClient

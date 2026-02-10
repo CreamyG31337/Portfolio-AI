@@ -37,6 +37,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/insider_trades.sql
 \i tables/job_executions.sql
 \i tables/job_retry_queue.sql
+\i tables/job_steps.sql
 \i tables/performance_metrics.sql
 \i tables/politicians.sql
 \i tables/portfolio_positions.sql

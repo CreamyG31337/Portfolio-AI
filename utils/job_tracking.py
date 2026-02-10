@@ -673,6 +673,99 @@ def mark_abandoned(
         logger.warning(f"Failed to mark abandoned: {e}")
 
 
+def log_job_step(
+    job_name: str,
+    step_name: str,
+    message: str,
+    status: str = 'running',
+    metadata: Optional[Dict[str, Any]] = None
+) -> None:
+    """
+    Log a step in a running job's pipeline. Append-only, fire-and-forget.
+
+    Args:
+        job_name: Name of the job (e.g., 'alpha_research')
+        step_name: Short step identifier (e.g., 'searxng_check', 'ai_summary')
+        message: Human-readable progress message
+        status: Step status - 'running', 'success', 'failed', 'skipped'
+        metadata: Optional dict with extra context (article_url, ticker, error)
+    """
+    try:
+        from supabase_client import SupabaseClient
+        client = SupabaseClient(use_service_role=True)
+        row: Dict[str, Any] = {
+            'job_name': job_name,
+            'run_date': date.today().isoformat(),
+            'step_name': step_name,
+            'message': message[:500],
+            'status': status,
+        }
+        if metadata:
+            row['metadata'] = metadata
+        client.supabase.table("job_steps").insert(row).execute()
+    except Exception as e:
+        # Fire-and-forget: never let step logging break the job
+        logger.debug(f"Step log failed (non-fatal): {e}")
+
+
+def get_job_steps(
+    job_name: str,
+    run_date: Optional[date] = None,
+    limit: int = 50
+) -> List[Dict[str, Any]]:
+    """
+    Get recent steps for a job run.
+
+    Args:
+        job_name: Name of the job
+        run_date: Date to filter (defaults to today)
+        limit: Max rows to return
+
+    Returns:
+        List of step dicts ordered by created_at desc
+    """
+    try:
+        from supabase_client import SupabaseClient
+        client = SupabaseClient(use_service_role=True)
+        effective_date = (run_date or date.today()).isoformat()
+        result = client.supabase.table("job_steps") \
+            .select("step_name, message, status, metadata, created_at") \
+            .eq("job_name", job_name) \
+            .eq("run_date", effective_date) \
+            .order("created_at", desc=True) \
+            .limit(limit) \
+            .execute()
+        return result.data if result.data else []
+    except Exception as e:
+        logger.debug(f"Failed to get job steps: {e}")
+        return []
+
+
+def cleanup_old_job_steps(retention_days: int = 7) -> int:
+    """
+    Delete job_steps rows older than retention_days.
+
+    Returns:
+        Number of rows deleted (approximate)
+    """
+    try:
+        from supabase_client import SupabaseClient
+        from datetime import timedelta
+        client = SupabaseClient(use_service_role=True)
+        cutoff = (date.today() - timedelta(days=retention_days)).isoformat()
+        result = client.supabase.table("job_steps") \
+            .delete() \
+            .lt("run_date", cutoff) \
+            .execute()
+        count = len(result.data) if result.data else 0
+        if count:
+            logger.info(f"Cleaned up {count} old job_steps rows (older than {retention_days}d)")
+        return count
+    except Exception as e:
+        logger.warning(f"Failed to cleanup job steps: {e}")
+        return 0
+
+
 def is_calculation_job(job_name: str) -> bool:
     """
     Determine if a job is a calculation job that needs retry tracking.

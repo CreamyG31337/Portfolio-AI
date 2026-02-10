@@ -33,6 +33,15 @@ interface Job {
     is_paused?: boolean;
     last_error?: string;
     running_since?: string;
+    live_steps?: JobStep[];
+}
+
+interface JobStep {
+    step_name: string;
+    message: string;
+    status: 'running' | 'success' | 'failed' | 'skipped';
+    metadata?: Record<string, any>;
+    created_at: string;
 }
 
 interface JobLogEntry {
@@ -582,6 +591,12 @@ function renderJobs(jobsData: Job[]): void {
         });
     }
 
+    // Auto-scroll live step panels to bottom (most recent step)
+    const stepPanels = document.querySelectorAll('[id^="steps-scroll-"]');
+    stepPanels.forEach(panel => {
+        panel.scrollTop = panel.scrollHeight;
+    });
+
     // Attach event listeners to new buttons
     const actionButtons = document.querySelectorAll('.job-action-btn');
     console.log('[Jobs] Attaching event listeners to', actionButtons.length, 'action buttons');
@@ -621,6 +636,38 @@ function createJobCard(job: Job): string {
                             <span class="text-text-primary text-sm">${escapeHtmlForJobs(log.message)}</span>
                         </div>
                     `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Live Steps HTML (shown only for running jobs with step data)
+    let stepsHtml = '';
+    if (job.is_running && job.live_steps && job.live_steps.length > 0) {
+        // Steps come from API in desc order; reverse so oldest is first (top-down timeline)
+        const stepsAsc = [...job.live_steps].reverse();
+        stepsHtml = `
+            <div class="mt-4 bg-dashboard-background rounded border border-amber-500/30 overflow-hidden">
+                <div class="px-3 py-1.5 bg-amber-500/10 text-xs font-semibold text-amber-300 border-b border-amber-500/20 flex items-center gap-2">
+                    <i class="fas fa-stream text-xs"></i> Live Steps
+                    <span class="ml-auto text-[10px] text-text-secondary font-normal">${stepsAsc.length} step${stepsAsc.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="max-h-48 overflow-y-auto" id="steps-scroll-${escapeAttribute(job.id)}">
+                    ${stepsAsc.map(step => {
+                        const statusIcon = step.status === 'success' ? '<i class="fas fa-check-circle text-theme-success-text"></i>'
+                            : step.status === 'failed' ? '<i class="fas fa-times-circle text-theme-error-text"></i>'
+                            : step.status === 'skipped' ? '<i class="fas fa-forward text-text-secondary"></i>'
+                            : '<i class="fas fa-spinner fa-spin text-amber-400"></i>';
+                        const bgClass = step.status === 'failed' ? 'bg-theme-error-bg/30' : '';
+                        const time = new Date(step.created_at).toLocaleTimeString();
+                        return `
+                            <div class="flex items-start gap-2 px-3 py-1.5 border-b border-border/20 last:border-0 text-xs ${bgClass}">
+                                <span class="mt-0.5 shrink-0">${statusIcon}</span>
+                                <span class="text-text-secondary/60 font-mono shrink-0">${time}</span>
+                                <span class="text-text-primary break-all">${escapeHtmlForJobs(step.message)}</span>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             </div>
         `;
@@ -828,6 +875,7 @@ function createJobCard(job: Job): string {
             </div>
             
             ${paramsHtml}
+            ${stepsHtml}
             ${logsHtml}
         </div>
     `;

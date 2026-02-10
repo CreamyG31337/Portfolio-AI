@@ -729,10 +729,21 @@ def cleanup_log_files_job() -> None:
                 logger.warning(f"Could not process {log_file.name}: {e}")
                 continue
         
+        # Clean up old job step logs (7-day retention)
+        steps_deleted = 0
+        try:
+            from utils.job_tracking import cleanup_old_job_steps
+            steps_deleted = cleanup_old_job_steps(retention_days=7)
+            if steps_deleted > 0:
+                logger.info(f"Cleaned up {steps_deleted} old job step log entries")
+        except Exception as e:
+            logger.warning(f"Job step cleanup failed (non-fatal): {e}")
+
         # Log completion
         duration_ms = int((time.time() - start_time) * 1000)
         size_mb = deleted_size / (1024 * 1024)
-        message = f"Deleted {deleted_count} log files ({size_mb:.2f} MB), preserved {preserved_count} files"
+        steps_msg = f", {steps_deleted} step log entries" if steps_deleted else ""
+        message = f"Deleted {deleted_count} log files ({size_mb:.2f} MB), preserved {preserved_count} files{steps_msg}"
         try:
             log_job_execution(job_id, True, message, duration_ms)
         except Exception as log_error:
