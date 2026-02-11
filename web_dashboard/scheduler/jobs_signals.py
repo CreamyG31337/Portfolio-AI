@@ -190,6 +190,26 @@ def signal_scan_job() -> None:
             ",".join(global_alert_policy.get("fear_levels", [])),
         )
         
+        # Pre-fetch fundamentals for all tickers to avoid N+1 queries
+        fundamentals_map = {}
+        all_tickers = sorted({t.get('ticker').upper() for t in watchlist if t.get('ticker')})
+        if all_tickers:
+            try:
+                # Fetch in chunks to avoid URL length limits
+                chunk_size = 50
+                for i in range(0, len(all_tickers), chunk_size):
+                    chunk = all_tickers[i:i + chunk_size]
+                    sec_result = supabase_client.supabase.table("securities") \
+                        .select("*") \
+                        .in_("ticker", chunk) \
+                        .execute()
+                    if sec_result.data:
+                        for row in sec_result.data:
+                            if row.get('ticker'):
+                                fundamentals_map[row['ticker'].upper()] = row
+            except Exception as batch_err:
+                logger.error(f"Failed to batch fetch fundamentals: {batch_err}")
+
         # Process each ticker
         for ticker_data in watchlist:
             ticker = ticker_data.get('ticker')
@@ -205,17 +225,8 @@ def signal_scan_job() -> None:
                     errors += 1
                     continue
 
-                # Fetch fundamentals from securities table (for fundamental signal)
-                fundamentals = None
-                try:
-                    sec_result = supabase_client.supabase.table("securities") \
-                        .select("*") \
-                        .eq("ticker", ticker.upper()) \
-                        .execute()
-                    if sec_result.data:
-                        fundamentals = sec_result.data[0]
-                except Exception as fund_err:
-                    logger.debug(f"No fundamentals for {ticker}: {fund_err}")
+                # Get fundamentals from pre-fetched map
+                fundamentals = fundamentals_map.get(ticker.upper())
                 
                 # Generate signals (pass fundamentals if available)
                 signals = signal_engine.evaluate(

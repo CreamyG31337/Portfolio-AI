@@ -16,6 +16,7 @@ stocks where yfinance frequently returns None for many fields.
 
 from typing import Any, Dict, Optional
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +67,19 @@ def _score_metric(value: Optional[float], threshold: float, direction: str) -> O
     except (TypeError, ValueError):
         return None
 
+    # val is always a float here (from float() above); reject NaN/Inf
+    if math.isnan(val) or math.isinf(val):
+        return None
+
     if direction == "above":
         if threshold == 0:
             # Special case: just check positive vs negative
             if val > 0:
-                return min(1.0, 0.5 + val * 0.5)
+                return 1.0
+            elif val < 0:
+                return 0.0
             else:
-                return max(0.0, 0.5 + val * 0.5)
+                return 0.5
         # Scale: 0 -> 0.0, threshold -> 0.5, 2*threshold -> 1.0
         score = val / (2.0 * threshold)
     else:  # "below"
