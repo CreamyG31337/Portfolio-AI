@@ -329,6 +329,22 @@ def api_analyze_ticker(ticker: str):
                             'explanation': stored.get('explanation'),
                             'from_cache': True
                         }
+                        
+                        # If AI explanation requested but not in cache, generate it now
+                        if include_ai and not signals.get('explanation'):
+                            try:
+                                from web_dashboard.signals.ai_explainer import generate_signal_explanation
+                                explanation = generate_signal_explanation(ticker, signals, model=model)
+                                if explanation:
+                                    signals['explanation'] = explanation
+                                    # Update the cached record with the new explanation
+                                    supabase_client.supabase.table("signal_analysis").update({
+                                        'explanation': explanation
+                                    }).eq("ticker", ticker).eq("analysis_date", analysis_date).execute()
+                                    logger.debug(f"Generated AI explanation for cached signals of {ticker}")
+                            except Exception as ai_err:
+                                logger.warning(f"Failed to generate AI explanation for cached {ticker}: {ai_err}")
+                        
                         logger.debug(f"Returning cached signal analysis for {ticker}")
                         return jsonify({
                             'success': True,

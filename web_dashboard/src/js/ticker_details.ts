@@ -2034,10 +2034,11 @@ async function loadSignals(ticker: string, forceRefresh: boolean = false): Promi
         if (updatedEl) updatedEl.textContent = '-';
         setSignalsLoading(true, forceRefresh ? 'Analyzing signals...' : 'Loading signals...');
         const aiParam = forceRefresh ? 'include_ai=1' : 'include_ai=0';
+        const forceParam = forceRefresh ? '&force=1' : '';
         const select = document.getElementById('signals-model-select') as HTMLSelectElement | null;
         const selectedModel = select?.value?.trim() || '';
         const modelParam = selectedModel ? `&model=${encodeURIComponent(selectedModel)}` : '';
-        const response = await fetch(`/api/signals/analyze/${ticker}?${aiParam}${modelParam}`, {
+        const response = await fetch(`/api/signals/analyze/${ticker}?${aiParam}${forceParam}${modelParam}`, {
             credentials: 'include'
         });
         if (!response.ok) {

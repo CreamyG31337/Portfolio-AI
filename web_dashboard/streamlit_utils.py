@@ -303,11 +303,16 @@ def get_supabase_client(user_token: Optional[str] = None) -> Optional[SupabaseCl
             try:
                 from flask import request
                 if request:
-                    from flask_auth_utils import get_auth_token, get_refresh_token
-                    user_token = get_auth_token()
-                    # refresh_token = get_refresh_token() # DISABLED to prevent auto-refresh loops in Flask
+                    # IMPORTANT: Only use a validated Supabase access token in Flask context.
+                    # get_auth_token() may return legacy session_token, which is not a Supabase JWT
+                    # and will fail Supabase auth.set_session() signature verification.
+                    from flask_auth_utils import get_supabase_access_token
+                    user_token = get_supabase_access_token()
+                    # refresh_token is intentionally not pulled here to avoid auto-refresh loops in Flask.
                     if user_token:
                         logger.debug(f"[AUTH] Found token in Flask context (length: {len(user_token)})")
+                    else:
+                        logger.debug("[AUTH] No valid Supabase access token found in Flask cookies")
             except (ImportError, RuntimeError):
                 # RuntimeError occurs if we're not in a Flask context (no request)
                 pass
