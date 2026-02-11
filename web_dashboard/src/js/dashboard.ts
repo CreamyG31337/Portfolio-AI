@@ -9,6 +9,9 @@
  * - Run `npm run build:ts` to compile changes
  * 
  * See web_dashboard/src/js/README.md for development guidelines.
+ *
+ * TODO: Evaluate migrating FontAwesome icons (fas fa-...) to inline SVG icons
+ * (e.g. Heroicons) for better Tailwind integration and smaller bundle size.
  */
 
 // Make this a module
@@ -1708,6 +1711,8 @@ async function fetchActionQueue(): Promise<void> {
     }
 }
 
+// TODO: Migrate Action Queue HTML string construction to document.createElement for safety
+// (escapeHtml mitigates XSS for now, but DOM API would be cleaner and safer)
 function renderActionQueue(data: ActionQueueData): void {
     const tableBody = document.getElementById('action-queue-table-body');
     const emptyEl = document.getElementById('action-queue-empty');
