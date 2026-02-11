@@ -240,23 +240,42 @@ def signal_scan_job() -> None:
                 # Check if signal should trigger alert
                 should_alert = _should_alert(signals, policy=global_alert_policy)
 
+                # Build cross-source ticker state (best-effort, only for AI candidates)
+                ticker_state = None
+                overall_signal = signals.get('overall_signal', 'HOLD')
+                confidence = signals.get('confidence', 0.0)
+                fear_level = signals.get('fear_risk', {}).get('fear_level', 'LOW')
+                needs_ai = AI_EXPLANATION_ENABLED and ai_explanations < AI_EXPLANATION_MAX_PER_RUN and (
+                    (overall_signal in AI_EXPLANATION_SIGNALS and confidence >= AI_EXPLANATION_MIN_CONFIDENCE)
+                    or fear_level in AI_EXPLANATION_FEAR_LEVELS
+                )
+                if needs_ai:
+                    try:
+                        from web_dashboard.ticker_state import build_ticker_state, summarize_ticker_state
+                        pg_client = None
+                        try:
+                            from postgres_client import PostgresClient
+                            pg_client = PostgresClient()
+                        except Exception:
+                            pass
+                        ticker_state = build_ticker_state(
+                            ticker, supabase_client, postgres_client=pg_client
+                        )
+                    except Exception as state_err:
+                        logger.debug(f"Could not build ticker state for {ticker}: {state_err}")
+
                 # Optionally generate AI explanation (limited per run)
                 explanation = None
-                if AI_EXPLANATION_ENABLED and ai_explanations < AI_EXPLANATION_MAX_PER_RUN:
-                    overall_signal = signals.get('overall_signal', 'HOLD')
-                    confidence = signals.get('confidence', 0.0)
-                    fear_level = signals.get('fear_risk', {}).get('fear_level', 'LOW')
-                    if (
-                        overall_signal in AI_EXPLANATION_SIGNALS
-                        and confidence >= AI_EXPLANATION_MIN_CONFIDENCE
-                    ) or fear_level in AI_EXPLANATION_FEAR_LEVELS:
-                        try:
-                            from web_dashboard.signals.ai_explainer import generate_signal_explanation
-                            explanation = generate_signal_explanation(ticker, signals)
-                            if explanation:
-                                ai_explanations += 1
-                        except Exception as ai_error:
-                            logger.warning(f"AI explanation failed for {ticker}: {ai_error}")
+                if needs_ai:
+                    try:
+                        from web_dashboard.signals.ai_explainer import generate_signal_explanation
+                        explanation = generate_signal_explanation(
+                            ticker, signals, ticker_state=ticker_state
+                        )
+                        if explanation:
+                            ai_explanations += 1
+                    except Exception as ai_error:
+                        logger.warning(f"AI explanation failed for {ticker}: {ai_error}")
                 
                 # Insert or update signal analysis
                 try:
@@ -278,6 +297,20 @@ def signal_scan_job() -> None:
                     if should_alert:
                         alerts_sent += 1
                         logger.info(f"⚠️  Alert: {ticker} - {signals.get('overall_signal')} signal (confidence: {signals.get('confidence', 0):.2f})")
+
+                    # Store ticker state snapshot (best-effort)
+                    if ticker_state:
+                        try:
+                            from web_dashboard.ticker_state import summarize_ticker_state
+                            summary = summarize_ticker_state(ticker_state)
+                            supabase_client.supabase.table("ticker_state_snapshots").upsert({
+                                'ticker': ticker.upper(),
+                                'snapshot_date': analysis_date.isoformat(),
+                                'state': ticker_state,
+                                'summary': summary,
+                            }, on_conflict='ticker,snapshot_date').execute()
+                        except Exception as snap_err:
+                            logger.debug(f"Failed to store state snapshot for {ticker}: {snap_err}")
                     
                     # Small delay to avoid rate limiting
                     time.sleep(0.5)

@@ -334,7 +334,22 @@ def api_analyze_ticker(ticker: str):
                         if include_ai and not signals.get('explanation'):
                             try:
                                 from web_dashboard.signals.ai_explainer import generate_signal_explanation
-                                explanation = generate_signal_explanation(ticker, signals, model=model)
+                                # Build state for richer prompt (best-effort)
+                                _ts = None
+                                try:
+                                    from web_dashboard.ticker_state import build_ticker_state
+                                    _pg = None
+                                    try:
+                                        from postgres_client import PostgresClient
+                                        _pg = PostgresClient()
+                                    except Exception:
+                                        pass
+                                    _ts = build_ticker_state(ticker, supabase_client, postgres_client=_pg)
+                                except Exception:
+                                    pass
+                                explanation = generate_signal_explanation(
+                                    ticker, signals, model=model, ticker_state=_ts
+                                )
                                 if explanation:
                                     signals['explanation'] = explanation
                                     # Update the cached record with the new explanation
@@ -384,11 +399,30 @@ def api_analyze_ticker(ticker: str):
         analysis_date = datetime.now(timezone.utc)
         signals['analysis_date'] = analysis_date.isoformat()
 
+        # Build cross-source ticker state (best-effort)
+        ticker_state = None
+        if include_ai and supabase_client:
+            try:
+                from web_dashboard.ticker_state import build_ticker_state
+                pg_client = None
+                try:
+                    from postgres_client import PostgresClient
+                    pg_client = PostgresClient()
+                except Exception:
+                    pass
+                ticker_state = build_ticker_state(
+                    ticker, supabase_client, postgres_client=pg_client
+                )
+            except Exception as state_err:
+                logger.debug(f"Could not build ticker state for {ticker}: {state_err}")
+
         # Optional AI explanation (on-demand)
         explanation = None
         if include_ai:
             from web_dashboard.signals.ai_explainer import generate_signal_explanation
-            explanation = generate_signal_explanation(ticker, signals, model=model)
+            explanation = generate_signal_explanation(
+                ticker, signals, model=model, ticker_state=ticker_state
+            )
             if explanation:
                 signals['explanation'] = explanation
         
@@ -411,6 +445,21 @@ def api_analyze_ticker(ticker: str):
             except Exception as e:
                 # Log but don't fail - still return the analysis
                 logger.warning(f"Failed to store signal analysis for {ticker}: {e}")
+
+        # Store ticker state snapshot (best-effort, non-blocking)
+        if ticker_state and supabase_client:
+            try:
+                from web_dashboard.ticker_state import summarize_ticker_state
+                summary = summarize_ticker_state(ticker_state)
+                supabase_client.supabase.table("ticker_state_snapshots").upsert({
+                    'ticker': ticker,
+                    'snapshot_date': analysis_date.isoformat(),
+                    'state': ticker_state,
+                    'summary': summary,
+                }, on_conflict='ticker,snapshot_date').execute()
+                logger.debug(f"Stored ticker state snapshot for {ticker}")
+            except Exception as snap_err:
+                logger.warning(f"Failed to store state snapshot for {ticker}: {snap_err}")
         
         signals['from_cache'] = False
         return jsonify({

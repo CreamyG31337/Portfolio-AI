@@ -22,8 +22,17 @@ from settings import get_summarizing_model, get_summarizing_fallback_models
 logger = logging.getLogger(__name__)
 
 
-def build_signal_explanation_prompt(ticker: str, signals: Dict[str, Any]) -> str:
-    """Build a compact prompt for explaining technical signals."""
+def build_signal_explanation_prompt(
+    ticker: str,
+    signals: Dict[str, Any],
+    ticker_state: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Build a compact prompt for explaining technical signals.
+
+    When *ticker_state* is provided (the full cross-source state dict),
+    we append a compact text summary so the LLM can reference social
+    sentiment, congress/insider trades, ETF exposure, and conflicts.
+    """
     structure = signals.get("structure", {})
     timing = signals.get("timing", {})
     fear_risk = signals.get("fear_risk", {})
@@ -42,6 +51,10 @@ def build_signal_explanation_prompt(ticker: str, signals: Dict[str, Any]) -> str
     # Adjust bullet count and requirements based on available data
     has_momentum = bool(momentum and momentum.get("bias"))
     has_fundamental = bool(fundamental and fundamental.get("quality"))
+    has_state = bool(ticker_state and (
+        ticker_state.get("social") or ticker_state.get("congress")
+        or ticker_state.get("insider") or ticker_state.get("conflicts")
+    ))
     bullet_count = 3
     extra_requirements = ""
     if has_momentum and has_fundamental:
@@ -56,6 +69,25 @@ def build_signal_explanation_prompt(ticker: str, signals: Dict[str, Any]) -> str
     elif has_fundamental:
         bullet_count = 4
         extra_requirements = "- Comment on fundamental quality and any standout metrics\n"
+
+    # If full state is available, increase bullet count and add requirements
+    if has_state:
+        bullet_count += 2
+        extra_requirements += (
+            "- Comment on notable cross-source data (social sentiment, congress/insider trades, conflicts)\n"
+            "- Highlight any conflicts or divergences between data sources\n"
+        )
+
+    # Build the state context block
+    state_context = ""
+    if ticker_state:
+        try:
+            from ticker_state import summarize_ticker_state
+            summary = summarize_ticker_state(ticker_state)
+            if summary and summary.strip():
+                state_context = f"\n\nCross-source context:\n{summary}"
+        except Exception as e:
+            logger.debug("Could not generate state summary for prompt: %s", e)
 
     prompt = f"""
 You are a trading assistant. Explain the technical signals for {ticker} in plain English.
@@ -75,7 +107,7 @@ Signals (JSON):
   "structure": {structure},
   "timing": {timing},
   "fear_risk": {fear_risk}{optional_sections}
-}}
+}}{state_context}
 """.strip()
     return prompt
 
@@ -231,14 +263,20 @@ def _generate_explanation_once(
 
 
 def generate_signal_explanation(
-    ticker: str, signals: Dict[str, Any], model: Optional[str] = None
+    ticker: str,
+    signals: Dict[str, Any],
+    model: Optional[str] = None,
+    ticker_state: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     """Generate an AI explanation for a signal set.
 
     Uses a provider fallback chain (Ollama -> GLM -> ...) so that an explanation
     is produced even when the primary provider is busy or unavailable.
+
+    When *ticker_state* is provided, the prompt includes cross-source context
+    (social sentiment, congress/insider trades, ETF exposure, conflicts).
     """
-    prompt = build_signal_explanation_prompt(ticker, signals)
+    prompt = build_signal_explanation_prompt(ticker, signals, ticker_state=ticker_state)
     model_chain = _get_explanation_model_chain(model)
 
     if not model_chain:
