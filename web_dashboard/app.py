@@ -3432,13 +3432,10 @@ def api_ticker_search():
                 "type": quote_type,
             })
 
-        # Check if top result is an exact symbol match
-        exact = (
-            len(results) == 1
-            or (len(results) > 0 and results[0]["symbol"].upper() == query_upper)
-        )
-
-        return jsonify({"results": results, "exact_match": exact})
+        # Never auto-navigate from yfinance results. The only auto-navigate
+        # path is the known-ticker DB check above. If we reached yfinance,
+        # always show results so the user can pick.
+        return jsonify({"results": results, "exact_match": False})
     except Exception as e:
         logger.error(f"Error in ticker search for '{query}': {e}", exc_info=True)
         return jsonify({"results": [], "exact_match": False, "error": str(e)}), 500
