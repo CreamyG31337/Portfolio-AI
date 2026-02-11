@@ -804,6 +804,7 @@ def get_article_full_text(article_id: str):
 @require_auth
 def raw_article_viewer():
     """Render a page showing all raw fields for a single research article by ID."""
+    import json as json_lib
     article_id = request.args.get('id', '').strip()
     article = None
     error_msg = None
@@ -827,24 +828,37 @@ def raw_article_viewer():
                 rows = repo.client.execute_query(query, (article_id,))
                 if rows:
                     article = rows[0]
+                    # Convert non-serializable types for template
+                    from decimal import Decimal
+                    for k, v in article.items():
+                        if hasattr(v, 'isoformat'):
+                            article[k] = v.isoformat()
+                        elif isinstance(v, Decimal):
+                            article[k] = float(v)
+                        elif isinstance(v, (bytes, bytearray)):
+                            article[k] = str(v)
                 else:
                     error_msg = f"Article not found: {article_id}"
         except Exception as e:
             logger.error(f"Error fetching raw article {article_id}: {e}", exc_info=True)
             error_msg = str(e)
 
-    from app import get_navigation_context
-    nav_context = get_navigation_context(current_page='raw_article')
-    user_email = get_user_email_flask()
+    try:
+        from app import get_navigation_context
+        nav_context = get_navigation_context(current_page='raw_article')
+        user_email = get_user_email_flask()
 
-    return render_template(
-        'raw_article.html',
-        article_id=article_id,
-        article=article,
-        error_msg=error_msg,
-        user_email=user_email,
-        **nav_context,
-    )
+        return render_template(
+            'raw_article.html',
+            article_id=article_id,
+            article=article,
+            error_msg=error_msg,
+            user_email=user_email,
+            **nav_context,
+        )
+    except Exception as e:
+        logger.error(f"Error rendering raw_article template: {e}", exc_info=True)
+        return f"<h1>Template Error</h1><pre>{e}</pre>", 500
 
 
 @research_bp.route('/api/research/delete', methods=['POST'])

@@ -96,7 +96,7 @@
                 <div class="flex-1 px-6 py-3 text-sm text-dashboard-text-primary break-all">
                     {% if val is none %}
                         <span class="text-dashboard-text-muted italic">NULL</span>
-                    {% elif val is mapping or val is iterable and val is not string %}
+                    {% elif key in ('claims', 'ticker_sentiment', 'tickers') %}
                         <pre class="whitespace-pre-wrap font-mono text-xs bg-dashboard-background/50 rounded p-3 max-h-96 overflow-auto">{{ val | tojson(indent=2) }}</pre>
                     {% elif key == 'url' or key == 'archive_url' %}
                         <a href="{{ val }}" target="_blank" rel="noopener" class="text-accent hover:underline break-all">{{ val }}</a>
