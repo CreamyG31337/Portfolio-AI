@@ -17,6 +17,8 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple, List
 
+logger = logging.getLogger(__name__)
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -31,9 +33,9 @@ except ImportError:
     WebAPIClient = None
 
 
-# Model identification for web-based AI service (obfuscated)
+# Model identification for web-based AI service
 # Prefix used to identify models from this service
-_WEBAI_MODEL_PREFIX = "".join([chr(103), chr(101), chr(109), chr(105), chr(110), chr(105), chr(45)])  # g-e-m-i-n-i-dash
+_WEBAI_MODEL_PREFIX = "gemini-"
 # Available models from this service
 _WEBAI_MODELS = [
     f"{_WEBAI_MODEL_PREFIX}2.5-flash",
@@ -123,8 +125,6 @@ def _load_cookies() -> Tuple[Optional[str], Optional[str]]:
                         cookies = decoded
                 except (json.JSONDecodeError, TypeError):
                     # Re-raise original error with more context
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.debug(f"Original value length: {len(original)}")
                     logger.debug(f"Cleaned value length: {len(cookies_json)}")
                     raise
@@ -135,8 +135,6 @@ def _load_cookies() -> Tuple[Optional[str], Optional[str]]:
                 return (secure_1psid, secure_1psidts)
             else:
                 # JSON exists but missing required cookie
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.warning("WEBAI_COOKIES_JSON found but missing __Secure-1PSID cookie")
                 logger.debug(f"Available keys: {list(cookies.keys())}")
         except json.JSONDecodeError as e:
@@ -160,8 +158,6 @@ def _load_cookies() -> Tuple[Optional[str], Optional[str]]:
                         secure_1psid = cookies_dict.get("__Secure-1PSID")
                         secure_1psidts = cookies_dict.get("__Secure-1PSIDTS")
                         if secure_1psid:
-                            import logging
-                            logger = logging.getLogger(__name__)
                             logger.warning("⚠️ WEBAI_COOKIES_JSON contains malformed JSON (missing quotes). Fixed automatically.")
                             logger.warning("⚠️ Please update Woodpecker secret 'webai_cookies_json' to valid JSON format:")
                             logger.warning("   {\"__Secure-1PSID\":\"...\",\"__Secure-1PSIDTS\":\"...\"}")
@@ -170,8 +166,6 @@ def _load_cookies() -> Tuple[Optional[str], Optional[str]]:
                 pass  # Fall through to original error handling
             
             # JSON parsing failed - log but continue to try other methods
-            import logging
-            logger = logging.getLogger(__name__)
             logger.warning(f"Failed to parse WEBAI_COOKIES_JSON as JSON: {e}")
             # Log more details for debugging
             logger.debug(f"Raw WEBAI_COOKIES_JSON value length: {len(original) if 'original' in locals() else 'N/A'}")
@@ -185,8 +179,6 @@ def _load_cookies() -> Tuple[Optional[str], Optional[str]]:
                 if original.startswith('"') and original.endswith('"') and len(original) > 2:
                     logger.debug("⚠️ Raw value is wrapped in quotes - may need to be unwrapped")
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.warning(f"Error processing WEBAI_COOKIES_JSON: {e}")
             logger.debug(f"Raw WEBAI_COOKIES_JSON value length: {len(original) if 'original' in locals() else len(cookies_json) if 'cookies_json' in locals() else 'N/A'}")
     
@@ -297,9 +289,6 @@ def test_webai_connection(cookies_file: Optional[str] = None) -> dict:
         - message (str): Status message
         - details (dict): Additional diagnostic information
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
     result = {
         "success": False,
         "message": "",
@@ -395,9 +384,6 @@ class WebAIClient:
         """Initialize the web AI client with cookies (single attempt, fresh load)."""
         if self._initialized:
             return
-        
-        import logging
-        logger = logging.getLogger(__name__)
         
         # Load cookies fresh from disk (in case they were recently refreshed)
         if self.cookies_file:
@@ -594,9 +580,10 @@ class ConversationSession:
     
     def send_sync(self, prompt: str) -> str:
         """Synchronous version of send()."""
+        # TODO: nest_asyncio + asyncio.run() inside a running loop is fragile.
+        # Consider using loop.create_task() or a thread-based approach instead.
         loop = self._get_loop()
         if loop.is_running():
-            # If loop is already running, we need to use a different approach
             import nest_asyncio
             nest_asyncio.apply()
             return asyncio.run(self.send(prompt))
@@ -673,7 +660,6 @@ class PersistentConversationSession:
         # Only allow alphanumeric characters, hyphens, and underscores
         if not re.match(r'^[a-zA-Z0-9_-]+$', self.session_id):
             # Log the attempt for security auditing
-            logger = logging.getLogger(__name__)
             logger.warning(f"Security Alert: Invalid session_id blocked: '{self.session_id}'")
             raise ValueError("Invalid session_id: contains unsafe characters")
 
@@ -734,7 +720,6 @@ class PersistentConversationSession:
                 pass
         except Exception as e:
             # Log the error but allow conversation to continue
-            logger = logging.getLogger(__name__)
             logger.warning(f"Failed to save conversation metadata: {e}")
     
     async def _ensure_chat(self):
@@ -760,8 +745,6 @@ class PersistentConversationSession:
                     )
                 except Exception as e:
                     # If gem creation fails, continue without it
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.warning(f"Failed to create custom gem: {e}")
             
             if saved_metadata:
@@ -808,8 +791,6 @@ class PersistentConversationSession:
             return response.text
         except Exception as e:
             # Log detailed error information for debugging
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"WebAI send() error: {type(e).__name__}: {e}")
             
             # Try to get response details if available
@@ -825,6 +806,8 @@ class PersistentConversationSession:
     
     def send_sync(self, prompt: str) -> str:
         """Synchronous version of send()."""
+        # TODO: nest_asyncio + asyncio.run() inside a running loop is fragile.
+        # Consider using loop.create_task() or a thread-based approach instead.
         loop = self._get_loop()
         if loop.is_running():
             import nest_asyncio

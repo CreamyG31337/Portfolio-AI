@@ -106,9 +106,9 @@ def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
 
             offset += batch_size
 
+            # TODO: Replace client-side pagination with DB-side aggregation
+            # (e.g. SELECT DISTINCT ticker FROM table) to avoid this arbitrary limit.
             # Safety limit to prevent infinite loops on massive tables (e.g. 50k rows)
-            # This is a tradeoff: we might miss some tickers if the table is huge,
-            # but we prevent the function from running forever.
             if offset > 50000:
                 logger.warning(f"Ticker fetch limit reached for {table} (50k rows)")
                 break

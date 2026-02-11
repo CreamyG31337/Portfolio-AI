@@ -145,6 +145,8 @@ class SupabaseClient:
                 except ImportError:
                     pass  # Not in Flask context
             
+            # TODO: Methods 2-3 below are workarounds for supabase-py SDK internals.
+            # Revisit when the SDK stabilizes its auth API to use official methods.
             # Method 2: Set Authorization header directly on postgrest client
             # This ensures table queries work
             try:
