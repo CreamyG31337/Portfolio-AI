@@ -189,7 +189,7 @@ def _get_real_company_name(ticker: str) -> Optional[str]:
 
 _COMPANY_SUFFIXES = re.compile(
     r"\b(inc\.?|incorporated|corp\.?|corporation|co\.?|company|ltd\.?|limited|"
-    r"plc|llc|holdings?|group|sa|nv|ag|se|the|class\s*[a-z])\b",
+    r"plc|llc|holdings?|group|sa|a/?s|ab|nv|ag|se|the|class\s*[a-z])\b",
     re.IGNORECASE,
 )
 
