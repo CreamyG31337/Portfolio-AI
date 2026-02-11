@@ -196,6 +196,13 @@ def article_relevance_job() -> None:
                             removed,
                             valid_set or "none",
                         )
+                    else:
+                        logger.info(
+                            "Article %s: ✓ all %d tickers confirmed %s",
+                            article_id,
+                            len(valid_set),
+                            valid_set,
+                        )
 
                     _update_article_tickers(
                         pg, article_id, validated_tickers, removed_any=bool(removed)

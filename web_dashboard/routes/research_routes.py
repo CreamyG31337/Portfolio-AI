@@ -53,11 +53,37 @@ def _article_text_to_check(article: Dict[str, Any]) -> str:
     return f"{title} {summary}".strip()
 
 
+# Article types whose tickers come from structured data (not AI extraction),
+# so they should never be flagged as junk even if they look odd.
+_PROTECTED_ARTICLE_TYPES = {"ETF Change", "ETF Analysis", "Newsletter", "Seeking Alpha Symbol"}
+
+
 def _is_likely_junk(article: Dict[str, Any]) -> bool:
-    """True if article has tickers but none appear in its text (likely mislabeled)."""
-    tickers = _normalize_article_tickers(article)
-    if not tickers:
+    """True if article is likely junk/irrelevant.
+
+    Catches two categories:
+    1. Web articles with NO tickers at all (scraper couldn't find any relevance)
+    2. Articles with tickers that don't appear in the article text (mislabeled)
+
+    Protected types (ETF, Newsletter, etc.) are never flagged.
+    """
+    article_type = (article.get("article_type") or "").strip()
+    source = (article.get("source") or "").strip()
+
+    # Never flag protected types
+    if article_type in _PROTECTED_ARTICLE_TYPES:
         return False
+
+    tickers = _normalize_article_tickers(article)
+
+    # Category 1: no tickers at all on a web-scraped article = junk
+    if not tickers:
+        # Reddit posts without tickers might still be useful (community discussion)
+        if source == "Reddit" or article_type == "Reddit Discovery":
+            return False
+        return True
+
+    # Category 2: has tickers but none appear in article text = mislabeled
     text = _article_text_to_check(article)
     if not text:
         return False
@@ -358,7 +384,8 @@ def research_dashboard():
             
         # When admin uses "Show likely junk only", fetch a large pool then filter and paginate in memory.
         # Otherwise we'd only see junk from the first page of results (often zero).
-        LIKELY_JUNK_POOL_SIZE = 2000
+        LIKELY_JUNK_POOL_SIZE = 3000
+        junk_total = 0
         if show_likely_junk and is_admin():
             articles_pool = get_cached_articles(
                 repo=repo,
@@ -371,9 +398,10 @@ def research_dashboard():
                 offset=0
             )
             articles_filtered = [a for a in articles_pool if a and _is_likely_junk(a)]
+            junk_total = len(articles_filtered)
             start = (page - 1) * per_page
             articles = articles_filtered[start : start + per_page]
-            logger.info(f"Research dashboard: Filtered to {len(articles_filtered)} likely-junk articles, page has {len(articles)}")
+            logger.info(f"Research dashboard: Filtered to {junk_total} likely-junk articles, page has {len(articles)}")
         else:
             if article_type_filter == 'Newsletter':
                 articles = _fetch_newsletters_as_articles(
@@ -426,6 +454,7 @@ def research_dashboard():
             total_articles=total_articles,
             embedded_articles=embedded_articles,
             embedding_pct=embedding_pct,
+            junk_count=junk_total,
             filters={
                 'date_range': date_range_option,
                 'start_date': start_date_str,
@@ -800,66 +829,6 @@ def get_article_full_text(article_id: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@research_bp.route('/research/raw-article')
-@require_auth
-def raw_article_viewer():
-    """Render a page showing all raw fields for a single research article by ID."""
-    import json as json_lib
-    article_id = request.args.get('id', '').strip()
-    article = None
-    error_msg = None
-
-    if article_id:
-        try:
-            repo = get_research_repository()
-            if repo is None:
-                error_msg = "Research repository is not available"
-            else:
-                query = """
-                    SELECT id, ticker, tickers, sector, article_type, title, url,
-                           summary, content, source, published_at, fetched_at,
-                           relevance_score, fund, claims, fact_check, conclusion,
-                           sentiment, sentiment_score, logic_check,
-                           archive_submitted_at, archive_checked_at, archive_url,
-                           ticker_sentiment, ticker_validated_at
-                    FROM research_articles
-                    WHERE id = %s
-                """
-                rows = repo.client.execute_query(query, (article_id,))
-                if rows:
-                    article = rows[0]
-                    # Convert non-serializable types for template
-                    from decimal import Decimal
-                    for k, v in article.items():
-                        if hasattr(v, 'isoformat'):
-                            article[k] = v.isoformat()
-                        elif isinstance(v, Decimal):
-                            article[k] = float(v)
-                        elif isinstance(v, (bytes, bytearray)):
-                            article[k] = str(v)
-                else:
-                    error_msg = f"Article not found: {article_id}"
-        except Exception as e:
-            logger.error(f"Error fetching raw article {article_id}: {e}", exc_info=True)
-            error_msg = str(e)
-
-    try:
-        from app import get_navigation_context
-        nav_context = get_navigation_context(current_page='raw_article')
-        user_email = get_user_email_flask()
-
-        return render_template(
-            'raw_article.html',
-            article_id=article_id,
-            article=article,
-            error_msg=error_msg,
-            user_email=user_email,
-            **nav_context,
-        )
-    except Exception as e:
-        logger.error(f"Error rendering raw_article template: {e}", exc_info=True)
-        return f"<h1>Template Error</h1><pre>{e}</pre>", 500
-
 
 @research_bp.route('/api/research/delete', methods=['POST'])
 @require_admin
@@ -896,6 +865,49 @@ def delete_article_endpoint():
 
     except Exception as e:
         logger.error(f"Error in delete article endpoint: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@research_bp.route('/api/research/delete-junk', methods=['POST'])
+@require_admin
+def delete_junk_articles_endpoint():
+    """Delete all articles matching the 'likely junk' filter (admin only).
+
+    Only deletes web-scraped articles (not ETF, Newsletter, Reddit, etc.).
+    Returns the count of deleted articles.
+    """
+    try:
+        repo = get_research_repository()
+        if repo is None:
+            return jsonify({"success": False, "error": "Research repository unavailable"}), 500
+
+        from postgres_client import PostgresClient
+        pg = PostgresClient()
+
+        # Delete tickerless web articles (same logic as _is_likely_junk category 1)
+        # Protected types: ETF Change, ETF Analysis, Newsletter, Seeking Alpha Symbol
+        # Protected sources: Reddit
+        result = pg.execute_query("""
+            DELETE FROM research_articles
+            WHERE (tickers IS NULL OR tickers = '{}')
+              AND COALESCE(article_type, '') NOT IN (
+                  'ETF Change', 'ETF Analysis', 'Newsletter', 'Seeking Alpha Symbol'
+              )
+              AND COALESCE(source, '') != 'Reddit'
+              AND article_type != 'Reddit Discovery'
+            RETURNING id
+        """)
+        deleted_count = len(result) if result else 0
+
+        # Also delete articles with tickers that don't appear in text
+        # (category 2 of _is_likely_junk) -- but this needs Python-side check
+        # so we only do the safe SQL-deletable ones above.
+
+        logger.info(f"[RESEARCH] Bulk deleted {deleted_count} junk articles (admin)")
+        return jsonify({"success": True, "deleted": deleted_count})
+
+    except Exception as e:
+        logger.error(f"Error in delete junk endpoint: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
 
 

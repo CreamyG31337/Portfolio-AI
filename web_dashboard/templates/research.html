@@ -171,6 +171,15 @@
                 class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2 focus:outline-hidden transition-colors duration-200">
                 <i class="fas fa-filter mr-2"></i>Apply Filters
             </button>
+
+            {% if is_admin and filters.show_likely_junk %}
+            <span class="text-sm text-red-400 font-medium ml-2">{{ junk_count }} junk articles found</span>
+            <button type="button" id="delete-junk-btn"
+                class="text-red-400 bg-transparent border border-red-500 hover:bg-red-500/10 focus:ring-4 focus:ring-red-500/30 font-medium rounded-lg text-sm px-5 py-2.5 mr-2 mb-2 focus:outline-hidden transition-colors duration-200"
+                onclick="deleteJunkArticles()">
+                <i class="fas fa-trash-alt mr-2"></i>Delete All Junk ({{ junk_count }})
+            </button>
+            {% endif %}
         </div>
     </form>
 </div>
@@ -1055,6 +1064,44 @@
                     .catch(function(error) {
                         console.error('Error deleting article:', error);
                         showMessage('❌ Error deleting article: ' + error.message, 'error');
+                    });
+            }
+        });
+    }
+
+    function deleteJunkArticles() {
+        window.showConfirmModal({
+            title: 'Delete ALL junk articles?',
+            message: 'This will permanently delete all tickerless web-scraped articles (not ETF, Newsletter, Reddit, or Seeking Alpha). This cannot be undone.',
+            confirmLabel: 'Delete All Junk',
+            danger: true,
+            onConfirm: function() {
+                var btn = document.getElementById('delete-junk-btn');
+                if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Deleting...'; }
+                var headers = { 'Content-Type': 'application/json' };
+                var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                if (csrfMeta) headers['X-CSRFToken'] = csrfMeta.getAttribute('content');
+                return fetch('/api/research/delete-junk', {
+                    method: 'POST',
+                    headers: headers,
+                    credentials: 'include'
+                })
+                    .then(function(response) { return response.json().then(function(data) { return { ok: response.ok, data: data }; }); })
+                    .then(function(_ref) {
+                        var ok = _ref.ok, data = _ref.data;
+                        if (ok && data.success) {
+                            showMessage('✅ Deleted ' + data.deleted + ' junk articles.', 'success');
+                            setTimeout(function() { window.location.reload(); }, 1500);
+                        } else {
+                            var errorMessage = (data && data.error) ? data.error : 'Unknown error.';
+                            showMessage('❌ Failed: ' + errorMessage, 'error');
+                            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt mr-2"></i>Delete All Junk'; }
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('Error deleting junk:', error);
+                        showMessage('❌ Error: ' + error.message, 'error');
+                        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt mr-2"></i>Delete All Junk'; }
                     });
             }
         });
