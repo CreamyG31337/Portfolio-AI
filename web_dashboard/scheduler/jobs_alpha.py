@@ -244,19 +244,12 @@ def alpha_research_job() -> None:
                 elif isinstance(summary_data, dict) and summary_data:
                     summary = summary_data.get("summary", "")
 
-                    # Extract ticker and sector
-                    tickers = summary_data.get("tickers", [])
+                    # Extract tickers with real-company validation
+                    from ticker_validator import extract_and_validate_tickers
+                    extracted_tickers = extract_and_validate_tickers(
+                        summary_data, title, content,
+                    )
                     sectors = summary_data.get("sectors", [])
-
-                    # Extract all validated tickers
-                    from research_utils import validate_ticker_format, normalize_ticker
-                    for ticker in tickers:
-                        # Validate format only
-                        if not validate_ticker_format(ticker):
-                            continue
-                        normalized = normalize_ticker(ticker)
-                        if normalized:
-                            extracted_tickers.append(normalized)
 
                     if extracted_tickers:
                         logger.info(f"  🎯 Discovered ticker(s): {extracted_tickers}")

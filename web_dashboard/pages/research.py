@@ -183,19 +183,12 @@ def reanalyze_article(article_id: str, model_name: str) -> tuple[bool, str]:
             tickers = summary_data.get("tickers", [])
             sectors = summary_data.get("sectors", [])
             
-            # Extract all validated tickers
-            extracted_tickers = []
-            if tickers:
-                from research_utils import validate_ticker_format, normalize_ticker
-                for ticker in tickers:
-                    # Validate format only (trust AI inference for company name -> ticker conversion)
-                    if not validate_ticker_format(ticker):
-                        logger.warning(f"Rejected invalid ticker format: {ticker} - skipping")
-                        continue
-                    normalized = normalize_ticker(ticker)
-                    if normalized:
-                        extracted_tickers.append(normalized)
-            
+            # Extract tickers with real-company validation
+            from ticker_validator import extract_and_validate_tickers
+            extracted_tickers = extract_and_validate_tickers(
+                summary_data, article.get("title", ""), content,
+            )
+
             extracted_sector = sectors[0] if sectors else None
         else:
             return False, "Invalid summary data format"

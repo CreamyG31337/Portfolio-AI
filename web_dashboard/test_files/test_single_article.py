@@ -119,15 +119,12 @@ def test_single_article(url: str, save_to_db: bool = False):
                 elif isinstance(summary_data, dict) and summary_data:
                     summary = summary_data.get("summary", "")
                     
-                    # Extract tickers
-                    ai_tickers = summary_data.get("tickers", [])
-                    from research_utils import validate_ticker_format, normalize_ticker
-                    for ticker in ai_tickers:
-                        if validate_ticker_format(ticker):
-                            normalized = normalize_ticker(ticker)
-                            if normalized:
-                                extracted_tickers.append(normalized)
-                    
+                    # Extract tickers with real-company validation
+                    from ticker_validator import extract_and_validate_tickers
+                    extracted_tickers = extract_and_validate_tickers(
+                        summary_data, title, content,
+                    )
+
                     # Extract sector
                     sectors = summary_data.get("sectors", [])
                     if sectors:

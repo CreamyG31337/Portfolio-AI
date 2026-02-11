@@ -286,22 +286,16 @@ def symbol_article_scraper_job() -> None:
                                 elif isinstance(summary_data, dict) and summary_data:
                                     summary = summary_data.get("summary", "")
                                     
-                                    # Extract additional tickers from content
-                                    tickers = summary_data.get("tickers", [])
-                                    try:
-                                        from ticker_inference import infer_tickers_from_companies
-                                        tickers = list(set(tickers) | set(infer_tickers_from_companies(summary_data.get("companies", []))))
-                                    except Exception as infer_err:
-                                        logger.warning(f"  ⚠️ Company->ticker inference failed: {infer_err}")
+                                    # Extract additional tickers with real-company validation
+                                    from ticker_validator import extract_and_validate_tickers
+                                    ai_validated = extract_and_validate_tickers(
+                                        summary_data, title, content,
+                                    )
+                                    for t in ai_validated:
+                                        if t not in extracted_tickers:
+                                            extracted_tickers.append(t)
+
                                     sectors = summary_data.get("sectors", [])
-                                    
-                                    from research_utils import validate_ticker_format, normalize_ticker
-                                    for t in tickers:
-                                        if validate_ticker_format(t):
-                                            normalized = normalize_ticker(t)
-                                            if normalized and normalized not in extracted_tickers:
-                                                extracted_tickers.append(normalized)
-                                    
                                     if sectors:
                                         extracted_sector = sectors[0]
                                 

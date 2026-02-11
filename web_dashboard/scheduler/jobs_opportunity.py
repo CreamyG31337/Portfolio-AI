@@ -258,18 +258,12 @@ def opportunity_discovery_job() -> None:
                 elif isinstance(summary_data, dict) and summary_data:
                     summary = summary_data.get("summary", "")
 
-                    # Extract ticker and sector
-                    tickers = summary_data.get("tickers", [])
+                    # Extract tickers with real-company validation
+                    from ticker_validator import extract_and_validate_tickers
+                    extracted_tickers = extract_and_validate_tickers(
+                        summary_data, title, content,
+                    )
                     sectors = summary_data.get("sectors", [])
-
-                    if tickers:
-                        from research_utils import validate_ticker_format, normalize_ticker
-                        for t in tickers:
-                            if not validate_ticker_format(t):
-                                continue
-                            normalized = normalize_ticker(t)
-                            if normalized and normalized not in extracted_tickers:
-                                extracted_tickers.append(normalized)
 
                     if extracted_tickers:
                         extracted_ticker = extracted_tickers[0]

@@ -128,16 +128,11 @@ def backfill_tickers(
                 consecutive_failures += 1
                 continue
             
-            # Extract tickers
-            raw_tickers = summary_data.get("tickers", [])
-            extracted_tickers = []
-            
-            # Use utility functions to validate
-            for ticker in raw_tickers:
-                if not validate_ticker_format(ticker):
-                    continue
-                if validate_ticker_in_content(ticker, content):
-                    extracted_tickers.append(ticker.upper())
+            # Extract tickers with real-company validation
+            from web_dashboard.ticker_validator import extract_and_validate_tickers
+            extracted_tickers = extract_and_validate_tickers(
+                summary_data, title, content,
+            )
             
             # Extract sector if missing
             extracted_sector = summary_data.get("sectors", [])[0] if summary_data.get("sectors") else article.get('sector')

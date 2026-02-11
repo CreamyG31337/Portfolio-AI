@@ -6113,6 +6113,20 @@ def webhook_newsletter():
                 # symbols are not explicitly present in text. Extraction remains a backstop.
                 all_tickers = sorted(set(ai_tickers) | set(extracted)) if ai_tickers else extracted
 
+                # Validate merged tickers against real company data
+                if all_tickers:
+                    try:
+                        from ticker_validator import validate_extracted_tickers
+                        article_text = f"{clean_subj}\n\n{content}"
+                        all_tickers = validate_extracted_tickers(
+                            tickers=all_tickers,
+                            companies=summary_data.get("companies", []) if isinstance(summary_data, dict) else [],
+                            article_text=article_text,
+                            strict=True,
+                        )
+                    except Exception as val_err:
+                        logger.warning(f"BG: Ticker validation failed for newsletter {nl_id}: {val_err}")
+
                 # Embedding
                 embedding = bg_service.generate_embedding(content)
 

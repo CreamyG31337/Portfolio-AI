@@ -134,6 +134,20 @@ def newsletter_ai_processing_job() -> None:
                 # Merge AI-detected tickers with regex-extracted ones (deduplicated)
                 all_tickers = sorted(set(tickers) | set(extracted_tickers)) if tickers else extracted_tickers
 
+                # Validate merged tickers against real company data
+                if all_tickers:
+                    try:
+                        from ticker_validator import validate_extracted_tickers
+                        article_text = f"{clean_subj}\n\n{content}"
+                        all_tickers = validate_extracted_tickers(
+                            tickers=all_tickers,
+                            companies=summary_data.get("companies", []) if isinstance(summary_data, dict) else [],
+                            article_text=article_text,
+                            strict=True,
+                        )
+                    except Exception as val_err:
+                        logger.warning(f"Ticker validation failed for newsletter {nl_id}: {val_err}")
+
                 # Generate embedding
                 embedding = service.generate_embedding(content)
 

@@ -657,21 +657,13 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
             summary = summary_data
         elif isinstance(summary_data, dict):
             summary = summary_data.get("summary", "")
-            tickers = summary_data.get("tickers", [])
             sectors = summary_data.get("sectors", [])
-            
-            # Extract all validated tickers
-            extracted_tickers = []
-            if tickers:
-                for ticker in tickers:
-                    # Validate format only (trust AI inference for company name -> ticker conversion)
-                    if not validate_ticker_format(ticker):
-                        logger.warning(f"Rejected invalid ticker format: {ticker} - skipping")
-                        continue
-                    normalized = normalize_ticker(ticker)
-                    if normalized:
-                        extracted_tickers.append(normalized)
-            
+
+            # Extract tickers with real-company validation
+            from ticker_validator import extract_and_validate_tickers
+            title = article.get("title", "")
+            extracted_tickers = extract_and_validate_tickers(summary_data, title, content)
+
             extracted_sector = sectors[0] if sectors else None
         else:
             return False, "Invalid summary data format"
@@ -1184,18 +1176,14 @@ def reanalyze_article_stream():
                     summary = summary_data
                 elif isinstance(summary_data, dict):
                     summary = summary_data.get("summary", "")
-                    tickers = summary_data.get("tickers", [])
                     sectors = summary_data.get("sectors", [])
-                    
-                    extracted_tickers = []
-                    if tickers:
-                        for ticker in tickers:
-                            if not validate_ticker_format(ticker):
-                                continue
-                            normalized = normalize_ticker(ticker)
-                            if normalized:
-                                extracted_tickers.append(normalized)
-                    
+
+                    # Extract tickers with real-company validation
+                    from ticker_validator import extract_and_validate_tickers
+                    extracted_tickers = extract_and_validate_tickers(
+                        summary_data, article.get("title", ""), content,
+                    )
+
                     extracted_sector = sectors[0] if sectors else None
                 else:
                     yield f"data: {json.dumps({'error': 'Invalid summary format'})}\n\n"
@@ -1623,17 +1611,11 @@ def api_research_analyze():
                 "model": model_name
             })
         elif isinstance(summary_data, dict):
-            # Extract and validate tickers (same as jobs_research.py)
-            raw_tickers = summary_data.get("tickers", [])
-            extracted_tickers = []
-
-            for ticker in raw_tickers:
-                if not validate_ticker_format(ticker):
-                    logger.debug(f"Rejected invalid ticker format: {ticker}")
-                    continue
-                normalized = normalize_ticker(ticker)
-                if normalized:
-                    extracted_tickers.append(normalized)
+            # Extract tickers with real-company validation
+            from ticker_validator import extract_and_validate_tickers
+            extracted_tickers = extract_and_validate_tickers(
+                summary_data, "", content,
+            )
 
             # Extract sector
             sectors = summary_data.get("sectors", [])
@@ -1685,22 +1667,14 @@ def api_research_save():
         if repo.article_exists(url):
             return jsonify({"success": False, "error": "Article with this URL already exists"}), 409
 
-        # Follow exact code path from jobs_research.py (lines 290-383)
+        # Follow exact code path from jobs_research.py
         from ollama_client import get_ollama_client
-        from research_utils import validate_ticker_format, normalize_ticker, extract_source_from_url
+        from research_utils import extract_source_from_url
         from scheduler.jobs_common import calculate_relevance_score
 
-        # Extract and validate tickers
-        raw_tickers = summary_data.get("tickers", [])
-        extracted_tickers = []
-
-        for ticker in raw_tickers:
-            if not validate_ticker_format(ticker):
-                logger.debug(f"Rejected invalid ticker format: {ticker}")
-                continue
-            normalized = normalize_ticker(ticker)
-            if normalized:
-                extracted_tickers.append(normalized)
+        # Extract tickers with real-company validation
+        from ticker_validator import extract_and_validate_tickers
+        extracted_tickers = extract_and_validate_tickers(summary_data, title, content)
 
         # Extract sector
         sectors = summary_data.get("sectors", [])
