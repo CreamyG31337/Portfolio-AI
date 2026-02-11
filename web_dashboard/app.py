@@ -3799,23 +3799,22 @@ def _get_ticker_chart_data_cached(
         logger.warning(f"Error fetching congress trades for chart: {e}")
         # Continue without congress trades if there's an error
 
-    # Fetch user trades for this ticker within the chart date range
+    # Fetch user trades for this ticker (no date filter - chart_utils handles
+    # alignment via find_closest_price_date which skips out-of-range trades)
     user_trades = []
     try:
-        start_date = (date.today() - timedelta(days=range_days)).isoformat()
-        end_date = date.today().isoformat()
-
         trade_query = supabase_client.supabase.table("trade_log")\
             .select("*")\
-            .eq("ticker", ticker)\
-            .gte("date", start_date)\
-            .lte("date", end_date)
+            .eq("ticker", ticker)
         if fund:
             trade_query = trade_query.eq("fund", fund)
-        trade_result = trade_query.order("date", desc=True).execute()
+        trade_result = trade_query.order("date", desc=True).limit(200).execute()
 
         if trade_result.data:
             user_trades = trade_result.data
+            logger.info(f"📊 Chart {ticker}: fetched {len(user_trades)} user trades (fund={fund})")
+        else:
+            logger.info(f"📊 Chart {ticker}: no user trades found (fund={fund})")
     except Exception as e:
         logger.warning(f"Error fetching user trades for chart: {e}")
         # Continue without user trades if there's an error

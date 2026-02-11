@@ -133,8 +133,14 @@ Anon Key: your-anon-key-here
 - **User Menu Dropdown** - Quick access to Settings and Logout
 - **See `AGENTS.md`** for complete frontend CSS & UI component standards and guidelines
 
-![Stunning Dark Mode](docs/images/dashboard_dark.png)
-*Stunning Dark Mode - Easy on the Eyes*
+### Advanced Market Signals
+- **Technical Analysis** - Automated signal detection
+- **Multi-Source Data** - Integrates price action, volume, and external indicators
+- **Confidence Scores** - AI-driven confidence ratings for each signal
+- **Actionable Insights** - Clear Buy/Sell/Hold recommendations
+
+![Market Signals Dashboard](docs/images/signals_page.png)
+*Advanced Signals Dashboard - Technical Analysis at a Glance*
 
 ### Multi-Investor Features
 - **NAV-Based Tracking** - Accurate per-investor returns using Net Asset Value
@@ -159,6 +165,21 @@ The dashboard includes APScheduler for running background tasks inside the Docke
 | `market_research` | 6 hours | Collect general market news articles |
 | `ticker_research` | 6 hours | Monitor news for portfolio holdings (ETFs → sectors) |
 | `opportunity_discovery` | 12 hours | Hunt for new investment opportunities |
+
+### Data Insights
+Use the built-in tracking tools to follow smart money:
+- **Congress Trading** - Track stock trades by US Congress members
+- **Insider Trading** - Monitor corporate officer buying/selling
+- **Ticker Deep Dives** - Detailed analysis of individual stocks
+
+![Congress Trading Tracker](docs/images/congress_trades_page.png)
+*Track Congressional Trading Activity*
+
+### System Monitoring
+Keep track of system health and background jobs with the built-in Admin Logs:
+
+![System Logs Panel](docs/images/system_logs_page.png)
+*Real-time System & Job Logs*
 
 ### Admin UI
 Add to your Streamlit app:

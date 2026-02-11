@@ -1685,19 +1685,29 @@ def create_ticker_price_chart(
         benchmark_total_time = time.time() - benchmark_start
         logger.info(f"⏱️ create_ticker_price_chart - All benchmarks: {benchmark_total_time:.2f}s")
     
+    # Helper function to strip timezone info for safe comparison
+    def _ensure_tz_naive(ts):
+        """Ensure a timestamp is tz-naive for comparison."""
+        ts = pd.to_datetime(ts)
+        if ts.tzinfo is not None:
+            ts = ts.tz_localize(None)
+        return ts
+
     # Helper function to find closest price date
     def find_closest_price_date(trade_date, df_dates, date_to_price, max_days=7):
         """Find closest price date and return (closest_date, y_value) or None if too far."""
+        trade_date_naive = _ensure_tz_naive(trade_date).normalize()
+
         def date_diff(date_val):
-            date_normalized = pd.to_datetime(date_val).normalize()
-            return abs((date_normalized - trade_date).total_seconds())
-        
+            date_normalized = _ensure_tz_naive(date_val).normalize()
+            return abs((date_normalized - trade_date_naive).total_seconds())
+
         closest_date = min(df_dates, key=date_diff)
-        closest_date_normalized = pd.to_datetime(closest_date).normalize()
-        days_diff = abs((closest_date_normalized - trade_date).days)
+        closest_date_normalized = _ensure_tz_naive(closest_date).normalize()
+        days_diff = abs((closest_date_normalized - trade_date_naive).days)
         if days_diff > max_days:
             return None
-        
+
         y_value = date_to_price.get(closest_date, None)
         return (closest_date, y_value) if y_value is not None else None
     
@@ -1706,27 +1716,34 @@ def create_ticker_price_chart(
     
     # Add user trades markers if provided (larger markers, different colors)
     if user_trades and len(trade_df) > 0:
+        logger.info(f"📍 Plotting {len(user_trades)} user trades on chart")
+        plotted_count = 0
         for trade in user_trades:
             trade_date_str = trade.get('date')
             if not trade_date_str:
+                logger.warning(f"Skipping user trade with no date: {trade}")
                 continue
-            
+
             try:
-                trade_date = pd.to_datetime(trade_date_str).normalize()
+                trade_date = _ensure_tz_naive(pd.to_datetime(trade_date_str)).normalize()
                 result = find_closest_price_date(trade_date, trade_df['date'], date_to_price, max_days=30)
                 if not result:
+                    logger.warning(
+                        f"No price data within 30 days for user trade on {trade_date_str} "
+                        f"(price data range: {trade_df['date'].min()} to {trade_df['date'].max()})"
+                    )
                     continue
                 closest_date, y_value = result
-                
-                shares = float(trade.get('shares', 0))
-                reason = trade.get('reason', '').upper()
-                price = trade.get('price', 0)
-                fund = trade.get('fund', 'Unknown')
-                
+
+                shares = float(trade.get('shares') or 0)
+                reason = str(trade.get('reason') or '').upper()
+                price = float(trade.get('price') or 0)
+                fund_name = str(trade.get('fund') or 'Unknown')
+
                 # Determine trade type: DRIP/Dividend vs Buy vs Sell
                 is_dividend = 'DRIP' in reason or 'DIVIDEND' in reason
                 is_buy = shares > 0
-                
+
                 if is_dividend:
                     color = '#9333ea'  # Purple for dividends
                     symbol = 'star'
@@ -1742,10 +1759,10 @@ def create_ticker_price_chart(
                     symbol = 'triangle-down'
                     trade_label = 'Sell'
                     marker_size = 16
-                
+
                 # Format date for display
                 display_date = pd.to_datetime(trade_date_str).strftime('%Y-%m-%d')
-                
+
                 fig.add_trace(go.Scatter(
                     x=[closest_date],
                     y=[y_value],
@@ -1761,12 +1778,17 @@ def create_ticker_price_chart(
                                 f'Date: {display_date}<br>' +
                                 f'Shares: {abs(shares):,.4f}<br>' +
                                 f'Price: ${price:,.2f}<br>' +
-                                f'Fund: {fund}<extra></extra>',
+                                f'Fund: {fund_name}<extra></extra>',
                     showlegend=False,
                     legendgroup='user_trades'
                 ))
-            except Exception:
+                plotted_count += 1
+            except Exception as e:
+                logger.warning(f"Error plotting user trade {trade.get('date')}: {e}", exc_info=True)
                 continue
+        logger.info(f"📍 Plotted {plotted_count}/{len(user_trades)} user trade markers")
+    elif user_trades:
+        logger.warning(f"Have {len(user_trades)} user trades but trade_df is empty - cannot plot markers")
     
     # Add congress trades markers if provided (smaller markers, muted colors)
     if congress_trades and len(trade_df) > 0:
@@ -1776,17 +1798,17 @@ def create_ticker_price_chart(
                 continue
             
             try:
-                trade_date = pd.to_datetime(trade_date_str).normalize()
+                trade_date = _ensure_tz_naive(pd.to_datetime(trade_date_str)).normalize()
                 result = find_closest_price_date(trade_date, trade_df['date'], date_to_price, max_days=7)
                 if not result:
                     continue
                 closest_date, y_value = result
-                
+
                 trade_type = trade.get('type', 'Unknown')
                 politician = trade.get('politician', 'Unknown')
                 amount = trade.get('amount', 'N/A')
                 chamber = trade.get('chamber', '')
-                
+
                 # Muted colors for congress trades (smaller, less prominent)
                 if trade_type == 'Purchase':
                     color = '#86efac'  # Light green (muted)
@@ -1797,7 +1819,7 @@ def create_ticker_price_chart(
                 else:
                     color = '#c4b5fd'  # Light purple (muted)
                     symbol = 'diamond'
-                
+
                 fig.add_trace(go.Scatter(
                     x=[closest_date],
                     y=[y_value],
@@ -1818,7 +1840,8 @@ def create_ticker_price_chart(
                     showlegend=False,
                     legendgroup='congress_trades'
                 ))
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Error plotting congress trade {trade_date_str}: {e}")
                 continue
     
     # Add ETF trades markers if provided (hexagon markers, muted blue/orange colors)
@@ -1829,12 +1852,12 @@ def create_ticker_price_chart(
                 continue
             
             try:
-                trade_date = pd.to_datetime(trade_date_str).normalize()
+                trade_date = _ensure_tz_naive(pd.to_datetime(trade_date_str)).normalize()
                 result = find_closest_price_date(trade_date, trade_df['date'], date_to_price, max_days=7)
                 if not result:
                     continue
                 closest_date, y_value = result
-                
+
                 trade_type = trade.get('trade_type', 'Unknown')
                 etf_ticker = trade.get('etf_ticker', 'Unknown')
                 shares_change = trade.get('shares_change', 0)
@@ -1887,7 +1910,8 @@ def create_ticker_price_chart(
                     showlegend=False,
                     legendgroup='etf_trades'
                 ))
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Error plotting ETF trade {trade_date_str}: {e}")
                 continue
     
     # Get theme configuration (ensure theme is never None)

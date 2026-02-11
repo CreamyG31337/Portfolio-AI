@@ -42,6 +42,7 @@ BATCH_SIZE = 10          # Articles per GLM call
 MAX_ARTICLES_PER_RUN = 200   # Total articles to process per run
 LOOKBACK_DAYS = 90       # Only validate articles from the last N days
 GLM_MODEL = "glm-4.5-air"   # Fast/cheap model for classification
+GLM_MAX_TOKENS = 4096    # Needs headroom for reasoning chain + JSON output
 GLM_TIMEOUT = 120        # seconds
 DELAY_BETWEEN_BATCHES = 2    # seconds
 
@@ -87,14 +88,32 @@ def article_relevance_job() -> None:
         pg = PostgresClient()
 
         # ---------------------------------------------------------------
+        # 0. Auto-validate ETF articles (tickers from CSV/XLS, always correct)
+        # ---------------------------------------------------------------
+        etf_validated = pg.execute_update("""
+            UPDATE research_articles
+            SET ticker_validated_at = NOW()
+            WHERE ticker_validated_at IS NULL
+              AND tickers IS NOT NULL
+              AND article_type = 'ETF Change'
+        """)
+        if etf_validated:
+            logger.info(
+                "Auto-validated %d ETF Change articles (tickers from holdings data)",
+                etf_validated,
+            )
+
+        # ---------------------------------------------------------------
         # 1. Fetch unvalidated articles
         # ---------------------------------------------------------------
+        # ETF Change articles already handled above
         articles = pg.execute_query("""
             SELECT id, title, summary, tickers
             FROM research_articles
             WHERE ticker_validated_at IS NULL
               AND tickers IS NOT NULL
               AND fetched_at >= NOW() - INTERVAL '%s days'
+              AND COALESCE(article_type, '') != 'ETF Change'
             ORDER BY fetched_at DESC
             LIMIT %s
         """, (LOOKBACK_DAYS, MAX_ARTICLES_PER_RUN))
@@ -287,7 +306,7 @@ def _validate_batch(
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.0,
-        "max_tokens": 1024,
+        "max_tokens": GLM_MAX_TOKENS,
     }
 
     # Retry with backoff for rate limiting

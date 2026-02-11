@@ -800,6 +800,53 @@ def get_article_full_text(article_id: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@research_bp.route('/research/raw-article')
+@require_auth
+def raw_article_viewer():
+    """Render a page showing all raw fields for a single research article by ID."""
+    article_id = request.args.get('id', '').strip()
+    article = None
+    error_msg = None
+
+    if article_id:
+        try:
+            repo = get_research_repository()
+            if repo is None:
+                error_msg = "Research repository is not available"
+            else:
+                query = """
+                    SELECT id, ticker, tickers, sector, article_type, title, url,
+                           summary, content, source, published_at, fetched_at,
+                           relevance_score, fund, claims, fact_check, conclusion,
+                           sentiment, sentiment_score, logic_check,
+                           archive_submitted_at, archive_checked_at, archive_url,
+                           ticker_sentiment, ticker_validated_at
+                    FROM research_articles
+                    WHERE id = %s
+                """
+                rows = repo.client.execute_query(query, (article_id,))
+                if rows:
+                    article = rows[0]
+                else:
+                    error_msg = f"Article not found: {article_id}"
+        except Exception as e:
+            logger.error(f"Error fetching raw article {article_id}: {e}", exc_info=True)
+            error_msg = str(e)
+
+    from app import get_navigation_context
+    nav_context = get_navigation_context(current_page='raw_article')
+    user_email = get_user_email_flask()
+
+    return render_template(
+        'raw_article.html',
+        article_id=article_id,
+        article=article,
+        error_msg=error_msg,
+        user_email=user_email,
+        **nav_context,
+    )
+
+
 @research_bp.route('/api/research/delete', methods=['POST'])
 @require_admin
 def delete_article_endpoint():

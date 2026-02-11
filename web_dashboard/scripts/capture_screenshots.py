@@ -5,8 +5,8 @@ from playwright.sync_api import sync_playwright
 
 # Configuration
 BASE_URL = "https://ai-trading.drifting.space"
-EMAIL = "guest.test@tradingbot.local"
-PASSWORD = "316hejN^%vg^vG!BrL7n"
+EMAIL = "admin.test@tradingbot.local"
+PASSWORD = "vtg6Su2crPMvejomltTN"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "docs", "images")
 
 def ensure_dir(path):
@@ -15,8 +15,15 @@ def ensure_dir(path):
 
 def set_theme(page, theme):
     print(f"  Setting theme to: {theme}")
-    page.evaluate(f"window.themeManager.setTheme('{theme}')")
-    time.sleep(1) # Allow transition
+    try:
+        page.evaluate(f"""() => {{
+            if (window.themeManager) {{
+                window.themeManager.setTheme('{theme}');
+            }}
+        }}""")
+        time.sleep(0.5) # Allow transition
+    except Exception as e:
+        print(f"  Warning setting theme: {e}")
 
 def login(page):
     print("Logging in...")
@@ -34,7 +41,7 @@ def capture_screenshots():
         # Use standard chromium, headless
         browser = p.chromium.launch(headless=True)
         # Larger viewport for better quality
-        context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+        context = browser.new_context(viewport={'width': 1920, 'height': 1080}, permissions=['clipboard-read', 'clipboard-write'])
         page = context.new_page()
 
         # 1. Login Page (Light Mode - Cropped to Form)
@@ -56,11 +63,15 @@ def capture_screenshots():
         # Ensure TFSA is selected
         print("Selecting TFSA fund...")
         try:
+            # Check if dropdown exists (admin might have it differently or multiple funds)
+            # Admin usually has access to all funds, so we should be able to select TFSA if it exists.
+            # If not, we might need to handle it. safely.
+            page.wait_for_selector('#global-fund-select', state='attached', timeout=5000)
             page.select_option('#global-fund-select', label='TFSA')
             page.wait_for_load_state('networkidle')
             time.sleep(2) # Extra time for UI update
         except Exception as e:
-            print(f"Warning: Could not select TFSA: {e}")
+            print(f"Warning: Could not select TFSA (might be default or not available): {e}")
 
         # 3. Dashboard (Light Mode)
         print("Capturing Dashboard (Light)...")
@@ -100,6 +111,56 @@ def capture_screenshots():
         page.wait_for_load_state('networkidle')
         set_theme(page, 'light')
         page.screenshot(path=os.path.join(OUTPUT_DIR, "signals_page.png"), full_page=True)
+
+        # 7. Congress Trades (Light Mode)
+        print("Capturing Congress Trades (Light)...")
+        page.goto(f"{BASE_URL}/congress_trades")
+        page.wait_for_load_state('networkidle')
+        set_theme(page, 'light')
+        page.screenshot(path=os.path.join(OUTPUT_DIR, "congress_trades_page.png"), full_page=True)
+
+
+
+        # 8. Insider Trades (Light Mode)
+        print("Capturing Insider Trades (Light)...")
+        try:
+            page.goto(f"{BASE_URL}/insider_trades", timeout=60000)
+            page.wait_for_load_state('networkidle', timeout=60000)
+            set_theme(page, 'light')
+            time.sleep(5)
+            page.screenshot(path=os.path.join(OUTPUT_DIR, "insider_trades_page.png"), full_page=True)
+            print("  Captured Insider Trades.")
+        except Exception as e:
+            print(f"  Error capturing Insider Trades: {e}")
+
+        # 9. System Logs (Dark Mode - Admin Feature)
+        print("Capturing System Logs (Dark)...")
+        try:
+            page.goto(f"{BASE_URL}/logs", timeout=60000)
+            page.wait_for_load_state('networkidle')
+            set_theme(page, 'dark')
+            page.screenshot(path=os.path.join(OUTPUT_DIR, "system_logs_page.png"), full_page=True)
+            print("  Captured System Logs.")
+        except Exception as e:
+            print(f"  Error capturing System Logs: {e}")
+
+        # 10. Ticker Details - AAPL (Light Mode - Attempt)
+        # Trying a standard ticker that likely exists or will render gracefully
+        print("Capturing Ticker Details - AAPL (Light)...")
+        try:
+            page.goto(f"{BASE_URL}/ticker/AAPL", timeout=60000)
+            page.wait_for_load_state('networkidle')
+            set_theme(page, 'light')
+            try:
+                # Wait for charts if they exist
+                page.wait_for_selector(".js-plotly-plot", state="visible", timeout=10000)
+                time.sleep(1)
+            except:
+                pass
+            page.screenshot(path=os.path.join(OUTPUT_DIR, "ticker_details_aapl.png"), full_page=True)
+            print("  Captured Ticker Details.")
+        except Exception as e:
+            print(f"  Error capturing Ticker Details: {e}")
 
         browser.close()
         print(f"Screenshots saved to {OUTPUT_DIR}")
