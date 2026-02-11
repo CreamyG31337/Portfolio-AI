@@ -200,6 +200,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'day_of_week': 'mon-fri', 'hour': '6,10', 'minute': 15, 'timezone': 'America/Los_Angeles'}
         ]
     },
+    'fundamentals_refresh': {
+        'name': '📈 Fundamentals Refresh',
+        'description': 'Backfill fundamental metrics (P/E, ROE, margins, etc.) from yfinance for watchlist tickers',
+        'default_interval_minutes': 1440,  # Daily
+        'enabled_by_default': True,
+        'icon': '📈',
+        'cron_triggers': [
+            {'hour': 3, 'minute': 30, 'timezone': 'America/New_York'}  # 3:30 AM ET - off-peak
+        ]
+    },
     'congress_trades': {
         'name': '🏛️ Congress Trade Fetch',
         'description': 'Fetch and analyze congressional stock trades from FMP API',
@@ -560,8 +570,8 @@ from scheduler.jobs_reddit_discovery import subreddit_scanner_job
 # Import securities refresh job
 from scheduler.jobs_securities import refresh_securities_metadata_job
 
-# Import signals job
-from scheduler.jobs_signals import signal_scan_job
+# Import signals jobs
+from scheduler.jobs_signals import signal_scan_job, fundamentals_refresh_job
 
 # Import thesis update job
 from scheduler.thesis_update_job import thesis_update_job
@@ -619,8 +629,9 @@ __all__ = [
     'subreddit_scanner_job',
     # Securities refresh
     'refresh_securities_metadata_job',
-    # Signals job
+    # Signals jobs
     'signal_scan_job',
+    'fundamentals_refresh_job',
     # Thesis update job
     'thesis_update_job',
     # Rebalance recommendation jobs
@@ -1183,7 +1194,38 @@ def register_default_jobs(scheduler) -> None:
                 coalesce=True
             )
             logger.info("Registered job: signal_scan (every 240 minutes - 4 hours)")
-    
+
+    # Fundamentals Refresh - Daily at 3:30 AM ET (off-peak, after market close)
+    if AVAILABLE_JOBS.get('fundamentals_refresh', {}).get('enabled_by_default', True):
+        fund_triggers = AVAILABLE_JOBS['fundamentals_refresh'].get('cron_triggers', [])
+        if fund_triggers:
+            trigger_config = fund_triggers[0]
+            scheduler.add_job(
+                fundamentals_refresh_job,
+                trigger=CronTrigger(
+                    hour=trigger_config.get('hour', 3),
+                    minute=trigger_config.get('minute', 30),
+                    timezone=trigger_config.get('timezone', 'America/New_York')
+                ),
+                id='fundamentals_refresh',
+                name=f"{get_job_icon('fundamentals_refresh')} Fundamentals Refresh",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: fundamentals_refresh (daily at 3:30 AM ET)")
+        else:
+            scheduler.add_job(
+                fundamentals_refresh_job,
+                trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['fundamentals_refresh']['default_interval_minutes']),
+                id='fundamentals_refresh',
+                name=f"{get_job_icon('fundamentals_refresh')} Fundamentals Refresh",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: fundamentals_refresh (every 1440 minutes - daily)")
+
     # Social sentiment AI analysis job - every 2 hours
     # DISABLED: Redundant with inline analysis in fetch_social_sentiment_job
     # if AVAILABLE_JOBS['social_sentiment_ai']['enabled_by_default']:

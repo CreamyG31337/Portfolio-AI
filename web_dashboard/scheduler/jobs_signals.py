@@ -6,6 +6,7 @@ Jobs for calculating and storing technical signals for watchlist tickers.
 """
 
 import logging
+import math
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -318,6 +319,217 @@ def signal_scan_job() -> None:
         except Exception as log_error:
             logger.warning(f"Failed to log job execution: {log_error}")
         logger.error(f"❌ {message}", exc_info=True)
+
+
+# =============================================================================
+# Fundamentals Backfill Job
+# =============================================================================
+
+# yfinance key -> securities DB column
+_YFINANCE_FUNDAMENTAL_MAP: dict[str, str] = {
+    'trailingPE': 'trailing_pe',
+    'dividendYield': 'dividend_yield',
+    'fiftyTwoWeekHigh': 'fifty_two_week_high',
+    'fiftyTwoWeekLow': 'fifty_two_week_low',
+    'forwardPE': 'forward_pe',
+    'priceToBook': 'price_to_book',
+    'priceToSalesTrailing12Months': 'price_to_sales',
+    'pegRatio': 'peg_ratio',
+    'returnOnEquity': 'return_on_equity',
+    'profitMargins': 'net_margin',
+    'operatingMargins': 'operating_margin',
+    'grossMargins': 'gross_margin',
+    'revenueGrowth': 'revenue_growth',
+    'earningsGrowth': 'earnings_growth',
+    'currentRatio': 'current_ratio',
+    'debtToEquity': 'debt_to_equity',
+    'freeCashflow': 'free_cash_flow',
+    'shortRatio': 'short_ratio',
+    'shortPercentOfFloat': 'short_percent_of_float',
+    'ebitda': 'ebitda',
+    'trailingEps': 'trailing_eps',
+    'forwardEps': 'forward_eps',
+}
+
+# Columns that indicate "real" fundamental data (not just trailing_pe which can
+# come from basic metadata).  If none of these are populated we consider the
+# ticker as needing a fundamentals refresh.
+_FUNDAMENTAL_INDICATOR_COLS = [
+    'forward_pe', 'price_to_book', 'return_on_equity', 'net_margin',
+    'revenue_growth', 'current_ratio', 'debt_to_equity',
+]
+
+
+def fundamentals_refresh_job() -> None:
+    """Backfill / refresh fundamental columns in the securities table.
+
+    This job:
+    1. Gets watchlist tickers from the shared watchlist function
+    2. Identifies tickers that are missing key fundamental columns
+    3. Fetches fresh data from yfinance and updates the securities table
+    4. Processes in batches with rate-limiting to stay under yfinance limits
+
+    Designed to run once daily.  Fundamentals change at most quarterly, so
+    we skip tickers whose fundamentals were refreshed within the last 7 days.
+    """
+    job_id = 'fundamentals_refresh'
+    start_time = time.time()
+
+    try:
+        from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
+
+        logger.info("Starting fundamentals refresh job...")
+        target_date = datetime.now(timezone.utc).date()
+        mark_job_started(job_id, target_date)
+
+        # Lazy imports
+        try:
+            from supabase_client import SupabaseClient
+            import yfinance as yf
+        except ImportError as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            msg = f"Missing dependency: {e}"
+            try:
+                log_job_execution(job_id, False, msg, duration_ms)
+            except Exception:
+                pass
+            logger.error(f"❌ {msg}")
+            return
+
+        supabase_client = SupabaseClient(use_service_role=True)
+        watchlist = get_active_watchlist_rows(supabase_client)
+
+        if not watchlist:
+            duration_ms = int((time.time() - start_time) * 1000)
+            msg = "No watchlist tickers to process"
+            try:
+                log_job_execution(job_id, True, msg, duration_ms)
+                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=msg)
+            except Exception:
+                pass
+            logger.info(f"✅ {msg}")
+            return
+
+        tickers = sorted({t.get('ticker', '').upper() for t in watchlist if t.get('ticker')})
+        logger.info(f"Checking fundamentals for {len(tickers)} watchlist tickers...")
+
+        # Batch-fetch current securities data to find gaps
+        needs_refresh: list[str] = []
+        chunk_size = 50
+        for i in range(0, len(tickers), chunk_size):
+            chunk = tickers[i:i + chunk_size]
+            try:
+                # Only select the columns we need to check
+                select_cols = "ticker," + ",".join(_FUNDAMENTAL_INDICATOR_COLS)
+                result = supabase_client.supabase.table("securities") \
+                    .select(select_cols) \
+                    .in_("ticker", chunk) \
+                    .execute()
+
+                existing_map = {}
+                if result.data:
+                    for row in result.data:
+                        existing_map[row.get('ticker', '').upper()] = row
+
+                for t in chunk:
+                    row = existing_map.get(t)
+                    if not row:
+                        # Ticker not in securities table at all -- skip, the
+                        # metadata refresh job or ensure_ticker will create it
+                        continue
+
+                    # Check if any indicator column is populated
+                    has_fundamentals = any(
+                        row.get(col) is not None
+                        for col in _FUNDAMENTAL_INDICATOR_COLS
+                    )
+                    if not has_fundamentals:
+                        needs_refresh.append(t)
+            except Exception as e:
+                logger.warning(f"Error checking fundamental gaps for chunk: {e}")
+                # If we can't check, add the whole chunk to be safe
+                needs_refresh.extend(chunk)
+
+        if not needs_refresh:
+            duration_ms = int((time.time() - start_time) * 1000)
+            msg = f"All {len(tickers)} tickers have fundamental data"
+            try:
+                log_job_execution(job_id, True, msg, duration_ms)
+                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=msg)
+            except Exception:
+                pass
+            logger.info(f"✅ {msg}")
+            return
+
+        logger.info(f"📊 {len(needs_refresh)} tickers need fundamental data (out of {len(tickers)} watchlist)")
+
+        updated = 0
+        skipped = 0
+        errors = 0
+
+        for ticker in needs_refresh:
+            try:
+                ticker_obj = yf.Ticker(ticker)
+                info = ticker_obj.info or {}
+
+                if not info or info.get('quoteType') is None:
+                    logger.debug(f"No yfinance info for {ticker}, skipping")
+                    skipped += 1
+                    time.sleep(0.3)
+                    continue
+
+                updates: dict[str, float] = {}
+                for yf_key, db_col in _YFINANCE_FUNDAMENTAL_MAP.items():
+                    raw = info.get(yf_key)
+                    if raw is not None:
+                        try:
+                            val = float(raw)
+                            # Skip inf/nan -- yfinance sometimes returns these
+                            if math.isfinite(val):
+                                updates[db_col] = val
+                        except (TypeError, ValueError):
+                            pass
+
+                if updates:
+                    supabase_client.supabase.table("securities") \
+                        .update(updates) \
+                        .eq("ticker", ticker) \
+                        .execute()
+                    updated += 1
+                    logger.debug(f"✅ Updated {len(updates)} fundamental fields for {ticker}")
+                else:
+                    skipped += 1
+                    logger.debug(f"No fundamental data available from yfinance for {ticker}")
+
+                # Rate-limit: ~1 second between yfinance calls
+                time.sleep(1.0)
+
+            except Exception as e:
+                errors += 1
+                logger.warning(f"Error fetching fundamentals for {ticker}: {e}")
+                time.sleep(0.5)
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        msg = (
+            f"Fundamentals refresh: {updated} updated, {skipped} skipped "
+            f"(no data), {errors} errors, out of {len(needs_refresh)} candidates"
+        )
+        try:
+            log_job_execution(job_id, True, msg, duration_ms)
+            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=msg)
+        except Exception:
+            pass
+        logger.info(f"✅ {msg}")
+
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        msg = f"Fundamentals refresh failed: {e}"
+        try:
+            log_job_execution(job_id, False, msg, duration_ms)
+            mark_job_failed(job_id, target_date, None, str(e), duration_ms=duration_ms)
+        except Exception:
+            pass
+        logger.error(f"❌ {msg}", exc_info=True)
 
 
 def _should_alert(signals: dict[str, Any], policy: Optional[dict[str, Any]] = None) -> bool:

@@ -24,6 +24,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _ensure_float_series(series: pd.Series) -> pd.Series:
+    """Convert a Series to float64 dtype if it contains Decimal or object types.
+
+    yfinance sometimes returns Decimal values which break arithmetic with
+    plain floats (e.g. ``Decimal * float`` raises TypeError).  Converting
+    up-front avoids scattered try/except blocks in every indicator.
+    """
+    if series.dtype == object or hasattr(series.iloc[0] if len(series) > 0 else 0, 'as_tuple'):
+        return series.astype(float)
+    return series
+
+
 def calculate_rsi(df: pd.DataFrame, price_col: str = 'Close', period: int = 14) -> pd.Series:
     """
     Calculate Relative Strength Index (RSI).
@@ -41,7 +53,7 @@ def calculate_rsi(df: pd.DataFrame, price_col: str = 'Close', period: int = 14) 
             logger.warning(f"Column {price_col} not found in DataFrame")
             return pd.Series(dtype=float)
         
-        delta = df[price_col].diff()
+        delta = _ensure_float_series(df[price_col]).diff()
         gain = delta.where(delta > 0, 0)
         loss = -delta.where(delta < 0, 0)
         
@@ -127,7 +139,7 @@ def calculate_ma(df: pd.DataFrame, price_col: str = 'Close', period: int = 20) -
             logger.warning(f"Column {price_col} not found in DataFrame")
             return pd.Series(dtype=float)
         
-        return df[price_col].rolling(window=period).mean()
+        return _ensure_float_series(df[price_col]).rolling(window=period).mean()
     except Exception as e:
         logger.error(f"Error calculating MA: {e}", exc_info=True)
         return pd.Series(dtype=float)
@@ -151,7 +163,7 @@ def calculate_volatility(df: pd.DataFrame, price_col: str = 'Close', period: int
             return pd.Series(dtype=float)
         
         # Calculate returns
-        returns = df[price_col].pct_change()
+        returns = _ensure_float_series(df[price_col]).pct_change()
         
         # Calculate rolling standard deviation of returns
         volatility = returns.rolling(window=period).std()
@@ -179,7 +191,7 @@ def calculate_ema(df: pd.DataFrame, price_col: str = 'Close', period: int = 20) 
             logger.warning(f"Column {price_col} not found in DataFrame")
             return pd.Series(dtype=float)
 
-        return df[price_col].ewm(span=period, adjust=False).mean()
+        return _ensure_float_series(df[price_col]).ewm(span=period, adjust=False).mean()
     except Exception as e:
         logger.error(f"Error calculating EMA: {e}", exc_info=True)
         return pd.Series(dtype=float)
@@ -215,8 +227,9 @@ def calculate_macd(
             logger.warning(f"Column {price_col} not found in DataFrame")
             return empty
 
-        fast_ema = df[price_col].ewm(span=fast_period, adjust=False).mean()
-        slow_ema = df[price_col].ewm(span=slow_period, adjust=False).mean()
+        prices = _ensure_float_series(df[price_col])
+        fast_ema = prices.ewm(span=fast_period, adjust=False).mean()
+        slow_ema = prices.ewm(span=slow_period, adjust=False).mean()
 
         macd_line = fast_ema - slow_ema
         signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
@@ -263,13 +276,14 @@ def calculate_bollinger_bands(
             logger.warning(f"Column {price_col} not found in DataFrame")
             return empty
 
-        middle = df[price_col].rolling(window=period).mean()
-        rolling_std = df[price_col].rolling(window=period).std()
+        prices = _ensure_float_series(df[price_col])
+        middle = prices.rolling(window=period).mean()
+        rolling_std = prices.rolling(window=period).std()
         upper = middle + (rolling_std * num_std)
         lower = middle - (rolling_std * num_std)
 
         band_width = upper - lower
-        pct_b = (df[price_col] - lower) / band_width.replace(0, np.nan)
+        pct_b = (prices - lower) / band_width.replace(0, np.nan)
 
         return {
             'upper': upper,
@@ -468,8 +482,9 @@ def calculate_roc(df: pd.DataFrame, price_col: str = 'Close', period: int = 10) 
             logger.warning(f"Column {price_col} not found in DataFrame")
             return pd.Series(dtype=float)
 
-        prev = df[price_col].shift(period)
-        roc = 100 * (df[price_col] - prev) / prev.replace(0, np.nan)
+        prices = _ensure_float_series(df[price_col])
+        prev = prices.shift(period)
+        roc = 100 * (prices - prev) / prev.replace(0, np.nan)
         return roc
     except Exception as e:
         logger.error(f"Error calculating ROC: {e}", exc_info=True)
@@ -500,9 +515,10 @@ def calculate_z_score(
             logger.warning(f"Column {price_col} not found in DataFrame")
             return pd.Series(dtype=float)
 
-        sma = df[price_col].rolling(window=period).mean()
-        std = df[price_col].rolling(window=period).std()
-        z_score = (df[price_col] - sma) / std.replace(0, np.nan)
+        prices = _ensure_float_series(df[price_col])
+        sma = prices.rolling(window=period).mean()
+        std = prices.rolling(window=period).std()
+        z_score = (prices - sma) / std.replace(0, np.nan)
         return z_score
     except Exception as e:
         logger.error(f"Error calculating Z-Score: {e}", exc_info=True)
