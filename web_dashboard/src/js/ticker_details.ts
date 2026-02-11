@@ -52,7 +52,11 @@ interface ResearchArticle {
     url?: string;
     source?: string;
     published_at?: string;
+    fetched_at?: string;
     sentiment?: string;
+    sentiment_score?: number;
+    relevance_score?: number;
+    article_type?: string;
 }
 
 interface SentimentMetric {
@@ -1408,7 +1412,44 @@ async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Pr
     }
 }
 
-// Render research articles
+// Helper: format a sentiment value into a colored badge HTML string
+function sentimentBadge(sentiment: string | undefined): string {
+    if (!sentiment) return '';
+    const s = sentiment.toLowerCase();
+    if (['positive', 'bullish', 'very_bullish'].includes(s)) {
+        const label = s === 'very_bullish' ? 'Very Bullish' : 'Bullish';
+        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-success-bg text-theme-success-text border border-theme-success-text"><i class="fas fa-arrow-up mr-0.5 text-[9px]"></i>${label}</span>`;
+    }
+    if (['negative', 'bearish', 'very_bearish'].includes(s)) {
+        const label = s === 'very_bearish' ? 'Very Bearish' : 'Bearish';
+        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-error-bg text-theme-error-text border border-theme-error-text"><i class="fas fa-arrow-down mr-0.5 text-[9px]"></i>${label}</span>`;
+    }
+    if (['neutral', 'mixed'].includes(s)) {
+        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-warning-bg text-theme-warning-text border border-theme-warning-text">${sentiment.charAt(0).toUpperCase() + sentiment.slice(1)}</span>`;
+    }
+    return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-text-primary border border-border">${sentiment.charAt(0).toUpperCase() + sentiment.slice(1)}</span>`;
+}
+
+// Helper: relative time string (e.g. "2d ago", "5h ago")
+function relativeTime(dateStr: string | undefined): string {
+    if (!dateStr) return '';
+    try {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        if (diffMins < 60) return `${diffMins}m ago`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `${diffHours}h ago`;
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffDays < 30) return `${diffDays}d ago`;
+        return formatDate(dateStr);
+    } catch {
+        return formatDate(dateStr);
+    }
+}
+
+// Render research articles — compact row-based layout
 function renderResearchArticles(articles: ResearchArticle[]): void {
     if (!articles || articles.length === 0) {
         return;
@@ -1420,51 +1461,69 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
     section.classList.remove('hidden');
 
     const countEl = document.getElementById('research-count');
-    if (countEl) countEl.textContent = `Found ${articles.length} articles tagged with ${currentTicker} (last 30 days)`;
+    if (countEl) countEl.textContent = `${articles.length} articles for ${currentTicker} (last 30 days)`;
 
     const list = document.getElementById('research-articles-list');
     if (!list) return;
 
+    // Build a compact table-like list
     list.innerHTML = '';
+    list.className = 'divide-y divide-border rounded-lg border border-border overflow-hidden';
 
-    articles.slice(0, 10).forEach(article => {
-        const articleDiv = document.createElement('div');
-        articleDiv.className = 'border-b border-gray-200 py-4';
-
+    articles.slice(0, 15).forEach(article => {
         const title = article.title || 'Untitled';
         const summary = article.summary || '';
-        const url = article.url || '#';
-        const source = article.source || 'Unknown';
-        const publishedAt = formatDate(article.published_at);
-        const sentiment = article.sentiment || 'N/A';
+        const url = article.url || '';
+        const source = article.source || '';
+        const articleType = article.article_type || '';
+        const dateStr = article.published_at || article.fetched_at || '';
+        const relTime = relativeTime(dateStr);
+        const sentBadge = sentimentBadge(article.sentiment);
+        const rowId = `article-row-${article.id || Math.random().toString(36).substr(2, 9)}`;
 
-        const summaryId = `summary-${article.id || Math.random().toString(36).substr(2, 9)}`;
-        const isLongSummary = summary.length > 500;
-        const shortSummary = isLongSummary ? summary.substring(0, 500) + '...' : summary;
+        // Truncate summary for the expandable preview
+        const previewSummary = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
 
-        articleDiv.innerHTML = `
-            <details class="cursor-pointer">
-                <summary class="font-semibold text-accent hover:text-accent-hover">${title}</summary>
-                <div class="mt-2 pl-4">
-                    <div id="${summaryId}-short" class="text-text-primary mb-2">${shortSummary}</div>
-                    ${isLongSummary ? `
-                        <div id="${summaryId}-full" class="hidden text-text-primary mb-2 whitespace-pre-wrap">${summary}</div>
-                        <button onclick="window.toggleSummary('${summaryId}')" class="text-accent hover:text-accent-hover text-sm font-medium mb-2">
-                            <span id="${summaryId}-toggle">Show Full Summary</span>
-                        </button>
-                    ` : ''}
-                    <div class="flex justify-between items-center text-sm text-text-secondary">
-                        <div>
-                            <span>Source: ${source}</span>
-                            ${publishedAt ? `<span class="ml-4">Published: ${publishedAt}</span>` : ''}
-                            ${sentiment !== 'N/A' ? `<span class="ml-4">Sentiment: ${sentiment}</span>` : ''}
-                        </div>
-                        <a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover">Read Full Article →</a>
+        const row = document.createElement('div');
+        row.className = 'bg-dashboard-surface hover:bg-dashboard-surface-alt transition-colors duration-150';
+
+        row.innerHTML = `
+            <div class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" onclick="document.getElementById('${rowId}').classList.toggle('hidden')">
+                <i id="${rowId}-chevron" class="fas fa-chevron-right text-[10px] text-text-tertiary transition-transform duration-200 w-3 shrink-0"></i>
+                ${source ? `<span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-info-bg text-theme-info-text border border-theme-info-text shrink-0">${source}</span>` : ''}
+                ${articleType ? `<span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-text-secondary border border-border shrink-0">${articleType}</span>` : ''}
+                ${sentBadge}
+                <span class="text-sm font-medium text-text-primary truncate flex-1 min-w-0">${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hover:text-accent hover:underline" onclick="event.stopPropagation()">${title}</a>` : title}</span>
+                <span class="text-[11px] text-text-tertiary whitespace-nowrap shrink-0 ml-auto">${relTime}</span>
+                ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-text-tertiary hover:text-accent shrink-0 ml-1" onclick="event.stopPropagation()" title="Open article"><i class="fas fa-external-link-alt text-[10px]"></i></a>` : ''}
+            </div>
+            <div id="${rowId}" class="hidden px-3 pb-3 pt-0">
+                <div class="ml-5 pl-3 border-l-2 border-border">
+                    ${summary ? `<p class="text-sm text-text-secondary leading-relaxed whitespace-pre-line">${previewSummary}</p>` : '<p class="text-sm text-text-tertiary italic">No summary available.</p>'}
+                    <div class="flex items-center gap-3 mt-2 text-[11px] text-text-tertiary">
+                        ${dateStr ? `<span><i class="far fa-calendar-alt mr-1"></i>${formatDate(dateStr)}</span>` : ''}
+                        ${article.sentiment_score != null ? `<span>Score: ${(article.sentiment_score * 100).toFixed(0)}%</span>` : ''}
+                        ${article.relevance_score != null ? `<span>Relevance: ${(article.relevance_score * 100).toFixed(0)}%</span>` : ''}
+                        ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover hover:underline ml-auto">Read full article <i class="fas fa-arrow-right text-[9px] ml-0.5"></i></a>` : ''}
                     </div>
                 </div>
-            </details>
+            </div>
         `;
-        list.appendChild(articleDiv);
+
+        // Toggle chevron rotation on expand/collapse
+        row.querySelector(`[onclick]`)?.addEventListener('click', () => {
+            const chevron = document.getElementById(`${rowId}-chevron`);
+            const detail = document.getElementById(rowId);
+            if (chevron && detail) {
+                if (detail.classList.contains('hidden')) {
+                    chevron.style.transform = '';
+                } else {
+                    chevron.style.transform = 'rotate(90deg)';
+                }
+            }
+        });
+
+        list.appendChild(row);
     });
 }
 

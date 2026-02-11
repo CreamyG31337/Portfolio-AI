@@ -1796,6 +1796,7 @@ function renderActionQueue(data: ActionQueueData): void {
                     <a href="/ticker?ticker=${encodeURIComponent(item.ticker)}" class="hover:text-accent hover:underline">${safeTicker}</a>
                     ${item.is_held ? '<span class="ml-1 text-xs text-text-tertiary">(held)</span>' : ''}
                 </td>
+                <td class="px-4 py-3 text-text-secondary text-xs max-w-[180px] truncate" title="${escapeHtml(item.company_name || '')}">${escapeHtml(item.company_name || '')}</td>
                 <td class="px-4 py-3">
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${actionClass}">
                         ${safeAction}
