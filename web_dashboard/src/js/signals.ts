@@ -287,9 +287,9 @@ function initializeSignalsGrid(data: SignalRow[]): void {
             },
             cellStyle: (params: any) => {
                 const val = params.value || 0;
-                if (val >= 0.7) {
+                if (val >= 0.6) {
                     return { color: 'var(--color-success-text)', fontWeight: 'bold' }; // green
-                } else if (val >= 0.5) {
+                } else if (val >= 0.4) {
                     return { color: 'var(--color-warning-text)', fontWeight: 'bold' }; // yellow
                 } else {
                     return { color: 'var(--color-error-text)', fontWeight: 'bold' }; // red

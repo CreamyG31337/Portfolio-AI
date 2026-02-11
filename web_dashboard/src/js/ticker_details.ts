@@ -2216,13 +2216,20 @@ function renderSignals(signals: SignalAnalysis): void {
 // Helper: color-code a score element by value
 function colorScoreEl(el: HTMLElement, score: number): void {
     el.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500');
-    if (score >= 0.7) {
+    if (score >= 0.6) {
         el.classList.add('text-green-500');
-    } else if (score >= 0.5) {
+    } else if (score >= 0.4) {
         el.classList.add('text-yellow-500');
     } else {
         el.classList.add('text-red-500');
     }
+}
+
+// Helper: get bar color class for a score value
+function barColorClass(score: number): string {
+    if (score >= 0.6) return 'bg-green-500';
+    if (score >= 0.4) return 'bg-yellow-500';
+    return 'bg-red-500';
 }
 
 function fmtPct(v: number | undefined | null): string {
@@ -2269,9 +2276,7 @@ function renderMomentumSignal(momentum: any): void {
     if (compositeBar) {
         compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
         compositeBar.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-accent');
-        if (score >= 0.7) compositeBar.classList.add('bg-green-500');
-        else if (score >= 0.5) compositeBar.classList.add('bg-yellow-500');
-        else compositeBar.classList.add('bg-red-500');
+        compositeBar.classList.add(barColorClass(score));
     }
 
     // Trend Following
@@ -2381,9 +2386,7 @@ function renderFundamentalSignal(fundamental: any): void {
     if (compositeBar) {
         compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
         compositeBar.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-accent');
-        if (score >= 0.7) compositeBar.classList.add('bg-green-500');
-        else if (score >= 0.5) compositeBar.classList.add('bg-yellow-500');
-        else compositeBar.classList.add('bg-red-500');
+        compositeBar.classList.add(barColorClass(score));
     }
 
     // Metrics count
