@@ -322,7 +322,7 @@ class TickerAnalysisService:
         except Exception as e:
             logger.warning(f"Error fetching research articles for {ticker}: {e}")
             return []
-    
+
     def _get_social_sentiment(self, ticker: str, start_date: datetime) -> Dict:
         """Get social sentiment for this ticker.
         
@@ -495,18 +495,21 @@ class TickerAnalysisService:
         start_date = end_date - timedelta(days=self.LOOKBACK_DAYS)
         
         logger.info(f"Gathering data for {ticker} (last {self.LOOKBACK_DAYS} days)")
-        
+
+        fundamentals = self._get_fundamentals(ticker)
+        articles = self._get_research_articles(ticker, start_date)
+
         return {
             'ticker': ticker.upper(),
             'start_date': start_date,
             'end_date': end_date,
-            'fundamentals': self._get_fundamentals(ticker),
+            'fundamentals': fundamentals,
             'price_data': self._get_price_data(ticker, self.LOOKBACK_DAYS),
             'etf_changes': self._get_etf_changes(ticker, start_date),
             'congress_trades': self._get_congress_trades(ticker, start_date),
             'insider_trades': self._get_insider_trades(ticker, start_date),
             'signals': self._get_latest_signals(ticker),
-            'research_articles': self._get_research_articles(ticker, start_date),
+            'research_articles': articles,
             'social_sentiment': self._get_social_sentiment(ticker, start_date),
         }
     
@@ -697,9 +700,88 @@ class TickerAnalysisService:
         lines.append(f"Structure - Trend: {trend}, Pullback: {pullback}, Breakout: {breakout}")
         lines.append(f"Timing - Volume: {volume_str}, RSI: {rsi_str}, CCI: {cci_str}")
         lines.append(f"Fear & Risk - Level: {fear_level}, Score: {risk_score_str}, Rec: {recommendation}")
-        
+
+        # Momentum signal (from momentum_signal JSONB column)
+        momentum = signals.get('momentum_signal') or signals.get('momentum') or {}
+        if momentum and momentum.get('bias'):
+            mom_bias = momentum.get('bias', 'N/A')
+            mom_score = momentum.get('composite_score')
+            mom_score_str = f"{mom_score:.0%}" if mom_score is not None else "N/A"
+            # Sub-category scores
+            cats = momentum.get('categories', {})
+            trend_score = cats.get('trend_following', {}).get('score')
+            osc_score = cats.get('oscillators', {}).get('score')
+            mean_rev = cats.get('mean_reversion', {}).get('score')
+            parts = [f"Bias: {mom_bias}", f"Score: {mom_score_str}"]
+            if trend_score is not None:
+                parts.append(f"Trend: {trend_score:.0%}")
+            if osc_score is not None:
+                parts.append(f"Oscillators: {osc_score:.0%}")
+            if mean_rev is not None:
+                parts.append(f"MeanRev: {mean_rev:.0%}")
+            lines.append(f"Momentum - {', '.join(parts)}")
+
+        # Fundamental signal (from fundamental_signal JSONB column)
+        fundamental = signals.get('fundamental_signal') or signals.get('fundamental') or {}
+        if fundamental and fundamental.get('quality'):
+            fund_quality = fundamental.get('quality', 'N/A')
+            fund_score = fundamental.get('composite_score')
+            fund_score_str = f"{fund_score:.0%}" if fund_score is not None else "N/A"
+            fund_metrics = fundamental.get('metrics_available', 0)
+            cats = fundamental.get('categories', {})
+            prof = cats.get('profitability', {}).get('score')
+            growth = cats.get('growth', {}).get('score')
+            health = cats.get('financial_health', {}).get('score')
+            val = cats.get('valuation', {}).get('score')
+            parts = [f"Quality: {fund_quality}", f"Score: {fund_score_str}", f"Metrics: {fund_metrics}"]
+            if prof is not None:
+                parts.append(f"Profitability: {prof:.0%}")
+            if growth is not None:
+                parts.append(f"Growth: {growth:.0%}")
+            if health is not None:
+                parts.append(f"Health: {health:.0%}")
+            if val is not None:
+                parts.append(f"Valuation: {val:.0%}")
+            lines.append(f"Fundamentals - {', '.join(parts)}")
+
         return "\n".join(lines)
-    
+
+    def _format_cross_source_summary(self, ticker: str) -> str:
+        """Build a cross-source summary using the ticker state builder.
+
+        Returns an empty string if the state builder fails or produces no
+        useful output, so the analysis degrades gracefully.
+        """
+        if not ticker:
+            return ""
+        try:
+            from web_dashboard.ticker_state import build_ticker_state, summarize_ticker_state
+
+            state = build_ticker_state(
+                ticker,
+                self.supabase,
+                postgres_client=self.postgres,
+                lookback_days=self.LOOKBACK_DAYS,
+            )
+            summary = summarize_ticker_state(state)
+            if not summary or not summary.strip():
+                return ""
+
+            lines = ["[ Cross-Source Summary ]", summary]
+
+            # Append detailed conflict list if any
+            conflicts = state.get("conflicts", [])
+            if conflicts:
+                lines.append("")
+                lines.append("Detected conflicts:")
+                for c in conflicts:
+                    lines.append(f"  - {c}")
+
+            return "\n".join(lines)
+        except Exception as e:
+            logger.debug("Cross-source summary unavailable for %s: %s", ticker, e)
+            return ""
+
     def _format_articles(self, articles: List[Dict]) -> str:
         """Format research articles.
         
@@ -856,7 +938,12 @@ class TickerAnalysisService:
             sentiment_text = self._format_social_sentiment(data['social_sentiment'])
             if sentiment_text:
                 sections.append(sentiment_text)
-        
+
+        # Cross-source summary (ticker state builder)
+        cross_source = self._format_cross_source_summary(data.get('ticker', ''))
+        if cross_source:
+            sections.append(cross_source)
+
         return "\n\n---\n\n".join(sections) if sections else "No data available for this ticker."
     
     def analyze_ticker(

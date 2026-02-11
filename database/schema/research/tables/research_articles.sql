@@ -26,7 +26,8 @@ CREATE TABLE research_articles (
     archive_submitted_at TIMESTAMP,
     archive_checked_at TIMESTAMP,
     archive_url TEXT,
-    ticker_sentiment JSONB
+    ticker_sentiment JSONB,
+    ticker_validated_at TIMESTAMP
 ,
     PRIMARY KEY (id)
 );
@@ -34,6 +35,7 @@ CREATE TABLE research_articles (
 -- Indexes
 CREATE INDEX idx_research_articles_archive_submitted ON research_articles (archive_submitted_at);
 CREATE INDEX idx_research_articles_archive_url ON research_articles (archive_url);
+CREATE INDEX idx_research_articles_unvalidated ON research_articles (fetched_at DESC) WHERE ticker_validated_at IS NULL AND tickers IS NOT NULL;
 CREATE INDEX idx_research_claims ON research_articles (claims);
 CREATE INDEX idx_research_fetched ON research_articles (fetched_at);
 CREATE INDEX idx_research_fund ON research_articles (fund);

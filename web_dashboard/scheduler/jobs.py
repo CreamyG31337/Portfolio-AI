@@ -210,6 +210,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'hour': 3, 'minute': 30, 'timezone': 'America/New_York'}  # 3:30 AM ET - off-peak
         ]
     },
+    'article_relevance': {
+        'name': '🔍 Article Relevance Validation',
+        'description': 'Validate ticker assignments on research articles using GLM 4.5-air to remove incorrect tags',
+        'default_interval_minutes': 1440,  # Daily
+        'enabled_by_default': True,
+        'icon': '🔍',
+        'cron_triggers': [
+            {'hour': 4, 'minute': 0, 'timezone': 'America/New_York'}  # 4:00 AM ET - after scraping jobs
+        ]
+    },
     'congress_trades': {
         'name': '🏛️ Congress Trade Fetch',
         'description': 'Fetch and analyze congressional stock trades from FMP API',
@@ -573,6 +583,9 @@ from scheduler.jobs_securities import refresh_securities_metadata_job
 # Import signals jobs
 from scheduler.jobs_signals import signal_scan_job, fundamentals_refresh_job
 
+# Import article relevance job
+from scheduler.jobs_article_relevance import article_relevance_job
+
 # Import thesis update job
 from scheduler.thesis_update_job import thesis_update_job
 
@@ -632,6 +645,8 @@ __all__ = [
     # Signals jobs
     'signal_scan_job',
     'fundamentals_refresh_job',
+    # Article relevance job
+    'article_relevance_job',
     # Thesis update job
     'thesis_update_job',
     # Rebalance recommendation jobs
@@ -1225,6 +1240,26 @@ def register_default_jobs(scheduler) -> None:
                 coalesce=True
             )
             logger.info("Registered job: fundamentals_refresh (every 1440 minutes - daily)")
+
+    # Article relevance validation job - daily at 4:00 AM ET
+    if AVAILABLE_JOBS['article_relevance']['enabled_by_default']:
+        ar_triggers = AVAILABLE_JOBS['article_relevance'].get('cron_triggers', [])
+        if ar_triggers:
+            ar_trigger = ar_triggers[0]
+            scheduler.add_job(
+                article_relevance_job,
+                trigger=CronTrigger(
+                    hour=ar_trigger.get('hour', 4),
+                    minute=ar_trigger.get('minute', 0),
+                    timezone=ar_trigger.get('timezone', 'America/New_York')
+                ),
+                id='article_relevance',
+                name=f"{get_job_icon('article_relevance')} Article Relevance Validation",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: article_relevance (daily at 4:00 AM ET)")
 
     # Social sentiment AI analysis job - every 2 hours
     # DISABLED: Redundant with inline analysis in fetch_social_sentiment_job

@@ -251,9 +251,13 @@ Provide a comprehensive, ACTIONABLE analysis of this ticker based on the availab
 Analyze:
 1. **Price Action**: Current trend, key support/resistance levels from the OHLCV data
 2. **Institutional Activity**: ETF accumulation/distribution patterns
-3. **Smart Money Signals**: Congressional trading activity and timing
+3. **Smart Money Signals**: Congressional trading activity and insider transactions
 4. **Catalysts**: Upcoming events, news themes, or triggers from research articles
 5. **Sentiment**: Social sentiment trends and extreme readings
+6. **Momentum & Fundamentals**: Momentum bias and composite score, fundamental quality assessment and key ratios (if available in Technical Signals section)
+7. **Cross-Source Conflicts**: Address any flagged conflicts between data sources in the Cross-Source Summary (e.g., bullish momentum vs weak fundamentals, insider selling vs buy signal). These divergences are especially important to highlight.
+
+If research articles seem irrelevant to {ticker}, ignore them and note the lack of relevant news coverage.
 
 Based on this analysis, provide a trading stance with specific levels.
 

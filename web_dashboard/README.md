@@ -2,6 +2,8 @@
 
 A secure, multi-user web dashboard for tracking trading bot portfolio performance with Supabase backend.
 
+![Portfolio Dashboard Overview](docs/images/dashboard_overview.png)
+
 ## 🚀 Quick Start
 
 ### 1. Database Setup (One Command)
@@ -33,6 +35,8 @@ vercel --prod
 ```
 
 ## 🔐 User Authentication
+
+![Secure Login Page](docs/images/login_page.png)
 
 - **Secure Login/Register** - Professional UI with Supabase Auth
 - **Fund-Based Access** - Users only see their assigned funds
@@ -106,10 +110,19 @@ Anon Key: your-anon-key-here
 - **Session Management** - JWT tokens with expiration
 
 ### Admin Tools
+
+![Admin Settings Panel](docs/images/settings_page.png)
 - **Fund Assignment** - Assign funds to users
 - **User Management** - List and manage users
 - **Data Migration** - Import from CSV files
 - **Scheduled Tasks** - Background job management
+
+### AI Research Integration
+- **Automated Research** - AI-driven news collection and summarization
+- **Semantic Search** - Find relevant articles efficiently
+- **Dark Mode Optimized** - Easy on the eyes for late-night research
+
+![AI Research Hub with Dark Mode](docs/images/ai_research_page.png)
 
 ### UI Framework (Flask Pages)
 - **Tailwind CSS** (v3.4.1) - Primary CSS framework (utility-first styling)
@@ -119,6 +132,9 @@ Anon Key: your-anon-key-here
 - **Hamburger Navigation** - Collapsible sidebar on mobile devices
 - **User Menu Dropdown** - Quick access to Settings and Logout
 - **See `AGENTS.md`** for complete frontend CSS & UI component standards and guidelines
+
+![Stunning Dark Mode](docs/images/dashboard_dark.png)
+*Stunning Dark Mode - Easy on the Eyes*
 
 ### Multi-Investor Features
 - **NAV-Based Tracking** - Accurate per-investor returns using Net Asset Value
