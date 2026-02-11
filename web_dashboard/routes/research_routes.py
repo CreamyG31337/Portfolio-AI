@@ -77,9 +77,14 @@ def _is_likely_junk(article: Dict[str, Any]) -> bool:
     tickers = _normalize_article_tickers(article)
 
     # Category 1: no tickers at all on a web-scraped article = junk
+    # BUT: if ticker_validated_at is set, the article was reviewed by GLM and
+    # intentionally kept as macro/sector news -- don't flag those as junk
     if not tickers:
         # Reddit posts without tickers might still be useful (community discussion)
         if source == "Reddit" or article_type == "Reddit Discovery":
+            return False
+        # Articles validated by GLM/reprocessor are intentionally tickerless (macro news)
+        if article.get("ticker_validated_at"):
             return False
         return True
 
@@ -879,9 +884,11 @@ def delete_junk_articles_endpoint():
         # Delete tickerless web articles (same logic as _is_likely_junk category 1)
         # Protected types: ETF Change, ETF Analysis, Newsletter, Seeking Alpha Symbol
         # Protected sources: Reddit
+        # Protected: articles with ticker_validated_at set (GLM-reviewed macro/sector news)
         result = pg.execute_query("""
             DELETE FROM research_articles
             WHERE (tickers IS NULL OR tickers = '{}')
+              AND ticker_validated_at IS NULL
               AND COALESCE(article_type, '') NOT IN (
                   'ETF Change', 'ETF Analysis', 'Newsletter', 'Seeking Alpha Symbol'
               )
