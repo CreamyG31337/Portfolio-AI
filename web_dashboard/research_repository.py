@@ -206,10 +206,12 @@ class ResearchRepository:
                     INSERT INTO research_articles (
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, embedding, fund,
-                        claims, fact_check, conclusion, sentiment, sentiment_score, logic_check
+                        claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
+                        ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s,
-                        %s::jsonb, %s, %s, %s, %s, %s
+                        %s::jsonb, %s, %s, %s, %s, %s,
+                        NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -229,6 +231,7 @@ class ResearchRepository:
                         sentiment = EXCLUDED.sentiment,
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
+                        ticker_validated_at = NOW(),
                         fetched_at = CURRENT_TIMESTAMP
                     RETURNING id
                 """
@@ -257,10 +260,12 @@ class ResearchRepository:
                     INSERT INTO research_articles (
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, fund,
-                        claims, fact_check, conclusion, sentiment, sentiment_score, logic_check
+                        claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
+                        ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s::jsonb, %s, %s, %s, %s, %s
+                        %s::jsonb, %s, %s, %s, %s, %s,
+                        NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -279,6 +284,7 @@ class ResearchRepository:
                         sentiment = EXCLUDED.sentiment,
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
+                        ticker_validated_at = NOW(),
                         fetched_at = CURRENT_TIMESTAMP
                     RETURNING id
                 """
@@ -757,6 +763,10 @@ class ResearchRepository:
                 ts_json = json.dumps(ticker_sentiment) if ticker_sentiment else None
                 updates.append("ticker_sentiment = %s::jsonb")
                 params.append(ts_json)
+
+            # Mark tickers as validated whenever analysis is updated
+            # (reprocess is an explicit human action)
+            updates.append("ticker_validated_at = NOW()")
 
             if not updates:
                 logger.warning(f"No fields to update for article {article_id}")
