@@ -81,11 +81,16 @@ def _is_likely_junk(article: Dict[str, Any]) -> bool:
     if not tickers:
         if source == "Reddit" or article_type == "Reddit Discovery":
             return False
-        # Articles validated by GLM/reprocessor are intentionally tickerless
-        if article.get("ticker_validated_at"):
-            return False
-        # High relevance articles are likely useful sector/macro news
         relevance = article.get("relevance_score")
+        # Articles validated by GLM/reprocessor with decent relevance are
+        # intentionally tickerless macro/sector news — protect them.
+        # But validated articles with very low relevance (<=0.1) were
+        # explicitly classified as junk by the reprocessor.
+        if article.get("ticker_validated_at"):
+            if relevance is not None and float(relevance) <= 0.1:
+                return True  # Confirmed junk by reprocessor
+            return False  # Legitimate macro news
+        # High relevance articles are likely useful sector/macro news
         if relevance is not None and float(relevance) > 0.3:
             return False
         return True
@@ -884,17 +889,25 @@ def delete_junk_articles_endpoint():
         pg = PostgresClient()
 
         # Delete tickerless web articles (same logic as _is_likely_junk category 1)
-        # Protected: ETF/Newsletter types, Reddit, GLM-validated, high relevance
+        # Two sub-cases:
+        #   A) Never validated, low relevance (original pipeline junk)
+        #   B) Validated by reprocessor with very low relevance (confirmed junk)
+        # Protected: ETF/Newsletter types, Reddit sources
         result = pg.execute_query("""
             DELETE FROM research_articles
             WHERE (tickers IS NULL OR tickers = '{}')
-              AND ticker_validated_at IS NULL
-              AND COALESCE(relevance_score, 0) <= 0.3
               AND COALESCE(article_type, '') NOT IN (
                   'ETF Change', 'ETF Analysis', 'Newsletter', 'Seeking Alpha Symbol'
               )
               AND COALESCE(source, '') != 'Reddit'
               AND article_type != 'Reddit Discovery'
+              AND (
+                  -- Case A: never validated, low relevance
+                  (ticker_validated_at IS NULL AND COALESCE(relevance_score, 0) <= 0.3)
+                  OR
+                  -- Case B: reprocessor explicitly marked as junk (relevance=0.05)
+                  (ticker_validated_at IS NOT NULL AND COALESCE(relevance_score, 0) <= 0.1)
+              )
             RETURNING id
         """)
         deleted_count = len(result) if result else 0
