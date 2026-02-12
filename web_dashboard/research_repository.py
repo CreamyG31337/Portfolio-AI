@@ -1241,6 +1241,7 @@ class ResearchRepository:
                        claims, fact_check, conclusion, sentiment, sentiment_score,
                        logic_check, ticker_sentiment,
                        archive_url, archive_submitted_at, archive_checked_at,
+                       ticker_validated_at,
                        (embedding IS NOT NULL) as has_embedding
                 FROM research_articles
                 WHERE fetched_at >= %s AND fetched_at <= %s
@@ -1332,6 +1333,7 @@ class ResearchRepository:
                        claims, fact_check, conclusion, sentiment, sentiment_score,
                        logic_check, ticker_sentiment,
                        archive_url, archive_submitted_at, archive_checked_at,
+                       ticker_validated_at,
                        (embedding IS NOT NULL) as has_embedding
                 FROM research_articles
                 WHERE 1=1
