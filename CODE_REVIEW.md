@@ -61,3 +61,22 @@ This is a race condition waiting to happen. If the grid renders slower than 300m
 1.  **IMMEDIATE:** Replace `eval()` with `ast.literal_eval()` in `web_dashboard/scheduler/jobs_insiders.py`.
 2.  **HIGH:** Add server-side pagination to `api_insider_trades_data` or strictly limit the default date range to prevent massive payloads.
 3.  **MEDIUM:** Refactor `setTimeout` in frontend grid initialization.
+
+## Code Review - Thu Feb 12 15:16:19 UTC 2026
+
+### Commit 4d732f7
+**Subject:** fix(research): Set ticker_validated_at on manual save and reprocess to protect from junk filter
+
+**Summary:**
+The commit introduces a mechanism to protect validated research articles from accidental deletion by the automated junk filter.
+
+**Key Changes:**
+1. **Database:** Added `ticker_validated_at` timestamp updates in `research_repository.py` on manual save/reprocess.
+2. **Routes:** Updated `research_routes.py` to exempt articles with `ticker_validated_at` from junk filtering unless explicitly confirmed as junk (relevance <= 0.1).
+3. **Scheduler:** Added `jobs_article_relevance.py` to automatically validate unvalidated articles using GLM-4.5-air.
+
+**Feedback:**
+- **Correctness:** Logic correctly implements the requested feature.
+- **Robustness:** Includes failsafe in automation job to prevent stuck retries.
+- **Performance:** Batch processing is efficient.
+- **Suggestion:** Monitor logs for GLM failures.
