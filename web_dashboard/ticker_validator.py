@@ -367,6 +367,24 @@ def extract_and_validate_tickers(
         # 1. Direct tickers from LLM
         ai_tickers = list(summary_data.get("tickers", []))
 
+        # 1b. Cross-check against ticker_sentiment — tickers the LLM couldn't
+        #     write a sentiment reason for are likely sidebar/ad noise.
+        ticker_sentiments = summary_data.get("ticker_sentiment", [])
+        if isinstance(ticker_sentiments, list) and ticker_sentiments and ai_tickers:
+            sentiment_tickers = set()
+            for ts in ticker_sentiments:
+                if isinstance(ts, dict) and ts.get("ticker"):
+                    sentiment_tickers.add(ts["ticker"].upper().strip().lstrip("$"))
+            if sentiment_tickers:
+                filtered = [t for t in ai_tickers if t.upper().strip().lstrip("$") in sentiment_tickers]
+                dropped = set(ai_tickers) - set(filtered)
+                if dropped:
+                    logger.info(
+                        "Dropped %d ticker(s) with no ticker_sentiment entry (likely sidebar noise): %s",
+                        len(dropped), sorted(dropped),
+                    )
+                ai_tickers = filtered
+
         # 2. Infer from company names
         companies = summary_data.get("companies", [])
         try:

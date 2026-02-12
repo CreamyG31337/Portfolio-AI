@@ -96,6 +96,9 @@ def _is_likely_junk(article: Dict[str, Any]) -> bool:
         return True
 
     # Category 2: has tickers but none appear in article text = mislabeled
+    # Skip if tickers were explicitly validated by the reprocessor/pipeline
+    if article.get("ticker_validated_at"):
+        return False
     text = _article_text_to_check(article)
     if not text:
         return False

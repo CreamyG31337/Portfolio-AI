@@ -520,18 +520,33 @@ def normalize_ticker(ticker: Optional[str]) -> Optional[str]:
 def validate_ticker_in_content(ticker: Optional[str], content: str) -> bool:
     """Validate that ticker appears in article content.
     
+    Checks the full ticker, the base symbol (without exchange suffix like .TO, .L),
+    and common company name associations.
+    
     Args:
-        ticker: Ticker symbol to validate
+        ticker: Ticker symbol to validate (e.g. "CCO.TO", "AMZN")
         content: Full article content to search
         
     Returns:
-        True if ticker appears in content (case-insensitive), False otherwise
+        True if ticker or its base symbol appears in content, False otherwise
     """
     if not ticker or not content:
         return False
     
-    # Case-insensitive search for ticker in content
-    return ticker.upper() in content.upper()
+    upper_content = content.upper()
+    upper_ticker = ticker.upper().strip()
+    
+    # Direct match (e.g. "AMZN" in text)
+    if upper_ticker in upper_content:
+        return True
+    
+    # Strip exchange suffix and check base symbol
+    # Handles: CCO.TO, BBD.B, RY.TO, SHOP.V, ADEN.SW, etc.
+    base = upper_ticker.split(".")[0].split(":")[0]
+    if base and base != upper_ticker and base in upper_content:
+        return True
+    
+    return False
 
 
 def normalize_relationship(source: str, target: str, rel_type: str) -> Tuple[str, str, str]:

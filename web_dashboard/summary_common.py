@@ -498,7 +498,11 @@ This is especially important for comparative articles (e.g., "Stock A vs Stock B
 
 EXTRACTION REQUIREMENTS:
 1. Generate a comprehensive summary with 5-7+ bullet points covering all key information
-2. Extract all stock ticker symbols mentioned (e.g., HOOD, NVDA, AAPL, XMA.TO)
+2. Extract stock ticker symbols ONLY for companies that are SUBSTANTIVELY DISCUSSED in the article
+   - CRITICAL: Only include tickers for companies the article is ABOUT or ANALYZES in detail.
+   - Do NOT extract tickers for companies that are merely mentioned in passing (e.g., "unlike Amazon..." in an article about a different company). The company must be a SUBJECT of the article.
+   - The scraped text may contain noise from the webpage (related articles, trending tickers, other stories). Focus on what the article is actually analyzing, not stray ticker mentions.
+   - Each ticker you extract MUST appear in your summary bullet points AND in ticker_sentiment with a reason. If you can't write a sentiment reason for it, don't include it.
    - Tickers are SHORT symbols (1-10 characters), typically 1-5 uppercase letters
    - May include exchange suffixes like .TO, .V, .CN, .TSX
    - Do NOT extract company names (e.g., "Apple Inc" is NOT a ticker, "AAPL" is)
