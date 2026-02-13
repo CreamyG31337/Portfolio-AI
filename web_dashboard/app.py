@@ -4259,7 +4259,7 @@ def get_congress_trades_cached(
         if needs_post_filter:
             # For analysis-based filters, we must fetch all matching trades first, then filter and paginate
             query = _supabase_client.supabase.table("congress_trades_enriched").select(
-                "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner"
+                "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner, pct_change"
             )
             query = apply_filters(query)
             query = query.order("transaction_date", desc=True).order("id", desc=True)
@@ -4355,7 +4355,7 @@ def get_congress_trades_cached(
 
         # Get paginated data
         query = _supabase_client.supabase.table("congress_trades_enriched").select(
-            "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner"
+            "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner, pct_change"
         )
         query = apply_filters(query)
         query = query.order(sort_column, desc=(sort_direction == "desc")).order(
