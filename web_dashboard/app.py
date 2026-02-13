@@ -4250,6 +4250,9 @@ def get_congress_trades_cached(
         if sort_direction not in ("asc", "desc"):
             sort_direction = "desc"
 
+        # NULLs should always sort last so that real data appears first
+        sort_nullsfirst = False
+
         # Get analysis data for filtering (needed for analyzed_only and score filters)
         analysis_map = get_analysis_data_congress(_postgres_client, refresh_key) if _postgres_client else {}
 
@@ -4328,16 +4331,23 @@ def get_congress_trades_cached(
                     return value or ""
                 if sort_column == "amount":
                     return _parse_amount_max(value)
+                if sort_column == "pct_change":
+                    try:
+                        return float(value) if value is not None else None
+                    except (ValueError, TypeError):
+                        return None
                 if isinstance(value, str):
                     return value.lower()
-                if value is None:
-                    return ""
-                return value
+                return value or ""
 
-            filtered_trades.sort(
+            # Separate NULLs so they always sort last regardless of direction
+            null_trades = [t for t in filtered_trades if _sort_key(t) is None]
+            non_null_trades = [t for t in filtered_trades if _sort_key(t) is not None]
+            non_null_trades.sort(
                 key=_sort_key,
                 reverse=(sort_direction == "desc")
             )
+            filtered_trades = non_null_trades + null_trades
 
             total = len(filtered_trades)
             page_trades = filtered_trades[offset:offset + limit]
@@ -4358,7 +4368,7 @@ def get_congress_trades_cached(
             "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner, pct_change"
         )
         query = apply_filters(query)
-        query = query.order(sort_column, desc=(sort_direction == "desc")).order(
+        query = query.order(sort_column, desc=(sort_direction == "desc"), nullsfirst=sort_nullsfirst).order(
             "id", desc=(sort_direction == "desc")
         )
         query = query.range(offset, offset + limit - 1)

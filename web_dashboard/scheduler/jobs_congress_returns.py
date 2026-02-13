@@ -330,17 +330,18 @@ def compute_congress_trade_returns_job() -> None:
         logger.info("Congress trade returns job started")
 
         # ------------------------------------------------------------------
-        # Step 1: Fetch all trades that have a price (entry price exists)
+        # Step 1: Fetch all trades (entry prices come from yfinance, not
+        #         the congress_trades.price column which may be NULL for
+        #         newer imports)
         # ------------------------------------------------------------------
-        logger.info("Step 1: Fetching congress trades with entry prices...")
+        logger.info("Step 1: Fetching all congress trades...")
         # Fetch in pages of 1000 to avoid Supabase limits
         all_trades: List[dict] = []
         page_size = 1000
         offset = 0
         while True:
             resp = client.supabase.table("congress_trades") \
-                .select("id, ticker, transaction_date, price, amount") \
-                .not_.is_("price", "null") \
+                .select("id, ticker, transaction_date, amount") \
                 .range(offset, offset + page_size - 1) \
                 .execute()
             batch = resp.data or []
@@ -349,10 +350,10 @@ def compute_congress_trade_returns_job() -> None:
                 break
             offset += page_size
 
-        logger.info("  Found %d trades with entry prices", len(all_trades))
+        logger.info("  Found %d trades total", len(all_trades))
 
         if not all_trades:
-            message = "No trades with prices found - nothing to compute"
+            message = "No trades found - nothing to compute"
             duration_ms = int((time.time() - start_time) * 1000)
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
