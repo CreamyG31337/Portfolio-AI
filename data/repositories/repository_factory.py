@@ -114,12 +114,27 @@ class RepositoryFactory:
     def create_dual_write_repository(cls, fund_name: str, data_directory: str = None) -> 'DualWriteRepository':
         """Create a dual-write repository with both CSV and Supabase repositories.
         
+        CONSOLE APP ONLY: This creates a DualWriteRepository that reads from CSV.
+        The web dashboard should use SupabaseRepository directly (no CSV on the server).
+        
         Args:
-            fund_name: Name of the fund
-            data_directory: Optional path to CSV data directory (defaults to trading_data/funds/{fund_name})
+            fund_name: Name of the fund (e.g. "RRSP Lance Webull").
+                       IMPORTANT: This is a fund NAME, not a file path.
+                       Always use named parameters to avoid accidentally swapping args.
+            data_directory: Optional path to CSV data directory
+                           (defaults to trading_data/funds/{fund_name}).
+                           IMPORTANT: This is a directory PATH, not a fund name.
             
         Returns:
             DualWriteRepository instance for dual-write operations
+            
+        Usage:
+            # CORRECT - use named parameters:
+            RepositoryFactory.create_dual_write_repository(
+                fund_name="MyFund", data_directory="/path/to/data"
+            )
+            # WRONG - positional args are easy to swap:
+            RepositoryFactory.create_dual_write_repository(data_dir, fund)  # BUG!
         """
         from .dual_write_repository import DualWriteRepository
         

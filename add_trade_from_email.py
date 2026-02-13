@@ -104,7 +104,7 @@ Examples:
             # Initialize repository - use dual write if fund_name provided, otherwise CSV only
             if args.fund_name:
                 try:
-                    repository = RepositoryFactory.create_dual_write_repository(args.data_dir, args.fund_name)
+                    repository = RepositoryFactory.create_dual_write_repository(fund_name=args.fund_name, data_directory=args.data_dir)
                 except Exception as e:
                     print(f"Warning: Failed to create dual-write repository: {e}")
                     print("Falling back to CSV-only repository")

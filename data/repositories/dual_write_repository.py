@@ -1,7 +1,24 @@
-"""Dual-write repository implementation.
+"""Dual-write repository implementation for the CONSOLE APP.
 
-This repository reads from CSV (reliable source) but writes to both CSV and Supabase.
-This provides the best of both worlds - reliable CSV data with Supabase backup.
+This repository reads from CSV (reliable local source) but writes to both CSV and Supabase.
+It provides the best of both worlds - reliable CSV data with Supabase backup.
+
+IMPORTANT - CONSOLE APP ONLY:
+    This class is designed for the console trading app (trading_script.py, menu_actions.py)
+    which runs locally and has access to CSV files on disk.
+
+    The WEB DASHBOARD (Flask) should NOT use this class because:
+    - The web server has no CSV data files (trades live in Supabase only)
+    - get_trade_history() reads from CSV and would return empty results
+    - get_latest_portfolio_snapshot() reads from CSV and would return stale/empty data
+    - CSVRepository.__init__ silently creates empty directories (mkdir exist_ok=True),
+      masking misconfiguration errors
+
+    For the web dashboard, use SupabaseRepository directly instead.
+
+See also: SupabaseDualWriteRepository (supabase_dual_write_repository.py) which is
+Supabase-primary and was designed as an alternative, though it has a similar caveat
+about CSV availability.
 """
 
 from __future__ import annotations
@@ -26,14 +43,28 @@ class DualWriteRepository(BaseRepository):
     
     This provides reliability (CSV as source of truth) while maintaining
     Supabase as a backup and for future features.
+    
+    WARNING: All read operations (get_trade_history, get_latest_portfolio_snapshot,
+    get_portfolio_data) read from CSV files, NOT Supabase. If CSV files don't exist
+    or are empty, these methods return empty results -- no error is raised.
+    
+    For web-only environments without CSV files, use SupabaseRepository directly.
     """
     
     def __init__(self, fund_name: str, data_directory: str = None, **kwargs):
         """Initialize dual-write repository.
         
         Args:
-            fund_name: Name of the fund
-            data_directory: Optional path to CSV data directory (defaults to trading_data/funds/{fund_name})
+            fund_name: Name of the fund (e.g. "RRSP Lance Webull").
+                       IMPORTANT: This must be the fund NAME, not a file path.
+                       The fund_name is passed to SupabaseRepository for DB queries.
+            data_directory: Optional path to CSV data directory
+                           (defaults to trading_data/funds/{fund_name}).
+                           IMPORTANT: This must be a directory PATH, not a fund name.
+        
+        Common mistake (swapped args):
+            WRONG: DualWriteRepository("trading_data/funds/MyFund", "MyFund")
+            RIGHT: DualWriteRepository(fund_name="MyFund", data_directory="trading_data/funds/MyFund")
         """
         self.fund_name = fund_name
         
@@ -73,15 +104,15 @@ class DualWriteRepository(BaseRepository):
         # Delegate to Supabase repository to use the view with company data
         return self.supabase_repo.get_latest_portfolio_snapshot_with_pnl()
     
-    def save_portfolio_snapshot(self, snapshot: PortfolioSnapshot) -> None:
+    def save_portfolio_snapshot(self, snapshot: PortfolioSnapshot, is_trade_execution: bool = False) -> None:
         """Save portfolio snapshot to both CSV and Supabase."""
         try:
             # Save to CSV first (primary)
             self.csv_repo.save_portfolio_snapshot(snapshot)
             logger.info(f"Saved portfolio snapshot to CSV")
             
-            # Save to Supabase (backup)
-            self.supabase_repo.save_portfolio_snapshot(snapshot)
+            # Save to Supabase (backup) - pass is_trade_execution to bypass market-close protection
+            self.supabase_repo.save_portfolio_snapshot(snapshot, is_trade_execution=is_trade_execution)
             logger.info(f"Saved portfolio snapshot to Supabase")
             
         except Exception as e:

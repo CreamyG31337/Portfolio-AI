@@ -55,7 +55,6 @@ except ImportError:
 try:
     from utils.email_trade_parser import EmailTradeParser
     from portfolio.trade_processor import TradeProcessor
-    from data.repositories.repository_factory import RepositoryFactory
     from data.models.trade import Trade as TradeModel
     from data.repositories.supabase_repository import SupabaseRepository
     from web_dashboard.utils.background_rebuild import trigger_background_rebuild
@@ -2213,20 +2212,11 @@ def api_submit_trade():
                 currency=currency
             )
             
-            # Repository resolution
-            data_dir = f"trading_data/funds/{fund}"
-            try:
-                # Try to get data dir from DB
-                fund_res = admin_client.supabase.table("funds").select("data_directory").eq("name", fund).execute()
-                if fund_res.data:
-                     data_dir = fund_res.data[0].get('data_directory', data_dir)
-            except: 
-                pass
-                
-            try:
-                repository = RepositoryFactory.create_dual_write_repository(data_dir, fund)
-            except:
-                repository = SupabaseRepository(fund)
+            # Web dashboard uses Supabase directly (no CSV data on the server).
+            # NOTE: DualWriteRepository was previously used here but had a swapped-args bug
+            # (data_dir passed as fund_name) and reads trades from CSV (empty on web server).
+            # SupabaseRepository is the correct choice for the web dashboard.
+            repository = SupabaseRepository(fund)
                 
             processor = TradeProcessor(repository)
             # trade_already_saved=True because we just inserted it above

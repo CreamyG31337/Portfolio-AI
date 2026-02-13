@@ -349,7 +349,7 @@ else:
                             
                             # Create repository instance
                             try:
-                                repository = RepositoryFactory.create_dual_write_repository(data_dir, trade_fund)
+                                repository = RepositoryFactory.create_dual_write_repository(fund_name=trade_fund, data_directory=data_dir)
                             except Exception:
                                 from data.repositories.supabase_repository import SupabaseRepository
                                 repository = SupabaseRepository(trade_fund)
@@ -615,7 +615,7 @@ Time: December 19, 2025 09:30 EST""",
                             
                             data_dir = f"trading_data/funds/{email_fund}"
                             try:
-                                repository = RepositoryFactory.create_dual_write_repository(data_dir, email_fund)
+                                repository = RepositoryFactory.create_dual_write_repository(fund_name=email_fund, data_directory=data_dir)
                             except Exception:
                                 from data.repositories.supabase_repository import SupabaseRepository
                                 repository = SupabaseRepository(email_fund)

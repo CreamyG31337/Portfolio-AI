@@ -415,6 +415,40 @@ python run_tests.py integration
 - Separate business logic from presentation
 - Follow existing modular architecture
 
+### Repository Pattern (CSV vs Supabase)
+
+The project supports two data backends via the repository pattern. This is a common source of subtle bugs.
+
+**Repository types:**
+
+| Repository | Reads From | Writes To | Used By |
+|---|---|---|---|
+| `CSVRepository` | CSV files | CSV files | Console app (local only) |
+| `SupabaseRepository` | Supabase DB | Supabase DB | Web dashboard (Flask) |
+| `DualWriteRepository` | **CSV files** | CSV + Supabase | Console app (dual backup) |
+| `SupabaseDualWriteRepository` | **Supabase DB** | CSV + Supabase | Rare / legacy |
+
+**Critical rules:**
+
+1. **Web dashboard (Flask) must use `SupabaseRepository` directly** -- the web server has no CSV data files. Using `DualWriteRepository` will silently return empty results for reads (trades, positions).
+
+2. **Console app can use `DualWriteRepository`** -- runs locally with CSV files on disk. Supabase writes provide a backup.
+
+3. **Always use named parameters** when calling `RepositoryFactory.create_dual_write_repository()`:
+   ```python
+   # CORRECT:
+   RepositoryFactory.create_dual_write_repository(
+       fund_name="RRSP Lance Webull",
+       data_directory="trading_data/funds/RRSP Lance Webull"
+   )
+   # WRONG (swapped args -- fund_name gets a path, Supabase queries match nothing):
+   RepositoryFactory.create_dual_write_repository(data_dir, fund)
+   ```
+
+4. **`CSVRepository.__init__` silently creates directories** (`mkdir exist_ok=True`), so passing wrong paths won't raise errors -- it just creates empty directories and returns empty data.
+
+5. **`DualWriteRepository.get_trade_history()` reads from CSV**, not Supabase. If you need trades from the database, use `SupabaseRepository.get_trade_history()` directly.
+
 ### Verification folder (do not delete)
 - **`verification/`** contains Playwright/UI verification scripts and screenshots (e.g. password toggle test).
 - **Do NOT delete** `verification/` or its contents when making PRs (jobs, auth, settings, or "cleanup").

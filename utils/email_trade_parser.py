@@ -483,7 +483,7 @@ def add_trade_from_email(email_text: str, data_dir: str, fund_name: str = None) 
         # Initialize repository - use dual write if fund_name provided, otherwise CSV only
         if fund_name:
             try:
-                repository = RepositoryFactory.create_dual_write_repository(data_dir, fund_name)
+                repository = RepositoryFactory.create_dual_write_repository(fund_name=fund_name, data_directory=data_dir)
                 print(f"Using dual-write repository (CSV + Supabase) for fund: {fund_name}")
             except Exception as e:
                 print(f"Warning: Failed to create dual-write repository: {e}")
