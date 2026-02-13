@@ -210,6 +210,12 @@
     <div class="min-w-0">
         <div id="insider-trades-grid" class="ag-theme-alpine w-full min-w-[600px]"></div>
     </div>
+    <div class="mt-4 flex justify-center">
+        <button id="load-more-insider-trades" type="button" onclick="loadMoreInsiderTrades()"
+            class="hidden text-accent border border-accent hover:bg-accent hover:text-white focus:ring-4 focus:ring-accent/50 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors">
+            <i class="fas fa-chevron-down mr-2"></i>Load More
+        </button>
+    </div>
     <div id="insider-empty" class="hidden mt-4 bg-theme-info-bg/10 border border-theme-info-text/20 rounded-lg p-4">
         <p class="text-sm text-theme-info-text">📭 No insider trades found matching the current filters.</p>
     </div>
