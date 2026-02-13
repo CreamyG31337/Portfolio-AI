@@ -19,6 +19,10 @@ from flask_cache_utils import cache_resource, cache_data
 
 logger = logging.getLogger('research')
 
+# Minimum relevance score for a tickerless article to be considered valuable
+# (used in both Python junk-detection and the SQL bulk-delete query).
+RELEVANCE_THRESHOLD_FOR_TICKERLESS = 0.3
+
 research_bp = Blueprint('research', __name__)
 
 # Log blueprint registration
@@ -91,7 +95,7 @@ def _is_likely_junk(article: Dict[str, Any]) -> bool:
                 return True  # Confirmed junk by reprocessor
             return False  # Legitimate macro news
         # High relevance articles are likely useful sector/macro news
-        if relevance is not None and float(relevance) > 0.3:
+        if relevance is not None and float(relevance) > RELEVANCE_THRESHOLD_FOR_TICKERLESS:
             return False
         return True
 
@@ -896,9 +900,9 @@ def delete_junk_articles_endpoint():
         #   A) Never validated, low relevance (original pipeline junk)
         #   B) Validated by reprocessor with very low relevance (confirmed junk)
         # Protected: ETF/Newsletter types, Reddit sources
-        result = pg.execute_query("""
+        result = pg.execute_query(f"""
             DELETE FROM research_articles
-            WHERE (tickers IS NULL OR tickers = '{}')
+            WHERE (tickers IS NULL OR tickers = '{{}}')
               AND COALESCE(article_type, '') NOT IN (
                   'ETF Change', 'ETF Analysis', 'Newsletter', 'Seeking Alpha Symbol'
               )
@@ -906,7 +910,7 @@ def delete_junk_articles_endpoint():
               AND article_type != 'Reddit Discovery'
               AND (
                   -- Case A: never validated, low relevance
-                  (ticker_validated_at IS NULL AND COALESCE(relevance_score, 0) <= 0.3)
+                  (ticker_validated_at IS NULL AND COALESCE(relevance_score, 0) <= {RELEVANCE_THRESHOLD_FOR_TICKERLESS})
                   OR
                   -- Case B: reprocessor explicitly marked as junk (relevance=0.05)
                   (ticker_validated_at IS NOT NULL AND COALESCE(relevance_score, 0) <= 0.1)
