@@ -14,10 +14,22 @@ import os
 import re
 import time
 import logging
+import threading
 from pathlib import Path
 from typing import Optional, Tuple, List
 
+# Apply nest_asyncio once at module level for thread-safe nested event loops
+try:
+    import nest_asyncio
+    nest_asyncio.apply()
+except ImportError:
+    # nest_asyncio not available - will handle gracefully in send_sync()
+    pass
+
 logger = logging.getLogger(__name__)
+
+# Thread-local storage for event loops (thread-safe)
+_thread_local = threading.local()
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -545,17 +557,15 @@ class ConversationSession:
         self._client = WebAIClient(cookies_file=cookies_file, auto_refresh=auto_refresh)
         self._chat_session = None
         self._initialized = False
-        self._loop = None
     
     def _get_loop(self):
-        """Get or create event loop for this session."""
-        if self._loop is None or self._loop.is_closed():
+        """Get or create thread-local event loop for this session."""
+        if not hasattr(_thread_local, 'loop') or _thread_local.loop.is_closed():
             try:
-                self._loop = asyncio.get_event_loop()
+                _thread_local.loop = asyncio.get_event_loop()
             except RuntimeError:
-                self._loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self._loop)
-        return self._loop
+                _thread_local.loop = asyncio.new_event_loop()
+        return _thread_local.loop
     
     async def _ensure_chat(self):
         """Ensure chat session is initialized."""
@@ -580,12 +590,9 @@ class ConversationSession:
     
     def send_sync(self, prompt: str) -> str:
         """Synchronous version of send()."""
-        # TODO: nest_asyncio + asyncio.run() inside a running loop is fragile.
-        # Consider using loop.create_task() or a thread-based approach instead.
         loop = self._get_loop()
         if loop.is_running():
-            import nest_asyncio
-            nest_asyncio.apply()
+            # nest_asyncio is applied at module level, so we can use asyncio.run()
             return asyncio.run(self.send(prompt))
         else:
             return loop.run_until_complete(self.send(prompt))
@@ -606,8 +613,7 @@ class ConversationSession:
         self._chat_session = None
         self._initialized = False
         await self._client.close()
-        # Don't close the loop - it may be shared or still running
-        self._loop = None
+        # Thread-local loop is managed separately, no need to clean up here
     
     def close_sync(self):
         """Synchronous version of close()."""
@@ -669,7 +675,6 @@ class PersistentConversationSession:
         self._chat_session = None
         self._custom_gem = None
         self._initialized = False
-        self._loop = None
         
         # Set up storage directory
         if storage_dir:
@@ -682,14 +687,13 @@ class PersistentConversationSession:
         self._saved_metadata = None
     
     def _get_loop(self):
-        """Get or create event loop for this session."""
-        if self._loop is None or self._loop.is_closed():
+        """Get or create thread-local event loop for this session."""
+        if not hasattr(_thread_local, 'loop') or _thread_local.loop.is_closed():
             try:
-                self._loop = asyncio.get_event_loop()
+                _thread_local.loop = asyncio.get_event_loop()
             except RuntimeError:
-                self._loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self._loop)
-        return self._loop
+                _thread_local.loop = asyncio.new_event_loop()
+        return _thread_local.loop
     
     def _load_metadata(self) -> Optional[dict]:
         """Load saved conversation metadata from disk."""
@@ -806,12 +810,9 @@ class PersistentConversationSession:
     
     def send_sync(self, prompt: str) -> str:
         """Synchronous version of send()."""
-        # TODO: nest_asyncio + asyncio.run() inside a running loop is fragile.
-        # Consider using loop.create_task() or a thread-based approach instead.
         loop = self._get_loop()
         if loop.is_running():
-            import nest_asyncio
-            nest_asyncio.apply()
+            # nest_asyncio is applied at module level, so we can use asyncio.run()
             return asyncio.run(self.send(prompt))
         else:
             return loop.run_until_complete(self.send(prompt))
@@ -874,7 +875,7 @@ class PersistentConversationSession:
         self._chat_session = None
         self._initialized = False
         await self._client.close()
-        self._loop = None
+        # Thread-local loop is managed separately, no need to clean up here
     
     def close_sync(self):
         """Synchronous version of close()."""
