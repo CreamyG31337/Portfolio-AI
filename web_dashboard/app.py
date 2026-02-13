@@ -5107,6 +5107,255 @@ def api_congress_trades_stats():
         return jsonify({"error": "An error occurred while fetching congress trades statistics."}), 500
 
 
+@app.route('/congress_trades/positions')
+@require_auth
+def congress_positions_page():
+    """Congress Closed Positions sub-page"""
+    try:
+        from flask_auth_utils import get_user_email_flask
+        from cache_version import get_cache_version
+
+        user_email = get_user_email_flask()
+        nav_context = get_navigation_context(current_page='congress_trades')
+        cache_version = get_cache_version()
+
+        return render_template('congress_positions.html',
+                             user_email=user_email,
+                             cache_version=cache_version,
+                             **nav_context)
+    except Exception as e:
+        logger.error(f"Error loading congress positions page: {e}", exc_info=True)
+        nav_context = get_navigation_context(current_page='congress_trades')
+        return render_template('congress_positions.html',
+                             error="An error occurred loading the positions page.",
+                             **nav_context), 500
+
+
+@app.route('/api/congress_trades/positions/data')
+@require_auth
+def api_congress_positions_data():
+    """API endpoint for closed position data (one row per politician+ticker)."""
+    try:
+        from flask_data_utils import get_supabase_client_flask
+        from auth import is_admin
+        from supabase_client import SupabaseClient
+
+        if is_admin():
+            client = SupabaseClient(use_service_role=True)
+        else:
+            client = get_supabase_client_flask()
+
+        if client is None:
+            return jsonify({"error": "Database unavailable"}), 503
+
+        # Query params
+        period = request.args.get('period', 'last_12m')
+        politician = request.args.get('politician', '')
+        sort_by = request.args.get('sort_by', 'est_pnl')
+        sort_dir = request.args.get('sort_dir', 'desc')
+        limit = min(int(request.args.get('limit', 500)), 2000)
+        offset = int(request.args.get('offset', 0))
+
+        # Build query - join with politicians to get name
+        query = client.supabase.table("congress_positions") \
+            .select("*, politicians(name, party, chamber)")
+
+        # Period filter on first_buy_date
+        if period == '2025':
+            query = query.gte("first_buy_date", "2025-01-01")
+        elif period == 'last_12m':
+            from datetime import datetime, timedelta
+            cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+            query = query.gte("first_buy_date", cutoff)
+        # 'all' = no date filter
+
+        # Status filter (only closed for now)
+        query = query.eq("status", "closed")
+
+        # Politician name filter
+        if politician:
+            # We can't filter on joined table easily, so we'll do it in post-processing
+            pass
+
+        # Sorting
+        allowed_sorts = {
+            'est_pnl': 'est_pnl',
+            'pct_return': 'pct_return',
+            'est_invested': 'est_invested',
+            'days_held': 'days_held',
+            'first_buy_date': 'first_buy_date',
+            'ticker': 'ticker',
+            'spy_pct_change': 'spy_pct_change',
+        }
+        sort_column = allowed_sorts.get(sort_by, 'est_pnl')
+        is_desc = sort_dir.lower() == 'desc'
+        query = query.order(sort_column, desc=is_desc, nullsfirst=False)
+
+        query = query.range(offset, offset + limit - 1)
+        result = query.execute()
+        rows = result.data or []
+
+        # Format response
+        positions = []
+        for row in rows:
+            pol = row.get("politicians") or {}
+            pol_name = pol.get("name", "Unknown")
+
+            # Post-filter by politician name if specified
+            if politician and politician.lower() not in pol_name.lower():
+                continue
+
+            positions.append({
+                "id": row.get("id"),
+                "politician": pol_name,
+                "party": pol.get("party", ""),
+                "chamber": pol.get("chamber", ""),
+                "ticker": row.get("ticker", ""),
+                "buy_count": row.get("buy_count", 0),
+                "sell_count": row.get("sell_count", 0),
+                "first_buy_date": str(row.get("first_buy_date", ""))[:10],
+                "last_sell_date": str(row.get("last_sell_date", ""))[:10],
+                "avg_buy_price": float(row["avg_buy_price"]) if row.get("avg_buy_price") else None,
+                "avg_sell_price": float(row["avg_sell_price"]) if row.get("avg_sell_price") else None,
+                "pct_return": float(row["pct_return"]) if row.get("pct_return") is not None else None,
+                "est_invested": float(row["est_invested"]) if row.get("est_invested") else None,
+                "est_pnl": float(row["est_pnl"]) if row.get("est_pnl") is not None else None,
+                "days_held": row.get("days_held"),
+                "spy_pct_change": float(row["spy_pct_change"]) if row.get("spy_pct_change") is not None else None,
+            })
+
+        return jsonify({"positions": positions, "total": len(positions)})
+
+    except Exception as e:
+        logger.error(f"Error in congress positions data API: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/congress_trades/positions/leaderboard')
+@require_auth
+def api_congress_positions_leaderboard():
+    """API endpoint for politician-level leaderboard (aggregated from closed positions)."""
+    try:
+        from flask_data_utils import get_supabase_client_flask
+        from auth import is_admin
+        from supabase_client import SupabaseClient
+
+        if is_admin():
+            client = SupabaseClient(use_service_role=True)
+        else:
+            client = get_supabase_client_flask()
+
+        if client is None:
+            return jsonify({"error": "Database unavailable"}), 503
+
+        # Query params
+        period = request.args.get('period', 'last_12m')
+        min_positions = int(request.args.get('min_positions', 3))
+        sort_by = request.args.get('sort_by', 'total_est_pnl')
+        limit = min(int(request.args.get('limit', 50)), 200)
+
+        # Fetch all closed positions with politician info
+        query = client.supabase.table("congress_positions") \
+            .select("politician_id, ticker, pct_return, est_invested, est_pnl, first_buy_date, politicians(name, party, chamber)") \
+            .eq("status", "closed")
+
+        # Period filter
+        if period == '2025':
+            query = query.gte("first_buy_date", "2025-01-01")
+        elif period == 'last_12m':
+            from datetime import datetime, timedelta
+            cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+            query = query.gte("first_buy_date", cutoff)
+
+        # Fetch all (we'll aggregate in Python)
+        all_positions = []
+        page_size = 1000
+        offset = 0
+        while True:
+            resp = query.range(offset, offset + page_size - 1).execute()
+            batch = resp.data or []
+            all_positions.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        # Aggregate by politician
+        from collections import defaultdict
+        politician_stats = defaultdict(lambda: {
+            "positions": 0, "wins": 0, "losses": 0,
+            "total_est_invested": 0, "total_est_pnl": 0,
+            "returns": [], "name": "", "party": "", "chamber": "",
+            "best": None, "worst": None,
+        })
+
+        for pos in all_positions:
+            pol = pos.get("politicians") or {}
+            pid = pos.get("politician_id")
+            pct = float(pos["pct_return"]) if pos.get("pct_return") is not None else 0
+            est_pnl = float(pos["est_pnl"]) if pos.get("est_pnl") is not None else 0
+            est_inv = float(pos["est_invested"]) if pos.get("est_invested") else 0
+
+            stats = politician_stats[pid]
+            stats["name"] = pol.get("name", "Unknown")
+            stats["party"] = pol.get("party", "")
+            stats["chamber"] = pol.get("chamber", "")
+            stats["positions"] += 1
+            if pct > 0:
+                stats["wins"] += 1
+            else:
+                stats["losses"] += 1
+            stats["total_est_invested"] += est_inv
+            stats["total_est_pnl"] += est_pnl
+            stats["returns"].append(pct)
+
+            # Track best/worst position
+            ticker = pos.get("ticker", "")
+            if stats["best"] is None or est_pnl > stats["best"]["est_pnl"]:
+                stats["best"] = {"ticker": ticker, "pct_return": pct, "est_pnl": est_pnl}
+            if stats["worst"] is None or est_pnl < stats["worst"]["est_pnl"]:
+                stats["worst"] = {"ticker": ticker, "pct_return": pct, "est_pnl": est_pnl}
+
+        # Filter by min positions and build response
+        leaderboard = []
+        for pid, stats in politician_stats.items():
+            if stats["positions"] < min_positions:
+                continue
+            avg_return = sum(stats["returns"]) / len(stats["returns"]) if stats["returns"] else 0
+            win_pct = (stats["wins"] / stats["positions"] * 100) if stats["positions"] > 0 else 0
+            leaderboard.append({
+                "politician_id": pid,
+                "politician": stats["name"],
+                "party": stats["party"],
+                "chamber": stats["chamber"],
+                "positions": stats["positions"],
+                "wins": stats["wins"],
+                "losses": stats["losses"],
+                "win_pct": round(win_pct, 1),
+                "avg_return_pct": round(avg_return, 1),
+                "total_est_invested": round(stats["total_est_invested"], 0),
+                "total_est_pnl": round(stats["total_est_pnl"], 0),
+                "best_position": stats["best"],
+                "worst_position": stats["worst"],
+            })
+
+        # Sort
+        sort_keys = {
+            'total_est_pnl': lambda x: x['total_est_pnl'],
+            'win_pct': lambda x: x['win_pct'],
+            'avg_return': lambda x: x['avg_return_pct'],
+            'positions': lambda x: x['positions'],
+        }
+        sort_fn = sort_keys.get(sort_by, sort_keys['total_est_pnl'])
+        leaderboard.sort(key=sort_fn, reverse=True)
+        leaderboard = leaderboard[:limit]
+
+        return jsonify({"leaderboard": leaderboard, "total": len(leaderboard)})
+
+    except Exception as e:
+        logger.error(f"Error in congress positions leaderboard API: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/congress_trades/analyze', methods=['POST'])
 @require_auth
 def api_analyze_congress_trades():

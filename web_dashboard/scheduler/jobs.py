@@ -471,6 +471,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'cron_triggers': [
             {'hour': 6, 'minute': 0, 'timezone': 'America/New_York'}  # 6:00 AM ET (after market data settles)
         ]
+    },
+    'congress_positions': {
+        'name': 'Congress Closed Positions',
+        'description': 'Compute closed positions (buy+sell pairs) per politician/ticker. Aggregates returns and estimates dollar P&L.',
+        'default_interval_minutes': 1440,  # Once per day
+        'enabled_by_default': True,
+        'icon': '🏛️',
+        'cron_triggers': [
+            {'hour': 6, 'minute': 30, 'timezone': 'America/New_York'}  # 6:30 AM ET (after trade returns job)
+        ]
     }
 }
 
@@ -1428,6 +1438,24 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: congress_trade_returns (daily at 6:00 AM ET)")
+
+    # Congress closed positions - daily (Eastern time, after trade returns job)
+    if AVAILABLE_JOBS.get('congress_positions', {}).get('enabled_by_default', True):
+        from scheduler.jobs_congress_positions import compute_congress_positions_job
+        scheduler.add_job(
+            compute_congress_positions_job,
+            trigger=CronTrigger(
+                hour=6,
+                minute=30,
+                timezone='America/New_York'
+            ),
+            id='congress_positions',
+            name=f"{get_job_icon('congress_positions')} Congress Closed Positions",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: congress_positions (daily at 6:30 AM ET)")
 
     # Insider trades job - nightly (Pacific time)
     if AVAILABLE_JOBS['insider_trades']['enabled_by_default']:
