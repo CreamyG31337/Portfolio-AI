@@ -130,14 +130,14 @@ function initHeaderAutoHide(): void {
         if (scrollY > headerHeight) {
             if (scrollY > lastScrollY) {
                 // Scrolling down - hide
-                header.style.transform = 'translateY(-100%)';
+                header.classList.add('-translate-y-full');
             } else {
                 // Scrolling up - show
-                header.style.transform = 'translateY(0)';
+                header.classList.remove('-translate-y-full');
             }
         } else {
             // At top - show
-            header.style.transform = 'translateY(0)';
+            header.classList.remove('-translate-y-full');
         }
 
         lastScrollY = scrollY;

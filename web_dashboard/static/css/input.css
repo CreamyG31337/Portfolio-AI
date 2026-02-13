@@ -383,6 +383,20 @@
         @apply text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200;
     }
 
+    /* Standardized button group item */
+    .btn-group-item {
+        @apply px-4 py-2 text-sm font-medium border-border bg-dashboard-surface hover:bg-dashboard-surface-alt focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent transition-colors duration-200;
+    }
+
+    .btn-group-item[aria-pressed="true"],
+    .btn-group-item.active {
+        @apply text-accent z-10 ring-2 ring-accent;
+    }
+
+    .btn-group-item[aria-pressed="false"]:not(.active) {
+        @apply text-text-primary hover:text-accent;
+    }
+
     /* Global outline button hover/ring using currentColor */
     button[class*="bg-transparent"][class*="border"]:not(:disabled):hover,
     a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):hover {
