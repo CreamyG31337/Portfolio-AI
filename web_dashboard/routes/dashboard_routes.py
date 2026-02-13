@@ -375,7 +375,28 @@ def get_dashboard_summary():
 @dashboard_bp.route('/api/dashboard/action-queue', methods=['GET'])
 @require_auth
 def get_action_queue():
-    """Get top priority actions for the dashboard."""
+    """Get top priority actions for the dashboard.
+
+    Returns a ranked list of actionable items from the fund's watchlist,
+    filtered by the selected fund so that every item is relevant to it.
+
+    Fund-scoped action rules
+    ~~~~~~~~~~~~~~~~~~~~~~~~
+    Each action type is gated on whether the ticker is currently held in the
+    selected fund so the queue changes meaningfully when the user switches
+    funds:
+
+    * **SELL** – signal says SELL *and* the fund holds the position.
+    * **BUY**  – signal says BUY *and* the fund does **not** hold it.
+    * **RISK** – fear level is elevated *and* the fund holds the position
+      (no point warning about risk on something the fund doesn't own).
+    * **WATCH** – signal says WATCH *and* the fund does **not** hold it
+      (potential buy candidates the user is monitoring).
+
+    Query params:
+        fund  – fund name, or "all" / empty for cross-fund view.
+        limit – max items to return (1-25, default 10).
+    """
     fund = request.args.get('fund')
     if not fund or fund.lower() == 'all':
         fund = None
@@ -526,15 +547,17 @@ def get_action_queue():
             is_held = ticker in held_tickers
             priority_tier = item.get("priority_tier") or "C"
 
+            # Determine action — every branch is scoped to the selected fund
+            # via is_held so the queue differs per fund (see docstring).
             action = None
             if overall_signal == "SELL" and is_held and confidence >= min_confidence:
                 action = "SELL"
             elif overall_signal == "BUY" and not is_held and confidence >= min_confidence:
                 action = "BUY"
-            elif fear_level in risk_fear_levels:
-                action = "RISK"
-            elif overall_signal == "WATCH" and confidence >= watch_confidence_floor:
-                action = "WATCH"
+            elif fear_level in risk_fear_levels and is_held:
+                action = "RISK"  # only warn about risk on positions the fund owns
+            elif overall_signal == "WATCH" and confidence >= watch_confidence_floor and not is_held:
+                action = "WATCH"  # monitor candidates the fund doesn't hold yet
 
             if not action:
                 continue
