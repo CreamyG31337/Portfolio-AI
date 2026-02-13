@@ -2,84 +2,115 @@
 Logo Utilities
 ==============
 Functions to get company logo URLs for ticker symbols.
+
+Supports per-security overrides via the `use_alt_logo` flag on the securities table.
+When the flag is set, uses Clearbit's domain-based logo API instead of the default
+Parqet ticker-based API.  This solves cases where Parqet returns the wrong logo
+(e.g., JPM showing Fastenal's logo).
 """
 
 import os
 from typing import Optional
+from urllib.parse import urlparse
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def get_ticker_logo_url(ticker: str) -> Optional[str]:
-    """Get company logo URL for a ticker symbol.
-    
-    Uses free services to avoid rate limits. Tries multiple sources:
-    1. Parqet Logos API (free, no auth required) - PRIMARY
-    2. Yahoo Finance (via yimg.com) - FALLBACK
-    3. Financial Modeling Prep (only if no free option works) - LAST RESORT
-    
-    Note: FMP has very strict rate limits (~10 calls/day), so we prioritize free services.
-    
-    Caching-friendly design:
-    - Returns stable URLs (no cache-busting parameters)
-    - Browser caching handles image storage
-    - Future: Can easily add server-side file caching by checking static/logos/{ticker}.png
-      and downloading if missing, then returning /assets/logos/{ticker}.png instead
-    
-    Args:
-        ticker: Stock ticker symbol (e.g., "AAPL", "TSLA")
-        
-    Returns:
-        Logo URL string or None if not available
+def _extract_domain(website_url: str) -> Optional[str]:
+    """Extract the bare domain from a website URL.
+
+    Handles URLs with or without scheme, e.g.:
+        'https://www.jpmorganchase.com'  -> 'jpmorganchase.com'
+        'www.jpmorganchase.com'          -> 'jpmorganchase.com'
+        'jpmorganchase.com'              -> 'jpmorganchase.com'
     """
-    if not ticker or ticker == 'N/A':
+    if not website_url:
         return None
-    
-    # Clean ticker (remove spaces, but keep exchange suffixes for Parqet)
-    # Parqet requires the full ticker with suffix for Canadian tickers (e.g., DRX.TO)
-    # but also works with base ticker for US tickers (e.g., AAPL)
-    clean_ticker = ticker.upper().strip().replace(' ', '')  # Remove spaces (e.g., "SYM UQ" -> "SYMUQ")
-    
-    # For Parqet: Use full ticker (with suffix if present)
-    # Testing shows Parqet needs full ticker for Canadian exchanges (DRX.TO works, DRX doesn't)
-    # But also works fine with US tickers without suffix (AAPL works)
-    parqet_ticker = clean_ticker
-    
-    # For Yahoo Finance fallback: Try base ticker (Yahoo typically doesn't have Canadian tickers with suffix)
-    # Extract base ticker for Yahoo fallback
-    if '.' in clean_ticker:
-        parts = clean_ticker.rsplit('.', 1)
-        if len(parts) == 2 and parts[1] in ('TO', 'V', 'CN', 'TSX', 'TSXV', 'NE', 'NEO'):
-            base_ticker = parts[0]
+
+    url = website_url.strip()
+    # Ensure scheme so urlparse works correctly
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    try:
+        parsed = urlparse(url)
+        domain = parsed.hostname
+        if domain:
+            # Strip leading "www."
+            if domain.startswith("www."):
+                domain = domain[4:]
+            return domain
+    except Exception:
+        pass
+    return None
+
+
+def get_ticker_logo_url(
+    ticker: str,
+    use_alt: bool = False,
+    website: Optional[str] = None,
+) -> Optional[str]:
+    """Get company logo URL for a ticker symbol.
+
+    Default behaviour uses the Parqet Logos API (free, no auth).
+    When *use_alt* is ``True``, the function returns a Clearbit
+    domain-based logo URL instead (requires a valid *website*).
+
+    Args:
+        ticker:   Stock ticker symbol (e.g., "AAPL", "TSLA").
+        use_alt:  If True, prefer Clearbit logo via *website* domain.
+        website:  Company website URL stored in the securities table.
+                  Only used when *use_alt* is True.
+
+    Returns:
+        Logo URL string, or None if not available.
+    """
+    if not ticker or ticker == "N/A":
+        return None
+
+    # ------------------------------------------------------------------
+    # Alternative logo source (Clearbit domain-based)
+    # ------------------------------------------------------------------
+    if use_alt and website:
+        domain = _extract_domain(website)
+        if domain:
+            # Clearbit Logo API - free, high quality, domain-based
+            # Returns 128×128 PNG by default; size param: 16–1024
+            clearbit_url = f"https://logo.clearbit.com/{domain}"
+            logger.debug(
+                "Using Clearbit alt logo for %s (domain=%s)", ticker, domain
+            )
+            return clearbit_url
         else:
-            base_ticker = clean_ticker
-    else:
-        base_ticker = clean_ticker
-    
-    # PRIMARY: Parqet Logos API - free, no auth required, good coverage
-    # Using size=64 for smaller file sizes (5-10KB vs 10-15KB for 100x100)
-    # Stable URL pattern - no cache-busting, browser will cache effectively
-    # IMPORTANT: Parqet requires full ticker with suffix for Canadian tickers (e.g., DRX.TO)
-    parqet_url = f"https://assets.parqet.com/logos/symbol/{parqet_ticker}?format=png&size=64"
-    
-    # FALLBACK: Yahoo Finance logo (via yimg.com) - also free
-    # Format: https://logo.clearbit.com/{domain} or yahoo's internal logo service
-    # Yahoo uses: https://s.yimg.com/cv/apiv2/default/images/logos/{ticker}.png
-    # Note: Yahoo typically uses base ticker (without suffix) for both US and Canadian
-    yahoo_url = f"https://s.yimg.com/cv/apiv2/default/images/logos/{base_ticker}.png"
-    
-    # Return Parqet as primary (browser will handle 404s gracefully)
-    # Client-side fallback in TypeScript handles Yahoo Finance if Parqet fails
+            logger.warning(
+                "use_alt_logo is set for %s but website '%s' yielded no domain; "
+                "falling back to Parqet",
+                ticker,
+                website,
+            )
+
+    # ------------------------------------------------------------------
+    # Default logo source (Parqet ticker-based)
+    # ------------------------------------------------------------------
+    # Clean ticker (remove spaces, but keep exchange suffixes for Parqet)
+    clean_ticker = ticker.upper().strip().replace(" ", "")
+
+    # Parqet requires full ticker with suffix for Canadian exchanges (DRX.TO)
+    # but also works with base tickers for US equities (AAPL)
+    parqet_url = (
+        f"https://assets.parqet.com/logos/symbol/{clean_ticker}?format=png&size=64"
+    )
+
     return parqet_url
 
 
 def get_ticker_logo_urls(tickers: list[str]) -> dict[str, Optional[str]]:
-    """Get logo URLs for multiple tickers at once.
-    
+    """Get logo URLs for multiple tickers at once (default Parqet source).
+
     Args:
         tickers: List of ticker symbols
-        
+
     Returns:
         Dictionary mapping ticker -> logo URL
     """

@@ -258,9 +258,15 @@ def _fetch_basic_info(ticker_upper: str, supabase_client) -> Dict[str, Any]:
                 result['found'] = True
 
                 # Add logo URL for frontend display
+                # Respects per-security override: when use_alt_logo is True,
+                # uses Clearbit domain-based logo instead of Parqet ticker-based.
                 try:
                     from web_dashboard.utils.logo_utils import get_ticker_logo_url
-                    logo_url = get_ticker_logo_url(ticker_upper)
+                    use_alt = bool(result['basic_info'].get('use_alt_logo'))
+                    website = result['basic_info'].get('website')
+                    logo_url = get_ticker_logo_url(
+                        ticker_upper, use_alt=use_alt, website=website
+                    )
                     if logo_url:
                         result['basic_info']['logo_url'] = logo_url
                 except Exception as e:
@@ -332,6 +338,9 @@ def _fetch_basic_info(ticker_upper: str, supabase_client) -> Dict[str, Any]:
                     info.get('description')
                 )
 
+                # Extract website for storage and potential alt-logo use
+                yf_website = info.get('website')
+
                 result['basic_info'] = {
                     'ticker': ticker_upper,
                     'company_name': company_name,
@@ -340,10 +349,11 @@ def _fetch_basic_info(ticker_upper: str, supabase_client) -> Dict[str, Any]:
                     'currency': currency,
                     'exchange': exchange if exchange else None,
                     'trailing_pe': trailing_pe,
-                    'description': company_description.strip() if company_description else None
+                    'description': company_description.strip() if company_description else None,
+                    'website': yf_website if yf_website else None,
                 }
 
-                # Add logo URL
+                # Add logo URL (new tickers default to Parqet; use_alt_logo is false)
                 try:
                     from web_dashboard.utils.logo_utils import get_ticker_logo_url
                     logo_url = get_ticker_logo_url(ticker_upper)
@@ -354,10 +364,14 @@ def _fetch_basic_info(ticker_upper: str, supabase_client) -> Dict[str, Any]:
 
                 result['found'] = True
 
-                # Save to database for future lookups
+                # Save to database for future lookups (includes website)
+                db_record = {
+                    k: v for k, v in result['basic_info'].items()
+                    if k != 'logo_url'  # logo_url is computed, not stored
+                }
                 if supabase_client:
                     try:
-                        supabase_client.supabase.table("securities").insert(result['basic_info']).execute()
+                        supabase_client.supabase.table("securities").insert(db_record).execute()
                         logger.info(f"Saved ticker {ticker_upper} ({company_name}) to securities table from yfinance")
                     except Exception as insert_error:
                         logger.warning(f"Could not save {ticker_upper} to database: {insert_error}")

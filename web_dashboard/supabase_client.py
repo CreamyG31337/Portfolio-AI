@@ -366,6 +366,11 @@ class SupabaseClient:
                         metadata['industry'] = info.get('industry')
                         metadata['country'] = info.get('country')
                         
+                        # Get company website (for domain-based logo lookups)
+                        website = info.get('website')
+                        if website:
+                            metadata['website'] = website.strip()
+
                         # Get market cap (store as text since it can be very large)
                         market_cap = info.get('marketCap')
                         if market_cap:

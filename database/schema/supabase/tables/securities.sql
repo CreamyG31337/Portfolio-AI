@@ -33,7 +33,9 @@ CREATE TABLE securities (
     short_percent_of_float NUMERIC,
     ebitda NUMERIC,
     trailing_eps NUMERIC,
-    forward_eps NUMERIC
+    forward_eps NUMERIC,
+    use_alt_logo BOOLEAN DEFAULT false,
+    website TEXT
 ,
     PRIMARY KEY (ticker)
 );

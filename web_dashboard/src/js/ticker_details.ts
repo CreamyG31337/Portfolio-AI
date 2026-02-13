@@ -16,6 +16,7 @@ interface BasicInfo {
     currency?: string;
     exchange?: string;
     logo_url?: string;
+    use_alt_logo?: boolean;
     trailing_pe?: number;
     description?: string;  // Company description for stocks, fund description for ETFs
 }
@@ -813,6 +814,7 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
     // Display logo if available (larger size for ticker details page - 160px)
     if (tickerLogo) {
         const ticker = basicInfo.ticker || '';
+        const isAltLogo = !!basicInfo.use_alt_logo;
         const placeholder = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="256" height="256"%3E%3C/svg%3E';
 
         // Clear any existing error handlers and reset state
@@ -823,28 +825,32 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
         tickerLogo.alt = `${ticker} logo`;
 
         if (basicInfo.logo_url) {
-            // Use higher resolution for larger display (size=256 instead of 64)
-            const largeLogoUrl = basicInfo.logo_url.replace('size=64', 'size=256');
+            // For default Parqet URLs, upscale to 256; alt-logo URLs pass through as-is
+            const primaryUrl = isAltLogo
+                ? basicInfo.logo_url
+                : basicInfo.logo_url.replace('size=64', 'size=256');
 
-            // Handle image load errors gracefully - try fallback (matches dashboard pattern)
-            let fallbackAttempted = false;
+            // Build fallback chain depending on logo source:
+            //   Alt (Clearbit)  -> Parqet -> Yahoo -> placeholder
+            //   Default (Parqet) -> Yahoo -> placeholder
+            const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+            const fallbackUrls: string[] = [];
+            if (isAltLogo) {
+                // If Clearbit fails, try Parqet as next fallback
+                fallbackUrls.push(
+                    `https://assets.parqet.com/logos/symbol/${cleanTicker}?format=png&size=256`
+                );
+            }
+            fallbackUrls.push(
+                `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`
+            );
+
+            let fallbackIndex = 0;
             tickerLogo.onerror = function () {
-                if (fallbackAttempted) {
-                    // Already tried fallback, use transparent placeholder
-                    tickerLogo.src = placeholder;
-                    tickerLogo.onerror = null;
-                    return;
-                }
-
-                // Mark that we've attempted fallback
-                fallbackAttempted = true;
-
-                // Try Yahoo Finance as fallback if Parqet fails
-                const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${ticker}.png`;
-                if (tickerLogo.src !== yahooUrl) {
-                    tickerLogo.src = yahooUrl;
+                if (fallbackIndex < fallbackUrls.length) {
+                    tickerLogo.src = fallbackUrls[fallbackIndex];
+                    fallbackIndex++;
                 } else {
-                    // Same URL, use placeholder
                     tickerLogo.src = placeholder;
                     tickerLogo.onerror = null;
                 }
@@ -852,7 +858,7 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
 
             // Set src AFTER error handler is attached
             tickerLogo.classList.remove('hidden');
-            tickerLogo.src = largeLogoUrl;
+            tickerLogo.src = primaryUrl;
         } else {
             // No logo URL provided, show placeholder
             tickerLogo.classList.remove('hidden');
