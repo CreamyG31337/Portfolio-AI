@@ -133,9 +133,9 @@ async function loadLeaderboard(): Promise<void> {
             const pnlCls = pnlColor(e.total_est_pnl);
             const returnCls = pnlColor(e.avg_return_pct);
             const bestStr = e.best_position ?
-                `<span class="text-green-400">${e.best_position.ticker}</span> <span class="text-text-tertiary">(${formatPct(e.best_position.pct_return)})</span>` : '--';
+                `<a href="/ticker?ticker=${e.best_position.ticker}" class="text-green-400 hover:text-green-300 font-medium" title="${e.best_position.ticker} — ${formatPct(e.best_position.pct_return)} return, ${formatDollars(e.best_position.est_pnl)} est. P&L" onclick="event.stopPropagation()">${e.best_position.ticker}</a><span class="text-text-tertiary ml-1.5">${formatPct(e.best_position.pct_return)}</span>` : '--';
             const worstStr = e.worst_position ?
-                `<span class="text-red-400">${e.worst_position.ticker}</span> <span class="text-text-tertiary">(${formatPct(e.worst_position.pct_return)})</span>` : '--';
+                `<a href="/ticker?ticker=${e.worst_position.ticker}" class="text-red-400 hover:text-red-300 font-medium" title="${e.worst_position.ticker} — ${formatPct(e.worst_position.pct_return)} return, ${formatDollars(e.worst_position.est_pnl)} est. P&L" onclick="event.stopPropagation()">${e.worst_position.ticker}</a><span class="text-text-tertiary ml-1.5">${formatPct(e.worst_position.pct_return)}</span>` : '--';
 
             return `<tr class="border-b border-border/50 hover:bg-dashboard-surface-alt/50 cursor-pointer" data-politician="${e.politician}">
                 <td class="py-3 pr-4 text-text-tertiary">${i + 1}</td>
