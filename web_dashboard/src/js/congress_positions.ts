@@ -133,9 +133,9 @@ async function loadLeaderboard(): Promise<void> {
             const pnlCls = pnlColor(e.total_est_pnl);
             const returnCls = pnlColor(e.avg_return_pct);
             const bestStr = e.best_position ?
-                `<a href="/ticker?ticker=${e.best_position.ticker}" class="text-green-400 hover:text-green-300 font-medium" title="${e.best_position.ticker} — ${formatPct(e.best_position.pct_return)} return, ${formatDollars(e.best_position.est_pnl)} est. P&L" onclick="event.stopPropagation()">${e.best_position.ticker}</a><span class="text-text-tertiary ml-1.5">${formatPct(e.best_position.pct_return)}</span>` : '--';
+                `<a href="/ticker?ticker=${e.best_position.ticker}" class="ticker-link text-green-400 hover:text-green-300 font-medium underline" title="${e.best_position.ticker} — ${formatPct(e.best_position.pct_return)} return, ${formatDollars(e.best_position.est_pnl)} est. P&amp;L">${e.best_position.ticker}</a> &nbsp;<span class="text-text-tertiary">${formatPct(e.best_position.pct_return)}</span>` : '--';
             const worstStr = e.worst_position ?
-                `<a href="/ticker?ticker=${e.worst_position.ticker}" class="text-red-400 hover:text-red-300 font-medium" title="${e.worst_position.ticker} — ${formatPct(e.worst_position.pct_return)} return, ${formatDollars(e.worst_position.est_pnl)} est. P&L" onclick="event.stopPropagation()">${e.worst_position.ticker}</a><span class="text-text-tertiary ml-1.5">${formatPct(e.worst_position.pct_return)}</span>` : '--';
+                `<a href="/ticker?ticker=${e.worst_position.ticker}" class="ticker-link text-red-400 hover:text-red-300 font-medium underline" title="${e.worst_position.ticker} — ${formatPct(e.worst_position.pct_return)} return, ${formatDollars(e.worst_position.est_pnl)} est. P&amp;L">${e.worst_position.ticker}</a> &nbsp;<span class="text-text-tertiary">${formatPct(e.worst_position.pct_return)}</span>` : '--';
 
             return `<tr class="border-b border-border/50 hover:bg-dashboard-surface-alt/50 cursor-pointer" data-politician="${e.politician}">
                 <td class="py-3 pr-4 text-text-tertiary">${i + 1}</td>
@@ -147,18 +147,23 @@ async function loadLeaderboard(): Promise<void> {
                 <td class="py-3 pr-4 text-right ${e.win_pct >= 50 ? 'text-green-400' : 'text-red-400'}">${e.win_pct.toFixed(1)}%</td>
                 <td class="py-3 pr-4 text-right ${returnCls}">${formatPct(e.avg_return_pct)}</td>
                 <td class="py-3 pr-4 text-right text-text-secondary">${formatDollars(e.total_est_invested)}</td>
-                <td class="py-3 pr-4 text-right font-semibold ${pnlCls}">${formatDollars(e.total_est_pnl)}</td>
-                <td class="py-3 pr-4 text-xs">${bestStr}</td>
-                <td class="py-3 text-xs">${worstStr}</td>
+                <td class="py-3 pr-6 text-right font-semibold whitespace-nowrap ${pnlCls}">${formatDollars(e.total_est_pnl)}</td>
+                <td class="py-3 pr-6 text-xs whitespace-nowrap">${bestStr}</td>
+                <td class="py-3 text-xs whitespace-nowrap">${worstStr}</td>
             </tr>`;
         }).join('');
 
         loading.classList.add('hidden');
         container.classList.remove('hidden');
 
-        // Click row to filter positions grid
+        // Click row to filter positions grid (but not if clicking a ticker link)
         tbody.querySelectorAll('tr[data-politician]').forEach(row => {
-            row.addEventListener('click', () => {
+            row.addEventListener('click', (evt: Event) => {
+                const target = evt.target as HTMLElement;
+                // Don't intercept clicks on ticker links
+                if (target.tagName === 'A' || target.closest('a.ticker-link')) {
+                    return;
+                }
                 const name = row.getAttribute('data-politician') || '';
                 const filterInput = document.getElementById('politician-filter') as HTMLInputElement;
                 if (filterInput) {
