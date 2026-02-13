@@ -288,12 +288,25 @@ async function handleManualSubmit(e: Event): Promise<void> {
         showToastForTradeEntry('✅ Trade Submitted Successfully');
         form.reset();
 
-        // Reset date/time
-        const now = new Date();
+        // Reset date/time — re-read server default to avoid UTC bugs
         const dateInput = document.getElementById('trade-date') as HTMLInputElement | null;
         const timeInput = document.getElementById('trade-time') as HTMLInputElement | null;
-        if (dateInput) dateInput.valueAsDate = now;
-        if (timeInput) timeInput.value = now.toTimeString().slice(0, 5);
+        if (dateInput) {
+            const serverDate = dateInput.getAttribute('data-default-date');
+            if (serverDate) {
+                dateInput.value = serverDate;
+            } else {
+                const resetNow = new Date();
+                const ry = resetNow.getFullYear();
+                const rm = String(resetNow.getMonth() + 1).padStart(2, '0');
+                const rd = String(resetNow.getDate()).padStart(2, '0');
+                dateInput.value = `${ry}-${rm}-${rd}`;
+            }
+        }
+        if (timeInput) {
+            const resetNow = new Date();
+            timeInput.value = resetNow.toTimeString().slice(0, 5);
+        }
 
         updateManualTotal();
         updateCompanyNameDisplay();
@@ -673,12 +686,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Set default date/time
-    const now = new Date();
+    // Use server-provided last trading date (avoids UTC timezone bugs and handles weekends)
     const dateInput = document.getElementById('trade-date') as HTMLInputElement | null;
     const timeInput = document.getElementById('trade-time') as HTMLInputElement | null;
 
-    if (dateInput) dateInput.valueAsDate = now;
-    if (timeInput) timeInput.value = now.toTimeString().slice(0, 5);
+    if (dateInput) {
+        const serverDate = dateInput.getAttribute('data-default-date');
+        if (serverDate) {
+            dateInput.value = serverDate;  // YYYY-MM-DD from server
+        } else {
+            // Fallback: format local date to avoid UTC offset issues
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            dateInput.value = `${y}-${m}-${d}`;
+        }
+    }
+    if (timeInput) {
+        const now = new Date();
+        timeInput.value = now.toTimeString().slice(0, 5);
+    }
 });
 
 // Export empty object to make this a module

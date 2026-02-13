@@ -1973,8 +1973,19 @@ def trade_entry_page():
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_trade_entry')
         
+        # Get last trading date for default date picker value
+        try:
+            from market_data.market_hours import MarketHours
+            mh = MarketHours()
+            default_trade_date = mh.last_trading_date_str()
+        except Exception:
+            # Fallback to today's date if market hours unavailable
+            from datetime import date
+            default_trade_date = date.today().isoformat()
+        
         return render_template('trade_entry.html', 
                              user_email=user_email,
+                             default_trade_date=default_trade_date,
                              **nav_context)
     except Exception as e:
         logger.error(f"Error rendering trade entry page: {e}", exc_info=True)
