@@ -536,6 +536,10 @@ class NewsletterService:
                 'THIS', 'WITH', 'HAVE', 'WILL', 'YOUR', 'MAY', 'NEW', 'US', 'IF',
                 'WOULD', 'BEEN', 'WHICH', 'THEIR', 'ABOUT', 'MORE', 'THAN', 'ALSO',
                 'SO', 'DO', 'NO', 'UP', 'GO', 'HE', 'WE', 'MY', 'ME', 'OF',
+                # Common stopwords
+                'WHAT', 'WHEN', 'THEN', 'HOW', 'WHY', 'WHERE', 'NEWS', 'TIME', 'YEAR', 'WEEK', 'DAY',
+                'HAS', 'HAD', 'DID', 'THEY', 'THEM', 'THESE', 'THOSE', 'ANY', 'SOME', 'MANY', 'MOST',
+                'NOW', 'JUST', 'ONLY', 'VERY', 'BACK', 'DOWN', 'SEE', 'USE', 'WAY', 'GET',
                 # C-suite / corporate titles
                 'CEO', 'CFO', 'COO', 'CTO', 'VP', 'SVP', 'EVP',
                 # Financial / economic terms
@@ -595,6 +599,8 @@ class NewsletterService:
             def add_candidate(ticker: str, score: int, is_explicit: bool = False) -> None:
                 normalized = ticker.upper().strip()
                 if not normalized:
+                    return
+                if not is_explicit and normalized in exclude_words:
                     return
                 candidate_count[normalized] = candidate_count.get(normalized, 0) + 1
                 candidate_score[normalized] = max(score, candidate_score.get(normalized, 0))
@@ -799,7 +805,7 @@ class NewsletterService:
             
             # Extract ticker symbols from combined subject + body
             full_text = f"{clean_subj}\n\n{text_content}"
-            tickers = self.extract_tickers(full_text)
+            tickers = self.extract_tickers(full_text, validate_known_tickers=True)
             
             # Generate embedding (unless skipped)
             embedding = None if skip_embedding else self.generate_embedding(text_content)
