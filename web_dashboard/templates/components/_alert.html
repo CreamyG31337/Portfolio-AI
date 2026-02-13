@@ -1,0 +1,14 @@
+{% set alert_classes = classes|default('') %}
+{% if type == 'success' %}
+    {% set alert_classes = alert_classes ~ ' bg-theme-success-bg text-theme-success-text border border-theme-success-text' %}
+{% elif type == 'error' %}
+    {% set alert_classes = alert_classes ~ ' bg-theme-error-bg text-theme-error-text border border-theme-error-text' %}
+{% elif type == 'warning' %}
+    {% set alert_classes = alert_classes ~ ' bg-theme-warning-bg text-theme-warning-text border border-theme-warning-text' %}
+{% elif type == 'info' %}
+    {% set alert_classes = alert_classes ~ ' bg-theme-info-bg text-theme-info-text border border-theme-info-text' %}
+{% endif %}
+
+<div id="{{ id }}" class="{{ alert_classes }} rounded-lg px-4 py-3 mt-2 {% if hidden %}hidden{% endif %}" role="alert">
+    {{ message|safe }}
+</div>

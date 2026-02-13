@@ -378,6 +378,11 @@
         @apply bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5;
     }
 
+    /* Standardized button styles */
+    .btn-outline {
+        @apply text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200;
+    }
+
     /* Global outline button hover/ring using currentColor */
     button[class*="bg-transparent"][class*="border"]:not(:disabled):hover,
     a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):hover {

@@ -37,12 +37,12 @@
 
         <div id="timezone-preview" class="text-sm text-text-tertiary mb-4"></div>
 
-        <div id="timezone-success" role="alert"
-            class="hidden bg-theme-success-bg text-theme-success-text border border-theme-success-text rounded-lg px-4 py-3 mt-2">
-            ✅ Timezone saved successfully!</div>
-        <div id="timezone-error" role="alert"
-            class="hidden bg-theme-error-bg text-theme-error-text border border-theme-error-text rounded-lg px-4 py-3 mt-2">
-            ❌ Failed to save timezone. Please try again.</div>
+        {% with id='timezone-success', type='success', message='✅ Timezone saved successfully!', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
+        {% with id='timezone-error', type='error', message='❌ Failed to save timezone. Please try again.', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
     </div>
 
     <!-- Currency Settings -->
@@ -61,12 +61,12 @@
             </select>
         </div>
 
-        <div id="currency-success" role="alert"
-            class="hidden bg-theme-success-bg text-theme-success-text border border-theme-success-text rounded-lg px-4 py-3 mt-2">
-            ✅ Currency saved successfully!</div>
-        <div id="currency-error" role="alert"
-            class="hidden bg-theme-error-bg text-theme-error-text border border-theme-error-text rounded-lg px-4 py-3 mt-2">
-            ❌ Failed to save currency. Please try again.</div>
+        {% with id='currency-success', type='success', message='✅ Currency saved successfully!', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
+        {% with id='currency-error', type='error', message='❌ Failed to save currency. Please try again.', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
     </div>
 
     <!-- Theme Settings -->
@@ -104,20 +104,19 @@
         </div>
         <div class="mb-4">
             <a href="/color-test"
-                class="inline-flex items-center px-4 py-2 text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 rounded-lg font-medium transition-colors duration-200">
+                class="inline-flex items-center btn-outline">
                 <i class="fas fa-palette mr-2"></i>
                 🎨 Test & Customize Theme Colors
             </a>
             <p class="text-xs text-text-secondary mt-2">Open the color testing tool to preview and customize theme
                 colors with live examples.</p>
         </div>
-        <div id="theme-success" role="alert"
-            class="hidden bg-theme-success-bg text-theme-success-text border border-theme-success-text rounded-lg px-4 py-3 mt-2">
-            ✅ Theme saved successfully!</div>
-        <div id="theme-error" role="alert"
-            class="hidden bg-theme-error-bg text-theme-error-text border border-theme-error-text rounded-lg px-4 py-3 mt-2">
-            ❌ Failed to save theme. Please try again.
-        </div>
+        {% with id='theme-success', type='success', message='✅ Theme saved successfully!', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
+        {% with id='theme-error', type='error', message='❌ Failed to save theme. Please try again.', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
     </div>
 
     <!-- Security Settings -->
@@ -151,18 +150,17 @@
                     </button>
                 </div>
             </div>
-            <button type="submit" id="change-password-btn"
-                class="px-4 py-2 text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 rounded-lg font-medium transition-colors duration-200">
+            <button type="submit" id="change-password-btn" class="btn-outline">
                 Update Password
             </button>
         </form>
 
-        <div id="password-success" role="alert"
-            class="hidden bg-theme-success-bg text-theme-success-text border border-theme-success-text rounded-lg px-4 py-3 mt-2">
-            ✅ Password updated successfully!</div>
-        <div id="password-error" role="alert"
-            class="hidden bg-theme-error-bg text-theme-error-text border border-theme-error-text rounded-lg px-4 py-3 mt-2">
-            ❌ Failed to update password.</div>
+        {% with id='password-success', type='success', message='✅ Password updated successfully!', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
+        {% with id='password-error', type='error', message='❌ Failed to update password.', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
     </div>
 </div>
 {% endblock %}
