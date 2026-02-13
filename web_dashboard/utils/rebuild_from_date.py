@@ -349,8 +349,49 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
                 except Exception as e:
                     logger.error(f"Failed to save snapshot for {trading_day}: {e}")
         
+        # Step 6: Recalculate performance_metrics for rebuilt dates
+        # The deletion in Step 1 removed stale metrics; now regenerate them
+        # from the freshly rebuilt portfolio_positions.
+        logger.info("Step 6: Recalculating performance_metrics for rebuilt dates...")
+        if job_id:
+            _update_job_status(job_id, 'running', f'Step 6: Recalculating performance metrics for {len(trading_days_to_rebuild)} days')
+        
+        metrics_recalculated = 0
+        try:
+            from scheduler.jobs_metrics import populate_performance_metrics_job
+            
+            # Exclude today — the daily job handles today after market close
+            yesterday = today - timedelta(days=1)
+            historical_days = [d for d in trading_days_to_rebuild if d <= yesterday]
+            
+            if historical_days:
+                populate_performance_metrics_job(
+                    from_date=min(historical_days),
+                    to_date=max(historical_days),
+                    fund_filter=fund_name,
+                    skip_existing=False  # Force recalc since we just rebuilt positions
+                )
+                metrics_recalculated = len(historical_days)
+                logger.info(f"   Recalculated performance_metrics for {metrics_recalculated} days")
+            else:
+                logger.info("   No historical days to recalculate (trade is from today)")
+        except Exception as e:
+            logger.warning(f"   Failed to recalculate performance_metrics: {e}")
+            # Non-fatal — the startup gap detection will catch this later
+        
+        # Bump cache version so dashboard serves fresh data
+        try:
+            from cache_version import bump_cache_version
+            bump_cache_version()
+            logger.info("   Bumped cache version to invalidate stale dashboard data")
+        except Exception as e:
+            logger.warning(f"   Failed to bump cache version: {e}")
+        
         # Success
-        msg = f"Rebuilt {len(trading_days_to_rebuild)} days, created {positions_created} position records"
+        msg = (
+            f"Rebuilt {len(trading_days_to_rebuild)} days, created {positions_created} position records, "
+            f"recalculated {metrics_recalculated} days of performance metrics"
+        )
         logger.info(f"✅ Rebuild complete: {msg}")
         
         if job_id:
@@ -360,6 +401,7 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
             'success': True,
             'dates_rebuilt': len(trading_days_to_rebuild),
             'positions_updated': positions_created,
+            'metrics_recalculated': metrics_recalculated,
             'message': msg
         }
         

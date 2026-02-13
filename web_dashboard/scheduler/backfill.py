@@ -284,3 +284,134 @@ def startup_backfill_check() -> None:
     except Exception as e:
         logger.error(f"❌ Backfill check failed: {e}", exc_info=True)
         # Don't crash the scheduler if backfill fails
+
+
+def startup_performance_metrics_backfill() -> None:
+    """
+    Detect and fill gaps in performance_metrics by comparing against portfolio_positions.
+    
+    Runs on startup (with delay) to ensure performance_metrics has data for every date
+    that portfolio_positions has data for. This prevents the dashboard chart from showing
+    gaps when the optimized metrics path is used.
+    
+    Only checks the last 90 days to keep startup fast.
+    """
+    try:
+        import sys
+        from pathlib import Path
+        
+        project_root = Path(__file__).resolve().parent.parent.parent
+        project_root_str = str(project_root)
+        if project_root_str not in sys.path:
+            sys.path.insert(0, project_root_str)
+        
+        web_dashboard_path = str(Path(__file__).resolve().parent.parent)
+        if web_dashboard_path not in sys.path:
+            sys.path.insert(0, web_dashboard_path)
+        
+        from supabase_client import SupabaseClient
+        
+        logger.info("🔍 Starting performance_metrics gap detection...")
+        
+        client = SupabaseClient(use_service_role=True)
+        
+        # Get production funds
+        funds_result = client.supabase.table("funds")\
+            .select("name")\
+            .eq("is_production", True)\
+            .execute()
+        
+        if not funds_result.data:
+            logger.info("✅ No production funds - skipping performance metrics backfill")
+            return
+        
+        fund_names = [f['name'] for f in funds_result.data]
+        
+        # Only check last 90 days
+        import pytz
+        et = pytz.timezone('America/New_York')
+        cutoff_date = (datetime.now(et) - timedelta(days=90)).date()
+        
+        # Get all dates from portfolio_positions (after cutoff)
+        pp_dates_by_fund: dict[str, set] = {}
+        for fund_name in fund_names:
+            result = client.supabase.table("portfolio_positions")\
+                .select("date")\
+                .eq("fund", fund_name)\
+                .gte("date", cutoff_date.isoformat())\
+                .execute()
+            
+            if result.data:
+                dates = set()
+                for row in result.data:
+                    dt = pd.to_datetime(row['date']).date()
+                    dates.add(dt)
+                pp_dates_by_fund[fund_name] = dates
+        
+        if not pp_dates_by_fund:
+            logger.info("✅ No portfolio_positions data in last 90 days - skipping")
+            return
+        
+        # Get all dates from performance_metrics (after cutoff)
+        pm_dates_by_fund: dict[str, set] = {}
+        for fund_name in fund_names:
+            result = client.supabase.table("performance_metrics")\
+                .select("date")\
+                .eq("fund", fund_name)\
+                .gte("date", cutoff_date.isoformat())\
+                .execute()
+            
+            if result.data:
+                dates = set()
+                for row in result.data:
+                    dt = pd.to_datetime(row['date']).date()
+                    dates.add(dt)
+                pm_dates_by_fund[fund_name] = dates
+        
+        # Find missing dates (in portfolio_positions but not in performance_metrics)
+        all_missing_dates: set = set()
+        for fund_name in fund_names:
+            pp_dates = pp_dates_by_fund.get(fund_name, set())
+            pm_dates = pm_dates_by_fund.get(fund_name, set())
+            missing = pp_dates - pm_dates
+            
+            if missing:
+                logger.info(f"   {fund_name}: {len(missing)} dates missing from performance_metrics")
+                all_missing_dates.update(missing)
+        
+        if not all_missing_dates:
+            logger.info("✅ performance_metrics is complete - no gaps found")
+            return
+        
+        logger.warning(f"⚠️  Found {len(all_missing_dates)} unique dates with missing performance_metrics")
+        
+        # Import the backfill function
+        try:
+            from scheduler.jobs_metrics import populate_performance_metrics_job
+        except ModuleNotFoundError:
+            if web_dashboard_path not in sys.path:
+                sys.path.insert(0, web_dashboard_path)
+            from scheduler.jobs_metrics import populate_performance_metrics_job
+        
+        # Process each missing date
+        success_count = 0
+        fail_count = 0
+        
+        for target_date in sorted(all_missing_dates):
+            try:
+                populate_performance_metrics_job(
+                    target_date=target_date,
+                    skip_existing=True
+                )
+                success_count += 1
+            except Exception as e:
+                logger.error(f"   ❌ Failed to backfill performance_metrics for {target_date}: {e}")
+                fail_count += 1
+        
+        logger.info(
+            f"✅ Performance metrics backfill complete: "
+            f"{success_count} dates succeeded, {fail_count} dates failed"
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Performance metrics backfill check failed: {e}", exc_info=True)

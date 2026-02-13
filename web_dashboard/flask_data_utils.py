@@ -575,84 +575,100 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
             metrics_result = metrics_query.order("date").execute()
             
             if metrics_result.data:
-                logger.info(f"Using pre-aggregated performance metrics for {fund} ({len(metrics_result.data)} rows)")
-                daily_totals = pd.DataFrame(metrics_result.data)
-                
-                # Normalize columns to match expected output
-                daily_totals = daily_totals.rename(columns={
-                    'total_value': 'value',
-                    'unrealized_pnl': 'pnl'
-                })
-                
-                # Normalize date
-                daily_totals['date'] = pd.to_datetime(daily_totals['date']).dt.normalize() + pd.Timedelta(hours=12)
+                # Sanity check: verify metrics aren't too sparse
+                metrics_df = pd.DataFrame(metrics_result.data)
+                date_range_days = (pd.to_datetime(metrics_df['date']).max() - pd.to_datetime(metrics_df['date']).min()).days
+                expected_trading_days = date_range_days * 5 / 7  # rough estimate
+                actual_rows = len(metrics_df)
 
-                # Append today's live data if needed
-                # Performance metrics are updated daily (yesterday's close), so we need live data for today
-                try:
-                    current_positions = get_current_positions_flask(fund)
-                    if not current_positions.empty:
-                        # Calculate totals for today
-                        # Use pre-calculated market_value if available, else shares * price
-                        # Note: This simple aggregation assumes base currency (CAD usually)
-                        # Ideally we should use same logic as dashboard summary
+                if expected_trading_days > 10 and actual_rows < expected_trading_days * 0.5:
+                    # Less than 50% coverage - data is too sparse, fall back
+                    logger.warning(
+                        f"performance_metrics too sparse for {fund} ({actual_rows} rows for "
+                        f"~{expected_trading_days:.0f} expected trading days). "
+                        f"Falling back to portfolio_positions."
+                    )
+                    daily_totals = None
+                else:
+                    logger.info(f"Using pre-aggregated performance metrics for {fund} ({actual_rows} rows)")
+                    daily_totals = metrics_df
 
-                        # Get rates for conversion if needed (assuming metrics are in CAD/Base)
-                        # For now, we assume metrics are in Base currency.
-                        # get_current_positions_flask returns raw values + currency column.
+                if daily_totals is not None:
+                    # Normalize columns to match expected output
+                    daily_totals = daily_totals.rename(columns={
+                        'total_value': 'value',
+                        'unrealized_pnl': 'pnl'
+                    })
 
-                        current_val = 0.0
-                        current_cost = 0.0
-                        current_pnl = 0.0
+                    # Normalize date
+                    daily_totals['date'] = pd.to_datetime(daily_totals['date']).dt.normalize() + pd.Timedelta(hours=12)
 
-                        # Fetch rates
-                        all_currencies = set()
-                        if 'currency' in current_positions.columns:
-                            all_currencies.update(current_positions['currency'].fillna('CAD').astype(str).str.upper().unique().tolist())
+                    # Append today's live data if needed
+                    # Performance metrics are updated daily (yesterday's close), so we need live data for today
+                    try:
+                        current_positions = get_current_positions_flask(fund)
+                        if not current_positions.empty:
+                            # Calculate totals for today
+                            # Use pre-calculated market_value if available, else shares * price
+                            # Note: This simple aggregation assumes base currency (CAD usually)
+                            # Ideally we should use same logic as dashboard summary
 
-                        # We need to convert to the SAME currency as performance_metrics.
-                        # populate_performance_metrics_job converts USD to CAD if currency is USD.
-                        # So target is CAD.
-                        rate_map = fetch_latest_rates_bulk_flask(list(all_currencies), 'CAD')
+                            # Get rates for conversion if needed (assuming metrics are in CAD/Base)
+                            # For now, we assume metrics are in Base currency.
+                            # get_current_positions_flask returns raw values + currency column.
 
-                        for _, row in current_positions.iterrows():
-                            curr = str(row.get('currency', 'CAD')).upper()
-                            rate = rate_map.get(curr, 1.0)
+                            current_val = 0.0
+                            current_cost = 0.0
+                            current_pnl = 0.0
 
-                            # Value
-                            m_val = float(row.get('market_value', 0) or 0)
-                            if m_val == 0:
-                                m_val = float(row.get('shares', 0) or 0) * float(row.get('current_price', 0) or row.get('price', 0) or 0)
-                            current_val += m_val * rate
+                            # Fetch rates
+                            all_currencies = set()
+                            if 'currency' in current_positions.columns:
+                                all_currencies.update(current_positions['currency'].fillna('CAD').astype(str).str.upper().unique().tolist())
 
-                            # Cost
-                            c_basis = float(row.get('cost_basis', 0) or 0)
-                            current_cost += c_basis * rate
+                            # We need to convert to the SAME currency as performance_metrics.
+                            # populate_performance_metrics_job converts USD to CAD if currency is USD.
+                            # So target is CAD.
+                            rate_map = fetch_latest_rates_bulk_flask(list(all_currencies), 'CAD')
 
-                            # PnL
-                            u_pnl = float(row.get('unrealized_pnl', 0) or 0)
-                            current_pnl += u_pnl * rate
+                            for _, row in current_positions.iterrows():
+                                curr = str(row.get('currency', 'CAD')).upper()
+                                rate = rate_map.get(curr, 1.0)
 
-                        # Create row for today (noon)
-                        today_date = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+                                # Value
+                                m_val = float(row.get('market_value', 0) or 0)
+                                if m_val == 0:
+                                    m_val = float(row.get('shares', 0) or 0) * float(row.get('current_price', 0) or row.get('price', 0) or 0)
+                                current_val += m_val * rate
 
-                        # Only append if date is newer than last metric
-                        last_metric_date = daily_totals['date'].max()
-                        if last_metric_date < today_date:
-                            new_row = pd.DataFrame([{
-                                'date': today_date,
-                                'value': current_val,
-                                'cost_basis': current_cost,
-                                'pnl': current_pnl,
-                                'fund': fund
-                            }])
-                            daily_totals = pd.concat([daily_totals, new_row], ignore_index=True)
+                                # Cost
+                                c_basis = float(row.get('cost_basis', 0) or 0)
+                                current_cost += c_basis * rate
 
-                except Exception as live_data_error:
-                    logger.warning(f"Failed to append live data to performance metrics: {live_data_error}")
+                                # PnL
+                                u_pnl = float(row.get('unrealized_pnl', 0) or 0)
+                                current_pnl += u_pnl * rate
 
-                # Sort ensuring date order
-                daily_totals = daily_totals.sort_values('date').reset_index(drop=True)
+                            # Create row for today (noon)
+                            today_date = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+
+                            # Only append if date is newer than last metric
+                            last_metric_date = daily_totals['date'].max()
+                            if last_metric_date < today_date:
+                                new_row = pd.DataFrame([{
+                                    'date': today_date,
+                                    'value': current_val,
+                                    'cost_basis': current_cost,
+                                    'pnl': current_pnl,
+                                    'fund': fund
+                                }])
+                                daily_totals = pd.concat([daily_totals, new_row], ignore_index=True)
+
+                    except Exception as live_data_error:
+                        logger.warning(f"Failed to append live data to performance metrics: {live_data_error}")
+
+                    # Sort ensuring date order
+                    daily_totals = daily_totals.sort_values('date').reset_index(drop=True)
 
             else:
                 # Fallback to granular calculation if metrics missing

@@ -943,6 +943,29 @@ def start_scheduler() -> bool:
         except Exception as e:
             logger.warning(f"  ⚠️ Failed to schedule backfill check: {e}")
         
+        # Performance metrics gap detection - runs 90 seconds after startup
+        # to give portfolio_positions backfill time to complete first
+        try:
+            from scheduler.backfill import startup_performance_metrics_backfill
+        except ModuleNotFoundError:
+            if str(project_root) not in sys.path:
+                sys.path.insert(0, str(project_root))
+            from scheduler.backfill import startup_performance_metrics_backfill
+        
+        try:
+            from datetime import datetime as dt_import, timedelta as td_import
+            scheduler.add_job(
+                startup_performance_metrics_backfill,
+                trigger='date',
+                run_date=dt_import.now() + td_import(seconds=90),
+                id='startup_performance_metrics_backfill',
+                name='Startup Performance Metrics Gap Detection',
+                replace_existing=True
+            )
+            logger.debug("  📋 Scheduled performance metrics gap detection (90s delay)")
+        except Exception as e:
+            logger.warning(f"  ⚠️ Failed to schedule performance metrics backfill: {e}")
+        
         # Note: check_overdue_jobs() removed - no longer needed with SQLAlchemyJobStore
         # APScheduler handles misfires automatically via misfire_grace_time
         

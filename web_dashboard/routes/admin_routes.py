@@ -2234,14 +2234,29 @@ def api_submit_trade():
                 "requires_rebuild": True
             }), 200
 
-        # 6. Trigger Rebuild if Backdated
+        # 6. Trigger Rebuild if Backdated, or recalc today's metrics
         is_backdated = trade_dt.date() < datetime.now().date()
         job_id = None
         if is_backdated:
+            # Backdated trade: rebuild_from_date.py handles both
+            # portfolio_positions AND performance_metrics recalculation
             try:
                 job_id = trigger_background_rebuild(fund, trade_dt.date())
             except Exception as rb_e:
                 logger.error(f"Rebuild trigger error: {rb_e}")
+        else:
+            # Today's trade: recalculate today's performance_metrics immediately
+            # so the dashboard chart reflects the new trade
+            try:
+                from scheduler.jobs_metrics import populate_performance_metrics_job
+                populate_performance_metrics_job(
+                    target_date=trade_dt.date(),
+                    fund_filter=fund,
+                    skip_existing=False  # Force recalc
+                )
+                logger.info(f"Recalculated today's performance_metrics for {fund}")
+            except Exception as pm_e:
+                logger.warning(f"Failed to recalc today's performance_metrics: {pm_e}")
 
         return jsonify({
             "success": True, 
