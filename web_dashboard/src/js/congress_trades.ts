@@ -1091,9 +1091,14 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
                         this.eGui.textContent = '--';
                         return;
                     }
+                    const isSale = params.data?.Type === 'Sale';
                     const isPositive = numVal >= 0;
                     const sign = isPositive ? '+' : '';
-                    this.eGui.className = `font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`;
+                    // Sales use cyan/orange to distinguish from purchase green/red
+                    const colorClass = isSale
+                        ? (isPositive ? 'text-cyan-400' : 'text-orange-400')
+                        : (isPositive ? 'text-green-500' : 'text-red-500');
+                    this.eGui.className = `font-semibold ${colorClass}`;
                     this.eGui.textContent = `${sign}${numVal.toFixed(1)}%`;
                 }
                 getGui() { return this.eGui; }

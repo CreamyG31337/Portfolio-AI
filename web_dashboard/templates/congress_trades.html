@@ -252,6 +252,11 @@
                 <i class="fas fa-info-circle"></i>
                 <span>Amount Legend</span>
             </button>
+            <button onclick="toggleReturnInfo()"
+                class="text-sm text-text-secondary hover:text-text-primary flex items-center gap-1">
+                <i class="fas fa-percent"></i>
+                <span>Return % Info</span>
+            </button>
         </div>
         <div class="flex items-center gap-3">
             <!-- Model Selection -->
@@ -306,6 +311,47 @@
                 <span class="text-text-secondary">$5,000,000+</span>
             </div>
         </div>
+    </div>
+
+    <!-- Return % Info (collapsible) -->
+    <div id="return-info" class="hidden mb-4 p-4 bg-dashboard-surface-alt rounded-lg border border-border">
+        <h3 class="text-sm font-semibold text-text-primary mb-2">📈 Return % Explained</h3>
+        <p class="text-sm text-text-secondary mb-2">
+            Return % shows the price change since the trade date, adjusted for trade direction:
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div class="flex items-start gap-2">
+                <span class="text-green-500 font-semibold mt-0.5">+</span>
+                <div>
+                    <span class="text-green-500 font-medium">Purchase:</span>
+                    <span class="text-text-secondary">Stock went up since buying &mdash; profitable trade.</span>
+                </div>
+            </div>
+            <div class="flex items-start gap-2">
+                <span class="text-red-500 font-semibold mt-0.5">&minus;</span>
+                <div>
+                    <span class="text-red-500 font-medium">Purchase:</span>
+                    <span class="text-text-secondary">Stock went down since buying &mdash; losing trade.</span>
+                </div>
+            </div>
+            <div class="flex items-start gap-2">
+                <span class="text-cyan-400 font-semibold mt-0.5">+</span>
+                <div>
+                    <span class="text-cyan-400 font-medium">Sale:</span>
+                    <span class="text-text-secondary">Stock went down since selling &mdash; sold at a good time.</span>
+                </div>
+            </div>
+            <div class="flex items-start gap-2">
+                <span class="text-orange-400 font-semibold mt-0.5">&minus;</span>
+                <div>
+                    <span class="text-orange-400 font-medium">Sale:</span>
+                    <span class="text-text-secondary">Stock went up since selling &mdash; missed further gains.</span>
+                </div>
+            </div>
+        </div>
+        <p class="text-xs text-text-tertiary mt-3">
+            Prices are adjusted close from yfinance, refreshed daily at 6:00 AM ET.
+        </p>
     </div>
 
     <div id="congress-trades-grid" class="ag-theme-alpine w-full"></div>
@@ -387,6 +433,14 @@
         const legend = document.getElementById('amount-legend');
         if (legend) {
             legend.classList.toggle('hidden');
+        }
+    }
+
+    // Toggle return % info visibility
+    function toggleReturnInfo() {
+        const info = document.getElementById('return-info');
+        if (info) {
+            info.classList.toggle('hidden');
         }
     }
 </script>

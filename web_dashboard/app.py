@@ -4730,10 +4730,14 @@ def api_congress_trades_data():
             logo_url = get_ticker_logo_url(ticker) if ticker != 'N/A' else None
 
             # Return % from congress_trade_returns (via enriched view)
+            # For sales, invert the sign: stock going up after selling = negative
+            # (opportunity cost), stock going down after selling = positive (good call)
             pct_change = trade.get('pct_change')
             if pct_change is not None:
                 try:
                     pct_change = round(float(pct_change), 1)
+                    if trade.get('type') == 'Sale':
+                        pct_change = -pct_change
                 except (ValueError, TypeError):
                     pct_change = None
 
