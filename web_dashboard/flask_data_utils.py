@@ -559,69 +559,173 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
         if days is not None and days > 0:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         
-        # Query with base columns
-        all_rows = []
-        batch_size = 1000
-        offset = 0
-        
-        while True:
-            query = client.supabase.table("portfolio_positions").select(
-                "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency"
+        # OPTIMIZATION: Try fetching pre-aggregated metrics first
+        # This reduces data transfer from ~50k rows (positions) to ~1k rows (daily summaries)
+        try:
+            metrics_query = client.supabase.table("performance_metrics").select(
+                "date, total_value, cost_basis, unrealized_pnl, fund"
             )
             
             if fund and fund.lower() != 'all':
-                query = query.eq("fund", fund)
-            
+                metrics_query = metrics_query.eq("fund", fund)
+
             if cutoff_date:
-                query = query.gte("date", cutoff_date.strftime('%Y-%m-%dT%H:%M:%SZ'))
+                metrics_query = metrics_query.gte("date", cutoff_date.strftime('%Y-%m-%d'))
+
+            metrics_result = metrics_query.order("date").execute()
             
-            result = query.order("date").order("id").range(offset, offset + batch_size - 1).execute()
-            
-            rows = result.data
-            if not rows:
-                break
+            if metrics_result.data:
+                logger.info(f"Using pre-aggregated performance metrics for {fund} ({len(metrics_result.data)} rows)")
+                daily_totals = pd.DataFrame(metrics_result.data)
                 
-            all_rows.extend(rows)
-            if len(rows) < batch_size:
-                break
-            offset += batch_size
-            if offset > 50000:
-                break
+                # Normalize columns to match expected output
+                daily_totals = daily_totals.rename(columns={
+                    'total_value': 'value',
+                    'unrealized_pnl': 'pnl'
+                })
                 
-        if not all_rows:
-            return pd.DataFrame()
+                # Normalize date
+                daily_totals['date'] = pd.to_datetime(daily_totals['date']).dt.normalize() + pd.Timedelta(hours=12)
+
+                # Append today's live data if needed
+                # Performance metrics are updated daily (yesterday's close), so we need live data for today
+                try:
+                    current_positions = get_current_positions_flask(fund)
+                    if not current_positions.empty:
+                        # Calculate totals for today
+                        # Use pre-calculated market_value if available, else shares * price
+                        # Note: This simple aggregation assumes base currency (CAD usually)
+                        # Ideally we should use same logic as dashboard summary
+
+                        # Get rates for conversion if needed (assuming metrics are in CAD/Base)
+                        # For now, we assume metrics are in Base currency.
+                        # get_current_positions_flask returns raw values + currency column.
+
+                        current_val = 0.0
+                        current_cost = 0.0
+                        current_pnl = 0.0
+
+                        # Fetch rates
+                        all_currencies = set()
+                        if 'currency' in current_positions.columns:
+                            all_currencies.update(current_positions['currency'].fillna('CAD').astype(str).str.upper().unique().tolist())
+
+                        # We need to convert to the SAME currency as performance_metrics.
+                        # populate_performance_metrics_job converts USD to CAD if currency is USD.
+                        # So target is CAD.
+                        rate_map = fetch_latest_rates_bulk_flask(list(all_currencies), 'CAD')
+
+                        for _, row in current_positions.iterrows():
+                            curr = str(row.get('currency', 'CAD')).upper()
+                            rate = rate_map.get(curr, 1.0)
+
+                            # Value
+                            m_val = float(row.get('market_value', 0) or 0)
+                            if m_val == 0:
+                                m_val = float(row.get('shares', 0) or 0) * float(row.get('current_price', 0) or row.get('price', 0) or 0)
+                            current_val += m_val * rate
+
+                            # Cost
+                            c_basis = float(row.get('cost_basis', 0) or 0)
+                            current_cost += c_basis * rate
+
+                            # PnL
+                            u_pnl = float(row.get('unrealized_pnl', 0) or 0)
+                            current_pnl += u_pnl * rate
+
+                        # Create row for today (noon)
+                        today_date = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+
+                        # Only append if date is newer than last metric
+                        last_metric_date = daily_totals['date'].max()
+                        if last_metric_date < today_date:
+                            new_row = pd.DataFrame([{
+                                'date': today_date,
+                                'value': current_val,
+                                'cost_basis': current_cost,
+                                'pnl': current_pnl,
+                                'fund': fund
+                            }])
+                            daily_totals = pd.concat([daily_totals, new_row], ignore_index=True)
+
+                except Exception as live_data_error:
+                    logger.warning(f"Failed to append live data to performance metrics: {live_data_error}")
+
+                # Sort ensuring date order
+                daily_totals = daily_totals.sort_values('date').reset_index(drop=True)
+
+            else:
+                # Fallback to granular calculation if metrics missing
+                logger.info(f"No pre-aggregated metrics found for {fund}, falling back to granular calculation")
+                daily_totals = None
+        except Exception as metrics_error:
+            logger.warning(f"Error fetching performance_metrics: {metrics_error}")
+            daily_totals = None
+
+        if daily_totals is None:
+            # Query with base columns (Original Logic)
+            all_rows = []
+            batch_size = 1000
+            offset = 0
             
-        df = pd.DataFrame(all_rows)
-        df['date'] = pd.to_datetime(df['date']).dt.normalize() + pd.Timedelta(hours=12)
-        
-        # Check for pre-converted values
-        has_preconverted = False
-        if 'total_value_base' in df.columns:
-            preconverted_pct = df['total_value_base'].notna().mean()
-            has_preconverted = preconverted_pct > 0.8
+            while True:
+                query = client.supabase.table("portfolio_positions").select(
+                    "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency"
+                )
+
+                if fund and fund.lower() != 'all':
+                    query = query.eq("fund", fund)
+
+                if cutoff_date:
+                    query = query.gte("date", cutoff_date.strftime('%Y-%m-%dT%H:%M:%SZ'))
+
+                result = query.order("date").order("id").range(offset, offset + batch_size - 1).execute()
+
+                rows = result.data
+                if not rows:
+                    break
+
+                all_rows.extend(rows)
+                if len(rows) < batch_size:
+                    break
+                offset += batch_size
+                if offset > 50000:
+                    break
+
+            if not all_rows:
+                return pd.DataFrame()
+
+            df = pd.DataFrame(all_rows)
+            df['date'] = pd.to_datetime(df['date']).dt.normalize() + pd.Timedelta(hours=12)
             
-        if has_preconverted:
-            value_col = 'total_value_base'
-            cost_col = 'cost_basis_base'
-            pnl_col = 'pnl_base'
-        else:
-            # FALLBACK: Runtime conversion (simplified for Flask - could add rate fetching if needed)
-            # For now, warn and use raw values if mixed (this was the bug, but at least we try base cols first)
-            # Ideally we port the rate fetching logic here too, but base cols should exist.
-            value_col = 'total_value'
-            cost_col = 'cost_basis'
-            pnl_col = 'pnl'
+            # Check for pre-converted values
+            has_preconverted = False
+            if 'total_value_base' in df.columns:
+                preconverted_pct = df['total_value_base'].notna().mean()
+                has_preconverted = preconverted_pct > 0.8
+
+            if has_preconverted:
+                value_col = 'total_value_base'
+                cost_col = 'cost_basis_base'
+                pnl_col = 'pnl_base'
+            else:
+                # FALLBACK: Runtime conversion (simplified for Flask - could add rate fetching if needed)
+                # For now, warn and use raw values if mixed (this was the bug, but at least we try base cols first)
+                # Ideally we port the rate fetching logic here too, but base cols should exist.
+                value_col = 'total_value'
+                cost_col = 'cost_basis'
+                pnl_col = 'pnl'
+
+            # Aggregate
+            daily_totals = df.groupby(df['date'].dt.date).agg({
+                value_col: 'sum',
+                cost_col: 'sum',
+                pnl_col: 'sum'
+            }).reset_index()
             
-        # Aggregate
-        daily_totals = df.groupby(df['date'].dt.date).agg({
-            value_col: 'sum',
-            cost_col: 'sum',
-            pnl_col: 'sum'
-        }).reset_index()
-        
-        daily_totals.columns = ['date', 'value', 'cost_basis', 'pnl']
-        daily_totals['date'] = pd.to_datetime(daily_totals['date'])
-        daily_totals = daily_totals.sort_values('date').reset_index(drop=True)
+            daily_totals.columns = ['date', 'value', 'cost_basis', 'pnl']
+            daily_totals['date'] = pd.to_datetime(daily_totals['date'])
+            daily_totals = daily_totals.sort_values('date').reset_index(drop=True)
         
         # Performance calculation
         daily_totals['performance_pct'] = np.where(
