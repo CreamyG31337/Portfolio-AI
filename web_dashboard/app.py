@@ -5831,8 +5831,8 @@ def api_insider_trades_data():
         refresh_key = int(request.args.get("refresh_key", 0))
 
         # Pagination parameters
-        limit = min(int(request.args.get("limit", 100)), 500)  # Default 100, max 500
-        offset = int(request.args.get("offset", 0))
+        limit = min(max(int(request.args.get("limit", 100)), 1), 500)  # Default 100, max 500
+        offset = max(int(request.args.get("offset", 0)), 0)
 
         if is_admin():
             from supabase_client import SupabaseClient
@@ -5854,6 +5854,32 @@ def api_insider_trades_data():
         end_date = request.args.get("end_date") if use_date_filter else None
         fund_only = request.args.get("fund_only") == "true"
         selected_fund = request.args.get("fund")
+
+        if fund_only and selected_fund and selected_fund.lower() != "all":
+            from flask_data_utils import get_current_positions_flask
+
+            positions_df = get_current_positions_flask(fund=selected_fund)
+            if positions_df.empty or "ticker" not in positions_df.columns:
+                return jsonify({"trades": [], "total": 0, "has_more": False})
+
+            fund_tickers = {
+                str(ticker).strip().upper()
+                for ticker in positions_df["ticker"].dropna().unique()
+                if str(ticker).strip()
+            }
+            if not fund_tickers:
+                return jsonify({"trades": [], "total": 0, "has_more": False})
+
+            if ticker_filters:
+                ticker_filters = [
+                    ticker for ticker in ticker_filters
+                    if str(ticker).strip().upper() in fund_tickers
+                ]
+            else:
+                ticker_filters = sorted(fund_tickers)
+
+            if not ticker_filters:
+                return jsonify({"trades": [], "total": 0, "has_more": False})
 
         min_value = None
         if min_value_raw:
@@ -5878,25 +5904,15 @@ def api_insider_trades_data():
             _cache_version=cache_version
         )
 
-        all_trades = result["trades"]
-        total = result["total"]
-        has_more = result["has_more"]
-
-        if fund_only and selected_fund and selected_fund.lower() != "all":
-            from flask_data_utils import get_current_positions_flask
-
-            positions_df = get_current_positions_flask(fund=selected_fund)
-            if positions_df.empty or "ticker" not in positions_df.columns:
-                all_trades = []
-            else:
-                fund_tickers = {
-                    str(ticker).strip().upper()
-                    for ticker in positions_df["ticker"].dropna().unique()
-                }
-                all_trades = [
-                    trade for trade in all_trades
-                    if str(trade.get("ticker", "")).strip().upper() in fund_tickers
-                ]
+        # Backward compatibility: older call sites/tests may still return a plain list.
+        if isinstance(result, dict):
+            all_trades = result.get("trades", [])
+            total = int(result.get("total", len(all_trades)))
+            has_more = bool(result.get("has_more", False))
+        else:
+            all_trades = result or []
+            total = len(all_trades)
+            has_more = False
 
         def _to_float(value: Any) -> Optional[float]:
             if value is None:
