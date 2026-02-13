@@ -132,7 +132,7 @@
                                     data-default-date="{{ default_trade_date }}">
                             </div>
                             <div>
-                                <label for="trade-time" class="block mb-2 text-sm font-medium text-text-primary">Time
+                                <label for="trade-time" class="block mb-2 text-sm font-medium text-text-primary">Time (EST)
                                     <span class="text-theme-error-text">*</span></label>
                                 <input type="time" id="trade-time" name="time"
                                     class="border text-sm rounded-lg block w-full p-2.5" aria-required="true" required>
@@ -237,12 +237,13 @@
                             <th scope="col" class="px-6 py-3 text-right">Shares</th>
                             <th scope="col" class="px-6 py-3 text-right">Price</th>
                             <th scope="col" class="px-6 py-3 text-right">Total</th>
+                            <th scope="col" class="px-6 py-3 text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="trades-table-body">
                         <!-- Populated by JS -->
                         <tr class="bg-dashboard-surface border-b border-border">
-                            <td colspan="6" class="px-6 py-4 text-center">Loading...</td>
+                            <td colspan="7" class="px-6 py-4 text-center">Loading...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -258,6 +259,115 @@
                         <!-- Populated by JS -->
                     </ul>
                 </nav>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Edit Trade Modal -->
+<div id="edit-trade-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-dashboard-surface rounded-lg shadow-lg border border-border mx-4">
+        <div class="flex items-center justify-between p-4 border-b border-border">
+            <h3 class="text-lg font-semibold text-text-primary">Edit Trade</h3>
+            <button id="edit-modal-close" type="button"
+                class="text-text-secondary hover:text-text-primary rounded-lg text-sm w-8 h-8 inline-flex items-center justify-center hover:bg-dashboard-surface-alt">
+                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
+        </div>
+        <form id="edit-trade-form" class="p-4 space-y-4">
+            <input type="hidden" id="edit-trade-id">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block mb-2 text-sm font-medium text-text-primary">Action</label>
+                    <div class="flex gap-4">
+                        <div class="flex items-center ps-4 border border-border rounded w-full bg-dashboard-surface">
+                            <input id="edit-action-buy" type="radio" value="BUY" name="edit-action"
+                                class="w-4 h-4 text-theme-success-text bg-dashboard-background border-border focus:ring-theme-success-text focus:ring-2">
+                            <label for="edit-action-buy" class="w-full py-2.5 ms-2 text-sm font-medium text-text-primary cursor-pointer">🟢 BUY</label>
+                        </div>
+                        <div class="flex items-center ps-4 border border-border rounded w-full bg-dashboard-surface">
+                            <input id="edit-action-sell" type="radio" value="SELL" name="edit-action"
+                                class="w-4 h-4 text-theme-error-text bg-dashboard-background border-border focus:ring-theme-error-text focus:ring-2">
+                            <label for="edit-action-sell" class="w-full py-2.5 ms-2 text-sm font-medium text-text-primary cursor-pointer">🔴 SELL</label>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label for="edit-ticker" class="block mb-2 text-sm font-medium text-text-primary">Ticker Symbol</label>
+                    <div class="relative">
+                        <input type="text" id="edit-ticker" class="border text-sm rounded-lg block w-full p-2.5 uppercase" autocomplete="off" required>
+                        <div id="edit-ticker-autocomplete-dropdown"
+                            class="hidden absolute z-50 w-full mt-1 bg-dashboard-surface border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        </div>
+                    </div>
+                    <p id="edit-ticker-company-name" class="mt-1 text-xs text-text-secondary hidden"></p>
+                </div>
+                <div>
+                    <label for="edit-shares" class="block mb-2 text-sm font-medium text-text-primary">Shares</label>
+                    <input type="number" id="edit-shares" step="any" min="0.000001" class="border text-sm rounded-lg block w-full p-2.5" required>
+                </div>
+                <div>
+                    <label for="edit-price" class="block mb-2 text-sm font-medium text-text-primary">Price ($)</label>
+                    <input type="number" id="edit-price" step="0.001" min="0.001" class="border text-sm rounded-lg block w-full p-2.5" required>
+                </div>
+                <div>
+                    <label for="edit-currency" class="block mb-2 text-sm font-medium text-text-primary">Currency</label>
+                    <select id="edit-currency" class="border text-sm rounded-lg block w-full p-2.5">
+                        <option value="USD">USD - US Dollar</option>
+                        <option value="CAD">CAD - Canadian Dollar</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="edit-date" class="block mb-2 text-sm font-medium text-text-primary">Date</label>
+                    <input type="date" id="edit-date" class="border text-sm rounded-lg block w-full p-2.5" required>
+                </div>
+                <div>
+                    <label for="edit-time" class="block mb-2 text-sm font-medium text-text-primary">Time (EST)</label>
+                    <input type="time" id="edit-time" class="border text-sm rounded-lg block w-full p-2.5" required>
+                </div>
+            </div>
+            <div>
+                <label for="edit-reason" class="block mb-2 text-sm font-medium text-text-primary">Reason / Notes</label>
+                <textarea id="edit-reason" rows="3" class="border text-sm rounded-lg block w-full p-2.5"
+                    placeholder="e.g. Rebalancing, Limit Fill"></textarea>
+            </div>
+            <div class="flex justify-end gap-3 pt-2 border-t border-border">
+                <button type="button" id="edit-modal-cancel"
+                    class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-surface-alt font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
+                    Cancel
+                </button>
+                <button type="submit" id="edit-modal-save"
+                    class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Trade Confirmation Modal -->
+<div id="delete-trade-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="relative w-full max-w-md bg-dashboard-surface rounded-lg shadow-lg border border-border mx-4">
+        <div class="p-6 text-center">
+            <svg class="mx-auto mb-4 text-theme-error-text w-12 h-12" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 11V6m0 8h.01M19 10a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+            </svg>
+            <h3 class="mb-2 text-lg font-semibold text-text-primary">Delete Trade</h3>
+            <p class="mb-1 text-sm text-text-secondary">Are you sure you want to delete this trade?</p>
+            <p class="mb-5 text-sm font-medium text-text-primary" id="delete-trade-summary">—</p>
+            <p class="mb-5 text-xs text-text-secondary">This will trigger a portfolio rebuild from the trade's date.</p>
+            <input type="hidden" id="delete-trade-id">
+            <div class="flex justify-center gap-3">
+                <button id="delete-modal-confirm" type="button"
+                    class="text-white bg-red-600 hover:bg-red-700 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
+                    Yes, Delete
+                </button>
+                <button id="delete-modal-cancel" type="button"
+                    class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-surface-alt font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
+                    Cancel
+                </button>
             </div>
         </div>
     </div>

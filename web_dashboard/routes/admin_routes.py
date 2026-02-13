@@ -2279,6 +2279,177 @@ def api_submit_trade():
         logger.error(f"Error submitting trade: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
+@admin_bp.route('/api/admin/trades/<int:trade_id>', methods=['PUT'])
+@require_admin
+def api_update_trade(trade_id: int):
+    """Update an existing trade.
+    
+    PUT /api/admin/trades/<trade_id>
+    
+    Request Body:
+        action (str): BUY or SELL
+        ticker (str): Ticker symbol
+        shares (float): Number of shares (> 0)
+        price (float): Price per share (> 0)
+        currency (str): Currency code
+        timestamp (str): ISO format timestamp
+        reason (str): Trade reason/notes
+        
+    Returns:
+        JSON response with success status and optional rebuild_job_id
+    """
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot modify trades"}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        client = SupabaseClient(use_service_role=True)
+        
+        # Fetch existing trade to verify it exists and get the fund
+        existing = client.supabase.table("trade_log") \
+            .select("*") \
+            .eq("id", trade_id) \
+            .execute()
+        
+        if not existing.data:
+            return jsonify({"error": "Trade not found"}), 404
+        
+        old_trade = existing.data[0]
+        fund = old_trade['fund']
+        
+        # Extract and validate fields
+        ticker = data.get('ticker', old_trade.get('ticker', '')).upper()
+        action = data.get('action', 'BUY')
+        shares = float(data.get('shares', old_trade.get('shares', 0)))
+        price = float(data.get('price', old_trade.get('price', 0)))
+        currency = data.get('currency', old_trade.get('currency', 'USD'))
+        timestamp_str = data.get('timestamp', old_trade.get('date'))
+        reason = data.get('reason', old_trade.get('reason', ''))
+        
+        if not ticker or shares <= 0 or price <= 0:
+            return jsonify({"error": "Invalid trade data: ticker, shares, and price are required"}), 400
+        
+        try:
+            trade_dt = datetime.fromisoformat(timestamp_str)
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid timestamp format"}), 400
+        
+        # Recalculate
+        cost_basis = shares * price
+        pnl = 0
+        if action == "SELL":
+            pnl = calculate_fifo_pnl(fund, ticker, shares, price, existing_trades=None)
+        
+        # Ensure ticker metadata exists
+        try:
+            client.ensure_ticker_in_securities(ticker, currency)
+        except Exception as e:
+            logger.warning(f"Metadata fetch warning for {ticker}: {e}")
+        
+        # Update the trade
+        update_data = {
+            "ticker": ticker,
+            "shares": shares,
+            "price": price,
+            "cost_basis": cost_basis,
+            "pnl": pnl,
+            "reason": reason,
+            "currency": currency,
+            "date": trade_dt.isoformat()
+        }
+        
+        client.supabase.table("trade_log") \
+            .update(update_data) \
+            .eq("id", trade_id) \
+            .execute()
+        
+        # Determine earliest affected date for rebuild
+        old_date = datetime.fromisoformat(old_trade['date']).date()
+        new_date = trade_dt.date()
+        earliest_date = min(old_date, new_date)
+        
+        # Trigger rebuild from the earliest affected date
+        job_id = None
+        try:
+            job_id = trigger_background_rebuild(fund, earliest_date)
+        except Exception as rb_e:
+            logger.error(f"Rebuild trigger error after trade update: {rb_e}")
+        
+        # Bump cache version
+        bump_cache_version()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Trade {trade_id} updated: {action} {shares} {ticker}",
+            "rebuild_job_id": job_id
+        })
+    
+    except Exception as e:
+        logger.error(f"Error updating trade {trade_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@admin_bp.route('/api/admin/trades/<int:trade_id>', methods=['DELETE'])
+@require_admin
+def api_delete_trade(trade_id: int):
+    """Delete a trade.
+    
+    DELETE /api/admin/trades/<trade_id>
+    
+    Returns:
+        JSON response with success status and optional rebuild_job_id
+    """
+    try:
+        from flask_auth_utils import can_modify_data_flask
+        if not can_modify_data_flask():
+            return jsonify({"error": "Read-only admin cannot delete trades"}), 403
+        
+        client = SupabaseClient(use_service_role=True)
+        
+        # Fetch existing trade to get fund and date for rebuild
+        existing = client.supabase.table("trade_log") \
+            .select("*") \
+            .eq("id", trade_id) \
+            .execute()
+        
+        if not existing.data:
+            return jsonify({"error": "Trade not found"}), 404
+        
+        old_trade = existing.data[0]
+        fund = old_trade['fund']
+        trade_date = datetime.fromisoformat(old_trade['date']).date()
+        
+        # Delete the trade
+        client.supabase.table("trade_log") \
+            .delete() \
+            .eq("id", trade_id) \
+            .execute()
+        
+        # Trigger rebuild from the deleted trade's date
+        job_id = None
+        try:
+            job_id = trigger_background_rebuild(fund, trade_date)
+        except Exception as rb_e:
+            logger.error(f"Rebuild trigger error after trade delete: {rb_e}")
+        
+        # Bump cache version
+        bump_cache_version()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Trade {trade_id} deleted",
+            "rebuild_job_id": job_id
+        })
+    
+    except Exception as e:
+        logger.error(f"Error deleting trade {trade_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @admin_bp.route('/api/admin/trades/recent')
 @require_admin
 def api_recent_trades():

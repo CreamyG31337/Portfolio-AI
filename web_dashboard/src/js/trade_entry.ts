@@ -8,11 +8,15 @@ import { setupTickerAutocomplete, getCompanyName } from './ticker_autocomplete.j
 
 // Type definitions
 interface Trade {
+    id: number;
     date: string;
     ticker: string;
     shares: number;
     price: number;
     reason?: string;
+    action?: string;
+    currency?: string;
+    fund?: string;
 }
 
 interface TradesResponse {
@@ -46,6 +50,29 @@ interface EmailParseResponse {
 interface ApiResponse {
     success?: boolean;
     error?: string;
+}
+
+// EST timezone constant
+const TZ_EST = 'America/New_York';
+
+// Get current time string (HH:MM) in EST
+function nowEstTimeString(): string {
+    return new Date().toLocaleTimeString('en-US', {
+        timeZone: TZ_EST, hour12: false, hour: '2-digit', minute: '2-digit'
+    });
+}
+
+// Format a Date to YYYY-MM-DD in EST
+function toEstDateString(dt: Date): string {
+    const parts = dt.toLocaleDateString('en-CA', { timeZone: TZ_EST }); // en-CA gives YYYY-MM-DD
+    return parts;
+}
+
+// Format a Date to HH:MM in EST
+function toEstTimeString(dt: Date): string {
+    return dt.toLocaleTimeString('en-US', {
+        timeZone: TZ_EST, hour12: false, hour: '2-digit', minute: '2-digit'
+    });
 }
 
 // Utility functions (scoped to trade_entry.ts to avoid conflicts)
@@ -304,8 +331,7 @@ async function handleManualSubmit(e: Event): Promise<void> {
             }
         }
         if (timeInput) {
-            const resetNow = new Date();
-            timeInput.value = resetNow.toTimeString().slice(0, 5);
+            timeInput.value = nowEstTimeString();
         }
 
         updateManualTotal();
@@ -391,7 +417,7 @@ async function handleEmailParse(): Promise<void> {
         if (previewShares) previewShares.textContent = result.trade.shares.toString();
         if (previewPrice) previewPrice.textContent = '$' + result.trade.price.toFixed(2);
         if (previewTotal) previewTotal.textContent = '$' + (result.trade.shares * result.trade.price).toFixed(2);
-        if (previewDate) previewDate.textContent = new Date(result.trade.timestamp).toLocaleString();
+        if (previewDate) previewDate.textContent = new Date(result.trade.timestamp).toLocaleString('en-US', { timeZone: TZ_EST }) + ' EST';
         if (parsedResult) parsedResult.classList.remove('hidden');
 
     } catch (error) {
@@ -465,13 +491,23 @@ async function handleEmailConfirm(): Promise<void> {
     }
 }
 
+// Infer action from trade data
+function inferAction(trade: Trade): string {
+    if (trade.action && (trade.action === 'BUY' || trade.action === 'SELL')) {
+        return trade.action;
+    }
+    const reason = (trade.reason || '').toLowerCase();
+    if (reason.includes('sell') || reason.includes('sold')) return 'SELL';
+    return 'BUY';
+}
+
 // Fetch recent trades
 async function fetchRecentTrades(page: number = 0): Promise<void> {
     const fund = getSelectedFund();
     if (!fund) {
         const tbody = document.getElementById('trades-table-body');
         if (tbody) {
-            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="6" class="px-6 py-4 text-center text-text-secondary">Please select a fund from the sidebar menu</td></tr>';
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center text-text-secondary">Please select a fund from the sidebar menu</td></tr>';
         }
         return;
     }
@@ -482,7 +518,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     const tbody = document.getElementById('trades-table-body');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="6" class="px-6 py-4 text-center">Loading...</td></tr>';
+    tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center">Loading...</td></tr>';
 
     try {
         const response = await fetch(`/api/admin/trades/recent?fund=${encodeURIComponent(fund)}&page=${page}&limit=${limit}`, {
@@ -498,20 +534,19 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
         tbody.innerHTML = '';
 
         if (data.trades.length === 0) {
-            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="6" class="px-6 py-4 text-center text-text-secondary">No trades found</td></tr>';
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center text-text-secondary">No trades found</td></tr>';
         } else {
             data.trades.forEach(trade => {
                 const tr = document.createElement('tr');
                 tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
 
-                // Determine Action
-                const reason = (trade.reason || '').toLowerCase();
-                const isSell = reason.includes('sell') || reason.includes('sold');
-                const actionBadge = isSell
+                const action = inferAction(trade);
+                const actionBadge = action === 'SELL'
                     ? '<span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-300">SELL</span>'
                     : '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-300">BUY</span>';
 
-                const dateStr = new Date(trade.date).toLocaleString([], {
+                const dateStr = new Date(trade.date).toLocaleString('en-US', {
+                    timeZone: TZ_EST,
                     year: 'numeric',
                     month: '2-digit',
                     day: '2-digit',
@@ -519,6 +554,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                     minute: '2-digit'
                 });
                 const total = trade.shares * trade.price;
+                const tradeId = trade.id;
 
                 tr.innerHTML = `
                     <td class="px-6 py-4">${escapeHtmlForTradeEntry(dateStr)}</td>
@@ -527,7 +563,27 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                     <td class="px-6 py-4 text-right">${trade.shares}</td>
                     <td class="px-6 py-4 text-right">$${trade.price.toFixed(2)}</td>
                     <td class="px-6 py-4 text-right">$${total.toFixed(2)}</td>
+                    <td class="px-6 py-4 text-center whitespace-nowrap">
+                        <button type="button" data-trade-id="${tradeId}" class="edit-trade-btn text-accent hover:text-accent/80 text-sm font-medium me-2" title="Edit trade">
+                            <i class="fas fa-pen-to-square"></i>
+                        </button>
+                        <button type="button" data-trade-id="${tradeId}" class="delete-trade-btn text-theme-error-text hover:text-theme-error-text/80 text-sm font-medium" title="Delete trade">
+                            <i class="fas fa-trash-can"></i>
+                        </button>
+                    </td>
                 `;
+
+                // Attach event listeners for edit/delete buttons
+                const editBtn = tr.querySelector('.edit-trade-btn') as HTMLButtonElement;
+                const deleteBtn = tr.querySelector('.delete-trade-btn') as HTMLButtonElement;
+
+                if (editBtn) {
+                    editBtn.addEventListener('click', () => openEditModal(trade));
+                }
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', () => openDeleteModal(trade));
+                }
+
                 tbody.appendChild(tr);
             });
         }
@@ -546,7 +602,215 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     } catch (error) {
         console.error('[Trade Entry] Error fetching trades:', error);
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        tbody.innerHTML = `<tr class="bg-dashboard-surface border-b border-border"><td colspan="6" class="px-6 py-4 text-center text-theme-error-text">Error loading trades: ${escapeHtmlForTradeEntry(errorMsg)}</td></tr>`;
+        tbody.innerHTML = `<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center text-theme-error-text">Error loading trades: ${escapeHtmlForTradeEntry(errorMsg)}</td></tr>`;
+    }
+}
+
+// ==========================================
+// Edit Trade Modal
+// ==========================================
+
+// Update edit modal company name display
+function updateEditCompanyName(companyName?: string): void {
+    const el = document.getElementById('edit-ticker-company-name');
+    if (!el) return;
+    if (companyName) {
+        el.textContent = companyName;
+        el.classList.remove('hidden');
+    } else {
+        el.textContent = '';
+        el.classList.add('hidden');
+    }
+}
+
+function openEditModal(trade: Trade): void {
+    const modal = document.getElementById('edit-trade-modal');
+    if (!modal) return;
+
+    // Populate form fields
+    const idInput = document.getElementById('edit-trade-id') as HTMLInputElement | null;
+    const buyRadio = document.getElementById('edit-action-buy') as HTMLInputElement | null;
+    const sellRadio = document.getElementById('edit-action-sell') as HTMLInputElement | null;
+    const tickerInput = document.getElementById('edit-ticker') as HTMLInputElement | null;
+    const sharesInput = document.getElementById('edit-shares') as HTMLInputElement | null;
+    const priceInput = document.getElementById('edit-price') as HTMLInputElement | null;
+    const currencySelect = document.getElementById('edit-currency') as HTMLSelectElement | null;
+    const dateInput = document.getElementById('edit-date') as HTMLInputElement | null;
+    const timeInput = document.getElementById('edit-time') as HTMLInputElement | null;
+    const reasonInput = document.getElementById('edit-reason') as HTMLTextAreaElement | null;
+
+    if (idInput) idInput.value = trade.id.toString();
+    if (tickerInput) tickerInput.value = trade.ticker || '';
+    if (sharesInput) sharesInput.value = Math.abs(trade.shares).toString();
+    if (priceInput) priceInput.value = trade.price.toString();
+    if (currencySelect) currencySelect.value = trade.currency || 'USD';
+    if (reasonInput) reasonInput.value = trade.reason || '';
+
+    // Set action radio
+    const action = inferAction(trade);
+    if (buyRadio && sellRadio) {
+        buyRadio.checked = action === 'BUY';
+        sellRadio.checked = action === 'SELL';
+    }
+
+    // Parse date/time from ISO string, displayed in EST
+    if (dateInput && timeInput && trade.date) {
+        const dt = new Date(trade.date);
+        dateInput.value = toEstDateString(dt);
+        timeInput.value = toEstTimeString(dt);
+    }
+
+    // Show company name for the current ticker
+    const name = getCompanyName(trade.ticker || '');
+    updateEditCompanyName(name);
+
+    // Show modal
+    modal.classList.remove('hidden');
+}
+
+function closeEditModal(): void {
+    const modal = document.getElementById('edit-trade-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function handleEditSubmit(e: Event): Promise<void> {
+    e.preventDefault();
+
+    const idInput = document.getElementById('edit-trade-id') as HTMLInputElement | null;
+    const tradeId = idInput ? parseInt(idInput.value) : 0;
+    if (!tradeId) return;
+
+    const saveBtn = document.getElementById('edit-modal-save') as HTMLButtonElement | null;
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+        const buyRadio = document.getElementById('edit-action-buy') as HTMLInputElement | null;
+        const action = buyRadio?.checked ? 'BUY' : 'SELL';
+
+        const tickerInput = document.getElementById('edit-ticker') as HTMLInputElement | null;
+        const sharesInput = document.getElementById('edit-shares') as HTMLInputElement | null;
+        const priceInput = document.getElementById('edit-price') as HTMLInputElement | null;
+        const currencySelect = document.getElementById('edit-currency') as HTMLSelectElement | null;
+        const dateInput = document.getElementById('edit-date') as HTMLInputElement | null;
+        const timeInput = document.getElementById('edit-time') as HTMLInputElement | null;
+        const reasonInput = document.getElementById('edit-reason') as HTMLTextAreaElement | null;
+
+        const date = dateInput?.value || '';
+        const time = timeInput?.value || '12:00';
+        const timestamp = new Date(`${date}T${time}`).toISOString();
+
+        const payload = {
+            action,
+            ticker: tickerInput?.value || '',
+            shares: sharesInput?.value || '0',
+            price: priceInput?.value || '0',
+            currency: currencySelect?.value || 'USD',
+            timestamp,
+            reason: reasonInput?.value || ''
+        };
+
+        const response = await fetch(`/api/admin/trades/${tradeId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify(payload),
+            credentials: 'include'
+        });
+
+        const result: TradeSubmitResponse = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Update failed');
+        }
+
+        closeEditModal();
+        showToastForTradeEntry('Trade updated successfully');
+        fetchRecentTrades(currentPage);
+
+        if (result.rebuild_job_id) {
+            showToastForTradeEntry('Background rebuild started', 'info');
+        }
+    } catch (error) {
+        console.error('[Trade Entry] Error updating trade:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        showToastForTradeEntry(errorMsg, 'error');
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Changes';
+        }
+    }
+}
+
+// ==========================================
+// Delete Trade Modal
+// ==========================================
+
+function openDeleteModal(trade: Trade): void {
+    const modal = document.getElementById('delete-trade-modal');
+    if (!modal) return;
+
+    const idInput = document.getElementById('delete-trade-id') as HTMLInputElement | null;
+    const summary = document.getElementById('delete-trade-summary');
+
+    if (idInput) idInput.value = trade.id.toString();
+
+    if (summary) {
+        const action = inferAction(trade);
+        const dateStr = new Date(trade.date).toLocaleDateString('en-US', { timeZone: TZ_EST });
+        summary.textContent = `${action} ${trade.shares} ${trade.ticker} @ $${trade.price.toFixed(2)} on ${dateStr}`;
+    }
+
+    modal.classList.remove('hidden');
+}
+
+function closeDeleteModal(): void {
+    const modal = document.getElementById('delete-trade-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function handleDeleteConfirm(): Promise<void> {
+    const idInput = document.getElementById('delete-trade-id') as HTMLInputElement | null;
+    const tradeId = idInput ? parseInt(idInput.value) : 0;
+    if (!tradeId) return;
+
+    const confirmBtn = document.getElementById('delete-modal-confirm') as HTMLButtonElement | null;
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Deleting...';
+    }
+
+    try {
+        const response = await fetch(`/api/admin/trades/${tradeId}`, {
+            method: 'DELETE',
+            headers: { ...getCsrfHeaders() },
+            credentials: 'include'
+        });
+
+        const result: TradeSubmitResponse = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Delete failed');
+        }
+
+        closeDeleteModal();
+        showToastForTradeEntry('Trade deleted');
+        fetchRecentTrades(currentPage);
+
+        if (result.rebuild_job_id) {
+            showToastForTradeEntry('Background rebuild started', 'info');
+        }
+    } catch (error) {
+        console.error('[Trade Entry] Error deleting trade:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        showToastForTradeEntry(errorMsg, 'error');
+    } finally {
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Yes, Delete';
+        }
     }
 }
 
@@ -704,9 +968,83 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     if (timeInput) {
-        const now = new Date();
-        timeInput.value = now.toTimeString().slice(0, 5);
+        timeInput.value = nowEstTimeString();
     }
+
+    // ==========================================
+    // Edit / Delete Modal Event Listeners
+    // ==========================================
+
+    // Edit modal
+    const editForm = document.getElementById('edit-trade-form');
+    if (editForm) {
+        editForm.addEventListener('submit', handleEditSubmit);
+    }
+
+    const editModalClose = document.getElementById('edit-modal-close');
+    if (editModalClose) {
+        editModalClose.addEventListener('click', closeEditModal);
+    }
+
+    const editModalCancel = document.getElementById('edit-modal-cancel');
+    if (editModalCancel) {
+        editModalCancel.addEventListener('click', closeEditModal);
+    }
+
+    // Close edit modal on backdrop click
+    const editModal = document.getElementById('edit-trade-modal');
+    if (editModal) {
+        editModal.addEventListener('click', (e) => {
+            if (e.target === editModal) closeEditModal();
+        });
+    }
+
+    // Set up ticker autocomplete on the edit modal's ticker field
+    setupTickerAutocomplete({
+        inputId: 'edit-ticker',
+        dropdownId: 'edit-ticker-autocomplete-dropdown',
+        showCompanyNames: true,
+        onSelect: (_ticker: string, companyName?: string) => {
+            updateEditCompanyName(companyName);
+        }
+    });
+
+    // Also update company name on manual ticker change in edit modal
+    const editTickerInput = document.getElementById('edit-ticker') as HTMLInputElement | null;
+    if (editTickerInput) {
+        editTickerInput.addEventListener('change', () => {
+            editTickerInput.value = editTickerInput.value.toUpperCase();
+            const name = getCompanyName(editTickerInput.value);
+            updateEditCompanyName(name);
+        });
+    }
+
+    // Delete modal
+    const deleteConfirmBtn = document.getElementById('delete-modal-confirm');
+    if (deleteConfirmBtn) {
+        deleteConfirmBtn.addEventListener('click', handleDeleteConfirm);
+    }
+
+    const deleteModalCancel = document.getElementById('delete-modal-cancel');
+    if (deleteModalCancel) {
+        deleteModalCancel.addEventListener('click', closeDeleteModal);
+    }
+
+    // Close delete modal on backdrop click
+    const deleteModal = document.getElementById('delete-trade-modal');
+    if (deleteModal) {
+        deleteModal.addEventListener('click', (e) => {
+            if (e.target === deleteModal) closeDeleteModal();
+        });
+    }
+
+    // Close modals on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeEditModal();
+            closeDeleteModal();
+        }
+    });
 });
 
 // Export empty object to make this a module
