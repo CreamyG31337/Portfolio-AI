@@ -4242,6 +4242,7 @@ def get_congress_trades_cached(
             "Date": "transaction_date",
             "Type": "type",
             "Amount": "amount",
+            "Return": "pct_change",
             "Owner": "owner"
         }
         sort_column = sort_map.get(sort_by or "", "transaction_date")
@@ -4718,6 +4719,14 @@ def api_congress_trades_data():
             # Get logo URL for ticker
             logo_url = get_ticker_logo_url(ticker) if ticker != 'N/A' else None
 
+            # Return % from congress_trade_returns (via enriched view)
+            pct_change = trade.get('pct_change')
+            if pct_change is not None:
+                try:
+                    pct_change = round(float(pct_change), 1)
+                except (ValueError, TypeError):
+                    pct_change = None
+
             formatted_trades.append({
                 'Ticker': ticker,
                 'Company': company_name,
@@ -4728,6 +4737,7 @@ def api_congress_trades_data():
                 'Date': format_date_congress(trade.get('transaction_date')),
                 'Type': trade.get('type', 'N/A'),
                 'Amount': trade.get('amount', 'N/A'),
+                'Return': pct_change,
                 'Score': score_display,
                 'AI Reasoning': reasoning_short,
                 'Owner': trade.get('owner', 'N/A'),

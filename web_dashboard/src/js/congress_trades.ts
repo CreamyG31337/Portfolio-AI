@@ -128,6 +128,7 @@ interface CongressTrade {
     Date?: string;
     Type?: string;
     Amount?: string;
+    Return?: number | null;
     Score?: string;
     Owner?: string;
     'AI Reasoning'?: string;
@@ -919,6 +920,7 @@ const SORTABLE_FIELDS: Record<string, string> = {
     Date: 'transaction_date',
     Type: 'type',
     Amount: 'amount',
+    Return: 'pct_change',
     Owner: 'owner'
 };
 
@@ -1064,6 +1066,37 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             tooltipValueGetter: function (params: AgGridParams): string {
                 // Show full amount text in tooltip
                 return params.value || '';
+            }
+        },
+        {
+            field: 'Return',
+            headerName: 'Return %',
+            minWidth: 95,
+            flex: 0.7,
+            sortable: true,
+            filter: true,
+            cellRenderer: class {
+                private eGui!: HTMLElement;
+                init(params: AgGridCellRendererParams) {
+                    this.eGui = document.createElement('span');
+                    const val = params.value as unknown as number | null;
+                    if (val == null) {
+                        this.eGui.className = 'text-gray-400 dark:text-gray-500';
+                        this.eGui.textContent = '--';
+                        return;
+                    }
+                    const numVal = Number(val);
+                    if (isNaN(numVal)) {
+                        this.eGui.className = 'text-gray-400 dark:text-gray-500';
+                        this.eGui.textContent = '--';
+                        return;
+                    }
+                    const isPositive = numVal >= 0;
+                    const sign = isPositive ? '+' : '';
+                    this.eGui.className = `font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`;
+                    this.eGui.textContent = `${sign}${numVal.toFixed(1)}%`;
+                }
+                getGui() { return this.eGui; }
             }
         },
         {

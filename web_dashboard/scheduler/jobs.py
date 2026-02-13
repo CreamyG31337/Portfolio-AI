@@ -461,6 +461,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'default_interval_minutes': 60,  # Hourly safety net (webhook triggers immediate processing)
         'enabled_by_default': True,
         'icon': '📰'
+    },
+    'congress_trade_returns': {
+        'name': 'Congress Trade Returns',
+        'description': 'Compute % price change for each congress trade using yfinance adjusted close. Updates current prices daily.',
+        'default_interval_minutes': 1440,  # Once per day
+        'enabled_by_default': True,
+        'icon': '📊',
+        'cron_triggers': [
+            {'hour': 6, 'minute': 0, 'timezone': 'America/New_York'}  # 6:00 AM ET (after market data settles)
+        ]
     }
 }
 
@@ -1400,6 +1410,24 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: analyze_congress_trades (daily at 2:00 AM PT)")
+
+    # Congress trade returns - daily (Eastern time, after market data settles)
+    if AVAILABLE_JOBS.get('congress_trade_returns', {}).get('enabled_by_default', True):
+        from scheduler.jobs_congress_returns import compute_congress_trade_returns_job
+        scheduler.add_job(
+            compute_congress_trade_returns_job,
+            trigger=CronTrigger(
+                hour=6,
+                minute=0,
+                timezone='America/New_York'
+            ),
+            id='congress_trade_returns',
+            name=f"{get_job_icon('congress_trade_returns')} Congress Trade Returns",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: congress_trade_returns (daily at 6:00 AM ET)")
 
     # Insider trades job - nightly (Pacific time)
     if AVAILABLE_JOBS['insider_trades']['enabled_by_default']:
