@@ -5596,9 +5596,17 @@ def get_insider_trades_cached(
     end_date: Optional[str] = None,
     min_value: Optional[float] = None,
     sort_by: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
     _cache_version: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """Get insider trades with filters (cached 6 hours). Fetches ALL matching rows."""
+) -> Dict[str, Any]:
+    """Get insider trades with filters and pagination (cached 6 hours).
+    
+    Returns a dict with:
+        - trades: List of trade records for the requested page
+        - total: Total count of matching records
+        - has_more: Whether there are more records after this page
+    """
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -5608,27 +5616,23 @@ def get_insider_trades_cached(
 
     try:
         if _supabase_client is None:
-            return []
+            return {"trades": [], "total": 0, "has_more": False}
 
-        # Bolt Optimization: Exclude heavy unused fields (notes) to reduce payload size
-        # Kept shares_held_after and percent_change as they are standard data points
-        query = _supabase_client.supabase.table("insider_trades").select(
-            "ticker, insider_name, insider_title, transaction_date, disclosure_date, "
-            "type, shares, price_per_share, value, shares_held_after, percent_change"
-        )
-
-        if ticker_filters:
-            query = query.in_("ticker", ticker_filters)
-        if type_filter:
-            query = query.eq("type", type_filter)
-        if insider_filter:
-            query = query.ilike("insider_name", f"%{insider_filter}%")
-        if start_date:
-            query = query.gte("transaction_date", start_date)
-        if end_date:
-            query = query.lte("transaction_date", end_date)
-        if min_value is not None:
-            query = query.gte("value", min_value)
+        # Build base filter function for reuse
+        def apply_filters(q):
+            if ticker_filters:
+                q = q.in_("ticker", ticker_filters)
+            if type_filter:
+                q = q.eq("type", type_filter)
+            if insider_filter:
+                q = q.ilike("insider_name", f"%{insider_filter}%")
+            if start_date:
+                q = q.gte("transaction_date", start_date)
+            if end_date:
+                q = q.lte("transaction_date", end_date)
+            if min_value is not None:
+                q = q.gte("value", min_value)
+            return q
 
         sort_column = "transaction_date"
         if sort_by == "Value":
@@ -5636,33 +5640,30 @@ def get_insider_trades_cached(
         elif sort_by == "Shares":
             sort_column = "shares"
 
+        # Get count first
+        count_query = _supabase_client.supabase.table("insider_trades").select("ticker", count="exact")
+        count_query = apply_filters(count_query)
+        count_result = count_query.execute()
+        total = count_result.count if count_result.count is not None else 0
+
+        # Get paginated data
+        query = _supabase_client.supabase.table("insider_trades").select(
+            "ticker, insider_name, insider_title, transaction_date, disclosure_date, "
+            "type, shares, price_per_share, value, shares_held_after, percent_change"
+        )
+        query = apply_filters(query)
         query = query.order(sort_column, desc=True)
+        query = query.range(offset, offset + limit - 1)
 
-        all_trades = []
-        batch_size = 1000
-        offset = 0
+        result = query.execute()
+        trades = result.data or []
+        has_more = (offset + limit) < total
 
-        while True:
-            result = query.range(offset, offset + batch_size - 1).execute()
-
-            if not result.data:
-                break
-
-            all_trades.extend(result.data)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_insider_trades_cached pagination")
-                break
-
-        return all_trades
+        logger.info(f"[InsiderTrades] Fetched {len(trades)} rows (offset={offset}, limit={limit}, total={total})")
+        return {"trades": trades, "total": total, "has_more": has_more}
     except Exception as e:
         logger.error(f"Error fetching insider trades: {e}", exc_info=True)
-        return []
+        return {"trades": [], "total": 0, "has_more": False}
 
 
 @app.route('/insider_trades')
@@ -5804,7 +5805,23 @@ def _process_unknown_tickers_background(tickers, supabase_client):
 @app.route('/api/insider_trades/data')
 @require_auth
 def api_insider_trades_data():
-    """API endpoint for insider trades data (JSON) - fetches ALL data at once"""
+    """API endpoint for insider trades data (JSON) with server-side pagination.
+    
+    Query parameters:
+        - limit: Number of records per page (default 100, max 500)
+        - offset: Starting offset for pagination (default 0)
+        - ticker, type, insider_name: Filter values
+        - start_date, end_date: Date range filters
+        - min_value: Minimum trade value filter
+        - sort_by: Sort column (Date, Value, Shares)
+        - refresh_key: Cache refresh key
+    
+    Returns:
+        - trades: List of formatted trade records for the requested page
+        - total: Total count of matching records
+        - next_offset: Offset for the next page (if has_more is true)
+        - has_more: Whether there are more records after this page
+    """
     try:
         from flask_data_utils import get_supabase_client_flask
         from cache_version import get_cache_version
@@ -5812,6 +5829,10 @@ def api_insider_trades_data():
         from web_dashboard.utils.logo_utils import get_ticker_logo_url
 
         refresh_key = int(request.args.get("refresh_key", 0))
+
+        # Pagination parameters
+        limit = min(max(int(request.args.get("limit", 100)), 1), 500)  # Default 100, max 500
+        offset = max(int(request.args.get("offset", 0)), 0)
 
         if is_admin():
             from supabase_client import SupabaseClient
@@ -5834,6 +5855,32 @@ def api_insider_trades_data():
         fund_only = request.args.get("fund_only") == "true"
         selected_fund = request.args.get("fund")
 
+        if fund_only and selected_fund and selected_fund.lower() != "all":
+            from flask_data_utils import get_current_positions_flask
+
+            positions_df = get_current_positions_flask(fund=selected_fund)
+            if positions_df.empty or "ticker" not in positions_df.columns:
+                return jsonify({"trades": [], "total": 0, "has_more": False})
+
+            fund_tickers = {
+                str(ticker).strip().upper()
+                for ticker in positions_df["ticker"].dropna().unique()
+                if str(ticker).strip()
+            }
+            if not fund_tickers:
+                return jsonify({"trades": [], "total": 0, "has_more": False})
+
+            if ticker_filters:
+                ticker_filters = [
+                    ticker for ticker in ticker_filters
+                    if str(ticker).strip().upper() in fund_tickers
+                ]
+            else:
+                ticker_filters = sorted(fund_tickers)
+
+            if not ticker_filters:
+                return jsonify({"trades": [], "total": 0, "has_more": False})
+
         min_value = None
         if min_value_raw:
             try:
@@ -5842,7 +5889,7 @@ def api_insider_trades_data():
                 min_value = None
 
         cache_version = get_cache_version()
-        all_trades = get_insider_trades_cached(
+        result = get_insider_trades_cached(
             supabase_client,
             refresh_key,
             ticker_filters=ticker_filters or None,
@@ -5852,24 +5899,20 @@ def api_insider_trades_data():
             end_date=end_date,
             min_value=min_value,
             sort_by=sort_by,
+            limit=limit,
+            offset=offset,
             _cache_version=cache_version
         )
 
-        if fund_only and selected_fund and selected_fund.lower() != "all":
-            from flask_data_utils import get_current_positions_flask
-
-            positions_df = get_current_positions_flask(fund=selected_fund)
-            if positions_df.empty or "ticker" not in positions_df.columns:
-                all_trades = []
-            else:
-                fund_tickers = {
-                    str(ticker).strip().upper()
-                    for ticker in positions_df["ticker"].dropna().unique()
-                }
-                all_trades = [
-                    trade for trade in all_trades
-                    if str(trade.get("ticker", "")).strip().upper() in fund_tickers
-                ]
+        # Backward compatibility: older call sites/tests may still return a plain list.
+        if isinstance(result, dict):
+            all_trades = result.get("trades", [])
+            total = int(result.get("total", len(all_trades)))
+            has_more = bool(result.get("has_more", False))
+        else:
+            all_trades = result or []
+            total = len(all_trades)
+            has_more = False
 
         def _to_float(value: Any) -> Optional[float]:
             if value is None:
@@ -5947,11 +5990,15 @@ def api_insider_trades_data():
                 "_logo_url": logo_url
             })
 
-        return jsonify({
+        response = {
             "trades": formatted_trades,
-            "has_more": False,
-            "total": len(formatted_trades)
-        })
+            "total": total,
+            "has_more": has_more
+        }
+        if has_more:
+            response["next_offset"] = offset + limit
+
+        return jsonify(response)
     except ValueError as e:
         logger.error(f"Invalid parameter in insider trades API: {e}", exc_info=True)
         return jsonify({"error": f"Invalid parameter: {str(e)}"}), 400

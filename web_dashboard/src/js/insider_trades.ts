@@ -71,6 +71,7 @@ interface InsiderTradeApiResponse {
     trades: InsiderTrade[];
     has_more: boolean;
     total?: number;
+    next_offset?: number;
     error?: string;
 }
 
@@ -78,6 +79,10 @@ let gridApi: AgGridApi | null = null;
 let gridColumnApi: AgGridColumnApi | null = null;
 let insiderTradesConfig: Record<string, any> = {};
 let latestTrades: InsiderTrade[] = [];
+let currentOffset: number = 0;
+let hasMoreData: boolean = false;
+let isLoadingMore: boolean = false;
+const INITIAL_LIMIT: number = 500;
 
 const failedLogoCache = new Set<string>();
 const darkThemes = new Set(["dark", "midnight-tokyo", "abyss"]);
@@ -817,11 +822,47 @@ function buildSearchParams(): URLSearchParams {
     return searchParams;
 }
 
-async function fetchTradeData(): Promise<void> {
+function updateLoadMoreButton(): void {
+    const loadMoreBtn = document.getElementById("load-more-insider-trades");
+    if (loadMoreBtn) {
+        if (hasMoreData) {
+            loadMoreBtn.classList.remove("hidden");
+            (loadMoreBtn as HTMLButtonElement).disabled = isLoadingMore;
+        } else {
+            loadMoreBtn.classList.add("hidden");
+        }
+    }
+}
+
+function loadMoreTrades(): void {
+    if (!isLoadingMore && hasMoreData) {
+        fetchTradeData(false);
+    }
+}
+
+async function fetchTradeData(reset: boolean = true): Promise<void> {
     const searchParams = buildSearchParams();
     const emptyState = document.getElementById("insider-empty");
 
+    if (reset) {
+        currentOffset = 0;
+        latestTrades = [];
+        if (gridApi) {
+            gridApi.showLoadingOverlay();
+        }
+    }
+
+    if (isLoadingMore) {
+        return;
+    }
+
+    isLoadingMore = true;
+
     try {
+        // Add pagination parameters
+        searchParams.set("limit", INITIAL_LIMIT.toString());
+        searchParams.set("offset", currentOffset.toString());
+
         const response = await fetch(`/api/insider_trades/data?${searchParams.toString()}`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -833,25 +874,45 @@ async function fetchTradeData(): Promise<void> {
         }
 
         const trades = data.trades || [];
-        latestTrades = trades;
+        
+        if (reset) {
+            latestTrades = trades;
+        } else {
+            // Append new trades to existing ones
+            latestTrades = [...latestTrades, ...trades];
+        }
 
-        initializeInsiderTradesGrid(trades);
-        renderStats(trades);
-        renderCharts(trades);
+        hasMoreData = data.has_more || false;
+        if (data.next_offset !== undefined) {
+            currentOffset = data.next_offset;
+        } else {
+            currentOffset += trades.length;
+        }
+
+        initializeInsiderTradesGrid(latestTrades);
+        renderStats(latestTrades);
+        renderCharts(latestTrades);
         await renderNotableSection();
+        updateLoadMoreButton();
 
         if (emptyState) {
-            if (trades.length === 0) {
+            if (latestTrades.length === 0) {
                 emptyState.classList.remove("hidden");
             } else {
                 emptyState.classList.add("hidden");
             }
+        }
+
+        if (gridApi) {
+            gridApi.hideOverlay();
         }
     } catch (error) {
         console.error("Failed to fetch insider trades data:", error);
         if (gridApi) {
             gridApi.hideOverlay();
         }
+    } finally {
+        isLoadingMore = false;
     }
 }
 
@@ -862,6 +923,10 @@ async function fetchTradeData(): Promise<void> {
     }
 
     gridApi.exportDataAsCsv({ fileName: "insider_trades.csv" });
+};
+
+(window as any).loadMoreInsiderTrades = function () {
+    loadMoreTrades();
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -887,6 +952,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const filtersForm = document.getElementById("filters-form") as HTMLFormElement | null;
     const submitFilters = () => {
+        // Reset pagination when filters change
+        currentOffset = 0;
+        latestTrades = [];
+        hasMoreData = false;
+        updateLoadMoreButton();
         if (filtersForm) {
             filtersForm.submit();
         }
@@ -901,7 +971,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             submitFilters();
         });
-
     }
 
     const configElement = document.getElementById("insider-trades-config");
