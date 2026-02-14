@@ -230,7 +230,7 @@ def add_security_headers(response):
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://static.cloudflareinsights.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
         "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
-        "img-src 'self' data: https://assets.parqet.com https://s.yimg.com https://logo.clearbit.com; "
+        "img-src 'self' data: https://assets.parqet.com https://s.yimg.com https://unavatar.io; "
         f"connect-src {connect_src}; "
         "frame-ancestors 'self';"
     )
@@ -5267,7 +5267,10 @@ def api_congress_positions_leaderboard():
             cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
             query = query.gte("first_buy_date", cutoff)
 
-        # Fetch all (we'll aggregate in Python)
+        # TODO: Move aggregation to a SQL GROUP BY query instead of fetching all rows
+        # and aggregating in Python. Current approach pulls every closed position over the
+        # wire and loops in Python — a SQL aggregate would be significantly faster and
+        # transfer less data. (See closed PR #139 for context.)
         all_positions = []
         page_size = 1000
         offset = 0

@@ -75,13 +75,14 @@ def get_ticker_logo_url(
     if use_alt and website:
         domain = _extract_domain(website)
         if domain:
-            # Clearbit Logo API - free, high quality, domain-based
-            # Returns 128×128 PNG by default; size param: 16–1024
-            clearbit_url = f"https://logo.clearbit.com/{domain}"
+            # Unavatar - free, open-source logo aggregator (pulls from multiple sources)
+            # Supports size param; returns best available logo for the domain
+            # https://unavatar.io
+            unavatar_url = f"https://unavatar.io/{domain}?fallback=false"
             logger.debug(
-                "Using Clearbit alt logo for %s (domain=%s)", ticker, domain
+                "Using unavatar alt logo for %s (domain=%s)", ticker, domain
             )
-            return clearbit_url
+            return unavatar_url
         else:
             logger.warning(
                 "use_alt_logo is set for %s but website '%s' yielded no domain; "
