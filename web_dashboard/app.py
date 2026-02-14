@@ -5226,99 +5226,34 @@ def api_congress_positions_leaderboard():
         sort_by = request.args.get('sort_by', 'total_est_pnl')
         limit = min(int(request.args.get('limit', 50)), 200)
 
-        # Fetch all closed positions with politician info
-        query = client.supabase.table("congress_positions") \
-            .select("politician_id, ticker, pct_return, est_invested, est_pnl, first_buy_date, politicians(name, party, chamber)") \
-            .eq("status", "closed")
-
-        # Period filter
+        # Compute cutoff date from period
+        cutoff_date = None
         if period == '2025':
-            query = query.gte("first_buy_date", "2025-01-01")
+            cutoff_date = '2025-01-01'
         elif period == 'last_12m':
             from datetime import datetime, timedelta
-            cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-            query = query.gte("first_buy_date", cutoff)
+            cutoff_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
 
-        # TODO: Move aggregation to a SQL GROUP BY query instead of fetching all rows
-        # and aggregating in Python. Current approach pulls every closed position over the
-        # wire and loops in Python — a SQL aggregate would be significantly faster and
-        # transfer less data. (See closed PR #139 for context.)
-        all_positions = []
-        page_size = 1000
-        offset = 0
-        while True:
-            resp = query.range(offset, offset + page_size - 1).execute()
-            batch = resp.data or []
-            all_positions.extend(batch)
-            if len(batch) < page_size:
-                break
-            offset += page_size
+        # Call SQL aggregate function (GROUP BY runs server-side)
+        rpc_params = {'p_min_positions': min_positions}
+        if cutoff_date:
+            rpc_params['p_cutoff_date'] = cutoff_date
 
-        # Aggregate by politician
-        from collections import defaultdict
-        politician_stats = defaultdict(lambda: {
-            "positions": 0, "wins": 0, "losses": 0,
-            "total_est_invested": 0, "total_est_pnl": 0,
-            "returns": [], "name": "", "party": "", "chamber": "",
-            "best": None, "worst": None,
-        })
+        result = client.supabase.rpc('get_politician_leaderboard', rpc_params).execute()
+        leaderboard = result.data or []
 
-        for pos in all_positions:
-            pol = pos.get("politicians") or {}
-            pid = pos.get("politician_id")
-            pct = float(pos["pct_return"]) if pos.get("pct_return") is not None else 0
-            est_pnl = float(pos["est_pnl"]) if pos.get("est_pnl") is not None else 0
-            est_inv = float(pos["est_invested"]) if pos.get("est_invested") else 0
+        # Convert Decimal-like strings to floats for JSON serialization
+        for row in leaderboard:
+            for key in ('win_pct', 'avg_return_pct', 'total_est_invested', 'total_est_pnl'):
+                if row.get(key) is not None:
+                    row[key] = float(row[key])
 
-            stats = politician_stats[pid]
-            stats["name"] = pol.get("name", "Unknown")
-            stats["party"] = pol.get("party", "")
-            stats["chamber"] = pol.get("chamber", "")
-            stats["positions"] += 1
-            if pct > 0:
-                stats["wins"] += 1
-            else:
-                stats["losses"] += 1
-            stats["total_est_invested"] += est_inv
-            stats["total_est_pnl"] += est_pnl
-            stats["returns"].append(pct)
-
-            # Track best/worst position
-            ticker = pos.get("ticker", "")
-            if stats["best"] is None or est_pnl > stats["best"]["est_pnl"]:
-                stats["best"] = {"ticker": ticker, "pct_return": pct, "est_pnl": est_pnl}
-            if stats["worst"] is None or est_pnl < stats["worst"]["est_pnl"]:
-                stats["worst"] = {"ticker": ticker, "pct_return": pct, "est_pnl": est_pnl}
-
-        # Filter by min positions and build response
-        leaderboard = []
-        for pid, stats in politician_stats.items():
-            if stats["positions"] < min_positions:
-                continue
-            avg_return = sum(stats["returns"]) / len(stats["returns"]) if stats["returns"] else 0
-            win_pct = (stats["wins"] / stats["positions"] * 100) if stats["positions"] > 0 else 0
-            leaderboard.append({
-                "politician_id": pid,
-                "politician": stats["name"],
-                "party": stats["party"],
-                "chamber": stats["chamber"],
-                "positions": stats["positions"],
-                "wins": stats["wins"],
-                "losses": stats["losses"],
-                "win_pct": round(win_pct, 1),
-                "avg_return_pct": round(avg_return, 1),
-                "total_est_invested": round(stats["total_est_invested"], 0),
-                "total_est_pnl": round(stats["total_est_pnl"], 0),
-                "best_position": stats["best"],
-                "worst_position": stats["worst"],
-            })
-
-        # Sort
+        # Sort and limit (lightweight — typically <200 rows post-aggregation)
         sort_keys = {
-            'total_est_pnl': lambda x: x['total_est_pnl'],
-            'win_pct': lambda x: x['win_pct'],
-            'avg_return': lambda x: x['avg_return_pct'],
-            'positions': lambda x: x['positions'],
+            'total_est_pnl': lambda x: x.get('total_est_pnl') or 0,
+            'win_pct': lambda x: x.get('win_pct') or 0,
+            'avg_return': lambda x: x.get('avg_return_pct') or 0,
+            'positions': lambda x: x.get('positions') or 0,
         }
         sort_fn = sort_keys.get(sort_by, sort_keys['total_est_pnl'])
         leaderboard.sort(key=sort_fn, reverse=True)
