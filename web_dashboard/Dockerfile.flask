@@ -9,6 +9,8 @@ FROM trading-dashboard-base:latest
 
 # Set Flask-specific environment variable
 ENV FLASK_PORT=5001
+# Set default debug mode to false for security (override in dev)
+ENV FLASK_DEBUG=false
 
 # Copy entire project (needed for imports)
 # This layer rebuilds on every code change, but dependencies are cached above
