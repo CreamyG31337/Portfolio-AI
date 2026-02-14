@@ -10,7 +10,7 @@
     <!-- Header with Controls -->
     <div class="mb-6 flex justify-between items-center flex-wrap gap-4">
         <div>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" id="last-updated-text">Loading...</p>
+            <p class="mt-1 text-sm text-text-secondary" id="last-updated-text">Loading...</p>
         </div>
 
         <!-- Controls -->
@@ -238,7 +238,7 @@
                 <h3 class="text-lg font-bold text-text-primary">Portfolio Performance</h3>
                 <label class="inline-flex items-center cursor-pointer">
                     <input type="checkbox" id="use-solid-lines" class="sr-only peer">
-                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent dark:peer-focus:ring-accent rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent"></div>
+                    <div class="relative w-11 h-6 bg-border peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent dark:peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
                     <span class="ms-3 text-sm font-medium text-text-secondary">📱 Solid Lines Only (for mobile)</span>
                 </label>
             </div>
@@ -254,7 +254,7 @@
             <div class="border-t border-border mt-4 pt-4">
                 <label class="inline-flex items-center cursor-pointer mb-4">
                     <input type="checkbox" id="show-individual-holdings" class="sr-only peer">
-                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent dark:peer-focus:ring-accent rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent"></div>
+                    <div class="relative w-11 h-6 bg-border peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent dark:peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
                     <span class="ms-3 text-base font-semibold text-text-primary">📊 Show Individual Stock Performance</span>
                 </label>
 
@@ -383,7 +383,7 @@
                 <h4 class="text-base font-semibold text-text-primary">Currency Exposure</h4>
                 <label class="inline-flex items-center cursor-pointer">
                     <input type="checkbox" id="inverse-exchange-rate" class="sr-only peer">
-                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent dark:peer-focus:ring-accent rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent"></div>
+                    <div class="relative w-11 h-6 bg-border peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent dark:peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
                     <span class="ms-3 text-sm font-medium text-text-secondary">Show CAD/USD</span>
                 </label>
             </div>
@@ -446,7 +446,7 @@
                 </button>
             </div>
         </div>
-        <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+        <div class="mb-2 text-sm text-text-secondary">
             ℹ️ Default view shows the top 20 winners and bottom 20 losers. Use the toggle to switch to 40
             winners or 40 losers.
             💡 <strong>Winning positions with gains</strong> show overlay bars (green unrealized + gold
@@ -472,7 +472,7 @@
                 </h3>
                 <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)" aria-expanded="true"
                     aria-controls="dividend-log-container"
-                    class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
+                    class="text-sm text-link hover:text-link-hover flex items-center">
                     <i class="fas fa-eye-slash mr-1" aria-hidden="true"></i> <span>Hide Log</span>
                 </button>
             </div>
