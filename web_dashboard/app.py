@@ -230,7 +230,7 @@ def add_security_headers(response):
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://static.cloudflareinsights.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
         "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
-        "img-src 'self' data: https://assets.parqet.com https://s.yimg.com; "
+        "img-src 'self' data: https://assets.parqet.com https://s.yimg.com https://logo.clearbit.com; "
         f"connect-src {connect_src}; "
         "frame-ancestors 'self';"
     )
