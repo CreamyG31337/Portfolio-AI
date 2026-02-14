@@ -541,6 +541,9 @@ def fetch_congress_trades_job() -> None:
                                         description_section = f"- Description: {description}\n"
 
                                     # Build full prompt with all context (matches batch script quality)
+                                    # TODO: PROMPT-INJECTION - Congress trade notes/description fields are
+                                    #   free text from FMP API. While lower risk than public social posts,
+                                    #   these should still be sanitized before LLM ingestion.
                                     prompt = f"""Analyze this trade for potential Insider Trading/Conflict of Interest.
 Data:
 - Politician: {politician} ({party or 'Unknown'} - {state or 'Unknown'})

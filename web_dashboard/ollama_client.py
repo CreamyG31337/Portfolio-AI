@@ -508,6 +508,14 @@ class OllamaClient:
         audit_error: Optional[str] = None
         
         # Combine texts into single prompt
+        # TODO: PROMPT-INJECTION - Sanitize scraped social media posts before LLM ingestion.
+        #   Scraped Reddit/StockTwits text is concatenated directly into the prompt with no
+        #   structural separation. A malicious post could contain instructions that manipulate
+        #   sentiment output. Mitigations to add:
+        #   1. Strip zero-width chars, control chars, RTL overrides
+        #   2. Wrap untrusted content in <user_content> XML delimiters
+        #   3. Optionally flag posts containing instruction-like patterns
+        #   See: https://blog.cloudflare.com/declaring-your-aindependence-block-ai-bots-scrapers-and-crawlers-with-a-single-click/
         combined_text = "\n\n---\n\n".join(texts[:5])  # Limit to top 5
         
         # Truncate if too long (keep first ~4000 chars)
@@ -686,6 +694,13 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             return _generate_summary_via_zhipu(text, model, article_type=article_type, stream=False)
 
         # Truncate text to ~6000 characters
+        # TODO: PROMPT-INJECTION - Sanitize scraped article text before LLM ingestion.
+        #   Article content from trafilatura/RSS is sent as the raw prompt with no
+        #   delimiter-based sandboxing. Hidden text or invisible CSS content in articles
+        #   could contain adversarial instructions. Mitigations to add:
+        #   1. Strip residual HTML, zero-width chars, and control characters
+        #   2. Use structural separation between system instructions and article content
+        #   3. Validate that trafilatura output doesn't contain hidden/invisible text artifacts
         max_chars = 6000
         if len(text) > max_chars:
             text = text[:max_chars] + "..."

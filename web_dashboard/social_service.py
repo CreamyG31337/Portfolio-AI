@@ -542,6 +542,10 @@ class SocialSentimentService:
             top_5_posts = unique_posts[:5]
             
             # Combine post titles and bodies for AI analysis
+            # TODO: PROMPT-INJECTION - Sanitize Reddit post text before passing to LLM.
+            #   Public Reddit posts are untrusted input. A crafted post title/body could
+            #   contain adversarial instructions to manipulate sentiment scoring.
+            #   Apply sanitize_for_llm() here once implemented (see ollama_client.py TODOs).
             texts_for_ai = []
             for post in top_5_posts:
                 text = f"{post['title']}\n{post['selftext'][:500]}"
@@ -1127,6 +1131,9 @@ OUTPUT JSON ONLY:
                     all_tickers.update(ticker_array)
             
             # AI Analysis using Ollama
+            # TODO: PROMPT-INJECTION - Sanitize social post content before LLM analysis.
+            #   all_content is concatenated from social_posts DB (originally scraped from
+            #   StockTwits/Reddit). Apply sanitize_for_llm() and wrap in XML delimiters.
             analysis_prompt = f"""
 Analyze these social media posts about {session['ticker']} from {session['platform']}.
 
@@ -1228,6 +1235,9 @@ Provide analysis in JSON format:
             if not basic_tickers:
                 return
             
+            # TODO: PROMPT-INJECTION - Sanitize content before ticker extraction LLM call.
+            #   Same untrusted social content is used here. A crafted post could inject
+            #   fake tickers or manipulate confidence scores.
             extraction_prompt = f"""
 Analyze this social media content and validate/extract stock tickers.
 

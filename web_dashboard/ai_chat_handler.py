@@ -157,6 +157,11 @@ class ChatHandler:
         from research_utils import escape_markdown
         
         # Build full prompt with context
+        # TODO: PROMPT-INJECTION - Multiple untrusted sources are concatenated into the prompt:
+        #   1. context_string may contain data derived from scraped articles
+        #   2. search_results['formatted'] includes semantic search hits from research DB
+        #   3. repository_articles contain summaries originally scraped from the web
+        #   All should be wrapped in <user_content> delimiters and sanitized before LLM ingestion.
         full_prompt = query
         if context_string:
             full_prompt = f"{context_string}\n\n{query}"
