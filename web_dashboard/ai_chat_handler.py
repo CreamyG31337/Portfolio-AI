@@ -96,10 +96,10 @@ class ChatHandler:
             
             try:
                 if item_type == ContextItemType.HOLDINGS:
-                    positions_df = get_current_positions_flask(item_fund)
-                    trades_df = get_trade_log_flask(limit=1000, fund=item_fund) if item_fund else None
                     include_pv = options.get('include_price_volume', True)
                     include_fund = options.get('include_fundamentals', True)
+                    positions_df = get_current_positions_flask(item_fund, include_fundamentals=include_fund)
+                    trades_df = get_trade_log_flask(limit=1000, fund=item_fund) if item_fund else None
                     context_parts.append(
                         format_holdings(
                             positions_df,

@@ -62,7 +62,8 @@ def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
     """Get insider trades for portfolio tickers from last N days."""
     try:
         # Get portfolio tickers
-        positions_df = get_current_positions_flask(fund)
+        # No fundamentals needed - only tickers
+        positions_df = get_current_positions_flask(fund, include_fundamentals=False)
         if positions_df.empty:
             return []
         
@@ -100,7 +101,8 @@ def _get_congress_trades_for_portfolio(fund: str, days: Optional[int] = None) ->
     """Get the most recent congress trades for portfolio tickers."""
     try:
         # Get portfolio tickers
-        positions_df = get_current_positions_flask(fund)
+        # No fundamentals needed - only tickers
+        positions_df = get_current_positions_flask(fund, include_fundamentals=False)
         if positions_df.empty:
             return []
         
@@ -143,7 +145,8 @@ def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
     """
     try:
         # Get portfolio tickers
-        positions_df = get_current_positions_flask(fund)
+        # No fundamentals needed - only tickers
+        positions_df = get_current_positions_flask(fund, include_fundamentals=False)
         if positions_df.empty:
             return []
 
@@ -241,7 +244,8 @@ def _get_context_data_packet(user_id: str, fund: str):
     
     # Fetch all components
     t0 = time.time()
-    positions_df = get_current_positions_flask(fund)
+    # AI context builder needs fundamentals (market cap, P/E, etc.)
+    positions_df = get_current_positions_flask(fund, include_fundamentals=True)
     timings['positions'] = round((time.time() - t0) * 1000, 1)
     
     t0 = time.time()
@@ -934,7 +938,8 @@ def api_ai_portfolio_intelligence():
         
         # Get portfolio tickers
         portfolio_tickers = set()
-        positions_df = get_current_positions_flask(fund)
+        # No fundamentals needed - only tickers
+        positions_df = get_current_positions_flask(fund, include_fundamentals=False)
         if not positions_df.empty and 'ticker' in positions_df.columns:
             portfolio_tickers = {t.strip().upper() for t in positions_df['ticker'].dropna().unique()}
         

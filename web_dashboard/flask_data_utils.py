@@ -91,8 +91,15 @@ def _get_available_funds_for_user(user_id: str) -> List[str]:
 
 
 @cache_data(ttl=300)
-def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Optional[str] = None) -> pd.DataFrame:
-    """Get current positions for Flask (cached 5min, with cache_version support)"""
+def get_current_positions_flask(fund: Optional[str] = None, include_fundamentals: bool = False, _cache_version: Optional[str] = None) -> pd.DataFrame:
+    """Get current positions for Flask (cached 5min, with cache_version support)
+
+    Args:
+        fund: Fund name to filter by
+        include_fundamentals: If True, joins securities table to get market_cap, P/E, etc.
+                            If False (default), only fetches basic position data (faster).
+        _cache_version: Cache invalidation key
+    """
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -104,17 +111,24 @@ def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Opti
         return pd.DataFrame()
         
     try:
-        logger.info(f"Loading current positions (Flask) for fund: {fund}")
+        logger.info(f"Loading current positions (Flask) for fund: {fund} (fundamentals={include_fundamentals})")
         
         all_rows = []
         batch_size = 1000
         offset = 0
         
         while True:
-            # Join with securities table to get sector, industry, market_cap, country for filtering
-            query = client.supabase.table("latest_positions").select(
-                "*, securities(company_name, sector, industry, market_cap, country, trailing_pe, dividend_yield, fifty_two_week_high, fifty_two_week_low, last_updated)"
-            )
+            # Optimize: Only join securities if fundamentals are needed
+            # latest_positions view already includes company, sector, industry via internal join
+            if include_fundamentals:
+                # Join with securities table to get market_cap, country, P/E, etc.
+                query = client.supabase.table("latest_positions").select(
+                    "*, securities(company_name, sector, industry, market_cap, country, trailing_pe, dividend_yield, fifty_two_week_high, fifty_two_week_low, last_updated)"
+                )
+            else:
+                # Basic data only - avoids redundant join and fetching large columns
+                query = client.supabase.table("latest_positions").select("*")
+
             if fund:
                 query = query.eq("fund", fund)
                 
