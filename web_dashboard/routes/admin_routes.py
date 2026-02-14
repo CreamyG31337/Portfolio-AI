@@ -4033,10 +4033,8 @@ def contributors_page():
 def api_admin_contributor_contributions(contributor_id):
     """Get all fund contributions for a contributor"""
     try:
-        from app import get_supabase_client
-        client = get_supabase_client()
-        if not client:
-            return jsonify({"error": "Failed to connect to database", "contributions": []}), 500
+        # Use service_role to bypass RLS for admin operations
+        client = SupabaseClient(use_service_role=True)
         
         # Get contributor details
         contrib_result = client.supabase.table("contributors").select("*").eq("id", contributor_id).execute()
@@ -4077,24 +4075,22 @@ def api_admin_contributor_contributions(contributor_id):
 def api_admin_split_contributor():
     """Split a contributor into two accounts"""
     try:
-        from app import get_supabase_client
         from flask_auth_utils import can_modify_data_flask
-        
+
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot split contributors"}), 403
-        
+
         data = request.get_json()
         source_contributor_id = data.get('source_contributor_id')
         new_contributor_name = data.get('new_contributor_name')
         new_contributor_email = data.get('new_contributor_email')
         contribution_ids = data.get('contribution_ids', [])
-        
+
         if not source_contributor_id or not new_contributor_name or not contribution_ids:
             return jsonify({"error": "Missing required fields"}), 400
-        
-        client = get_supabase_client()
-        if not client:
-            return jsonify({"error": "Failed to connect to database"}), 500
+
+        # Use service_role to bypass RLS for admin operations
+        client = SupabaseClient(use_service_role=True)
         
         # Create new contributor
         new_contrib_data = {
@@ -4143,25 +4139,23 @@ def api_admin_split_contributor():
 def api_admin_merge_contributors():
     """Merge two contributors"""
     try:
-        from app import get_supabase_client
         from flask_auth_utils import can_modify_data_flask
-        
+
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot merge contributors"}), 403
-        
+
         data = request.get_json()
         source_contributor_id = data.get('source_contributor_id')
         target_contributor_id = data.get('target_contributor_id')
-        
+
         if not source_contributor_id or not target_contributor_id:
             return jsonify({"error": "Missing required fields"}), 400
-        
+
         if source_contributor_id == target_contributor_id:
             return jsonify({"error": "Source and target cannot be the same"}), 400
-        
-        client = get_supabase_client()
-        if not client:
-            return jsonify({"error": "Failed to connect to database"}), 500
+
+        # Use service_role to bypass RLS for admin operations
+        client = SupabaseClient(use_service_role=True)
         
         # Get contributor details
         source_result = client.supabase.table("contributors").select("*").eq("id", source_contributor_id).execute()
@@ -4215,22 +4209,20 @@ def api_admin_merge_contributors():
 def api_admin_update_contributor(contributor_id):
     """Update contributor details"""
     try:
-        from app import get_supabase_client
         from flask_auth_utils import can_modify_data_flask
-        
+
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot edit contributors"}), 403
-        
+
         data = request.get_json()
         new_name = data.get('name')
         new_email = data.get('email')
-        
+
         if not new_name:
             return jsonify({"error": "Name is required"}), 400
-        
-        client = get_supabase_client()
-        if not client:
-            return jsonify({"error": "Failed to connect to database"}), 500
+
+        # Use service_role to bypass RLS for admin operations
+        client = SupabaseClient(use_service_role=True)
         
         # Get current contributor
         current_result = client.supabase.table("contributors").select("*").eq("id", contributor_id).execute()
