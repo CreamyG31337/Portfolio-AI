@@ -4884,47 +4884,59 @@ def _get_congress_trades_stats_cached(
 
             futures['most_active'] = executor.submit(_get_most_active)
 
-            # D. Postgres Analysis Data (if client available)
-            pg_analysis_map = {}
-            if _postgres_client:
-                # We need analysis for ALL filtered rows.
-                # Since we don't have the IDs yet (fetching in parallel), we can fetch ALL analysis
-                # or defer this.
-                # Optimization: Cache all analysis data (trade_id -> score) is better if table is not huge.
-                # Current table size is manageable.
-                # Or we can fetch it after getting IDs.
-                # Let's fetch all "active" analysis (with score) - standard practice in this codebase
-                def _fetch_pg_analysis():
-                    return _postgres_client.execute_query("SELECT trade_id, conflict_score FROM congress_trades_analysis WHERE conflict_score IS NOT NULL")
-
-                futures['pg_analysis'] = executor.submit(_fetch_pg_analysis)
-
-            # --- Gather Results ---
+            # --- Gather Results (each with individual error handling) ---
 
             # 1. Collect Fetched Rows
             fetched_rows = []
             for f in concurrent.futures.as_completed(fetch_futures):
-                data = f.result()
-                if data:
-                    fetched_rows.extend(data)
+                try:
+                    data = f.result()
+                    if data:
+                        fetched_rows.extend(data)
+                except Exception as e:
+                    logger.warning(f"[CongressStats] Chunk fetch failed: {e}")
 
             # 2. Collect Counts
-            house_count = futures['house'].result() if 'house' in futures else 0
-            senate_count = futures['senate'].result() if 'senate' in futures else 0
-            purchase_count = futures['purchase'].result() if 'purchase' in futures else 0
-            sale_count = futures['sale'].result() if 'sale' in futures else 0
+            house_count = 0
+            senate_count = 0
+            purchase_count = 0
+            sale_count = 0
+            for key in ['house', 'senate', 'purchase', 'sale']:
+                if key in futures:
+                    try:
+                        val = futures[key].result()
+                        if key == 'house': house_count = val
+                        elif key == 'senate': senate_count = val
+                        elif key == 'purchase': purchase_count = val
+                        elif key == 'sale': sale_count = val
+                    except Exception as e:
+                        logger.warning(f"[CongressStats] {key} count failed, defaulting to 0: {e}")
 
             # 3. Collect Most Active
-            recent_trades = futures['most_active'].result() if 'most_active' in futures else []
+            recent_trades = []
+            try:
+                if 'most_active' in futures:
+                    recent_trades = futures['most_active'].result() or []
+            except Exception as e:
+                logger.warning(f"[CongressStats] Most active fetch failed: {e}")
 
-            # 4. Collect Analysis Map
-            if 'pg_analysis' in futures:
-                try:
-                    pg_res = futures['pg_analysis'].result()
-                    for r in pg_res:
-                        pg_analysis_map[r['trade_id']] = r['conflict_score']
-                except Exception as e:
-                    logger.warning(f"Error fetching Postgres analysis: {e}")
+        # D. Fetch Analysis Data scoped to collected trade IDs (after rows are available)
+        pg_analysis_map = {}
+        if _postgres_client and fetched_rows:
+            try:
+                trade_ids = [r['id'] for r in fetched_rows if r.get('id')]
+                if trade_ids:
+                    for i in range(0, len(trade_ids), 10000):
+                        batch = trade_ids[i:i + 10000]
+                        pg_res = _postgres_client.execute_query(
+                            "SELECT trade_id, conflict_score FROM congress_trades_analysis "
+                            "WHERE trade_id = ANY(%s) AND conflict_score IS NOT NULL",
+                            (batch,)
+                        )
+                        for r in pg_res:
+                            pg_analysis_map[r['trade_id']] = r['conflict_score']
+            except Exception as e:
+                logger.warning(f"[CongressStats] Postgres analysis fetch failed: {e}")
 
         # 5. Process Fetched Data (Intersection & Python Counts)
         final_trades = []
