@@ -372,6 +372,3 @@ mcps/mandrel/SERVER_METADATA.json
 .gemini/GEMINI.md
 .mcp.json
 .claude/**
-
-# Google Jules AI agent (learnings/palette files - agent-specific, not shared)
-.jules/
