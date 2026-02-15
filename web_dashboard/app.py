@@ -3304,9 +3304,9 @@ def ticker_details_page():
         logger.error(f"Error loading ticker details page: {e}")
         return jsonify({"error": "Failed to load ticker details page"}), 500
 
-@cache_data(ttl=60)
+@cache_data(ttl=3600)
 def _get_all_tickers_cached():
-    """Get all unique tickers with caching (60s TTL)"""
+    """Get all unique tickers with caching (3600s TTL)"""
     import re
     try:
         logger.info("Starting _get_all_tickers_cached")

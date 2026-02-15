@@ -75,45 +75,69 @@ def _get_yfinance_ticker_candidates(ticker: str) -> List[str]:
 
 def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
                               extra_filter: Optional[Dict] = None) -> Set[str]:
-    """Fetch unique tickers from a single Supabase table with pagination."""
+    """Fetch unique tickers from a single Supabase table with parallel pagination."""
     tickers: Set[str] = set()
     if not client:
         return tickers
     try:
         logger.debug(f"Fetching tickers from Supabase: {table}")
 
-        batch_size = 1000
-        offset = 0
+        # Get total count first to determine strategy
+        count_query = client.supabase.table(table).select(ticker_column, count='exact', head=True)
+        if extra_filter:
+            for col, val in extra_filter.items():
+                count_query = count_query.eq(col, val)
 
-        while True:
+        count_result = count_query.execute()
+        total_count = count_result.count if count_result.count is not None else 0
+
+        if total_count == 0:
+            return tickers
+
+        batch_size = 1000
+
+        # If small, fetch in one go
+        if total_count <= batch_size:
             query = client.supabase.table(table).select(ticker_column)
             if extra_filter:
                 for col, val in extra_filter.items():
                     query = query.eq(col, val)
 
-            # Use range for pagination to ensure we get all rows
+            result = query.range(0, batch_size - 1).execute()
+            if result.data:
+                tickers.update([row[ticker_column].upper() for row in result.data if row.get(ticker_column)])
+            return tickers
+
+        # If large, use parallel fetching
+        # Limit to 50k rows max (50 chunks) to prevent overloading
+        max_rows = 50000
+        fetch_count = min(total_count, max_rows)
+        num_chunks = (fetch_count + batch_size - 1) // batch_size
+
+        if total_count > max_rows:
+            logger.warning(f"Table {table} has {total_count} rows, limiting fetch to {max_rows}")
+
+        def fetch_chunk(chunk_index):
+            offset = chunk_index * batch_size
+            query = client.supabase.table(table).select(ticker_column)
+            if extra_filter:
+                for col, val in extra_filter.items():
+                    query = query.eq(col, val)
+
+            # Use range for pagination
             result = query.range(offset, offset + batch_size - 1).execute()
+            return [row[ticker_column].upper() for row in result.data if row.get(ticker_column)] if result.data else []
 
-            if not result.data:
-                break
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(fetch_chunk, i) for i in range(num_chunks)]
+            for future in as_completed(futures):
+                try:
+                    chunk_tickers = future.result()
+                    tickers.update(chunk_tickers)
+                except Exception as e:
+                    logger.error(f"Error fetching chunk from {table}: {e}")
 
-            # Extract and normalize tickers
-            batch_tickers = [row[ticker_column].upper() for row in result.data if row.get(ticker_column)]
-            tickers.update(batch_tickers)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            # TODO: Replace client-side pagination with DB-side aggregation
-            # (e.g. SELECT DISTINCT ticker FROM table) to avoid this arbitrary limit.
-            # Safety limit to prevent infinite loops on massive tables (e.g. 50k rows)
-            if offset > 50000:
-                logger.warning(f"Ticker fetch limit reached for {table} (50k rows)")
-                break
-
-        logger.debug(f"Fetched {len(tickers)} unique tickers from {table}")
+        logger.debug(f"Fetched {len(tickers)} unique tickers from {table} (parallel)")
     except Exception as e:
         logger.error(f"Error fetching tickers from {table}: {e}", exc_info=True)
     return tickers

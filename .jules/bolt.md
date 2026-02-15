@@ -17,3 +17,9 @@
 **Action:**
 1. When fetching "all" items from Supabase, ALWAYS use a pagination loop with `.range(offset, offset + limit)` to bypass the 1000-row default limit.
 2. For aggregate lists (like tickers), prioritize master metadata tables (e.g. `securities`) over scanning large transaction logs.
+
+## 2026-02-26 - Large Table Distinct Fetching via Parallelization
+**Learning:** `congress_trades` table lacks a foreign key to `securities` and contains duplicate tickers not in the master list. Fetching unique tickers via standard Supabase pagination (1000/batch) is slow for 50k+ rows due to sequential RTT. PostgREST lacks direct `DISTINCT` select support.
+**Action:**
+1. Implement "Parallel Pagination": Fetch total count first (HEAD request). If large, calculate chunks and fetch them concurrently using `ThreadPoolExecutor`.
+2. Increase cache TTL for expensive aggregate queries (e.g., global ticker list) to amortize the cost of the heavy fetch.
