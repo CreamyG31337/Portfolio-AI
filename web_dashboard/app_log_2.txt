@@ -1,0 +1,65 @@
+[ROTATION DEBUG] Created DebugRotatingFileHandler for /app/web_dashboard/logs/app.log
+INFO:auth:AuthManager: SUPABASE_JWT_SECRET not set. Token verification will fall back to API check (slower).
+WARNING:auth:AuthManager: No Supabase anon key found in environment (checked SUPABASE_PUBLISHABLE_KEY and SUPABASE_ANON_KEY)
+2026-02-15 17:53:16.939 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.942 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.943 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.944 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.946 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.947 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.948 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.958 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.961 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.963 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:16.968 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:17.380 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:17.381 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:17.382 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:17.382 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:17.382 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:17.384 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:17.384 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+ * Serving Flask app 'app'
+ * Debug mode: on
+[ROTATION DEBUG] Created DebugRotatingFileHandler for /app/web_dashboard/logs/app.log
+INFO:auth:AuthManager: SUPABASE_JWT_SECRET not set. Token verification will fall back to API check (slower).
+WARNING:auth:AuthManager: No Supabase anon key found in environment (checked SUPABASE_PUBLISHABLE_KEY and SUPABASE_ANON_KEY)
+2026-02-15 17:53:20.645 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.650 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.651 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.652 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.654 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.655 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.656 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.682 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.685 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.688 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:20.693 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:21.189 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:21.190 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:21.190 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:21.190 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:21.191 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:21.192 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:53:21.193 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+[ROTATION DEBUG] Created DebugRotatingFileHandler for /app/web_dashboard/logs/app.log
+INFO:auth:AuthManager: SUPABASE_JWT_SECRET not set. Token verification will fall back to API check (slower).
+WARNING:auth:AuthManager: No Supabase anon key found in environment (checked SUPABASE_PUBLISHABLE_KEY and SUPABASE_ANON_KEY)
+2026-02-15 17:54:01.574 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.577 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.578 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.579 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.581 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.582 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.583 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.593 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.596 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.599 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:01.604 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:02.014 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:02.015 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:02.016 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:02.016 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:02.017 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:02.018 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:54:02.018 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager

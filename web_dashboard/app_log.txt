@@ -1,0 +1,142 @@
+[ROTATION DEBUG] Created DebugRotatingFileHandler for /app/web_dashboard/logs/app.log
+INFO:auth:AuthManager: SUPABASE_JWT_SECRET not set. Token verification will fall back to API check (slower).
+WARNING:auth:AuthManager: No Supabase anon key found in environment (checked SUPABASE_PUBLISHABLE_KEY and SUPABASE_ANON_KEY)
+2026-02-15 17:38:29.595 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.598 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.599 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.600 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.602 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.603 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.604 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.613 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.616 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.619 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:29.623 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:30.093 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:30.094 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:30.095 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:30.095 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:30.096 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:30.097 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:30.097 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+[SCHEDULER-INIT] [SchedulerInitThread] Starting scheduler initialization...
+[SCHEDULER-INIT] Attempt 1/3: Waiting 0.5s for Flask initialization...
+ * Serving Flask app 'app'
+ * Debug mode: on
+[SCHEDULER-INIT] 🚀 Attempting to start scheduler (attempt 1/3)...
+[SCHEDULER-INIT] ❌ Exception during scheduler start attempt 1: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+Traceback (most recent call last):
+  File "/app/web_dashboard/app.py", line 761, in _scheduler_init_thread
+    result = start_scheduler()
+             ^^^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 791, in start_scheduler
+    scheduler = get_scheduler()
+                ^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 235, in get_scheduler
+    raise ValueError("SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore")
+ValueError: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+[SCHEDULER-INIT] Will retry in 2.0s...
+[SCHEDULER-INIT] Attempt 2/3: Waiting 2.0s for Flask initialization...
+[ROTATION DEBUG] Created DebugRotatingFileHandler for /app/web_dashboard/logs/app.log
+INFO:auth:AuthManager: SUPABASE_JWT_SECRET not set. Token verification will fall back to API check (slower).
+WARNING:auth:AuthManager: No Supabase anon key found in environment (checked SUPABASE_PUBLISHABLE_KEY and SUPABASE_ANON_KEY)
+[SCHEDULER-INIT] 🚀 Attempting to start scheduler (attempt 2/3)...
+[SCHEDULER-INIT] ❌ Exception during scheduler start attempt 2: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+Traceback (most recent call last):
+  File "/app/web_dashboard/app.py", line 761, in _scheduler_init_thread
+    result = start_scheduler()
+             ^^^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 791, in start_scheduler
+    scheduler = get_scheduler()
+                ^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 235, in get_scheduler
+    raise ValueError("SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore")
+ValueError: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+[SCHEDULER-INIT] Will retry in 5.0s...
+[SCHEDULER-INIT] Attempt 3/3: Waiting 5.0s for Flask initialization...
+2026-02-15 17:38:33.048 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.050 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.051 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.052 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.054 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.055 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.056 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.066 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.069 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.071 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.076 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.483 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.485 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.485 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.486 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.486 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.487 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-02-15 17:38:33.488 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+[SCHEDULER-INIT] [SchedulerInitThread] Starting scheduler initialization...
+[SCHEDULER-INIT] Attempt 1/3: Waiting 0.5s for Flask initialization...
+[SCHEDULER-INIT] 🚀 Attempting to start scheduler (attempt 1/3)...
+[SCHEDULER-INIT] ❌ Exception during scheduler start attempt 1: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+Traceback (most recent call last):
+  File "/app/web_dashboard/app.py", line 761, in _scheduler_init_thread
+    result = start_scheduler()
+             ^^^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 791, in start_scheduler
+    scheduler = get_scheduler()
+                ^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 235, in get_scheduler
+    raise ValueError("SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore")
+ValueError: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+[SCHEDULER-INIT] Will retry in 2.0s...
+[SCHEDULER-INIT] Attempt 2/3: Waiting 2.0s for Flask initialization...
+[SCHEDULER-INIT] 🚀 Attempting to start scheduler (attempt 2/3)...
+[SCHEDULER-INIT] ❌ Exception during scheduler start attempt 2: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+Traceback (most recent call last):
+  File "/app/web_dashboard/app.py", line 761, in _scheduler_init_thread
+    result = start_scheduler()
+             ^^^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 791, in start_scheduler
+    scheduler = get_scheduler()
+                ^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 235, in get_scheduler
+    raise ValueError("SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore")
+ValueError: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+[SCHEDULER-INIT] Will retry in 5.0s...
+[SCHEDULER-INIT] Attempt 3/3: Waiting 5.0s for Flask initialization...
+[SCHEDULER-INIT] 🚀 Attempting to start scheduler (attempt 3/3)...
+[SCHEDULER-INIT] ❌ Exception during scheduler start attempt 3: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+Traceback (most recent call last):
+  File "/app/web_dashboard/app.py", line 761, in _scheduler_init_thread
+    result = start_scheduler()
+             ^^^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 791, in start_scheduler
+    scheduler = get_scheduler()
+                ^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 235, in get_scheduler
+    raise ValueError("SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore")
+ValueError: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+[SCHEDULER-INIT] ❌ All retries exhausted due to exceptions
+[SCHEDULER-INIT] ⚠️ Flask will continue without scheduler - start manually via Jobs page
+[SCHEDULER-INIT] [SchedulerInitThread] Scheduler initialization complete
+[SCHEDULER-INIT] 🚀 Attempting to start scheduler (attempt 3/3)...
+[SCHEDULER-INIT] ❌ Exception during scheduler start attempt 3: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+Traceback (most recent call last):
+  File "/app/web_dashboard/app.py", line 761, in _scheduler_init_thread
+    result = start_scheduler()
+             ^^^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 791, in start_scheduler
+    scheduler = get_scheduler()
+                ^^^^^^^^^^^^^^^
+  File "/app/web_dashboard/scheduler/scheduler_core.py", line 235, in get_scheduler
+    raise ValueError("SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore")
+ValueError: SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore
+[SCHEDULER-INIT] ❌ All retries exhausted due to exceptions
+[SCHEDULER-INIT] ⚠️ Flask will continue without scheduler - start manually via Jobs page
+[SCHEDULER-INIT] [SchedulerInitThread] Scheduler initialization complete
+Exception ignored in: <module 'threading' from '/home/jules/.pyenv/versions/3.12.12/lib/python3.12/threading.py'>
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/threading.py", line 1624, in _shutdown
+    lock.acquire()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/werkzeug/_reloader.py", line 446, in <lambda>
+    signal.signal(signal.SIGTERM, lambda *args: sys.exit(0))
+                                                ^^^^^^^^^^^
+SystemExit: 0

@@ -33,7 +33,7 @@
                         class="theme-aware-logo h-10 w-10">
                     <div>
                         <h1 class="text-xl md:text-2xl font-bold">{% block page_title %}Dashboard{% endblock %}</h1>
-                        <p class="text-blue-100 text-sm hidden md:block mt-1">{% block page_subtitle %}{% endblock %}
+                        <p class="text-white/80 text-sm hidden md:block mt-1">{% block page_subtitle %}{% endblock %}
                         </p>
                     </div>
                 </div>
@@ -45,7 +45,7 @@
                 <div class="flex items-center space-x-3 ml-auto">
                     <!-- User email (hidden on mobile) -->
                     {% if user_email %}
-                    <div class="hidden md:block text-sm text-blue-100">
+                    <div class="hidden md:block text-sm text-white/80">
                         <span class="font-semibold">{{ user_email }}</span>
                     </div>
                     {% endif %}

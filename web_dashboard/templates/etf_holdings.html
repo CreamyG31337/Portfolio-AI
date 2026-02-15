@@ -96,7 +96,7 @@
             <div>
                 <label class="block mb-2 text-sm font-medium text-text-primary">ETF</label>
                 <select name="etf"
-                    class="w-full text-sm bg-dashboard-background border border-border rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent"
+                    class="form-input-theme"
                     onchange="updateFilters()">
                     <option value="All ETFs" {% if current_etf=='All ETFs' %}selected{% endif %}>All ETFs</option>
                     {% for etf in available_etfs %}
@@ -124,7 +124,7 @@
 
                     <!-- Date Input with Keyboard Support -->
                     <input type="date" id="date-input" name="date" value="{{ current_date }}" max="{{ latest_date }}"
-                        class="flex-1 text-sm bg-dashboard-background border border-border rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent"
+                        class="form-input-theme flex-1"
                         onchange="updateFilters()" onkeydown="handleDateKeyboard(event)">
 
                     <!-- Next Date Button -->
@@ -154,7 +154,7 @@
                     <i class="fas fa-filter mr-1"></i>Change Type
                 </label>
                 <select name="change_type"
-                    class="w-full text-sm bg-dashboard-background border border-border rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent"
+                    class="form-input-theme"
                     onchange="updateFilters()">
                     <option value="ALL" {% if current_change_type=='ALL' %}selected{% endif %}>🔍 All Changes</option>
                     <option value="NEW" {% if current_change_type=='NEW' %}selected{% endif %}>🆕 New Positions</option>
