@@ -28,7 +28,7 @@
 {% block content %}
 <!-- Performance Metrics Cards -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div class="dashboard-card p-6 hover:-translate-y-0.5 transition-transform duration-200">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-theme-info-bg text-theme-info-text">
                 <i class="fas fa-dollar-sign text-2xl"></i>
@@ -40,7 +40,7 @@
         </div>
     </div>
 
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div class="dashboard-card p-6 hover:-translate-y-0.5 transition-transform duration-200">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-theme-success-bg text-theme-success-text">
                 <i class="fas fa-chart-line text-2xl"></i>
@@ -52,7 +52,7 @@
         </div>
     </div>
 
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div class="dashboard-card p-6 hover:-translate-y-0.5 transition-transform duration-200">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-accent/10 text-accent">
                 <i class="fas fa-coins text-2xl"></i>
@@ -64,7 +64,7 @@
         </div>
     </div>
 
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 hover:-translate-y-0.5 transition-transform duration-200">
+    <div class="dashboard-card p-6 hover:-translate-y-0.5 transition-transform duration-200">
         <div class="flex items-center">
             <div class="p-3 rounded-full bg-theme-warning-bg text-theme-warning-text">
                 <i class="fas fa-exchange-alt text-2xl"></i>
@@ -78,7 +78,7 @@
 </div>
 
 <!-- Performance Chart -->
-<div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-8">
+<div class="dashboard-card p-6 mb-8">
     <h2 class="text-2xl font-bold text-text-primary mb-4">📊 Performance Over Time</h2>
     <div class="mb-2 text-sm text-text-tertiary md:hidden">
         💡 Tip: Rotate your device for better viewing
@@ -89,7 +89,7 @@
 <!-- Current Positions and Recent Trades -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
     <!-- Current Positions -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6">
+    <div class="dashboard-card p-6">
         <h2 class="text-2xl font-bold text-text-primary mb-4">💼 Current Positions</h2>
         <div id="positions-container">
             <div class="text-center text-text-tertiary py-8">
@@ -100,7 +100,7 @@
     </div>
 
     <!-- Recent Trades -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6">
+    <div class="dashboard-card p-6">
         <h2 class="text-2xl font-bold text-text-primary mb-4">📋 Recent Trades</h2>
         <div id="trades-container">
             <div class="text-center text-text-tertiary py-8">
@@ -112,7 +112,7 @@
 </div>
 
 <!-- Cash Balances -->
-<div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mt-8">
+<div class="dashboard-card p-6 mt-8">
     <h2 class="text-2xl font-bold text-text-primary mb-4">💰 Cash Balances</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="bg-theme-info-bg rounded-lg p-4">
@@ -131,7 +131,7 @@
 </div>
 
 <!-- Fund Contributors/Holders -->
-<div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mt-8">
+<div class="dashboard-card p-6 mt-8">
     <h2 class="text-2xl font-bold text-text-primary mb-4">👥 Fund Contributors</h2>
     <div id="contributors-container">
         <div class="text-center text-text-tertiary py-8">

@@ -32,7 +32,7 @@
     <!-- User Management Tab Content -->
     <div id="tab-content-users" role="tabpanel" aria-labelledby="tab-users" class="animate-fade-in">
     <!-- Stats -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-4 mb-6 border border-border">
+    <div class="dashboard-card p-4 mb-6">
         <div class="flex items-center justify-between">
             <div id="stats-text" class="text-sm text-text-secondary">Loading users...</div>
             <button id="refresh-users-btn" class="btn-outline">
@@ -49,7 +49,7 @@
         </div>
         <div id="users-list" class="hidden"></div>
         <div id="no-users"
-            class="hidden bg-dashboard-surface rounded-lg shadow-lg p-6 text-center text-text-secondary border border-border">
+            class="hidden dashboard-card p-6 text-center text-text-secondary">
             <i class="fas fa-users text-4xl mb-4"></i>
             <p>No users found.</p>
         </div>
@@ -60,7 +60,7 @@
     </div>
 
     <!-- Update Contributor Email Section -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 border border-border">
+    <div class="dashboard-card p-6 mb-6">
         <h3 class="text-lg font-semibold mb-4 text-text-primary">Update Contributor Email</h3>
         <p class="text-sm text-text-secondary mb-4">Change a contributor's email address (updates contributors table and
             fund_contributions records)</p>
@@ -69,14 +69,14 @@
                 <label class="block text-sm font-medium text-text-primary mb-2">Select Contributor/User to
                     Update</label>
                 <select id="contributor-select"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-hidden focus:ring-2 focus:ring-accent text-text-primary">
+                    class="form-input-theme">
                     <option value="">-- Select --</option>
                 </select>
             </div>
             <div>
                 <label class="block text-sm font-medium text-text-primary mb-2">New Email Address</label>
                 <input type="email" id="new-email-input" placeholder="Enter new email address"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-hidden focus:ring-2 focus:ring-accent text-text-primary"
+                    class="form-input-theme"
                     disabled>
                 <p id="current-email-text" class="text-xs text-text-secondary mt-1"></p>
             </div>
@@ -92,7 +92,7 @@
     </div>
 
     <!-- Unregistered Contributors Section -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 border border-border">
+    <div class="dashboard-card p-6">
         <h3 class="text-lg font-semibold mb-4 text-text-primary">📨 Unregistered Contributors</h3>
         <p class="text-sm text-text-secondary mb-4">Contributors with fund contributions who haven't created an account
             yet</p>
@@ -116,28 +116,28 @@
     <!-- Contributor Access Tab Content -->
     <div id="tab-content-access" role="tabpanel" aria-labelledby="tab-access" class="hidden animate-fade-in">
     <!-- Grant Access Section -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 border border-border">
+    <div class="dashboard-card p-6 mb-6">
         <h3 class="text-lg font-semibold mb-4 text-text-primary">Grant Access</h3>
         <p class="text-sm text-text-secondary mb-4">Allow a user to view/manage a contributor's account</p>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
                 <label class="block text-sm font-medium text-text-primary mb-2">Contributor</label>
                 <select id="grant-contributor-select"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-hidden focus:ring-2 focus:ring-accent text-text-primary">
+                    class="form-input-theme">
                     <option value="">-- Select Contributor --</option>
                 </select>
             </div>
             <div>
                 <label class="block text-sm font-medium text-text-primary mb-2">User Email</label>
                 <select id="grant-user-select"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-hidden focus:ring-2 focus:ring-accent text-text-primary">
+                    class="form-input-theme">
                     <option value="">-- Select User --</option>
                 </select>
             </div>
             <div>
                 <label class="block text-sm font-medium text-text-primary mb-2">Access Level</label>
                 <select id="grant-access-level-select"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-hidden focus:ring-2 focus:ring-accent text-text-primary">
+                    class="form-input-theme">
                     <option value="viewer">viewer</option>
                     <option value="manager">manager</option>
                     <option value="owner">owner</option>
@@ -155,7 +155,7 @@
     </div>
 
     <!-- Current Access Section -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 border border-border">
+    <div class="dashboard-card p-6 mb-6">
         <h3 class="text-lg font-semibold mb-4 text-text-primary">Current Access</h3>
         <p class="text-sm text-text-secondary mb-4">View all contributor-user access relationships</p>
         <div id="access-container">
@@ -163,27 +163,15 @@
                 <i class="fas fa-spinner fa-spin mr-2"></i>Loading access records...
             </div>
             <div id="access-table-container" class="hidden overflow-x-auto">
-                <table class="min-w-full divide-y divide-border">
-                    <thead class="bg-dashboard-background">
+                <table class="table-theme">
+                    <thead class="table-head-theme">
                         <tr>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                                Contributor</th>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                                Contributor Email</th>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                                User Email</th>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                                User Name</th>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                                Access Level</th>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                                Granted</th>
+                            <th class="px-6 py-3">Contributor</th>
+                            <th class="px-6 py-3">Contributor Email</th>
+                            <th class="px-6 py-3">User Email</th>
+                            <th class="px-6 py-3">User Name</th>
+                            <th class="px-6 py-3">Access Level</th>
+                            <th class="px-6 py-3">Granted</th>
                         </tr>
                     </thead>
                     <tbody id="access-table-body" class="bg-dashboard-surface divide-y divide-border">
@@ -203,28 +191,28 @@
     </div>
 
     <!-- Revoke Access Section -->
-    <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 border border-border">
+    <div class="dashboard-card p-6">
         <h3 class="text-lg font-semibold mb-4 text-text-primary">Revoke Access</h3>
         <p class="text-sm text-text-secondary mb-4">Remove user access to a contributor's account</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block text-sm font-medium text-text-primary mb-2">Contributor</label>
                 <select id="revoke-contributor-select"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-hidden focus:ring-2 focus:ring-accent text-text-primary">
+                    class="form-input-theme">
                     <option value="">-- Select Contributor --</option>
                 </select>
             </div>
             <div>
                 <label class="block text-sm font-medium text-text-primary mb-2">User Email</label>
                 <select id="revoke-user-select"
-                    class="w-full px-3 py-2 bg-dashboard-background border border-border rounded-md focus:outline-hidden focus:ring-2 focus:ring-accent text-text-primary">
+                    class="form-input-theme">
                     <option value="">-- Select User --</option>
                 </select>
             </div>
         </div>
         <div class="mt-4">
             <button id="revoke-access-btn"
-                class="text-theme-error-text bg-transparent border border-theme-error-text hover:bg-theme-error-bg/10 focus:ring-4 focus:ring-theme-error-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
+                class="btn-danger-outline">
                 <i class="fas fa-ban mr-2"></i>Revoke Access
             </button>
         </div>

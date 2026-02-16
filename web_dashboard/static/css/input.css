@@ -397,6 +397,26 @@
         @apply text-text-primary hover:text-accent;
     }
 
+    /* Standardized card styling */
+    .dashboard-card {
+        @apply bg-dashboard-surface rounded-lg border border-border shadow-xs;
+    }
+
+    /* Danger action button (red outline) */
+    .btn-danger-outline {
+        @apply text-theme-error-text bg-transparent border border-theme-error-text hover:bg-theme-error-bg/10 focus:ring-4 focus:ring-theme-error-bg/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200;
+    }
+
+    /* Standardized table theme */
+    .table-theme {
+        @apply w-full text-sm text-left rtl:text-right text-text-secondary;
+    }
+
+    /* Standardized table header theme */
+    .table-head-theme {
+        @apply text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0 z-10;
+    }
+
     /* Global outline button hover/ring using currentColor */
     button[class*="bg-transparent"][class*="border"]:not(:disabled):hover,
     a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):hover {
