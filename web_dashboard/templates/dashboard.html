@@ -470,7 +470,7 @@
                 <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
                     <span class="text-theme-success-text">💰</span> Dividends
                 </h3>
-                <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)" aria-expanded="true"
+                <button id="toggle-dividend-log-btn" aria-expanded="true"
                     aria-controls="dividend-log-container"
                     class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
                     <i class="fas fa-eye-slash mr-1" aria-hidden="true"></i> <span>Hide Log</span>
@@ -583,31 +583,6 @@
     // Pass initial data from backend if needed, or just let JS fetch it
     const INITIAL_FUND = {{ initial_fund| tojson }};
     console.log('[Dashboard] Script block loaded, INITIAL_FUND:', INITIAL_FUND);
-
-    function toggleDividendLog(btn) {
-        const container = document.getElementById('dividend-log-container');
-        if (!container) return;
-
-        const isHidden = container.classList.toggle('hidden');
-        const icon = btn.querySelector('i');
-        const span = btn.querySelector('span');
-
-        btn.setAttribute('aria-expanded', !isHidden);
-
-        if (isHidden) {
-            if (span) span.textContent = 'Show Log';
-            if (icon) {
-                icon.classList.remove('fa-eye-slash');
-                icon.classList.add('fa-eye');
-            }
-        } else {
-            if (span) span.textContent = 'Hide Log';
-            if (icon) {
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
-            }
-        }
-    }
 </script>
 <script type="module" src="/assets/js/dashboard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 <script>

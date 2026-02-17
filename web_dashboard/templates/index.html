@@ -91,22 +91,20 @@
     <!-- Current Positions -->
     <div class="bg-dashboard-surface rounded-lg shadow-lg p-6">
         <h2 class="text-2xl font-bold text-text-primary mb-4">💼 Current Positions</h2>
-        <div id="positions-container">
-            <div class="text-center text-text-tertiary py-8">
-                <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                <p>Loading positions...</p>
-            </div>
+        <div id="positions-container" class="relative min-h-[200px]">
+            {% with id='positions-spinner', size='12' %}
+                {% include "components/_loading_spinner.html" %}
+            {% endwith %}
         </div>
     </div>
 
     <!-- Recent Trades -->
     <div class="bg-dashboard-surface rounded-lg shadow-lg p-6">
         <h2 class="text-2xl font-bold text-text-primary mb-4">📋 Recent Trades</h2>
-        <div id="trades-container">
-            <div class="text-center text-text-tertiary py-8">
-                <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                <p>Loading trades...</p>
-            </div>
+        <div id="trades-container" class="relative min-h-[200px]">
+            {% with id='trades-spinner', size='12' %}
+                {% include "components/_loading_spinner.html" %}
+            {% endwith %}
         </div>
     </div>
 </div>
@@ -133,11 +131,10 @@
 <!-- Fund Contributors/Holders -->
 <div class="bg-dashboard-surface rounded-lg shadow-lg p-6 mt-8">
     <h2 class="text-2xl font-bold text-text-primary mb-4">👥 Fund Contributors</h2>
-    <div id="contributors-container">
-        <div class="text-center text-text-tertiary py-8">
-            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-            <p>Loading contributors...</p>
-        </div>
+    <div id="contributors-container" class="relative min-h-[150px]">
+        {% with id='contributors-spinner', size='12' %}
+            {% include "components/_loading_spinner.html" %}
+        {% endwith %}
     </div>
 </div>
 {% endblock %}

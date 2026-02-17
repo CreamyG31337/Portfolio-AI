@@ -1,6 +1,4 @@
 <!-- Reusable confirmation modal (Flowbite); use via window.showConfirmModal(...) -->
-<button id="confirm-modal-trigger" type="button" class="hidden" data-modal-target="confirm-modal"
-    data-modal-toggle="confirm-modal" aria-label="Open confirmation">Open</button>
 <div id="confirm-modal" tabindex="-1" aria-hidden="true"
     class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-md max-h-full flex items-center justify-center min-h-[calc(100%-2rem)]">
@@ -12,7 +10,7 @@
                 <h3 id="confirm-modal-title" class="mb-2 text-xl font-semibold text-text-primary">Confirm</h3>
                 <p id="confirm-modal-message" class="mb-6 text-sm text-text-secondary"></p>
                 <div class="flex gap-3 justify-center">
-                    <button type="button" id="confirm-modal-cancel" data-modal-hide="confirm-modal"
+                    <button type="button" id="confirm-modal-cancel"
                         class="px-4 py-2.5 text-sm font-medium rounded-lg border border-border bg-dashboard-background text-text-primary hover:bg-dashboard-surface-alt focus:ring-2 focus:ring-accent/30 focus:outline-hidden transition-colors">
                         Cancel
                     </button>
@@ -34,13 +32,56 @@
 <script>
 (function() {
     var modalId = 'confirm-modal';
-    var triggerId = 'confirm-modal-trigger';
     var titleId = 'confirm-modal-title';
     var messageId = 'confirm-modal-message';
     var cancelBtnId = 'confirm-modal-cancel';
     var iconWrapId = 'confirm-modal-icon';
     var primaryBtnId = 'confirm-modal-submit-primary';
     var dangerBtnId = 'confirm-modal-submit-danger';
+
+    // Store modal instance
+    var modalInstance = null;
+
+    function getModal() {
+        if (modalInstance) return modalInstance;
+
+        var modalEl = document.getElementById(modalId);
+        if (!modalEl) return null;
+
+        // Check if Flowbite is available
+        if (typeof Modal !== 'undefined') {
+            modalInstance = new Modal(modalEl, {
+                placement: 'center',
+                backdrop: 'dynamic',
+                closable: true,
+                onHide: () => {
+                    // Cleanup if needed
+                }
+            });
+        } else if (window.Flowbite && window.Flowbite.Modal) {
+             modalInstance = new window.Flowbite.Modal(modalEl, {
+                placement: 'center',
+                backdrop: 'dynamic',
+                closable: true
+            });
+        } else {
+            // Fallback if Flowbite JS isn't loaded (shouldn't happen in this app)
+            console.warn('Flowbite Modal not found, falling back to basic toggle');
+            modalInstance = {
+                show: function() {
+                    modalEl.classList.remove('hidden');
+                    modalEl.classList.add('flex');
+                    document.body.classList.add('overflow-hidden');
+                },
+                hide: function() {
+                    modalEl.classList.add('hidden');
+                    modalEl.classList.remove('flex');
+                    document.body.classList.remove('overflow-hidden');
+                }
+            };
+        }
+        return modalInstance;
+    }
 
     window.showConfirmModal = function(opts) {
         var title = (opts && opts.title) || 'Confirm';
@@ -80,9 +121,15 @@
             iconWrap.innerHTML = '<i class="fas ' + (danger ? 'fa-trash-alt text-theme-error-text' : 'fa-question text-text-secondary') + ' text-xl"></i>';
         }
 
+        var modal = getModal();
+
         function closeModal() {
-            var hideBtn = document.querySelector('[data-modal-hide="' + modalId + '"]');
-            if (hideBtn) hideBtn.click();
+            if (modal) modal.hide();
+        }
+
+        // Setup cancel button
+        if (cancelEl) {
+            cancelEl.onclick = closeModal;
         }
 
         if (activeBtn) {
@@ -110,8 +157,7 @@
             }
         }
 
-        var trigger = document.getElementById(triggerId);
-        if (trigger) trigger.click();
+        if (modal) modal.show();
     };
 })();
 </script>
