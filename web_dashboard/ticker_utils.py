@@ -82,6 +82,53 @@ def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
     try:
         logger.debug(f"Fetching tickers from Supabase: {table}")
 
+        # Optimization: Try to use server-side aggregation first via RPC if available
+        # This is much faster (O(1) vs O(N)) but requires service role permissions
+        try:
+            # Security: Whitelist allowed tables to prevent SQL injection
+            allowed_tables = {
+                'securities', 'watched_tickers', 'congress_trades',
+                'insider_trades', 'trade_log', 'portfolio_positions'
+            }
+            if table not in allowed_tables:
+                raise ValueError(f"Table {table} not in allowlist for optimization")
+
+            # Simple validation for column name (alphanumeric + underscore)
+            if not re.match(r'^[a-zA-Z0-9_]+$', ticker_column):
+                raise ValueError(f"Invalid ticker column name: {ticker_column}")
+
+            sql = f'SELECT DISTINCT "{ticker_column}" FROM "{table}"'
+
+            if extra_filter:
+                conditions = []
+                for col, val in extra_filter.items():
+                    if isinstance(val, bool):
+                        val_str = 'true' if val else 'false'
+                    elif isinstance(val, (int, float)):
+                        val_str = str(val)
+                    else:
+                        # Simple escaping for string values
+                        val_escaped = str(val).replace("'", "''")
+                        val_str = f"'{val_escaped}'"
+
+                    conditions.append(f'"{col}" = {val_str}')
+
+                if conditions:
+                    sql += f" WHERE {' AND '.join(conditions)}"
+
+            # Using client.rpc wrapper which ensures Authorization header is set
+            result = client.rpc('execute_sql', {'query': sql})
+
+            if hasattr(result, 'data') and result.data:
+                batch_tickers = [row[ticker_column].upper() for row in result.data if row.get(ticker_column)]
+                tickers.update(batch_tickers)
+                logger.info(f"Optimized fetch successful for {table}: {len(tickers)} tickers")
+                return tickers
+
+        except Exception as e:
+            # Fallback to iterative fetch if RPC fails (e.g. permission error, missing function)
+            logger.debug(f"Optimized fetch failed for {table} (falling back to iterative): {e}")
+
         batch_size = 1000
         offset = 0
 
