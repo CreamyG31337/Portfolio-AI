@@ -73,14 +73,73 @@ def _get_yfinance_ticker_candidates(ticker: str) -> List[str]:
     return candidates
 
 
+# Allowed tables for execute_sql optimization to prevent arbitrary SQL execution
+_ALLOWED_TABLES = {
+    'securities',
+    'watched_tickers',
+    'congress_trades',
+    'insider_trades',
+    'trade_log',
+    'portfolio_positions'
+}
+
+
 def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
                               extra_filter: Optional[Dict] = None) -> Set[str]:
-    """Fetch unique tickers from a single Supabase table with pagination."""
+    """Fetch unique tickers from a single Supabase table.
+
+    Optimized to use RPC execute_sql for O(1) fetching if available,
+    falling back to paginated fetching (O(N)) if RPC fails or table not allowed.
+    """
     tickers: Set[str] = set()
     if not client:
         return tickers
+
+    # 1. Attempt optimized RPC fetch (O(1))
+    # Only use execute_sql for known safe tables to prevent SQL injection risks
+    if table in _ALLOWED_TABLES:
+        try:
+            # Construct simple SQL query
+            # NOTE: execute_sql typically takes a raw string. Parameterization support depends on implementation.
+            # Here we manually construct safe clauses for simple filters.
+            query = f"SELECT DISTINCT {ticker_column} FROM {table}"
+            if extra_filter:
+                conditions = []
+                for col, val in extra_filter.items():
+                    if isinstance(val, bool):
+                        val_str = 'TRUE' if val else 'FALSE'
+                        conditions.append(f"{col} IS {val_str}")
+                    elif isinstance(val, (int, float)):
+                        conditions.append(f"{col} = {val}")
+                    elif isinstance(val, str) and val.isalnum():  # Simple alphanumeric check
+                        conditions.append(f"{col} = '{val}'")
+                    else:
+                        # Fallback for complex/unsafe filters
+                        raise ValueError(f"Unsafe filter value for optimization: {val}")
+
+                if conditions:
+                    query += " WHERE " + " AND ".join(conditions)
+
+            # Call execute_sql via RPC
+            # Check if client has rpc method (SupabaseClient wrapper) or use direct supabase.rpc
+            if hasattr(client, 'rpc'):
+                response = client.rpc('execute_sql', {'query': query})
+            else:
+                response = client.supabase.rpc('execute_sql', {'query': query}).execute()
+
+            if response.data:
+                batch_tickers = [row[ticker_column].upper() for row in response.data if row.get(ticker_column)]
+                tickers.update(batch_tickers)
+                logger.debug(f"Fetched {len(tickers)} unique tickers from {table} via RPC (optimized)")
+                return tickers
+
+        except Exception as e:
+            # Log warning but continue to fallback
+            logger.debug(f"RPC fetch failed for {table}, falling back to pagination: {e}")
+
+    # 2. Fallback to pagination loop (O(N))
     try:
-        logger.debug(f"Fetching tickers from Supabase: {table}")
+        logger.debug(f"Fetching tickers from Supabase (pagination fallback): {table}")
 
         batch_size = 1000
         offset = 0
@@ -106,14 +165,12 @@ def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
 
             offset += batch_size
 
-            # TODO: Replace client-side pagination with DB-side aggregation
-            # (e.g. SELECT DISTINCT ticker FROM table) to avoid this arbitrary limit.
             # Safety limit to prevent infinite loops on massive tables (e.g. 50k rows)
             if offset > 50000:
                 logger.warning(f"Ticker fetch limit reached for {table} (50k rows)")
                 break
 
-        logger.debug(f"Fetched {len(tickers)} unique tickers from {table}")
+        logger.debug(f"Fetched {len(tickers)} unique tickers from {table} (pagination)")
     except Exception as e:
         logger.error(f"Error fetching tickers from {table}: {e}", exc_info=True)
     return tickers
