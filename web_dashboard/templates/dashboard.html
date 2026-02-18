@@ -18,15 +18,15 @@
             <!-- Time Range (Flowbite Button Group) -->
             <div class="inline-flex rounded-md shadow-sm" role="group" aria-label="Time range selection">
                 <button type="button" data-range="1M" aria-pressed="false"
-                    class="range-btn btn-group-item border rounded-s-lg">
+                    class="range-btn px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-s-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white">
                     1M
                 </button>
                 <button type="button" data-range="3M" aria-pressed="false"
-                    class="range-btn btn-group-item border-t border-b">
+                    class="range-btn px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white">
                     3M
                 </button>
                 <button type="button" data-range="ALL" aria-pressed="true"
-                    class="range-btn active btn-group-item border rounded-e-lg">
+                    class="range-btn px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-e-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:ring-blue-500 dark:focus:text-white">
                     All
                 </button>
             </div>
@@ -34,7 +34,7 @@
     </div>
 
     <!-- Error Display (Hidden by default) -->
-    <div id="dashboard-error-container" class="hidden p-4 mb-6 text-sm text-theme-error-text rounded-lg bg-theme-error-bg border border-theme-error-text" role="alert">
+    <div id="dashboard-error-container" class="hidden p-4 mb-6 text-sm text-red-800 rounded-lg bg-red-50 dark:bg-gray-800 dark:text-red-400" role="alert">
         <div class="flex items-start">
             <svg class="flex-shrink-0 inline w-5 h-5 me-3 mt-0.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5ZM9.5 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 15H8a1 1 0 0 1 0-2h1v-3H8a1 1 0 0 1 0-2h2a1 1 0 0 1 1 1v4h1a1 1 0 0 1 0 2Z"/>
@@ -470,7 +470,7 @@
                 <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
                     <span class="text-theme-success-text">💰</span> Dividends
                 </h3>
-                <button id="toggle-dividend-log-btn" onclick="toggleDividendLog(this)" aria-expanded="true"
+                <button id="toggle-dividend-log-btn" aria-expanded="true"
                     aria-controls="dividend-log-container"
                     class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center">
                     <i class="fas fa-eye-slash mr-1" aria-hidden="true"></i> <span>Hide Log</span>
@@ -583,31 +583,6 @@
     // Pass initial data from backend if needed, or just let JS fetch it
     const INITIAL_FUND = {{ initial_fund| tojson }};
     console.log('[Dashboard] Script block loaded, INITIAL_FUND:', INITIAL_FUND);
-
-    function toggleDividendLog(btn) {
-        const container = document.getElementById('dividend-log-container');
-        if (!container) return;
-
-        const isHidden = container.classList.toggle('hidden');
-        const icon = btn.querySelector('i');
-        const span = btn.querySelector('span');
-
-        btn.setAttribute('aria-expanded', !isHidden);
-
-        if (isHidden) {
-            if (span) span.textContent = 'Show Log';
-            if (icon) {
-                icon.classList.remove('fa-eye-slash');
-                icon.classList.add('fa-eye');
-            }
-        } else {
-            if (span) span.textContent = 'Hide Log';
-            if (icon) {
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
-            }
-        }
-    }
 </script>
 <script type="module" src="/assets/js/dashboard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 <script>

@@ -4,6 +4,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import './components/confirm_modal.js'; // Import global confirm modal
 
 // ============================================================================
 // Sidebar Collapse/Expand (Desktop)

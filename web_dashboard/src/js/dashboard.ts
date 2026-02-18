@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
     initIndividualHoldingsControls();
     initExchangeRateControls();
     initCommodityControls();
-    initCommodityControls();
+    initDividendLogToggle();
 
     initPnlChartControls();
     initGrid(); // Initialize empty grid
@@ -364,6 +364,36 @@ async function initFundSelector(): Promise<void> {
         console.log('[Dashboard] Global fund changed to:', state.currentFund);
 
         refreshDashboard();
+    });
+}
+
+function initDividendLogToggle(): void {
+    const btn = document.getElementById('toggle-dividend-log-btn');
+    if (!btn) return;
+
+    btn.addEventListener('click', () => {
+        const container = document.getElementById('dividend-log-container');
+        if (!container) return;
+
+        const isHidden = container.classList.toggle('hidden');
+        const icon = btn.querySelector('i');
+        const span = btn.querySelector('span');
+
+        btn.setAttribute('aria-expanded', String(!isHidden));
+
+        if (isHidden) {
+            if (span) span.textContent = 'Show Log';
+            if (icon) {
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        } else {
+            if (span) span.textContent = 'Hide Log';
+            if (icon) {
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            }
+        }
     });
 }
 
