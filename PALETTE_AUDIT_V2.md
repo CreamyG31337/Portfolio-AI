@@ -1,61 +1,74 @@
-# 🎨 Palette Audit Report V2
+# Palette Audit V2
 
-This document outlines new findings from a design system and CSS audit of the `web_dashboard` codebase, building upon the initial audit. The goal is to identify opportunities to better leverage Tailwind CSS and Flowbite, improve accessibility, and ensure maintainability.
+This report identifies critical dependency mismatches, CSS overrides, and opportunities for component standardization within the `web_dashboard` codebase.
 
-## 🚨 Critical Findings
+## 1. Critical Dependency Mismatch
 
-### 1. Repetitive Form Input Classes
-**Location:** `web_dashboard/templates/auth.html`, `web_dashboard/templates/settings.html`, `web_dashboard/templates/dashboard.html`
-**Issue:** The following class string is repeated dozens of times for inputs and selects:
-```html
-bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5
+**Issue**: Version conflict between root `package.json` and `web_dashboard/package.json`.
+- **Root**: `tailwindcss: ^4.1.0`, `flowbite: ^4.0.1` (used by build process).
+- **Subdirectory**: `tailwindcss: ^3.4.1`, `flowbite: ^2.5.2` (used for TypeScript/Dev).
+
+**Why it matters**: The build process (driven by root `package.json`) compiles CSS using Tailwind v4 and Flowbite v4, while local development or TypeScript checking (driven by `web_dashboard/package.json`) expects v3/v2. This discrepancy can lead to:
+- Missing types for new v4 features.
+- Unexpected CSS behavior due to v4's breaking changes (e.g., variable-based theming).
+- "Works on my machine" issues where dev environment differs from build environment.
+
+**Suggestion**: Update `web_dashboard/package.json` to match the root versions:
+```json
+"tailwindcss": "^4.1.0",
+"flowbite": "^4.0.1"
 ```
-**Why it matters:** Violates DRY (Don't Repeat Yourself), increases payload size, and makes global form updates difficult.
-**Suggestion:** Extract a utility class (e.g., `.form-input-theme`) in `input.css` using `@apply`.
 
-### 2. Manual "Alert" Components
-**Location:** `web_dashboard/templates/dashboard.html`, `web_dashboard/templates/settings.html`
-**Issue:** Alerts are implemented manually with custom classes:
+## 2. CSS Refactoring
+
+**Issue**: `web_dashboard/static/css/input.css` contains `!important` overrides and bundled utility classes.
+- **Overrides**: `input[type="text"].bg-dashboard-surface-alt ... !important` forces theme colors, bypassing Flowbite v4's native CSS variable theming.
+- **Bundling**: `.form-input-theme` and `.btn-outline` use `@apply` to bundle utilities, which is an anti-pattern when overused and fights against atomic CSS benefits.
+
+**Why it matters**:
+- **Maintainability**: `!important` makes it difficult to override styles contextually without escalating specificity wars.
+- **Compatibility**: Flowbite v4 uses CSS variables for theming. Hardcoded overrides break this system and require manual updates for every theme change.
+
+**Suggestion**:
+- Remove `!important` overrides.
+- Adopt Flowbite v4's CSS variable system for theming inputs globally.
+- Replace `.form-input-theme` with standard Flowbite input classes or configured theme defaults.
+
+## 3. Component Standardization
+
+### Button Groups
+**Issue**: `dashboard.html` uses manual HTML/CSS (custom classes, border manipulation) for the "Time Range" selector.
+**Why**: Reimplementing this pattern is error-prone and often misses accessibility details.
+**Suggestion**: Use Flowbite's `Button Group` component:
 ```html
-<div id="dashboard-error-container" class="hidden mb-6 p-4 bg-red-50 border border-red-200 ...">
+<div class="inline-flex rounded-md shadow-sm" role="group">
+  <button type="button" class="px-4 py-2 text-sm font-medium ... rounded-s-lg ...">1M</button>
+  <button type="button" class="px-4 py-2 text-sm font-medium ... border-t border-b ...">3M</button>
+  <button type="button" class="px-4 py-2 text-sm font-medium ... rounded-e-lg ...">All</button>
+</div>
 ```
-**Why it matters:** Flowbite provides a standardized [Alert component](https://flowbite.com/docs/components/alerts/) with proper accessibility attributes (like `role="alert"`) and consistent theming support.
-**Suggestion:** Replace manual implementations with Flowbite's Alert component structure.
 
-### 3. Manual Password Visibility Toggle
-**Location:** `web_dashboard/templates/auth.html`, `web_dashboard/templates/settings.html`
-**Issue:** Password visibility is handled by copying vanilla JS snippets and using a manual `div.relative` structure with a button.
-**Why it matters:** While functional, the logic is duplicated across files.
-**Suggestion:** Encapsulate the behavior in a reusable script or use a standardized data-attribute pattern consistent with Flowbite's JS architecture.
+### Alerts
+**Issue**: `dashboard.html` uses a custom `#dashboard-error-container` div instead of a standard Alert component.
+**Why**: Inconsistent styling and behavior compared to the rest of the UI.
+**Suggestion**: Replace with Flowbite's `Alert` component for consistent dismissal behavior and accessibility.
 
-### 4. Repeated Card Styling
-**Location:** `web_dashboard/templates/settings.html`, `web_dashboard/templates/dashboard.html`
-**Issue:** Section containers repeatedly use:
-```html
-bg-dashboard-surface rounded-lg shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200
+### Modals
+**Issue**: `_confirm_modal.html` uses custom DOM manipulation (`window.showConfirmModal`).
+**Why**: Bypasses Flowbite's accessible Modal API (focus trapping, backdrop management, lifecycle events).
+**Suggestion**: Refactor to use the Flowbite `Modal` JavaScript API:
+```javascript
+import { Modal } from 'flowbite';
+const modal = new Modal($targetEl, options);
+modal.show();
 ```
-**Why it matters:** Inconsistent application of shadows, padding, or hover effects across the dashboard can degrade the "professional" feel.
-**Suggestion:** Create a `.card` or `.panel` component class.
 
-## 🎨 Best Practice Violations
+### Loading Spinners
+**Issue**: `_loading_spinner.html` uses a custom `div` with `border-b-2`.
+**Why**: Inconsistent with the design system's potential use of SVG spinners.
+**Suggestion**: Standardize on Flowbite's SVG spinner for better scaling and visual consistency.
 
-### 5. Arbitrary Theme Variable Usage
-**Location:** `web_dashboard/templates/base.html`, `web_dashboard/templates/auth.html`
-**Issue:** `from-[var(--gradient-from)]` is used instead of the mapped Tailwind utility.
-**Why it matters:** `tailwind.config.js` maps `accent.from` to `var(--gradient-from)`. Using the arbitrary value syntax `[]` bypasses the config validation and autocomplete.
-**Suggestion:** Use `from-accent-from` and `to-accent-to`.
-
-### 6. "Ghost" Button Inconsistencies
-**Location:** `web_dashboard/templates/auth.html`
-**Issue:** Buttons are manually styled with `bg-transparent border border-accent`.
-**Why it matters:** Flowbite offers outline buttons, but the custom theme colors require manual overrides.
-**Suggestion:** Define a `.btn-ghost` or `.btn-outline-accent` component to standardize these interactions.
-
-## ✅ Proposed Action Plan
-
-1.  **Extract `.form-input-theme`:** Create a new component class in `input.css` to handle the repetitive input styling.
-2.  **Refactor `settings.html`:** Apply the new class to the settings page as a pilot.
-3.  **Future:** Systematically replace manual Alerts with Flowbite components.
-
----
-*Generated by Palette 🎨*
+## 4. Auth Form Simplification
+**Issue**: `auth.html` uses verbose manual JavaScript for toggling between Login, Register, and Forgot Password forms.
+**Why**: Adds unnecessary complexity to the codebase.
+**Suggestion**: Simplify using Flowbite's `Tabs` component or utility classes for state management, or refactor to use a cleaner state-driven approach.
