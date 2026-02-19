@@ -10,8 +10,8 @@ and generating clickable links to ticker details pages.
 import logging
 import re
 import pandas as pd
-from typing import Dict, List, Optional, Any, Set
-from datetime import datetime, timedelta, timezone
+from typing import Any
+from datetime import datetime, timedelta, UTC
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import current_app
 
@@ -31,7 +31,7 @@ from web_dashboard.watchlist_access import get_active_watchlist_rows
 logger = logging.getLogger(__name__)
 
 
-def _normalize_fund_filter(fund: Optional[str]) -> Optional[str]:
+def _normalize_fund_filter(fund: str | None) -> str | None:
     """Normalize fund filter values from requests/UI."""
     if not fund:
         return None
@@ -43,16 +43,16 @@ def _normalize_fund_filter(fund: Optional[str]) -> Optional[str]:
     return fund_value
 
 
-def _get_yfinance_ticker_candidates(ticker: str) -> List[str]:
+def _get_yfinance_ticker_candidates(ticker: str) -> list[str]:
     """Return yfinance symbol candidates for potentially ambiguous tickers.
 
     Yahoo uses dash notation for class shares and may require exchange suffixes
     for Canadian listings (e.g., TECK.B -> TECK-B.TO).
     """
     ticker_upper = ticker.upper().strip()
-    candidates: List[str] = []
+    candidates: list[str] = []
 
-    def _add(symbol: Optional[str]) -> None:
+    def _add(symbol: str | None) -> None:
         if symbol and symbol not in candidates:
             candidates.append(symbol)
 
@@ -74,14 +74,68 @@ def _get_yfinance_ticker_candidates(ticker: str) -> List[str]:
 
 
 def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
-                              extra_filter: Optional[Dict] = None) -> Set[str]:
-    """Fetch unique tickers from a single Supabase table with pagination."""
-    tickers: Set[str] = set()
+                              extra_filter: dict | None = None) -> set[str]:
+    """Fetch unique tickers from a single Supabase table, prioritizing RPC aggregation."""
+    tickers: set[str] = set()
     if not client:
         return tickers
     try:
         logger.debug(f"Fetching tickers from Supabase: {table}")
 
+        # 1. Try Optimized RPC (O(1)) - Select Distinct
+        # Whitelist tables to strictly prevent SQL injection
+        ALLOWED_TABLES = {
+            'securities', 'watched_tickers', 'congress_trades',
+            'insider_trades', 'trade_log', 'portfolio_positions'
+        }
+
+        # Validate ticker_column is safe (alphanumeric/underscore)
+        is_safe_column = bool(re.match(r'^[a-zA-Z0-9_]+$', ticker_column))
+
+        if table in ALLOWED_TABLES and is_safe_column:
+            try:
+                # Construct SQL query
+                query = f'SELECT DISTINCT "{ticker_column}" FROM "{table}"'
+
+                # Add simple WHERE clauses if needed
+                if extra_filter:
+                    conditions = []
+                    for col, val in extra_filter.items():
+                        # Validate column name
+                        if not re.match(r'^[a-zA-Z0-9_]+$', col):
+                            continue
+
+                        if isinstance(val, bool):
+                            val_str = 'TRUE' if val else 'FALSE'
+                            conditions.append(f'"{col}" IS {val_str}')
+                        elif isinstance(val, (int, float)):
+                            conditions.append(f'"{col}" = {val}')
+                        elif isinstance(val, str):
+                            # Basic sanitization for string values
+                            # Escape single quotes
+                            clean_val = val.replace("'", "''")
+                            conditions.append(f'"{col}" = \'{clean_val}\'')
+
+                    if conditions:
+                        query += f' WHERE {" AND ".join(conditions)}'
+
+                # Execute via RPC
+                logger.debug(f"Attempting RPC fetch for {table}: {query}")
+                # SupabaseClient.rpc() handles the Authorization header
+                result = client.rpc('execute_sql', {'query': query})
+
+                if result.data:
+                    # Extract tickers
+                    batch_tickers = [row[ticker_column].upper() for row in result.data if row.get(ticker_column)]
+                    tickers.update(batch_tickers)
+                    logger.info(f"Fetched {len(tickers)} unique tickers from {table} via RPC (optimized)")
+                    return tickers
+
+            except Exception as e:
+                # Fallback to pagination if RPC fails (e.g., permission error, missing function)
+                logger.warning(f"RPC fetch failed for {table} (falling back to pagination): {e}")
+
+        # 2. Fallback to Pagination (O(N))
         batch_size = 1000
         offset = 0
 
@@ -106,8 +160,6 @@ def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
 
             offset += batch_size
 
-            # TODO: Replace client-side pagination with DB-side aggregation
-            # (e.g. SELECT DISTINCT ticker FROM table) to avoid this arbitrary limit.
             # Safety limit to prevent infinite loops on massive tables (e.g. 50k rows)
             if offset > 50000:
                 logger.warning(f"Ticker fetch limit reached for {table} (50k rows)")
@@ -119,9 +171,9 @@ def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
     return tickers
 
 
-def _fetch_tickers_articles(postgres_client) -> Set[str]:
+def _fetch_tickers_articles(postgres_client) -> set[str]:
     """Fetch tickers from research_articles table."""
-    tickers: Set[str] = set()
+    tickers: set[str] = set()
     if not postgres_client:
         return tickers
     try:
@@ -139,9 +191,9 @@ def _fetch_tickers_articles(postgres_client) -> Set[str]:
     return tickers
 
 
-def _fetch_tickers_social(postgres_client) -> Set[str]:
+def _fetch_tickers_social(postgres_client) -> set[str]:
     """Fetch tickers from social_metrics table."""
-    tickers: Set[str] = set()
+    tickers: set[str] = set()
     if not postgres_client:
         return tickers
     try:
@@ -155,7 +207,7 @@ def _fetch_tickers_social(postgres_client) -> Set[str]:
     return tickers
 
 
-def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[str]:
+def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> list[str]:
     """
     Aggregate unique tickers from all relevant database tables.
     Flask-compatible version (no Streamlit dependencies).
@@ -241,9 +293,9 @@ def get_all_unique_tickers(supabase_client=None, postgres_client=None) -> List[s
     return sorted(tickers)
 
 
-def _fetch_basic_info(ticker_upper: str, supabase_client) -> Dict[str, Any]:
+def _fetch_basic_info(ticker_upper: str, supabase_client) -> dict[str, Any]:
     """Fetch basic info from securities table, falling back to yfinance."""
-    result: Dict[str, Any] = {'basic_info': None, 'found': False}
+    result: dict[str, Any] = {'basic_info': None, 'found': False}
 
     # 1. Try DB
     if supabase_client:
@@ -435,9 +487,9 @@ def _fetch_basic_info(ticker_upper: str, supabase_client) -> Dict[str, Any]:
     return result
 
 
-def _fetch_portfolio_data(ticker_upper: str, supabase_client, fund_filter: Optional[str]) -> Dict[str, Any]:
+def _fetch_portfolio_data(ticker_upper: str, supabase_client, fund_filter: str | None) -> dict[str, Any]:
     """Fetch portfolio positions and trade history."""
-    result: Dict[str, Any] = {'portfolio_data': None, 'found': False}
+    result: dict[str, Any] = {'portfolio_data': None, 'found': False}
     if not supabase_client:
         return result
 
@@ -470,14 +522,14 @@ def _fetch_portfolio_data(ticker_upper: str, supabase_client, fund_filter: Optio
     return result
 
 
-def _fetch_research_articles(ticker_upper: str, postgres_client) -> Dict[str, Any]:
+def _fetch_research_articles(ticker_upper: str, postgres_client) -> dict[str, Any]:
     """Fetch research articles from the last 30 days."""
-    result: Dict[str, Any] = {'research_articles': [], 'found': False}
+    result: dict[str, Any] = {'research_articles': [], 'found': False}
     if not postgres_client:
         return result
 
     try:
-        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
         query = """
             SELECT id, title, url, summary, source, published_at, fetched_at,
                    relevance_score, sentiment, sentiment_score, article_type
@@ -501,9 +553,9 @@ def _fetch_research_articles(ticker_upper: str, postgres_client) -> Dict[str, An
     return result
 
 
-def _fetch_social_sentiment(ticker_upper: str, postgres_client) -> Dict[str, Any]:
+def _fetch_social_sentiment(ticker_upper: str, postgres_client) -> dict[str, Any]:
     """Fetch social sentiment metrics and alerts."""
-    result: Dict[str, Any] = {'social_sentiment': None, 'found': False}
+    result: dict[str, Any] = {'social_sentiment': None, 'found': False}
     if not postgres_client:
         return result
 
@@ -543,9 +595,9 @@ def _fetch_social_sentiment(ticker_upper: str, postgres_client) -> Dict[str, Any
     return result
 
 
-def _fetch_congress_trades(ticker_upper: str, supabase_client, postgres_client) -> Dict[str, Any]:
+def _fetch_congress_trades(ticker_upper: str, supabase_client, postgres_client) -> dict[str, Any]:
     """Fetch congress trades with analysis scores."""
-    result: Dict[str, Any] = {'congress_trades': [], 'found': False}
+    result: dict[str, Any] = {'congress_trades': [], 'found': False}
     if not supabase_client:
         return result
 
@@ -608,9 +660,9 @@ def _fetch_congress_trades(ticker_upper: str, supabase_client, postgres_client) 
     return result
 
 
-def _fetch_insider_trades(ticker_upper: str, supabase_client) -> Dict[str, Any]:
+def _fetch_insider_trades(ticker_upper: str, supabase_client) -> dict[str, Any]:
     """Fetch insider trades."""
-    result: Dict[str, Any] = {'insider_trades': [], 'found': False}
+    result: dict[str, Any] = {'insider_trades': [], 'found': False}
     if not supabase_client:
         return result
 
@@ -641,9 +693,9 @@ def _fetch_insider_trades(ticker_upper: str, supabase_client) -> Dict[str, Any]:
     return result
 
 
-def _fetch_watchlist_status(ticker_upper: str, supabase_client) -> Dict[str, Any]:
+def _fetch_watchlist_status(ticker_upper: str, supabase_client) -> dict[str, Any]:
     """Fetch watchlist status."""
-    result: Dict[str, Any] = {'watchlist_status': None, 'found': False}
+    result: dict[str, Any] = {'watchlist_status': None, 'found': False}
     if not supabase_client:
         return result
 
@@ -664,8 +716,8 @@ def get_ticker_info(
     ticker: str,
     supabase_client=None,
     postgres_client=None,
-    fund: Optional[str] = None
-) -> Dict[str, Any]:
+    fund: str | None = None
+) -> dict[str, Any]:
     """Get comprehensive ticker information from all databases.
 
     Aggregates ticker data from multiple sources (Supabase and Postgres) including
@@ -774,7 +826,7 @@ def get_ticker_info(
     ticker_upper = ticker.upper().strip()
     fund_filter = _normalize_fund_filter(fund)
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         'ticker': ticker_upper,
         'basic_info': None,
         'portfolio_data': None,
@@ -818,7 +870,7 @@ def get_ticker_price_history(
     ticker: str,
     supabase_client=None,
     days: int = 90,
-    fund: Optional[str] = None
+    fund: str | None = None
 ) -> pd.DataFrame:
     """Get historical price data for a ticker from portfolio_positions or yfinance.
     
@@ -838,11 +890,11 @@ def get_ticker_price_history(
     ticker_upper = ticker.upper().strip()
     result_df = pd.DataFrame()
     fund_filter = _normalize_fund_filter(fund)
-    
+
     # Calculate date range
-    end_date = datetime.now(timezone.utc)
+    end_date = datetime.now(UTC)
     start_date = end_date - timedelta(days=days)
-    
+
     # Try portfolio_positions first
     if supabase_client:
         try:
@@ -853,13 +905,13 @@ def get_ticker_price_history(
             if fund_filter:
                 pos_query = pos_query.eq("fund", fund_filter)
             pos_result = pos_query.order("date").execute()
-            
+
             if pos_result.data and len(pos_result.data) >= 10:
                 # We have enough data from portfolio_positions
                 df = pd.DataFrame(pos_result.data)
                 df['date'] = pd.to_datetime(df['date'])
                 df = df.sort_values('date')
-                
+
                 # Normalize to baseline 100 using first price
                 if len(df) > 0 and df['price'].iloc[0] > 0:
                     baseline_price = float(df['price'].iloc[0])
@@ -869,7 +921,7 @@ def get_ticker_price_history(
                     return result_df
         except Exception as e:
             logger.warning(f"Error fetching from portfolio_positions for {ticker_upper}: {e}")
-    
+
     # Fallback to yfinance if insufficient portfolio data
     try:
         import yfinance as yf
@@ -877,7 +929,7 @@ def get_ticker_price_history(
         logger.info(
             f"Fetching {ticker_upper} price history from Yahoo Finance candidates: {yf_candidates} (last {days} days)"
         )
-        
+
         # Add buffer days to ensure we get data
         buffer_start = start_date - timedelta(days=5)
         buffer_end = end_date + timedelta(days=2)
@@ -924,14 +976,14 @@ def get_ticker_price_history(
                 )
 
         logger.warning(f"No Yahoo Finance data available for any candidate of {ticker_upper}")
-        
+
     except Exception as e:
         logger.error(f"Error fetching from yfinance for {ticker_upper}: {e}")
-    
+
     return pd.DataFrame()
 
 
-def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Dict[str, str]:
+def get_ticker_external_links(ticker: str, exchange: str | None = None) -> dict[str, str]:
     """Generate external links to financial websites for a ticker.
     
     Creates links to major financial data sources including Yahoo Finance,
@@ -978,7 +1030,7 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
         - All URLs are properly formatted and URL-safe
     """
     ticker_upper = ticker.upper().strip()
-    
+
     # Handle Canadian tickers
     base_ticker = ticker_upper
     is_canadian = False
@@ -993,12 +1045,12 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
         is_canadian = True
         canadian_exchange = 'TSXV'
         exchange = exchange or 'TSXV'
-    
+
     links = {}
-    
+
     # Yahoo Finance - supports .TO/.V suffixes
     links['Yahoo Finance'] = f"https://finance.yahoo.com/quote/{ticker_upper}"
-    
+
     # TradingView - uses EXCHANGE-TICKER format
     if exchange:
         # Try to map exchange to TradingView format
@@ -1013,7 +1065,7 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
         links['TradingView'] = f"https://www.tradingview.com/symbols/{tv_exchange}-{base_ticker}/"
     else:
         links['TradingView'] = f"https://www.tradingview.com/symbols/{base_ticker}/"
-    
+
     # Finviz - doesn't support Canadian tickers well
     # For Canadian stocks, this will likely not work, but we include it anyway
     # Users can manually search if needed
@@ -1023,7 +1075,7 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
         links['Finviz'] = f"https://finviz.com/quote.ashx?t={base_ticker}"
     else:
         links['Finviz'] = f"https://finviz.com/quote.ashx?t={base_ticker}"
-    
+
     # Symbol research - uses EXCHANGE:TICKER format for Canadian stocks
     import os
     symbol_base_url = os.getenv("SYMBOL_ARTICLE_BASE_URL", "")
@@ -1032,29 +1084,29 @@ def get_ticker_external_links(ticker: str, exchange: Optional[str] = None) -> Di
             links['Symbol Research'] = f"{symbol_base_url}/symbol/{canadian_exchange}:{base_ticker}"
         else:
             links['Symbol Research'] = f"{symbol_base_url}/symbol/{base_ticker}"
-    
+
     # MarketWatch - uses EXCHANGE:TICKER format for Canadian stocks
     if is_canadian and canadian_exchange:
         links['MarketWatch'] = f"https://www.marketwatch.com/investing/stock/{canadian_exchange}:{base_ticker}"
     else:
         links['MarketWatch'] = f"https://www.marketwatch.com/investing/stock/{base_ticker}"
-    
+
     # StockTwits - uses base ticker (without .TO/.V suffix) for all stocks including Canadian
     # StockTwits doesn't support .TO/.V suffixes, so we use the base ticker
     links['StockTwits'] = f"https://stocktwits.com/symbol/{base_ticker}"
-    
+
     # Reddit (wallstreetbets search) - use full ticker for better search results
     links['Reddit (WSB)'] = f"https://www.reddit.com/r/wallstreetbets/search/?q={ticker_upper}&restrict_sr=1"
-    
+
     # Google Finance - supports .TO/.V suffixes
     links['Google Finance'] = f"https://www.google.com/finance/quote/{ticker_upper}"
-    
+
     return links
 
 
 def render_ticker_link(
     ticker: str,
-    display_text: Optional[str] = None,
+    display_text: str | None = None,
     use_page_link: bool = True
 ) -> str:
     """Generate a clickable ticker link for Streamlit markdown rendering.
@@ -1096,7 +1148,7 @@ def render_ticker_link(
     """
     ticker_upper = ticker.upper().strip()
     display = display_text if display_text else ticker_upper
-    
+
     if use_page_link:
         # Use Streamlit page_link format
         # Format: ticker_details?ticker=AAPL
@@ -1117,7 +1169,7 @@ def make_tickers_clickable(text: str) -> str:
     """
     # Pattern for ticker symbols (1-5 uppercase letters, optionally with .TO, .V, etc.)
     ticker_pattern = r'\b([A-Z]{1,5}(?:\.(?:TO|V|CN|NE|TSX))?)\b'
-    
+
     # False positives to exclude (common words, technical terms, financial/business acronyms)
     false_positives = {
         # Common words
@@ -1131,22 +1183,22 @@ def make_tickers_clickable(text: str) -> str:
         'SEC', 'ETF', 'IPO', 'CEO', 'CFO', 'CTO', 'COO', 'CMO', 'CIO',
         'PE', 'PS', 'EPS', 'ROI', 'ROE', 'ROA', 'EBIT', 'FCF',
         'LLC', 'INC', 'LTD', 'CORP', 'PLC', 'GAAP', 'FDA', 'FTC',
-        'IR', 'PR', 'HR', 'IT', 'RD', 'QA', 'VC', 'MA', 'USD', 'CAD',
+        'IR', 'PR', 'HR', 'RD', 'QA', 'VC', 'MA', 'USD', 'CAD',
         'YOY', 'MOM', 'QOQ', 'YTD', 'MTD', 'EOD', 'AUM', 'NAV'
     }
-    
+
     def replace_ticker(match):
         ticker = match.group(1)
         base_ticker = ticker.split('.')[0]
-        
+
         # Skip false positives
         if base_ticker in false_positives:
             return ticker
-        
+
         # Convert to link
         return render_ticker_link(ticker, ticker, use_page_link=True)
-    
+
     # Replace all ticker patterns
     result = re.sub(ticker_pattern, replace_ticker, text)
-    
+
     return result
