@@ -10,6 +10,7 @@ import logging
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import numpy as np
+import concurrent.futures
 from datetime import datetime, timezone
 
 from supabase_client import SupabaseClient
@@ -106,11 +107,27 @@ def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Opti
     try:
         logger.info(f"Loading current positions (Flask) for fund: {fund}")
         
+        # 1. Get total count first to determine pagination
+        count_query = client.supabase.table("latest_positions").select("*", count='exact', head=True)
+        if fund:
+            count_query = count_query.eq("fund", fund)
+
+        count_result = count_query.execute()
+        total_count = count_result.count if count_result.count is not None else 0
+
+        if total_count == 0:
+            return pd.DataFrame()
+
+        # Cap total count at 50,000 to prevent overload
+        if total_count > 50000:
+            logger.warning(f"Position fetch limit reached: {total_count} rows found, capping at 50,000")
+            total_count = 50000
+
         all_rows = []
         batch_size = 1000
-        offset = 0
         
-        while True:
+        # 2. Define fetch function for parallel execution
+        def fetch_batch(offset):
             # Join with securities table to get sector, industry, market_cap, country for filtering
             query = client.supabase.table("latest_positions").select(
                 "*, securities(company_name, sector, industry, market_cap, country, trailing_pe, dividend_yield, fifty_two_week_high, fifty_two_week_low, last_updated)"
@@ -119,19 +136,24 @@ def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Opti
                 query = query.eq("fund", fund)
                 
             result = query.range(offset, offset + batch_size - 1).execute()
+            return result.data or []
+
+        # 3. Execute in parallel
+        offsets = range(0, total_count, batch_size)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            # Submit all tasks
+            futures = [executor.submit(fetch_batch, offset) for offset in offsets]
             
-            if not result.data:
-                break
-                
-            all_rows.extend(result.data)
-            
-            if len(result.data) < batch_size:
-                break
-                
-            offset += batch_size
-            if offset > 50000:
-                logger.warning("Position fetch limit reached")
-                break
+            # Process results in order to maintain data stability
+            for i, future in enumerate(futures):
+                try:
+                    data = future.result()
+                    if data:
+                        all_rows.extend(data)
+                except Exception as exc:
+                    offset = i * batch_size
+                    logger.error(f"Error fetching batch at offset {offset}: {exc}")
                 
         if all_rows:
             df = pd.DataFrame(all_rows)

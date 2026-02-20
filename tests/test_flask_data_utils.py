@@ -30,6 +30,7 @@ def test_get_current_positions_flattens_all_fundamentals():
     mock_client = MagicMock()
     mock_result = MagicMock()
     mock_result.data = mock_data
+    mock_result.count = 10  # Ensure count is an int for parallel logic
     
     # Configure the chain to handle .eq() if called, or skip it
     mock_table = mock_client.supabase.table.return_value
@@ -40,6 +41,10 @@ def test_get_current_positions_flattens_all_fundamentals():
     mock_select.range.return_value.execute.return_value = mock_result
     mock_eq.range.return_value.execute.return_value = mock_result
     
+    # Also handle execute() directly for count query
+    mock_select.execute.return_value = mock_result
+    mock_eq.execute.return_value = mock_result
+
     with patch('flask_data_utils.get_supabase_client_flask', return_value=mock_client), \
          patch('cache_version.get_cache_version', return_value="v1"):
 
