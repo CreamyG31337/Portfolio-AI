@@ -4072,6 +4072,81 @@ def get_postgres_client_congress():
         logger.warning(f"PostgreSQL not available (AI analysis disabled): {e}")
         return None
 
+def _get_unique_values_parallel(
+    client,
+    table: str,
+    column: str,
+    transform_func=None,
+    batch_size: int = 5000,
+    max_rows: int = 100000
+) -> List[str]:
+    """
+    Helper to fetch unique values from a table in parallel.
+    Uses count='exact' to determine range, then fetches chunks concurrently.
+    """
+    try:
+        if client is None:
+            return []
+
+        # 1. Get total count
+        count_result = client.supabase.table(table).select("id", count="exact", head=True).execute()
+        total_rows = count_result.count if count_result.count is not None else 0
+
+        if total_rows == 0:
+            return []
+
+        # Cap at max_rows for safety
+        fetch_limit = min(total_rows, max_rows)
+        if total_rows > max_rows:
+            logger.warning(f"[_get_unique_values_parallel] {table} has {total_rows} rows, capping fetch at {max_rows}")
+
+        # 2. Prepare chunks
+        num_chunks = (fetch_limit // batch_size) + 1
+
+        # 3. Define fetch worker
+        def _fetch_chunk(offset):
+            # Supabase range is inclusive
+            end = min(offset + batch_size - 1, fetch_limit - 1)
+            if offset > end:
+                return []
+
+            try:
+                # Fetch only the column we need
+                q = client.supabase.table(table).select(column).range(offset, end)
+                return q.execute().data
+            except Exception as e:
+                logger.warning(f"Chunk fetch failed for {table} offset {offset}: {e}")
+                return []
+
+        unique_values = set()
+
+        # 4. Execute in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [
+                executor.submit(_fetch_chunk, i * batch_size)
+                for i in range(num_chunks)
+            ]
+
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    rows = future.result()
+                    if rows:
+                        for row in rows:
+                            val = row.get(column)
+                            if val:
+                                if transform_func:
+                                    val = transform_func(val)
+                                if val:
+                                    unique_values.add(val)
+                except Exception as e:
+                    logger.error(f"Error processing chunk result: {e}")
+
+        return sorted(list(unique_values))
+
+    except Exception as e:
+        logger.error(f"Error in _get_unique_values_parallel for {table}.{column}: {e}", exc_info=True)
+        return []
+
 @cache_data(ttl=3600)
 def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_version: Optional[str] = None) -> List[str]:
     """Get all unique tickers from congress_trades table (cached 1 hour)"""
@@ -4082,41 +4157,11 @@ def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_versi
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_tickers = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("congress_trades_enriched")\
-                .select("ticker")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                ticker = trade.get('ticker')
-                if ticker:
-                    all_tickers.add(ticker)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_tickers_congress pagination")
-                break
-
-        return sorted(list(all_tickers))
-    except Exception as e:
-        logger.error(f"Error fetching unique tickers: {e}", exc_info=True)
-        return []
+    return _get_unique_values_parallel(
+        _supabase_client,
+        "congress_trades_enriched",
+        "ticker"
+    )
 
 @cache_data(ttl=3600)
 def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_version: Optional[str] = None) -> List[str]:
@@ -4128,41 +4173,11 @@ def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_v
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_politicians = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("congress_trades_enriched")\
-                .select("politician")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                politician = trade.get('politician')
-                if politician:
-                    all_politicians.add(politician)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_politicians_congress pagination")
-                break
-
-        return sorted(list(all_politicians))
-    except Exception as e:
-        logger.error(f"Error fetching unique politicians: {e}", exc_info=True)
-        return []
+    return _get_unique_values_parallel(
+        _supabase_client,
+        "congress_trades_enriched",
+        "politician"
+    )
 
 @cache_data(ttl=60)
 def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, Dict[str, Any]]:
@@ -5539,41 +5554,11 @@ def get_unique_tickers_insider(
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_tickers = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("insider_trades")\
-                .select("ticker")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                ticker = trade.get("ticker")
-                if ticker:
-                    all_tickers.add(ticker)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_tickers_insider pagination")
-                break
-
-        return sorted(list(all_tickers))
-    except Exception as e:
-        logger.error(f"Error fetching insider tickers: {e}", exc_info=True)
-        return []
+    return _get_unique_values_parallel(
+        _supabase_client,
+        "insider_trades",
+        "ticker"
+    )
 
 
 INSIDER_NAME_UPPER_TOKENS = {
@@ -5674,43 +5659,12 @@ def get_unique_insider_names(
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_insiders = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("insider_trades")\
-                .select("insider_name")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                insider_name = trade.get("insider_name")
-                if insider_name:
-                    normalized_name = normalize_insider_name(insider_name)
-                    if normalized_name:
-                        all_insiders.add(normalized_name)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_insider_names pagination")
-                break
-
-        return sorted(list(all_insiders))
-    except Exception as e:
-        logger.error(f"Error fetching insider names: {e}", exc_info=True)
-        return []
+    return _get_unique_values_parallel(
+        _supabase_client,
+        "insider_trades",
+        "insider_name",
+        transform_func=normalize_insider_name
+    )
 
 
 @cache_data(ttl=300)
