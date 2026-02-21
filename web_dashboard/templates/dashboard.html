@@ -18,15 +18,15 @@
             <!-- Time Range (Flowbite Button Group) -->
             <div class="inline-flex rounded-md shadow-sm" role="group" aria-label="Time range selection">
                 <button type="button" data-range="1M" aria-pressed="false"
-                    class="range-btn btn-group-item border rounded-s-lg">
+                    class="range-btn px-4 py-2 text-sm font-medium border border-border bg-dashboard-surface hover:bg-dashboard-surface-alt hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent rounded-s-lg transition-colors duration-200 text-text-primary">
                     1M
                 </button>
                 <button type="button" data-range="3M" aria-pressed="false"
-                    class="range-btn btn-group-item border-t border-b">
+                    class="range-btn px-4 py-2 text-sm font-medium border-t border-b border-border bg-dashboard-surface hover:bg-dashboard-surface-alt hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent transition-colors duration-200 text-text-primary">
                     3M
                 </button>
                 <button type="button" data-range="ALL" aria-pressed="true"
-                    class="range-btn active btn-group-item border rounded-e-lg">
+                    class="range-btn active px-4 py-2 text-sm font-medium border border-border bg-dashboard-surface hover:bg-dashboard-surface-alt hover:text-accent focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent rounded-e-lg transition-colors duration-200 ring-2 ring-accent text-accent z-10">
                     All
                 </button>
             </div>
@@ -34,7 +34,7 @@
     </div>
 
     <!-- Error Display (Hidden by default) -->
-    <div id="dashboard-error-container" class="hidden p-4 mb-6 text-sm text-theme-error-text rounded-lg bg-theme-error-bg border border-theme-error-text" role="alert">
+    <div id="dashboard-error-container" class="hidden p-4 mb-6 text-sm text-theme-error-text rounded-lg bg-theme-error-bg dark:bg-gray-800 dark:text-theme-error-text" role="alert">
         <div class="flex items-start">
             <svg class="flex-shrink-0 inline w-5 h-5 me-3 mt-0.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5ZM9.5 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 15H8a1 1 0 0 1 0-2h1v-3H8a1 1 0 0 1 0-2h2a1 1 0 0 1 1 1v4h1a1 1 0 0 1 0 2Z"/>
@@ -48,7 +48,7 @@
                     Try Again
                 </button>
             </div>
-            <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-theme-error-bg text-theme-error-text rounded-lg focus:ring-2 focus:ring-theme-error-text p-1.5 hover:bg-dashboard-surface inline-flex items-center justify-center h-8 w-8" data-dismiss-target="#dashboard-error-container" aria-label="Close">
+            <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-theme-error-bg text-theme-error-text rounded-lg focus:ring-2 focus:ring-theme-error-text p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 inline-flex items-center justify-center h-8 w-8" data-dismiss-target="#dashboard-error-container" aria-label="Close">
                 <span class="sr-only">Close</span>
                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                     <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
@@ -181,7 +181,7 @@
                 <span class="text-theme-success-text">🟢</span> Top Gainers
             </h3>
             <div class="relative overflow-x-auto max-h-[400px] overflow-y-auto border border-border rounded-lg">
-                {% with id='gainers-spinner', size='8', color='border-theme-success-text' %}
+                {% with id='gainers-spinner', size='8', color='theme-success-text' %}
                     {% include "components/_loading_spinner.html" %}
                 {% endwith %}
                 <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
@@ -208,7 +208,7 @@
                 <span class="text-theme-error-text">🔴</span> Top Losers
             </h3>
             <div class="relative overflow-x-auto max-h-[400px] overflow-y-auto border border-border rounded-lg">
-                {% with id='losers-spinner', size='8', color='border-theme-error-text' %}
+                {% with id='losers-spinner', size='8', color='theme-error-text' %}
                     {% include "components/_loading_spinner.html" %}
                 {% endwith %}
                 <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
@@ -290,7 +290,7 @@
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-text-secondary">Filter:</span>
                             <select id="individual-stock-filter"
-                                class="form-input-theme w-auto px-3 py-1.5 bg-dashboard-surface">
+                                class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-auto px-3 py-1.5">
                                 <option value="all">All stocks</option>
                                 <option value="winners">Winners (↑ total %)</option>
                                 <option value="losers">Losers (↓ total %)</option>

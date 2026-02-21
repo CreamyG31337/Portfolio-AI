@@ -20,7 +20,7 @@
         <div class="mb-4">
             <label for="timezone-select" class="block text-sm font-medium text-text-secondary mb-2">Select your
                 timezone:</label>
-            <select id="timezone-select" class="form-input-theme">
+            <select id="timezone-select" class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                 <option value="America/Los_Angeles">America/Los_Angeles - Pacific Time (US & Canada)</option>
                 <option value="America/Denver">America/Denver - Mountain Time (US & Canada)</option>
                 <option value="America/Chicago">America/Chicago - Central Time (US & Canada)</option>
@@ -55,7 +55,7 @@
         <div class="mb-4">
             <label for="currency-select" class="block text-sm font-medium text-text-secondary mb-2">Select your display
                 currency:</label>
-            <select id="currency-select" class="form-input-theme">
+            <select id="currency-select" class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                 <option value="CAD">CAD - Canadian Dollar</option>
                 <option value="USD">USD - US Dollar</option>
             </select>
@@ -79,7 +79,7 @@
         <div class="mb-4">
             <label for="theme-select" class="block text-sm font-medium text-text-secondary mb-2">Select your
                 theme:</label>
-            <select id="theme-select" class="form-input-theme">
+            <select id="theme-select" class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                 <option value="system" {% if current_theme=='system' %}selected{% endif %}>System Default</option>
                 <option value="light" {% if current_theme=='light' %}selected{% endif %}>Light Mode</option>
                 <option value="dark" {% if current_theme=='dark' %}selected{% endif %}>Dark Mode</option>
@@ -104,7 +104,7 @@
         </div>
         <div class="mb-4">
             <a href="/color-test"
-                class="inline-flex items-center btn-outline">
+                class="inline-flex items-center text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                 <i class="fas fa-palette mr-2"></i>
                 🎨 Test & Customize Theme Colors
             </a>
@@ -132,7 +132,7 @@
                 </label>
                 <div class="relative">
                     <input type="password" id="new-password" required minlength="6" autocomplete="new-password" placeholder="••••••••"
-                        class="form-input-theme pr-10">
+                        class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5 pr-10">
                     <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-hidden" data-toggle-password="new-password" aria-label="Show password">
                         <i class="fas fa-eye"></i>
                     </button>
@@ -144,13 +144,13 @@
                 </label>
                 <div class="relative">
                     <input type="password" id="confirm-password" required minlength="6" autocomplete="new-password" placeholder="••••••••"
-                        class="form-input-theme pr-10">
+                        class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5 pr-10">
                     <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-hidden" data-toggle-password="confirm-password" aria-label="Show password">
                         <i class="fas fa-eye"></i>
                     </button>
                 </div>
             </div>
-            <button type="submit" id="change-password-btn" class="btn-outline">
+            <button type="submit" id="change-password-btn" class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
                 Update Password
             </button>
         </form>
