@@ -61,3 +61,39 @@ This is a race condition waiting to happen. If the grid renders slower than 300m
 1.  **IMMEDIATE:** Replace `eval()` with `ast.literal_eval()` in `web_dashboard/scheduler/jobs_insiders.py`.
 2.  **HIGH:** Add server-side pagination to `api_insider_trades_data` or strictly limit the default date range to prevent massive payloads.
 3.  **MEDIUM:** Refactor `setTimeout` in frontend grid initialization.
+
+---
+
+# Code Review: Optimization & CSS Refactoring
+**Commit:** `6e6faf2` - Fix caching in app.py and complete CSS refactoring
+
+## Summary
+This commit introduces significant improvements in data fetching optimization, security, and frontend maintainability. The changes successfully parallelize heavy data operations and standardize CSS usage.
+
+## Detailed Analysis
+
+### ✅ Optimization & Performance
+-   **Parallel Fetching:** `web_dashboard/app.py` now uses `ThreadPoolExecutor` in `_get_congress_trades_stats_cached` and `get_company_names_map_cached`. This is a correct and effective pattern for IO-bound operations (database/network calls), significantly reducing latency for aggregated views.
+-   **Background Processing:** `api_insider_trades_data` correctly offloads unknown ticker metadata fetching to a background thread (`_process_unknown_tickers_background`), preventing API blocking.
+
+### ✅ Security
+-   **Input Validation:** `web_dashboard/webai_wrapper.py` adds strict regex validation (`^[a-zA-Z0-9_-]+$`) for `session_id` in `PersistentConversationSession`, effectively mitigating path traversal risks.
+-   **Audit Logging:** Invalid session ID attempts are now logged, improving security observability.
+
+### ✅ Frontend Refactoring
+-   **Standardization:** `web_dashboard/static/css/input.css` now uses `@apply` to define standardized classes (`.form-input-theme`, `.btn-outline`), cleaning up the previous custom CSS approach while keeping Tailwind's utility benefits.
+-   **Layout Update:** `dashboard.html` has been extensively refactored to use these standardized classes and a more modular structure.
+
+### ✅ Caching
+-   **Serialization:** `_get_cached_application_logs` now converts datetime objects to strings, preventing potential serialization errors in cache backends.
+
+## Verification
+The following tests passed, confirming the changes didn't break existing functionality:
+-   `tests/test_flask_routes.py` (8/8 passed)
+-   `tests/test_insider_trades_optimization.py` (1/1 passed)
+-   `tests/test_congress_positions.py` (26/26 passed)
+-   `tests/test_flask_data_utils.py` (2/2 passed)
+-   `tests/test_flask_ticker_utils.py` (3/3 passed)
+
+## Conclusion
+The changes are high-quality and safe to merge. The optimizations address previous performance concerns, and the security fix in `webai_wrapper.py` is critical.
