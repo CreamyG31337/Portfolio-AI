@@ -3355,7 +3355,7 @@ def api_ticker_list():
                 supabase_client = SupabaseClient()
                 cache_version = get_cache_version()
                 names_map = get_company_names_map_cached(
-                    supabase_client, tuple(tickers), cache_version
+                    tuple(tickers), _cache_version=cache_version, _supabase_client=supabase_client
                 )
                 result["ticker_names"] = names_map
             except Exception as e:
@@ -3787,12 +3787,12 @@ def _get_ticker_chart_data_cached(
 
         # Fetch congress trades (returns {trades: [...], total, has_more}; we need the list)
         congress_result = get_congress_trades_cached(
-            supabase_client,
             refresh_key,
             ticker_filter=ticker,
             start_date=start_date,
             end_date=end_date,
-            _postgres_client=None  # Not needed for basic trade data
+            _postgres_client=None,  # Not needed for basic trade data
+            _supabase_client=supabase_client
         )
         congress_trades = congress_result.get("trades", []) if isinstance(congress_result, dict) else []
     except Exception as e:
@@ -4073,7 +4073,7 @@ def get_postgres_client_congress():
         return None
 
 @cache_data(ttl=3600)
-def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_version: Optional[str] = None) -> List[str]:
+def get_unique_tickers_congress(refresh_key: int, _cache_version: Optional[str] = None, _supabase_client=None) -> List[str]:
     """Get all unique tickers from congress_trades table (cached 1 hour)"""
     if _cache_version is None:
         try:
@@ -4119,7 +4119,7 @@ def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_versi
         return []
 
 @cache_data(ttl=3600)
-def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_version: Optional[str] = None) -> List[str]:
+def get_unique_politicians_congress(refresh_key: int, _cache_version: Optional[str] = None, _supabase_client=None) -> List[str]:
     """Get all unique politicians from congress_trades table (cached 1 hour)"""
     if _cache_version is None:
         try:
@@ -4165,7 +4165,7 @@ def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_v
         return []
 
 @cache_data(ttl=60)
-def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, Dict[str, Any]]:
+def get_analysis_data_congress(refresh_key: int, _postgres_client=None) -> Dict[int, Dict[str, Any]]:
     """Get AI analysis data from PostgreSQL (cached 60s)"""
     if _postgres_client is None:
         return {}
@@ -4188,7 +4188,6 @@ def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, 
 
 @cache_data(ttl=21600)
 def get_congress_trades_cached(
-    _supabase_client,
     refresh_key: int,
     ticker_filter: Optional[str] = None,
     politician_filter: Optional[str] = None,
@@ -4200,11 +4199,12 @@ def get_congress_trades_cached(
     unanalyzed_only: bool = False,
     min_score: Optional[float] = None,
     max_score: Optional[float] = None,
-    _postgres_client = None,
     sort_by: Optional[str] = None,
     sort_dir: Optional[str] = None,
     limit: int = 100,
-    offset: int = 0
+    offset: int = 0,
+    _postgres_client = None,
+    _supabase_client = None
 ) -> Dict[str, Any]:
     """Get congress trades with filters and pagination (cached 6 hours).
     
@@ -4254,7 +4254,7 @@ def get_congress_trades_cached(
         sort_nullsfirst = False
 
         # Get analysis data for filtering (needed for analyzed_only and score filters)
-        analysis_map = get_analysis_data_congress(_postgres_client, refresh_key) if _postgres_client else {}
+        analysis_map = get_analysis_data_congress(refresh_key, _postgres_client=_postgres_client) if _postgres_client else {}
 
         # Check if we need post-filtering (analysis-based filters require fetching all and filtering)
         needs_post_filter = analyzed_only or unanalyzed_only or min_score is not None or max_score is not None
@@ -4385,7 +4385,7 @@ def get_congress_trades_cached(
         return {"trades": [], "total": 0, "has_more": False}
 
 @cache_data(ttl=86400)  # Cache for 24 hours - company names don't change often
-def get_company_names_map_cached(_supabase_client, tickers_tuple: tuple, _cache_version: Optional[str] = None) -> Dict[str, str]:
+def get_company_names_map_cached(tickers_tuple: tuple, _cache_version: Optional[str] = None, _supabase_client=None) -> Dict[str, str]:
     """Batch fetch company names from securities table (cached 24 hours)
 
     Bolt Optimization: Uses ThreadPoolExecutor to fetch batches in parallel.
@@ -4549,8 +4549,8 @@ def congress_trades_page():
 
         # Get unique values for filters
         cache_version = get_cache_version()
-        unique_tickers = get_unique_tickers_congress(supabase_client, refresh_key, cache_version)
-        unique_politicians = get_unique_politicians_congress(supabase_client, refresh_key, cache_version)
+        unique_tickers = get_unique_tickers_congress(refresh_key, _cache_version=cache_version, _supabase_client=supabase_client)
+        unique_politicians = get_unique_politicians_congress(refresh_key, _cache_version=cache_version, _supabase_client=supabase_client)
 
         # Lazy load: Pass empty data initially
         trades_data = []
@@ -4669,7 +4669,6 @@ def api_congress_trades_data():
 
         # Get paginated trades
         result = get_congress_trades_cached(
-            supabase_client,
             refresh_key,
             ticker_filter=ticker_filter if ticker_filter and ticker_filter != 'All' else None,
             politician_filter=politician_filter if politician_filter and politician_filter != 'All' else None,
@@ -4681,11 +4680,12 @@ def api_congress_trades_data():
             unanalyzed_only=unanalyzed_only,
             min_score=min_score,
             max_score=max_score,
-            _postgres_client=postgres_client,
             sort_by=sort_by,
             sort_dir=sort_dir,
             limit=limit,
-            offset=offset
+            offset=offset,
+            _postgres_client=postgres_client,
+            _supabase_client=supabase_client
         )
 
         trades = result["trades"]
@@ -4693,13 +4693,13 @@ def api_congress_trades_data():
         has_more = result["has_more"]
 
         # Get analysis data
-        analysis_map = get_analysis_data_congress(postgres_client, refresh_key) if postgres_client else {}
+        analysis_map = get_analysis_data_congress(refresh_key, _postgres_client=postgres_client) if postgres_client else {}
 
         # Get company names (cached) - optimize by only fetching for unique tickers in result
         unique_ticker_list = list(set([t.get('ticker') for t in trades if t.get('ticker')]))
         cache_version = get_cache_version()
         # Fetch company names in parallel batches using cached function
-        company_names_map = get_company_names_map_cached(supabase_client, tuple(unique_ticker_list), cache_version)
+        company_names_map = get_company_names_map_cached(tuple(unique_ticker_list), _cache_version=cache_version, _supabase_client=supabase_client)
 
         # Format trades data
         formatted_trades = []
@@ -4780,8 +4780,6 @@ def api_congress_trades_data():
 
 @cache_data(ttl=300)
 def _get_congress_trades_stats_cached(
-    _supabase_client,
-    _postgres_client,
     ticker_filter: Optional[str],
     politician_filter: Optional[str],
     chamber_filter: Optional[str],
@@ -4791,7 +4789,9 @@ def _get_congress_trades_stats_cached(
     use_date_filter: bool,
     analysis_status: str,
     score_filter: str,
-    _cache_version: Optional[str] = None
+    _cache_version: Optional[str] = None,
+    _supabase_client=None,
+    _postgres_client=None
 ) -> Dict[str, Any]:
     """
     Get aggregated statistics for congress trades.
@@ -5055,8 +5055,6 @@ def api_congress_trades_stats():
         cache_version = get_cache_version()
 
         stats = _get_congress_trades_stats_cached(
-            supabase_client,
-            postgres_client,
             ticker_filter,
             politician_filter,
             chamber_filter,
@@ -5066,7 +5064,9 @@ def api_congress_trades_stats():
             use_date_filter,
             analysis_status,
             score_filter,
-            _cache_version=cache_version
+            _cache_version=cache_version,
+            _supabase_client=supabase_client,
+            _postgres_client=postgres_client
         )
 
         if "error" in stats:
@@ -5529,7 +5529,7 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
 
 @cache_data(ttl=3600)
 def get_unique_tickers_insider(
-    _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
+    refresh_key: int, _cache_version: Optional[str] = None, _supabase_client=None
 ) -> List[str]:
     """Get all unique tickers from insider_trades table (cached 1 hour)."""
     if _cache_version is None:
@@ -5664,7 +5664,7 @@ def normalize_insider_name(name: Optional[str]) -> Optional[str]:
 
 @cache_data(ttl=3600)
 def get_unique_insider_names(
-    _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
+    refresh_key: int, _cache_version: Optional[str] = None, _supabase_client=None
 ) -> List[str]:
     """Get all unique insider names from insider_trades table (cached 1 hour)."""
     if _cache_version is None:
@@ -5715,7 +5715,7 @@ def get_unique_insider_names(
 
 @cache_data(ttl=300)
 def get_latest_insider_trade_timestamp(
-    _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
+    refresh_key: int, _cache_version: Optional[str] = None, _supabase_client=None
 ) -> Optional[str]:
     """Get the most recent insider trade created_at timestamp (cached 5 min)."""
     if _cache_version is None:
@@ -5770,7 +5770,6 @@ def get_last_job_success_timestamp(
 
 @cache_data(ttl=21600)
 def get_insider_trades_cached(
-    _supabase_client,
     refresh_key: int,
     ticker_filters: Optional[List[str]] = None,
     type_filter: Optional[str] = None,
@@ -5781,7 +5780,8 @@ def get_insider_trades_cached(
     sort_by: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
-    _cache_version: Optional[str] = None
+    _cache_version: Optional[str] = None,
+    _supabase_client=None
 ) -> Dict[str, Any]:
     """Get insider trades with filters and pagination (cached 6 hours).
     
@@ -5879,7 +5879,7 @@ def insider_trades_page():
                                  **nav_context)
 
         cache_version = get_cache_version()
-        unique_insiders = get_unique_insider_names(supabase_client, refresh_key, cache_version)
+        unique_insiders = get_unique_insider_names(refresh_key, _cache_version=cache_version, _supabase_client=supabase_client)
 
         # Date filter defaults to last 7 days
         today = datetime.utcnow().date()
@@ -5897,7 +5897,7 @@ def insider_trades_page():
         end_date = request.args.get("end_date") or default_end
 
         latest_created_at = get_latest_insider_trade_timestamp(
-            supabase_client, refresh_key, cache_version
+            refresh_key, _cache_version=cache_version, _supabase_client=supabase_client
         )
         if latest_created_at:
             try:
@@ -6073,7 +6073,6 @@ def api_insider_trades_data():
 
         cache_version = get_cache_version()
         result = get_insider_trades_cached(
-            supabase_client,
             refresh_key,
             ticker_filters=ticker_filters or None,
             type_filter=type_filter,
@@ -6084,7 +6083,8 @@ def api_insider_trades_data():
             sort_by=sort_by,
             limit=limit,
             offset=offset,
-            _cache_version=cache_version
+            _cache_version=cache_version,
+            _supabase_client=supabase_client
         )
 
         # Backward compatibility: older call sites/tests may still return a plain list.
@@ -6123,7 +6123,7 @@ def api_insider_trades_data():
         # Bolt Optimization: Use cached parallel fetch instead of manual in_ query
         cache_version = get_cache_version()
         company_name_map = get_company_names_map_cached(
-            supabase_client, tuple(sorted(list(unique_tickers))), cache_version
+            tuple(sorted(list(unique_tickers))), _cache_version=cache_version, _supabase_client=supabase_client
         )
 
         # Identify unknown tickers (tickers requested but not in the map)

@@ -16,17 +16,18 @@
         <!-- Controls -->
         <div class="flex gap-4 items-center">
             <!-- Time Range (Flowbite Button Group) -->
+            <!-- Time Range (Flowbite Button Group) -->
             <div class="inline-flex rounded-md shadow-sm" role="group" aria-label="Time range selection">
                 <button type="button" data-range="1M" aria-pressed="false"
-                    class="range-btn btn-group-item border rounded-s-lg">
+                    class="range-btn px-4 py-2 text-sm font-medium border-border bg-dashboard-surface hover:bg-dashboard-surface-alt focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent transition-colors duration-200 text-text-primary hover:text-accent aria-pressed:text-accent aria-pressed:z-10 aria-pressed:ring-2 aria-pressed:ring-accent border rounded-s-lg">
                     1M
                 </button>
                 <button type="button" data-range="3M" aria-pressed="false"
-                    class="range-btn btn-group-item border-t border-b">
+                    class="range-btn px-4 py-2 text-sm font-medium border-border bg-dashboard-surface hover:bg-dashboard-surface-alt focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent transition-colors duration-200 text-text-primary hover:text-accent aria-pressed:text-accent aria-pressed:z-10 aria-pressed:ring-2 aria-pressed:ring-accent border-t border-b">
                     3M
                 </button>
                 <button type="button" data-range="ALL" aria-pressed="true"
-                    class="range-btn active btn-group-item border rounded-e-lg">
+                    class="range-btn active px-4 py-2 text-sm font-medium border-border bg-dashboard-surface hover:bg-dashboard-surface-alt focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent transition-colors duration-200 text-text-primary hover:text-accent aria-pressed:text-accent aria-pressed:z-10 aria-pressed:ring-2 aria-pressed:ring-accent border rounded-e-lg">
                     All
                 </button>
             </div>
@@ -290,7 +291,7 @@
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-text-secondary">Filter:</span>
                             <select id="individual-stock-filter"
-                                class="form-input-theme w-auto px-3 py-1.5 bg-dashboard-surface">
+                                class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-auto p-2.5 px-3 py-1.5 bg-dashboard-surface">
                                 <option value="all">All stocks</option>
                                 <option value="winners">Winners (↑ total %)</option>
                                 <option value="losers">Losers (↓ total %)</option>
