@@ -41,6 +41,7 @@ from urllib.parse import urlencode
 from flask_cors import CORS
 from flask_cache_utils import cache_data, cache_resource
 from rate_limiter import rate_limit
+from parallel_utils import get_unique_values_parallel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -4082,41 +4083,12 @@ def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_versi
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_tickers = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("congress_trades_enriched")\
-                .select("ticker")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                ticker = trade.get('ticker')
-                if ticker:
-                    all_tickers.add(ticker)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_tickers_congress pagination")
-                break
-
-        return sorted(list(all_tickers))
-    except Exception as e:
-        logger.error(f"Error fetching unique tickers: {e}", exc_info=True)
-        return []
+    return get_unique_values_parallel(
+        client=_supabase_client,
+        table="congress_trades_enriched",
+        column="ticker",
+        max_workers=5
+    )
 
 @cache_data(ttl=3600)
 def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_version: Optional[str] = None) -> List[str]:
@@ -4128,41 +4100,12 @@ def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_v
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_politicians = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("congress_trades_enriched")\
-                .select("politician")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                politician = trade.get('politician')
-                if politician:
-                    all_politicians.add(politician)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_politicians_congress pagination")
-                break
-
-        return sorted(list(all_politicians))
-    except Exception as e:
-        logger.error(f"Error fetching unique politicians: {e}", exc_info=True)
-        return []
+    return get_unique_values_parallel(
+        client=_supabase_client,
+        table="congress_trades_enriched",
+        column="politician",
+        max_workers=5
+    )
 
 @cache_data(ttl=60)
 def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, Dict[str, Any]]:
@@ -5539,41 +5482,12 @@ def get_unique_tickers_insider(
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_tickers = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("insider_trades")\
-                .select("ticker")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                ticker = trade.get("ticker")
-                if ticker:
-                    all_tickers.add(ticker)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_tickers_insider pagination")
-                break
-
-        return sorted(list(all_tickers))
-    except Exception as e:
-        logger.error(f"Error fetching insider tickers: {e}", exc_info=True)
-        return []
+    return get_unique_values_parallel(
+        client=_supabase_client,
+        table="insider_trades",
+        column="ticker",
+        max_workers=5
+    )
 
 
 INSIDER_NAME_UPPER_TOKENS = {
@@ -5674,43 +5588,14 @@ def get_unique_insider_names(
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_insiders = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("insider_trades")\
-                .select("insider_name")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                insider_name = trade.get("insider_name")
-                if insider_name:
-                    normalized_name = normalize_insider_name(insider_name)
-                    if normalized_name:
-                        all_insiders.add(normalized_name)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_insider_names pagination")
-                break
-
-        return sorted(list(all_insiders))
-    except Exception as e:
-        logger.error(f"Error fetching insider names: {e}", exc_info=True)
-        return []
+    # normalize_insider_name is already defined in app.py
+    return get_unique_values_parallel(
+        client=_supabase_client,
+        table="insider_trades",
+        column="insider_name",
+        process_func=normalize_insider_name,
+        max_workers=5
+    )
 
 
 @cache_data(ttl=300)
