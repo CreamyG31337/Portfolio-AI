@@ -25,7 +25,7 @@
 
 <body class="bg-dashboard-background min-h-screen flex flex-col">
     <!-- Header -->
-    <header class="bg-gradient-to-br from-[var(--gradient-from)] to-[var(--gradient-to)] text-white shadow-lg relative">
+    <header class="bg-gradient-to-br from-accent-from to-accent-to text-white shadow-lg relative">
         <div class="container mx-auto px-4 py-6">
             <div class="text-center">
                 <h1 class="text-3xl font-bold">📈 Portfolio Performance Dashboard</h1>
@@ -66,7 +66,7 @@
                             Email <span class="text-theme-error-text">*</span>
                         </label>
                         <input type="email" id="login-email" name="email" autocomplete="username" inputmode="email" autocapitalize="none" required aria-invalid="false"
-                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" placeholder="name@example.com">
+                            class="form-input-theme" placeholder="name@example.com">
                     </div>
 
                     <div class="mb-6">
@@ -75,7 +75,7 @@
                         </label>
                         <div class="relative">
                             <input type="password" id="login-password" name="password" autocomplete="current-password" required aria-invalid="false"
-                                class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5 pr-10" placeholder="••••••••">
+                                class="form-input-theme pr-10" placeholder="••••••••">
                             <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-hidden" data-toggle-password="login-password" aria-label="Show password">
                                 <i class="fas fa-eye"></i>
                             </button>
@@ -83,7 +83,7 @@
                     </div>
 
                     <button type="submit" id="login-btn"
-                        class="w-full text-accent bg-transparent border border-accent py-2 px-4 rounded-md hover:bg-accent/10 focus:outline-hidden focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-colors duration-200 font-medium">
+                        class="w-full btn-outline">
                         <i class="fas fa-sign-in-alt mr-2"></i>Sign In
                     </button>
                 </form>
@@ -116,7 +116,7 @@
                             Email <span class="text-theme-error-text">*</span>
                         </label>
                         <input type="email" id="register-email" autocomplete="email" inputmode="email" autocapitalize="none" required aria-invalid="false"
-                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" placeholder="name@example.com">
+                            class="form-input-theme" placeholder="name@example.com">
                     </div>
 
                     <div class="mb-4">
@@ -125,7 +125,7 @@
                         </label>
                         <div class="relative">
                             <input type="password" id="register-password" autocomplete="new-password" required minlength="6" aria-invalid="false"
-                                class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5 pr-10" placeholder="••••••••">
+                                class="form-input-theme pr-10" placeholder="••••••••">
                             <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-hidden" data-toggle-password="register-password" aria-label="Show password">
                                 <i class="fas fa-eye"></i>
                             </button>
@@ -138,7 +138,7 @@
                         </label>
                         <div class="relative">
                             <input type="password" id="register-confirm" autocomplete="new-password" required minlength="6" aria-invalid="false"
-                                class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5 pr-10" placeholder="••••••••">
+                                class="form-input-theme pr-10" placeholder="••••••••">
                             <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-hidden" data-toggle-password="register-confirm" aria-label="Show password">
                                 <i class="fas fa-eye"></i>
                             </button>
@@ -150,7 +150,7 @@
                             Full Name <span class="text-theme-error-text">*</span>
                         </label>
                         <input type="text" id="register-name" autocomplete="name" required aria-invalid="false"
-                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" placeholder="John Doe">
+                            class="form-input-theme" placeholder="John Doe">
                     </div>
 
                     <button type="submit" id="register-btn"
@@ -180,11 +180,11 @@
                             Email <span class="text-theme-error-text">*</span>
                         </label>
                         <input type="email" id="forgot-email" autocomplete="email" inputmode="email" autocapitalize="none" required aria-invalid="false"
-                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" placeholder="name@example.com">
+                            class="form-input-theme" placeholder="name@example.com">
                     </div>
 
                     <button type="submit" id="forgot-btn"
-                        class="w-full text-accent bg-transparent border border-accent py-2 px-4 rounded-md hover:bg-accent/10 focus:outline-hidden focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-colors duration-200 font-medium">
+                        class="w-full btn-outline">
                         <i class="fas fa-envelope mr-2"></i>Send Reset Link
                     </button>
                 </form>
@@ -217,6 +217,9 @@
 
     <!-- Theme Manager Script -->
     <script type="module" src="/assets/js/theme.js"></script>
+
+    <!-- UI Utilities Module (Password toggle, etc.) -->
+    <script type="module" src="/assets/js/ui.js"></script>
 
     <script>
         // Wait for theme manager to be ready
@@ -294,6 +297,7 @@
             const contentDiv = document.getElementById('message-content');
 
             contentDiv.textContent = message;
+            // Uses semantic theme classes from input.css that map to color vars
             contentDiv.className = `p-4 rounded-md shadow-md ${type === 'error'
                 ? 'bg-theme-error-bg text-theme-error-text border border-theme-error-text'
                 : 'bg-theme-success-bg text-theme-success-text border border-theme-success-text'
@@ -493,28 +497,6 @@
                 btn.disabled = false;
                 btn.innerHTML = originalText;
             }
-        });
-
-        // Password visibility toggle (login + register)
-        document.querySelectorAll('[data-toggle-password]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                const targetId = this.getAttribute('data-toggle-password');
-                if (!targetId) return;
-                const input = document.getElementById(targetId);
-                const icon = this.querySelector('i');
-                if (!input || !icon) return;
-                if (input.type === 'password') {
-                    input.type = 'text';
-                    icon.classList.remove('fa-eye');
-                    icon.classList.add('fa-eye-slash');
-                    this.setAttribute('aria-label', 'Hide password');
-                } else {
-                    input.type = 'password';
-                    icon.classList.remove('fa-eye-slash');
-                    icon.classList.add('fa-eye');
-                    this.setAttribute('aria-label', 'Show password');
-                }
-            });
         });
     </script>
 </body>
