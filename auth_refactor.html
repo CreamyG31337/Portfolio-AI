@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="system">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Dashboard - Authentication</title>
+
+    <!-- Theme CSS - Uses CSS variables -->
+    <link rel="stylesheet" href="/assets/css/theme.css">
+
+    <!-- Tailwind CSS - Production build (optimized, tree-shaken) -->
+    <link href="/assets/css/tailwind.css?v=2" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <!-- Flowbite CSS (required for components) -->
+    <!-- Flowbite styles built into tailwind.css -->
+
+    {% if CSRF_ENABLED %}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    {% endif %}
+</head>
+
+<body class="bg-dashboard-background min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-gradient-to-br from-accent-from to-accent-to text-white shadow-lg relative">
+        <div class="container mx-auto px-4 py-6">
+            <div class="text-center">
+                <h1 class="text-3xl font-bold">📈 Portfolio Performance Dashboard</h1>
+                <p class="text-blue-100 mt-2">Secure access to your trading bot performance</p>
+            </div>
+        </div>
+
+        <!-- Theme Toggle Button -->
+        <button type="button" id="theme-toggle"
+            class="absolute top-4 right-4 w-11 h-11 flex items-center justify-center rounded-full bg-black/20 hover:bg-black/30 text-white transition-all focus:outline-hidden focus:ring-2 focus:ring-white/50 z-50 border border-white/20"
+            aria-label="Toggle Theme">
+            <!-- Sun Icon (visible in dark themes) -->
+            <svg id="sun-icon" class="w-6 h-6 text-yellow-300 hidden" fill="currentColor" viewBox="0 0 20 20"
+                aria-hidden="true">
+                <path
+                    d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z">
+                </path>
+            </svg>
+            <!-- Moon Icon (visible in light theme) -->
+            <svg id="moon-icon" class="w-6 h-6 text-indigo-100 hidden" fill="currentColor" viewBox="0 0 20 20"
+                aria-hidden="true">
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+            </svg>
+        </button>
+    </header>
+
+    <!-- Main Content -->
+    <div class="w-full px-4 py-8 flex-grow">
+        <div class="max-w-md mx-auto">
+            <!-- Login Form -->
+            <div id="login-form"
+                class="bg-dashboard-surface rounded-lg shadow-lg p-8 hover:-translate-y-0.5 transition-transform duration-200 border border-border">
+                <h2 class="text-2xl font-bold text-text-primary mb-6 text-center">Sign In</h2>
+
+                <form id="loginForm">
+                    <div class="mb-4">
+                        <label for="login-email" class="block text-sm font-medium text-text-secondary mb-2">
+                            Email <span class="text-theme-error-text">*</span>
+                        </label>
+                        <input type="email" id="login-email" name="email" autocomplete="username" inputmode="email" autocapitalize="none" required aria-invalid="false"
+                            class="form-input-theme" placeholder="name@example.com">
+                    </div>
+
+                    <div class="mb-6">
+                        <label for="login-password" class="block text-sm font-medium text-text-secondary mb-2">
+                            Password <span class="text-theme-error-text">*</span>
+                        </label>
+                        <div class="relative">
+                            <input type="password" id="login-password" name="password" autocomplete="current-password" required aria-invalid="false"
+                                class="form-input-theme pr-10" placeholder="••••••••">
+                            <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-hidden" data-toggle-password="login-password" aria-label="Show password">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="login-btn"
+                        class="w-full btn-outline">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Sign In
+                    </button>
+                </form>
+
+                <div class="mt-6 text-center space-y-4">
+                    <button type="button" id="magic-link-btn"
+                        class="text-sm text-accent hover:text-accent-hover font-medium block w-full text-center focus:underline focus:outline-hidden">
+                        <i class="fas fa-magic mr-1"></i> Email me a magic link instead
+                    </button>
+
+                    <div class="flex justify-between items-center text-sm">
+                        <button type="button" id="show-forgot-password"
+                            class="text-accent hover:text-accent-hover font-medium focus:underline focus:outline-hidden">Forgot
+                            Password?</button>
+                        <button type="button" id="show-register"
+                            class="text-accent hover:text-accent-hover font-medium focus:underline focus:outline-hidden">Create
+                            Account</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Register Form -->
+            <div id="register-form"
+                class="bg-dashboard-surface rounded-lg shadow-lg p-8 hover:-translate-y-0.5 transition-transform duration-200 hidden border border-border">
+                <h2 class="text-2xl font-bold text-text-primary mb-6 text-center">Create Account</h2>
+
+                <form id="registerForm">
+                    <div class="mb-4">
+                        <label for="register-email" class="block text-sm font-medium text-text-secondary mb-2">
+                            Email <span class="text-theme-error-text">*</span>
+                        </label>
+                        <input type="email" id="register-email" autocomplete="email" inputmode="email" autocapitalize="none" required aria-invalid="false"
+                            class="form-input-theme" placeholder="name@example.com">
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="register-password" class="block text-sm font-medium text-text-secondary mb-2">
+                            Password <span class="text-theme-error-text">*</span>
+                        </label>
+                        <div class="relative">
+                            <input type="password" id="register-password" autocomplete="new-password" required minlength="6" aria-invalid="false"
+                                class="form-input-theme pr-10" placeholder="••••••••">
+                            <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-hidden" data-toggle-password="register-password" aria-label="Show password">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="register-confirm" class="block text-sm font-medium text-text-secondary mb-2">
+                            Confirm Password <span class="text-theme-error-text">*</span>
+                        </label>
+                        <div class="relative">
+                            <input type="password" id="register-confirm" autocomplete="new-password" required minlength="6" aria-invalid="false"
+                                class="form-input-theme pr-10" placeholder="••••••••">
+                            <button type="button" class="absolute inset-y-0 right-0 flex items-center pr-3 text-text-tertiary hover:text-text-primary focus:outline-hidden" data-toggle-password="register-confirm" aria-label="Show password">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="register-name" class="block text-sm font-medium text-text-secondary mb-2">
+                            Full Name <span class="text-theme-error-text">*</span>
+                        </label>
+                        <input type="text" id="register-name" autocomplete="name" required aria-invalid="false"
+                            class="form-input-theme" placeholder="John Doe">
+                    </div>
+
+                    <button type="submit" id="register-btn"
+                        class="w-full text-theme-success-text bg-transparent border border-theme-success-text py-2 px-4 rounded-md hover:bg-theme-success-bg/10 focus:outline-hidden focus:ring-2 focus:ring-theme-success-bg/30 transition-colors duration-200 font-medium">
+                        <i class="fas fa-user-plus mr-2"></i>Create Account
+                    </button>
+                </form>
+
+                <div class="mt-4 text-center">
+                    <p class="text-sm text-text-secondary">Already have an account?
+                        <button type="button" id="show-login-2"
+                            class="text-accent hover:text-accent-hover font-medium focus:underline focus:outline-hidden">Sign
+                            in</button>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Forgot Password Form -->
+            <div id="forgot-password-form"
+                class="bg-dashboard-surface rounded-lg shadow-lg p-8 hover:-translate-y-0.5 transition-transform duration-200 hidden border border-border">
+                <h2 class="text-2xl font-bold text-text-primary mb-2 text-center">Reset Password</h2>
+                <p class="text-text-secondary text-center mb-6 text-sm">Enter your email to receive a reset link</p>
+
+                <form id="forgotPasswordForm">
+                    <div class="mb-6">
+                        <label for="forgot-email" class="block text-sm font-medium text-text-primary mb-2">
+                            Email <span class="text-theme-error-text">*</span>
+                        </label>
+                        <input type="email" id="forgot-email" autocomplete="email" inputmode="email" autocapitalize="none" required aria-invalid="false"
+                            class="form-input-theme" placeholder="name@example.com">
+                    </div>
+
+                    <button type="submit" id="forgot-btn"
+                        class="w-full btn-outline">
+                        <i class="fas fa-envelope mr-2"></i>Send Reset Link
+                    </button>
+                </form>
+
+                <div class="mt-4 text-center">
+                    <button type="button" id="back-to-login"
+                        class="text-sm text-accent hover:text-accent-hover font-medium focus:underline focus:outline-hidden">
+                        <i class="fas fa-arrow-left mr-1" aria-hidden="true"></i> Back to Login
+                    </button>
+                </div>
+            </div>
+
+            <!-- Error/Success Messages -->
+            <div id="message" class="mt-4 hidden" role="alert" aria-live="assertive" aria-atomic="true">
+                <div id="message-content" class="p-4 rounded-md shadow-lg"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dashboard-surface text-text-primary py-4 mt-auto border-t border-border">
+        <div class="container mx-auto px-4 text-center">
+            <p class="text-text-tertiary text-sm">Powered by LLM Micro-Cap Trading Bot</p>
+            <p class="text-xs text-text-tertiary mt-1">Build: {{ build_timestamp|default('Development') }}</p>
+        </div>
+    </footer>
+
+    <!-- Flowbite JavaScript (required for interactive components) -->
+    <script src="https://cdn.jsdelivr.net/npm/flowbite@4.0.1/dist/flowbite.min.js"></script>
+
+    <!-- Theme Manager Script -->
+    <script type="module" src="/assets/js/theme.js"></script>
+
+    <!-- UI Utilities Module (Password toggle, etc.) -->
+    <script type="module" src="/assets/js/ui.js"></script>
+
+    <script>
+        // Wait for theme manager to be ready
+        document.addEventListener('DOMContentLoaded', () => {
+            const sunIcon = document.getElementById('sun-icon');
+            const moonIcon = document.getElementById('moon-icon');
+            const toggleBtn = document.getElementById('theme-toggle');
+
+            // Update icon visibility based on current theme
+            function updateIcons() {
+                const theme = window.themeManager ? window.themeManager.getEffectiveTheme() : 'light';
+                const isDark = ['dark', 'midnight-tokyo', 'abyss'].includes(theme);
+
+                if (isDark) {
+                    sunIcon.classList.remove('hidden');
+                    moonIcon.classList.add('hidden');
+                } else {
+                    sunIcon.classList.add('hidden');
+                    moonIcon.classList.remove('hidden');
+                }
+            }
+
+            // Initial update
+            setTimeout(updateIcons, 100); // Small delay to ensure theme manager is loaded
+
+            // Toggle between light and dark (cycling through themes)
+            toggleBtn.addEventListener('click', () => {
+                if (!window.themeManager) return;
+
+                const currentTheme = window.themeManager.getEffectiveTheme();
+                const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+                window.themeManager.setTheme(newTheme);
+                updateIcons();
+            });
+
+            // Listen for theme changes from theme manager
+            if (window.themeManager) {
+                window.themeManager.addListener(() => {
+                    updateIcons();
+                });
+            }
+        });
+
+        // Form switching
+        const forms = {
+            login: document.getElementById('login-form'),
+            register: document.getElementById('register-form'),
+            forgot: document.getElementById('forgot-password-form')
+        };
+
+        function showForm(name) {
+            Object.keys(forms).forEach(key => {
+                forms[key].classList.add('hidden');
+            });
+            forms[name].classList.remove('hidden');
+            document.getElementById('message').classList.add('hidden');
+
+            // Move focus to the first input of the new form for accessibility
+            const formContainer = forms[name];
+            const firstInput = formContainer.querySelector('input:not([type="hidden"]), textarea');
+            if (firstInput) {
+                // Small timeout ensures the element is fully visible/interactive before focusing
+                setTimeout(() => firstInput.focus(), 50);
+            }
+        }
+
+        document.getElementById('show-register').addEventListener('click', () => showForm('register'));
+        document.getElementById('show-login-2').addEventListener('click', () => showForm('login'));
+        document.getElementById('show-forgot-password').addEventListener('click', () => showForm('forgot'));
+        document.getElementById('back-to-login').addEventListener('click', () => showForm('login'));
+
+        // Show message
+        function showMessage(message, type = 'error') {
+            const messageDiv = document.getElementById('message');
+            const contentDiv = document.getElementById('message-content');
+
+            contentDiv.textContent = message;
+            // Uses semantic theme classes from input.css that map to color vars
+            contentDiv.className = `p-4 rounded-md shadow-md ${type === 'error'
+                ? 'bg-theme-error-bg text-theme-error-text border border-theme-error-text'
+                : 'bg-theme-success-bg text-theme-success-text border border-theme-success-text'
+                }`;
+            messageDiv.classList.remove('hidden');
+
+            if (type !== 'error') {
+                setTimeout(() => {
+                    messageDiv.classList.add('hidden');
+                }, 5000);
+            }
+        }
+
+        // Helper to get CSRF token
+        function getCsrfHeaders() {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            const token = meta ? meta.getAttribute('content') : null;
+            return token ? { 'X-CSRFToken': token } : {};
+        }
+
+        // Login form
+        document.getElementById('loginForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const btn = document.getElementById('login-btn');
+            const originalText = btn.innerHTML;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Signing in...';
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                // Check if response has content before trying to parse JSON
+                const text = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.error('Failed to parse response as JSON:', text);
+                    showMessage('Server returned invalid response. Please try again.');
+                    return;
+                }
+
+                if (response.ok) {
+                    // Backend already set auth_token, refresh_token, and session_token cookies via Set-Cookie headers
+                    showMessage('Login successful! Redirecting...', 'success');
+
+                    // Wait longer to ensure cookies are fully processed by browser
+                    // Cookies need time to be set and available for the next request
+                    setTimeout(() => {
+                        // Force a full page reload to ensure cookies are sent
+                        window.location.href = '/';
+                    }, 1500);
+                } else {
+                    console.error('Login failed:', data);
+                    showMessage(data.error || 'Login failed');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showMessage('Network error. Please try again. Error: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+
+        // Magic Link Handler
+        document.getElementById('magic-link-btn').addEventListener('click', async function (e) {
+            const emailInput = document.getElementById('login-email');
+            const email = emailInput.value;
+
+            if (!email) {
+                showMessage('Please enter your email address first', 'error');
+                emailInput.focus();
+                return;
+            }
+
+            const btn = document.getElementById('magic-link-btn');
+            const originalText = btn.innerHTML;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
+
+            try {
+                const response = await fetch('/api/auth/magic-link', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage(data.message || 'Magic link sent! Check your email.', 'success');
+                } else {
+                    showMessage(data.error || 'Failed to send magic link', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+
+        // Register form
+        document.getElementById('registerForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            const confirmPassword = document.getElementById('register-confirm').value;
+            const name = document.getElementById('register-name').value;
+            const btn = document.getElementById('register-btn');
+
+            if (password !== confirmPassword) {
+                showMessage('Passwords do not match');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating account...';
+
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
+                    body: JSON.stringify({ email, password, name })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('Account created successfully! Please sign in.', 'success');
+                    showForm('login');
+                } else {
+                    showMessage(data.error || 'Registration failed');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-user-plus mr-2"></i>Create Account';
+            }
+        });
+
+        // Forgot Password form
+        document.getElementById('forgotPasswordForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const email = document.getElementById('forgot-email').value;
+            const btn = document.getElementById('forgot-btn');
+            const originalText = btn.innerHTML;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
+
+            try {
+                const response = await fetch('/api/auth/reset-password-request', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage(data.message || 'Reset link sent! Check your email.', 'success');
+                    setTimeout(() => { showForm('login'); }, 3000);
+                } else {
+                    showMessage(data.error || 'Failed to request reset', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+    </script>
+</body>
+
+</html>
