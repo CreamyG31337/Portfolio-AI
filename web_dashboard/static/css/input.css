@@ -383,6 +383,15 @@
         @apply text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200;
     }
 
+    /* Standardized Card Components */
+    .card {
+        @apply bg-dashboard-surface rounded-lg border border-border shadow-xs;
+    }
+
+    .card-interactive {
+        @apply bg-dashboard-surface rounded-lg border border-border shadow-lg hover:-translate-y-0.5 transition-transform duration-200;
+    }
+
     /* Standardized button group item */
     .btn-group-item {
         @apply px-4 py-2 text-sm font-medium border-border bg-dashboard-surface hover:bg-dashboard-surface-alt focus:z-10 focus:ring-2 focus:ring-accent focus:text-accent transition-colors duration-200;
@@ -434,19 +443,33 @@
 
 /* Force theme colors on inputs that carry a Flowbite/Tailwind utility class */
 input[type="text"].bg-dashboard-surface-alt,
+input[type="text"].form-input-theme,
 input[type="email"].bg-dashboard-surface-alt,
+input[type="email"].form-input-theme,
 input[type="password"].bg-dashboard-surface-alt,
+input[type="password"].form-input-theme,
 input[type="number"].bg-dashboard-surface-alt,
+input[type="number"].form-input-theme,
 input[type="search"].bg-dashboard-surface-alt,
+input[type="search"].form-input-theme,
 input[type="url"].bg-dashboard-surface-alt,
+input[type="url"].form-input-theme,
 input[type="tel"].bg-dashboard-surface-alt,
+input[type="tel"].form-input-theme,
 input[type="date"].bg-dashboard-surface-alt,
+input[type="date"].form-input-theme,
 input[type="datetime-local"].bg-dashboard-surface-alt,
+input[type="datetime-local"].form-input-theme,
 input[type="time"].bg-dashboard-surface-alt,
+input[type="time"].form-input-theme,
 input[type="month"].bg-dashboard-surface-alt,
+input[type="month"].form-input-theme,
 input[type="week"].bg-dashboard-surface-alt,
+input[type="week"].form-input-theme,
 select.bg-dashboard-surface-alt,
-textarea.bg-dashboard-surface-alt {
+select.form-input-theme,
+textarea.bg-dashboard-surface-alt,
+textarea.form-input-theme {
     background-color: var(--bg-tertiary) !important;
     color: var(--text-primary) !important;
     border-color: var(--border-color) !important;

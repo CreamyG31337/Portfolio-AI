@@ -58,7 +58,7 @@
     </div>
 
     <!-- Thesis Section (Dynamic) -->
-    <div id="thesis-container" class="hidden mb-6 p-4 bg-dashboard-surface border border-border rounded-lg shadow-xs">
+    <div id="thesis-container" class="card hidden mb-6 p-4">
         <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
             <span class="text-xl">📋</span> <span id="thesis-title">Investment Thesis</span>
         </h3>
@@ -75,7 +75,7 @@
     <!-- Key Metrics Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <!-- Total Value -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">Total Value</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-total-value">--</span>
@@ -84,7 +84,7 @@
         </div>
 
         <!-- Day Change -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary" id="metric-day-change-label">Day Change</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-day-change">--</span>
@@ -93,7 +93,7 @@
         </div>
 
         <!-- Unrealized P&L -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">Unrealized P&L</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-total-pnl">--</span>
@@ -102,7 +102,7 @@
         </div>
 
         <!-- Cash Balance -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">Cash Balance</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-cash">--</span>
@@ -114,7 +114,7 @@
     <!-- Fund Stats -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <!-- Investors (hidden if count <= 1) -->
-        <div id="investor-metric-container" class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div id="investor-metric-container" class="card p-4">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">Investors</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-investors">--</span>
@@ -122,7 +122,7 @@
         </div>
 
         <!-- Holdings Count -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">Holdings</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-holdings-count">--</span>
@@ -130,7 +130,7 @@
         </div>
 
         <!-- First Trade Date -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">First Trade Date</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-first-trade-date">--</span>
@@ -139,7 +139,7 @@
     </div>
 
     <!-- Action Queue -->
-    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
+    <div class="card p-4 mb-6">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
                 <h3 class="text-lg font-bold text-text-primary">⚡ Action Queue</h3>
@@ -176,7 +176,7 @@
     <!-- Biggest Daily Movers -->
     <div id="movers-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <!-- Top Gainers -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
                 <span class="text-theme-success-text">🟢</span> Top Gainers
             </h3>
@@ -203,7 +203,7 @@
         </div>
 
         <!-- Top Losers -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
                 <span class="text-theme-error-text">🔴</span> Top Losers
             </h3>
@@ -233,7 +233,7 @@
     <!-- Main Charts -->
     <!-- Performance Chart (full width) -->
     <div class="mb-6 w-full">
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-text-primary">Portfolio Performance</h3>
                 <label class="inline-flex items-center cursor-pointer">
@@ -321,7 +321,7 @@
     <!-- Sector Allocation and Market Indicators Row -->
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6 w-full">
         <!-- Sector Allocation Chart -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs min-w-0">
+        <div class="card p-4 min-w-0">
             <h3 class="text-lg font-bold text-text-primary mb-4">Sector Allocation</h3>
             <div class="w-full relative aspect-square max-h-[500px]" id="sector-chart">
                 <!-- Loading spinner -->
@@ -332,7 +332,7 @@
         </div>
 
         <!-- Market Indicators Section -->
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <h3 class="text-lg font-bold text-text-primary mb-4">📊 Market Indicators</h3>
 
             <!-- Commodity Prices Chart -->
@@ -428,7 +428,7 @@
     </div>
 
     <!-- P&L by Position Chart -->
-    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
+    <div class="card p-4 mb-6">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h3 class="text-lg font-bold text-text-primary">P&L by Position</h3>
             <div class="inline-flex rounded-md shadow-xs" role="group" aria-label="P&L chart view">
@@ -465,7 +465,7 @@
 
     <!-- Dividends Section -->
     <div class="mb-6">
-        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+        <div class="card p-4">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
                     <span class="text-theme-success-text">💰</span> Dividends
@@ -527,7 +527,7 @@
     </div>
 
     <!-- Holdings Table -->
-    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
+    <div class="card p-4 mb-6">
         <h3 class="text-lg font-bold text-text-primary mb-4">Current Holdings</h3>
         <div class="relative w-full h-[500px]">
             <!-- Loading spinner -->
@@ -539,7 +539,7 @@
     </div>
 
     <!-- Recent Activity -->
-    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+    <div class="card p-4">
         <h3 class="text-lg font-bold text-text-primary mb-4">Recent Activity</h3>
         <div class="relative overflow-x-auto max-h-[600px] overflow-y-auto border border-border rounded-lg">
             <!-- Loading spinner -->
