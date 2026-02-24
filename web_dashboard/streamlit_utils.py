@@ -1790,6 +1790,97 @@ def get_historical_fund_values(fund: str, dates: List[datetime], _cache_version:
         
         min_date = min(date_strs)
         
+        # OPTIMIZATION: Try fetching pre-aggregated metrics first from performance_metrics table
+        # This prevents fetching 50k+ portfolio_positions rows for simple daily totals
+        # performance_metrics table contains pre-calculated daily totals (total_value, cost_basis)
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+
+            # Query performance_metrics for this fund in the date range
+            metrics_query = client.supabase.table("performance_metrics").select(
+                "date, total_value, cost_basis"
+            ).eq("fund", fund).gte("date", min_date)
+
+            metrics_result = metrics_query.order("date").execute()
+
+            # ALSO fetch the latest record BEFORE min_date to serve as the initial state
+            # This ensures we don't start with 0.0 if the first requested date falls in a gap
+            initial_query = client.supabase.table("performance_metrics").select(
+                "date, total_value, cost_basis"
+            ).eq("fund", fund).lt("date", min_date).order("date", desc=True).limit(1)
+
+            initial_result = initial_query.execute()
+
+            metrics_data = []
+            if initial_result.data:
+                metrics_data.extend(initial_result.data)
+            if metrics_result.data:
+                metrics_data.extend(metrics_result.data)
+
+            if metrics_data:
+                metrics_by_date = {row['date'][:10]: row for row in metrics_data}
+
+                # Verify we have decent coverage (e.g. at least one data point)
+                # If we have data, we'll try to use it
+                if metrics_by_date:
+                    logger.info(f"⚡ [PERF] Using pre-aggregated performance_metrics for {fund} ({len(metrics_data)} rows)")
+
+                    result_values = {}
+                    result_cost_basis = {}
+                    available_metric_dates = sorted(metrics_by_date.keys())
+
+                    # For each requested date, find closest available date in metrics
+                    # Note: performance_metrics might be sparser than daily positions if not run daily
+                    # But usually it's populated daily.
+
+                    # Check if the gap between requested date and latest metric is too large (> 7 days)
+                    # If so, we might need to fallback to positions for recent data not yet aggregated
+                    max_gap_days = 0
+
+                    for date_str in date_strs:
+                        if date_str in metrics_by_date:
+                            row = metrics_by_date[date_str]
+                            result_values[date_str] = float(row.get('total_value', 0))
+                            result_cost_basis[date_str] = float(row.get('cost_basis', 0))
+                        else:
+                            # Find closest date before or on this date
+                            closest = None
+                            for avail_date in available_metric_dates:
+                                if avail_date <= date_str:
+                                    closest = avail_date
+                                else:
+                                    break
+
+                            if closest:
+                                row = metrics_by_date[closest]
+                                result_values[date_str] = float(row.get('total_value', 0))
+                                result_cost_basis[date_str] = float(row.get('cost_basis', 0))
+
+                                # Check gap
+                                try:
+                                    d1 = datetime.strptime(date_str, '%Y-%m-%d')
+                                    d2 = datetime.strptime(closest, '%Y-%m-%d')
+                                    gap = (d1 - d2).days
+                                    max_gap_days = max(max_gap_days, gap)
+                                except:
+                                    pass
+                            else:
+                                # No prior data found
+                                result_values[date_str] = 0.0
+                                result_cost_basis[date_str] = 0.0
+
+                    # If gap is too large (e.g. metrics job hasn't run in a week), fallback to full calc
+                    if max_gap_days > 7:
+                        logger.warning(f"⚠️ Large gap in performance_metrics ({max_gap_days} days). Falling back to position aggregation.")
+                        # Proceed to fallback code below
+                    else:
+                        return result_values, result_cost_basis
+
+        except Exception as e:
+            logger.warning(f"Failed to query performance_metrics: {e}. Falling back to positions.")
+            # Continue to fallback
+
         # Query portfolio_positions for this fund, from earliest contribution date onwards
         # WE MUST PAGINATE - Supabase has a hard limit of 1000 rows per request
         all_rows = []
