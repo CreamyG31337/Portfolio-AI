@@ -591,7 +591,10 @@
         const checkbox = document.getElementById('auto-refresh');
 
         if (checkbox.checked) {
-            autoRefreshInterval = setInterval(fetchLogs, 5000);
+            // Only fetch if tab is visible to save resources
+            autoRefreshInterval = setInterval(() => {
+                if (!document.hidden) fetchLogs();
+            }, 5000);
         } else {
             if (autoRefreshInterval) {
                 clearInterval(autoRefreshInterval);
@@ -604,7 +607,10 @@
         const checkbox = document.getElementById('auto-refresh-ollama');
 
         if (checkbox.checked) {
-            autoRefreshIntervalOllama = setInterval(fetchOllamaLogs, 5000);
+            // Only fetch if tab is visible to save resources
+            autoRefreshIntervalOllama = setInterval(() => {
+                if (!document.hidden) fetchOllamaLogs();
+            }, 5000);
         } else {
             if (autoRefreshIntervalOllama) {
                 clearInterval(autoRefreshIntervalOllama);
@@ -742,7 +748,24 @@
 
     // Initial load
     updateCurrentUtcTime();
-    setInterval(updateCurrentUtcTime, 1000);
+
+    // Clock update - pause when hidden
+    setInterval(() => {
+        if (!document.hidden) updateCurrentUtcTime();
+    }, 1000);
+
+    // Update immediately when tab becomes visible
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            updateCurrentUtcTime();
+            // If auto-refresh is active, we might want to fetch immediately on visibility
+            // But usually the interval catching up is enough.
+            // However, for better UX, we can check if interval is active:
+            if (autoRefreshInterval) fetchLogs();
+            if (autoRefreshIntervalOllama) fetchOllamaLogs();
+        }
+    });
+
     fetchLogs();
 </script>
 {% endblock %}

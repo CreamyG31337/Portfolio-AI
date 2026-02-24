@@ -896,7 +896,6 @@
 
             // Start timer for this article
             let startTime = Date.now();
-            let timerInterval = null;
 
             const updateTimer = () => {
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -919,11 +918,6 @@
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
-
-                // Start timer update interval
-                timerInterval = setInterval(() => {
-                    // Timer will be cleared when status changes
-                }, 100);
 
                 // Read SSE stream
                 const reader = response.body.getReader();
@@ -999,10 +993,7 @@
                 statusText.textContent = `[${articleNum}/${total}] ❌ Error after ${elapsed}: ${error.message}`;
                 showMessage(`Article ${articleNum}: ${error.message}`, 'error');
             } finally {
-                // Clear timer interval
-                if (timerInterval) {
-                    clearInterval(timerInterval);
-                }
+                // No cleanup needed
             }
 
             completed++;
