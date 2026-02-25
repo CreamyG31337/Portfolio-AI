@@ -7,6 +7,7 @@ These mirror the functionality in streamlit_utils.py but work in Flask context.
 """
 
 import logging
+import concurrent.futures
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import numpy as np
@@ -1308,3 +1309,62 @@ def get_biggest_movers_flask(positions_df: pd.DataFrame, display_currency: str, 
         'gainers': gainers[result_cols].reset_index(drop=True), 
         'losers': losers[result_cols].reset_index(drop=True)
     }
+
+
+def fetch_unique_column_values_parallel(
+    client,
+    table_name: str,
+    column_name: str,
+    chunk_size: int = 5000,
+    max_workers: int = 10,
+    max_rows: int = 200000
+) -> List[str]:
+    """
+    Fetch all unique values from a column using parallel pagination.
+    """
+    try:
+        # 1. Get total count
+        count_res = client.supabase.table(table_name).select(column_name, count='exact', head=True).execute()
+        total_rows = count_res.count if count_res.count is not None else 0
+
+        if total_rows == 0:
+            return []
+
+        # Limit total rows to prevent OOM
+        if total_rows > max_rows:
+            logger.warning(f"Total rows {total_rows} exceeds limit {max_rows}, capping fetch.")
+            total_rows = max_rows
+
+        # 2. Calculate chunks
+        num_chunks = (total_rows // chunk_size) + 1
+
+        unique_values = set()
+
+        def _fetch_chunk(offset):
+            try:
+                # Select only the column we need
+                return client.supabase.table(table_name)\
+                    .select(column_name)\
+                    .range(offset, offset + chunk_size - 1)\
+                    .execute().data
+            except Exception as e:
+                logger.warning(f"Error fetching chunk {offset}: {e}")
+                return []
+
+        # 3. Parallel fetch
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_fetch_chunk, i * chunk_size) for i in range(num_chunks)]
+
+            for future in concurrent.futures.as_completed(futures):
+                data = future.result()
+                if data:
+                    for row in data:
+                        val = row.get(column_name)
+                        if val:
+                            unique_values.add(val)
+
+        return sorted(list(unique_values))
+
+    except Exception as e:
+        logger.error(f"Error in fetch_unique_column_values_parallel: {e}", exc_info=True)
+        return []
