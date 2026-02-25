@@ -408,6 +408,15 @@
         outline: none;
     }
 
+    /* Standardized Card component */
+    .card {
+        @apply bg-dashboard-surface border border-border rounded-lg shadow-xs;
+    }
+
+    /* Interactive Card (hover effects) */
+    .card-interactive {
+        @apply bg-dashboard-surface border border-border rounded-lg shadow-lg hover:-translate-y-0.5 transition-transform duration-200;
+    }
 }
 
 @layer utilities {
