@@ -1,63 +1,83 @@
-# Code Review: Insider Trades Update
-**Commit:** `f8e3bce` - Insider trades: SEC Form 4 backfill, date filter, junk ticker fixes
+# Code Review: Commits in Last 12 Hours
 
-## Summary
-The recent changes introduce a robust system for fetching, storing, and displaying insider trading data. The implementation spans the full stack, from a scheduler job (`jobs_insiders.py`) fetching data, to a backend API (`app.py`) serving it, and a frontend (`insider_trades.ts`) displaying it with filters.
+**Reviewer:** Jules (AI)
+**Date:** 2026-02-14
 
-Overall, the feature set is well-implemented, but there is a **critical security vulnerability** in the data fetching job that must be addressed immediately.
+## Overview
 
-## Critical Findings
+This review covers commits made in the last 12 hours.
 
-### 🚨 Security Vulnerability: `eval()` usage in `jobs_insiders.py`
-**File:** `web_dashboard/scheduler/jobs_insiders.py`
-**Line:** ~277 (approximate based on context)
+-   `6211c52` - "⚡ Bolt: Optimize polling in logs.html and remove dead code in research.html"
+-   `66483bd` - "Refactors repetitive Tailwind CSS utility patterns into reusable component classes..."
 
-The code uses `eval()` as a fallback to parse the embedded data from the source website:
-```python
-# Try eval as fallback (safe since it's from the source page)
-try:
-    trades_data = eval(json_str)
+---
+
+## Commit `6211c52`: Optimize polling in logs.html
+
+### Summary
+This commit optimizes the frontend polling mechanism in `logs.html` by checking document visibility before fetching new logs, and removes unused code in `research.html`.
+
+### Findings
+
+#### ✅ efficient Polling Implementation
+**File:** `web_dashboard/templates/logs.html`
+**Status:** **Approved**
+
+The polling logic correctly implements the recommended pattern:
+```javascript
+autoRefreshInterval = setInterval(() => {
+    if (!document.hidden) fetchLogs();
+}, 5000);
 ```
-**Risk:** While the comment claims it is "safe since it's from the source page", this is a dangerous assumption. If the source website is compromised or serves malicious content, `eval()` will execute arbitrary code on your server.
-**Recommendation:** Replace `eval()` with `ast.literal_eval()`. The comment notes that the data is in "Python dict notation", for which `ast.literal_eval()` is the designed, safe parser.
+This ensures that the browser does not waste resources fetching logs when the tab is in the background, which aligns with the project's optimization standards.
 
-```python
-import ast
-# ...
-try:
-    trades_data = ast.literal_eval(json_str)
+#### ✅ Dead Code Removal
+**File:** `web_dashboard/templates/research.html`
+**Status:** **Approved**
+
+The removal of unused code improves maintainability. No regressions identified in the current file structure.
+
+---
+
+## Commit `66483bd`: Refactor Tailwind CSS utility patterns
+
+### Summary
+This commit introduces reusable Tailwind component classes (`.form-input-theme`, `.btn-outline`, `.card`, etc.) in `input.css` and updates templates to use them.
+
+### Findings
+
+#### ✅ Standardization
+**File:** `web_dashboard/static/css/input.css`
+**Status:** **Approved**
+
+The introduction of `.form-input-theme` and `.btn-outline` promotes DRY (Don't Repeat Yourself) principles and ensures consistent styling across the application. The overrides for specific input types (`input[type="text"].form-input-theme`) correctly ensure theme colors are applied.
+
+#### ⚠️ Potential Regression / Standard Violation
+**File:** `web_dashboard/templates/dashboard.html`
+**Status:** **Needs Attention**
+
+The commit re-introduces the `.form-input-theme` class to the "Stock Filter" input:
+```html
+<select id="individual-stock-filter"
+    class="form-input-theme w-auto px-3 py-1.5 bg-dashboard-surface">
 ```
+**Issue:**
+While `.w-auto` (utility) technically overrides `.w-full` (component), this change contradicts a documented project standard: "Refactoring Standard: In `web_dashboard/templates/dashboard.html`, the 'Stock Filter' input explicitly uses Tailwind utilities (**removing the shared `.form-input-theme` class**) to avoid layout conflicts".
 
-## Major Findings
+**Risk:**
+Re-introducing the class might cause subtle layout shifts or specificity issues depending on the build order or future changes to `input.css`.
 
-### ⚠️ Performance: Unbounded Data Fetching
-**File:** `web_dashboard/app.py`, function `api_insider_trades_data`
-**Issue:** The API fetches *all* trades matching the filter criteria using `get_insider_trades_cached`. While there is an internal safety limit of 100,000 rows in the cached function, sending ~100k rows (each with multiple fields) to the frontend in one JSON response is a heavy payload that will cause latency and high memory usage on both client and server.
-**Recommendation:** Implement server-side pagination. The current implementation relies on the frontend (AgGrid) to handle pagination, but it still requires the full dataset to be loaded first.
+**Recommendation:**
+Verify that the layout remains correct on all screen sizes. If layout issues persist or if strict adherence to the standard is required, revert this specific change in `dashboard.html` while keeping the rest of the refactor.
 
-### ⚠️ Reliability: Flaky Grid Initialization
-**File:** `web_dashboard/src/js/insider_trades.ts`, function `initializeInsiderTradesGrid`
-**Issue:** The grid relies on `setTimeout` to auto-size columns:
-```typescript
-setTimeout(() => {
-    // ... autoSizeColumns ...
-}, 300);
-```
-This is a race condition waiting to happen. If the grid renders slower than 300ms (e.g., on a slow device with a large dataset), the columns won't resize correctly.
-**Recommendation:** Use AgGrid's `onFirstDataRendered` event more robustly or the `autoSizeStrategy` grid option if available in the version you are using.
+#### ✅ Template Updates
+**Files:** `web_dashboard/templates/auth.html`, `web_dashboard/templates/settings.html`
+**Status:** **Approved**
 
-## Minor Findings & Praise
+The updates to `auth.html` (e.g., using `form-input-theme`) and `settings.html` (e.g., using `btn-outline`) correctly utilize the new component classes, simplifying the HTML and improving readability.
 
-### ✅ Feature Implementation
--   **Junk Ticker Fixes:** The logic in `insider_trades.ts` (cleaning tickers like `.TO`, `.V`) and `jobs_insiders.py` is solid.
--   **Date Filters:** The backend support for `start_date` and `end_date` in `api_insider_trades_data` is correctly implemented and exposed to the frontend.
--   **Backfill Logic:** The scheduler job correctly handles `INSIDER_TRADES_DAYS=0` for full backfills and has a smart catch-up mechanism (`INSIDER_TRADES_CATCH_UP_DAYS`).
+---
 
-### ℹ️ Code Style
--   **Type Safety:** The TypeScript file uses `any` in several places (`window as any`, `gridApi` casting). While understandable for rapid development, adding proper type definitions for `themeManager` and `Plotly` would improve maintainability.
--   **Duplicate Logic:** Both the scheduler and the backend have logic to normalize/clean tickers. Consider moving shared logic to `web_dashboard/utils/ticker_utils.py` to ensure consistency.
+## Overall Recommendation
 
-## Action Items
-1.  **IMMEDIATE:** Replace `eval()` with `ast.literal_eval()` in `web_dashboard/scheduler/jobs_insiders.py`.
-2.  **HIGH:** Add server-side pagination to `api_insider_trades_data` or strictly limit the default date range to prevent massive payloads.
-3.  **MEDIUM:** Refactor `setTimeout` in frontend grid initialization.
+The changes are generally positive and improve code quality. However, the deviation from the "Refactoring Standard" in `dashboard.html` should be double-checked to ensure no layout regressions occurred. If the layout is fine, the standard documentation might need updating to reflect that `w-auto` override is now considered acceptable.
