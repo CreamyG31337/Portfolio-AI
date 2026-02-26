@@ -1311,10 +1311,48 @@ def get_holdings_data():
         
         # Batch fetch logo URLs for all tickers (caching-friendly pattern)
         unique_tickers = positions_df['ticker'].dropna().unique().tolist()
+
+        # Optimize: Create a map of ticker -> website if available in positions_df
+        # This is populated if get_individual_holdings_performance_flask was used or if securities was joined
+        website_map = {}
+        # Try to find website in securities nested object (from get_current_positions)
+        if 'securities' in positions_df.columns:
+            try:
+                # Use apply for efficient extraction
+                website_series = positions_df.apply(
+                    lambda x: x.get('securities', {}).get('website') if isinstance(x.get('securities'), dict) else None,
+                    axis=1
+                )
+                # Map ticker to website where available
+                for ticker, website in zip(positions_df['ticker'], website_series):
+                    if ticker and website:
+                        website_map[ticker] = website
+            except Exception as e:
+                logger.warning(f"Error extracting websites from securities dict: {e}")
+
+        # Try to find website in flat column (if coming from get_individual_holdings_performance_flask)
+        if 'website' in positions_df.columns:
+            for ticker, website in zip(positions_df['ticker'], positions_df['website']):
+                if ticker and website and pd.notna(website):
+                    website_map[ticker] = website
+
         logo_urls_map = {}
         if unique_tickers:
             try:
-                logo_urls_map = get_ticker_logo_urls(unique_tickers)
+                # Use get_ticker_logo_url individually if we have website data to enable better resolution
+                # Otherwise fall back to batch fetch (which defaults to Parqet)
+                if website_map:
+                    from web_dashboard.utils.logo_utils import get_ticker_logo_url
+                    for ticker in unique_tickers:
+                        # Pass use_alt=True if we have a website, to prefer domain-based lookup
+                        website = website_map.get(ticker)
+                        if website:
+                            logo_urls_map[ticker] = get_ticker_logo_url(ticker, use_alt=True, website=website)
+                        else:
+                            # Fallback to standard lookup
+                            logo_urls_map[ticker] = get_ticker_logo_url(ticker)
+                else:
+                    logo_urls_map = get_ticker_logo_urls(unique_tickers)
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
         

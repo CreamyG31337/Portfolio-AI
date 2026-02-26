@@ -909,8 +909,9 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
                 all_securities = []
                 for i in range(0, len(unique_tickers), 100):
                     batch = unique_tickers[i:i+100]
+                    # Include website for better logo resolution
                     sec_result = client.supabase.table("securities")\
-                        .select("ticker, sector, industry, currency")\
+                        .select("ticker, sector, industry, currency, website")\
                         .in_("ticker", batch)\
                         .execute()
                     if sec_result.data:
@@ -930,10 +931,12 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
             sector_map = {t: d.get('sector') for t, d in securities_map.items()}
             industry_map = {t: d.get('industry') for t, d in securities_map.items()}
             currency_map = {t: d.get('currency') for t, d in securities_map.items()}
+            website_map = {t: d.get('website') for t, d in securities_map.items()}
 
             # Vectorized mapping using dict lookup
             df['sector'] = df['ticker'].map(sector_map)
             df['industry'] = df['ticker'].map(industry_map)
+            df['website'] = df['ticker'].map(website_map)
 
             # Handle currency fallback logic (preserve existing behavior)
             # Original: df['currency'] = securities_df['currency'].fillna(df.get('currency', 'USD'))
@@ -1005,6 +1008,8 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
             
         # Select columns
         cols_to_keep = ['ticker', 'date', 'performance_index', 'return_pct', 'daily_pnl_pct', 'sector', 'industry', 'currency']
+        if 'website' in df.columns:
+            cols_to_keep.append('website')
         
         # If days > 0, filter to the last N unique dates
         # Note: We filter dates AFTER calculations to preserve baseline correctness
