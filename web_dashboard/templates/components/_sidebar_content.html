@@ -98,10 +98,10 @@
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Jobs Scheduler</span>
                         {% if scheduler_status == 'running' %}
                         <span
-                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-success-text bg-theme-success-bg rounded-full sidebar-badge opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 transition-opacity duration-300">Running</span>
+                            class="badge ms-3 text-theme-success-text bg-theme-success-bg sidebar-badge opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 transition-opacity duration-300">Running</span>
                         {% else %}
                         <span
-                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-error-text bg-theme-error-bg rounded-full sidebar-badge opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 transition-opacity duration-300">Stopped</span>
+                            class="badge ms-3 text-theme-error-text bg-theme-error-bg sidebar-badge opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 transition-opacity duration-300">Stopped</span>
                         {% endif %}
                         <!-- Badge will be updated dynamically by ui.ts -->
                     </a>
@@ -195,7 +195,7 @@
                         <span class="mr-3 text-lg flex-shrink-0">🔄</span>
                         <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Streamlit (Legacy)</span>
                         <span
-                            class="inline-flex items-center justify-center px-2 py-1 ms-3 text-xs font-medium text-theme-warning-text bg-theme-warning-bg rounded-full sidebar-badge opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 transition-opacity duration-300">Old</span>
+                            class="badge ms-3 text-theme-warning-text bg-theme-warning-bg sidebar-badge opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 transition-opacity duration-300">Old</span>
                     </a>
                 </li>
             </ul>
