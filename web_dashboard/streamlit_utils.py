@@ -1765,6 +1765,7 @@ def get_historical_fund_values(fund: str, dates: List[datetime], _cache_version:
     
     Queries portfolio_positions to calculate total fund value at each date.
     Returns the closest available date if exact date not found.
+    TODO(bot-pr-180): If reintroducing performance_metrics fast-path queries, enforce explicit base-currency normalization checks before returning totals.
     
     CACHED: Permanently cached. Bump CACHE_VERSION in streamlit_utils.py to invalidate after bug fixes.
     

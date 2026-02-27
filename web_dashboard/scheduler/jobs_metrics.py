@@ -12,6 +12,7 @@ from decimal import Decimal
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
+import pandas as pd
 
 # Add parent directory to path if needed (standard boilerplate for these jobs)
 import sys
@@ -150,6 +151,63 @@ def benchmark_refresh_job() -> None:
                 # Handle MultiIndex columns from yfinance
                 if hasattr(data.columns, 'levels'):
                     data.columns = data.columns.get_level_values(0)
+
+                # Quality gate: drop isolated extreme outliers before caching.
+                # This protects against bad ticks (e.g., 100x spikes) while still
+                # allowing persistent multi-day regime shifts to pass through.
+                if "Date" not in data.columns or "Close" not in data.columns:
+                    logger.warning(
+                        f"Skipping {name} ({ticker}): missing required Date/Close columns"
+                    )
+                    benchmarks_failed += 1
+                    continue
+
+                data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+                for col in ["Open", "High", "Low", "Close", "Volume"]:
+                    if col in data.columns:
+                        data[col] = pd.to_numeric(data[col], errors="coerce")
+
+                data = data.dropna(subset=["Date", "Close"]).sort_values("Date").reset_index(drop=True)
+
+                anomaly_indices: list[int] = []
+                closes = data["Close"].tolist()
+                for idx in range(1, len(closes) - 1):
+                    prev_close = closes[idx - 1]
+                    cur_close = closes[idx]
+                    next_close = closes[idx + 1]
+
+                    if (
+                        pd.isna(prev_close)
+                        or pd.isna(cur_close)
+                        or pd.isna(next_close)
+                        or prev_close <= 0
+                        or cur_close <= 0
+                        or next_close <= 0
+                    ):
+                        continue
+
+                    # Isolated one-day spike/trough: huge jump against both neighbors.
+                    isolated_spike = (cur_close / prev_close >= 20.0) and (cur_close / next_close >= 20.0)
+                    isolated_trough = (prev_close / cur_close >= 20.0) and (next_close / cur_close >= 20.0)
+
+                    if isolated_spike or isolated_trough:
+                        anomaly_indices.append(idx)
+
+                if anomaly_indices:
+                    for idx in anomaly_indices:
+                        anomaly_row = data.iloc[idx]
+                        logger.warning(
+                            "Dropping isolated outlier for %s (%s) on %s: close=%s",
+                            name,
+                            ticker,
+                            anomaly_row["Date"].date(),
+                            anomaly_row["Close"],
+                        )
+                    data = data.drop(index=anomaly_indices).reset_index(drop=True)
+                    if data.empty:
+                        logger.warning(f"All rows filtered for {name} ({ticker}) after quality checks")
+                        benchmarks_failed += 1
+                        continue
                 
                 # Convert to list of dicts for caching
                 rows = data.to_dict('records')

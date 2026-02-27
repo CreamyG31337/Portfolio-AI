@@ -1308,3 +1308,113 @@ def get_biggest_movers_flask(positions_df: pd.DataFrame, display_currency: str, 
         'gainers': gainers[result_cols].reset_index(drop=True), 
         'losers': losers[result_cols].reset_index(drop=True)
     }
+
+
+# ============================================================================
+# Parallel Fetch Utilities (Consolidated from PRs #171, #175, #187)
+# ============================================================================
+
+def fetch_unique_column_values_parallel(
+    supabase_client,
+    table: str,
+    column: str,
+    chunk_size: int = 5000,
+    max_workers: int = 10,
+    max_rows: int = 200000,
+) -> List[str]:
+    """Fetch all unique values of a column from a Supabase table using parallel chunked reads.
+
+    Tries the server-side ``get_distinct_column_values`` RPC first (O(1) round-trip).
+    Falls back to parallel paginated fetching if the RPC is unavailable.
+
+    Args:
+        supabase_client: Authenticated SupabaseClient instance.
+        table: Table name to query.
+        column: Column name to extract unique values from.
+        chunk_size: Number of rows per parallel chunk (default 5000).
+        max_workers: Maximum ThreadPoolExecutor workers (default 10).
+        max_rows: Safety cap on total rows fetched (default 200k).
+
+    Returns:
+        Sorted list of unique non-null string values.
+    """
+    import concurrent.futures
+
+    if supabase_client is None:
+        return []
+
+    # --- Fast path: RPC-based SELECT DISTINCT (PR #163 approach) ---
+    try:
+        rpc_result = supabase_client.supabase.rpc(
+            'get_distinct_column_values',
+            {'p_table': table, 'p_column': column}
+        ).execute()
+        if rpc_result.data is not None:
+            values = sorted({
+                row['value'] for row in rpc_result.data
+                if row.get('value')
+            })
+            logger.info(
+                f"[ParallelFetch] RPC fast-path for {table}.{column}: "
+                f"{len(values)} unique values"
+            )
+            return values
+    except Exception as rpc_err:
+        logger.debug(
+            f"[ParallelFetch] RPC unavailable for {table}.{column}, "
+            f"falling back to parallel pagination: {rpc_err}"
+        )
+
+    # --- Slow path: parallel paginated fetching ---
+    try:
+        # 1. Get total row count
+        count_result = supabase_client.supabase.table(table) \
+            .select(column, count='exact') \
+            .limit(1) \
+            .execute()
+        total = min(count_result.count or 0, max_rows)
+        if total == 0:
+            return []
+
+        # 2. Build chunk ranges
+        chunks = []
+        for offset in range(0, total, chunk_size):
+            end = min(offset + chunk_size - 1, total - 1)
+            chunks.append((offset, end))
+
+        # 3. Fetch chunks in parallel
+        all_values: set = set()
+
+        def _fetch_chunk(range_tuple):
+            start, end = range_tuple
+            try:
+                result = supabase_client.supabase.table(table) \
+                    .select(column) \
+                    .range(start, end) \
+                    .execute()
+                return {
+                    row.get(column)
+                    for row in (result.data or [])
+                    if row.get(column)
+                }
+            except Exception as chunk_err:
+                logger.warning(
+                    f"[ParallelFetch] Chunk {start}-{end} failed for "
+                    f"{table}.{column}: {chunk_err}"
+                )
+                return set()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_fetch_chunk, c): c for c in chunks}
+            for future in concurrent.futures.as_completed(futures):
+                all_values.update(future.result())
+
+        logger.info(
+            f"[ParallelFetch] Parallel path for {table}.{column}: "
+            f"{len(all_values)} unique values from {len(chunks)} chunks"
+        )
+        return sorted(all_values)
+
+    except Exception as e:
+        logger.error(f"[ParallelFetch] Error fetching {table}.{column}: {e}", exc_info=True)
+        return []

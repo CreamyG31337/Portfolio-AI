@@ -75,45 +75,76 @@ def _get_yfinance_ticker_candidates(ticker: str) -> List[str]:
 
 def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
                               extra_filter: Optional[Dict] = None) -> Set[str]:
-    """Fetch unique tickers from a single Supabase table with pagination."""
+    """Fetch unique tickers from a single Supabase table.
+
+    Tries server-side SELECT DISTINCT via RPC first, falls back to parallel
+    chunked pagination.
+    """
     tickers: Set[str] = set()
     if not client:
         return tickers
     try:
+        import concurrent.futures
+
         logger.debug(f"Fetching tickers from Supabase: {table}")
 
-        batch_size = 1000
-        offset = 0
+        # --- Fast path: RPC-based SELECT DISTINCT ---
+        if not extra_filter:
+            try:
+                rpc_result = client.supabase.rpc(
+                    'get_distinct_column_values',
+                    {'p_table': table, 'p_column': ticker_column}
+                ).execute()
+                if rpc_result.data is not None:
+                    tickers = {
+                        row['value'].upper()
+                        for row in rpc_result.data
+                        if row.get('value')
+                    }
+                    logger.debug(f"RPC DISTINCT: {len(tickers)} tickers from {table}")
+                    return tickers
+            except Exception as rpc_err:
+                logger.debug(f"RPC unavailable for {table}, falling back: {rpc_err}")
 
-        while True:
-            query = client.supabase.table(table).select(ticker_column)
-            if extra_filter:
-                for col, val in extra_filter.items():
-                    query = query.eq(col, val)
+        # --- Fallback: parallel chunked pagination ---
+        # 1. Get total count
+        count_query = client.supabase.table(table).select(ticker_column, count='exact').limit(1)
+        if extra_filter:
+            for col, val in extra_filter.items():
+                count_query = count_query.eq(col, val)
+        count_result = count_query.execute()
+        total = min(count_result.count or 0, 200000)
+        if total == 0:
+            return tickers
 
-            # Use range for pagination to ensure we get all rows
-            result = query.range(offset, offset + batch_size - 1).execute()
+        # 2. Build chunks and fetch in parallel
+        chunk_size = 5000
+        chunks = [(offset, min(offset + chunk_size - 1, total - 1))
+                  for offset in range(0, total, chunk_size)]
 
-            if not result.data:
-                break
+        def _fetch_chunk(range_tuple):
+            start, end = range_tuple
+            try:
+                q = client.supabase.table(table).select(ticker_column)
+                if extra_filter:
+                    for col, val in extra_filter.items():
+                        q = q.eq(col, val)
+                result = q.range(start, end).execute()
+                return {
+                    row[ticker_column].upper()
+                    for row in (result.data or [])
+                    if row.get(ticker_column)
+                }
+            except Exception as e:
+                logger.warning(f"Chunk {start}-{end} failed for {table}: {e}")
+                return set()
 
-            # Extract and normalize tickers
-            batch_tickers = [row[ticker_column].upper() for row in result.data if row.get(ticker_column)]
-            tickers.update(batch_tickers)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(_fetch_chunk, c) for c in chunks]
+            for future in concurrent.futures.as_completed(futures):
+                tickers.update(future.result())
 
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            # TODO: Replace client-side pagination with DB-side aggregation
-            # (e.g. SELECT DISTINCT ticker FROM table) to avoid this arbitrary limit.
-            # Safety limit to prevent infinite loops on massive tables (e.g. 50k rows)
-            if offset > 50000:
-                logger.warning(f"Ticker fetch limit reached for {table} (50k rows)")
-                break
-
-        logger.debug(f"Fetched {len(tickers)} unique tickers from {table}")
+        logger.debug(f"Fetched {len(tickers)} unique tickers from {table} ({len(chunks)} chunks)")
     except Exception as e:
         logger.error(f"Error fetching tickers from {table}: {e}", exc_info=True)
     return tickers

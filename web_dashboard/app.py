@@ -4074,7 +4074,10 @@ def get_postgres_client_congress():
 
 @cache_data(ttl=3600)
 def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_version: Optional[str] = None) -> List[str]:
-    """Get all unique tickers from congress_trades table (cached 1 hour)"""
+    """Get all unique tickers from congress_trades table (cached 1 hour).
+
+    Uses RPC SELECT DISTINCT with parallel chunk fallback.
+    """
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -4082,45 +4085,17 @@ def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_versi
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_tickers = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("congress_trades_enriched")\
-                .select("ticker")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                ticker = trade.get('ticker')
-                if ticker:
-                    all_tickers.add(ticker)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_tickers_congress pagination")
-                break
-
-        return sorted(list(all_tickers))
-    except Exception as e:
-        logger.error(f"Error fetching unique tickers: {e}", exc_info=True)
-        return []
+    from flask_data_utils import fetch_unique_column_values_parallel
+    return fetch_unique_column_values_parallel(
+        _supabase_client, 'congress_trades_enriched', 'ticker'
+    )
 
 @cache_data(ttl=3600)
 def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_version: Optional[str] = None) -> List[str]:
-    """Get all unique politicians from congress_trades table (cached 1 hour)"""
+    """Get all unique politicians from congress_trades table (cached 1 hour).
+
+    Uses RPC SELECT DISTINCT with parallel chunk fallback.
+    """
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -4128,41 +4103,10 @@ def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_v
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_politicians = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("congress_trades_enriched")\
-                .select("politician")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                politician = trade.get('politician')
-                if politician:
-                    all_politicians.add(politician)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_politicians_congress pagination")
-                break
-
-        return sorted(list(all_politicians))
-    except Exception as e:
-        logger.error(f"Error fetching unique politicians: {e}", exc_info=True)
-        return []
+    from flask_data_utils import fetch_unique_column_values_parallel
+    return fetch_unique_column_values_parallel(
+        _supabase_client, 'congress_trades_enriched', 'politician'
+    )
 
 @cache_data(ttl=60)
 def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, Dict[str, Any]]:
@@ -5531,7 +5475,10 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
 def get_unique_tickers_insider(
     _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
 ) -> List[str]:
-    """Get all unique tickers from insider_trades table (cached 1 hour)."""
+    """Get all unique tickers from insider_trades table (cached 1 hour).
+
+    Uses RPC SELECT DISTINCT with parallel chunk fallback.
+    """
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -5539,41 +5486,10 @@ def get_unique_tickers_insider(
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_tickers = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("insider_trades")\
-                .select("ticker")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                ticker = trade.get("ticker")
-                if ticker:
-                    all_tickers.add(ticker)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_tickers_insider pagination")
-                break
-
-        return sorted(list(all_tickers))
-    except Exception as e:
-        logger.error(f"Error fetching insider tickers: {e}", exc_info=True)
-        return []
+    from flask_data_utils import fetch_unique_column_values_parallel
+    return fetch_unique_column_values_parallel(
+        _supabase_client, 'insider_trades', 'ticker'
+    )
 
 
 INSIDER_NAME_UPPER_TOKENS = {
@@ -5666,7 +5582,11 @@ def normalize_insider_name(name: Optional[str]) -> Optional[str]:
 def get_unique_insider_names(
     _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
 ) -> List[str]:
-    """Get all unique insider names from insider_trades table (cached 1 hour)."""
+    """Get all unique insider names from insider_trades table (cached 1 hour).
+
+    Uses RPC SELECT DISTINCT with parallel chunk fallback.
+    Applies normalize_insider_name() post-processing for display.
+    """
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -5674,43 +5594,17 @@ def get_unique_insider_names(
         except ImportError:
             _cache_version = ""
 
-    try:
-        if _supabase_client is None:
-            return []
-
-        all_insiders = set()
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            result = _supabase_client.supabase.table("insider_trades")\
-                .select("insider_name")\
-                .range(offset, offset + batch_size - 1)\
-                .execute()
-
-            if not result.data:
-                break
-
-            for trade in result.data:
-                insider_name = trade.get("insider_name")
-                if insider_name:
-                    normalized_name = normalize_insider_name(insider_name)
-                    if normalized_name:
-                        all_insiders.add(normalized_name)
-
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 100000:
-                logger.warning("Reached 100,000 row safety limit in get_unique_insider_names pagination")
-                break
-
-        return sorted(list(all_insiders))
-    except Exception as e:
-        logger.error(f"Error fetching insider names: {e}", exc_info=True)
-        return []
+    from flask_data_utils import fetch_unique_column_values_parallel
+    raw_names = fetch_unique_column_values_parallel(
+        _supabase_client, 'insider_trades', 'insider_name'
+    )
+    # Normalize and deduplicate (normalization can merge different casings)
+    normalized = set()
+    for name in raw_names:
+        n = normalize_insider_name(name)
+        if n:
+            normalized.add(n)
+    return sorted(normalized)
 
 
 @cache_data(ttl=300)

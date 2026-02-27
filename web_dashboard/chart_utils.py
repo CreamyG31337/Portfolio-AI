@@ -23,6 +23,7 @@ import plotly.graph_objs as go
 from typing import Optional, List, Dict, Tuple, Any
 from datetime import datetime, timedelta
 import colorsys
+import logging
 import yfinance as yf
 from utils.market_holidays import MarketHolidays
 try:
@@ -41,6 +42,7 @@ BENCHMARK_CONFIG = {
 
 # Initialize the holiday utility
 MARKET_HOLIDAYS = MarketHolidays()
+logger = logging.getLogger(__name__)
 
 
 def _add_holiday_shading(fig: go.Figure, start_date: datetime, end_date: datetime,
