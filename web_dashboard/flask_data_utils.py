@@ -113,7 +113,7 @@ def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Opti
         while True:
             # Join with securities table to get sector, industry, market_cap, country for filtering
             query = client.supabase.table("latest_positions").select(
-                "*, securities(company_name, sector, industry, market_cap, country, trailing_pe, dividend_yield, fifty_two_week_high, fifty_two_week_low, last_updated)"
+                "*, securities(company_name, sector, industry, market_cap, country, trailing_pe, dividend_yield, fifty_two_week_high, fifty_two_week_low, last_updated, website)"
             )
             if fund:
                 query = query.eq("fund", fund)
@@ -791,7 +791,7 @@ def _fetch_dividend_log_flask_cached(days_lookback: int = 365, fund: Optional[st
         
         # Include securities(company_name) join for consistency with trade_log
         query = client.supabase.table('dividend_log')\
-            .select('*, securities(company_name)')\
+            .select('*, securities(company_name, website)')\
             .gte('pay_date', start_date)
         
         # Apply fund filter if provided

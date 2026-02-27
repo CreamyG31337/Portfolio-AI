@@ -456,13 +456,14 @@ def get_action_queue():
         except Exception as e:
             logger.warning(f"[Dashboard API] Error fetching signal_analysis: {e}")
 
-        # Company name lookup
+        # Company name and website lookup
         company_names_map: Dict[str, str] = {}
+        websites_map: Dict[str, str] = {}
         try:
             for i in range(0, len(tickers), 100):
                 batch = tickers[i:i + 100]
                 result = supabase_client.supabase.table("securities") \
-                    .select("ticker, company_name") \
+                    .select("ticker, company_name, website") \
                     .in_("ticker", batch) \
                     .execute()
                 if result.data:
@@ -470,13 +471,14 @@ def get_action_queue():
                         ticker = row.get("ticker")
                         if ticker:
                             company_names_map[ticker] = row.get("company_name") or ticker
+                            websites_map[ticker] = row.get("website")
         except Exception as e:
-            logger.warning(f"[Dashboard API] Error fetching company names: {e}")
+            logger.warning(f"[Dashboard API] Error fetching company names/websites: {e}")
 
         # Logo URLs
         logo_urls_map = {}
         try:
-            logo_urls_map = get_ticker_logo_urls(tickers)
+            logo_urls_map = get_ticker_logo_urls(tickers, websites_map)
         except Exception as e:
             logger.warning(f"[Dashboard API] Error fetching logo URLs: {e}")
 
@@ -1310,11 +1312,40 @@ def get_holdings_data():
         total_portfolio_value = market_vals_display.sum()
         
         # Batch fetch logo URLs for all tickers (caching-friendly pattern)
-        unique_tickers = positions_df['ticker'].dropna().unique().tolist()
+        # Extract websites from nested securities object in positions_df
+        tickers_websites = {}
+
+        # positions_df rows have 'securities' column which is a dict or None
+        # We need to iterate carefully since it's a DataFrame
+
+        # First, ensure we have the necessary columns
+        if not positions_df.empty and 'ticker' in positions_df.columns:
+            # Check if we can extract websites from 'securities' column
+            if 'securities' in positions_df.columns:
+                # Iterate rows to build mapping
+                for _, row in positions_df.iterrows():
+                    ticker = row.get('ticker')
+                    if ticker:
+                        website = None
+                        sec_data = row.get('securities')
+                        if isinstance(sec_data, dict):
+                            website = sec_data.get('website')
+                        tickers_websites[ticker] = website
+            elif 'website' in positions_df.columns:
+                # Direct column if available (e.g. from flat join)
+                for _, row in positions_df.iterrows():
+                    ticker = row.get('ticker')
+                    if ticker:
+                        tickers_websites[ticker] = row.get('website')
+            else:
+                # Fallback: just list tickers
+                for t in positions_df['ticker'].dropna().unique():
+                    tickers_websites[t] = None
+
         logo_urls_map = {}
-        if unique_tickers:
+        if tickers_websites:
             try:
-                logo_urls_map = get_ticker_logo_urls(unique_tickers)
+                logo_urls_map = get_ticker_logo_urls(list(tickers_websites.keys()), tickers_websites)
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
         
@@ -1455,11 +1486,19 @@ def get_recent_activity():
             return jsonify({"data": []})
             
         # Batch fetch logo URLs
-        unique_tickers = trades_df['ticker'].dropna().unique().tolist()
+        # Extract websites if available (from modified get_trade_log)
+        tickers_websites = {}
+        for _, row in trades_df.iterrows():
+            ticker = row.get('ticker')
+            if ticker:
+                # website is now a flat column in trades_df due to updated get_trade_log
+                website = row.get('website')
+                tickers_websites[ticker] = website
+
         logo_urls_map = {}
-        if unique_tickers:
+        if tickers_websites:
             try:
-                logo_urls_map = get_ticker_logo_urls(unique_tickers)
+                logo_urls_map = get_ticker_logo_urls(list(tickers_websites.keys()), tickers_websites)
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
         
@@ -1569,19 +1608,28 @@ def get_dividend_data():
         
         logger.info(f"[Dividend API] Fetched {len(dividend_list)} dividend records")
 
-        # Batch fetch logo URLs
-        unique_tickers = list(set(row.get('ticker') for row in dividend_list if row.get('ticker')))
+        # Prepare Log (for table) - already sorted by pay_date desc from query
+        # Extract company_name and website from nested securities object
+        logger.debug("[Dividend API] Processing dividend records into log_data")
+
+        # First pass: collect tickers and websites for bulk logo fetch
+        tickers_websites = {}
+        for row in dividend_list:
+            ticker = row.get('ticker')
+            if ticker:
+                website = None
+                if 'securities' in row and row['securities']:
+                    website = row['securities'].get('website')
+                tickers_websites[ticker] = website
+
+        # Batch fetch logo URLs using available websites
         logo_urls_map = {}
-        if unique_tickers:
+        if tickers_websites:
             try:
-                logo_urls_map = get_ticker_logo_urls(unique_tickers)
+                logo_urls_map = get_ticker_logo_urls(list(tickers_websites.keys()), tickers_websites)
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
 
-        
-        # Prepare Log (for table) - already sorted by pay_date desc from query
-        # Extract company_name from nested securities object (same as get_trade_log does)
-        logger.debug("[Dividend API] Processing dividend records into log_data")
         log_data = []
         for row in dividend_list:
             pay_date = row.get('pay_date', '')
@@ -1917,47 +1965,44 @@ def get_movers_data():
                 result.append(item)
             return result
 
-        # Company name lookup for period movers
+        # Company name and website lookup for period movers
         company_name_map = {}
-        if movers and days is not None and fund:
-            all_tickers = []
-            if not movers['gainers'].empty:
-                all_tickers.extend(movers['gainers']['ticker'].dropna().unique().tolist())
-            if not movers['losers'].empty:
-                all_tickers.extend(movers['losers']['ticker'].dropna().unique().tolist())
-            unique_tickers = list(set(all_tickers))
-
-            if unique_tickers:
-                try:
-                    client = get_supabase_client_flask()
-                    if client:
-                        for i in range(0, len(unique_tickers), 100):
-                            batch = unique_tickers[i:i + 100]
-                            result = client.supabase.table("securities") \
-                                .select("ticker, company_name") \
-                                .in_("ticker", batch) \
-                                .execute()
-                            if result.data:
-                                for row in result.data:
-                                    ticker = row.get('ticker')
-                                    if ticker:
-                                        company_name_map[ticker] = row.get('company_name') or ticker
-                except Exception as e:
-                    logger.warning(f"[Dashboard API] Could not fetch company names for movers: {e}")
+        websites_map = {}
         
-        # Collect all tickers for logo fetching
+        # Determine unique tickers involved in movers
         all_tickers = []
         if not movers['gainers'].empty:
             all_tickers.extend(movers['gainers']['ticker'].dropna().unique().tolist())
         if not movers['losers'].empty:
             all_tickers.extend(movers['losers']['ticker'].dropna().unique().tolist())
+        unique_tickers = list(set(all_tickers))
+
+        if unique_tickers:
+            try:
+                client = get_supabase_client_flask()
+                if client:
+                    for i in range(0, len(unique_tickers), 100):
+                        batch = unique_tickers[i:i + 100]
+                        # Fetch website along with company_name
+                        result = client.supabase.table("securities") \
+                            .select("ticker, company_name, website") \
+                            .in_("ticker", batch) \
+                            .execute()
+                        if result.data:
+                            for row in result.data:
+                                ticker = row.get('ticker')
+                                if ticker:
+                                    company_name_map[ticker] = row.get('company_name') or ticker
+                                    websites_map[ticker] = row.get('website')
+            except Exception as e:
+                logger.warning(f"[Dashboard API] Could not fetch company names/websites for movers: {e}")
         
         # Batch fetch logo URLs
         logo_urls_map = {}
-        unique_tickers = list(set(all_tickers))
         if unique_tickers:
             try:
-                logo_urls_map = get_ticker_logo_urls(unique_tickers)
+                # Pass collected websites map
+                logo_urls_map = get_ticker_logo_urls(unique_tickers, websites_map)
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
 

@@ -10,7 +10,7 @@ Parqet ticker-based API.  This solves cases where Parqet returns the wrong logo
 """
 
 import os
-from typing import Optional
+from typing import Optional, Dict
 from urllib.parse import urlparse
 import logging
 
@@ -70,7 +70,7 @@ def get_ticker_logo_url(
         return None
 
     # ------------------------------------------------------------------
-    # Alternative logo source (Clearbit domain-based)
+    # Alternative logo source (Unavatar domain-based)
     # ------------------------------------------------------------------
     if use_alt and website:
         domain = _extract_domain(website)
@@ -106,13 +106,26 @@ def get_ticker_logo_url(
     return parqet_url
 
 
-def get_ticker_logo_urls(tickers: list[str]) -> dict[str, Optional[str]]:
-    """Get logo URLs for multiple tickers at once (default Parqet source).
+def get_ticker_logo_urls(tickers: list[str], websites: Dict[str, str] = None) -> Dict[str, Optional[str]]:
+    """Get logo URLs for multiple tickers at once.
+
+    If websites dictionary is provided, uses Unavatar domain-based lookup (better quality).
+    Otherwise falls back to Parqet ticker-based lookup.
 
     Args:
         tickers: List of ticker symbols
+        websites: Optional dict mapping ticker -> website URL
 
     Returns:
         Dictionary mapping ticker -> logo URL
     """
-    return {ticker: get_ticker_logo_url(ticker) for ticker in tickers}
+    results = {}
+    for ticker in tickers:
+        website = websites.get(ticker) if websites else None
+        if website:
+            # If we have a website, try using it for better quality
+            results[ticker] = get_ticker_logo_url(ticker, use_alt=True, website=website)
+        else:
+            # Fallback to standard ticker-based lookup
+            results[ticker] = get_ticker_logo_url(ticker)
+    return results

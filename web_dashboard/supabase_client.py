@@ -561,7 +561,7 @@ class SupabaseClient:
         try:
             # Select trade_log columns and join with securities for company_name
             query = self.supabase.table("trade_log").select(
-                "*, securities(company_name)"
+                "*, securities(company_name, website)"
             ).order("date", desc=True).limit(limit)
             
             if fund:
@@ -576,9 +576,11 @@ class SupabaseClient:
                 # Extract company_name from nested securities object
                 if 'securities' in trade and trade['securities']:
                     trade['company_name'] = trade['securities'].get('company_name')
+                    trade['website'] = trade['securities'].get('website')
                     del trade['securities']  # Remove the nested object
                 else:
                     trade['company_name'] = None
+                    trade['website'] = None
                 trades.append(trade)
             
             return trades
