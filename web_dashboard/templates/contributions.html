@@ -14,7 +14,7 @@
             <label for="contrib-fund-filter" class="block mb-1 text-xs font-medium text-text-secondary">Filter by
                 Fund</label>
             <select id="contrib-fund-filter"
-                class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                class="form-input-theme">
                 <option value="All" selected>All Funds</option>
                 <!-- Populated by JS -->
             </select>
@@ -52,7 +52,7 @@
                     <h3 class="text-lg font-bold text-text-primary">Contribution History</h3>
                     <div class="flex gap-2">
                         <input type="text" id="history-search"
-                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block p-2"
+                            class="form-input-theme p-2 w-auto"
                             placeholder="Search contributor...">
                         <button id="refresh-history-btn"
                             class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-3 py-2 focus:outline-hidden transition-colors duration-200">
@@ -110,7 +110,7 @@
                     <div>
                         <label for="form-fund" class="block mb-2 text-sm font-medium text-text-primary">Fund</label>
                         <select id="form-fund" name="fund"
-                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
+                            class="form-input-theme"
                             required>
                             <!-- JS -->
                         </select>
@@ -142,7 +142,7 @@
                         <label for="contributor" class="block mb-2 text-sm font-medium text-text-primary">Contributor
                             Name</label>
                         <input type="text" id="contributor" name="contributor" autocomplete="off"
-                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
+                            class="form-input-theme"
                             placeholder="Type to search contributors..."
                             required>
                         <input type="hidden" id="contributor-id" name="contributor_id">
@@ -157,7 +157,7 @@
                         <label for="email" class="block mb-2 text-sm font-medium text-text-primary">Email
                             (Optional)</label>
                         <input type="email" id="email" name="email"
-                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                            class="form-input-theme">
                     </div>
 
                     <div>
@@ -167,7 +167,7 @@
                             <span
                                 class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-text-secondary">$</span>
                             <input type="number" id="amount" name="amount" min="0.01" step="0.01"
-                                class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full ps-8 p-2.5"
+                                class="form-input-theme ps-8"
                                 required>
                         </div>
                     </div>
@@ -175,7 +175,7 @@
                     <div>
                         <label for="date" class="block mb-2 text-sm font-medium text-text-primary">Date</label>
                         <input type="date" id="date" name="date"
-                            class="bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5"
+                            class="form-input-theme"
                             required>
                     </div>
 
@@ -183,7 +183,7 @@
                         <label for="notes" class="block mb-2 text-sm font-medium text-text-primary">Notes
                             (Optional)</label>
                         <textarea id="notes" name="notes" rows="2"
-                            class="block p-2.5 w-full text-sm text-text-primary bg-dashboard-surface-alt rounded-lg border border-border focus:ring-accent focus:border-accent"></textarea>
+                            class="form-input-theme"></textarea>
                     </div>
 
                     <button type="submit" id="submit-contrib-btn"
