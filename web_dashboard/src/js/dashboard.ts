@@ -2791,6 +2791,32 @@ function renderPnlChart(data: PnlChartData): void {
             modeBarButtonsToRemove: ['pan2d', 'lasso2d']
         });
         attachPlotlyContainerResize('pnl-chart');
+
+        // Make bars clickable: open ticker details page from the selected position.
+        const pnlGraphEl = document.getElementById('pnl-chart') as any;
+        if (pnlGraphEl) {
+            if (typeof pnlGraphEl.removeAllListeners === 'function') {
+                pnlGraphEl.removeAllListeners('plotly_click');
+                pnlGraphEl.removeAllListeners('plotly_hover');
+                pnlGraphEl.removeAllListeners('plotly_unhover');
+            }
+
+            pnlGraphEl.on('plotly_click', (event: any) => {
+                const point = event?.points?.[0];
+                const tickerRaw = point?.x;
+                const ticker = tickerRaw ? String(tickerRaw).trim() : '';
+                if (!ticker) return;
+                window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
+            });
+
+            pnlGraphEl.on('plotly_hover', () => {
+                pnlGraphEl.style.cursor = 'pointer';
+            });
+
+            pnlGraphEl.on('plotly_unhover', () => {
+                pnlGraphEl.style.cursor = 'default';
+            });
+        }
         console.log('[Dashboard] P&L chart rendered with Plotly');
 
     } catch (error) {
