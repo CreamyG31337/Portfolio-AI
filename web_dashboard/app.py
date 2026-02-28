@@ -44,10 +44,10 @@ from flask_cors import CORS
 # Ensure repo-level modules (e.g., utils.*) are importable before route imports.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DASHBOARD_ROOT = Path(__file__).resolve().parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 if str(WEB_DASHBOARD_ROOT) not in sys.path:
     sys.path.insert(0, str(WEB_DASHBOARD_ROOT))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from flask_cache_utils import cache_data, cache_resource
 from rate_limiter import rate_limit
