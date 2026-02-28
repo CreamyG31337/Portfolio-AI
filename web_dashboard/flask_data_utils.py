@@ -138,22 +138,21 @@ def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Opti
             
             # Flatten securities fields for easy access while preserving the nested object
             if 'securities' in df.columns:
-                securities_df = pd.json_normalize(df['securities'])
-                if not securities_df.empty:
-                    for col in [
-                        'company_name',
-                        'sector',
-                        'industry',
-                        'market_cap',
-                        'country',
-                        'trailing_pe',
-                        'dividend_yield',
-                        'fifty_two_week_high',
-                        'fifty_two_week_low',
-                        'last_updated'
-                    ]:
-                        if col in securities_df.columns:
-                            df[col] = securities_df[col]
+                # OPTIMIZATION: Use list comprehension instead of pd.json_normalize which is very slow
+                sec_col = df['securities'].tolist()
+                for col in [
+                    'company_name',
+                    'sector',
+                    'industry',
+                    'market_cap',
+                    'country',
+                    'trailing_pe',
+                    'dividend_yield',
+                    'fifty_two_week_high',
+                    'fifty_two_week_low',
+                    'last_updated'
+                ]:
+                    df[col] = [s.get(col) if isinstance(s, dict) else None for s in sec_col]
             
             return df
         return pd.DataFrame()
@@ -243,11 +242,10 @@ def _get_positions_as_of_date_flask_cached(
 
         # Flatten securities fields for easy access while preserving nested object
         if 'securities' in df.columns:
-            securities_df = pd.json_normalize(df['securities'])
-            if not securities_df.empty:
-                for col in ['company_name', 'sector', 'industry', 'currency']:
-                    if col in securities_df.columns:
-                        df[col] = securities_df[col]
+            # OPTIMIZATION: Use list comprehension instead of pd.json_normalize which is very slow
+            sec_col = df['securities'].tolist()
+            for col in ['company_name', 'sector', 'industry', 'currency']:
+                df[col] = [s.get(col) if isinstance(s, dict) else None for s in sec_col]
 
         # Keep most recent row per ticker (as of date)
         if 'ticker' in df.columns and 'date' in df.columns:
