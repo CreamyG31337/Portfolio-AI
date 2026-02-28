@@ -2704,8 +2704,11 @@ function renderSectorChart(data: AllocationChartData): void {
     layout.autosize = true;
     layout.showlegend = false;
 
-    // Ensure proper margins for centering
-    layout.margin = { l: 20, r: 20, t: 40, b: 40 };
+    // Reserve space for outside pie labels + leader lines.
+    const isMobileViewport = window.matchMedia('(max-width: 767px)').matches;
+    layout.margin = isMobileViewport
+        ? { l: 20, r: 20, t: 40, b: 40 }
+        : { l: 60, r: 90, t: 40, b: 40 };
 
     try {
         Plotly.newPlot('sector-chart', data.data, layout, {
