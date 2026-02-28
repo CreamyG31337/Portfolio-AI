@@ -121,7 +121,7 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
         from collections import deque
         from decimal import Decimal
         from app import get_supabase_client
-        import re
+        from utils.trade_reason import infer_trade_action
         
         has_action_column = False
 
@@ -163,24 +163,7 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
                 # Use action column if available
                 trade_action = str(t.get('action', '')).upper()
             else:
-                # Fallback to improved string matching with regex
-                reason_text = str(t.get('reason', ''))
-                # Use regex to find BUY or SELL as whole words (case-insensitive)
-                buy_match = re.search(r'\bBUY\b', reason_text, re.IGNORECASE)
-                sell_match = re.search(r'\bSELL\b', reason_text, re.IGNORECASE)
-                
-                if buy_match and not sell_match:
-                    trade_action = 'BUY'
-                elif sell_match and not buy_match:
-                    trade_action = 'SELL'
-                elif buy_match and sell_match:
-                    # Ambiguous - log warning and default to BUY
-                    logger.warning(f"Ambiguous trade action in reason field: {reason_text}. Defaulting to BUY.")
-                    trade_action = 'BUY'
-                else:
-                    # No clear action found - default to BUY (assume purchases)
-                    # Don't log for every trade to avoid spam, but this is a potential issue
-                    trade_action = 'BUY'
+                trade_action = infer_trade_action(t.get('reason', ''), default='BUY')
             
             if trade_action == 'BUY':
                 lots.append((Decimal(str(t['shares'])), Decimal(str(t['price']))))

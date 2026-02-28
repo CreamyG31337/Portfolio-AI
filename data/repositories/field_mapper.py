@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Any, Optional
 import logging
+from utils.trade_reason import infer_trade_action
 
 logger = logging.getLogger(__name__)
 
@@ -250,11 +251,7 @@ class TradeMapper:
         from ..models.trade import Trade
 
         # Derive action from reason field
-        reason = row.get('reason', '').lower()
-        if 'sell' in reason or 'limit sell' in reason or 'market sell' in reason:
-            action = 'SELL'
-        else:
-            action = 'BUY'  # Default to BUY for trades
+        action = infer_trade_action(row.get('reason', ''), default='BUY')
 
         return Trade(
             ticker=row['ticker'],

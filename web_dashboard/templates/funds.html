@@ -28,6 +28,7 @@
                     <tr>
                         <th scope="col" class="px-6 py-3">Fund Name</th>
                         <th scope="col" class="px-6 py-3">Type</th>
+                        <th scope="col" class="px-6 py-3">Dividend Handling</th>
                         <th scope="col" class="px-6 py-3">Currency</th>
                         <th scope="col" class="px-6 py-3">Production</th>
                         <th scope="col" class="px-6 py-3">Stats</th>
@@ -37,7 +38,7 @@
                 <tbody id="funds-table-body">
                     <!-- Populated by JS -->
                     <tr class="bg-dashboard-surface border-b border-border hover:bg-dashboard-background">
-                        <td colspan="6" class="px-6 py-4 text-center">Loading funds...</td>
+                        <td colspan="7" class="px-6 py-4 text-center">Loading funds...</td>
                     </tr>
                 </tbody>
             </table>
@@ -131,7 +132,7 @@
                         <input type="text" name="description" id="new-fund-desc"
                             class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-3 gap-4">
                         <div>
                             <label for="new-fund-type"
                                 class="block mb-2 text-sm font-medium text-text-primary">Type</label>
@@ -142,6 +143,15 @@
                                 <option value="tfsa">TFSA</option>
                                 <option value="rrsp">RRSP</option>
                                 <option value="test">Test</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="new-fund-dividend-mode"
+                                class="block mb-2 text-sm font-medium text-text-primary">Dividend Handling</label>
+                            <select name="dividend_mode" id="new-fund-dividend-mode"
+                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                                <option value="reinvest">Reinvest (DRIP)</option>
+                                <option value="cash">Cash</option>
                             </select>
                         </div>
                         <div>
@@ -198,7 +208,7 @@
                         <input type="text" id="edit-fund-desc"
                             class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-3 gap-4">
                         <div>
                             <label for="edit-fund-type"
                                 class="block mb-2 text-sm font-medium text-text-primary">Type</label>
@@ -209,6 +219,15 @@
                                 <option value="tfsa">TFSA</option>
                                 <option value="rrsp">RRSP</option>
                                 <option value="test">Test</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="edit-fund-dividend-mode"
+                                class="block mb-2 text-sm font-medium text-text-primary">Dividend Handling</label>
+                            <select id="edit-fund-dividend-mode"
+                                class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
+                                <option value="reinvest">Reinvest (DRIP)</option>
+                                <option value="cash">Cash</option>
                             </select>
                         </div>
                         <div>

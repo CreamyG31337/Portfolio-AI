@@ -41,6 +41,7 @@ from market_data.market_hours import MarketHours
 from utils.market_holidays import MarketHolidays
 from utils.ticker_utils import get_company_name
 from display.console_output import print_success, print_error, print_info, print_warning, _safe_emoji
+from utils.trade_reason import is_dividend_reason
 
 # Load environment variables
 load_dotenv(project_root / 'web_dashboard' / '.env')
@@ -552,6 +553,36 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
         all_trading_days_list = sorted(list(all_trading_days))
         print_info(f"   Generating snapshots for {len(all_trading_days_list)} trading days")
         
+        # Determine if this fund reinvests dividends as shares or
+        # receives them as cash.
+        fund_type = 'investment'
+        dividend_mode = ''
+        try:
+            supabase_for_type = None
+            if hasattr(repository, 'supabase_repo') and hasattr(repository.supabase_repo, 'supabase'):
+                supabase_for_type = repository.supabase_repo.supabase
+            elif hasattr(repository, 'supabase'):
+                supabase_for_type = repository.supabase
+            if supabase_for_type:
+                ft_result = supabase_for_type.table("funds").select("fund_type, dividend_mode")\
+                    .eq("name", fund_name).limit(1).execute()
+                if ft_result.data:
+                    row = ft_result.data[0]
+                    if row.get('fund_type'):
+                        fund_type = str(row['fund_type']).lower()
+                    if row.get('dividend_mode'):
+                        dividend_mode = str(row['dividend_mode']).lower()
+        except Exception:
+            pass
+        if dividend_mode not in ('cash', 'reinvest'):
+            dividend_mode = 'cash' if fund_type == 'rrsp' else 'reinvest'
+        cash_dividend_fund = dividend_mode == 'cash'
+        if cash_dividend_fund:
+            print_info(
+                f"   Fund mode '{dividend_mode}' — dividend events are treated as cash "
+                "(no share reinvestment)"
+            )
+
         # Pre-calculate positions for each trading day
         print_info("   Calculating positions for each trading day...")
         position_calc_start = time.time()
@@ -580,7 +611,11 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
                     reason_str = ''
                 else:
                     reason_str = str(reason).upper()
-                
+
+                # Skip dividend events for cash-dividend funds.
+                if cash_dividend_fund and is_dividend_reason(reason_str):
+                    continue
+
                 if 'SELL' in reason_str:
                     # Calculate realized P&L using FIFO
                     remaining_to_sell = shares

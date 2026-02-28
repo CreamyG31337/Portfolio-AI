@@ -15,6 +15,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from collections import defaultdict, deque
 import logging
+from utils.trade_reason import is_dividend_reason
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -172,6 +173,26 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
         })
         lots_by_ticker = defaultdict(deque)  # FIFO lot tracking
         
+        # Determine if this fund reinvests dividends as shares or
+        # receives them as cash.
+        fund_type = 'investment'
+        dividend_mode = ''
+        try:
+            ft_result = supabase.table("funds").select("fund_type, dividend_mode")\
+                .eq("name", fund_name).limit(1).execute()
+            if ft_result.data:
+                fund_row = ft_result.data[0]
+                if fund_row.get('fund_type'):
+                    fund_type = str(fund_row['fund_type']).lower()
+                if fund_row.get('dividend_mode'):
+                    dividend_mode = str(fund_row['dividend_mode']).lower()
+        except Exception:
+            pass
+        if dividend_mode not in ('cash', 'reinvest'):
+            # Legacy fallback during rollout
+            dividend_mode = 'cash' if fund_type == 'rrsp' else 'reinvest'
+        cash_dividend_fund = dividend_mode == 'cash'
+
         # Convert trades to DataFrame for easier processing
         trade_data = []
         for trade in trades:
@@ -181,6 +202,7 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
                 'Shares': float(trade.shares),
                 'Price': float(trade.price),
                 'Action': trade.action if hasattr(trade, 'action') else 'BUY',
+                'Reason': trade.reason if hasattr(trade, 'reason') else '',
                 'Currency': trade.currency if hasattr(trade, 'currency') else 'USD'
             })
         trade_df = pd.DataFrame(trade_data)
@@ -199,6 +221,11 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
                 shares = Decimal(str(trade['Shares']))
                 price = Decimal(str(trade['Price']))
                 action = str(trade['Action']).upper()
+                reason = str(trade.get('Reason', '') or '').upper()
+
+                # Skip dividend events for cash-dividend funds.
+                if cash_dividend_fund and is_dividend_reason(reason):
+                    continue
                 
                 if action == 'SELL':
                     # FIFO sell - consume lots

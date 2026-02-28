@@ -440,10 +440,8 @@ else:
                 
                 # Add action column for clarity
                 def get_action_display(row):
-                    reason = str(row.get('reason', '')).lower()
-                    if 'sell' in reason or 'limit sell' in reason or 'market sell' in reason:
-                        return 'SELL'
-                    return 'BUY'
+                    from utils.trade_reason import infer_trade_action
+                    return infer_trade_action(row.get('reason', ''), default='BUY')
                 
                 trades_df['action'] = trades_df.apply(get_action_display, axis=1)
                 
@@ -557,8 +555,8 @@ Time: December 19, 2025 09:30 EST""",
                 with col_left:
                     st.write(f"**Ticker:** {trade.ticker}")
                     # Infer action from reason
-                    reason_lower = (trade.reason or '').lower()
-                    inferred_action = 'SELL' if ('sell' in reason_lower or 'limit sell' in reason_lower or 'market sell' in reason_lower) else 'BUY'
+                    from utils.trade_reason import infer_trade_action
+                    inferred_action = infer_trade_action(trade.reason, default='BUY')
                     st.write(f"**Action:** {inferred_action}")
                     st.write(f"**Shares:** {trade.shares}")
                 

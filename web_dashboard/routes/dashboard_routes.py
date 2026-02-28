@@ -31,6 +31,7 @@ from flask_data_utils import (
 from web_dashboard.utils.logo_utils import get_ticker_logo_urls
 from web_dashboard.watchlist_access import get_active_watchlist_rows
 from settings import get_signal_alert_policy, normalize_fund_type
+from utils.trade_reason import infer_trade_action
 
 logger = logging.getLogger(__name__)
 
@@ -1138,15 +1139,7 @@ def get_pnl_chart():
                                 return 'SELL'
                             if 'buy' in value:
                                 return 'BUY'
-                    reason = row.get('reason')
-                    if pd.isna(reason) or reason is None:
-                        return 'BUY'
-                    reason_lower = str(reason).lower()
-                    if 'sell' in reason_lower or 'limit sell' in reason_lower or 'market sell' in reason_lower:
-                        return 'SELL'
-                    if 'drip' in reason_lower or 'dividend' in reason_lower:
-                        return 'DRIP'
-                    return 'BUY'
+                    return infer_trade_action(row.get('reason'), default='BUY')
 
                 sells_df = trades_df.copy()
                 if not sells_df.empty:
@@ -1465,14 +1458,7 @@ def get_recent_activity():
         
         def infer_action(reason):
             """Infer action type from reason field (matching Streamlit logic)"""
-            if pd.isna(reason) or reason is None:
-                return 'BUY'  # Default if no reason
-            reason_lower = str(reason).lower()
-            if 'sell' in reason_lower or 'limit sell' in reason_lower or 'market sell' in reason_lower:
-                return 'SELL'
-            if 'drip' in reason_lower or 'dividend' in reason_lower:
-                return 'DRIP'
-            return 'BUY'  # Default to BUY if no sell/drip keywords found
+            return infer_trade_action(reason, default='BUY')
         
         def calculate_display_amount(row, action):
             """Calculate display amount: P&L for sells, purchase amount for buys/drips"""

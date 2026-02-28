@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, Optional, Any
+from utils.trade_reason import infer_trade_action
 
 
 @dataclass
@@ -154,18 +155,9 @@ class Trade:
             # Last resort fallback
             timestamp = datetime.now()
         
-        # Determine action based on reason or other indicators
+        # Determine action based on reason text
         reason_raw = data.get('Reason', '')
-        # Handle case where Reason might be NaN/float or other non-string type
-        try:
-            if reason_raw is None or (hasattr(reason_raw, '__class__') and 'float' in str(reason_raw.__class__) and str(reason_raw).lower() == 'nan'):
-                reason = ''
-            elif isinstance(reason_raw, str):
-                reason = reason_raw.lower()
-            else:
-                reason = str(reason_raw).lower()
-        except (AttributeError, ValueError):
-            reason = ''
+        reason_text = str(reason_raw or '')
         # Safe decimal conversion helper (define before use)
         def safe_decimal_convert(value, default_value=Decimal('0')):
             """Safely convert value to Decimal, handling errors gracefully."""
@@ -180,15 +172,9 @@ class Trade:
             except (ValueError, TypeError, ArithmeticError):
                 return default_value
         
-        if 'sell' in reason or 'limit sell' in reason or 'market sell' in reason:
-            action = 'SELL'
-            # For sell trades, use the sell price and shares sold
-            shares = safe_decimal_convert(data.get('Shares', 0))  # This should be shares sold
-            price = safe_decimal_convert(data.get('Price', 0))  # This should be sell price
-        else:
-            action = 'BUY'
-            shares = safe_decimal_convert(data.get('Shares', 0))
-            price = safe_decimal_convert(data.get('Price', 0))
+        action = infer_trade_action(reason_text, default='BUY')
+        shares = safe_decimal_convert(data.get('Shares', 0))
+        price = safe_decimal_convert(data.get('Price', 0))
         
         return cls(
             ticker=str(data.get('Ticker', '')),

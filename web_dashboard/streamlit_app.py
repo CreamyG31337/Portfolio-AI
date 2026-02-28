@@ -2566,14 +2566,8 @@ def main():
             # Infer action type (BUY/SELL/DRIP) from reason field
             if 'reason' in recent_trades.columns:
                 def infer_action(reason):
-                    if pd.isna(reason) or reason is None:
-                        return 'BUY'  # Default if no reason
-                    reason_lower = str(reason).lower()
-                    if 'sell' in reason_lower or 'limit sell' in reason_lower or 'market sell' in reason_lower:
-                        return 'SELL'
-                    if 'drip' in reason_lower or 'dividend' in reason_lower:
-                        return 'DRIP'
-                    return 'BUY'  # Default to BUY if no sell/drip keywords found
+                    from utils.trade_reason import infer_trade_action
+                    return infer_trade_action(reason, default='BUY')
                 recent_trades['Action'] = recent_trades['reason'].apply(infer_action)
             else:
                 # No reason column - default all rows to BUY

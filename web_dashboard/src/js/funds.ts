@@ -10,6 +10,7 @@ interface Fund {
     name: string;
     description?: string;
     type?: string;
+    dividend_mode?: string;
     currency?: string;
     is_production?: boolean;
     positions?: number;
@@ -49,6 +50,7 @@ const getElements = () => ({
     editName: document.getElementById('edit-fund-name') as HTMLInputElement | null,
     editDesc: document.getElementById('edit-fund-desc') as HTMLInputElement | null,
     editType: document.getElementById('edit-fund-type') as HTMLSelectElement | null,
+    editDividendMode: document.getElementById('edit-fund-dividend-mode') as HTMLSelectElement | null,
     editCurrency: document.getElementById('edit-fund-currency') as HTMLSelectElement | null,
     deleteConfirmInput: document.getElementById('delete-confirm-input') as HTMLInputElement | null,
     refreshTicker: document.getElementById('refresh-ticker') as HTMLInputElement | null,
@@ -110,7 +112,7 @@ async function loadFunds(): Promise<void> {
         // Populate Table
         if (allFunds.length === 0) {
             if (tableBody) {
-                tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center">No funds found</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center">No funds found</td></tr>';
             }
         } else {
             if (tableBody) {
@@ -118,6 +120,7 @@ async function loadFunds(): Promise<void> {
                     <tr class="bg-dashboard-surface border-b border-border hover:bg-dashboard-background">
                         <td class="px-6 py-4 font-medium text-text-primary whitespace-nowrap">${escapeHtmlForFunds(fund.name)}</td>
                         <td class="px-6 py-4 text-text-secondary">${escapeHtmlForFunds(fund.type || 'investment')}</td>
+                        <td class="px-6 py-4 text-text-secondary">${escapeHtmlForFunds(fund.dividend_mode || 'reinvest')}</td>
                         <td class="px-6 py-4 text-text-secondary">${escapeHtmlForFunds(fund.currency || 'CAD')}</td>
                         <td class="px-6 py-4">
                             <label class="relative inline-flex items-center cursor-pointer">
@@ -197,7 +200,7 @@ async function loadFunds(): Promise<void> {
         console.error('[Funds] Error loading funds:', error);
         if (tableBody) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-theme-error-text">Error loading funds: ${escapeHtmlForFunds(errorMessage)}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-4 text-center text-theme-error-text">Error loading funds: ${escapeHtmlForFunds(errorMessage)}</td></tr>`;
         }
     }
 }
@@ -239,6 +242,7 @@ function openEditModal(fundName: string): void {
     if (elements.editName) elements.editName.value = fund.name;
     if (elements.editDesc) elements.editDesc.value = fund.description || '';
     if (elements.editType) elements.editType.value = fund.type || 'investment';
+    if (elements.editDividendMode) elements.editDividendMode.value = fund.dividend_mode || 'reinvest';
     if (elements.editCurrency) elements.editCurrency.value = fund.currency || 'CAD';
 
     // Reset delete confirmation area
@@ -275,6 +279,7 @@ async function createFund(event: Event): Promise<void> {
             name: formData.get('name') as string,
             description: (formData.get('description') as string) || '',
             fund_type: (formData.get('fund_type') as string) || 'investment',
+            dividend_mode: (formData.get('dividend_mode') as string) || 'reinvest',
             currency: (formData.get('currency') as string) || 'CAD'
         };
 
@@ -324,6 +329,7 @@ async function updateFund(event: Event): Promise<void> {
         const newName = elements.editName?.value || '';
         const description = elements.editDesc?.value || '';
         const fundType = elements.editType?.value || 'investment';
+        const dividendMode = elements.editDividendMode?.value || 'reinvest';
         const currency = elements.editCurrency?.value || 'CAD';
 
         // If name changed, use rename endpoint
@@ -347,10 +353,11 @@ async function updateFund(event: Event): Promise<void> {
         const updateData = {
             description: description,
             fund_type: fundType,
+            dividend_mode: dividendMode,
             currency: currency
         };
 
-        const response = await fetch(`/ api / v2 / funds / ${encodeURIComponent(newName)} `, {
+        const response = await fetch(`/api/v2/funds/${encodeURIComponent(newName)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(updateData),
@@ -399,7 +406,7 @@ async function confirmDeleteFund(): Promise<void> {
     }
 
     try {
-        const response = await fetch(`/ api / v2 / funds / ${encodeURIComponent(originalName)} `, {
+        const response = await fetch(`/api/v2/funds/${encodeURIComponent(originalName)}`, {
             method: 'DELETE',
             headers: { ...getCsrfHeaders() },
             credentials: 'include'

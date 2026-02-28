@@ -7,6 +7,8 @@ CREATE TABLE funds (
     description TEXT,
     currency VARCHAR(10) NOT NULL DEFAULT 'CAD'::character varying,
     fund_type VARCHAR(50) NOT NULL DEFAULT 'investment'::character varying,
+    dividend_mode VARCHAR(20) NOT NULL DEFAULT 'reinvest'::character varying
+        CHECK (dividend_mode IN ('reinvest', 'cash')),
     created_at TIMESTAMP DEFAULT now(),
     base_currency VARCHAR(3) DEFAULT 'CAD'::character varying,
     is_production BOOLEAN DEFAULT false

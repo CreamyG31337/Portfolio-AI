@@ -12,6 +12,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 fund_bp = Blueprint('fund_routes', __name__)
+VALID_DIVIDEND_MODES = {"reinvest", "cash"}
 
 def validate_fund_name(name: str) -> bool:
     """
@@ -32,6 +33,16 @@ def validate_fund_name(name: str) -> bool:
         return False
 
     return True
+
+
+def normalize_dividend_mode(value: str | None) -> str:
+    """Normalize and validate dividend handling mode."""
+    mode = str(value or "reinvest").strip().lower()
+    if mode not in VALID_DIVIDEND_MODES:
+        raise ValueError(
+            f"Invalid dividend_mode '{value}'. Valid values: {sorted(VALID_DIVIDEND_MODES)}"
+        )
+    return mode
 
 @fund_bp.route('/funds', methods=['GET'])
 @require_admin
@@ -59,6 +70,7 @@ def get_all_funds():
                 "name": name,
                 "description": fund.get('description', ''),
                 "type": fund.get('fund_type', 'investment'),
+                "dividend_mode": fund.get('dividend_mode', 'reinvest'),
                 "currency": fund.get('currency', 'CAD'),
                 "is_production": fund.get('is_production', False),
                 "created_at": fund.get('created_at'),
@@ -82,6 +94,10 @@ def create_fund():
         description = data.get('description')
         currency = data.get('currency', 'CAD')
         fund_type = data.get('fund_type', 'investment')
+        try:
+            dividend_mode = normalize_dividend_mode(data.get('dividend_mode', 'reinvest'))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
         
         if not name:
             return jsonify({"error": "Fund name is required"}), 400
@@ -101,7 +117,8 @@ def create_fund():
             "name": name,
             "description": description,
             "currency": currency,
-            "fund_type": fund_type
+            "fund_type": fund_type,
+            "dividend_mode": dividend_mode
         }).execute()
         
         # Initialize cash balances
@@ -134,6 +151,11 @@ def update_fund(fund_name):
         if 'fund_type' in data: updates['fund_type'] = data['fund_type'] 
         if 'currency' in data: updates['currency'] = data['currency']
         if 'is_production' in data: updates['is_production'] = data['is_production']
+        if 'dividend_mode' in data:
+            try:
+                updates['dividend_mode'] = normalize_dividend_mode(data['dividend_mode'])
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
         
         if not updates:
             return jsonify({"message": "No changes provided"})

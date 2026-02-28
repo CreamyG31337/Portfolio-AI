@@ -102,6 +102,33 @@ def get_fund_type(fund_name: str, client) -> str:
     return 'investment'
 
 
+def get_fund_dividend_mode(fund_name: str, client, fund_type: Optional[str] = None) -> str:
+    """Get per-fund dividend handling mode.
+
+    Returns:
+        "reinvest" for DRIP mode, "cash" for cash dividend mode.
+    """
+    try:
+        result = client.supabase.table("funds")\
+            .select("dividend_mode, fund_type")\
+            .eq("name", fund_name)\
+            .limit(1)\
+            .execute()
+        if result.data:
+            row = result.data[0]
+            mode = str(row.get("dividend_mode") or "").strip().lower()
+            if mode in {"reinvest", "cash"}:
+                return mode
+            if not fund_type and row.get("fund_type"):
+                fund_type = str(row.get("fund_type")).lower()
+    except Exception as e:
+        logger.debug(f"Could not get dividend_mode from database for {fund_name}: {e}")
+
+    # Backward-compatible fallback to legacy behavior
+    effective_fund_type = (fund_type or get_fund_type(fund_name, client)).lower()
+    return "cash" if effective_fund_type == "rrsp" else "reinvest"
+
+
 def calculate_withholding_tax(gross_amount: Decimal, fund_type: str, ticker: str) -> Decimal:
     """
     Apply Canadian withholding tax rules:
@@ -378,9 +405,14 @@ def get_price_on_date(ticker: str, target_date: date) -> Optional[Decimal]:
         return None
 
 
+def _is_drip_fund(dividend_mode: str) -> bool:
+    """Return True when dividend mode is share reinvestment."""
+    return str(dividend_mode).strip().lower() == "reinvest"
+
+
 def insert_drip_transaction(
     fund: str, ticker: str, evt: DividendEvent,
-    fund_type: str, client
+    fund_type: str, dividend_mode: str, client
 ) -> bool:
     """Insert DRIP transaction into DB."""
     try:
@@ -402,47 +434,49 @@ def insert_drip_transaction(
         if not drip_price:
             logger.warning(f"Could not get price for {ticker} on {evt.pay_date}")
             return False
-            
-        reinvested_shares = net_amount / drip_price
+
         currency = 'CAD' if is_canadian_ticker(ticker) else 'USD'
-        
+
         # 3.5. Ensure ticker exists in securities table (required for FK constraint)
         if not client.ensure_ticker_in_securities(ticker, currency):
             logger.warning(f"Failed to ensure ticker {ticker} in securities table, continuing anyway")
 
-        # 4. Insert Trade Log
         # Use 4 PM ET market close
         et_tz = pytz.timezone('America/New_York')
         pay_dt = datetime.combine(evt.pay_date, dt_time(16, 0))
         et_dt = et_tz.localize(pay_dt)
         utc_dt = et_dt.astimezone(pytz.UTC)
-        
-        trade_entry = {
-            'fund': fund,
-            'date': utc_dt.isoformat(),
-            'ticker': ticker,
-            'shares': float(reinvested_shares),
-            'price': float(drip_price),
-            'cost_basis': float(net_amount),
-            'pnl': 0.0,
-            'reason': 'DRIP',
-            'currency': currency
-        }
-        
-        # Ensure ticker exists in securities table before inserting trade
-        try:
-            client.ensure_ticker_in_securities(ticker, currency)
-        except Exception as e:
-            logger.warning(f"Error ensuring ticker {ticker} in securities: {e}")
-            # Continue anyway, let the insert fail if FK constraint violation
 
-        trade_res = client.supabase.table("trade_log").insert(trade_entry).execute()
-        if not trade_res.data:
-            return False
-        
-        trade_id = trade_res.data[0]['id']
-        
-        # 5. Insert Dividend Log
+        # Determine if fund reinvests dividends as shares or receives cash
+        is_drip = _is_drip_fund(dividend_mode)
+        reinvested_shares = net_amount / drip_price if is_drip else Decimal('0')
+
+        trade_id = None
+        if is_drip:
+            # 4a. DRIP fund — insert share purchase into trade_log
+            trade_entry = {
+                'fund': fund,
+                'date': utc_dt.isoformat(),
+                'ticker': ticker,
+                'shares': float(reinvested_shares),
+                'price': float(drip_price),
+                'cost_basis': float(net_amount),
+                'pnl': 0.0,
+                'reason': 'DRIP',
+                'currency': currency
+            }
+
+            trade_res = client.supabase.table("trade_log").insert(trade_entry).execute()
+            if not trade_res.data:
+                return False
+            trade_id = trade_res.data[0]['id']
+        else:
+            logger.info(
+                f"💵 Cash dividend {fund}/{ticker}: ${net_amount:.2f} "
+                f"(fund_type={fund_type}, dividend_mode={dividend_mode}, no share reinvestment)"
+            )
+
+        # 5. Insert Dividend Log (always — tracks income for both DRIP and cash)
         div_entry = {
             'fund': fund,
             'ticker': ticker,
@@ -453,14 +487,15 @@ def insert_drip_transaction(
             'net_amount': float(net_amount),
             'reinvested_shares': float(reinvested_shares),
             'drip_price': float(drip_price),
-            'is_verified': (evt.source == 'nasdaq'), # Verify if from official source
+            'is_verified': (evt.source == 'nasdaq'),
             'trade_log_id': trade_id,
             'currency': currency
         }
         
         client.supabase.table("dividend_log").insert(div_entry).execute()
         
-        logger.info(f"✅ DRIP {fund}/{ticker}: {reinvested_shares:.4f} shares @ ${drip_price} (Source: {evt.source})")
+        if is_drip:
+            logger.info(f"✅ DRIP {fund}/{ticker}: {reinvested_shares:.4f} shares @ ${drip_price} (Source: {evt.source})")
         return True
         
     except Exception as e:
@@ -544,6 +579,7 @@ def process_dividends_job(lookback_days: int = 7) -> None:
                     continue
                     
                 fund_type = get_fund_type(fund, client)
+                dividend_mode = get_fund_dividend_mode(fund, client, fund_type)
                 
                 # 2. Process Events
                 for evt in events:
@@ -558,7 +594,14 @@ def process_dividends_job(lookback_days: int = 7) -> None:
                         continue
                         
                     # Process
-                    success = insert_drip_transaction(fund, ticker, evt, fund_type, client)
+                    success = insert_drip_transaction(
+                        fund,
+                        ticker,
+                        evt,
+                        fund_type,
+                        dividend_mode,
+                        client
+                    )
                     if success:
                         stats['processed'] += 1
                         # Add to processed set to prevent double counting in same run

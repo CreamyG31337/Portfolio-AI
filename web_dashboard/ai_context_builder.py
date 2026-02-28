@@ -21,6 +21,8 @@ project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+from utils.trade_reason import infer_trade_action, is_sell_reason
+
 
 def format_holdings(
     positions_df: pd.DataFrame, 
@@ -96,12 +98,9 @@ def _format_portfolio_snapshot_table(
         
         # Filter BUY trades only - infer from reason field
         if 'reason' in trades_df.columns:
-            # Infer from reason field - only include non-SELL trades
+            # Infer from reason field - only include BUY trades
             def is_buy_trade(reason):
-                if pd.isna(reason) or reason is None:
-                    return True  # Default to BUY if no reason
-                reason_lower = str(reason).lower()
-                return not ('sell' in reason_lower or 'limit sell' in reason_lower or 'market sell' in reason_lower)
+                return infer_trade_action(reason, default='BUY') == 'BUY'
             buy_trades = trades_df[trades_df['reason'].apply(is_buy_trade)].copy()
         else:
             # No way to determine action, assume all are BUY trades
@@ -710,16 +709,9 @@ def format_trades(trades_df: pd.DataFrame, limit: int = 100) -> str:
         timestamp = row.get('timestamp') or row.get('date', '')
         symbol = row.get('symbol', row.get('ticker', 'N/A'))
         
-        # Extract action from reason field (like dashboard does)
-        action = 'BUY'  # Default to BUY
+        # Extract action from reason field (shared classifier)
         reason = row.get('reason', '')
-        if reason and isinstance(reason, str):
-            reason_lower = reason.lower()
-            if 'sell' in reason_lower or 'limit sell' in reason_lower or 'market sell' in reason_lower:
-                action = 'SELL'
-            elif 'drip' in reason_lower or 'dividend' in reason_lower:
-                action = 'DRIP'
-            # else: remains BUY (default)
+        action = infer_trade_action(reason, default='BUY')
         
         # Handle both 'quantity' and 'shares' columns
         quantity = row.get('quantity') or row.get('shares', 0)
@@ -753,12 +745,7 @@ def format_trades(trades_df: pd.DataFrame, limit: int = 100) -> str:
     
     # Add summary statistics - infer from reason if available
     if 'reason' in df.columns:
-        def is_sell(reason):
-            if pd.isna(reason) or reason is None:
-                return False
-            reason_lower = str(reason).lower()
-            return 'sell' in reason_lower or 'limit sell' in reason_lower or 'market sell' in reason_lower
-        sells = df['reason'].apply(is_sell).sum()
+        sells = df['reason'].apply(is_sell_reason).sum()
         buys = len(df) - sells
         lines.append("")
         lines.append(f"Summary: {buys} buys, {sells} sells")
