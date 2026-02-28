@@ -155,13 +155,14 @@ def print_success(message: str, emoji: str = _safe_emoji("✅")) -> None:
         emoji: The emoji to display with the message (default: ✅)
     """
     safe_emoji = _safe_emoji(emoji)
+    safe_message = format_text_for_console(message)
     if _HAS_RICH and console and not _FORCE_FALLBACK:
         try:
-            console.print(f"{safe_emoji} {message}", style="bold green")
+            console.print(f"{safe_emoji} {safe_message}", style="bold green")
         except UnicodeEncodeError:
-            print(f"SUCCESS: {message}")
+            print(f"SUCCESS: {safe_message}")
     else:
-        print(f"{Fore.GREEN}{safe_emoji} {message}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}{safe_emoji} {safe_message}{Style.RESET_ALL}")
 
 
 def print_error(message: str, emoji: str = _safe_emoji("❌")) -> None:
@@ -172,13 +173,14 @@ def print_error(message: str, emoji: str = _safe_emoji("❌")) -> None:
         emoji: The emoji to display with the message (default: ❌)
     """
     safe_emoji = _safe_emoji(emoji)
+    safe_message = format_text_for_console(message)
     if _HAS_RICH and console and not _FORCE_FALLBACK:
         try:
-            console.print(f"{safe_emoji} {message}", style="bold red")
+            console.print(f"{safe_emoji} {safe_message}", style="bold red")
         except UnicodeEncodeError:
-            print(f"ERROR: {message}")
+            print(f"ERROR: {safe_message}")
     else:
-        print(f"{Fore.RED}{safe_emoji} {message}{Style.RESET_ALL}")
+        print(f"{Fore.RED}{safe_emoji} {safe_message}{Style.RESET_ALL}")
 
 
 def print_warning(message: str, emoji: str = _safe_emoji("⚠️")) -> None:
@@ -189,13 +191,14 @@ def print_warning(message: str, emoji: str = _safe_emoji("⚠️")) -> None:
         emoji: The emoji to display with the message (default: ⚠️)
     """
     safe_emoji = _safe_emoji(emoji)
+    safe_message = format_text_for_console(message)
     if _HAS_RICH and console and not _FORCE_FALLBACK:
         try:
-            console.print(f"{safe_emoji} {message}", style="bold yellow")
+            console.print(f"{safe_emoji} {safe_message}", style="bold yellow")
         except UnicodeEncodeError:
-            print(f"WARNING: {message}")
+            print(f"WARNING: {safe_message}")
     else:
-        print(f"{Fore.YELLOW}{safe_emoji} {message}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}{safe_emoji} {safe_message}{Style.RESET_ALL}")
 
 
 def print_info(message: str, emoji: str = "ℹ️") -> None:
@@ -206,13 +209,14 @@ def print_info(message: str, emoji: str = "ℹ️") -> None:
         emoji: The emoji to display with the message (default: ℹ️)
     """
     safe_emoji = _safe_emoji(emoji)
+    safe_message = format_text_for_console(message)
     if _HAS_RICH and console and not _FORCE_FALLBACK:
         try:
-            console.print(f"{safe_emoji} {message}", style="bold blue")
+            console.print(f"{safe_emoji} {safe_message}", style="bold blue")
         except UnicodeEncodeError:
-            print(f"INFO: {message}")
+            print(f"INFO: {safe_message}")
     else:
-        print(f"{Fore.BLUE}{safe_emoji} {message}{Style.RESET_ALL}")
+        print(f"{Fore.BLUE}{safe_emoji} {safe_message}{Style.RESET_ALL}")
 
 
 
