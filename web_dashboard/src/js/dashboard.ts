@@ -211,6 +211,8 @@ const state = {
     inverseExchangeRate: false
 };
 
+const chartResizeObservers = new Map<string, ResizeObserver>();
+
 // Helper to get effective theme
 function getEffectiveTheme(): string {
     const htmlElement = document.documentElement;
@@ -232,6 +234,38 @@ function getEffectiveTheme(): string {
     }
 
     return 'light'; // default
+}
+
+function attachPlotlyContainerResize(
+    chartId: string,
+    relayoutBuilder?: (el: HTMLElement) => Record<string, unknown> | null
+): void {
+    if (chartResizeObservers.has(chartId)) return;
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const el = document.getElementById(chartId);
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+        const Plotly = (window as any).Plotly;
+        if (!Plotly) return;
+
+        for (const entry of entries) {
+            const target = entry.target as HTMLElement;
+            if (!(target as any).data) continue; // Plotly not initialized yet
+
+            window.requestAnimationFrame(() => {
+                const relayout = relayoutBuilder ? relayoutBuilder(target) : null;
+                if (relayout && Object.keys(relayout).length > 0) {
+                    Plotly.relayout(target, relayout);
+                }
+                Plotly.Plots.resize(target);
+            });
+        }
+    });
+
+    observer.observe(el);
+    chartResizeObservers.set(chartId, observer);
 }
 
 // Initialize theme sync for charts
@@ -2014,23 +2048,10 @@ function renderCurrencyChart(data: AllocationChartData): void {
             displayModeBar: false,
             useResizeHandler: true
         });
-
-        // Add resize handler
-        if (!(window as any).__currencyChartResizeHandler) {
-            const resizeHandler = () => {
-                const el = document.getElementById('currency-chart');
-                if (el) {
-                    // Constrain to container size
-                    const maxHeight = Math.min(el.offsetHeight || 350, 400);
-                    Plotly.relayout('currency-chart', {
-                        height: maxHeight,
-                        width: el.offsetWidth
-                    });
-                }
-            };
-            (window as any).__currencyChartResizeHandler = resizeHandler;
-            window.addEventListener('resize', resizeHandler);
-        }
+        attachPlotlyContainerResize('currency-chart', (containerEl) => ({
+            height: Math.min(containerEl.offsetHeight || 350, 400),
+            width: containerEl.offsetWidth || undefined
+        }));
     } catch (error) {
         console.error('[Dashboard] Error rendering currency chart:', error);
     }
@@ -2086,17 +2107,7 @@ function renderExchangeRateData(data: ExchangeRateData): void {
                 responsive: true,
                 displayModeBar: false
             });
-
-            // Add resize handler
-            if (!(window as any).__exchangeRateChartResizeHandler) {
-                const resizeHandler = () => {
-                    if (document.getElementById('exchange-rate-chart')) {
-                        Plotly.Plots.resize('exchange-rate-chart');
-                    }
-                };
-                (window as any).__exchangeRateChartResizeHandler = resizeHandler;
-                window.addEventListener('resize', resizeHandler);
-            }
+            attachPlotlyContainerResize('exchange-rate-chart');
         } catch (error) {
             console.error('[Dashboard] Error rendering exchange rate chart:', error);
         }
@@ -2173,23 +2184,15 @@ function renderCommoditiesChart(data: AllocationChartData): void {
             displayModeBar: false,
             useResizeHandler: true
         });
-        
-        if (!(window as any).__commoditiesChartResizeHandler) {
-            const resizeHandler = () => {
-                if (document.getElementById('commodities-chart')) {
-                    const isMobile = window.matchMedia('(max-width: 767px)').matches;
-                    Plotly.relayout('commodities-chart', {
-                        showlegend: !isMobile,
-                        margin: isMobile
-                            ? { l: 50, r: 12, t: 28, b: 56 }
-                            : { l: 60, r: 20, t: 40, b: 60 }
-                    });
-                    Plotly.Plots.resize('commodities-chart');
-                }
+        attachPlotlyContainerResize('commodities-chart', () => {
+            const isMobile = window.matchMedia('(max-width: 767px)').matches;
+            return {
+                showlegend: !isMobile,
+                margin: isMobile
+                    ? { l: 50, r: 12, t: 28, b: 56 }
+                    : { l: 60, r: 20, t: 40, b: 60 }
             };
-            (window as any).__commoditiesChartResizeHandler = resizeHandler;
-            window.addEventListener('resize', resizeHandler);
-        }
+        });
     } catch (error) {
         console.error('[Dashboard] Error rendering commodities chart:', error);
     }
@@ -2490,6 +2493,7 @@ function renderPerformanceChart(data: PerformanceChartData): void {
             modeBarButtonsToRemove: ['pan2d', 'lasso2d'],
             modeBarButtonsToAdd: [fullscreenButton]
         });
+        attachPlotlyContainerResize('performance-chart');
 
         // Handle fullscreen change to resize chart
         const handleFullscreenChange = () => {
@@ -2601,6 +2605,7 @@ function renderIndividualHoldingsChart(data: IndividualHoldingsChartData): void 
             displayModeBar: true,
             modeBarButtonsToRemove: ['pan2d', 'lasso2d']
         });
+        attachPlotlyContainerResize('individual-holdings-chart');
         console.log('[Dashboard] Individual holdings chart rendered with Plotly');
 
         // Update stock count display
@@ -2716,24 +2721,8 @@ function renderSectorChart(data: AllocationChartData): void {
             displayModeBar: true,
             modeBarButtonsToRemove: ['pan2d', 'lasso2d']
         });
+        attachPlotlyContainerResize('sector-chart');
         console.log('[Dashboard] Sector chart rendered with Plotly');
-
-        // Add resize handler to redraw chart when window resizes
-        if (!(window as any).__sectorChartResizeHandler) {
-            let resizeTimeout: number | undefined;
-            const resizeHandler = () => {
-                clearTimeout(resizeTimeout);
-                resizeTimeout = window.setTimeout(() => {
-                    const Plotly = (window as any).Plotly;
-                    const el = document.getElementById('sector-chart');
-                    if (Plotly && el && (el as any).data) {
-                        Plotly.Plots.resize(el);
-                    }
-                }, 100);
-            };
-            (window as any).__sectorChartResizeHandler = resizeHandler;
-            window.addEventListener('resize', resizeHandler);
-        }
 
     } catch (error) {
         console.error('[Dashboard] Error rendering Plotly sector chart:', error);
@@ -2801,19 +2790,8 @@ function renderPnlChart(data: PnlChartData): void {
             displayModeBar: true,
             modeBarButtonsToRemove: ['pan2d', 'lasso2d']
         });
+        attachPlotlyContainerResize('pnl-chart');
         console.log('[Dashboard] P&L chart rendered with Plotly');
-
-        // Add resize handler to redraw chart when window resizes (only once)
-        if (!(window as any).__pnlChartResizeHandler) {
-            const resizeHandler = () => {
-                const Plotly = (window as any).Plotly;
-                if (Plotly && document.getElementById('pnl-chart')) {
-                    Plotly.Plots.resize('pnl-chart');
-                }
-            };
-            (window as any).__pnlChartResizeHandler = resizeHandler;
-            window.addEventListener('resize', resizeHandler);
-        }
 
     } catch (error) {
         console.error('[Dashboard] Error rendering Plotly P&L chart:', error);
