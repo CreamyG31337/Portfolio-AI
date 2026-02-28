@@ -2158,10 +2158,14 @@ function renderCommoditiesChart(data: AllocationChartData): void {
     const Plotly = (window as any).Plotly;
     if (!Plotly) return;
     
+    const isMobileViewport = window.matchMedia('(max-width: 767px)').matches;
     const layout = { ...data.layout };
     layout.height = 400;
     layout.autosize = true;
-    layout.margin = { l: 60, r: 20, t: 40, b: 60 };
+    layout.showlegend = !isMobileViewport;
+    layout.margin = isMobileViewport
+        ? { l: 50, r: 12, t: 28, b: 56 }
+        : { l: 60, r: 20, t: 40, b: 60 };
     
     try {
         Plotly.newPlot('commodities-chart', data.data, layout, {
@@ -2173,6 +2177,13 @@ function renderCommoditiesChart(data: AllocationChartData): void {
         if (!(window as any).__commoditiesChartResizeHandler) {
             const resizeHandler = () => {
                 if (document.getElementById('commodities-chart')) {
+                    const isMobile = window.matchMedia('(max-width: 767px)').matches;
+                    Plotly.relayout('commodities-chart', {
+                        showlegend: !isMobile,
+                        margin: isMobile
+                            ? { l: 50, r: 12, t: 28, b: 56 }
+                            : { l: 60, r: 20, t: 40, b: 60 }
+                    });
                     Plotly.Plots.resize('commodities-chart');
                 }
             };
@@ -2691,6 +2702,7 @@ function renderSectorChart(data: AllocationChartData): void {
     // Update layout to be responsive
     const layout = { ...data.layout };
     layout.autosize = true;
+    layout.showlegend = false;
 
     // Ensure proper margins for centering
     layout.margin = { l: 20, r: 20, t: 40, b: 40 };
@@ -2765,9 +2777,20 @@ function renderPnlChart(data: PnlChartData): void {
         // Use larger left margin to prevent y-axis labels from being cut off
         layout.margin.l = Math.max(80, layout.margin.l || 80);
         layout.margin.r = Math.max(20, layout.margin.r || 20);
-        // Increase bottom margin to prevent legend cutoff
-        layout.margin.b = Math.max(100, layout.margin.b || 100);
+        // Reserve space for legend below plot and keep title clear at top.
+        layout.margin.t = Math.max(70, layout.margin.t || 70);
+        layout.margin.b = Math.max(140, layout.margin.b || 140);
     }
+
+    // Keep legend below chart to avoid title overlap on desktop.
+    layout.legend = {
+        ...(layout.legend || {}),
+        orientation: 'h',
+        xanchor: 'center',
+        x: 0.5,
+        yanchor: 'top',
+        y: -0.2
+    };
 
     try {
         Plotly.newPlot('pnl-chart', data.data, layout, {

@@ -1031,12 +1031,9 @@ def create_currency_exposure_chart(positions_df: pd.DataFrame, fund_name: Option
         hovertemplate='<b>%{label}</b><br>Value: $%{value:,.2f}<br>%{percent}<extra></extra>'
     ))
     
-    title = "Currency Exposure (Stock Holdings)"
-    if fund_name:
-        title += f" - {fund_name}"
-    
     fig.update_layout(
-        title=title,
+        # Section header in dashboard already provides context; avoid duplicate title
+        # inside the pie chart to keep desktop/mobile layouts less cramped.
         template='plotly_white',
         height=400,
         showlegend=True

@@ -170,6 +170,7 @@ def benchmark_refresh_job() -> None:
                 data = data.dropna(subset=["Date", "Close"]).sort_values("Date").reset_index(drop=True)
 
                 anomaly_indices: list[int] = []
+                extreme_ratio = 8.0
                 closes = data["Close"].tolist()
                 for idx in range(1, len(closes) - 1):
                     prev_close = closes[idx - 1]
@@ -187,8 +188,14 @@ def benchmark_refresh_job() -> None:
                         continue
 
                     # Isolated one-day spike/trough: huge jump against both neighbors.
-                    isolated_spike = (cur_close / prev_close >= 20.0) and (cur_close / next_close >= 20.0)
-                    isolated_trough = (prev_close / cur_close >= 20.0) and (next_close / cur_close >= 20.0)
+                    isolated_spike = (
+                        (cur_close / prev_close >= extreme_ratio)
+                        and (cur_close / next_close >= extreme_ratio)
+                    )
+                    isolated_trough = (
+                        (prev_close / cur_close >= extreme_ratio)
+                        and (next_close / cur_close >= extreme_ratio)
+                    )
 
                     if isolated_spike or isolated_trough:
                         anomaly_indices.append(idx)
