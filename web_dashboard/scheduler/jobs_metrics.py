@@ -116,9 +116,10 @@ def benchmark_refresh_job() -> None:
         ]
 
         
-        # Fetch data for the last 30 days to ensure we have recent data
+        # Fetch a wider window so historical bad ticks self-heal when upstream
+        # data providers correct them after initial publication.
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
+        start_date = end_date - timedelta(days=120)
         
         benchmarks_updated = 0
         benchmarks_failed = 0
