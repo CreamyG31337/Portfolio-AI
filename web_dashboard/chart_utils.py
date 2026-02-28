@@ -387,14 +387,14 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
         except Exception as cache_error:
             print(f"Cache lookup failed (will fetch from API): {cache_error}")
         
-        # Cache miss or stale - fetch from Yahoo Finance
-        print(f"🌐 Fetching benchmark data from Yahoo Finance: {ticker}")
+        from utils.ticker_utils import normalize_ticker_for_yahoo
+        norm_ticker = normalize_ticker_for_yahoo(ticker)
         
         # Add buffer days to ensure we get data
         buffer_start = start_date - timedelta(days=5)
         buffer_end = end_date + timedelta(days=2)
         
-        data = yf.download(ticker, start=buffer_start, end=buffer_end, progress=False, auto_adjust=False)
+        data = yf.download(norm_ticker, start=buffer_start, end=buffer_end, progress=False, auto_adjust=False)
         
         if data.empty:
             return None
@@ -1744,8 +1744,11 @@ def create_ticker_price_chart(
                 fund_name = str(trade.get('fund') or 'Unknown')
 
                 # Determine trade type: DRIP/Dividend vs Buy vs Sell
+                # Note: trade_log stores shares as positive for both buys and sells,
+                # so we check the reason field for "SELL" to identify sell trades.
                 is_dividend = 'DRIP' in reason or 'DIVIDEND' in reason
-                is_buy = shares > 0
+                is_sell = 'SELL' in reason
+                is_buy = not is_sell and shares > 0
 
                 if is_dividend:
                     color = '#9333ea'  # Purple for dividends

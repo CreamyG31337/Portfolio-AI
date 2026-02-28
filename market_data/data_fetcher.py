@@ -579,8 +579,11 @@ class MarketDataFetcher:
             yf_logger.setLevel(logging.ERROR)
 
             try:
+                from utils.ticker_utils import normalize_ticker_for_yahoo
+                norm_ticker = normalize_ticker_for_yahoo(ticker)
+                
                 # Use Ticker.history() instead of yf.download() for single ticker
-                ticker_obj = yf.Ticker(ticker)
+                ticker_obj = yf.Ticker(norm_ticker)
                 df = ticker_obj.history(
                     start=start,
                     end=end,
@@ -606,8 +609,9 @@ class MarketDataFetcher:
                 # Try a simpler approach - just get recent data without date range
                 try:
                     logger.info(f"{ticker}: Yahoo Finance reported 'possibly delisted' - retrying with simplified parameters")
-                    import yfinance as yf
-                    ticker_obj = yf.Ticker(ticker)
+                    from utils.ticker_utils import normalize_ticker_for_yahoo
+                    norm_ticker = normalize_ticker_for_yahoo(ticker)
+                    ticker_obj = yf.Ticker(norm_ticker)
                     # Try with just period instead of explicit dates
                     df = ticker_obj.history(period="5d")
 
@@ -637,7 +641,9 @@ class MarketDataFetcher:
             yf_logger.setLevel(logging.ERROR)
 
             try:
-                ticker_obj = yf.Ticker(ticker)
+                from utils.ticker_utils import normalize_ticker_for_yahoo
+                norm_ticker = normalize_ticker_for_yahoo(ticker)
+                ticker_obj = yf.Ticker(norm_ticker)
                 df = ticker_obj.history(period=period)
 
                 if isinstance(df, pd.DataFrame) and not df.empty:
@@ -666,7 +672,9 @@ class MarketDataFetcher:
             yf_logger.setLevel(logging.ERROR)
 
             try:
-                ticker_obj = yf.Ticker(ticker)
+                from utils.ticker_utils import normalize_ticker_for_yahoo
+                norm_ticker = normalize_ticker_for_yahoo(ticker)
+                ticker_obj = yf.Ticker(norm_ticker)
                 # Try with just 5 days of data, no other parameters
                 df = ticker_obj.history(period="5d", interval="1d")
 

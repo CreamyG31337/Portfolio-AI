@@ -26,11 +26,13 @@ def fetch_company_description(ticker: str) -> Optional[str]:
     """
     try:
         import yfinance as yf
+        from utils.ticker_utils import normalize_ticker_for_yahoo
         
         ticker_upper = ticker.upper().strip()
-        logger.debug(f"Fetching company description for {ticker_upper} from yfinance")
+        norm_ticker = normalize_ticker_for_yahoo(ticker_upper)
+        logger.debug(f"Fetching company description for {ticker_upper} (normalized: {norm_ticker}) from yfinance")
         
-        stock = yf.Ticker(ticker_upper)
+        stock = yf.Ticker(norm_ticker)
         info = stock.info
         
         if not info:

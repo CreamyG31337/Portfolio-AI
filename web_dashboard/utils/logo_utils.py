@@ -94,7 +94,13 @@ def get_ticker_logo_url(
     # ------------------------------------------------------------------
     # Default logo source (Parqet ticker-based)
     # ------------------------------------------------------------------
-    # Clean ticker (remove spaces, but keep exchange suffixes for Parqet)
+    # Clean ticker: remove spaces, convert class shares dots to hyphens
+    try:
+        from utils.ticker_utils import normalize_ticker_for_yahoo
+        ticker = normalize_ticker_for_yahoo(ticker)
+    except ImportError:
+        pass
+        
     clean_ticker = ticker.upper().strip().replace(" ", "")
 
     # Parqet requires full ticker with suffix for Canadian exchanges (DRX.TO)

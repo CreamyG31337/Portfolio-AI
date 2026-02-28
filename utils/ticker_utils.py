@@ -16,6 +16,31 @@ logger = logging.getLogger(__name__)
 TICKER_CORRECTION_CACHE = {}
 
 
+def normalize_ticker_for_yahoo(ticker: str) -> str:
+    """
+    Normalize ticker for Yahoo Finance API by replacing dots in class shares with hyphens.
+    e.g., BRK.B -> BRK-B, TECK.B.TO -> TECK-B.TO
+    """
+    if not ticker:
+        return ticker
+    
+    # Strip any common exchange suffixes before replacing dot
+    suffix = ""
+    base_ticker = ticker.upper().strip()
+    
+    suffixes_to_check = [".TO", ".V", ".CN", ".NE"]
+    for s in suffixes_to_check:
+        if base_ticker.endswith(s):
+            suffix = s
+            base_ticker = base_ticker[:-len(s)]
+            break
+            
+    # After stripping suffix, if there is a dot, it's a class share indicator (like BRK.B)
+    base_ticker = base_ticker.replace('.', '-')
+    
+    return base_ticker + suffix
+
+
 def detect_currency_context(ticker: str, buy_price: float = None) -> str:
     """
     Detect if a ticker is likely Canadian based on context clues.
@@ -81,7 +106,8 @@ def detect_and_correct_ticker(ticker: str, buy_price: float = None) -> str:
         
         for variant in variants_to_test:
             try:
-                stock = yf.Ticker(variant)
+                norm_variant = normalize_ticker_for_yahoo(variant)
+                stock = yf.Ticker(norm_variant)
                 info = stock.info
                 
                 # Check if we get valid info (not just empty dict)
@@ -202,7 +228,8 @@ def lookup_ticker_suffix_candidates(ticker: str, currency: Optional[str] = None)
         
         for variant in variants_to_test:
             try:
-                stock = yf.Ticker(variant)
+                norm_variant = normalize_ticker_for_yahoo(variant)
+                stock = yf.Ticker(norm_variant)
                 info = stock.info
                 
                 # Check if we get valid info (not just empty dict)
@@ -448,7 +475,8 @@ def get_company_name(ticker: str, currency: str = None) -> str:
         
         for variant in variants_to_try:
             try:
-                stock = yf.Ticker(variant)
+                norm_variant = normalize_ticker_for_yahoo(variant)
+                stock = yf.Ticker(norm_variant)
                 info = stock.info
 
                 # Check for valid company name
