@@ -1444,6 +1444,8 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
         values=values_list,
         marker=dict(colors=colors),
         textinfo='label+percent',
+        textposition='inside',
+        insidetextorientation='radial',
         hovertemplate='<b>%{label}</b><br>Value: $%{value:,.2f}<br>%{percent}<extra></extra>'
     ))
     
@@ -1456,6 +1458,7 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
         template='plotly_white',
         height=500,
         showlegend=True,
+        uniformtext=dict(minsize=10, mode='hide'),
         margin=dict(l=20, r=20, t=50, b=20),  # Center the pie chart with equal left/right margins
         autosize=True
     )
