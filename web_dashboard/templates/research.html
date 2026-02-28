@@ -978,6 +978,13 @@
                                     }
 
                                     if (eventData.status === 'complete') {
+                                        const completeDuration = typeof eventData.duration_ms === 'number'
+                                            ? `${(eventData.duration_ms / 1000).toFixed(1)}s`
+                                            : elapsed;
+                                        const tokenSuffix = eventData.tokens
+                                            ? `, ${eventData.tokens} tokens`
+                                            : '';
+                                        statusText.textContent = `[${articleNum}/${total}] ✅ Complete in ${completeDuration}${tokenSuffix}`;
                                         progressBar.classList.remove('animate-pulse');
                                         successCount++;
                                     }

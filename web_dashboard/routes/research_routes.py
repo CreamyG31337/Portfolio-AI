@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, g, jsonify
 import logging
+import time
 from datetime import datetime, timedelta, date, timezone
 from typing import Optional, List, Dict, Any
 import sys
@@ -998,6 +999,8 @@ def reanalyze_article_stream():
             from research_utils import validate_ticker_format, normalize_ticker
             from scheduler.jobs import calculate_relevance_score
             from supabase_client import SupabaseClient
+            start_time = time.time()
+            latest_tokens = 0
             
             try:
                 # Check repository
@@ -1072,7 +1075,11 @@ def reanalyze_article_stream():
                         yield f"data: {json.dumps({'status': 'initializing', 'message': 'Initializing AI model...'})}\n\n"
 
                         def progress_callback(tokens, progress):
-                            nonlocal progress_queue
+                            nonlocal progress_queue, latest_tokens
+                            try:
+                                latest_tokens = max(latest_tokens, int(tokens or 0))
+                            except (TypeError, ValueError):
+                                pass
                             progress_queue.put({
                                 "status": "generating",
                                 "message": f"Generating summary... {progress}%",
@@ -1147,7 +1154,8 @@ def reanalyze_article_stream():
                         if embedding:
                             nl_repo.update_embedding(article_id, embedding)
 
-                        yield f"data: {json.dumps({'status': 'complete', 'message': f'Successfully re-analyzed newsletter with {model_name}', 'success': True})}\n\n"
+                        duration_ms = int((time.time() - start_time) * 1000)
+                        yield f"data: {json.dumps({'status': 'complete', 'message': f'Successfully re-analyzed newsletter with {model_name}', 'success': True, 'duration_ms': duration_ms, 'tokens': latest_tokens})}\n\n"
                         return
                     except Exception as nl_err:
                         logger.error(f"Error in newsletter SSE reanalyze: {nl_err}", exc_info=True)
@@ -1170,7 +1178,11 @@ def reanalyze_article_stream():
                 yield f"data: {json.dumps({'status': 'initializing', 'message': 'Initializing AI model...'})}\n\n"
 
                 def progress_callback(tokens, progress):
-                    nonlocal progress_queue
+                    nonlocal progress_queue, latest_tokens
+                    try:
+                        latest_tokens = max(latest_tokens, int(tokens or 0))
+                    except (TypeError, ValueError):
+                        pass
                     progress_queue.put({
                         "status": "generating",
                         "message": f"Generating summary... {progress}%",
@@ -1276,7 +1288,8 @@ def reanalyze_article_stream():
                 )
                 
                 if success:
-                    yield f"data: {json.dumps({'status': 'complete', 'message': f'Successfully re-analyzed with {model_name}', 'success': True})}\n\n"
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    yield f"data: {json.dumps({'status': 'complete', 'message': f'Successfully re-analyzed with {model_name}', 'success': True, 'duration_ms': duration_ms, 'tokens': latest_tokens})}\n\n"
                 else:
                     yield f"data: {json.dumps({'error': 'Failed to update database'})}\n\n"
                 
