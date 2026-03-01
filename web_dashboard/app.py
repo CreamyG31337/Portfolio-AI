@@ -90,7 +90,7 @@ app.config['PROPAGATE_EXCEPTIONS'] = True
 
 # CSRF Protection (optional - can be enabled if Flask-WTF is installed)
 try:
-    from flask_wtf.csrf import CSRFProtect
+    from flask_wtf.csrf import CSRFProtect, CSRFError
     csrf = CSRFProtect(app)
     CSRF_ENABLED = True
     logger.info("CSRF protection enabled via Flask-WTF")
@@ -114,6 +114,19 @@ try:
                 if request.path.startswith(exempt_path):
                     return
             csrf.protect()
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(e):
+        """Return JSON for CSRF errors so fetch() callers can handle them gracefully."""
+        if request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json':
+            return jsonify({"error": "csrf_expired", "message": "Your session token has expired. Retrying..."}), 419
+        return e.description, 400
+
+    @app.route('/api/auth/csrf-token', methods=['GET'])
+    def get_csrf_token():
+        """Return a fresh CSRF token (for pages that have been open a long time)."""
+        from flask_wtf.csrf import generate_csrf
+        return jsonify({"csrf_token": generate_csrf()})
 
     logger.info("CSRF protection enabled for all state-changing routes")
 except ImportError:

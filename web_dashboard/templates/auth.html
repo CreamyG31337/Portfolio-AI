@@ -314,6 +314,38 @@
             return token ? { 'X-CSRFToken': token } : {};
         }
 
+        // Fetch a fresh CSRF token from the server and update the meta tag
+        async function refreshCsrfToken() {
+            try {
+                const resp = await fetch('/api/auth/csrf-token', { credentials: 'include' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const meta = document.querySelector('meta[name="csrf-token"]');
+                    if (meta && data.csrf_token) {
+                        meta.setAttribute('content', data.csrf_token);
+                    }
+                    return true;
+                }
+            } catch (e) {
+                console.error('Failed to refresh CSRF token:', e);
+            }
+            return false;
+        }
+
+        // Generic POST helper that auto-retries once on CSRF expiry
+        async function csrfFetch(url, options = {}) {
+            let response = await fetch(url, { credentials: 'include', ...options, headers: { ...options.headers, ...getCsrfHeaders() } });
+
+            // 419 = CSRF token expired — refresh and retry once
+            if (response.status === 419) {
+                const refreshed = await refreshCsrfToken();
+                if (refreshed) {
+                    response = await fetch(url, { credentials: 'include', ...options, headers: { ...options.headers, ...getCsrfHeaders() } });
+                }
+            }
+            return response;
+        }
+
         // Login form
         document.getElementById('loginForm').addEventListener('submit', async function (e) {
             e.preventDefault();
@@ -327,13 +359,9 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Signing in...';
 
             try {
-                const response = await fetch('/api/auth/login', {
+                const response = await csrfFetch('/api/auth/login', {
                     method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getCsrfHeaders()
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
                 });
 
@@ -389,12 +417,9 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
 
             try {
-                const response = await fetch('/api/auth/magic-link', {
+                const response = await csrfFetch('/api/auth/magic-link', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getCsrfHeaders()
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email })
                 });
 
@@ -432,13 +457,9 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating account...';
 
             try {
-                const response = await fetch('/api/auth/register', {
+                const response = await csrfFetch('/api/auth/register', {
                     method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getCsrfHeaders()
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password, name })
                 });
 
@@ -470,12 +491,9 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
 
             try {
-                const response = await fetch('/api/auth/reset-password-request', {
+                const response = await csrfFetch('/api/auth/reset-password-request', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getCsrfHeaders()
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email })
                 });
 
