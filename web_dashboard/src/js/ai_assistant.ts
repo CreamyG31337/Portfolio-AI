@@ -265,6 +265,12 @@ class AIAssistant {
             clearBtn.addEventListener('click', () => this.clearChat());
         }
 
+        // Copy context preview
+        const contextCopyBtn = document.getElementById('context-copy-btn') as HTMLButtonElement | null;
+        if (contextCopyBtn) {
+            contextCopyBtn.addEventListener('click', () => this.copyContextPreview());
+        }
+
         // Model selection
         const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
         if (modelSelect) {
@@ -861,6 +867,52 @@ class AIAssistant {
     // Alias for backwards compatibility
     refreshContextPreview(): Promise<void> {
         return this.loadContext();
+    }
+
+    async copyContextPreview(): Promise<void> {
+        const contentArea = document.getElementById('context-preview-content');
+        const copyBtn = document.getElementById('context-copy-btn') as HTMLButtonElement | null;
+        const previewText = contentArea?.textContent?.trim() || '';
+
+        if (!copyBtn) return;
+
+        const originalLabel = copyBtn.innerHTML;
+        const setButtonLabel = (html: string): void => {
+            copyBtn.innerHTML = html;
+        };
+
+        if (!previewText || previewText.toLowerCase().includes('loading context')) {
+            setButtonLabel('<i class="fas fa-exclamation-circle mr-1"></i>No text');
+            setTimeout(() => setButtonLabel(originalLabel), 1400);
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(previewText);
+            setButtonLabel('<i class="fas fa-check mr-1"></i>Copied');
+        } catch (err) {
+            console.warn('[AIAssistant] Clipboard API failed, trying fallback:', err);
+            try {
+                const tempTextarea = document.createElement('textarea');
+                tempTextarea.value = previewText;
+                tempTextarea.setAttribute('readonly', '');
+                tempTextarea.style.position = 'fixed';
+                tempTextarea.style.opacity = '0';
+                document.body.appendChild(tempTextarea);
+                tempTextarea.select();
+                const copied = document.execCommand('copy');
+                document.body.removeChild(tempTextarea);
+                if (!copied) {
+                    throw new Error('document.execCommand(copy) returned false');
+                }
+                setButtonLabel('<i class="fas fa-check mr-1"></i>Copied');
+            } catch (fallbackErr) {
+                console.error('[AIAssistant] Failed to copy context preview:', fallbackErr);
+                setButtonLabel('<i class="fas fa-times mr-1"></i>Failed');
+            }
+        }
+
+        setTimeout(() => setButtonLabel(originalLabel), 1400);
     }
 
     loadModels(): void {
