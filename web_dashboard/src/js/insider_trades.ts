@@ -747,6 +747,11 @@ function getSelectedFund(): string | null {
     return selected || null;
 }
 
+function normalizeFundValue(value: string | null | undefined): string {
+    const normalized = (value || "").trim();
+    return normalized.toLowerCase() === "all" ? "" : normalized;
+}
+
 function updateFundFilterState(): void {
     const checkbox = document.getElementById("fund-only-filter") as HTMLInputElement | null;
     const hint = document.getElementById("fund-only-filter-hint");
@@ -988,8 +993,23 @@ document.addEventListener("DOMContentLoaded", () => {
     updateFundFilterState();
 
     window.addEventListener("fundChanged", () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentUrlFund = normalizeFundValue(urlParams.get("fund"));
+        const currentUrlFundOnly = urlParams.get("fund_only") === "true";
+
         updateFundFilterState();
-        submitFilters();
+
+        const fundFilterInput = document.getElementById("fund-filter") as HTMLInputElement | null;
+        const fundOnlyCheckbox = document.getElementById("fund-only-filter") as HTMLInputElement | null;
+        const selectedFund = normalizeFundValue(getSelectedFund());
+        const effectiveFund = fundFilterInput?.disabled
+            ? selectedFund
+            : normalizeFundValue(fundFilterInput?.value || selectedFund);
+        const effectiveFundOnly = Boolean(fundOnlyCheckbox && !fundOnlyCheckbox.disabled && fundOnlyCheckbox.checked);
+
+        if (effectiveFund !== currentUrlFund || effectiveFundOnly !== currentUrlFundOnly) {
+            submitFilters();
+        }
     });
 
     // Resize Plotly charts on window resize
