@@ -1,3 +1,4 @@
+// TODO: Fix bugs documented in docs/TICKER_DETAILS_BUGS.md (chevron toggle, stale state, race conditions, theme classes, XSS)
 export { }; // Ensure file is treated as a module
 
 // ticker_autocomplete import removed -- ticker details now uses search-on-Enter via /api/v2/ticker/search
@@ -156,6 +157,10 @@ interface TickerAnalysisContextResponse {
     context?: string;
 }
 
+interface TickerAnalysisApiResponse {
+    analysis?: TickerAnalysis | null;
+}
+
 interface SignalAnalysis {
     ticker?: string;
     structure?: {
@@ -292,6 +297,7 @@ const insiderTradesPerPage: number = 20;
 let allEtfTrades: EtfHoldingTrade[] = [];
 let etfTradesCurrentPage: number = 0;
 const etfTradesPerPage: number = 20;
+let loadSeq: number = 0;
 
 // Initialize page on load
 document.addEventListener('DOMContentLoaded', function (): void {
@@ -723,6 +729,14 @@ async function loadModelOptions(): Promise<void> {
 
 // Load all ticker data
 async function loadTickerData(ticker: string): Promise<void> {
+    const seq = ++loadSeq;
+    allCongressTrades = [];
+    congressTradesCurrentPage = 0;
+    allInsiderTrades = [];
+    insiderTradesCurrentPage = 0;
+    allEtfTrades = [];
+    etfTradesCurrentPage = 0;
+
     hideAllSections();
     showLoading();
     hideTickerError();
@@ -734,6 +748,7 @@ async function loadTickerData(ticker: string): Promise<void> {
         const response = await fetch(appendFundParam(`/api/v2/ticker/info?ticker=${encodeURIComponent(ticker)}`), {
             credentials: 'include'
         });
+        if (isStaleLoad(seq, ticker)) return;
 
         if (!response.ok) {
             const errorData: ErrorResponse = await response.json();
@@ -741,6 +756,7 @@ async function loadTickerData(ticker: string): Promise<void> {
         }
 
         const data: TickerInfoResponse = await response.json();
+        if (isStaleLoad(seq, ticker)) return;
 
         // Render all sections
         if (data.basic_info) {
@@ -767,21 +783,25 @@ async function loadTickerData(ticker: string): Promise<void> {
         }
 
         // Load signals
-        await loadSignals(ticker);
+        await loadSignals(ticker, false, seq);
+        if (isStaleLoad(seq, ticker)) return;
 
         // Load AI analysis
-        await loadTickerAnalysis(ticker);
-        await loadTickerAnalysisContext(ticker);
+        await loadTickerAnalysis(ticker, seq);
+        if (isStaleLoad(seq, ticker)) return;
+        await loadTickerAnalysisContext(ticker, seq);
+        if (isStaleLoad(seq, ticker)) return;
 
         // Load and render chart
         const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
         const useSolid = checkbox ? checkbox.checked : false;
         const rangeSelector = document.getElementById('chart-range-selector') as HTMLSelectElement | null;
         const range = rangeSelector ? rangeSelector.value : '3m';
-        loadAndRenderChart(ticker, useSolid, range);
+        loadAndRenderChart(ticker, useSolid, range, seq);
 
         hideLoading();
     } catch (error) {
+        if (isStaleLoad(seq, ticker)) return;
         console.error('Error loading ticker data:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         showTickerError(errorMessage);
@@ -1028,7 +1048,12 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
 }
 
 // Load and render chart
-async function loadAndRenderChart(ticker: string, useSolid: boolean, range: string = '3m'): Promise<void> {
+async function loadAndRenderChart(
+    ticker: string,
+    useSolid: boolean,
+    range: string = '3m',
+    expectedLoadSeq?: number
+): Promise<void> {
     // Show loading indicator
     const chartLoading = document.getElementById('chart-loading');
     const chartContainer = document.getElementById('chart-container');
@@ -1049,9 +1074,9 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
         const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
         let theme: string = 'light'; // default
 
-        // For specialized themes, pass them directly to the backend
+        // Custom dark themes map to dark for backend compatibility.
         if (dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
-            theme = dataTheme;
+            theme = 'dark';
         } else if (dataTheme === 'dark') {
             theme = 'dark';
         } else if (dataTheme === 'light') {
@@ -1073,6 +1098,7 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
         const response = await fetch(appendFundParam(`/api/v2/ticker/chart?ticker=${encodeURIComponent(ticker)}&use_solid=${useSolid}&theme=${encodeURIComponent(theme)}&range=${encodeURIComponent(range)}`), {
             credentials: 'include'
         });
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
 
         // Check if response is JSON
         const contentType = response.headers.get('content-type');
@@ -1099,6 +1125,7 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
         }
 
         const chartData: ChartData = await response.json();
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
 
         // Validate chart data structure
         if (!chartData || !chartData.data || !chartData.layout) {
@@ -1110,17 +1137,19 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
         if (Plotly) {
             Plotly.newPlot('chart-container', chartData.data, chartData.layout, { responsive: true });
         }
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
 
         // Hide loading indicator AFTER successful rendering
         chartLoading.classList.add('hidden');
         chartLoading.style.display = 'none';
 
         // Load price history for metrics
-        loadPriceHistoryMetrics(ticker, range);
+        loadPriceHistoryMetrics(ticker, range, expectedLoadSeq);
 
         // Load ETF holding trades for table
-        loadEtfTrades(ticker, range);
+        loadEtfTrades(ticker, range, expectedLoadSeq);
     } catch (error) {
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         console.error('Error loading chart:', error);
         // Hide loading indicator
         chartLoading.classList.add('hidden');
@@ -1134,19 +1163,26 @@ async function loadAndRenderChart(ticker: string, useSolid: boolean, range: stri
 }
 
 // Load ETF holding trades for table
-async function loadEtfTrades(ticker: string, range: string = '3m'): Promise<void> {
+async function loadEtfTrades(
+    ticker: string,
+    range: string = '3m',
+    expectedLoadSeq?: number
+): Promise<void> {
     try {
         const response = await fetch(appendFundParam(`/api/v2/ticker/etf-trades?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}`), {
             credentials: 'include'
         });
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
 
         if (!response.ok) {
             throw new Error(`Failed to load ETF trades (${response.status})`);
         }
 
         const data = await response.json();
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         renderEtfTrades((data && data.data) ? data.data : []);
     } catch (error) {
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         console.error('Error loading ETF trades:', error);
         renderEtfTrades([]);
     }
@@ -1166,6 +1202,11 @@ function renderEtfTrades(trades: EtfHoldingTrade[]): void {
         emptyState.classList.remove('hidden');
         countEl.textContent = '0 records';
         allEtfTrades = [];
+        etfTradesCurrentPage = 0;
+        const tbody = document.getElementById('etf-trades-tbody');
+        if (tbody) tbody.innerHTML = '';
+        const pagination = document.getElementById('etf-trades-pagination');
+        if (pagination) pagination.innerHTML = '';
         return;
     }
 
@@ -1332,7 +1373,13 @@ function renderEtfTradesPagination(): void {
 }
 
 // Load price history for metrics
-async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Promise<void> {
+async function loadPriceHistoryMetrics(
+    ticker: string,
+    range: string = '3m',
+    expectedLoadSeq?: number
+): Promise<void> {
+    if (isStaleLoad(expectedLoadSeq, ticker)) return;
+
     try {
         // Convert range to days
         const rangeDays: { [key: string]: number } = {
@@ -1360,12 +1407,14 @@ async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Pr
         const response = await fetch(appendFundParam(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&days=${days}`), {
             credentials: 'include'
         });
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
 
         if (!response.ok) {
             return;
         }
 
         const data: PriceHistoryData = await response.json();
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         const prices = data.data || [];
 
         if (prices.length > 0) {
@@ -1414,6 +1463,7 @@ async function loadPriceHistoryMetrics(ticker: string, range: string = '3m'): Pr
             }
         }
     } catch (error) {
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         console.error('Error loading price history metrics:', error);
     }
 }
@@ -1431,9 +1481,9 @@ function sentimentBadge(sentiment: string | undefined): string {
         return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-error-bg text-theme-error-text border border-theme-error-text"><i class="fas fa-arrow-down mr-0.5 text-[9px]"></i>${label}</span>`;
     }
     if (['neutral', 'mixed'].includes(s)) {
-        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-warning-bg text-theme-warning-text border border-theme-warning-text">${sentiment.charAt(0).toUpperCase() + sentiment.slice(1)}</span>`;
+        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-warning-bg text-theme-warning-text border border-theme-warning-text">${escapeHtml(sentiment.charAt(0).toUpperCase() + sentiment.slice(1))}</span>`;
     }
-    return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-text-primary border border-border">${sentiment.charAt(0).toUpperCase() + sentiment.slice(1)}</span>`;
+    return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-text-primary border border-border">${escapeHtml(sentiment.charAt(0).toUpperCase() + sentiment.slice(1))}</span>`;
 }
 
 // Helper: relative time string (e.g. "2d ago", "5h ago")
@@ -1479,35 +1529,43 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
     articles.slice(0, 15).forEach(article => {
         const title = article.title || 'Untitled';
         const summary = article.summary || '';
-        const url = article.url || '';
+        const url = sanitizeHttpUrl(article.url || '');
         const source = article.source || '';
         const articleType = article.article_type || '';
         const dateStr = article.published_at || article.fetched_at || '';
         const relTime = relativeTime(dateStr);
         const sentBadge = sentimentBadge(article.sentiment);
-        const rowId = `article-row-${article.id || Math.random().toString(36).substr(2, 9)}`;
+        const rawArticleId = String(article.id || Math.random().toString(36).slice(2, 11));
+        const cleanedArticleId = rawArticleId.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2, 11);
+        const rowId = `article-row-${cleanedArticleId}`;
 
         // Truncate summary for the expandable preview
         const previewSummary = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
+        const escapedTitle = escapeHtml(title);
+        const escapedSource = escapeHtml(source);
+        const escapedArticleType = escapeHtml(articleType);
+        const escapedRelTime = escapeHtml(relTime);
+        const escapedSummary = escapeHtml(previewSummary);
+        const escapedDate = escapeHtml(formatDate(dateStr));
 
         const row = document.createElement('div');
         row.className = 'bg-dashboard-surface hover:bg-dashboard-surface-alt transition-colors duration-150';
 
         row.innerHTML = `
-            <div class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" onclick="document.getElementById('${rowId}').classList.toggle('hidden')">
+            <div class="research-row-toggle flex items-center gap-2 px-3 py-2 cursor-pointer select-none">
                 <i id="${rowId}-chevron" class="fas fa-chevron-right text-[10px] text-text-tertiary transition-transform duration-200 w-3 shrink-0"></i>
-                ${source ? `<span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-info-bg text-theme-info-text border border-theme-info-text shrink-0">${source}</span>` : ''}
-                ${articleType ? `<span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-text-secondary border border-border shrink-0">${articleType}</span>` : ''}
+                ${source ? `<span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-info-bg text-theme-info-text border border-theme-info-text shrink-0">${escapedSource}</span>` : ''}
+                ${articleType ? `<span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-text-secondary border border-border shrink-0">${escapedArticleType}</span>` : ''}
                 ${sentBadge}
-                <span class="text-sm font-medium text-text-primary truncate flex-1 min-w-0">${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hover:text-accent hover:underline" onclick="event.stopPropagation()">${title}</a>` : title}</span>
-                <span class="text-[11px] text-text-tertiary whitespace-nowrap shrink-0 ml-auto">${relTime}</span>
+                <span class="text-sm font-medium text-text-primary truncate flex-1 min-w-0">${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hover:text-accent hover:underline" onclick="event.stopPropagation()">${escapedTitle}</a>` : escapedTitle}</span>
+                <span class="text-[11px] text-text-tertiary whitespace-nowrap shrink-0 ml-auto">${escapedRelTime}</span>
                 ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-text-tertiary hover:text-accent shrink-0 ml-1" onclick="event.stopPropagation()" title="Open article"><i class="fas fa-external-link-alt text-[10px]"></i></a>` : ''}
             </div>
             <div id="${rowId}" class="hidden px-3 pb-3 pt-0">
                 <div class="ml-5 pl-3 border-l-2 border-border">
-                    ${summary ? `<p class="text-sm text-text-secondary leading-relaxed whitespace-pre-line">${previewSummary}</p>` : '<p class="text-sm text-text-tertiary italic">No summary available.</p>'}
+                    ${summary ? `<p class="text-sm text-text-secondary leading-relaxed whitespace-pre-line">${escapedSummary}</p>` : '<p class="text-sm text-text-tertiary italic">No summary available.</p>'}
                     <div class="flex items-center gap-3 mt-2 text-[11px] text-text-tertiary">
-                        ${dateStr ? `<span><i class="far fa-calendar-alt mr-1"></i>${formatDate(dateStr)}</span>` : ''}
+                        ${dateStr ? `<span><i class="far fa-calendar-alt mr-1"></i>${escapedDate}</span>` : ''}
                         ${article.sentiment_score != null ? `<span>Score: ${(article.sentiment_score * 100).toFixed(0)}%</span>` : ''}
                         ${article.relevance_score != null ? `<span>Relevance: ${(article.relevance_score * 100).toFixed(0)}%</span>` : ''}
                         ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover hover:underline ml-auto">Read full article <i class="fas fa-arrow-right text-[9px] ml-0.5"></i></a>` : ''}
@@ -1516,11 +1574,12 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
             </div>
         `;
 
-        // Toggle chevron rotation on expand/collapse
-        row.querySelector(`[onclick]`)?.addEventListener('click', () => {
+        // Toggle row details and keep chevron aligned with final state.
+        row.querySelector('.research-row-toggle')?.addEventListener('click', () => {
             const chevron = document.getElementById(`${rowId}-chevron`);
             const detail = document.getElementById(rowId);
             if (chevron && detail) {
+                detail.classList.toggle('hidden');
                 if (detail.classList.contains('hidden')) {
                     chevron.style.transform = '';
                 } else {
@@ -1610,6 +1669,14 @@ function renderSocialSentiment(sentiment: SocialSentiment): void {
 // Render congress trades
 function renderCongressTickerTrades(trades: CongressTickerTrade[]): void {
     if (!trades || trades.length === 0) {
+        allCongressTrades = [];
+        congressTradesCurrentPage = 0;
+        const countEl = document.getElementById('congress-count');
+        if (countEl) countEl.textContent = 'Found 0 trades by politicians';
+        const tbody = document.getElementById('congress-tbody');
+        if (tbody) tbody.innerHTML = '';
+        const pagination = document.getElementById('congress-pagination');
+        if (pagination) pagination.innerHTML = '';
         return;
     }
 
@@ -1835,6 +1902,14 @@ function renderCongressTradesPagination(): void {
 // Render insider trades
 function renderInsiderTrades(trades: InsiderTrade[]): void {
     if (!trades || trades.length === 0) {
+        allInsiderTrades = [];
+        insiderTradesCurrentPage = 0;
+        const countEl = document.getElementById('insider-trades-count');
+        if (countEl) countEl.textContent = 'Found 0 insider trades';
+        const tbody = document.getElementById('insider-trades-tbody');
+        if (tbody) tbody.innerHTML = '';
+        const pagination = document.getElementById('insider-trades-pagination');
+        if (pagination) pagination.innerHTML = '';
         return;
     }
 
@@ -2032,7 +2107,13 @@ function renderWatchlistStatus(status: WatchlistStatus): void {
 }
 
 // Load signals for ticker
-async function loadSignals(ticker: string, forceRefresh: boolean = false): Promise<void> {
+async function loadSignals(
+    ticker: string,
+    forceRefresh: boolean = false,
+    expectedLoadSeq?: number
+): Promise<void> {
+    if (isStaleLoad(expectedLoadSeq, ticker)) return;
+
     try {
         const section = document.getElementById('signals-section');
         if (section) section.classList.remove('hidden');
@@ -2047,6 +2128,7 @@ async function loadSignals(ticker: string, forceRefresh: boolean = false): Promi
         const response = await fetch(`/api/signals/analyze/${ticker}?${aiParam}${forceParam}${modelParam}`, {
             credentials: 'include'
         });
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         if (!response.ok) {
             if (response.status === 404) {
                 // No price data available for signals
@@ -2057,6 +2139,7 @@ async function loadSignals(ticker: string, forceRefresh: boolean = false): Promi
         }
 
         const result = await response.json();
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         if (result.success && result.data) {
             renderSignals(result.data);
         } else {
@@ -2065,6 +2148,7 @@ async function loadSignals(ticker: string, forceRefresh: boolean = false): Promi
         }
         setSignalsLoading(false, '');
     } catch (error) {
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         console.error('Error loading signals:', error);
         setSignalsLoading(false, 'Unable to load signals');
     }
@@ -2088,21 +2172,21 @@ function renderSignals(signals: SignalAnalysis): void {
     const confidenceEl = document.getElementById('signal-confidence');
 
     if (badgeEl) {
-        let badgeClass = 'px-4 py-2 rounded-lg font-semibold ';
+        let badgeClass = 'px-4 py-2 rounded-lg font-semibold border ';
         let badgeText = overallSignal;
 
         switch (overallSignal) {
             case 'BUY':
-                badgeClass += 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+                badgeClass += 'bg-theme-success-bg text-theme-success-text border-theme-success-text';
                 break;
             case 'SELL':
-                badgeClass += 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+                badgeClass += 'bg-theme-error-bg text-theme-error-text border-theme-error-text';
                 break;
             case 'WATCH':
-                badgeClass += 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+                badgeClass += 'bg-theme-info-bg text-theme-info-text border-theme-info-text';
                 break;
             default:
-                badgeClass += 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+                badgeClass += 'bg-dashboard-surface-alt text-text-primary border-border';
         }
 
         badgeEl.className = badgeClass;
@@ -2160,16 +2244,16 @@ function renderSignals(signals: SignalAnalysis): void {
         let fearClass = 'text-xl font-semibold ';
         switch (fearLevel) {
             case 'EXTREME':
-                fearClass += 'text-red-600 dark:text-red-400';
+                fearClass += 'text-theme-error-text';
                 break;
             case 'HIGH':
-                fearClass += 'text-orange-600 dark:text-orange-400';
+                fearClass += 'text-theme-warning-text';
                 break;
             case 'MODERATE':
-                fearClass += 'text-yellow-600 dark:text-yellow-400';
+                fearClass += 'text-theme-warning-text';
                 break;
             default:
-                fearClass += 'text-green-600 dark:text-green-400';
+                fearClass += 'text-theme-success-text';
         }
         fearLevelEl.className = fearClass;
         fearLevelEl.textContent = fearLevel;
@@ -2185,16 +2269,16 @@ function renderSignals(signals: SignalAnalysis): void {
         let recClass = 'text-xl font-semibold ';
         switch (recommendation) {
             case 'AVOID':
-                recClass += 'text-red-600 dark:text-red-400';
+                recClass += 'text-theme-error-text';
                 break;
             case 'RISKY':
-                recClass += 'text-orange-600 dark:text-orange-400';
+                recClass += 'text-theme-warning-text';
                 break;
             case 'CAUTION':
-                recClass += 'text-yellow-600 dark:text-yellow-400';
+                recClass += 'text-theme-warning-text';
                 break;
             default:
-                recClass += 'text-green-600 dark:text-green-400';
+                recClass += 'text-theme-success-text';
         }
         recommendationEl.className = recClass;
         recommendationEl.textContent = recommendation;
@@ -2214,28 +2298,28 @@ function renderSignals(signals: SignalAnalysis): void {
         if (signals.explanation) {
             explanationEl.textContent = signals.explanation;
         } else {
-            explanationEl.innerHTML = '<span class="text-gray-500 dark:text-gray-400">No AI explanation available yet.</span>';
+            explanationEl.innerHTML = '<span class="text-text-tertiary">No AI explanation available yet.</span>';
         }
     }
 }
 
 // Helper: color-code a score element by value
 function colorScoreEl(el: HTMLElement, score: number): void {
-    el.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500');
+    el.classList.remove('text-theme-success-text', 'text-theme-warning-text', 'text-theme-error-text');
     if (score >= 0.6) {
-        el.classList.add('text-green-500');
+        el.classList.add('text-theme-success-text');
     } else if (score >= 0.4) {
-        el.classList.add('text-yellow-500');
+        el.classList.add('text-theme-warning-text');
     } else {
-        el.classList.add('text-red-500');
+        el.classList.add('text-theme-error-text');
     }
 }
 
 // Helper: get bar color class for a score value
 function barColorClass(score: number): string {
-    if (score >= 0.6) return 'bg-green-500';
-    if (score >= 0.4) return 'bg-yellow-500';
-    return 'bg-red-500';
+    if (score >= 0.6) return 'bg-theme-success-bg';
+    if (score >= 0.4) return 'bg-theme-warning-bg';
+    return 'bg-theme-error-bg';
 }
 
 function fmtPct(v: number | undefined | null): string {
@@ -2256,13 +2340,13 @@ function renderMomentumSignal(momentum: any): void {
         let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-bold border ';
         switch (bias) {
             case 'BULLISH':
-                badgeClass += 'bg-green-500/10 text-green-500 border-green-500/30';
+                badgeClass += 'bg-theme-success-bg text-theme-success-text border-theme-success-text';
                 break;
             case 'BEARISH':
-                badgeClass += 'bg-red-500/10 text-red-500 border-red-500/30';
+                badgeClass += 'bg-theme-error-bg text-theme-error-text border-theme-error-text';
                 break;
             case 'NEUTRAL':
-                badgeClass += 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30';
+                badgeClass += 'bg-theme-warning-bg text-theme-warning-text border-theme-warning-text';
                 break;
             default:
                 badgeClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
@@ -2281,7 +2365,7 @@ function renderMomentumSignal(momentum: any): void {
     }
     if (compositeBar) {
         compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
-        compositeBar.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-accent');
+        compositeBar.classList.remove('bg-theme-success-bg', 'bg-theme-warning-bg', 'bg-theme-error-bg', 'bg-accent');
         compositeBar.classList.add(barColorClass(score));
     }
 
@@ -2363,16 +2447,16 @@ function renderFundamentalSignal(fundamental: any): void {
         let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-bold border ';
         switch (quality) {
             case 'STRONG':
-                badgeClass += 'bg-green-500/10 text-green-500 border-green-500/30';
+                badgeClass += 'bg-theme-success-bg text-theme-success-text border-theme-success-text';
                 break;
             case 'GOOD':
-                badgeClass += 'bg-blue-500/10 text-blue-500 border-blue-500/30';
+                badgeClass += 'bg-theme-info-bg text-theme-info-text border-theme-info-text';
                 break;
             case 'FAIR':
-                badgeClass += 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30';
+                badgeClass += 'bg-theme-warning-bg text-theme-warning-text border-theme-warning-text';
                 break;
             case 'WEAK':
-                badgeClass += 'bg-red-500/10 text-red-500 border-red-500/30';
+                badgeClass += 'bg-theme-error-bg text-theme-error-text border-theme-error-text';
                 break;
             default:
                 badgeClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
@@ -2391,7 +2475,7 @@ function renderFundamentalSignal(fundamental: any): void {
     }
     if (compositeBar) {
         compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
-        compositeBar.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-accent');
+        compositeBar.classList.remove('bg-theme-success-bg', 'bg-theme-warning-bg', 'bg-theme-error-bg', 'bg-accent');
         compositeBar.classList.add(barColorClass(score));
     }
 
@@ -2622,11 +2706,14 @@ function toggleSummary(summaryId: string): void {
 }
 
 // Load and render ticker AI analysis
-async function loadTickerAnalysis(ticker: string): Promise<void> {
+async function loadTickerAnalysis(ticker: string, expectedLoadSeq?: number): Promise<void> {
+    if (isStaleLoad(expectedLoadSeq, ticker)) return;
+
     try {
         const response = await fetch(`/api/v2/ticker/${ticker}/analysis`, {
             credentials: 'include'
         });
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
 
         if (!response.ok) {
             if (response.status === 404) {
@@ -2637,7 +2724,12 @@ async function loadTickerAnalysis(ticker: string): Promise<void> {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const analysis: TickerAnalysis | null = await response.json();
+        const payload: TickerAnalysis | TickerAnalysisApiResponse | null = await response.json();
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
+
+        const analysis = payload && typeof payload === 'object' && 'analysis' in payload
+            ? ((payload as TickerAnalysisApiResponse).analysis ?? null)
+            : payload as TickerAnalysis | null;
         if (analysis) {
             renderTickerAnalysis(analysis, ticker);
         } else {
@@ -2645,6 +2737,7 @@ async function loadTickerAnalysis(ticker: string): Promise<void> {
             renderEmptyAnalysis(ticker);
         }
     } catch (error) {
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         console.error('Error loading ticker analysis:', error);
         // Show blank section even on error so user can still reanalyze
         renderEmptyAnalysis(ticker);
@@ -2683,11 +2776,14 @@ function renderEmptyAnalysis(ticker: string): void {
     }
 }
 
-async function loadTickerAnalysisContext(ticker: string): Promise<void> {
+async function loadTickerAnalysisContext(ticker: string, expectedLoadSeq?: number): Promise<void> {
+    if (isStaleLoad(expectedLoadSeq, ticker)) return;
+
     try {
         const response = await fetch(`/api/v2/ticker/${ticker}/analysis-context`, {
             credentials: 'include'
         });
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
 
         if (!response.ok) {
             renderDebugPanelMessage(
@@ -2700,6 +2796,7 @@ async function loadTickerAnalysisContext(ticker: string): Promise<void> {
         }
 
         const data: TickerAnalysisContextResponse = await response.json();
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         const context = data.context ? data.context.trim() : '';
         contextCharCount = context.length;
 
@@ -2713,6 +2810,7 @@ async function loadTickerAnalysisContext(ticker: string): Promise<void> {
         }
         updateContextUsage();
     } catch (error) {
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
         console.error('Error loading ticker analysis context:', error);
         renderDebugPanelMessage(
             'Unable to load AI context preview.',
@@ -2828,11 +2926,11 @@ function renderDebugPanel(inputContext: string, title: string = '🔍 Debug: AI 
     if (!container) return;
 
     container.innerHTML = `
-        <details class="border border-gray-200 dark:border-gray-700 rounded-lg">
-            <summary class="cursor-pointer p-3 bg-gray-50 dark:bg-gray-800 rounded-t-lg text-sm font-medium text-text-primary">
+        <details class="border border-border rounded-lg">
+            <summary class="cursor-pointer p-3 bg-dashboard-surface-alt rounded-t-lg text-sm font-medium text-text-primary">
                 ${escapeHtml(title)}
             </summary>
-            <pre class="p-4 bg-gray-100 dark:bg-gray-900 text-xs overflow-auto max-h-96 whitespace-pre-wrap text-text-primary">${escapeHtml(inputContext)}</pre>
+            <pre class="p-4 bg-dashboard-background text-xs overflow-auto max-h-96 whitespace-pre-wrap text-text-primary">${escapeHtml(inputContext)}</pre>
         </details>
     `;
 }
@@ -2842,11 +2940,11 @@ function renderDebugPanelMessage(message: string, title: string): void {
     if (!container) return;
 
     container.innerHTML = `
-        <details class="border border-gray-200 dark:border-gray-700 rounded-lg">
-            <summary class="cursor-pointer p-3 bg-gray-50 dark:bg-gray-800 rounded-t-lg text-sm font-medium text-text-primary">
+        <details class="border border-border rounded-lg">
+            <summary class="cursor-pointer p-3 bg-dashboard-surface-alt rounded-t-lg text-sm font-medium text-text-primary">
                 ${escapeHtml(title)}
             </summary>
-            <div class="p-4 bg-gray-100 dark:bg-gray-900 text-xs text-text-secondary">
+            <div class="p-4 bg-dashboard-background text-xs text-text-secondary">
                 ${escapeHtml(message)}
             </div>
         </details>
@@ -2906,13 +3004,32 @@ function escapeHtml(text: string | null | undefined): string {
     return div.innerHTML;
 }
 
+function sanitizeHttpUrl(rawUrl: string | null | undefined): string {
+    if (!rawUrl) return '';
+    try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return '';
+        }
+        return parsed.toString();
+    } catch {
+        return '';
+    }
+}
+
+function isStaleLoad(expectedLoadSeq: number | undefined, ticker: string): boolean {
+    if (ticker !== currentTicker) return true;
+    if (expectedLoadSeq === undefined) return false;
+    return expectedLoadSeq !== loadSeq;
+}
+
 // Helper to show toast notifications
 function showToast(message: string, type: 'success' | 'error' | 'info' = 'info'): void {
     // Simple toast implementation - you can enhance this
     const toast = document.createElement('div');
-    toast.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 ${type === 'success' ? 'bg-green-500 text-white' :
-        type === 'error' ? 'bg-red-500 text-white' :
-            'bg-blue-500 text-white'
+    toast.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 border ${type === 'success' ? 'bg-theme-success-bg text-theme-success-text border-theme-success-text' :
+        type === 'error' ? 'bg-theme-error-bg text-theme-error-text border-theme-error-text' :
+            'bg-theme-info-bg text-theme-info-text border-theme-info-text'
         }`;
     toast.textContent = message;
     document.body.appendChild(toast);

@@ -3603,7 +3603,7 @@ def get_ticker_analysis(ticker: str):
                     analysis['themes'] = []
             return jsonify(analysis)
         else:
-            return jsonify(None)
+            return jsonify({"analysis": None}), 404
 
     except Exception as e:
         logger.error(f"Error fetching ticker analysis for {ticker}: {e}", exc_info=True)
