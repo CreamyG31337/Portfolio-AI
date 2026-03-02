@@ -1379,16 +1379,20 @@ def get_individual_holdings_performance(fund: str, days: int = 7) -> pd.DataFram
         
         # Flatten nested securities data
         if 'securities' in df.columns:
-            securities_df = pd.json_normalize(df['securities'])
-            if not securities_df.empty:
-                # Merge sector and industry from securities, prefer securities currency if available
-                if 'sector' in securities_df.columns:
-                    df['sector'] = securities_df['sector']
-                if 'industry' in securities_df.columns:
-                    df['industry'] = securities_df['industry']
-                if 'currency' in securities_df.columns:
-                    # Use securities currency if available, otherwise use position currency
-                    df['currency'] = securities_df['currency'].fillna(df.get('currency', 'USD'))
+            # OPTIMIZATION: Use list comprehension instead of pd.json_normalize which is very slow
+            sec_list = df['securities'].tolist()
+
+            # Merge sector and industry from securities, prefer securities currency if available
+            df['sector'] = [s.get('sector') if isinstance(s, dict) else None for s in sec_list]
+            df['industry'] = [s.get('industry') if isinstance(s, dict) else None for s in sec_list]
+
+            # Use securities currency if available, otherwise use position currency
+            sec_currency = pd.Series([s.get('currency') if isinstance(s, dict) else None for s in sec_list], index=df.index)
+            if 'currency' in df.columns:
+                df['currency'] = sec_currency.fillna(df['currency']).fillna('USD')
+            else:
+                df['currency'] = sec_currency.fillna('USD')
+
             df = df.drop(columns=['securities'], errors='ignore')
         
         # Normalize to date-only (midnight) for consistent charting
