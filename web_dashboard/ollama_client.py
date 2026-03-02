@@ -310,6 +310,35 @@ class OllamaClient:
         Yields:
             Response chunks as strings (streaming) or full response (non-streaming)
         """
+        # Route GLM models to Z.AI transport (independent of Ollama availability).
+        if model and str(model).startswith("glm-"):
+            yield from self._query_glm(
+                prompt=prompt,
+                context=context,
+                model=model,
+                stream=stream,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                system_prompt=system_prompt,
+                json_mode=json_mode,
+            )
+            return
+
+        # Route web-based AI models to WebAI transport (independent of Ollama availability).
+        try:
+            from webai_wrapper import is_webai_model
+
+            if model and is_webai_model(model):
+                yield from self._query_webai(
+                    prompt=prompt,
+                    context=context,
+                    model=model,
+                    system_prompt=system_prompt,
+                )
+                return
+        except ImportError:
+            pass
+
         if not self.enabled:
             logger.warning("Ollama query rejected: AI assistant disabled")
             yield "AI assistant is currently disabled."
@@ -436,6 +465,155 @@ class OllamaClient:
             elapsed = time.time() - request_start_time
             logger.error(f"[ERROR] Unexpected error querying Ollama after {elapsed:.2f}s: {e}", exc_info=True)
             yield f"An error occurred: {str(e)}"
+
+    def _query_webai(
+        self,
+        *,
+        prompt: str,
+        context: str,
+        model: str,
+        system_prompt: Optional[str],
+    ) -> Generator[str, None, None]:
+        """Route completion requests to cookie-based WebAI service."""
+        try:
+            from webai_wrapper import PersistentConversationSession
+        except ImportError as e:
+            logger.error("WebAI wrapper unavailable: %s", e)
+            yield "WebAI backend is not available."
+            return
+
+        full_prompt = prompt
+        if context:
+            full_prompt = f"{context}\n\nUser question: {prompt}"
+
+        # WebAI service currently supports non-streaming sync in this project.
+        try:
+            session_id = f"chat_{int(time.time())}"
+            session = PersistentConversationSession(
+                session_id=session_id,
+                model=model,
+                system_prompt=system_prompt or "",
+                auto_refresh=False,
+            )
+            response = session.send_sync(full_prompt) or ""
+            if response:
+                yield response
+            else:
+                yield "WebAI returned an empty response."
+            try:
+                session.reset_sync()
+                session.close_sync()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.error("WebAI query failed: %s", e, exc_info=True)
+            yield f"WebAI error: {str(e)}"
+
+    def _query_glm(
+        self,
+        *,
+        prompt: str,
+        context: str,
+        model: str,
+        stream: bool,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+        system_prompt: Optional[str],
+        json_mode: bool,
+    ) -> Generator[str, None, None]:
+        """Route completion requests to Z.AI chat/completions for glm-* models."""
+        try:
+            from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
+        except ImportError as e:
+            logger.error("GLM config unavailable: %s", e)
+            yield "GLM backend is not available."
+            return
+
+        key = get_zhipu_api_key()
+        if not key:
+            logger.error("GLM API key not configured")
+            yield "GLM API key is not configured."
+            return
+
+        full_prompt = prompt
+        if context:
+            full_prompt = f"{context}\n\nUser question: {prompt}"
+
+        model_settings = self.get_model_settings(model)
+        effective_temp = temperature if temperature is not None else model_settings.get("temperature", 0.3)
+        effective_max_tokens = max_tokens if max_tokens is not None else model_settings.get("num_predict", 2048)
+
+        messages: List[Dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        elif json_mode:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "Return ONLY a valid raw JSON object. No markdown code fences.",
+                }
+            )
+        messages.append({"role": "user", "content": full_prompt})
+
+        url = f"{ZHIPU_BASE_URL.rstrip('/')}/chat/completions"
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": stream,
+            "max_tokens": effective_max_tokens,
+            "temperature": effective_temp,
+        }
+
+        request_start = time.time()
+        try:
+            response = requests.post(url, json=payload, headers=headers, stream=stream, timeout=self.timeout)
+            response.raise_for_status()
+
+            if stream:
+                for line in response.iter_lines(decode_unicode=True):
+                    if not line or not line.strip():
+                        continue
+                    s = line.strip()
+                    if not s.startswith("data: "):
+                        continue
+                    data = s[6:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(data)
+                        for choice in (obj.get("choices") or [])[:1]:
+                            delta = choice.get("delta") or {}
+                            part = delta.get("content") or ""
+                            if part:
+                                yield part
+                            if choice.get("finish_reason") == "stop":
+                                return
+                    except json.JSONDecodeError:
+                        continue
+            else:
+                data = response.json()
+                content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+                if content:
+                    yield content
+                else:
+                    yield "GLM returned an empty response."
+        except requests.exceptions.Timeout:
+            elapsed = time.time() - request_start
+            logger.error("GLM request timed out after %.2fs", elapsed)
+            yield "GLM request timed out. Please try again."
+        except requests.exceptions.ConnectionError as e:
+            elapsed = time.time() - request_start
+            logger.error("GLM connection error after %.2fs: %s", elapsed, e)
+            yield "Cannot connect to GLM API."
+        except requests.exceptions.HTTPError as e:
+            elapsed = time.time() - request_start
+            logger.error("GLM HTTP error after %.2fs: %s", elapsed, e)
+            yield f"GLM API error: {str(e)}"
+        except Exception as e:
+            elapsed = time.time() - request_start
+            logger.error("Unexpected GLM query error after %.2fs: %s", elapsed, e, exc_info=True)
+            yield f"GLM error: {str(e)}"
     
     def generate_completion(
         self, 
