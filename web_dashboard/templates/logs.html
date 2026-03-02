@@ -591,7 +591,9 @@
         const checkbox = document.getElementById('auto-refresh');
 
         if (checkbox.checked) {
-            autoRefreshInterval = setInterval(fetchLogs, 5000);
+            autoRefreshInterval = setInterval(() => {
+                if (!document.hidden) fetchLogs();
+            }, 5000);
         } else {
             if (autoRefreshInterval) {
                 clearInterval(autoRefreshInterval);
@@ -604,7 +606,9 @@
         const checkbox = document.getElementById('auto-refresh-ollama');
 
         if (checkbox.checked) {
-            autoRefreshIntervalOllama = setInterval(fetchOllamaLogs, 5000);
+            autoRefreshIntervalOllama = setInterval(() => {
+                if (!document.hidden) fetchOllamaLogs();
+            }, 5000);
         } else {
             if (autoRefreshIntervalOllama) {
                 clearInterval(autoRefreshIntervalOllama);
@@ -735,6 +739,7 @@
     }
 
     function updateCurrentUtcTime() {
+        if (document.hidden) return;
         const utcEl = document.getElementById('current-utc-time');
         if (!utcEl) return;
         utcEl.textContent = new Date().toISOString().replace('T', ' ').replace('Z', ' UTC');
@@ -743,6 +748,18 @@
     // Initial load
     updateCurrentUtcTime();
     setInterval(updateCurrentUtcTime, 1000);
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            updateCurrentUtcTime();
+            if (document.getElementById('auto-refresh').checked) {
+                fetchLogs();
+            }
+            if (document.getElementById('auto-refresh-ollama').checked) {
+                fetchOllamaLogs();
+            }
+        }
+    });
     fetchLogs();
 </script>
 {% endblock %}
