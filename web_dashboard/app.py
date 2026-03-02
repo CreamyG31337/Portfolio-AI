@@ -3645,9 +3645,10 @@ def request_ticker_reanalysis(ticker: str):
         from ai_skip_list_manager import AISkipListManager
         from supabase_client import SupabaseClient
         from postgres_client import PostgresClient
-        from ollama_client import get_ollama_client
+        from ollama_client import get_ollama_client, OllamaClient
         from ticker_analysis_service import TickerAnalysisService
         from user_preferences import get_user_ai_model
+        from settings import get_summarizing_model
 
         ticker_upper = ticker.upper().strip()
         user_email = get_user_email_flask() or 'anonymous'
@@ -3656,7 +3657,19 @@ def request_ticker_reanalysis(ticker: str):
         # Initialize clients
         supabase = SupabaseClient(use_service_role=True)
         postgres = PostgresClient()
+        preferred_model = request_data.get('model') or get_user_ai_model() or get_summarizing_model()
+        is_glm = str(preferred_model).startswith("glm-")
+        is_webai = False
+        try:
+            from webai_wrapper import is_webai_model
+            is_webai = is_webai_model(str(preferred_model))
+        except Exception:
+            is_webai = False
+
         ollama = get_ollama_client()
+        if not ollama and (is_glm or is_webai):
+            # GLM/WebAI routes don't require local Ollama availability.
+            ollama = OllamaClient()
         if not ollama:
             return jsonify({'error': 'Ollama is not accessible. Please ensure Ollama is running.'}), 503
 
@@ -3665,7 +3678,6 @@ def request_ticker_reanalysis(ticker: str):
         skip_manager.remove_from_skip_list(ticker_upper)
 
         # Run analysis immediately using user's preferred model
-        preferred_model = request_data.get('model') or get_user_ai_model()
         service = TickerAnalysisService(ollama, supabase, postgres, skip_manager)
         service.analyze_ticker(ticker_upper, requested_by=user_email, model_override=preferred_model)
 

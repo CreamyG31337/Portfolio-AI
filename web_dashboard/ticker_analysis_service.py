@@ -108,18 +108,9 @@ class TickerAnalysisService:
     def _resolve_analysis_model(self, model_override: Optional[str]) -> str:
         """Resolve which model to use for analysis."""
         if model_override:
-            try:
-                from webai_wrapper import is_webai_model
-                if is_webai_model(model_override) or model_override.startswith("glm-"):
-                    logger.warning(
-                        "Model %s is not supported for ticker analysis; falling back to default",
-                        model_override
-                    )
-                    return get_summarizing_model()
-            except Exception as e:
-                logger.warning("Failed to validate model override %s: %s", model_override, e)
-                return get_summarizing_model()
-            return model_override
+            candidate = str(model_override).strip()
+            if candidate:
+                return candidate
 
         return get_summarizing_model()
     
