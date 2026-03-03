@@ -321,6 +321,42 @@ document.addEventListener('DOMContentLoaded', (): void => {
 
 // --- Initialization Functions ---
 
+function formatTimestampForDisplay(date: Date): string {
+    const now = new Date();
+    const safeDate = date.getTime() > now.getTime() ? now : date;
+    const roundedDate = new Date(safeDate.getTime());
+    roundedDate.setSeconds(Math.round(roundedDate.getSeconds() / 60) * 60, 0);
+
+    // Guard against rounding into the future (e.g., xx:xx:40 -> next minute).
+    if (roundedDate.getTime() > now.getTime()) {
+        roundedDate.setMinutes(roundedDate.getMinutes() - 1, 0, 0);
+    }
+
+    const userLocales = navigator.languages && navigator.languages.length > 0
+        ? navigator.languages
+        : undefined;
+
+    const datePart = new Intl.DateTimeFormat(userLocales, {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    }).format(roundedDate);
+
+    const timePart = new Intl.DateTimeFormat(userLocales, {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    }).format(roundedDate);
+
+    const timeZonePart = new Intl.DateTimeFormat(userLocales, { timeZoneName: 'short' })
+        .formatToParts(roundedDate)
+        .find(part => part.type === 'timeZoneName')
+        ?.value ?? 'local time';
+
+    return `${datePart} at ${timePart} (${timeZonePart})`;
+}
+
 async function initTimeDisplay(): Promise<void> {
     const el = document.getElementById('last-updated-text');
     if (!el) return;
@@ -333,18 +369,9 @@ async function initTimeDisplay(): Promise<void> {
         if (response.ok) {
             const data = await response.json();
             if (data.timestamp) {
-                // Parse ISO timestamp and format in local timezone with long format
+                // Use browser locale and include timezone for an unambiguous timestamp.
                 const timestamp = new Date(data.timestamp);
-                const formatted = timestamp.toLocaleString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: true
-                });
+                const formatted = formatTimestampForDisplay(timestamp);
                 el.textContent = `Last updated: ${formatted}`;
                 return;
             }
@@ -355,16 +382,7 @@ async function initTimeDisplay(): Promise<void> {
 
     // Fallback to current time if API fails
     const now = new Date();
-    const formatted = now.toLocaleString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-    });
+    const formatted = formatTimestampForDisplay(now);
     el.textContent = 'Last updated: ' + formatted;
 }
 
@@ -1757,7 +1775,7 @@ function renderActionQueue(data: ActionQueueData): void {
     // Update timestamp
     if (updatedEl && data.updated_at) {
         const date = new Date(data.updated_at);
-        updatedEl.textContent = `Updated: ${date.toLocaleTimeString()}`;
+        updatedEl.textContent = `Updated: ${formatTimestampForDisplay(date)}`;
     }
 
     // Handle empty data
