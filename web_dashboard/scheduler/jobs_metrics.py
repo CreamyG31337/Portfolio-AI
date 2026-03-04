@@ -12,6 +12,7 @@ from decimal import Decimal
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 import pandas as pd
 
 # Add parent directory to path if needed (standard boilerplate for these jobs)
@@ -43,6 +44,16 @@ from scheduler.scheduler_core import log_job_execution
 
 # Initialize logger
 logger = logging.getLogger(__name__)
+
+
+def _default_performance_metrics_target_date() -> date:
+    """Return the market-day date used by scheduled performance metrics jobs.
+
+    The job is scheduled in America/New_York after market close. Using ET date avoids
+    UTC day-boundary drift that can process day-2 instead of the just-closed session.
+    """
+    return datetime.now(ZoneInfo("America/New_York")).date()
+
 
 def benchmark_refresh_job() -> None:
     """Refresh benchmark and commodity data cache for chart performance.
@@ -482,10 +493,11 @@ def populate_performance_metrics_job(
     """Aggregate daily portfolio performance into performance_metrics table.
     
     This pre-calculates daily metrics to speed up chart queries (90 rows vs 1338 rows).
-    By default runs yesterday's data to ensure market close prices are final.
+    By default runs the current America/New_York market day. The scheduler calls
+    this job after market close, so that date represents the just-closed session.
     
     Args:
-        target_date: Single date to process. If None, defaults to yesterday.
+        target_date: Single date to process. If None, defaults to current ET market day.
         from_date: Start of date range (optional). If provided with to_date, processes range.
         to_date: End of date range (optional). If provided with from_date, processes range.
         fund_filter: Optional fund name to filter by. If None, processes all funds.
@@ -528,8 +540,8 @@ def populate_performance_metrics_job(
             # Single date mode
             dates_to_process = [target_date]
         else:
-            # Default: yesterday
-            dates_to_process = [(datetime.now(timezone.utc) - timedelta(days=1)).date()]
+            # Default: the current ET market day (scheduled after close).
+            dates_to_process = [_default_performance_metrics_target_date()]
         
         # Process each date
         total_rows_inserted = 0
@@ -601,7 +613,7 @@ def populate_performance_metrics_job(
         log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
         try:
             from utils.job_tracking import mark_job_failed
-            error_date = target_date if target_date else (datetime.now(timezone.utc) - timedelta(days=1)).date()
+            error_date = target_date if target_date else _default_performance_metrics_target_date()
             mark_job_failed('performance_metrics', error_date, None, message, duration_ms=duration_ms)
         except Exception:
             pass  # Don't fail if tracking fails
