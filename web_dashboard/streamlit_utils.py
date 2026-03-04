@@ -1379,17 +1379,25 @@ def get_individual_holdings_performance(fund: str, days: int = 7) -> pd.DataFram
         
         # Flatten nested securities data
         if 'securities' in df.columns:
-            securities_df = pd.json_normalize(df['securities'])
-            if not securities_df.empty:
-                # Merge sector and industry from securities, prefer securities currency if available
-                if 'sector' in securities_df.columns:
-                    df['sector'] = securities_df['sector']
-                if 'industry' in securities_df.columns:
-                    df['industry'] = securities_df['industry']
-                if 'currency' in securities_df.columns:
-                    # Use securities currency if available, otherwise use position currency
-                    df['currency'] = securities_df['currency'].fillna(df.get('currency', 'USD'))
-            df = df.drop(columns=['securities'], errors='ignore')
+            # OPTIMIZATION: Use list comprehension instead of pd.json_normalize which is very slow
+            sec_col = df['securities'].tolist()
+            for col in ['sector', 'industry', 'currency']:
+                df[f'sec_{col}'] = [s.get(col) if isinstance(s, dict) else None for s in sec_col]
+
+            # Merge sector and industry from securities only if present
+            if df['sec_sector'].notna().any() or 'sector' not in df.columns:
+                df['sector'] = df['sec_sector']
+            if df['sec_industry'].notna().any() or 'industry' not in df.columns:
+                df['industry'] = df['sec_industry']
+
+            # Use securities currency if available, otherwise use position currency
+            if 'currency' in df.columns:
+                df['currency'] = df['sec_currency'].fillna(df['currency'])
+            else:
+                df['currency'] = df['sec_currency'].fillna('USD')
+
+            # Drop temporary columns and original securities column
+            df = df.drop(columns=['securities', 'sec_sector', 'sec_industry', 'sec_currency'], errors='ignore')
         
         # Normalize to date-only (midnight) for consistent charting
         df['date'] = pd.to_datetime(df['date']).dt.normalize()
