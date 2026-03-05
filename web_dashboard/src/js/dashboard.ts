@@ -1763,8 +1763,6 @@ async function fetchActionQueue(): Promise<void> {
     }
 }
 
-// TODO: Migrate Action Queue HTML string construction to document.createElement for safety
-// (escapeHtml mitigates XSS for now, but DOM API would be cleaner and safer)
 function renderActionQueue(data: ActionQueueData): void {
     const tableBody = document.getElementById('action-queue-table-body');
     const emptyEl = document.getElementById('action-queue-empty');
@@ -1792,85 +1790,130 @@ function renderActionQueue(data: ActionQueueData): void {
         emptyEl.classList.add('hidden');
     }
 
-    // Render rows
-    const rows = data.data.map((item, index) => {
-        const actionColors: Record<string, string> = {
-            'BUY': 'bg-theme-success-bg text-theme-success-text',
-            'SELL': 'bg-theme-error-bg text-theme-error-text',
-            'RISK': 'bg-theme-warning-bg text-theme-warning-text',
-            'WATCH': 'bg-theme-info-bg text-theme-info-text'
-        };
+    const actionColors: Record<string, string> = {
+        'BUY': 'bg-theme-success-bg text-theme-success-text',
+        'SELL': 'bg-theme-error-bg text-theme-error-text',
+        'RISK': 'bg-theme-warning-bg text-theme-warning-text',
+        'WATCH': 'bg-theme-info-bg text-theme-info-text'
+    };
 
-        const fearColors: Record<string, string> = {
-            'EXTREME': 'text-theme-error-text',
-            'HIGH': 'text-orange-500 dark:text-orange-400',
-            'MODERATE': 'text-theme-warning-text',
-            'LOW': 'text-theme-success-text'
-        };
+    const fearColors: Record<string, string> = {
+        'EXTREME': 'text-theme-error-text',
+        'HIGH': 'text-orange-500 dark:text-orange-400',
+        'MODERATE': 'text-theme-warning-text',
+        'LOW': 'text-theme-success-text'
+    };
 
-        const fearIcons: Record<string, string> = {
-            'EXTREME': '🔴',
-            'HIGH': '🟠',
-            'MODERATE': '🟡',
-            'LOW': '🟢'
-        };
+    const fearIcons: Record<string, string> = {
+        'EXTREME': '🔴',
+        'HIGH': '🟠',
+        'MODERATE': '🟡',
+        'LOW': '🟢'
+    };
 
+    tableBody.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+
+    data.data.forEach((item, index) => {
         const actionClass = actionColors[item.action] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
         const fearClass = fearColors[item.fear_level] || '';
         const fearIcon = fearIcons[item.fear_level] || '';
 
-        const confidencePct = Math.round((item.confidence || 0) * 100);
+        const confidencePct = Math.max(0, Math.min(100, Math.round((item.confidence || 0) * 100)));
         const analysisDate = item.analysis_date ? new Date(item.analysis_date).toLocaleDateString() : '-';
 
-        // Safe escaped values
-        const safeTicker = escapeHtml(item.ticker);
-        const safeLogoUrl = item._logo_url ? escapeHtml(item._logo_url) : '';
-        const safeAction = escapeHtml(item.action);
-        const safeSignal = escapeHtml(item.overall_signal);
-        const safeFearLevel = escapeHtml(item.fear_level);
-        const safeNote = escapeHtml(item.note || '-');
-        const safeNoteTitle = escapeHtml(item.note || '');
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-border hover:bg-dashboard-hover';
 
-        // Logo HTML
-        const logoHtml = safeLogoUrl
-            ? `<img src="${safeLogoUrl}" alt="${safeTicker}" class="w-5 h-5 rounded-full inline-block mr-1" onerror="this.classList.add('hidden')">`
-            : '';
+        const rankCell = document.createElement('td');
+        rankCell.className = 'px-4 py-3';
+        const rankBadge = document.createElement('span');
+        rankBadge.className = 'inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-bold';
+        rankBadge.textContent = String(index + 1);
+        rankCell.appendChild(rankBadge);
+        tr.appendChild(rankCell);
 
-        return `
-            <tr class="border-b border-border hover:bg-dashboard-hover">
-                <td class="px-4 py-3">
-                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-bold">
-                        ${index + 1}
-                    </span>
-                </td>
-                <td class="px-4 py-3 font-medium text-text-primary">
-                    ${logoHtml}
-                    <a href="/ticker?ticker=${encodeURIComponent(item.ticker)}" class="hover:text-accent hover:underline">${safeTicker}</a>
-                    ${item.is_held ? '<span class="ml-1 text-xs text-text-tertiary">(held)</span>' : ''}
-                </td>
-                <td class="px-4 py-3 text-text-secondary text-xs max-w-[180px] truncate" title="${escapeHtml(item.company_name || '')}">${escapeHtml(item.company_name || '')}</td>
-                <td class="px-4 py-3">
-                    <span class="px-2 py-0.5 rounded text-xs font-medium ${actionClass}">
-                        ${safeAction}
-                    </span>
-                </td>
-                <td class="px-4 py-3 text-text-secondary">${safeSignal}</td>
-                <td class="px-4 py-3 text-right">
-                    <div class="flex items-center justify-end gap-1">
-                        <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                            <div class="bg-accent h-2 rounded-full" style="width: ${confidencePct}%"></div>
-                        </div>
-                        <span class="text-xs text-text-secondary w-8">${confidencePct}%</span>
-                    </div>
-                </td>
-                <td class="px-4 py-3 ${fearClass}">${fearIcon} ${safeFearLevel}</td>
-                <td class="px-4 py-3 text-text-secondary text-xs max-w-[200px] truncate" title="${safeNoteTitle}">${safeNote}</td>
-                <td class="px-4 py-3 text-text-tertiary text-xs">${analysisDate}</td>
-            </tr>
-        `;
-    }).join('');
+        const tickerCell = document.createElement('td');
+        tickerCell.className = 'px-4 py-3 font-medium text-text-primary';
+        if (item._logo_url) {
+            const logo = document.createElement('img');
+            logo.src = item._logo_url;
+            logo.alt = item.ticker;
+            logo.className = 'w-5 h-5 rounded-full inline-block mr-1';
+            logo.onerror = () => {
+                logo.classList.add('hidden');
+            };
+            tickerCell.appendChild(logo);
+        }
+        const tickerLink = document.createElement('a');
+        tickerLink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;
+        tickerLink.className = 'hover:text-accent hover:underline';
+        tickerLink.textContent = item.ticker;
+        tickerCell.appendChild(tickerLink);
+        if (item.is_held) {
+            const held = document.createElement('span');
+            held.className = 'ml-1 text-xs text-text-tertiary';
+            held.textContent = '(held)';
+            tickerCell.appendChild(held);
+        }
+        tr.appendChild(tickerCell);
 
-    tableBody.innerHTML = rows;
+        const companyCell = document.createElement('td');
+        companyCell.className = 'px-4 py-3 text-text-secondary text-xs max-w-[180px] truncate';
+        companyCell.title = item.company_name || '';
+        companyCell.textContent = item.company_name || '';
+        tr.appendChild(companyCell);
+
+        const actionCell = document.createElement('td');
+        actionCell.className = 'px-4 py-3';
+        const actionBadge = document.createElement('span');
+        actionBadge.className = `px-2 py-0.5 rounded text-xs font-medium ${actionClass}`;
+        actionBadge.textContent = item.action;
+        actionCell.appendChild(actionBadge);
+        tr.appendChild(actionCell);
+
+        const signalCell = document.createElement('td');
+        signalCell.className = 'px-4 py-3 text-text-secondary';
+        signalCell.textContent = item.overall_signal;
+        tr.appendChild(signalCell);
+
+        const confidenceCell = document.createElement('td');
+        confidenceCell.className = 'px-4 py-3 text-right';
+        const confidenceWrap = document.createElement('div');
+        confidenceWrap.className = 'flex items-center justify-end gap-1';
+        const progressOuter = document.createElement('div');
+        progressOuter.className = 'w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2';
+        const progressInner = document.createElement('div');
+        progressInner.className = 'bg-accent h-2 rounded-full';
+        progressInner.style.width = `${confidencePct}%`;
+        progressOuter.appendChild(progressInner);
+        const confidenceText = document.createElement('span');
+        confidenceText.className = 'text-xs text-text-secondary w-8';
+        confidenceText.textContent = `${confidencePct}%`;
+        confidenceWrap.append(progressOuter, confidenceText);
+        confidenceCell.appendChild(confidenceWrap);
+        tr.appendChild(confidenceCell);
+
+        const fearCell = document.createElement('td');
+        fearCell.className = `px-4 py-3 ${fearClass}`.trim();
+        fearCell.textContent = `${fearIcon} ${item.fear_level}`.trim();
+        tr.appendChild(fearCell);
+
+        const noteCell = document.createElement('td');
+        noteCell.className = 'px-4 py-3 text-text-secondary text-xs max-w-[200px] truncate';
+        noteCell.title = item.note || '';
+        noteCell.textContent = item.note || '-';
+        tr.appendChild(noteCell);
+
+        const dateCell = document.createElement('td');
+        dateCell.className = 'px-4 py-3 text-text-tertiary text-xs';
+        dateCell.textContent = analysisDate;
+        tr.appendChild(dateCell);
+
+        fragment.appendChild(tr);
+    });
+
+    tableBody.appendChild(fragment);
 }
 
 function renderPillars(pillars: Array<{ name: string; allocation: string; thesis: string; }>): void {
