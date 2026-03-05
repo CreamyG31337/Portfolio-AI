@@ -373,6 +373,7 @@
         @apply transition-opacity duration-300 ease-in-out;
     }
 
+    /* TODO(tailwind): Gradually migrate shared component wrappers to utility-first usage in templates where practical to reduce @apply abstraction. */
     /* Standardized form input theme */
     .form-input-theme {
         @apply bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5;

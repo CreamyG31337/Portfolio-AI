@@ -272,6 +272,45 @@ function initFundSelector(): void {
 }
 
 // ============================================================================
+// Password visibility toggles
+// ============================================================================
+
+export function initPasswordToggles(): void {
+    const toggleButtons = document.querySelectorAll<HTMLElement>("[data-toggle-password]");
+
+    toggleButtons.forEach((button) => {
+        // Avoid duplicate listeners if init runs more than once.
+        if (button.dataset.passwordToggleBound === "true") {
+            return;
+        }
+
+        const targetId = button.dataset.togglePassword;
+        if (!targetId) {
+            return;
+        }
+
+        button.addEventListener("click", () => {
+            const input = document.getElementById(targetId) as HTMLInputElement | null;
+            if (!input) {
+                return;
+            }
+
+            const icon = button.querySelector("i");
+            const isHidden = input.type === "password";
+            input.type = isHidden ? "text" : "password";
+            button.setAttribute("aria-label", isHidden ? "Hide password" : "Show password");
+
+            if (icon) {
+                icon.classList.toggle("fa-eye", !isHidden);
+                icon.classList.toggle("fa-eye-slash", isHidden);
+            }
+        });
+
+        button.dataset.passwordToggleBound = "true";
+    });
+}
+
+// ============================================================================
 // Initialize All UI Components
 // ============================================================================
 
@@ -282,6 +321,7 @@ function initUI(): void {
         initHeaderAutoHide();
         initSchedulerBadge();
         initFundSelector();
+        initPasswordToggles();
     }, 100);
 }
 
