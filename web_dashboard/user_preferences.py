@@ -20,6 +20,7 @@ USER_PREF_RPC_DIAGNOSTICS = os.getenv("USER_PREF_RPC_DIAGNOSTICS", "").lower() i
     "yes",
     "on",
 )
+USER_PREF_HTTP_TIMEOUT_SECONDS = float(os.getenv("USER_PREF_HTTP_TIMEOUT_SECONDS", "8"))
 
 # Try to import streamlit, but don't fail if not available (Flask context)
 try:
@@ -217,7 +218,8 @@ def get_user_preference(key: str, default: Any = None) -> Any:
                             json={
                                 "pref_key": key,
                                 "user_uuid": str(user_id_fallback)  # Pass explicit UUID
-                            }
+                            },
+                            timeout=USER_PREF_HTTP_TIMEOUT_SECONDS,
                         )
                         
                         if response.status_code == 200:
@@ -492,7 +494,8 @@ def set_user_preference(key: str, value: Any) -> bool:
                             "pref_key": key,
                             "pref_value": json_value,
                             "user_uuid": str(user_id)  # Pass explicitly - works without Authorization header
-                        }
+                        },
+                        timeout=USER_PREF_HTTP_TIMEOUT_SECONDS,
                     )
                     logger.debug(f"[PREF] HTTP fallback response status: {response.status_code}, body: {response.text[:200]}")
                     
@@ -675,7 +678,8 @@ def get_all_user_preferences() -> Dict[str, Any]:
                     response = requests.post(
                         f"{supabase_url}/rest/v1/rpc/get_user_preferences",
                         headers=headers,
-                        json={}
+                        json={},
+                        timeout=USER_PREF_HTTP_TIMEOUT_SECONDS,
                     )
                     
                     if response.status_code == 200:
