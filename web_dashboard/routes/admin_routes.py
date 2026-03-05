@@ -1766,6 +1766,8 @@ def api_scheduler_startup_diagnostics():
         # Environment info
         diagnostics["environment"] = {
             "disable_scheduler": os.environ.get('DISABLE_SCHEDULER', 'not set'),
+            "scheduler_runtime_mode": os.environ.get("SCHEDULER_RUNTIME_MODE", "embedded"),
+            "scheduler_state_dir": os.environ.get("SCHEDULER_STATE_DIR", "/tmp"),
             "process_id": os.getpid() if hasattr(os, 'getpid') else 'N/A',
             "flask_debug": os.environ.get('FLASK_DEBUG', 'not set')
         }
@@ -1784,6 +1786,16 @@ def api_scheduler_start():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot control scheduler"}), 403
+
+        runtime_mode = os.environ.get("SCHEDULER_RUNTIME_MODE", "embedded").lower()
+        if runtime_mode != "embedded":
+            return jsonify({
+                "error": (
+                    "Scheduler start is disabled in web process when "
+                    f"SCHEDULER_RUNTIME_MODE={runtime_mode}. "
+                    "Start/monitor the dedicated scheduler worker instead."
+                )
+            }), 409
             
         if is_scheduler_running():
             return jsonify({"success": True, "message": "Scheduler is already running"})

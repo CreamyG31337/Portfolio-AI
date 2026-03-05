@@ -76,6 +76,9 @@ steps:
       - pip install --quiet --upgrade pip
       - pip install --quiet -r requirements.txt
       - pip install --quiet ruff mypy
+      - echo Running commit-size and generated-file guardrails
+      - git fetch --quiet origin main || true
+      - python scripts/check_change_guardrails.py --mode range --base-ref origin/main
       - echo "Running Ruff linter (core application files only)"
       - |
         set +e

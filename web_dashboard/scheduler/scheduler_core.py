@@ -62,18 +62,18 @@ _scheduler_restart_count = 0
 _scheduler_intentional_shutdown = False
 MAX_RESTART_ATTEMPTS = 5
 
+# Heartbeat/lock location is configurable so embedded and external runtime modes
+# can share scheduler state through a mounted directory.
+_SCHEDULER_STATE_DIR = Path(os.getenv("SCHEDULER_STATE_DIR", "/tmp"))
+
 # Heartbeat file to detect scheduler status across processes
-# This allows Streamlit workers to check if scheduler is running without creating a new one
-# IMPORTANT: Use /tmp (ephemeral) instead of logs/ (Docker volume) to prevent persistence across container restarts
-# The logs directory is mounted as a Docker volume, so files there persist and cause false "already running" detection
-_HEARTBEAT_FILE = Path('/tmp') / '.scheduler_heartbeat'
+_HEARTBEAT_FILE = _SCHEDULER_STATE_DIR / ".scheduler_heartbeat"
 _HEARTBEAT_INTERVAL = 15  # seconds between heartbeat updates
 _HEARTBEAT_TIMEOUT = 60  # seconds before considering scheduler dead
 
 # Lock file to prevent multiple processes from starting scheduler simultaneously
 # This ensures only one scheduler instance runs across Flask and Streamlit
-# IMPORTANT: Use /tmp (ephemeral) for same reason as heartbeat file
-_LOCK_FILE = Path('/tmp') / '.scheduler_lock'
+_LOCK_FILE = _SCHEDULER_STATE_DIR / ".scheduler_lock"
 _LOCK_TIMEOUT = 10  # seconds to wait for lock file to be released
 
 # Worker Utilization Tracking

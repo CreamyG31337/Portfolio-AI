@@ -871,9 +871,11 @@ def _start_scheduler_background():
     logger.debug(f"[PID:{process_id}] Started scheduler initialization thread (non-daemon - keeps alive)")
 
 # Start scheduler immediately when module loads
-# Only start if not explicitly disabled (e.g. in Flask container where Streamlit runs the scheduler)
-# AND check if we haven't already started the thread (improves safety during reloads/imports)
-if os.environ.get('DISABLE_SCHEDULER', '').lower() != 'true':
+# Runtime mode:
+# - embedded (default): web process can auto-start scheduler unless DISABLE_SCHEDULER=true
+# - external: scheduler is expected to run in a dedicated worker process
+scheduler_runtime_mode = os.environ.get("SCHEDULER_RUNTIME_MODE", "embedded").lower()
+if scheduler_runtime_mode == "embedded" and os.environ.get('DISABLE_SCHEDULER', '').lower() != 'true':
     # IMPORTANT: In Flask debug mode with reloader, there are TWO processes:
     # - Parent process (PID 1): Monitors for file changes, restarts child
     # - Child/reloader process: Actually runs the Flask app (WERKZEUG_RUN_MAIN=true)
@@ -901,7 +903,13 @@ if os.environ.get('DISABLE_SCHEDULER', '').lower() != 'true':
         else:
             logger.debug("ℹ️ SchedulerInitThread already running, skipping duplicate start")
 else:
-    logger.info("ℹ️ Scheduler auto-start disabled via DISABLE_SCHEDULER environment variable")
+    if scheduler_runtime_mode != "embedded":
+        logger.info(
+            "ℹ️ Scheduler auto-start disabled in web process "
+            f"(SCHEDULER_RUNTIME_MODE={scheduler_runtime_mode})"
+        )
+    else:
+        logger.info("ℹ️ Scheduler auto-start disabled via DISABLE_SCHEDULER environment variable")
 
 # Register shutdown handler to gracefully stop scheduler on Flask exit
 # This prevents RuntimeError during Flask restarts/reloads

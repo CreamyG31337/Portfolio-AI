@@ -40,6 +40,15 @@ logger = logging.getLogger(__name__)
 SUPABASE_CLIENT_DEBUG = os.getenv("SUPABASE_CLIENT_DEBUG", "").lower() in ("1", "true", "yes", "on")
 if not SUPABASE_CLIENT_DEBUG:
     logger.setLevel(logging.INFO)
+SUPABASE_LEGACY_HEADER_INJECTION = os.getenv(
+    "SUPABASE_LEGACY_HEADER_INJECTION", "true"
+).lower() in ("1", "true", "yes", "on")
+SUPABASE_AUTH_DIAGNOSTICS = os.getenv("SUPABASE_AUTH_DIAGNOSTICS", "").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
 class SupabaseClient:
     """Client for interacting with Supabase database"""
@@ -70,6 +79,16 @@ class SupabaseClient:
         
         # Create client with publishable/service role key
         self.supabase: Client = create_client(self.url, self.key)
+        self._legacy_header_injection_enabled = SUPABASE_LEGACY_HEADER_INJECTION
+        self._auth_diagnostics: Dict[str, Any] = {
+            "legacy_header_injection_enabled": self._legacy_header_injection_enabled,
+            "token_provided": bool(user_token),
+            "token_valid": None,
+            "set_session_attempted": False,
+            "set_session_success": False,
+            "legacy_header_injection_applied": False,
+            "rpc_header_reinjection_count": 0,
+        }
         
         # If user token provided, set it as the auth session
         if user_token and not use_service_role:
@@ -97,6 +116,7 @@ class SupabaseClient:
                         token_is_valid = False
             except Exception as e:
                 logger.debug(f"[SUPABASE_CLIENT] Could not parse token expiry: {e}")
+            self._auth_diagnostics["token_valid"] = token_is_valid
             
             # CRITICAL: Set Authorization header on ALL request paths
             # The Supabase Python SDK uses multiple internal clients (postgrest, auth, etc.)
@@ -105,6 +125,7 @@ class SupabaseClient:
             # Only call set_session if token is not expired
             if token_is_valid:
                 try:
+                    self._auth_diagnostics["set_session_attempted"] = True
                     # Method 1: Set session via auth client (standard approach)
                     # This is the CORRECT way - it sets auth headers globally for ALL requests
                     # including RPC calls, table queries, etc.
@@ -114,6 +135,7 @@ class SupabaseClient:
                             access_token=user_token,
                             refresh_token=refresh_token
                         )
+                        self._auth_diagnostics["set_session_success"] = True
                         logger.debug("[SUPABASE_CLIENT] ✅ Successfully called auth.set_session() with refresh_token")
                     else:
                         # Try with empty refresh_token as fallback
@@ -121,6 +143,7 @@ class SupabaseClient:
                             access_token=user_token,
                             refresh_token=""
                         )
+                        self._auth_diagnostics["set_session_success"] = True
                         logger.debug("[SUPABASE_CLIENT] ⚠️ Called auth.set_session() without refresh_token (may not work for RPC)")
                 except Exception as e:
                     logger.warning(f"[SUPABASE_CLIENT] ❌ auth.set_session() failed: {e}")
@@ -144,84 +167,65 @@ class SupabaseClient:
                         logger.warning("[SUPABASE_CLIENT] 🚨 Marked session as invalid due to expired token")
                 except ImportError:
                     pass  # Not in Flask context
-            
-            # TODO: Methods 2-3 below are workarounds for supabase-py SDK internals.
-            # Revisit when the SDK stabilizes its auth API to use official methods.
-            # Method 2: Set Authorization header directly on postgrest client
-            # This ensures table queries work
-            try:
-                logger.debug(f"[SUPABASE_CLIENT] postgrest exists: {hasattr(self.supabase, 'postgrest')}")
-                if hasattr(self.supabase, 'postgrest') and self.supabase.postgrest:
-                    logger.debug(f"[SUPABASE_CLIENT] postgrest.session exists: {hasattr(self.supabase.postgrest, 'session')}")
-                    logger.debug(f"[SUPABASE_CLIENT] postgrest.auth exists: {hasattr(self.supabase.postgrest, 'auth')}")
-                    # The postgrest client should have a session attribute with headers
-                    if hasattr(self.supabase.postgrest, 'session'):
-                        # Set Authorization header directly on the session
-                        self.supabase.postgrest.session.headers["Authorization"] = f"Bearer {user_token}"
-                        logger.debug("[SUPABASE_CLIENT] ✅ Set Authorization header on postgrest.session")
-                    # Also try the auth() method if it exists
-                    elif hasattr(self.supabase.postgrest, 'auth'):
-                        self.supabase.postgrest.auth(user_token)
-                        logger.debug("[SUPABASE_CLIENT] ✅ Called postgrest.auth()")
-                    else:
-                        logger.warning("[SUPABASE_CLIENT] ❌ No postgrest.session or postgrest.auth() available")
-            except Exception as e:
-                logger.warning(f"[SUPABASE_CLIENT] ❌ Could not set postgrest headers: {e}")
-            
-            # Method 3: CRITICAL FIX - Set headers on the underlying httpx/requests client
-            # RPC calls use the same client, so this ensures auth.uid() works
-            try:
-                # The Supabase client stores options which contain headers
-                logger.debug(f"[SUPABASE_CLIENT] options exists: {hasattr(self.supabase, 'options')}")
-                if hasattr(self.supabase, 'options') and self.supabase.options:
-                    logger.debug(f"[SUPABASE_CLIENT] options.headers exists: {hasattr(self.supabase.options, 'headers')}")
-                    # Update the headers in options
-                    if not hasattr(self.supabase.options, 'headers'):
-                        self.supabase.options.headers = {}
-                    self.supabase.options.headers["Authorization"] = f"Bearer {user_token}"
-                    logger.debug("[SUPABASE_CLIENT] ✅ Set Authorization header in client options")
-                
-                # Also try to set on the rest client directly
-                logger.debug(f"[SUPABASE_CLIENT] rest exists: {hasattr(self.supabase, 'rest')}")
-                if hasattr(self.supabase, 'rest') and self.supabase.rest:
-                    logger.debug(f"[SUPABASE_CLIENT] rest.session exists: {hasattr(self.supabase.rest, 'session')}")
-                    if hasattr(self.supabase.rest, 'session'):
-                        self.supabase.rest.session.headers["Authorization"] = f"Bearer {user_token}"
-                        logger.debug("[SUPABASE_CLIENT] ✅ Set Authorization header on rest.session")
-                
-                # For SDK v2+, also check for _client attribute
-                logger.debug(f"[SUPABASE_CLIENT] _client exists: {hasattr(self.supabase, '_client')}")
-                if hasattr(self.supabase, '_client'):
-                    logger.debug(f"[SUPABASE_CLIENT] _client.headers exists: {hasattr(self.supabase._client, 'headers')}")
-                    if hasattr(self.supabase._client, 'headers'):
-                        self.supabase._client.headers["Authorization"] = f"Bearer {user_token}"
-                        logger.debug("[SUPABASE_CLIENT] ✅ Set Authorization header on _client")
-                
-                # NEW: Try to find where RPC calls are actually made
-                logger.debug(f"[SUPABASE_CLIENT] Client attributes: {[attr for attr in dir(self.supabase) if not attr.startswith('_')]}")
-                
-                # CRITICAL DEBUG: Inspect postgrest.session deeply
-                if hasattr(self.supabase, 'postgrest') and self.supabase.postgrest:
-                    if hasattr(self.supabase.postgrest, 'session'):
-                        session = self.supabase.postgrest.session
-                        logger.debug(f"[SUPABASE_CLIENT] postgrest.session type: {type(session)}")
-                        logger.debug(f"[SUPABASE_CLIENT] postgrest.session.headers type: {type(session.headers)}")
-                        logger.debug(f"[SUPABASE_CLIENT] postgrest.session.headers keys: {list(session.headers.keys())}")
-                        logger.debug(f"[SUPABASE_CLIENT] Authorization in headers: {'Authorization' in session.headers}")
-                        if 'Authorization' in session.headers:
-                            auth_val = session.headers['Authorization']
-                            logger.debug(f"[SUPABASE_CLIENT] Current Authorization header: {auth_val[:50]}..." if len(auth_val) > 50 else f"[SUPABASE_CLIENT] Current Authorization header: {auth_val}")
-                
-                # Check if there's a shared session for RPC
-                # Try to access the actual HTTP client used by rpc method
-                if hasattr(self.supabase.postgrest, '_client'):
-                    logger.debug(f"[SUPABASE_CLIENT] postgrest has _client: {type(self.supabase.postgrest._client)}")
-
-                        
-            except Exception as e:
-                logger.warning(f"[SUPABASE_CLIENT] ❌ Could not set client-level headers: {e}")
+            if self._legacy_header_injection_enabled:
+                self._apply_legacy_header_injection(user_token)
+            elif SUPABASE_AUTH_DIAGNOSTICS:
+                logger.info(
+                    "[SUPABASE_CLIENT] Legacy header injection disabled "
+                    "(SUPABASE_LEGACY_HEADER_INJECTION=false); using set_session-only path"
+                )
             
             logger.debug("[SUPABASE_CLIENT] Completed user token initialization")
+
+        if SUPABASE_AUTH_DIAGNOSTICS:
+            logger.info("[SUPABASE_CLIENT] Auth diagnostics: %s", self._auth_diagnostics)
+
+    def _apply_legacy_header_injection(self, user_token: str) -> None:
+        """Apply legacy header mutations for SDK compatibility.
+
+        This is intentionally feature-flagged and can be disabled with
+        SUPABASE_LEGACY_HEADER_INJECTION=false for staged rollout.
+        """
+        # Method 2: Set Authorization header directly on postgrest client
+        try:
+            logger.debug(f"[SUPABASE_CLIENT] postgrest exists: {hasattr(self.supabase, 'postgrest')}")
+            if hasattr(self.supabase, 'postgrest') and self.supabase.postgrest:
+                logger.debug(f"[SUPABASE_CLIENT] postgrest.session exists: {hasattr(self.supabase.postgrest, 'session')}")
+                logger.debug(f"[SUPABASE_CLIENT] postgrest.auth exists: {hasattr(self.supabase.postgrest, 'auth')}")
+                if hasattr(self.supabase.postgrest, 'session'):
+                    self.supabase.postgrest.session.headers["Authorization"] = f"Bearer {user_token}"
+                    logger.debug("[SUPABASE_CLIENT] ✅ Set Authorization header on postgrest.session")
+                elif hasattr(self.supabase.postgrest, 'auth'):
+                    self.supabase.postgrest.auth(user_token)
+                    logger.debug("[SUPABASE_CLIENT] ✅ Called postgrest.auth()")
+                else:
+                    logger.warning("[SUPABASE_CLIENT] ❌ No postgrest.session or postgrest.auth() available")
+        except Exception as e:
+            logger.warning(f"[SUPABASE_CLIENT] ❌ Could not set postgrest headers: {e}")
+
+        # Method 3: Set headers on underlying clients used by some SDK paths
+        try:
+            logger.debug(f"[SUPABASE_CLIENT] options exists: {hasattr(self.supabase, 'options')}")
+            if hasattr(self.supabase, 'options') and self.supabase.options:
+                logger.debug(f"[SUPABASE_CLIENT] options.headers exists: {hasattr(self.supabase.options, 'headers')}")
+                if not hasattr(self.supabase.options, 'headers'):
+                    self.supabase.options.headers = {}
+                self.supabase.options.headers["Authorization"] = f"Bearer {user_token}"
+                logger.debug("[SUPABASE_CLIENT] ✅ Set Authorization header in client options")
+
+            logger.debug(f"[SUPABASE_CLIENT] rest exists: {hasattr(self.supabase, 'rest')}")
+            if hasattr(self.supabase, 'rest') and self.supabase.rest and hasattr(self.supabase.rest, 'session'):
+                self.supabase.rest.session.headers["Authorization"] = f"Bearer {user_token}"
+                logger.debug("[SUPABASE_CLIENT] ✅ Set Authorization header on rest.session")
+
+            logger.debug(f"[SUPABASE_CLIENT] _client exists: {hasattr(self.supabase, '_client')}")
+            if hasattr(self.supabase, '_client') and hasattr(self.supabase._client, 'headers'):
+                self.supabase._client.headers["Authorization"] = f"Bearer {user_token}"
+                logger.debug("[SUPABASE_CLIENT] ✅ Set Authorization header on _client")
+
+            self._auth_diagnostics["legacy_header_injection_applied"] = True
+        except Exception as e:
+            logger.warning(f"[SUPABASE_CLIENT] ❌ Could not set client-level headers: {e}")
     
     def test_connection(self) -> bool:
         """Test database connection"""
@@ -253,9 +257,8 @@ class SupabaseClient:
         
         postgrest = self.supabase.postgrest
         
-        # Ensure Authorization header is set RIGHT before making the call
-        # This is critical for auth.uid() to work in Postgres functions
-        if hasattr(self, '_user_token') and self._user_token:
+        # Optional legacy re-injection before RPC.
+        if self._legacy_header_injection_enabled and hasattr(self, '_user_token') and self._user_token:
             # Set header directly on session - this is more reliable than postgrest.auth()
             if hasattr(postgrest, 'session'):
                 session_headers = postgrest.session.headers
@@ -276,6 +279,7 @@ class SupabaseClient:
                             postgrest.session.headers = new_headers
                     except ImportError:
                         pass
+                self._auth_diagnostics["rpc_header_reinjection_count"] += 1
         
         # Now make the RPC call
         # The session should have the Authorization header set above

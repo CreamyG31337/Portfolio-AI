@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+python scripts/check_change_guardrails.py --mode staged

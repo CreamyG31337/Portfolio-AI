@@ -81,6 +81,13 @@ SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_ANON_KEY=your-anon-key-here
 JWT_SECRET=your-super-secret-jwt-key-here
 FLASK_SECRET_KEY=your-flask-secret-key-here
+# Optional Supabase auth rollout flags
+SUPABASE_LEGACY_HEADER_INJECTION=true
+SUPABASE_AUTH_DIAGNOSTICS=false
+USER_PREF_RPC_DIAGNOSTICS=false
+# Scheduler runtime mode
+SCHEDULER_RUNTIME_MODE=embedded
+SCHEDULER_STATE_DIR=/tmp
 ```
 
 ### **Credentials Template (`credentials.example.txt`)**
@@ -107,6 +114,12 @@ Anon Key: your-anon-key-here
 - **User Authentication** - Secure login/registration
 - **Fund Access Control** - Users only see assigned funds
 - **Row Level Security** - Database-level permissions
+
+## Scheduler Runtime Modes
+
+- `SCHEDULER_RUNTIME_MODE=embedded` (default): Flask web process may auto-start scheduler.
+- `SCHEDULER_RUNTIME_MODE=external`: web process does not auto-start scheduler; run `python scheduler_worker.py` in a dedicated worker process.
+- `SCHEDULER_STATE_DIR` controls heartbeat/lock location (default `/tmp`). In external mode, use a shared mount if multiple containers need the same scheduler status visibility.
 - **Session Management** - JWT tokens with expiration
 
 ### Admin Tools

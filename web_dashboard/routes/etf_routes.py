@@ -256,130 +256,241 @@ def get_holdings_changes(
     """
     try:
         pc = _get_postgres_client()
-        
-        # Get list of ETFs to process
-        if etf_ticker and etf_ticker != "All ETFs":
-            # Single ETF selected - process only that ETF
-            etfs_to_process = [{'ticker': etf_ticker}]
-        else:
-            # "All ETFs" - get all available ETFs
-            etfs_to_process = get_available_etfs(db_client)
-            if not etfs_to_process:
-                return pd.DataFrame(), None
-        
-        # Process each ETF individually using its own latest date
-        all_etf_results = []
-        all_dates = []
-        
-        for etf_info in etfs_to_process:
-            etf = etf_info['ticker']
-            
-            # Get this ETF's own latest date <= target_date
-            etf_latest_date = get_as_of_date(db_client, target_date, etf)
-            if not etf_latest_date:
-                continue  # Skip ETFs with no data
-            
-            etf_latest_date_str = etf_latest_date.isoformat()
-            all_dates.append(etf_latest_date)
-            
-            # Fetch current holdings for this ETF on its latest date
-            curr_holdings_list = pc.execute_query("""
-                SELECT date, etf_ticker, holding_ticker, holding_name, shares_held
-                FROM etf_holdings_log
-                WHERE date = %s AND etf_ticker = %s
-            """, (etf_latest_date_str, etf))
-            
-            if not curr_holdings_list:
-                continue  # Skip ETFs with no holdings on their latest date
-            
-            curr_df = pd.DataFrame(curr_holdings_list)
-            
-            # Find latest previous date for this ETF
-            prev_res = pc.execute_query("""
-                SELECT date FROM etf_holdings_log
-                WHERE etf_ticker = %s AND date < %s
-                ORDER BY date DESC
-                LIMIT 1
-            """, (etf, etf_latest_date_str))
-            
-            prev_date_str = None
-            if prev_res and prev_res[0].get("date"):
-                d = prev_res[0]["date"]
-                prev_date_str = d.isoformat() if hasattr(d, 'isoformat') else str(d)
+        curr_df = None
+        all_dates: List[date] = []
 
-            # Calculate changes for this ETF
-            if not prev_date_str:
-                # No previous data - all holdings are "new" (first time seeing them)
-                curr_df['previous_shares'] = 0
-                curr_df['share_change'] = curr_df['shares_held']
-                curr_df['percent_change'] = 100.0
-                curr_df['action'] = 'BUY'
+        # Fast path: compute latest-vs-previous changes in SQL for all ETFs at once.
+        # Falls back to legacy per-ETF Python merge logic if anything fails.
+        try:
+            etf_filter_sql = ""
+            query_params: tuple = (target_date.isoformat(),)
+            if etf_ticker and etf_ticker != "All ETFs":
+                etf_filter_sql = "AND etf_ticker = %s"
+                query_params = (target_date.isoformat(), etf_ticker)
+
+            fast_rows = pc.execute_query(
+                f"""
+                WITH latest_per_etf AS (
+                    SELECT etf_ticker, MAX(date) AS current_date
+                    FROM etf_holdings_log
+                    WHERE date <= %s
+                    {etf_filter_sql}
+                    GROUP BY etf_ticker
+                ),
+                previous_per_etf AS (
+                    SELECT
+                        l.etf_ticker,
+                        l.current_date,
+                        (
+                            SELECT MAX(e2.date)
+                            FROM etf_holdings_log e2
+                            WHERE e2.etf_ticker = l.etf_ticker
+                              AND e2.date < l.current_date
+                        ) AS previous_date
+                    FROM latest_per_etf l
+                ),
+                current_snap AS (
+                    SELECT
+                        p.etf_ticker,
+                        p.current_date AS date,
+                        h.holding_ticker,
+                        h.holding_name,
+                        h.shares_held AS current_shares
+                    FROM previous_per_etf p
+                    JOIN etf_holdings_log h
+                      ON h.etf_ticker = p.etf_ticker
+                     AND h.date = p.current_date
+                ),
+                previous_snap AS (
+                    SELECT
+                        p.etf_ticker,
+                        h.holding_ticker,
+                        h.shares_held AS previous_shares
+                    FROM previous_per_etf p
+                    JOIN etf_holdings_log h
+                      ON h.etf_ticker = p.etf_ticker
+                     AND h.date = p.previous_date
+                ),
+                merged AS (
+                    SELECT
+                        COALESCE(c.etf_ticker, p.etf_ticker) AS etf_ticker,
+                        COALESCE(c.date, p.current_date) AS date,
+                        COALESCE(c.holding_ticker, pr.holding_ticker) AS holding_ticker,
+                        COALESCE(c.holding_name, COALESCE(c.holding_ticker, pr.holding_ticker)) AS holding_name,
+                        COALESCE(c.current_shares, 0) AS current_shares,
+                        COALESCE(pr.previous_shares, 0) AS previous_shares
+                    FROM previous_per_etf p
+                    LEFT JOIN current_snap c
+                        ON c.etf_ticker = p.etf_ticker
+                    FULL OUTER JOIN previous_snap pr
+                        ON pr.etf_ticker = COALESCE(c.etf_ticker, p.etf_ticker)
+                       AND pr.holding_ticker = c.holding_ticker
+                )
+                SELECT
+                    date,
+                    etf_ticker,
+                    holding_ticker,
+                    holding_name,
+                    current_shares,
+                    previous_shares,
+                    current_shares - previous_shares AS share_change,
+                    CASE
+                        WHEN previous_shares > 0
+                            THEN ((current_shares - previous_shares)::numeric / previous_shares) * 100
+                        WHEN current_shares > 0
+                            THEN 100
+                        ELSE 0
+                    END AS percent_change,
+                    CASE
+                        WHEN previous_shares = 0 AND current_shares > 0 THEN 'BUY'
+                        WHEN current_shares > previous_shares THEN 'BUY'
+                        WHEN current_shares < previous_shares THEN 'SELL'
+                        ELSE 'HOLD'
+                    END AS action
+                FROM merged
+                WHERE holding_ticker IS NOT NULL
+                """,
+                query_params,
+            )
+
+            if fast_rows:
+                curr_df = pd.DataFrame(fast_rows)
+                # Track most recent ETF snapshot date for display
+                date_series = pd.to_datetime(curr_df["date"], errors="coerce").dropna()
+                if not date_series.empty:
+                    all_dates = [d.date() for d in date_series.unique().tolist()]
+                logger.info(
+                    "Using DB-fast-path for get_holdings_changes: %s rows across %s ETFs",
+                    len(curr_df),
+                    curr_df["etf_ticker"].nunique() if "etf_ticker" in curr_df.columns else 0,
+                )
+        except Exception as fast_path_error:
+            logger.warning("DB fast-path failed; falling back to legacy changes logic: %s", fast_path_error)
+
+        # Get list of ETFs to process
+        if curr_df is None:
+            if etf_ticker and etf_ticker != "All ETFs":
+                # Single ETF selected - process only that ETF
+                etfs_to_process = [{'ticker': etf_ticker}]
             else:
-                # Fetch previous holdings for this ETF
-                prev_holdings_list = pc.execute_query("""
-                    SELECT etf_ticker, holding_ticker, shares_held
+                # "All ETFs" - get all available ETFs
+                etfs_to_process = get_available_etfs(db_client)
+                if not etfs_to_process:
+                    return pd.DataFrame(), None
+            
+            # Process each ETF individually using its own latest date
+            all_etf_results = []
+            all_dates = []
+            
+            for etf_info in etfs_to_process:
+                etf = etf_info['ticker']
+                
+                # Get this ETF's own latest date <= target_date
+                etf_latest_date = get_as_of_date(db_client, target_date, etf)
+                if not etf_latest_date:
+                    continue  # Skip ETFs with no data
+                
+                etf_latest_date_str = etf_latest_date.isoformat()
+                all_dates.append(etf_latest_date)
+                
+                # Fetch current holdings for this ETF on its latest date
+                curr_holdings_list = pc.execute_query("""
+                    SELECT date, etf_ticker, holding_ticker, holding_name, shares_held
                     FROM etf_holdings_log
                     WHERE date = %s AND etf_ticker = %s
-                """, (prev_date_str, etf))
+                """, (etf_latest_date_str, etf))
                 
-                if prev_holdings_list:
-                    prev_df = pd.DataFrame(prev_holdings_list)
-                    prev_df = prev_df.rename(columns={'shares_held': 'previous_shares'})
+                if not curr_holdings_list:
+                    continue  # Skip ETFs with no holdings on their latest date
+                
+                curr_df = pd.DataFrame(curr_holdings_list)
+                
+                # Find latest previous date for this ETF
+                prev_res = pc.execute_query("""
+                    SELECT date FROM etf_holdings_log
+                    WHERE etf_ticker = %s AND date < %s
+                    ORDER BY date DESC
+                    LIMIT 1
+                """, (etf, etf_latest_date_str))
+                
+                prev_date_str = None
+                if prev_res and prev_res[0].get("date"):
+                    d = prev_res[0]["date"]
+                    prev_date_str = d.isoformat() if hasattr(d, 'isoformat') else str(d)
 
-                    merged_df = curr_df.merge(
-                        prev_df,
-                        on=['etf_ticker', 'holding_ticker'],
-                        how='outer'
-                    )
-
-                    # Fill NaN values - shares_held NaN means position was sold (set to 0)
-                    # previous_shares NaN means new position (set to 0)
-                    merged_df['shares_held'] = merged_df['shares_held'].fillna(0)
-                    merged_df['previous_shares'] = merged_df['previous_shares'].fillna(0)
-                    
-                    # For sold positions (shares_held is NaN from merge), date should be ETF's latest date
-                    # (when we observed they were sold), not the previous date
-                    if 'date' in merged_df.columns:
-                        # Rows with NaN date after merge are from prev_df (sold positions)
-                        # Set their date to the ETF's latest date
-                        merged_df.loc[merged_df['date'].isna(), 'date'] = etf_latest_date_str
-
-                    merged_df['share_change'] = merged_df['shares_held'] - merged_df['previous_shares']
-
-                    def calc_pct(row):
-                        if row['previous_shares'] > 0:
-                            return (row['share_change'] / row['previous_shares']) * 100
-                        return 0
-
-                    merged_df['percent_change'] = merged_df.apply(calc_pct, axis=1)
-
-                    def determine_action(row):
-                        if row['previous_shares'] == 0 and row['shares_held'] > 0: return 'BUY'
-                        if row['shares_held'] > row['previous_shares']: return 'BUY'
-                        if row['shares_held'] < row['previous_shares']: return 'SELL'
-                        return 'HOLD'
-
-                    merged_df['action'] = merged_df.apply(determine_action, axis=1)
-                    curr_df = merged_df
-                else:
-                    # No previous holdings found
+                # Calculate changes for this ETF
+                if not prev_date_str:
+                    # No previous data - all holdings are "new" (first time seeing them)
                     curr_df['previous_shares'] = 0
                     curr_df['share_change'] = curr_df['shares_held']
                     curr_df['percent_change'] = 100.0
                     curr_df['action'] = 'BUY'
+                else:
+                    # Fetch previous holdings for this ETF
+                    prev_holdings_list = pc.execute_query("""
+                        SELECT etf_ticker, holding_ticker, shares_held
+                        FROM etf_holdings_log
+                        WHERE date = %s AND etf_ticker = %s
+                    """, (prev_date_str, etf))
+                    
+                    if prev_holdings_list:
+                        prev_df = pd.DataFrame(prev_holdings_list)
+                        prev_df = prev_df.rename(columns={'shares_held': 'previous_shares'})
+
+                        merged_df = curr_df.merge(
+                            prev_df,
+                            on=['etf_ticker', 'holding_ticker'],
+                            how='outer'
+                        )
+
+                        # Fill NaN values - shares_held NaN means position was sold (set to 0)
+                        # previous_shares NaN means new position (set to 0)
+                        merged_df['shares_held'] = merged_df['shares_held'].fillna(0)
+                        merged_df['previous_shares'] = merged_df['previous_shares'].fillna(0)
+                        
+                        # For sold positions (shares_held is NaN from merge), date should be ETF's latest date
+                        # (when we observed they were sold), not the previous date
+                        if 'date' in merged_df.columns:
+                            # Rows with NaN date after merge are from prev_df (sold positions)
+                            # Set their date to the ETF's latest date
+                            merged_df.loc[merged_df['date'].isna(), 'date'] = etf_latest_date_str
+
+                        merged_df['share_change'] = merged_df['shares_held'] - merged_df['previous_shares']
+
+                        def calc_pct(row):
+                            if row['previous_shares'] > 0:
+                                return (row['share_change'] / row['previous_shares']) * 100
+                            return 0
+
+                        merged_df['percent_change'] = merged_df.apply(calc_pct, axis=1)
+
+                        def determine_action(row):
+                            if row['previous_shares'] == 0 and row['shares_held'] > 0: return 'BUY'
+                            if row['shares_held'] > row['previous_shares']: return 'BUY'
+                            if row['shares_held'] < row['previous_shares']: return 'SELL'
+                            return 'HOLD'
+
+                        merged_df['action'] = merged_df.apply(determine_action, axis=1)
+                        curr_df = merged_df
+                    else:
+                        # No previous holdings found
+                        curr_df['previous_shares'] = 0
+                        curr_df['share_change'] = curr_df['shares_held']
+                        curr_df['percent_change'] = 100.0
+                        curr_df['action'] = 'BUY'
+                
+                # Store this ETF's results
+                all_etf_results.append(curr_df)
             
-            # Store this ETF's results
-            all_etf_results.append(curr_df)
-        
-        # Combine all ETF results into single DataFrame
-        if not all_etf_results:
-            # No ETFs had data - return empty DataFrame
-            # Use most recent date across all ETFs for display (or None if no dates)
-            display_date = max(all_dates) if all_dates else None
-            return pd.DataFrame(), display_date
-        
-        # Combine all ETF DataFrames
-        curr_df = pd.concat(all_etf_results, ignore_index=True)
+            # Combine all ETF results into single DataFrame
+            if not all_etf_results:
+                # No ETFs had data - return empty DataFrame
+                # Use most recent date across all ETFs for display (or None if no dates)
+                display_date = max(all_dates) if all_dates else None
+                return pd.DataFrame(), display_date
+            
+            # Combine all ETF DataFrames
+            curr_df = pd.concat(all_etf_results, ignore_index=True)
         
         curr_df = curr_df.rename(columns={'shares_held': 'current_shares'})
         

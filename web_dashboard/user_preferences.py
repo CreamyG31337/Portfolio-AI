@@ -14,6 +14,12 @@ import os
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+USER_PREF_RPC_DIAGNOSTICS = os.getenv("USER_PREF_RPC_DIAGNOSTICS", "").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
 # Try to import streamlit, but don't fail if not available (Flask context)
 try:
@@ -88,6 +94,16 @@ def _is_authenticated():
             pass
     
     return False
+
+
+def _log_pref_rpc_path(operation: str, path: str, extra: Optional[Dict[str, Any]] = None) -> None:
+    """Emit structured diagnostics for preference DB read/write paths."""
+    if not USER_PREF_RPC_DIAGNOSTICS:
+        return
+    payload: Dict[str, Any] = {"operation": operation, "path": path}
+    if extra:
+        payload.update(extra)
+    logger.info("[PREF_RPC] %s", payload)
 
 
 def get_user_preference(key: str, default: Any = None) -> Any:
@@ -171,9 +187,11 @@ def get_user_preference(key: str, default: Any = None) -> Any:
         try:
             rpc_result = client.rpc('get_user_preference', {'pref_key': key})
             rpc_success = True
+            _log_pref_rpc_path("get_user_preference", "client.rpc", {"key": key})
             result = rpc_result # For backward compatibility with existing result variable use
         except Exception as rpc_error:
             logger.warning(f"[PREF] RPC get_user_preference failed: {rpc_error}, trying HTTP fallback")
+            _log_pref_rpc_path("get_user_preference", "client.rpc_failed", {"key": key, "error": str(rpc_error)})
             
             # Fallback to direct HTTP request using explicit user_uuid
             # This handles the expired token case where auth.uid() fails
@@ -204,6 +222,7 @@ def get_user_preference(key: str, default: Any = None) -> Any:
                         
                         if response.status_code == 200:
                             data = response.json()
+                            _log_pref_rpc_path("get_user_preference", "http_fallback_success", {"key": key})
                             logger.debug(f"HTTP fallback RPC result: {data}")
                             # Create a mock result object to match client.rpc return type
                             class MockResult:
@@ -212,8 +231,14 @@ def get_user_preference(key: str, default: Any = None) -> Any:
                             result = MockResult(data)
                             rpc_success = True
                         else:
+                            _log_pref_rpc_path(
+                                "get_user_preference",
+                                "http_fallback_failed",
+                                {"key": key, "status_code": response.status_code},
+                            )
                             logger.error(f"HTTP fallback get_user_preference failed: {response.status_code} {response.text}")
                 except Exception as http_error:
+                    _log_pref_rpc_path("get_user_preference", "http_fallback_exception", {"key": key, "error": str(http_error)})
                     logger.error(f"HTTP fallback get_user_preference exception: {http_error}")
             
         if not rpc_success:
@@ -399,22 +424,6 @@ def set_user_preference(key: str, value: Any) -> bool:
         try:
             logger.debug(f"Calling RPC set_user_preference with key='{key}', user_id='{user_id}'")
             
-            # Ensure Authorization header is set right before RPC call
-            # Call postgrest.auth() to ensure the header is set correctly
-            if hasattr(client, 'supabase') and hasattr(client.supabase, 'postgrest') and user_token:
-                postgrest = client.supabase.postgrest
-                try:
-                    # Call auth() method to set the header (this is what makes auth.uid() work)
-                    postgrest.auth(user_token)
-                    logger.debug(f"[PREF] Called postgrest.auth() before RPC call")
-                except Exception as auth_error:
-                    logger.warning(f"[PREF] postgrest.auth() failed: {auth_error}, trying direct header setting")
-                    # Fallback: set header directly on session
-                    if hasattr(postgrest, 'session'):
-                        if not hasattr(postgrest.session, 'headers'):
-                            postgrest.session.headers = {}
-                        postgrest.session.headers['Authorization'] = f'Bearer {user_token}'
-            
             # Try without user_uuid first (preferred - uses auth.uid())
             # If that fails, we'll pass it explicitly in the HTTP fallback
             # Use client.rpc() method which ensures Authorization header is set
@@ -423,6 +432,7 @@ def set_user_preference(key: str, value: Any) -> bool:
                 'pref_value': json_value
                 # Don't pass user_uuid - let auth.uid() work from Authorization header
             })
+            _log_pref_rpc_path("set_user_preference", "client.rpc", {"key": key})
             
             # Check if the RPC call succeeded
             # The function returns a boolean, but Supabase might wrap it
@@ -452,6 +462,7 @@ def set_user_preference(key: str, value: Any) -> bool:
         except Exception as rpc_error:
             rpc_error_msg = f"RPC call failed: {str(rpc_error)}"
             logger.warning(f"{rpc_error_msg}, trying HTTP fallback", exc_info=True)
+            _log_pref_rpc_path("set_user_preference", "client.rpc_failed", {"key": key, "error": str(rpc_error)})
             rpc_success = False
         
         # Fallback to direct HTTP request if RPC client call failed
@@ -487,14 +498,21 @@ def set_user_preference(key: str, value: Any) -> bool:
                     
                     if response.status_code == 200:
                         result_data = response.json()
+                        _log_pref_rpc_path("set_user_preference", "http_fallback_success", {"key": key})
                         logger.debug(f"HTTP fallback RPC result: {result_data}, type: {type(result_data)}")
                         if result_data is True or (isinstance(result_data, list) and len(result_data) > 0 and result_data[0] is True):
                             rpc_success = True
                         else:
                             logger.warning(f"HTTP fallback returned False: {result_data}")
                     else:
+                        _log_pref_rpc_path(
+                            "set_user_preference",
+                            "http_fallback_failed",
+                            {"key": key, "status_code": response.status_code},
+                        )
                         logger.error(f"HTTP fallback failed with status {response.status_code}: {response.text}")
             except Exception as http_error:
+                _log_pref_rpc_path("set_user_preference", "http_fallback_exception", {"key": key, "error": str(http_error)})
                 logger.error(f"HTTP fallback also failed: {http_error}", exc_info=True)
         
         if not rpc_success:
@@ -635,8 +653,10 @@ def get_all_user_preferences() -> Dict[str, Any]:
         logger.debug(f"[PREF] Calling get_user_preferences RPC for user_id={user_id}")
         try:
             result = client.rpc('get_user_preferences', {})
+            _log_pref_rpc_path("get_user_preferences", "client.rpc")
         except Exception as rpc_error:
             logger.error(f"[PREF] RPC call failed: {rpc_error}", exc_info=True)
+            _log_pref_rpc_path("get_user_preferences", "client.rpc_failed", {"error": str(rpc_error)})
             # Try fallback: direct HTTP call with explicit Authorization header
             try:
                 import requests
@@ -660,12 +680,14 @@ def get_all_user_preferences() -> Dict[str, Any]:
                     
                     if response.status_code == 200:
                         data = response.json()
+                        _log_pref_rpc_path("get_user_preferences", "http_fallback_success")
                         logger.debug(f"[PREF] HTTP fallback RPC result: {data}")
                         class MockResult:
                             def __init__(self, data):
                                 self.data = data
                         result = MockResult(data)
                     else:
+                        _log_pref_rpc_path("get_user_preferences", "http_fallback_failed", {"status_code": response.status_code})
                         logger.error(f"[PREF] HTTP fallback failed: {response.status_code} {response.text}")
                         return {}
                 else:

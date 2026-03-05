@@ -124,6 +124,16 @@ docker-compose up --build
 python run.py
 ```
 
+### 5. Commit Guardrails (Recommended)
+Run local change guardrails before committing:
+```bash
+python scripts/check_change_guardrails.py --mode staged
+```
+Optional Git hook setup:
+```bash
+git config core.hooksPath .githooks
+```
+
 ## 🔄 Data Storage Modes
 
 **Portfolio-AI** supports a hybrid data model:
