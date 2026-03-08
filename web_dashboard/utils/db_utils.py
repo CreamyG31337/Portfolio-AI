@@ -47,23 +47,15 @@ def get_all_unique_tickers() -> list[str]:
     sb_client = get_supabase_client()
     if sb_client:
         try:
-            # From securities table
-            securities = sb_client.supabase.table('securities').select('ticker').execute()
-            for row in securities.data:
-                if row.get('ticker'):
-                    tickers.add(row['ticker'].upper())
+            from web_dashboard.flask_data_utils import fetch_unique_column_values_parallel
 
-            # From portfolio_positions
-            positions = sb_client.supabase.table('portfolio_positions').select('ticker').execute()
-            for row in positions.data:
-                if row.get('ticker'):
-                    tickers.add(row['ticker'].upper())
-
-            # From trade_log
-            trades = sb_client.supabase.table('trade_log').select('ticker').execute()
-            for row in trades.data:
-                if row.get('ticker'):
-                    tickers.add(row['ticker'].upper())
+            # Use parallel fetch helper which uses RPC and paginated fallback to safely get all unique values
+            for table in ['securities', 'portfolio_positions', 'trade_log', 'congress_trades']:
+                try:
+                    table_tickers = fetch_unique_column_values_parallel(sb_client, table, 'ticker')
+                    tickers.update([t.upper() for t in table_tickers if t])
+                except Exception as e:
+                    logger.warning(f"Error fetching tickers from {table}: {e}")
 
             # From watched_tickers (active only, via shared accessor)
             try:
@@ -71,12 +63,6 @@ def get_all_unique_tickers() -> list[str]:
                 tickers.update(watched_tickers)
             except Exception as e:
                 logger.warning(f"Error fetching watchlist tickers: {e}")
-
-            # From congress_trades
-            congress = sb_client.supabase.table('congress_trades').select('ticker').execute()
-            for row in congress.data:
-                if row.get('ticker'):
-                    tickers.add(row['ticker'].upper())
 
         except Exception as e:
             logger.error(f"Error fetching tickers from Supabase: {e}")
@@ -139,12 +125,32 @@ def fetch_dividend_log(days_lookback: int = 365, fund: str = None) -> list[dict]
         if fund:
             query = query.eq('fund', fund)
             
-        response = query.order('pay_date', desc=True).execute()
+        query = query.order('pay_date', desc=True)
+
+        # Paginate results
+        all_rows = []
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            response = query.range(offset, offset + batch_size - 1).execute()
             
-        return response.data
+            if not response.data:
+                break
+
+            all_rows.extend(response.data)
+
+            if len(response.data) < batch_size:
+                break
+
+            offset += batch_size
+
+            if offset > 50000:
+                logger.warning("Reached 50,000 row safety limit in fetch_dividend_log pagination")
+                break
+
+        return all_rows
     except Exception as e:
         logger.error(f"Error fetching dividend log: {e}")
         st.error(f"Error fetching dividend log: {e}")
-        return []
-
         return []
