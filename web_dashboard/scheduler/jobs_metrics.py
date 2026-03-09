@@ -62,6 +62,11 @@ def benchmark_refresh_job() -> None:
     1. Fetches latest benchmark and commodity data from Yahoo Finance
     2. Caches it in the benchmark_data table
     3. Ensures charts always have up-to-date market index and commodity data
+
+    TODO(data-quality):
+    - Add an anomaly quarantine sink (table/file) with ticker/date/ohlc/volume/reason.
+    - Add optional second-source verification for extreme moves before accepting rows.
+    - Emit a daily "largest move" sanity report so bad ticks are easy to spot proactively.
     
     Benchmarks & Commodities refreshed:
     - S&P 500 (^GSPC)
@@ -167,6 +172,8 @@ def benchmark_refresh_job() -> None:
                 # Quality gate: drop isolated extreme outliers before caching.
                 # This protects against bad ticks (e.g., 100x spikes) while still
                 # allowing persistent multi-day regime shifts to pass through.
+                # TODO(data-quality): For quarantined rows, persist context so we can
+                # inspect trends (which symbols fail often, edge-vs-middle failures, etc.).
                 if "Date" not in data.columns or "Close" not in data.columns:
                     logger.warning(
                         f"Skipping {name} ({ticker}): missing required Date/Close columns"
@@ -193,6 +200,8 @@ def benchmark_refresh_job() -> None:
 
                 # Detect isolated edge anomalies (first/last row in window).
                 # These can poison normalization baseline even if all later points are fine.
+                # TODO(data-quality): If an edge row is rejected, consider auto-refetching
+                # a wider pre/post window for that ticker to improve confidence.
                 if len(closes) >= 3:
                     first, second, third = closes[0], closes[1], closes[2]
                     if _is_extreme_pair(first, second) and _is_extreme_pair(first, third):
@@ -245,6 +254,10 @@ def benchmark_refresh_job() -> None:
                         logger.warning(f"All rows filtered for {name} ({ticker}) after quality checks")
                         benchmarks_failed += 1
                         continue
+
+                # TODO(data-quality): Add optional cross-provider confirmation step here.
+                # Example flow: if abs(daily move) > threshold and isolated -> query fallback
+                # provider; accept only if both sources agree within tolerance.
                 
                 # Convert to list of dicts for caching
                 rows = data.to_dict('records')
