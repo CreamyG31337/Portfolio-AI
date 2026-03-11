@@ -796,9 +796,31 @@ def _fetch_dividend_log_flask_cached(days_lookback: int = 365, fund: Optional[st
         if fund:
             query = query.eq('fund', fund)
             
-        response = query.order('pay_date', desc=True).execute()
+        query = query.order('pay_date', desc=True)
             
-        return response.data
+        # Paginate results
+        all_rows = []
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            response = query.range(offset, offset + batch_size - 1).execute()
+
+            if not response.data:
+                break
+
+            all_rows.extend(response.data)
+
+            if len(response.data) < batch_size:
+                break
+
+            offset += batch_size
+
+            if offset > 50000:
+                logger.warning("Reached 50,000 row safety limit in _fetch_dividend_log_flask_cached pagination")
+                break
+
+        return all_rows
     except Exception as e:
         logger.error(f"Error fetching dividend log (Flask): {e}", exc_info=True)
         return []
