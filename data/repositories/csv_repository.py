@@ -368,16 +368,15 @@ class CSVRepository(BaseRepository):
                     # Get list of existing tickers for today
                     existing_tickers = set(today_data['Ticker'].tolist())
                     
+                    # Pre-build dictionary mapping tickers to Position objects for O(1) lookups
+                    snapshot_positions_by_ticker = {pos.ticker: pos for pos in snapshot.positions}
+
                     # Update prices in today's existing rows
                     for _, position_row in today_data.iterrows():
                         ticker = position_row['Ticker']
                         
                         # Find the updated position
-                        updated_position = None
-                        for pos in snapshot.positions:
-                            if pos.ticker == ticker:
-                                updated_position = pos
-                                break
+                        updated_position = snapshot_positions_by_ticker.get(ticker)
                         
                         if updated_position:
                             # Update only price-related fields for today's rows only
@@ -935,11 +934,7 @@ class CSVRepository(BaseRepository):
                 # Create new position for this ticker
                 if total_shares > 0:
                     # Find the original position to get current price and other details
-                    original_position = None
-                    for pos in snapshot.positions:
-                        if pos.ticker == ticker:
-                            original_position = pos
-                            break
+                    original_position = snapshot.get_position_by_ticker(ticker)
                     
                     new_position = Position(
                         ticker=ticker,
