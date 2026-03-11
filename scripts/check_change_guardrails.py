@@ -45,6 +45,28 @@ def _run(command: list[str]) -> str:
     return result.stdout
 
 
+def _get_range_diff_numstat(base_ref: str) -> str:
+    """Get numstat diff for base_ref...HEAD with resilient fallback.
+
+    In shallow CI clones or bot-created branches, Git can fail with
+    "no merge base" for three-dot range diffs. In that case, fall back
+    to a two-dot diff so guardrails can still evaluate changed files.
+    """
+    try:
+        return _run(["git", "diff", "--numstat", f"{base_ref}...HEAD"])
+    except RuntimeError as exc:
+        error_text = str(exc).lower()
+        if "no merge base" not in error_text:
+            raise
+
+        print(
+            f"[guardrails] WARN: no merge base for {base_ref}...HEAD; "
+            f"falling back to {base_ref}..HEAD",
+            file=sys.stderr,
+        )
+        return _run(["git", "diff", "--numstat", f"{base_ref}..HEAD"])
+
+
 def _parse_numstat(output: str) -> tuple[DiffStats, list[str]]:
     stats = DiffStats()
     files: list[str] = []
@@ -106,7 +128,7 @@ def main() -> int:
     if args.mode == "staged":
         diff_output = _run(["git", "diff", "--cached", "--numstat"])
     else:
-        diff_output = _run(["git", "diff", "--numstat", f"{args.base_ref}...HEAD"])
+        diff_output = _get_range_diff_numstat(args.base_ref)
 
     stats, files = _parse_numstat(diff_output)
     violations: list[str] = []
