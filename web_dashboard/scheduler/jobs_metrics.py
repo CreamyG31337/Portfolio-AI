@@ -181,9 +181,27 @@ def benchmark_refresh_job() -> None:
 
                 data = data.dropna(subset=["Date", "Close"]).sort_values("Date").reset_index(drop=True)
 
-                anomaly_indices: list[int] = []
+                anomaly_indices: set[int] = set()
                 extreme_ratio = 8.0
                 closes = data["Close"].tolist()
+
+                def _is_extreme_pair(a: float, b: float) -> bool:
+                    if pd.isna(a) or pd.isna(b) or a <= 0 or b <= 0:
+                        return False
+                    ratio = max(a / b, b / a)
+                    return ratio >= extreme_ratio
+
+                # Detect isolated edge anomalies (first/last row in window).
+                # These can poison normalization baseline even if all later points are fine.
+                if len(closes) >= 3:
+                    first, second, third = closes[0], closes[1], closes[2]
+                    if _is_extreme_pair(first, second) and _is_extreme_pair(first, third):
+                        anomaly_indices.add(0)
+
+                    last, prev1, prev2 = closes[-1], closes[-2], closes[-3]
+                    if _is_extreme_pair(last, prev1) and _is_extreme_pair(last, prev2):
+                        anomaly_indices.add(len(closes) - 1)
+
                 for idx in range(1, len(closes) - 1):
                     prev_close = closes[idx - 1]
                     cur_close = closes[idx]
@@ -210,10 +228,10 @@ def benchmark_refresh_job() -> None:
                     )
 
                     if isolated_spike or isolated_trough:
-                        anomaly_indices.append(idx)
+                        anomaly_indices.add(idx)
 
                 if anomaly_indices:
-                    for idx in anomaly_indices:
+                    for idx in sorted(anomaly_indices):
                         anomaly_row = data.iloc[idx]
                         logger.warning(
                             "Dropping isolated outlier for %s (%s) on %s: close=%s",
