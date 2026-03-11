@@ -553,6 +553,7 @@ function toggleEmailView(view) {
 
         const doc = htmlView.contentDocument || htmlView.contentWindow.document;
         doc.open();
+        // TODO(ui-tailwind): Evaluate replacing this inline iframe style injection with a shared/minified Tailwind typography payload compatible with sandboxed newsletter rendering.
         // Use CSS variables from the parent theme if possible, but for isolation we inject values that match
         // the parent's current theme. However, standard email clients often default to white.
         // Let's use CSS variables and fallbacks to ensure it respects the theme.
