@@ -244,6 +244,12 @@ class PortfolioSnapshot:
     total_shares: Optional[Decimal] = None
     snapshot_id: Optional[str] = None  # For database primary key
     
+    def __post_init__(self):
+        """Initialize internal cache for O(1) position lookups."""
+        self._positions_by_ticker: Dict[str, Position] = {
+            pos.ticker: pos for pos in self.positions
+        }
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization (web API).
         
@@ -313,10 +319,11 @@ class PortfolioSnapshot:
         Returns:
             Position if found, None otherwise
         """
-        for position in self.positions:
-            if position.ticker == ticker:
-                return position
-        return None
+        if not hasattr(self, '_positions_by_ticker'):
+            # Fallback just in case __post_init__ was bypassed or corrupted
+            return next((p for p in self.positions if p.ticker == ticker), None)
+
+        return self._positions_by_ticker.get(ticker)
     
     def add_position(self, position: Position) -> None:
         """Add a position to the snapshot.
@@ -324,15 +331,23 @@ class PortfolioSnapshot:
         Args:
             position: Position to add
         """
+        # Ensure cache exists
+        if not hasattr(self, '_positions_by_ticker'):
+            self._positions_by_ticker = {p.ticker: p for p in self.positions}
+
         # Check if position already exists and update it
         existing = self.get_position_by_ticker(position.ticker)
         if existing:
             # Update existing position
             idx = self.positions.index(existing)
             self.positions[idx] = position
+            # Update cache to point to the new updated position object
+            self._positions_by_ticker[position.ticker] = position
         else:
             # Add new position
             self.positions.append(position)
+            # Add to cache
+            self._positions_by_ticker[position.ticker] = position
     
     def remove_position(self, ticker: str) -> bool:
         """Remove position by ticker.
@@ -343,8 +358,15 @@ class PortfolioSnapshot:
         Returns:
             True if position was removed, False if not found
         """
+        # Ensure cache exists
+        if not hasattr(self, '_positions_by_ticker'):
+            self._positions_by_ticker = {p.ticker: p for p in self.positions}
+
         position = self.get_position_by_ticker(ticker)
         if position:
             self.positions.remove(position)
+            # Update cache
+            if ticker in self._positions_by_ticker:
+                del self._positions_by_ticker[ticker]
             return True
         return False
