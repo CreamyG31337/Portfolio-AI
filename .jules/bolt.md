@@ -29,3 +29,7 @@
 ## YYYY-MM-DD - Fetch Distinct Values Without Data Transfer
 **Learning:** Found that `get_all_unique_tickers` was performing a full row extraction from 4 large tables using `.execute()` to collect unique tickers, downloading hundreds of megabytes of redundant data over the network only to extract a small set of distinct strings. Also, `.execute()` is limited to 1000 rows without pagination.
 **Action:** Use `fetch_unique_column_values_parallel` (which tries an RPC call for O(1) fetch and falls back to chunked, paginated selection) to significantly reduce memory footprint and network transfer when extracting a set of unique column values across large tables.
+
+## 2023-10-27 - [Itertuples over Iterrows in pandas]
+**Learning:** Iterating through large pandas DataFrames in API endpoints using `df.iterrows()` becomes a significant performance bottleneck due to the creation of intermediate Series objects for each row.
+**Action:** Replace `df.iterrows()` with `df.itertuples(index=False)` in iterative data processing endpoints. Use `getattr()` to access attributes from namedtuples, which provides up to 10-100x performance improvement while avoiding breaking changes.
