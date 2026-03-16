@@ -906,9 +906,12 @@ class MarketDataFetcher:
                         # Check if this ticker needs updating
                         ticker_mask = df['Ticker'] == original_ticker
                         if ticker_mask.any():
-                            # Create backup
+                            # Create backup in backups folder
                             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                            backup_file = f"{file_path}.backup_normalize_{timestamp}"
+                            file_path_obj = Path(file_path)
+                            backup_dir = file_path_obj.parent / "backups"
+                            backup_dir.mkdir(exist_ok=True)
+                            backup_file = backup_dir / f"{file_path_obj.name}.backup_normalize_{timestamp}"
                             shutil.copy2(file_path, backup_file)
                             
                             # Update ticker format
@@ -936,9 +939,12 @@ class MarketDataFetcher:
                         # Check if this ticker needs updating
                         ticker_mask = df['Ticker'] == original_ticker
                         if ticker_mask.any():
-                            # Create backup
+                            # Create backup in backups folder
                             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                            backup_file = f"{file_path}.backup_normalize_{timestamp}"
+                            file_path_obj = Path(file_path)
+                            backup_dir = file_path_obj.parent / "backups"
+                            backup_dir.mkdir(exist_ok=True)
+                            backup_file = backup_dir / f"{file_path_obj.name}.backup_normalize_{timestamp}"
                             shutil.copy2(file_path, backup_file)
                             
                             # Update ticker format

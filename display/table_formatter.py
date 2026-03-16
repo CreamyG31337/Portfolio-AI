@@ -6,6 +6,7 @@ and handles data from any repository type.
 """
 
 import json
+import math
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Union
 
@@ -218,9 +219,25 @@ class TableFormatter:
             row_style = "on grey11" if row_index % 2 == 1 else None
 
             # Truncate long company names for display
-            company_name = position.get('company', 'N/A')
-            display_name = (company_name[:company_max_width-3] + "..."
-                          if len(company_name) > company_max_width else company_name)
+            company_raw = position.get('company', 'N/A')
+
+            # Normalize company name to safe string for display
+            if isinstance(company_raw, str):
+                company_name = company_raw.strip() or 'N/A'
+            elif isinstance(company_raw, (int, float)):
+                if isinstance(company_raw, float) and math.isnan(company_raw):
+                    company_name = 'N/A'
+                else:
+                    company_name = str(company_raw)
+            else:
+                company_name = 'N/A'
+
+            if isinstance(company_name, str):
+                display_name = (company_name[:company_max_width-3] + "..."
+                                if len(company_name) > company_max_width
+                                else company_name)
+            else:
+                display_name = company_name
             
             # Calculate total value (handle Decimals properly)
             from decimal import Decimal
@@ -670,7 +687,7 @@ class TableFormatter:
             html += f"""
                     <tr>
                         <td>{position.get('ticker', 'N/A')}</td>
-                        <td>{position.get('company_name', 'N/A')}</td>
+                        <td>{position.get('company', 'N/A')}</td>
                         <td>{position.get('opened_date', 'N/A')}</td>
                         <td>{float(shares):.4f}</td>
                         <td>${float(Decimal(str(position.get('avg_price', 0)))):.2f}</td>

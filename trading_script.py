@@ -1345,8 +1345,6 @@ def run_portfolio_workflow(args: argparse.Namespace, settings: Settings, reposit
 
             # 5-day P&L with open-date check (show N/A if opened < 5 trading days ago)
             try:
-                # Explicitly import pandas here to ensure it's available in this scope
-                import pandas as pd
                 from decimal import Decimal
 
                 # Reuse existing opened_date calculation from above
@@ -1684,7 +1682,6 @@ def run_portfolio_workflow(args: argparse.Namespace, settings: Settings, reposit
 
         # Clear screen before displaying portfolio (unless in non-interactive mode)
         import os
-        import pandas as pd
         from pathlib import Path
         if not args.non_interactive:
             os.system('cls' if os.name == 'nt' else 'clear')

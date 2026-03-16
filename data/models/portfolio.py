@@ -6,6 +6,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
+import math
 import json
 
 @dataclass
@@ -79,6 +80,23 @@ class Position:
         self.market_value = safe_decimal_convert(self.market_value, None) if self.market_value is not None else None
         self.unrealized_pnl = safe_decimal_convert(self.unrealized_pnl, None) if self.unrealized_pnl is not None else None
         self.stop_loss = safe_decimal_convert(self.stop_loss, None) if self.stop_loss is not None else None
+
+        # Normalize company name to a clean string (avoid float NaN values from CSV/pandas)
+        if self.company is not None:
+            try:
+                if isinstance(self.company, float):
+                    if math.isnan(self.company):
+                        self.company = None
+                    else:
+                        self.company = str(self.company)
+                else:
+                    company_str = str(self.company).strip()
+                    if not company_str or company_str.lower() in {"nan", "none"}:
+                        self.company = None
+                    else:
+                        self.company = company_str
+            except (TypeError, ValueError):
+                self.company = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for CSV/JSON serialization.
