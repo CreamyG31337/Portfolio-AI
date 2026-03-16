@@ -1463,39 +1463,45 @@ def get_recent_activity():
         def calculate_display_amount(row, action):
             """Calculate display amount: P&L for sells, purchase amount for buys/drips"""
             if action == 'SELL':
-                pnl = row.get('pnl', 0)
+                pnl = getattr(row, 'pnl', 0)
                 if pnl is not None and not pd.isna(pnl):
                     return float(pnl)
                 # Fallback: calculate from amount if pnl not available
-                return abs(float(row.get('amount', 0)))
+                amount = getattr(row, 'amount', 0)
+                return abs(float(amount if amount is not None else 0))
             else:
                 # For BUYs/DRIPs: show purchase amount
-                shares = abs(float(row.get('shares', 0)))
-                price = float(row.get('price', 0))
+                shares_val = getattr(row, 'shares', 0)
+                shares = abs(float(shares_val if shares_val is not None else 0))
+                price_val = getattr(row, 'price', 0)
+                price = float(price_val if price_val is not None else 0)
                 return shares * price
         
         data = []
-        for _, row in trades_df.iterrows():
+        for row in trades_df.itertuples(index=False):
             # Format date as MM-DD-YY (matching Streamlit)
-            if hasattr(row['date'], 'strftime'):
-                date_str = row['date'].strftime('%m-%d-%y')
+            row_date = getattr(row, 'date', None)
+            if hasattr(row_date, 'strftime'):
+                date_str = row_date.strftime('%m-%d-%y')
             else:
                 # Try to parse and format if it's a string
                 try:
                     from datetime import datetime
-                    date_obj = datetime.strptime(str(row['date']), '%Y-%m-%d')
+                    date_obj = datetime.strptime(str(row_date), '%Y-%m-%d')
                     date_str = date_obj.strftime('%m-%d-%y')
                 except:
-                    date_str = str(row['date'])
+                    date_str = str(row_date)
             
-            ticker = row.get('ticker')
-            reason = row.get('reason')
+            ticker = getattr(row, 'ticker', None)
+            reason = getattr(row, 'reason', None)
             action = infer_action(reason)
             
-            shares = abs(float(row.get('shares', 0)))
-            price = float(row.get('price', 0))
-            pnl = row.get('pnl', None)
-            company_name = row.get('company_name')
+            shares_val = getattr(row, 'shares', 0)
+            shares = abs(float(shares_val if shares_val is not None else 0))
+            price_val = getattr(row, 'price', 0)
+            price = float(price_val if price_val is not None else 0)
+            pnl = getattr(row, 'pnl', None)
+            company_name = getattr(row, 'company_name', None)
             
             display_amount = calculate_display_amount(row, action)
             
@@ -1874,32 +1880,44 @@ def get_movers_data():
             if df.empty:
                 return []
             result = []
-            for _, row in df.iterrows():
+            columns = set(df.columns)
+            for row in df.itertuples(index=False):
+                ticker = getattr(row, 'ticker', '')
+                company_name = getattr(row, 'company_name', None)
                 item = {
-                    "ticker": row.get('ticker', ''),
-                    "company_name": row.get('company_name') or (company_map.get(row.get('ticker', ''), row.get('ticker', '')) if company_map else row.get('ticker', '')),
+                    "ticker": ticker,
+                    "company_name": company_name or (company_map.get(ticker, ticker) if company_map else ticker),
                 }
                 if logo_map:
                     item["_logo_url"] = logo_map.get(item["ticker"])
 
-                if 'daily_pnl_pct' in row:
-                    item["daily_pnl_pct"] = float(row['daily_pnl_pct']) if pd.notna(row['daily_pnl_pct']) else None
-                elif 'return_pct' in row:
-                    item["daily_pnl_pct"] = float(row['return_pct']) if pd.notna(row['return_pct']) else None
-                if 'pnl_display' in row:
-                    item["daily_pnl"] = float(row['pnl_display']) if pd.notna(row['pnl_display']) else None
-                if 'five_day_pnl_pct' in row:
-                    item["five_day_pnl_pct"] = float(row['five_day_pnl_pct']) if pd.notna(row['five_day_pnl_pct']) else None
-                if 'five_day_pnl_display' in row:
-                    item["five_day_pnl"] = float(row['five_day_pnl_display']) if pd.notna(row['five_day_pnl_display']) else None
-                if 'return_pct' in row and 'daily_pnl_pct' in df.columns:
-                    item["total_return_pct"] = float(row['return_pct']) if pd.notna(row['return_pct']) else None
-                if 'total_pnl_display' in row:
-                    item["total_pnl"] = float(row['total_pnl_display']) if pd.notna(row['total_pnl_display']) else None
-                if 'current_price' in row:
-                    item["current_price"] = float(row['current_price']) if pd.notna(row['current_price']) else None
-                if 'market_value' in row:
-                    item["market_value"] = float(row['market_value']) if pd.notna(row['market_value']) else None
+                if 'daily_pnl_pct' in columns:
+                    val = getattr(row, 'daily_pnl_pct', None)
+                    item["daily_pnl_pct"] = float(val) if pd.notna(val) else None
+                elif 'return_pct' in columns:
+                    val = getattr(row, 'return_pct', None)
+                    item["daily_pnl_pct"] = float(val) if pd.notna(val) else None
+                if 'pnl_display' in columns:
+                    val = getattr(row, 'pnl_display', None)
+                    item["daily_pnl"] = float(val) if pd.notna(val) else None
+                if 'five_day_pnl_pct' in columns:
+                    val = getattr(row, 'five_day_pnl_pct', None)
+                    item["five_day_pnl_pct"] = float(val) if pd.notna(val) else None
+                if 'five_day_pnl_display' in columns:
+                    val = getattr(row, 'five_day_pnl_display', None)
+                    item["five_day_pnl"] = float(val) if pd.notna(val) else None
+                if 'return_pct' in columns and 'daily_pnl_pct' in columns:
+                    val = getattr(row, 'return_pct', None)
+                    item["total_return_pct"] = float(val) if pd.notna(val) else None
+                if 'total_pnl_display' in columns:
+                    val = getattr(row, 'total_pnl_display', None)
+                    item["total_pnl"] = float(val) if pd.notna(val) else None
+                if 'current_price' in columns:
+                    val = getattr(row, 'current_price', None)
+                    item["current_price"] = float(val) if pd.notna(val) else None
+                if 'market_value' in columns:
+                    val = getattr(row, 'market_value', None)
+                    item["market_value"] = float(val) if pd.notna(val) else None
                 result.append(item)
             return result
 
