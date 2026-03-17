@@ -232,12 +232,9 @@ class TableFormatter:
             else:
                 company_name = 'N/A'
 
-            if isinstance(company_name, str):
-                display_name = (company_name[:company_max_width-3] + "..."
-                                if len(company_name) > company_max_width
-                                else company_name)
-            else:
-                display_name = company_name
+            display_name = (company_name[:company_max_width-3] + "..."
+                            if len(company_name) > company_max_width
+                            else company_name)
             
             # Calculate total value (handle Decimals properly)
             from decimal import Decimal
