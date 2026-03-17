@@ -19,6 +19,11 @@ from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 
 from summary_common import get_summary_system_prompt, parse_summary_response
+from prompt_safety import (
+    contains_instruction_like_text,
+    prepare_untrusted_for_prompt,
+    sanitize_for_llm,
+)
 
 # Load environment variables from .env file (if it exists)
 # This allows local development with .env file, but Docker/CI can override with actual env vars
@@ -685,22 +690,17 @@ class OllamaClient:
         result: Dict[str, Any] = {}
         audit_error: Optional[str] = None
         
-        # Combine texts into single prompt
-        # TODO: PROMPT-INJECTION - Sanitize scraped social media posts before LLM ingestion.
-        #   Scraped Reddit/StockTwits text is concatenated directly into the prompt with no
-        #   structural separation. A malicious post could contain instructions that manipulate
-        #   sentiment output. Mitigations to add:
-        #   1. Strip zero-width chars, control chars, RTL overrides
-        #   2. Wrap untrusted content in <user_content> XML delimiters
-        #   3. Optionally flag posts containing instruction-like patterns
-        #   See: https://blog.cloudflare.com/declaring-your-aindependence-block-ai-bots-scrapers-and-crawlers-with-a-single-click/
-        combined_text = "\n\n---\n\n".join(texts[:5])  # Limit to top 5
-        
-        # Truncate if too long (keep first ~4000 chars)
-        max_chars = 4000
-        if len(combined_text) > max_chars:
-            combined_text = combined_text[:max_chars] + "..."
-            logger.debug(f"Truncated combined text to {max_chars} characters")
+        # Sanitize + delimit untrusted social posts before prompt interpolation.
+        sanitized_blocks = []
+        for idx, text in enumerate(texts[:5], 1):
+            safe_text = sanitize_for_llm(text, max_chars=900)
+            if contains_instruction_like_text(safe_text):
+                logger.warning("Instruction-like text detected in %s social block for %s", idx, ticker)
+            sanitized_blocks.append(
+                prepare_untrusted_for_prompt(safe_text, source=f"social_post_{idx}")
+            )
+
+        combined_text = "\n\n---\n\n".join(sanitized_blocks)
         
         # System prompt - Robust crowd sentiment analysis
         system_prompt = f"""You are an expert financial sentiment analyst specializing in social media momentum. Analyze these posts about {ticker}.

@@ -39,6 +39,7 @@ FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "http://host.docker.internal:81
 from postgres_client import PostgresClient
 from supabase_client import SupabaseClient
 from ollama_client import OllamaClient, get_ollama_client
+from prompt_safety import prepare_untrusted_for_prompt, sanitize_for_llm
 try:
     from web_dashboard.watchlist_access import get_active_watchlist_tickers
 except ImportError:
@@ -541,14 +542,12 @@ class SocialSentimentService:
             unique_posts.sort(key=lambda x: x['score'], reverse=True)
             top_5_posts = unique_posts[:5]
             
-            # Combine post titles and bodies for AI analysis
-            # TODO: PROMPT-INJECTION - Sanitize Reddit post text before passing to LLM.
-            #   Public Reddit posts are untrusted input. A crafted post title/body could
-            #   contain adversarial instructions to manipulate sentiment scoring.
-            #   Apply sanitize_for_llm() here once implemented (see ollama_client.py TODOs).
+            # Combine post titles and bodies for AI analysis.
             texts_for_ai = []
             for post in top_5_posts:
-                text = f"{post['title']}\n{post['selftext'][:500]}"
+                title = sanitize_for_llm(post.get("title", ""), max_chars=300)
+                body = sanitize_for_llm(post.get("selftext", ""), max_chars=500)
+                text = f"{title}\n{body}"
                 texts_for_ai.append(text)
             
             # Analyze sentiment with Ollama
@@ -1130,15 +1129,17 @@ OUTPUT JSON ONLY:
                 if ticker_array:
                     all_tickers.update(ticker_array)
             
-            # AI Analysis using Ollama
-            # TODO: PROMPT-INJECTION - Sanitize social post content before LLM analysis.
-            #   all_content is concatenated from social_posts DB (originally scraped from
-            #   StockTwits/Reddit). Apply sanitize_for_llm() and wrap in XML delimiters.
+            # AI analysis using untrusted social content wrapped in explicit delimiters.
+            safe_social_content = prepare_untrusted_for_prompt(
+                all_content,
+                source="social_posts_db",
+                max_chars=4000,
+            )
             analysis_prompt = f"""
 Analyze these social media posts about {session['ticker']} from {session['platform']}.
 
 Posts:
-{all_content[:4000]}  # Limit content length
+{safe_social_content}
 
 Provide analysis in JSON format:
 {{
@@ -1235,13 +1236,11 @@ Provide analysis in JSON format:
             if not basic_tickers:
                 return
             
-            # TODO: PROMPT-INJECTION - Sanitize content before ticker extraction LLM call.
-            #   Same untrusted social content is used here. A crafted post could inject
-            #   fake tickers or manipulate confidence scores.
             extraction_prompt = f"""
 Analyze this social media content and validate/extract stock tickers.
 
-Content: {content[:2000]}
+Content:
+{prepare_untrusted_for_prompt(content, source="social_posts_extract", max_chars=2000)}
 
 Basic tickers found: {', '.join(basic_tickers)}
 
