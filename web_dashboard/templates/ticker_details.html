@@ -641,10 +641,9 @@
                     <span id="momentum-bias-badge" class="px-2.5 py-0.5 rounded text-xs font-bold border bg-dashboard-surface-alt text-text-secondary border-border">-</span>
                     <span id="momentum-composite" class="text-sm font-semibold text-text-primary">-</span>
                 </div>
-                <!-- TODO(ui-tailwind): Remove inline width styles from composite bars; update width via class/CSS-variable utility approach to stay consistent with Tailwind standards. -->
                 <!-- Composite score bar -->
                 <div class="w-full bg-dashboard-background rounded-full h-2.5 mb-4">
-                    <div id="momentum-composite-bar" class="h-2.5 rounded-full bg-accent transition-all duration-300" style="width: 0%"></div>
+                    <div id="momentum-composite-bar" class="ticker-composite-progress h-2.5 rounded-full bg-accent transition-all duration-300" style="--bar-width: 0%;"></div>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                     <!-- Trend Following -->
@@ -734,7 +733,7 @@
                 </div>
                 <!-- Composite score bar -->
                 <div class="w-full bg-dashboard-background rounded-full h-2.5 mb-4">
-                    <div id="fund-composite-bar" class="h-2.5 rounded-full bg-accent transition-all duration-300" style="width: 0%"></div>
+                    <div id="fund-composite-bar" class="ticker-composite-progress h-2.5 rounded-full bg-accent transition-all duration-300" style="--bar-width: 0%;"></div>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <!-- Profitability -->

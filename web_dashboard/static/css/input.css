@@ -406,6 +406,24 @@
         @apply text-text-primary hover:text-accent;
     }
 
+    /* Ticker details composite bars use a CSS variable to avoid direct width styles. */
+    .ticker-composite-progress {
+        width: var(--bar-width, 0%);
+    }
+
+    /* Insider trades AG Grid row highlights using theme-aware token utilities. */
+    .ag-row.insider-trade-purchase .ag-cell {
+        @apply bg-theme-success-bg/20;
+    }
+
+    .ag-row.insider-trade-sale .ag-cell {
+        @apply bg-theme-error-bg/20;
+    }
+
+    .ag-row.insider-trade-high-value .ag-cell {
+        @apply font-semibold;
+    }
+
     /* Global outline button hover/ring using currentColor */
     button[class*="bg-transparent"][class*="border"]:not(:disabled):hover,
     a[class*="bg-transparent"][class*="border"]:not([aria-disabled="true"]):hover {

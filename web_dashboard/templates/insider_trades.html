@@ -11,18 +11,6 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-alpine-dark.css">
 <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/plotly.js@2.27.0/dist/plotly.min.js"></script>
-<style>
-    /* TODO(ui-tailwind): Replace hardcoded AG Grid row highlight RGBA values with theme-tokenized styling via Tailwind @apply in input.css or AG Grid rowClass rules. */
-    .ag-row.insider-trade-purchase .ag-cell {
-        background-color: rgba(0, 200, 83, 0.08);
-    }
-    .ag-row.insider-trade-sale .ag-cell {
-        background-color: rgba(255, 82, 82, 0.08);
-    }
-    .ag-row.insider-trade-high-value .ag-cell {
-        font-weight: 600;
-    }
-</style>
 {% endblock %}
 
 {% block content %}

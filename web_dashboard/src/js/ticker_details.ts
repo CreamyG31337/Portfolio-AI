@@ -2364,7 +2364,7 @@ function renderMomentumSignal(momentum: any): void {
         colorScoreEl(compositeEl, score);
     }
     if (compositeBar) {
-        compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
+        compositeBar.style.setProperty('--bar-width', `${(score * 100).toFixed(0)}%`);
         compositeBar.classList.remove('bg-theme-success-bg', 'bg-theme-warning-bg', 'bg-theme-error-bg', 'bg-accent');
         compositeBar.classList.add(barColorClass(score));
     }
@@ -2474,7 +2474,7 @@ function renderFundamentalSignal(fundamental: any): void {
         colorScoreEl(compositeEl, score);
     }
     if (compositeBar) {
-        compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
+        compositeBar.style.setProperty('--bar-width', `${(score * 100).toFixed(0)}%`);
         compositeBar.classList.remove('bg-theme-success-bg', 'bg-theme-warning-bg', 'bg-theme-error-bg', 'bg-accent');
         compositeBar.classList.add(barColorClass(score));
     }
