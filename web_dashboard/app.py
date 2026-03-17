@@ -1159,10 +1159,13 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
                     total_value_cad = Decimal('0')
                     total_cost_basis_cad = Decimal('0')
 
-                    for _, pos in current_positions.iterrows():
-                        ticker = pos['Ticker']
-                        value = Decimal(str(pos['Total Value']))
-                        cost_basis = Decimal(str(pos['Cost Basis']))
+                    # Rename columns with spaces for itertuples
+                    df_calc = current_positions.rename(columns={'Total Value': 'Total_Value', 'Cost Basis': 'Cost_Basis'})
+
+                    for pos in df_calc.itertuples(index=False):
+                        ticker = getattr(pos, 'Ticker', '')
+                        value = Decimal(str(getattr(pos, 'Total_Value', 0)))
+                        cost_basis = Decimal(str(getattr(pos, 'Cost_Basis', 0)))
 
                         # Convert USD to CAD if needed
                         if is_us_ticker(ticker):
@@ -2352,37 +2355,56 @@ def api_portfolio():
         # Handle both Supabase and CSV data formats
         if 'ticker' in data['portfolio'].columns:
             # Supabase format - using latest_positions view with P&L calculations
-            for _, row in data['portfolio'].iterrows():
+            for row in data['portfolio'].itertuples(index=False):
+                # Using getattr since dictionaries don't work with namedtuples
+                shares = getattr(row, 'shares', 0)
+                current_price = getattr(row, 'current_price', getattr(row, 'price', 0))
+                cost_basis = getattr(row, 'cost_basis', 0)
+                daily_pnl = getattr(row, 'daily_pnl', 0) if hasattr(row, 'daily_pnl') else 0
+                daily_pnl_pct = getattr(row, 'daily_pnl_pct', 0) if hasattr(row, 'daily_pnl_pct') else 0
+                five_day_pnl = getattr(row, 'five_day_pnl', 0) if hasattr(row, 'five_day_pnl') else 0
+                five_day_pnl_pct = getattr(row, 'five_day_pnl_pct', 0) if hasattr(row, 'five_day_pnl_pct') else 0
+                currency = getattr(row, 'currency', 'USD') if hasattr(row, 'currency') else 'USD'
+
                 # Calculate market value using correct column name
-                market_value = _safe_float(row['shares']) * _safe_float(row.get('current_price', row.get('price', 0)))
-                total_pnl = market_value - _safe_float(row['cost_basis'])
+                market_value = _safe_float(shares) * _safe_float(current_price)
+                total_pnl = market_value - _safe_float(cost_basis)
 
                 current_positions.append({
-                    'ticker': row['ticker'],
-                    'shares': round(_safe_float(row['shares']), 4),
-                    'price': round(_safe_float(row.get('current_price', row.get('price', 0))), 2),
-                    'cost_basis': round(_safe_float(row['cost_basis']), 2),
+                    'ticker': getattr(row, 'ticker', ''),
+                    'shares': round(_safe_float(shares), 4),
+                    'price': round(_safe_float(current_price), 2),
+                    'cost_basis': round(_safe_float(cost_basis), 2),
                     'market_value': round(market_value, 2),
                     'total_pnl': round(total_pnl, 2),
-                    'total_pnl_pct': round((_safe_float(total_pnl) / _safe_float(row['cost_basis'], 1) * 100) if _safe_float(row['cost_basis']) > 0 else 0, 2),
-                    'daily_pnl': round(_safe_float(row.get('daily_pnl', 0)), 2),
-                    'daily_pnl_pct': round(_safe_float(row.get('daily_pnl_pct', 0)), 2),
-                    'five_day_pnl': round(_safe_float(row.get('five_day_pnl', 0)), 2),
-                    'five_day_pnl_pct': round(_safe_float(row.get('five_day_pnl_pct', 0)), 2),
-                    'currency': row.get('currency', 'USD')
+                    'total_pnl_pct': round((_safe_float(total_pnl) / _safe_float(cost_basis, 1) * 100) if _safe_float(cost_basis) > 0 else 0, 2),
+                    'daily_pnl': round(_safe_float(daily_pnl), 2),
+                    'daily_pnl_pct': round(_safe_float(daily_pnl_pct), 2),
+                    'five_day_pnl': round(_safe_float(five_day_pnl), 2),
+                    'five_day_pnl_pct': round(_safe_float(five_day_pnl_pct), 2),
+                    'currency': currency
                 })
         else:
             # CSV format fallback
-            current_positions_df = data['portfolio'][data['portfolio'].get('Total Value', 0) > 0]
-            for _, row in current_positions_df.iterrows():
+            # Rename columns with spaces to work with itertuples
+            df_csv = data['portfolio'][data['portfolio'].get('Total Value', 0) > 0]
+            df_csv = df_csv.rename(columns={'Total Value': 'Total_Value', 'Cost Basis': 'Cost_Basis'})
+            for row in df_csv.itertuples(index=False):
+                ticker = getattr(row, 'Ticker', '')
+                shares = getattr(row, 'Shares', 0)
+                price = getattr(row, 'Price', 0)
+                cost_basis = getattr(row, 'Cost_Basis', 0)
+                total_value = getattr(row, 'Total_Value', 0)
+                pnl = getattr(row, 'PnL', 0)
+
                 current_positions.append({
-                    'ticker': row['Ticker'],
-                    'shares': round(row['Shares'], 4),
-                    'price': round(row['Price'], 2),
-                    'cost_basis': round(row['Cost Basis'], 2),
-                    'market_value': round(row['Total Value'], 2),
-                    'pnl': round(row['PnL'], 2),
-                    'pnl_pct': round((row['PnL'] / row['Cost Basis'] * 100), 2) if row['Cost Basis'] > 0 else 0
+                    'ticker': ticker,
+                    'shares': round(shares, 4),
+                    'price': round(price, 2),
+                    'cost_basis': round(cost_basis, 2),
+                    'market_value': round(total_value, 2),
+                    'pnl': round(pnl, 2),
+                    'pnl_pct': round((pnl / cost_basis * 100), 2) if cost_basis > 0 else 0
                 })
 
     return jsonify({
