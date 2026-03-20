@@ -16,6 +16,14 @@ def test_sanitize_for_llm_removes_control_and_invisible_chars() -> None:
     assert cleaned == "hello world"
 
 
+def test_sanitize_for_llm_replaces_angle_brackets() -> None:
+    raw = "<div>hello <world></div>"
+    cleaned = sanitize_for_llm(raw)
+    assert "<" not in cleaned
+    assert ">" not in cleaned
+    assert cleaned == "[div]hello [world][/div]"
+
+
 def test_sanitize_for_llm_respects_max_chars() -> None:
     raw = "abcdefghijklmnopqrstuvwxyz"
     cleaned = sanitize_for_llm(raw, max_chars=10)

@@ -40,6 +40,10 @@ def sanitize_for_llm(text: Optional[str], *, max_chars: int | None = None) -> st
     safe = str(text)
     safe = _INVISIBLE_BIDI_RE.sub("", safe)
     safe = _CONTROL_CHARS_RE.sub(" ", safe)
+
+    # Replace angle brackets with square brackets to mitigate prompt injection
+    safe = safe.replace("<", "[").replace(">", "]")
+
     safe = safe.strip()
 
     if max_chars is not None and max_chars > 0 and len(safe) > max_chars:
