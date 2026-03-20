@@ -32,4 +32,10 @@
 
 ## 2025-03-05 - O(N) Ticker Lookup Anti-Pattern in PortfolioSnapshot
 **Learning:** `PortfolioSnapshot` relied on an $O(N)$ linear list traversal in its `get_position_by_ticker` method. In highly active scenarios involving loops parsing CSV records or rebuilding historical portfolios, repeated calls scale to $O(N^2)$, causing significant CPU overhead for large portfolios.
-**Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.
+**Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.## 2026-03-20 - Pandas iteration optimization
+**Learning:** Found significant usage of  in  which creates large memory overhead by creating a pandas Series for each row.
+**Action:** Replaced  with  in , converting  dictionary accesses to . This improves iteration performance dramatically.
+
+## 2024-05-18 - Pandas iteration optimization
+**Learning:** Found significant usage of `df.iterrows()` in `web_dashboard/ai_context_builder.py` which creates large memory overhead by creating a pandas Series for each row.
+**Action:** Replaced `iterrows()` with `itertuples(index=False)` in `web_dashboard/ai_context_builder.py`, converting `.get()` dictionary accesses to `getattr()`. This improves iteration performance dramatically.
