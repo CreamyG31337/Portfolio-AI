@@ -1517,7 +1517,7 @@ def get_recent_activity():
                 "shares": shares,
                 "price": price,
                 "pnl": float(pnl) if pnl is not None and not pd.isna(pnl) else None,
-                "amount": abs(float(row.get('amount', 0))),
+                "amount": abs(float(getattr(row, "amount", 0) or 0)),
                 "display_amount": display_amount,
                 "_logo_url": logo_url
             })
