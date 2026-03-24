@@ -91,8 +91,8 @@ def _get_available_funds_for_user(user_id: str) -> List[str]:
 
 
 @cache_data(ttl=300)
-def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Optional[str] = None) -> pd.DataFrame:
-    """Get current positions for Flask (cached 5min, with cache_version support)"""
+def _get_current_positions_flask_cached(fund: Optional[str] = None, user_id: Optional[str] = None, _cache_version: Optional[str] = None) -> pd.DataFrame:
+    """Internal cached helper for current positions (user-scoped)."""
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -160,6 +160,11 @@ def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Opti
     except Exception as e:
         logger.error(f"Error getting positions (Flask): {e}", exc_info=True)
         return pd.DataFrame()
+
+def get_current_positions_flask(fund: Optional[str] = None, _cache_version: Optional[str] = None) -> pd.DataFrame:
+    """Get current positions for Flask (cached 5min, with cache_version support)"""
+    user_id = get_user_id_flask() or 'anonymous'
+    return _get_current_positions_flask_cached(fund=fund, user_id=user_id, _cache_version=_cache_version)
 
 
 @cache_data(ttl=300)
@@ -292,8 +297,8 @@ def get_positions_as_of_date_flask(
 
 
 @cache_data(ttl=None)  # Cache forever - historical trades don't change
-def get_trade_log_flask(limit: int = 1000, fund: Optional[str] = None, _cache_version: Optional[str] = None) -> pd.DataFrame:
-    """Get trade log for Flask (cached forever, with cache_version support)"""
+def _get_trade_log_flask_cached(limit: int = 1000, fund: Optional[str] = None, user_id: Optional[str] = None, _cache_version: Optional[str] = None) -> pd.DataFrame:
+    """Internal cached helper for trade log (user-scoped)."""
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -320,10 +325,15 @@ def get_trade_log_flask(limit: int = 1000, fund: Optional[str] = None, _cache_ve
         logger.error(f"Error getting trade log (Flask): {e}", exc_info=True)
         return pd.DataFrame()
 
+def get_trade_log_flask(limit: int = 1000, fund: Optional[str] = None, _cache_version: Optional[str] = None) -> pd.DataFrame:
+    """Get trade log for Flask (cached forever, with cache_version support)"""
+    user_id = get_user_id_flask() or 'anonymous'
+    return _get_trade_log_flask_cached(limit=limit, fund=fund, user_id=user_id, _cache_version=_cache_version)
+
 
 @cache_data(ttl=300)
-def get_cash_balances_flask(fund: Optional[str] = None, _cache_version: Optional[str] = None) -> Dict[str, float]:
-    """Get cash balances by currency for Flask (cached 5min, with cache_version support)"""
+def _get_cash_balances_flask_cached(fund: Optional[str] = None, user_id: Optional[str] = None, _cache_version: Optional[str] = None) -> Dict[str, float]:
+    """Internal cached helper for cash balances (user-scoped)."""
     if _cache_version is None:
         try:
             from cache_version import get_cache_version
@@ -374,6 +384,11 @@ def get_cash_balances_flask(fund: Optional[str] = None, _cache_version: Optional
     except Exception as e:
         logger.error(f"Error getting cash balances (Flask): {e}", exc_info=True)
         return {"CAD": 0.0, "USD": 0.0}
+
+def get_cash_balances_flask(fund: Optional[str] = None, _cache_version: Optional[str] = None) -> Dict[str, float]:
+    """Get cash balances by currency for Flask (cached 5min, with cache_version support)"""
+    user_id = get_user_id_flask() or 'anonymous'
+    return _get_cash_balances_flask_cached(fund=fund, user_id=user_id, _cache_version=_cache_version)
 
 
 @cache_data(ttl=3600)  # Cache for 1 hour - thesis changes infrequently
