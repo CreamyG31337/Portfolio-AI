@@ -33,3 +33,13 @@
 ## 2025-03-05 - O(N) Ticker Lookup Anti-Pattern in PortfolioSnapshot
 **Learning:** `PortfolioSnapshot` relied on an $O(N)$ linear list traversal in its `get_position_by_ticker` method. In highly active scenarios involving loops parsing CSV records or rebuilding historical portfolios, repeated calls scale to $O(N^2)$, causing significant CPU overhead for large portfolios.
 **Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.
+## 2025-03-05 - O(N) DataFrame iteration overhead in app.py dashboard metrics
+**Learning:** Found multiple instances of `df.iterrows()` in `app.py` used to calculate portfolio metrics and process daily historical performance for charts. `iterrows()` is a known performance bottleneck as it creates a pandas Series object for each row, causing significant CPU overhead and memory usage for large dataframes (e.g. hundreds of positions or trades).
+**Action:** Replaced `iterrows()` with `itertuples(index=False)`, which yields lightweight namedtuples and is typically 10-100x faster. To handle columns with spaces (which become invalid namedtuple field names), explicitly rename them (e.g., `df.rename(columns={'Total Value': 'Total_Value'})`) before grouping or iterating. To safely handle missing columns or missing data (replacing `row.get('col', default)`), use `getattr(row, 'col', default)`. For nested fallbacks (e.g., `row.get('current_price', row.get('price', 0))`), explicitly check for `None` since valid numeric values like `0` can be falsy:
+```python
+cur_price = getattr(row, 'current_price', None)
+if cur_price is None:
+    cur_price = getattr(row, 'price', None)
+if cur_price is None:
+    cur_price = 0
+```
