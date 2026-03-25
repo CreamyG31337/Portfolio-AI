@@ -1,0 +1,19 @@
+commit 05725be74a5e961fc34afb3914fdec648c182e98
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Mar 24 09:58:35 2026 -0700
+
+    Refactor amount retrieval in get_recent_activity to use getattr for improved compatibility. This change enhances the handling of missing values while maintaining existing functionality.
+
+diff --git a/web_dashboard/routes/dashboard_routes.py b/web_dashboard/routes/dashboard_routes.py
+index 9906d638..8c265295 100644
+--- a/web_dashboard/routes/dashboard_routes.py
++++ b/web_dashboard/routes/dashboard_routes.py
+@@ -1517,7 +1517,7 @@ def get_recent_activity():
+                 "shares": shares,
+                 "price": price,
+                 "pnl": float(pnl) if pnl is not None and not pd.isna(pnl) else None,
+-                "amount": abs(float(row.get('amount', 0))),
++                "amount": abs(float(getattr(row, "amount", 0) or 0)),
+                 "display_amount": display_amount,
+                 "_logo_url": logo_url
+             })
