@@ -129,33 +129,67 @@ def _format_portfolio_snapshot_table(
                         opened_dates[ticker] = timestamp
     
     # Calculate total portfolio value for % Port
-    total_portfolio_value = sum(float(row.get('market_value', 0) or 0) for _, row in positions_df.iterrows())
+    def _get_market_value(r):
+        v = getattr(r, 'market_value', None)
+        return float(v if v is not None else 0)
+
+    total_portfolio_value = sum(_get_market_value(row) for row in positions_df.itertuples(index=False))
     
     total_cost = 0.0
     total_value = 0.0
     total_pnl = 0.0
     total_daily_pnl = 0.0
     
-    for idx, row in positions_df.iterrows():
-        symbol = row.get('symbol', row.get('ticker', 'N/A'))
-        quantity = float(row.get('quantity', row.get('shares', 0)) or 0)
-        currency = row.get('currency', 'CAD')
-        cost_basis = float(row.get('cost_basis', 0) or 0)
-        market_value = float(row.get('market_value', 0) or 0)
-        pnl = float(row.get('unrealized_pnl', 0) or 0)
-        pnl_pct = float(row.get('unrealized_pnl_pct', row.get('return_pct', 0)) or 0)
-        current_price = float(row.get('current_price', row.get('price', 0)) or 0)
+    for row in positions_df.itertuples(index=False):
+        sym_val = getattr(row, 'symbol', None)
+        if sym_val is None:
+            sym_val = getattr(row, 'ticker', None)
+        symbol = sym_val if sym_val is not None else 'N/A'
+
+        qty_val = getattr(row, 'quantity', None)
+        if qty_val is None:
+            qty_val = getattr(row, 'shares', None)
+        quantity = float(qty_val if qty_val is not None else 0)
+
+        curr_val = getattr(row, 'currency', None)
+        currency = curr_val if curr_val is not None else 'CAD'
+
+        cost_val = getattr(row, 'cost_basis', None)
+        cost_basis = float(cost_val if cost_val is not None else 0)
+
+        mkt_val = getattr(row, 'market_value', None)
+        market_value = float(mkt_val if mkt_val is not None else 0)
+
+        pnl_val = getattr(row, 'unrealized_pnl', None)
+        pnl = float(pnl_val if pnl_val is not None else 0)
+
+        pnl_pct_val = getattr(row, 'unrealized_pnl_pct', None)
+        if pnl_pct_val is None:
+            pnl_pct_val = getattr(row, 'return_pct', None)
+        pnl_pct = float(pnl_pct_val if pnl_pct_val is not None else 0)
+
+        price_val = getattr(row, 'current_price', None)
+        if price_val is None:
+            price_val = getattr(row, 'price', None)
+        current_price = float(price_val if price_val is not None else 0)
         
         # Get daily P&L from view (may be None/null)
-        daily_pnl = float(row.get('daily_pnl', 0) or 0)
-        daily_pnl_pct = float(row.get('daily_pnl_pct', 0) or 0)
+        d_pnl_val = getattr(row, 'daily_pnl', None)
+        daily_pnl = float(d_pnl_val if d_pnl_val is not None else 0)
+
+        d_pnl_pct_val = getattr(row, 'daily_pnl_pct', None)
+        daily_pnl_pct = float(d_pnl_pct_val if d_pnl_pct_val is not None else 0)
         
         # Get 5-day P&L from view
-        five_day_pnl = float(row.get('five_day_pnl', 0) or 0)
-        five_day_pnl_pct = float(row.get('five_day_pnl_pct', 0) or 0)
+        f_pnl_val = getattr(row, 'five_day_pnl', None)
+        five_day_pnl = float(f_pnl_val if f_pnl_val is not None else 0)
+
+        f_pnl_pct_val = getattr(row, 'five_day_pnl_pct', None)
+        five_day_pnl_pct = float(f_pnl_pct_val if f_pnl_pct_val is not None else 0)
         
         # Get company name (truncate to 25 chars, matching console app format)
-        company = row.get('company', '')
+        comp_val = getattr(row, 'company', None)
+        company = comp_val if comp_val is not None else ''
         if company:
             company_str = str(company)[:22] + "..." if len(str(company)) > 25 else str(company)
         else:
@@ -280,10 +314,17 @@ def format_price_volume_table(positions_df: pd.DataFrame) -> str:
     ticker_list = []
     ticker_row_data = {}  # ticker -> {current_price, yesterday_price, pct_change_str}
     
-    for idx, row in positions_df.iterrows():
-        ticker = row.get('symbol', row.get('ticker', 'N/A'))
-        current_price = float(row.get('current_price', 0) or 0)
-        yesterday_price = float(row.get('yesterday_price', 0) or 0)
+    for row in positions_df.itertuples(index=False):
+        sym_val = getattr(row, 'symbol', None)
+        if sym_val is None:
+            sym_val = getattr(row, 'ticker', None)
+        ticker = sym_val if sym_val is not None else 'N/A'
+
+        cp_val = getattr(row, 'current_price', None)
+        current_price = float(cp_val if cp_val is not None else 0)
+
+        yp_val = getattr(row, 'yesterday_price', None)
+        yesterday_price = float(yp_val if yp_val is not None else 0)
         
         pct_change_str = "N/A"
         if yesterday_price > 0 and current_price > 0:
@@ -388,11 +429,15 @@ def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
     ticker_data_map = {}  # ticker -> fundamentals dict
     
    # First pass: Read from DB (securities join) and identify stale data
-    for idx, row in positions_df.iterrows():
-        ticker = row.get('ticker', row.get('symbol', 'N/A'))
+    for row in positions_df.itertuples(index=False):
+        tick_val = getattr(row, 'ticker', None)
+        if tick_val is None:
+            tick_val = getattr(row, 'symbol', None)
+        ticker = tick_val if tick_val is not None else 'N/A'
         
         # Extract securities data
-        securities = row.get('securities')
+        sec_val = getattr(row, 'securities', None)
+        securities = sec_val if sec_val is not None else None
         sec_data = {}
         if securities:
             if isinstance(securities, dict):
@@ -544,8 +589,12 @@ def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
             logger.error(f"[fundamentals] Batch fetch failed: {e}", exc_info=True)
     
     # Third pass: Format table using merged data
-    for idx, row in positions_df.iterrows():
-        ticker = row.get('ticker', row.get('symbol', 'N/A'))
+    for row in positions_df.itertuples(index=False):
+        tick_val = getattr(row, 'ticker', None)
+        if tick_val is None:
+            tick_val = getattr(row, 'symbol', None)
+        ticker = tick_val if tick_val is not None else 'N/A'
+
         data = ticker_data_map.get(ticker, {})
         
         sector = str(data.get('sector', 'N/A'))
@@ -704,21 +753,38 @@ def format_trades(trades_df: pd.DataFrame, limit: int = 100) -> str:
         "---------|--------|-----------|---------|----------|----------"
     ]
     
-    for idx, row in df.iterrows():
+    for row in df.itertuples(index=False):
         # Handle both 'timestamp' and 'date' columns from different data sources
-        timestamp = row.get('timestamp') or row.get('date', '')
-        symbol = row.get('symbol', row.get('ticker', 'N/A'))
+        ts_val = getattr(row, 'timestamp', None)
+        if not ts_val:
+            ts_val = getattr(row, 'date', None)
+        timestamp = ts_val if ts_val is not None else ''
+
+        sym_val = getattr(row, 'symbol', None)
+        if sym_val is None:
+            sym_val = getattr(row, 'ticker', None)
+        symbol = sym_val if sym_val is not None else 'N/A'
         
         # Extract action from reason field (shared classifier)
-        reason = row.get('reason', '')
+        r_val = getattr(row, 'reason', None)
+        reason = r_val if r_val is not None else ''
         action = infer_trade_action(reason, default='BUY')
         
         # Handle both 'quantity' and 'shares' columns
-        quantity = row.get('quantity') or row.get('shares', 0)
-        price = row.get('price', 0)
-        currency = row.get('currency', 'CAD')
+        q_val = getattr(row, 'quantity', None)
+        if not q_val:
+            q_val = getattr(row, 'shares', None)
+        quantity = q_val if q_val is not None else 0
+
+        p_val = getattr(row, 'price', None)
+        price = p_val if p_val is not None else 0
+
+        c_val = getattr(row, 'currency', None)
+        currency = c_val if c_val is not None else 'CAD'
+
         # Calculate total_value if not present
-        total_value = row.get('total_value')
+        tv_val = getattr(row, 'total_value', None)
+        total_value = tv_val if tv_val is not None else None
         if not total_value and quantity and price:
             total_value = float(quantity) * float(price)
         

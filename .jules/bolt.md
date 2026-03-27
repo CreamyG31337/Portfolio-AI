@@ -33,3 +33,6 @@
 ## 2025-03-05 - O(N) Ticker Lookup Anti-Pattern in PortfolioSnapshot
 **Learning:** `PortfolioSnapshot` relied on an $O(N)$ linear list traversal in its `get_position_by_ticker` method. In highly active scenarios involving loops parsing CSV records or rebuilding historical portfolios, repeated calls scale to $O(N^2)$, causing significant CPU overhead for large portfolios.
 **Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.
+## 2024-05-20 - Pandas DataFrame Iteration Overhead
+**Learning:** Found that using `df.iterrows()` when formatting context heavily impacts performance by creating Series objects for every row, adding considerable O(N) overhead during serialization tasks.
+**Action:** When iterating DataFrames, use `df.itertuples(index=False)` instead. Extract values using `getattr(row, 'column_name', None)`. Always check for `None` explicitly before providing defaults (`if val is not None else default`), because numeric falsy values like `0` or `0.0` will erroneously trigger `or` fallback logic.
