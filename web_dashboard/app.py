@@ -1159,21 +1159,27 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
                     total_value_cad = Decimal('0')
                     total_cost_basis_cad = Decimal('0')
 
-                    for _, pos in current_positions.iterrows():
-                        ticker = pos['Ticker']
-                        value = Decimal(str(pos['Total Value']))
-                        cost_basis = Decimal(str(pos['Cost Basis']))
+                    # ⚡ Bolt Optimization: Replaced .iterrows() with .itertuples(index=False) and slicing
+                    # to avoid creating a new Series for each row. Using name=None returns standard tuples.
+                    columns_to_extract = ['Ticker', 'Total Value', 'Cost Basis']
+                    # Ensure all required columns are present before proceeding
+                    if all(col in current_positions.columns for col in columns_to_extract):
+                        # Use positional indices: Ticker=0, Total Value=1, Cost Basis=2
+                        for pos in current_positions[columns_to_extract].itertuples(index=False, name=None):
+                            ticker = pos[0]
+                            value = Decimal(str(pos[1]))
+                            cost_basis = Decimal(str(pos[2]))
 
-                        # Convert USD to CAD if needed
-                        if is_us_ticker(ticker):
-                            value_cad = convert_usd_to_cad(value, exchange_rates)
-                            cost_basis_cad = convert_usd_to_cad(cost_basis, exchange_rates)
-                        else:
-                            value_cad = value
-                            cost_basis_cad = cost_basis
+                            # Convert USD to CAD if needed
+                            if is_us_ticker(ticker):
+                                value_cad = convert_usd_to_cad(value, exchange_rates)
+                                cost_basis_cad = convert_usd_to_cad(cost_basis, exchange_rates)
+                            else:
+                                value_cad = value
+                                cost_basis_cad = cost_basis
 
-                        total_value_cad += value_cad
-                        total_cost_basis_cad += cost_basis_cad
+                            total_value_cad += value_cad
+                            total_cost_basis_cad += cost_basis_cad
 
                     # Convert back to float for compatibility
                     total_value = float(total_value_cad)
@@ -2352,38 +2358,74 @@ def api_portfolio():
         # Handle both Supabase and CSV data formats
         if 'ticker' in data['portfolio'].columns:
             # Supabase format - using latest_positions view with P&L calculations
-            for _, row in data['portfolio'].iterrows():
+            # ⚡ Bolt Optimization: Replaced .iterrows() with .itertuples(index=False) for faster iteration
+            for row in data['portfolio'].itertuples(index=False):
                 # Calculate market value using correct column name
-                market_value = _safe_float(row['shares']) * _safe_float(row.get('current_price', row.get('price', 0)))
-                total_pnl = market_value - _safe_float(row['cost_basis'])
+                row_shares = getattr(row, 'shares', None)
+                row_current_price = getattr(row, 'current_price', None)
+                if row_current_price is None:
+                    row_current_price = getattr(row, 'price', 0)
+                row_cost_basis = getattr(row, 'cost_basis', None)
+
+                market_value = _safe_float(row_shares) * _safe_float(row_current_price)
+                total_pnl = market_value - _safe_float(row_cost_basis)
+
+                # Fetch optional fields with proper None checking to respect falsy values like 0.0
+                row_daily_pnl = getattr(row, 'daily_pnl', None)
+                row_daily_pnl = row_daily_pnl if row_daily_pnl is not None else 0
+
+                row_daily_pnl_pct = getattr(row, 'daily_pnl_pct', None)
+                row_daily_pnl_pct = row_daily_pnl_pct if row_daily_pnl_pct is not None else 0
+
+                row_five_day_pnl = getattr(row, 'five_day_pnl', None)
+                row_five_day_pnl = row_five_day_pnl if row_five_day_pnl is not None else 0
+
+                row_five_day_pnl_pct = getattr(row, 'five_day_pnl_pct', None)
+                row_five_day_pnl_pct = row_five_day_pnl_pct if row_five_day_pnl_pct is not None else 0
+
+                row_currency = getattr(row, 'currency', None)
+                row_currency = row_currency if row_currency is not None else 'USD'
 
                 current_positions.append({
-                    'ticker': row['ticker'],
-                    'shares': round(_safe_float(row['shares']), 4),
-                    'price': round(_safe_float(row.get('current_price', row.get('price', 0))), 2),
-                    'cost_basis': round(_safe_float(row['cost_basis']), 2),
+                    'ticker': getattr(row, 'ticker', None),
+                    'shares': round(_safe_float(row_shares), 4),
+                    'price': round(_safe_float(row_current_price), 2),
+                    'cost_basis': round(_safe_float(row_cost_basis), 2),
                     'market_value': round(market_value, 2),
                     'total_pnl': round(total_pnl, 2),
-                    'total_pnl_pct': round((_safe_float(total_pnl) / _safe_float(row['cost_basis'], 1) * 100) if _safe_float(row['cost_basis']) > 0 else 0, 2),
-                    'daily_pnl': round(_safe_float(row.get('daily_pnl', 0)), 2),
-                    'daily_pnl_pct': round(_safe_float(row.get('daily_pnl_pct', 0)), 2),
-                    'five_day_pnl': round(_safe_float(row.get('five_day_pnl', 0)), 2),
-                    'five_day_pnl_pct': round(_safe_float(row.get('five_day_pnl_pct', 0)), 2),
-                    'currency': row.get('currency', 'USD')
+                    'total_pnl_pct': round((_safe_float(total_pnl) / _safe_float(row_cost_basis, 1) * 100) if _safe_float(row_cost_basis) > 0 else 0, 2),
+                    'daily_pnl': round(_safe_float(row_daily_pnl), 2),
+                    'daily_pnl_pct': round(_safe_float(row_daily_pnl_pct), 2),
+                    'five_day_pnl': round(_safe_float(row_five_day_pnl), 2),
+                    'five_day_pnl_pct': round(_safe_float(row_five_day_pnl_pct), 2),
+                    'currency': row_currency
                 })
         else:
             # CSV format fallback
+            # Extract data by boolean indexing on original columns first
+            # We use the original DataFrame to apply the condition, then convert to tuples without column name translation
+            # by using positional extraction similar to create_performance_chart.
             current_positions_df = data['portfolio'][data['portfolio'].get('Total Value', 0) > 0]
-            for _, row in current_positions_df.iterrows():
-                current_positions.append({
-                    'ticker': row['Ticker'],
-                    'shares': round(row['Shares'], 4),
-                    'price': round(row['Price'], 2),
-                    'cost_basis': round(row['Cost Basis'], 2),
-                    'market_value': round(row['Total Value'], 2),
-                    'pnl': round(row['PnL'], 2),
-                    'pnl_pct': round((row['PnL'] / row['Cost Basis'] * 100), 2) if row['Cost Basis'] > 0 else 0
-                })
+            # ⚡ Bolt Optimization: Use itertuples(index=False, name=None) over iterrows to parse CSV positional data quickly.
+            columns_to_extract = ['Ticker', 'Shares', 'Price', 'Cost Basis', 'Total Value', 'PnL']
+            if all(col in current_positions_df.columns for col in columns_to_extract):
+                for row in current_positions_df[columns_to_extract].itertuples(index=False, name=None):
+                    csv_ticker = row[0]
+                    csv_shares = row[1]
+                    csv_price = row[2]
+                    csv_cost_basis = row[3]
+                    csv_total_value = row[4]
+                    csv_pnl = row[5]
+
+                    current_positions.append({
+                        'ticker': csv_ticker,
+                        'shares': round(csv_shares, 4),
+                        'price': round(csv_price, 2),
+                        'cost_basis': round(csv_cost_basis, 2),
+                        'market_value': round(csv_total_value, 2),
+                        'pnl': round(csv_pnl, 2),
+                        'pnl_pct': round((csv_pnl / csv_cost_basis * 100), 2) if csv_cost_basis > 0 else 0
+                    })
 
     return jsonify({
         'metrics': metrics,

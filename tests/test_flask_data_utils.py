@@ -89,8 +89,8 @@ def test_fetch_dividend_log_flask_includes_securities_join():
     mock_order = mock_eq.order.return_value if hasattr(mock_eq, 'order') else mock_gte.order.return_value
     
     # Set up execute to return mock_result
-    mock_order.execute.return_value = mock_result
-    mock_gte.order.return_value.execute.return_value = mock_result
+    mock_order.range.return_value.execute.return_value = mock_result
+    mock_gte.order.return_value.range.return_value.execute.return_value = mock_result
     
     with patch('flask_data_utils.get_supabase_client_flask', return_value=mock_client), \
          patch('flask_data_utils.get_user_id_flask', return_value='test-user-123'), \
