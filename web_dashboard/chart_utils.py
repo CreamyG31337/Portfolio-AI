@@ -265,6 +265,9 @@ def _drop_isolated_close_outliers_df(
     close_col: str,
     extreme_ratio: float = 8.0,
     *,
+    envelope_spike_pct: Optional[float] = None,
+    envelope_max_neighbor_span: float = 0.09,
+    envelope_strong_extra: float = 0.02,
     reversion_neighbor_tolerance: Optional[float] = None,
     reversion_jump_ratio: float = 1.09,
 ) -> pd.DataFrame:
@@ -273,9 +276,13 @@ def _drop_isolated_close_outliers_df(
     A single corrupt tick at the **start** of the window makes normalized performance look
     like -90%% or +9000%% because the whole series is divided by that bogus baseline.
 
-    Optional **reversion** pass (used for volatile futures on the commodity chart): flags a day
-    when the close jumps from the prior day and the *next* day closes back near the prior
-    day's level — the classic Yahoo one-day bad print that a pure 8× ratio rule misses.
+    Optional **envelope** pass (commodity / futures): (1) **mild** — if prev and next are within
+    ``envelope_max_neighbor_span`` of each other, flag when close is outside ``envelope_spike_pct``
+    of ``[min(prev,next), max(prev,next)]``. (2) **strong** — always flag when outside
+    ``envelope_spike_pct + envelope_strong_extra``, with no flat-neighbor requirement (one-day
+    bad prints next to a gently trending session).
+
+    Optional **reversion** pass: backup when ``next`` returns near ``prev``.
     """
     if df.empty or date_col not in df.columns or close_col not in df.columns:
         return df
@@ -328,6 +335,35 @@ def _drop_isolated_close_outliers_df(
 
         if isolated_spike or isolated_trough:
             anomaly_indices.add(idx)
+
+    if envelope_spike_pct is not None:
+        eps = float(envelope_spike_pct)
+        max_span = float(envelope_max_neighbor_span)
+        strong_eps = eps + float(envelope_strong_extra)
+        for idx in range(1, len(closes) - 1):
+            prev_close = closes[idx - 1]
+            cur_close = closes[idx]
+            next_close = closes[idx + 1]
+            if (
+                pd.isna(prev_close)
+                or pd.isna(cur_close)
+                or pd.isna(next_close)
+                or prev_close <= 0
+                or cur_close <= 0
+                or next_close <= 0
+            ):
+                continue
+            local_hi = max(prev_close, next_close)
+            local_lo = min(prev_close, next_close)
+            neighbor_rel_span = local_hi / local_lo - 1.0
+            strong_bad = cur_close > local_hi * (1.0 + strong_eps) or cur_close < local_lo * (
+                1.0 - strong_eps
+            )
+            mild_flat_bad = neighbor_rel_span <= max_span and (
+                cur_close > local_hi * (1.0 + eps) or cur_close < local_lo * (1.0 - eps)
+            )
+            if strong_bad or mild_flat_bad:
+                anomaly_indices.add(idx)
 
     if reversion_neighbor_tolerance is not None:
         tol = float(reversion_neighbor_tolerance)
@@ -2406,16 +2442,9 @@ def create_commodity_chart(
         if len(df) == 0:
             continue
         
-        # Futures often have sub-8× one-day bad ticks that revert the next session; the
-        # reversion pass targets those without applying this looser rule to equity benchmarks.
-        # Run twice so a second bad print can be flagged after its neighbor is removed.
-        _comm_filter_kw = dict(
-            extreme_ratio=6.0,
-            reversion_neighbor_tolerance=0.07,
-            reversion_jump_ratio=1.09,
-        )
+        # Defensive ratio drop only; corrupt Yahoo futures OHLC is fixed in benchmark_refresh_job.
         for _ in range(2):
-            df = _drop_isolated_close_outliers_df(df, 'date', 'close', **_comm_filter_kw)
+            df = _drop_isolated_close_outliers_df(df, 'date', 'close', extreme_ratio=6.0)
             if len(df) < 3:
                 break
         if len(df) == 0:

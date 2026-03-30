@@ -40,6 +40,7 @@ elif sys.path[0] != str(project_root):
     sys.path.remove(str(project_root))
     sys.path.insert(0, str(project_root))
 
+from scheduler.benchmark_futures_quality import sanitize_yahoo_continuous_futures_df
 from scheduler.scheduler_core import log_job_execution
 
 # Initialize logger
@@ -187,6 +188,16 @@ def benchmark_refresh_job() -> None:
                         data[col] = pd.to_numeric(data[col], errors="coerce")
 
                 data = data.dropna(subset=["Date", "Close"]).sort_values("Date").reset_index(drop=True)
+
+                data = sanitize_yahoo_continuous_futures_df(data, ticker, name)
+                if len(data) < 3:
+                    logger.warning(
+                        "Insufficient rows after futures sanitize for %s (%s)",
+                        name,
+                        ticker,
+                    )
+                    benchmarks_failed += 1
+                    continue
 
                 anomaly_indices: set[int] = set()
                 extreme_ratio = 8.0
