@@ -259,6 +259,75 @@ def _filter_trading_days(df: pd.DataFrame, date_column: str = 'date', market: st
     return df[trading_days_mask]
 
 
+def _drop_isolated_close_outliers_df(
+    df: pd.DataFrame,
+    date_col: str,
+    close_col: str,
+    extreme_ratio: float = 8.0,
+) -> pd.DataFrame:
+    """Remove isolated bad close prices (same idea as scheduler/jobs_metrics benchmark job).
+
+    A single corrupt tick at the **start** of the window makes normalized performance look
+    like -90%% or +9000%% because the whole series is divided by that bogus baseline.
+    """
+    if df.empty or date_col not in df.columns or close_col not in df.columns:
+        return df
+
+    data = df.sort_values(date_col).reset_index(drop=True).copy()
+    data[close_col] = pd.to_numeric(data[close_col], errors="coerce")
+    data = data.dropna(subset=[date_col, close_col])
+    data = data[data[close_col] > 0]
+    if len(data) < 3:
+        return data
+
+    anomaly_indices: set[int] = set()
+    closes = data[close_col].tolist()
+
+    def _is_extreme_pair(a: float, b: float) -> bool:
+        if pd.isna(a) or pd.isna(b) or a <= 0 or b <= 0:
+            return False
+        ratio = max(a / b, b / a)
+        return ratio >= extreme_ratio
+
+    first, second, third = closes[0], closes[1], closes[2]
+    if _is_extreme_pair(first, second) and _is_extreme_pair(first, third):
+        anomaly_indices.add(0)
+
+    last, prev1, prev2 = closes[-1], closes[-2], closes[-3]
+    if _is_extreme_pair(last, prev1) and _is_extreme_pair(last, prev2):
+        anomaly_indices.add(len(closes) - 1)
+
+    for idx in range(1, len(closes) - 1):
+        prev_close = closes[idx - 1]
+        cur_close = closes[idx]
+        next_close = closes[idx + 1]
+
+        if (
+            pd.isna(prev_close)
+            or pd.isna(cur_close)
+            or pd.isna(next_close)
+            or prev_close <= 0
+            or cur_close <= 0
+            or next_close <= 0
+        ):
+            continue
+
+        isolated_spike = (cur_close / prev_close >= extreme_ratio) and (
+            cur_close / next_close >= extreme_ratio
+        )
+        isolated_trough = (prev_close / cur_close >= extreme_ratio) and (
+            next_close / cur_close >= extreme_ratio
+        )
+
+        if isolated_spike or isolated_trough:
+            anomaly_indices.add(idx)
+
+    if anomaly_indices:
+        data = data.drop(index=sorted(anomaly_indices)).reset_index(drop=True)
+
+    return data
+
+
 def _add_weekend_shading(fig: go.Figure, start_date: datetime, end_date: datetime, 
                         is_dark: bool = False, weekend_color: Optional[str] = None) -> None:
     """Add light gray shading for weekends (Saturday 00:00 to Monday 00:00).
@@ -350,18 +419,21 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
                     data = pd.DataFrame(cached_data)
                     data['Date'] = pd.to_datetime(data['date'])
                     data = data.rename(columns={'close': 'Close'})
+                    data['Close'] = pd.to_numeric(data['Close'], errors='coerce')
+                    data = _drop_isolated_close_outliers_df(data, 'Date', 'Close')
                     
                     # Check if data is recent enough (has data within 1 day of end_date)
-                    max_cached_date = data['Date'].max()
+                    max_cached_date = data['Date'].max() if not data.empty else None
                     # Normalize timezones for comparison
-                    if max_cached_date.tzinfo is None and end_date.tzinfo is not None:
-                        max_cached_date = max_cached_date.replace(tzinfo=end_date.tzinfo)
-                    elif max_cached_date.tzinfo is not None and end_date.tzinfo is None:
-                        end_date = end_date.replace(tzinfo=max_cached_date.tzinfo)
+                    if max_cached_date is not None:
+                        if max_cached_date.tzinfo is None and end_date.tzinfo is not None:
+                            max_cached_date = max_cached_date.replace(tzinfo=end_date.tzinfo)
+                        elif max_cached_date.tzinfo is not None and end_date.tzinfo is None:
+                            end_date = end_date.replace(tzinfo=max_cached_date.tzinfo)
                     
-                    days_diff = (end_date - max_cached_date).days
+                    days_diff = (end_date - max_cached_date).days if max_cached_date is not None else 999
                     
-                    if days_diff <= 1:
+                    if not data.empty and days_diff <= 1:
                         # Cache hit with recent data - use it
                         print(f"📦 Using cached benchmark data for {ticker}")
                         
@@ -382,6 +454,8 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
                             # Normalize to noon (12:00) to match portfolio data
                             data['Date'] = data['Date'].dt.normalize() + timedelta(hours=12)
                             return data[['Date', 'Close', 'normalized']]
+                    elif data.empty:
+                        print(f"⚠️ Cached data for {ticker} unusable after outlier filter, fetching fresh data")
                     else:
                         print(f"⚠️ Cached data for {ticker} is stale ({days_diff} days old), fetching fresh data")
         except Exception as cache_error:
@@ -407,6 +481,11 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
         
         # Find the baseline close price at or near portfolio start date
         data['Date'] = pd.to_datetime(data['Date'])
+        data['Close'] = pd.to_numeric(data['Close'], errors='coerce')
+        data = _drop_isolated_close_outliers_df(data, 'Date', 'Close')
+        if data.empty:
+            print(f"❌ No usable rows after outlier filter for {ticker}")
+            return None
         
         # Store in cache for future use
         try:
@@ -2295,6 +2374,11 @@ def create_commodity_chart(
         df = _adjust_to_market_close(df, 'date')
         
         if len(df) == 0:
+            continue
+        
+        df = _drop_isolated_close_outliers_df(df, 'date', 'close')
+        if len(df) == 0:
+            logger.warning(f"No usable rows for {config['name']} after outlier filter")
             continue
         
         # Normalize to percentage change from first value (baseline 100)
