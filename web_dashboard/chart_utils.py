@@ -264,11 +264,18 @@ def _drop_isolated_close_outliers_df(
     date_col: str,
     close_col: str,
     extreme_ratio: float = 8.0,
+    *,
+    reversion_neighbor_tolerance: Optional[float] = None,
+    reversion_jump_ratio: float = 1.09,
 ) -> pd.DataFrame:
     """Remove isolated bad close prices (same idea as scheduler/jobs_metrics benchmark job).
 
     A single corrupt tick at the **start** of the window makes normalized performance look
     like -90%% or +9000%% because the whole series is divided by that bogus baseline.
+
+    Optional **reversion** pass (used for volatile futures on the commodity chart): flags a day
+    when the close jumps from the prior day and the *next* day closes back near the prior
+    day's level — the classic Yahoo one-day bad print that a pure 8× ratio rule misses.
     """
     if df.empty or date_col not in df.columns or close_col not in df.columns:
         return df
@@ -321,6 +328,29 @@ def _drop_isolated_close_outliers_df(
 
         if isolated_spike or isolated_trough:
             anomaly_indices.add(idx)
+
+    if reversion_neighbor_tolerance is not None:
+        tol = float(reversion_neighbor_tolerance)
+        jmin = float(reversion_jump_ratio)
+        for idx in range(1, len(closes) - 1):
+            prev_close = closes[idx - 1]
+            cur_close = closes[idx]
+            next_close = closes[idx + 1]
+            if (
+                pd.isna(prev_close)
+                or pd.isna(cur_close)
+                or pd.isna(next_close)
+                or prev_close <= 0
+                or cur_close <= 0
+                or next_close <= 0
+            ):
+                continue
+            # Next day returned near pre-spike level (avoid nuking real trend days).
+            reverted = abs(next_close / prev_close - 1.0) <= tol
+            away_prev = max(cur_close / prev_close, prev_close / cur_close)
+            away_next = max(cur_close / next_close, next_close / cur_close)
+            if reverted and away_prev >= jmin and away_next >= jmin:
+                anomaly_indices.add(idx)
 
     if anomaly_indices:
         data = data.drop(index=sorted(anomaly_indices)).reset_index(drop=True)
@@ -2376,7 +2406,18 @@ def create_commodity_chart(
         if len(df) == 0:
             continue
         
-        df = _drop_isolated_close_outliers_df(df, 'date', 'close')
+        # Futures often have sub-8× one-day bad ticks that revert the next session; the
+        # reversion pass targets those without applying this looser rule to equity benchmarks.
+        # Run twice so a second bad print can be flagged after its neighbor is removed.
+        _comm_filter_kw = dict(
+            extreme_ratio=6.0,
+            reversion_neighbor_tolerance=0.07,
+            reversion_jump_ratio=1.09,
+        )
+        for _ in range(2):
+            df = _drop_isolated_close_outliers_df(df, 'date', 'close', **_comm_filter_kw)
+            if len(df) < 3:
+                break
         if len(df) == 0:
             logger.warning(f"No usable rows for {config['name']} after outlier filter")
             continue
