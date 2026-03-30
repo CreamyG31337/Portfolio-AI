@@ -1468,13 +1468,13 @@ def get_recent_activity():
                     return float(pnl)
                 # Fallback: calculate from amount if pnl not available
                 amount = getattr(row, 'amount', 0)
-                return abs(float(amount if amount is not None else 0))
+                return abs(float(amount if not pd.isna(amount) else 0))
             else:
                 # For BUYs/DRIPs: show purchase amount
                 shares_val = getattr(row, 'shares', 0)
-                shares = abs(float(shares_val if shares_val is not None else 0))
+                shares = abs(float(shares_val if not pd.isna(shares_val) else 0))
                 price_val = getattr(row, 'price', 0)
-                price = float(price_val if price_val is not None else 0)
+                price = float(price_val if not pd.isna(price_val) else 0)
                 return shares * price
         
         data = []
@@ -1497,9 +1497,9 @@ def get_recent_activity():
             action = infer_action(reason)
             
             shares_val = getattr(row, 'shares', 0)
-            shares = abs(float(shares_val if shares_val is not None else 0))
+            shares = abs(float(shares_val if not pd.isna(shares_val) else 0))
             price_val = getattr(row, 'price', 0)
-            price = float(price_val if price_val is not None else 0)
+            price = float(price_val if not pd.isna(price_val) else 0)
             pnl = getattr(row, 'pnl', None)
             company_name = getattr(row, 'company_name', None)
             
@@ -1517,7 +1517,13 @@ def get_recent_activity():
                 "shares": shares,
                 "price": price,
                 "pnl": float(pnl) if pnl is not None and not pd.isna(pnl) else None,
-                "amount": abs(float(getattr(row, "amount", 0) or 0)),
+                "amount": abs(
+                    float(
+                        getattr(row, "amount", 0)
+                        if not pd.isna(getattr(row, "amount", 0))
+                        else 0
+                    )
+                ),
                 "display_amount": display_amount,
                 "_logo_url": logo_url
             })

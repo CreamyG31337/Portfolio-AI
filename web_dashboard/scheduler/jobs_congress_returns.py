@@ -13,6 +13,7 @@ Current prices are refreshed daily via batch yfinance downloads.
 """
 
 import logging
+import math
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -43,6 +44,24 @@ else:
 from scheduler.scheduler_core import log_job_execution
 
 logger = logging.getLogger(__name__)
+
+# congress_trade_returns.pct_change is NUMERIC(8, 2) -> max |value| is 999_999.99.
+CTR_PCT_MAX: float = 999_999.99
+# Sub-penny adjusted closes explode pct_change; skip rather than upsert junk.
+ENTRY_MIN_POSITIVE: float = 1e-4
+
+
+def normalize_pct_change_for_db(pct: float) -> tuple[float, bool]:
+    """Clamp pct to the database column range; return (value, was_clamped).
+
+    Avoids Postgres 22003 numeric overflow without storing NULL.
+    """
+    if pct > CTR_PCT_MAX:
+        return round(CTR_PCT_MAX, 2), True
+    if pct < -CTR_PCT_MAX:
+        return round(-CTR_PCT_MAX, 2), True
+    return round(pct, 2), False
+
 
 # ---------------------------------------------------------------------------
 # Amount range midpoint mapping
@@ -433,7 +452,43 @@ def compute_congress_trade_returns_job() -> None:
                 skipped += 1
                 continue
 
-            pct = round(((current_adj - entry_adj) / entry_adj) * 100, 2)
+            if entry_adj < ENTRY_MIN_POSITIVE:
+                skipped += 1
+                logger.warning(
+                    "Skipping trade %s (%s) %s: entry_price_adj %s below ENTRY_MIN %s",
+                    tid,
+                    ticker,
+                    trade.get("transaction_date"),
+                    entry_adj,
+                    ENTRY_MIN_POSITIVE,
+                )
+                continue
+
+            raw_pct = ((current_adj - entry_adj) / entry_adj) * 100
+            if not math.isfinite(raw_pct):
+                skipped += 1
+                logger.warning(
+                    "Skipping trade %s (%s) %s: non-finite pct (entry=%s current=%s)",
+                    tid,
+                    ticker,
+                    trade.get("transaction_date"),
+                    entry_adj,
+                    current_adj,
+                )
+                continue
+            pct, pct_clamped = normalize_pct_change_for_db(float(raw_pct))
+            if pct_clamped:
+                logger.warning(
+                    "Clamped pct_change for trade %s (%s) %s: raw=%.2f -> %.2f "
+                    "(entry=%s current=%s)",
+                    tid,
+                    ticker,
+                    trade.get("transaction_date"),
+                    raw_pct,
+                    pct,
+                    entry_adj,
+                    current_adj,
+                )
             midpoint = estimate_midpoint(amount)
 
             upsert_batch.append({

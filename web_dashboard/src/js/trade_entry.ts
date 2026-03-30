@@ -3,6 +3,10 @@
  * Handles manual trade entry, email parsing, and trade history
  */
 
+// TODO(ui): Refactor Edit Trade / Delete Trade modals (trade_entry.html + this file) to standard
+// Flowbite patterns — data-modal-target / data-modal-hide, remove custom backdrop + Escape
+// handlers — for a11y (focus trap, ARIA) and consistency with e.g. funds.html.
+
 import { getCsrfHeaders } from './csrf.js';
 import { setupTickerAutocomplete, getCompanyName } from './ticker_autocomplete.js';
 

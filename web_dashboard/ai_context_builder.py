@@ -24,6 +24,35 @@ if str(project_root) not in sys.path:
 from utils.trade_reason import infer_trade_action, is_sell_reason
 
 
+def _ituple_val(row: Any, primary: str, fallback: Optional[str] = None, default: Any = None) -> Any:
+    """Read column from itertuples row; treat pandas NA/NaN as default."""
+    raw = getattr(row, primary, getattr(row, fallback, default) if fallback else default)
+    try:
+        if pd.isna(raw):
+            return default
+    except (TypeError, ValueError):
+        pass
+    return raw
+
+
+def _ituple_float(
+    row: Any, primary: str, fallback: Optional[str] = None, default: float = 0.0
+) -> float:
+    """Numeric column helper for itertuples rows."""
+    v = _ituple_val(row, primary, fallback, default)
+    if v is None:
+        return default
+    try:
+        if pd.isna(v):
+            return default
+    except (TypeError, ValueError):
+        pass
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def format_holdings(
     positions_df: pd.DataFrame, 
     fund: str,
@@ -129,33 +158,35 @@ def _format_portfolio_snapshot_table(
                         opened_dates[ticker] = timestamp
     
     # Calculate total portfolio value for % Port
-    total_portfolio_value = sum(float(row.get('market_value', 0) or 0) for _, row in positions_df.iterrows())
-    
+    total_portfolio_value = sum(
+        _ituple_float(row, "market_value", default=0.0)
+        for row in positions_df.itertuples(index=False)
+    )
+
     total_cost = 0.0
     total_value = 0.0
     total_pnl = 0.0
     total_daily_pnl = 0.0
-    
-    for idx, row in positions_df.iterrows():
-        symbol = row.get('symbol', row.get('ticker', 'N/A'))
-        quantity = float(row.get('quantity', row.get('shares', 0)) or 0)
-        currency = row.get('currency', 'CAD')
-        cost_basis = float(row.get('cost_basis', 0) or 0)
-        market_value = float(row.get('market_value', 0) or 0)
-        pnl = float(row.get('unrealized_pnl', 0) or 0)
-        pnl_pct = float(row.get('unrealized_pnl_pct', row.get('return_pct', 0)) or 0)
-        current_price = float(row.get('current_price', row.get('price', 0)) or 0)
-        
+
+    for row in positions_df.itertuples(index=False):
+        symbol = _ituple_val(row, "symbol", "ticker", "N/A")
+        quantity = _ituple_float(row, "quantity", "shares", 0.0)
+        cost_basis = _ituple_float(row, "cost_basis", default=0.0)
+        market_value = _ituple_float(row, "market_value", default=0.0)
+        pnl = _ituple_float(row, "unrealized_pnl", default=0.0)
+        pnl_pct = _ituple_float(row, "unrealized_pnl_pct", "return_pct", 0.0)
+        current_price = _ituple_float(row, "current_price", "price", 0.0)
+
         # Get daily P&L from view (may be None/null)
-        daily_pnl = float(row.get('daily_pnl', 0) or 0)
-        daily_pnl_pct = float(row.get('daily_pnl_pct', 0) or 0)
-        
+        daily_pnl = _ituple_float(row, "daily_pnl", default=0.0)
+        daily_pnl_pct = _ituple_float(row, "daily_pnl_pct", default=0.0)
+
         # Get 5-day P&L from view
-        five_day_pnl = float(row.get('five_day_pnl', 0) or 0)
-        five_day_pnl_pct = float(row.get('five_day_pnl_pct', 0) or 0)
-        
+        five_day_pnl = _ituple_float(row, "five_day_pnl", default=0.0)
+        five_day_pnl_pct = _ituple_float(row, "five_day_pnl_pct", default=0.0)
+
         # Get company name (truncate to 25 chars, matching console app format)
-        company = row.get('company', '')
+        company = _ituple_val(row, "company", "company_name", "")
         if company:
             company_str = str(company)[:22] + "..." if len(str(company)) > 25 else str(company)
         else:
@@ -280,10 +311,10 @@ def format_price_volume_table(positions_df: pd.DataFrame) -> str:
     ticker_list = []
     ticker_row_data = {}  # ticker -> {current_price, yesterday_price, pct_change_str}
     
-    for idx, row in positions_df.iterrows():
-        ticker = row.get('symbol', row.get('ticker', 'N/A'))
-        current_price = float(row.get('current_price', 0) or 0)
-        yesterday_price = float(row.get('yesterday_price', 0) or 0)
+    for row in positions_df.itertuples(index=False):
+        ticker = _ituple_val(row, "symbol", "ticker", "N/A")
+        current_price = _ituple_float(row, "current_price", default=0.0)
+        yesterday_price = _ituple_float(row, "yesterday_price", default=0.0)
         
         pct_change_str = "N/A"
         if yesterday_price > 0 and current_price > 0:
@@ -387,12 +418,12 @@ def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
     stale_tickers = []
     ticker_data_map = {}  # ticker -> fundamentals dict
     
-   # First pass: Read from DB (securities join) and identify stale data
-    for idx, row in positions_df.iterrows():
-        ticker = row.get('ticker', row.get('symbol', 'N/A'))
-        
+    # First pass: Read from DB (securities join) and identify stale data
+    for row in positions_df.itertuples(index=False):
+        ticker = _ituple_val(row, "ticker", "symbol", "N/A")
+
         # Extract securities data
-        securities = row.get('securities')
+        securities = _ituple_val(row, "securities", default=None)
         sec_data = {}
         if securities:
             if isinstance(securities, dict):
@@ -544,8 +575,8 @@ def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
             logger.error(f"[fundamentals] Batch fetch failed: {e}", exc_info=True)
     
     # Third pass: Format table using merged data
-    for idx, row in positions_df.iterrows():
-        ticker = row.get('ticker', row.get('symbol', 'N/A'))
+    for row in positions_df.itertuples(index=False):
+        ticker = _ituple_val(row, "ticker", "symbol", "N/A")
         data = ticker_data_map.get(ticker, {})
         
         sector = str(data.get('sector', 'N/A'))
@@ -704,21 +735,22 @@ def format_trades(trades_df: pd.DataFrame, limit: int = 100) -> str:
         "---------|--------|-----------|---------|----------|----------"
     ]
     
-    for idx, row in df.iterrows():
+    for row in df.itertuples(index=False):
         # Handle both 'timestamp' and 'date' columns from different data sources
-        timestamp = row.get('timestamp') or row.get('date', '')
-        symbol = row.get('symbol', row.get('ticker', 'N/A'))
-        
+        ts_primary = _ituple_val(row, "timestamp", default=None)
+        ts_fallback = _ituple_val(row, "date", default="")
+        timestamp = ts_primary if ts_primary not in (None, "") else ts_fallback
+        symbol = _ituple_val(row, "symbol", "ticker", "N/A")
+
         # Extract action from reason field (shared classifier)
-        reason = row.get('reason', '')
-        action = infer_trade_action(reason, default='BUY')
-        
+        reason = _ituple_val(row, "reason", default="")
+        action = infer_trade_action(reason, default="BUY")
+
         # Handle both 'quantity' and 'shares' columns
-        quantity = row.get('quantity') or row.get('shares', 0)
-        price = row.get('price', 0)
-        currency = row.get('currency', 'CAD')
+        quantity = _ituple_val(row, "quantity", "shares", 0)
+        price = _ituple_val(row, "price", default=0)
         # Calculate total_value if not present
-        total_value = row.get('total_value')
+        total_value = _ituple_val(row, "total_value", default=None)
         if not total_value and quantity and price:
             total_value = float(quantity) * float(price)
         

@@ -105,6 +105,44 @@ class TestReturnCalculation:
         assert round(pct, 2) == 200.0
 
 
+class TestNormalizePctChangeForDb:
+    """Clamp pct_change to NUMERIC(8,2) range for congress_trade_returns."""
+
+    def _fn(self):
+        from scheduler.jobs_congress_returns import normalize_pct_change_for_db
+        return normalize_pct_change_for_db
+
+    def test_within_range_unchanged(self):
+        fn = self._fn()
+        v, clamped = fn(1945.27)
+        assert not clamped
+        assert v == 1945.27
+
+    def test_clamps_high(self):
+        fn = self._fn()
+        v, clamped = fn(2_000_000.0)
+        assert clamped
+        assert v == 999_999.99
+
+    def test_clamps_low(self):
+        fn = self._fn()
+        v, clamped = fn(-2_000_000.0)
+        assert clamped
+        assert v == -999_999.99
+
+    def test_boundary_max_not_clamped(self):
+        fn = self._fn()
+        v, clamped = fn(999_999.99)
+        assert not clamped
+        assert v == 999_999.99
+
+    def test_zero(self):
+        fn = self._fn()
+        v, clamped = fn(0.0)
+        assert not clamped
+        assert v == 0.0
+
+
 class TestAmountMidpointMapping:
     """Tests that all known amount ranges from the database have midpoint mappings."""
 
