@@ -57,6 +57,23 @@ def test_sanitize_interpolates_zero_range_interior_run() -> None:
     assert abs(nov26 - (30.0 + 30.111) / 2) < 1e-6
 
 
+def test_sanitize_repairs_si_out_of_band_close() -> None:
+    mod = _load_module()
+    df = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2025-11-17", "2025-11-18", "2025-11-19", "2025-11-20"]),
+            "Open": [50.6, 4000.0, 4080.0, 50.2],
+            "High": [50.6, 4000.0, 4080.0, 50.2],
+            "Low": [50.6, 4000.0, 4080.0, 50.2],
+            "Close": [50.6, 4000.0, 4080.0, 50.2],
+            "Volume": [100, 100, 100, 100],
+        }
+    )
+    out = mod.sanitize_yahoo_continuous_futures_df(df, "SI=F", "Silver")
+    assert float(out.iloc[1]["Close"]) < 200
+    assert float(out.iloc[2]["Close"]) < 200
+
+
 def test_non_futures_passthrough() -> None:
     mod = _load_module()
     df = pd.DataFrame(

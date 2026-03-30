@@ -17,7 +17,7 @@ except ImportError:
     print("   You should see (venv) in your prompt when activated.")
     raise ImportError("pandas not available. Activate virtual environment.")
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 import logging
@@ -1011,6 +1011,32 @@ class SupabaseClient:
             
         except Exception as e:
             logger.error(f"❌ Error caching benchmark data: {e}")
+            return False
+
+    def delete_benchmark_futures_invalid_volume_in_range(
+        self, ticker: str, range_start: date, range_end: date
+    ) -> bool:
+        """Remove ``benchmark_data`` rows for continuous futures with NULL or non-positive volume.
+
+        Sanitization drops zero/missing-volume Yahoo bars from the upsert payload; without this,
+        stale rows for those dates (and volume-based charts) keep bad values indefinitely.
+        """
+        if not str(ticker).endswith("=F"):
+            return True
+        start_s = range_start.isoformat()
+        end_s = range_end.isoformat()
+        try:
+            self.supabase.table("benchmark_data").delete().eq("ticker", ticker).gte(
+                "date", start_s
+            ).lte("date", end_s).lte("volume", 0).execute()
+            self.supabase.table("benchmark_data").delete().eq("ticker", ticker).gte(
+                "date", start_s
+            ).lte("date", end_s).is_("volume", "null").execute()
+            return True
+        except Exception as e:
+            logger.error(
+                "❌ Error deleting invalid-volume futures benchmark rows for %s: %s", ticker, e
+            )
             return False
     
     def batch_update_securities(self, updates: List[Dict[str, Any]]) -> bool:

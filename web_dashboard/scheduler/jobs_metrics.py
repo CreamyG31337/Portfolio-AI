@@ -46,6 +46,12 @@ from scheduler.scheduler_core import log_job_execution
 # Initialize logger
 logger = logging.getLogger(__name__)
 
+# Calendar lookback for Yahoo benchmark download. Must cover >~12 months: a naive
+# "120 days back" from late Q1 lands around the last day of November prior year,
+# so yfinance's first bar is often December — all of early/mid November never refreshes
+# and stale bad ticks (e.g. SI=F ~4000) stay in benchmark_data forever.
+BENCHMARK_REFRESH_LOOKBACK_DAYS = 400
+
 
 def _default_performance_metrics_target_date() -> date:
     """Return the market-day date used by scheduled performance metrics jobs.
@@ -133,10 +139,10 @@ def benchmark_refresh_job() -> None:
         ]
 
         
-        # Fetch a wider window so historical bad ticks self-heal when upstream
-        # data providers correct them after initial publication.
+        # Fetch a wide calendar window so bad ticks self-heal and prior-year months
+        # (e.g. full November) stay inside the refresh range — see BENCHMARK_REFRESH_LOOKBACK_DAYS.
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=120)
+        start_date = end_date - timedelta(days=BENCHMARK_REFRESH_LOOKBACK_DAYS)
         
         benchmarks_updated = 0
         benchmarks_failed = 0
@@ -278,6 +284,18 @@ def benchmark_refresh_job() -> None:
                     total_rows_cached += len(rows)
                     benchmarks_updated += 1
                     logger.info(f"✅ Cached {len(rows)} rows for {name} ({ticker})")
+                    if str(ticker).endswith("=F"):
+                        rs = start_date.date() if hasattr(start_date, "date") else start_date
+                        re = end_date.date() if hasattr(end_date, "date") else end_date
+                        if not client.delete_benchmark_futures_invalid_volume_in_range(
+                            ticker, rs, re
+                        ):
+                            logger.error(
+                                "Failed to purge invalid-volume futures rows for %s in [%s, %s]",
+                                ticker,
+                                rs,
+                                re,
+                            )
                 else:
                     benchmarks_failed += 1
                     logger.warning(f"Failed to cache data for {name} ({ticker})")

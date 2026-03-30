@@ -1323,7 +1323,8 @@ For each ticker, provide JSON validation:
         Also cleans up old analysis data.
         
         Returns:
-            Dictionary with 'rows_updated' and 'rows_deleted' counts
+            Dictionary with rows_updated, rows_deleted, analysis_records_removed, and optional
+            post_summaries_deleted_with_metrics / social_posts_deleted_with_metrics counts.
         """
         try:
             logger.info("🧹 Starting enhanced social metrics cleanup...")
@@ -1361,65 +1362,59 @@ For each ticker, provide JSON validation:
             
             logger.info(f"  ✅ Removed {ticker_rows} ticker records, {summary_rows} summaries, {analysis_rows} analyses")
             
-            # Step 3: Delete entire social metrics rows after 60 days (reduced from 90)
-            logger.info("  Step 3: Deleting social metrics records older than 60 days...")
-            delete_query = """
-                DELETE FROM social_metrics 
-                WHERE created_at < NOW() - INTERVAL '60 days'
+            # Step 3: Delete entire social metrics rows after 60 days (reduced from 90).
+            # Remove dependent rows first (social_posts FK → social_metrics; post_summaries may FK to social_posts).
+            logger.info("  Step 3: Deleting social metrics records older than 60 days (with posts/summaries)...")
+            doomed_metrics = "created_at < NOW() - INTERVAL '60 days'"
+            delete_post_summaries_for_doomed = f"""
+                DELETE FROM post_summaries
+                WHERE post_id IN (
+                    SELECT id FROM social_posts
+                    WHERE metric_id IN (SELECT id FROM social_metrics WHERE {doomed_metrics})
+                )
             """
-            rows_deleted = self.postgres.execute_update(delete_query)
-            logger.info(f"  ✅ Deleted {rows_deleted} social metrics records (60+ days old)")
+            delete_social_posts_for_doomed = f"""
+                DELETE FROM social_posts
+                WHERE metric_id IN (SELECT id FROM social_metrics WHERE {doomed_metrics})
+            """
+            delete_social_metrics_old = f"""
+                DELETE FROM social_metrics
+                WHERE {doomed_metrics}
+            """
+            summaries_for_metrics_deleted = 0
+            posts_deleted = 0
+            rows_deleted = 0
+            with self.postgres.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(delete_post_summaries_for_doomed)
+                summaries_for_metrics_deleted = cur.rowcount
+                cur.execute(delete_social_posts_for_doomed)
+                posts_deleted = cur.rowcount
+                cur.execute(delete_social_metrics_old)
+                rows_deleted = cur.rowcount
+            logger.info(
+                "  ✅ Step 3 removed %s post_summaries (for doomed metrics), %s social_posts, %s social_metrics",
+                summaries_for_metrics_deleted,
+                posts_deleted,
+                rows_deleted,
+            )
             
-            logger.info(f"✅ Enhanced cleanup complete: {rows_updated} updated, {rows_deleted} deleted, {ticker_rows + summary_rows + analysis_rows} analysis records removed")
+            logger.info(
+                "✅ Enhanced cleanup complete: %s updated, %s metrics deleted, %s analysis records removed",
+                rows_updated,
+                rows_deleted,
+                ticker_rows + summary_rows + analysis_rows,
+            )
             
             return {
                 'rows_updated': rows_updated,
                 'rows_deleted': rows_deleted,
-                'analysis_records_removed': ticker_rows + summary_rows + analysis_rows
+                'analysis_records_removed': ticker_rows + summary_rows + analysis_rows,
+                'post_summaries_deleted_with_metrics': summaries_for_metrics_deleted,
+                'social_posts_deleted_with_metrics': posts_deleted,
             }
             
         except Exception as e:
             logger.error(f"❌ Error during enhanced cleanup: {e}", exc_info=True)
-            raise
-        """Run daily cleanup to implement two-tier retention policy.
-        
-        Tier 1 (7 days): Remove raw_data JSON from old records (keep metrics)
-        Tier 2 (90 days): Delete entire rows older than 90 days
-        
-        Returns:
-            Dictionary with 'rows_updated' and 'rows_deleted' counts
-        """
-        try:
-            logger.info("🧹 Starting social metrics cleanup...")
-            
-            # Step 1: The Lobotomy (Remove heavy JSON, keep the metrics)
-            logger.info("  Step 1: Removing raw_data JSON from records older than 7 days...")
-            update_query = """
-                UPDATE social_metrics 
-                SET raw_data = NULL 
-                WHERE created_at < NOW() - INTERVAL '7 days' 
-                  AND raw_data IS NOT NULL
-            """
-            rows_updated = self.postgres.execute_update(update_query)
-            logger.info(f"  ✅ Removed raw_data from {rows_updated} records (7+ days old)")
-            
-            # Step 2: The Grim Reaper (Delete old rows)
-            logger.info("  Step 2: Deleting records older than 90 days...")
-            delete_query = """
-                DELETE FROM social_metrics 
-                WHERE created_at < NOW() - INTERVAL '90 days'
-            """
-            rows_deleted = self.postgres.execute_update(delete_query)
-            logger.info(f"  ✅ Deleted {rows_deleted} records (90+ days old)")
-            
-            logger.info(f"✅ Social metrics cleanup complete: {rows_updated} updated, {rows_deleted} deleted")
-            
-            return {
-                'rows_updated': rows_updated,
-                'rows_deleted': rows_deleted
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Error during social metrics cleanup: {e}", exc_info=True)
             raise
 

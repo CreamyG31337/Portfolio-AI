@@ -350,8 +350,12 @@ def compute_congress_positions_job() -> None:
         duration_ms = int(elapsed * 1000)
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         mark_job_completed(
-            job_id, target_date, None,
+            job_id,
+            target_date,
+            None,
+            [],
             duration_ms=duration_ms,
+            message=message,
         )
 
     except Exception as e:

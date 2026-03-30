@@ -12,10 +12,23 @@ These rows skew normalized commodity charts. Sanitize **before** upserting ``ben
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# Inclusive USD/oz (or contract-native) closes for Yahoo *continuous* symbols. Values outside
+# are almost always contract/multiplier glitches (e.g. SI=F at ~4000 while neighbors ~50).
+_YAHOO_FUTURES_CLOSE_BOUNDS: dict[str, tuple[float, float]] = {
+    "SI=F": (10.0, 160.0),
+    "GC=F": (800.0, 9000.0),
+    "CL=F": (10.0, 220.0),
+    "NG=F": (0.2, 40.0),
+    "HG=F": (1.5, 8.5),
+    "ZW=F": (300.0, 1100.0),
+}
 
 
 def sanitize_yahoo_continuous_futures_df(df: pd.DataFrame, ticker: str, name: str) -> pd.DataFrame:
@@ -112,5 +125,68 @@ def sanitize_yahoo_continuous_futures_df(df: pd.DataFrame, ticker: str, name: st
                 for col in ("Open", "High", "Low", "Close"):
                     out.iloc[idx, out.columns.get_loc(col)] = float(right)
         i = j
+
+    bounds: Optional[tuple[float, float]] = _YAHOO_FUTURES_CLOSE_BOUNDS.get(str(ticker))
+    if bounds is not None:
+        lo_b, hi_b = bounds
+        cl2 = pd.to_numeric(out["Close"], errors="coerce").astype(float).to_numpy()
+        bad_scale = (cl2 < lo_b) | (cl2 > hi_b) | np.isnan(cl2)
+        n2 = len(cl2)
+        i = 0
+        while i < n2:
+            if not bad_scale[i]:
+                i += 1
+                continue
+            j = i
+            while j < n2 and bad_scale[j]:
+                j += 1
+            left = float(out.iloc[i - 1]["Close"]) if i > 0 else None
+            right = float(out.iloc[j]["Close"]) if j < n2 else None
+            run_len = j - i
+            if left is not None and right is not None and lo_b <= left <= hi_b and lo_b <= right <= hi_b:
+                for k in range(run_len):
+                    alpha = (k + 1) / (run_len + 1)
+                    new_c = float(left * (1.0 - alpha) + right * alpha)
+                    idx = i + k
+                    dt = out.iloc[idx]["Date"]
+                    logger.warning(
+                        "Repaired out-of-band close for %s (%s) on %s (bounds [%.1f,%.1f]): "
+                        "interpolated to %.6f",
+                        name,
+                        ticker,
+                        dt.date() if hasattr(dt, "date") else dt,
+                        lo_b,
+                        hi_b,
+                        new_c,
+                    )
+                    for col in ("Open", "High", "Low", "Close"):
+                        out.iloc[idx, out.columns.get_loc(col)] = new_c
+            elif left is not None and lo_b <= left <= hi_b:
+                for k in range(run_len):
+                    idx = i + k
+                    dt = out.iloc[idx]["Date"]
+                    logger.warning(
+                        "Repaired out-of-band close for %s (%s) on %s: set to left anchor %.6f",
+                        name,
+                        ticker,
+                        dt.date() if hasattr(dt, "date") else dt,
+                        left,
+                    )
+                    for col in ("Open", "High", "Low", "Close"):
+                        out.iloc[idx, out.columns.get_loc(col)] = left
+            elif right is not None and lo_b <= right <= hi_b:
+                for k in range(run_len):
+                    idx = i + k
+                    dt = out.iloc[idx]["Date"]
+                    logger.warning(
+                        "Repaired out-of-band close for %s (%s) on %s: set to right anchor %.6f",
+                        name,
+                        ticker,
+                        dt.date() if hasattr(dt, "date") else dt,
+                        right,
+                    )
+                    for col in ("Open", "High", "Low", "Close"):
+                        out.iloc[idx, out.columns.get_loc(col)] = right
+            i = j
 
     return out
