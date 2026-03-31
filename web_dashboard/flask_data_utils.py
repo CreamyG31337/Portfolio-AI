@@ -676,22 +676,42 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                             # So target is CAD.
                             rate_map = fetch_latest_rates_bulk_flask(list(all_currencies), 'CAD')
 
-                            for _, row in current_positions.iterrows():
-                                curr = str(row.get('currency', 'CAD')).upper()
-                                rate = rate_map.get(curr, 1.0)
+                            import pandas as pd
+                            import numpy as np
+
+                            for row in current_positions.itertuples(index=False):
+                                curr = getattr(row, 'currency', 'CAD')
+                                curr_val = curr if not pd.isna(curr) else 'CAD'
+                                curr_str = str(curr_val).upper()
+                                rate = rate_map.get(curr_str, 1.0)
 
                                 # Value
-                                m_val = float(row.get('market_value', 0) or 0)
+                                raw_m_val = getattr(row, 'market_value', 0)
+                                m_val = float(raw_m_val) if not pd.isna(raw_m_val) and raw_m_val else 0.0
+
                                 if m_val == 0:
-                                    m_val = float(row.get('shares', 0) or 0) * float(row.get('current_price', 0) or row.get('price', 0) or 0)
+                                    raw_shares = getattr(row, 'shares', 0)
+                                    shares = float(raw_shares) if not pd.isna(raw_shares) and raw_shares else 0.0
+
+                                    raw_curr_price = getattr(row, 'current_price', 0)
+                                    curr_price = float(raw_curr_price) if not pd.isna(raw_curr_price) and raw_curr_price else 0.0
+
+                                    if curr_price == 0:
+                                        raw_price = getattr(row, 'price', 0)
+                                        curr_price = float(raw_price) if not pd.isna(raw_price) and raw_price else 0.0
+
+                                    m_val = shares * curr_price
+
                                 current_val += m_val * rate
 
                                 # Cost
-                                c_basis = float(row.get('cost_basis', 0) or 0)
+                                raw_c_basis = getattr(row, 'cost_basis', 0)
+                                c_basis = float(raw_c_basis) if not pd.isna(raw_c_basis) and raw_c_basis else 0.0
                                 current_cost += c_basis * rate
 
                                 # PnL
-                                u_pnl = float(row.get('unrealized_pnl', 0) or 0)
+                                raw_u_pnl = getattr(row, 'unrealized_pnl', 0)
+                                u_pnl = float(raw_u_pnl) if not pd.isna(raw_u_pnl) and raw_u_pnl else 0.0
                                 current_pnl += u_pnl * rate
 
                             # Create row for today (noon)
