@@ -214,6 +214,15 @@ def _make_cache_key(func_name: str, args: tuple, kwargs: dict, cache_version: Op
     return hashlib.sha256(full_key.encode()).hexdigest()
 
 
+def skip_cache_if_empty_dataframe(result: Any) -> bool:
+    """Return True if result is an empty pandas DataFrame (do not cache)."""
+    try:
+        import pandas as pd
+    except ImportError:
+        return False
+    return isinstance(result, pd.DataFrame) and result.empty
+
+
 def _get_cache_ttl() -> int:
     """Get cache TTL based on market hours (reuses logic from streamlit_utils).
     
@@ -252,7 +261,12 @@ def _get_cache_ttl() -> int:
             return 3600  # 1 hour outside market hours
 
 
-def cache_data(ttl: Optional[int] = None, show_spinner: bool = False, use_market_hours: bool = False):
+def cache_data(
+    ttl: Optional[int] = None,
+    show_spinner: bool = False,
+    use_market_hours: bool = False,
+    skip_cache_if: Optional[Callable[[Any], bool]] = None,
+):
     """
     Decorator for caching function results (similar to @st.cache_data).
     
@@ -261,6 +275,7 @@ def cache_data(ttl: Optional[int] = None, show_spinner: bool = False, use_market
              If use_market_hours=True, this parameter is ignored and TTL is calculated dynamically.
         show_spinner: Not used in Flask (no UI spinner), kept for API compatibility.
         use_market_hours: If True, use market-hours-aware TTL (300s during market hours, 3600s outside).
+        skip_cache_if: If set, results for which this callable returns True are not stored in cache.
     
     Usage:
         @cache_data(ttl=300)  # Cache for 5 minutes (static)
@@ -303,12 +318,16 @@ def cache_data(ttl: Optional[int] = None, show_spinner: bool = False, use_market
             logger.debug(f"Cache miss for {func.__name__} with key {cache_key[:16]}...")
             result = func(*args, **kwargs)
             
-            # Store in cache
-            try:
-                cache.set(cache_key, result, timeout=effective_ttl)
-            except Exception as cache_error:
-                logger.warning(f"Cache set error for {func.__name__}: {cache_error}", exc_info=True)
-                # Continue without caching if cache.set fails
+            should_skip_cache = skip_cache_if is not None and skip_cache_if(result)
+            if should_skip_cache:
+                logger.debug(f"Skipping cache for {func.__name__} (skip_cache_if matched)")
+            else:
+                # Store in cache
+                try:
+                    cache.set(cache_key, result, timeout=effective_ttl)
+                except Exception as cache_error:
+                    logger.warning(f"Cache set error for {func.__name__}: {cache_error}", exc_info=True)
+                    # Continue without caching if cache.set fails
             
             return result
         

@@ -2489,7 +2489,7 @@ function renderPerformanceChart(data: PerformanceChartData): void {
     // Clear previous content
     chartEl.innerHTML = '';
 
-    if (!data || !data.data || !data.layout) {
+    if (!data || !data.layout || !data.data || !data.data.length) {
         chartEl.innerHTML = '<div class="text-center text-gray-500 py-8"><p>No performance data available</p></div>';
         return;
     }

@@ -257,6 +257,7 @@ def update_portfolio_prices_job(
                 return
         
         try:
+            invalidate_dashboard_cache = False
             # Import dependencies (after sys.path is set up)
             from market_data.data_fetcher import MarketDataFetcher
             from market_data.price_cache import PriceCache
@@ -958,7 +959,8 @@ def update_portfolio_prices_job(
                     
                     if deleted_total > 0:
                         logger.info(f"  Deleted {deleted_total} existing positions for {target_date} (preventing duplicates)")
-                    
+                        invalidate_dashboard_cache = True
+
                     # ATOMIC UPDATE: Upsert updated positions (insert or update on conflict)
                     # Using upsert instead of insert to handle race conditions gracefully
                     # The unique constraint on (fund, date, ticker) prevents duplicates
@@ -1000,6 +1002,7 @@ def update_portfolio_prices_job(
                             funds_completed.append(fund_name)  # Track successful completion
                             
                             logger.info(f"  ✅ Upserted {upserted_count} positions for {fund_name}")
+                            invalidate_dashboard_cache = True
                         except Exception as upsert_error:
                             # Upsert failed - log error but don't fail entire job
                             # The delete already happened, but upsert failure is less likely than insert failure
@@ -1025,14 +1028,6 @@ def update_portfolio_prices_job(
             # Mark job as completed successfully
             mark_job_completed('update_portfolio_prices', target_date, None, funds_completed, duration_ms=duration_ms, message=message)
         
-            # Clear cache to ensure fresh data is used in charts
-            try:
-                from cache_version import bump_cache_version
-                bump_cache_version()
-                logger.info("🔄 Cache version bumped - charts will use fresh portfolio data")
-            except Exception as cache_error:
-                logger.warning(f"⚠️  Failed to bump cache version: {cache_error}")
-        
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Error: {str(e)}"
@@ -1047,6 +1042,13 @@ def update_portfolio_prices_job(
             except Exception as tracking_error:
                 logger.error(f"Failed to mark job as failed in database: {tracking_error}", exc_info=True)
         finally:
+            if invalidate_dashboard_cache:
+                try:
+                    from cache_version import bump_cache_version
+                    bump_cache_version()
+                    logger.info("🔄 Cache version bumped - charts will use fresh portfolio data")
+                except Exception as cache_error:
+                    logger.warning(f"⚠️  Failed to bump cache version: {cache_error}")
             # Always release the lock, even if job fails (only if we actually acquired it)
             try:
                 # Only release if we actually acquired the lock (not date range mode, and lock was acquired)

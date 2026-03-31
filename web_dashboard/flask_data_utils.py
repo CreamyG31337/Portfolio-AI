@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 from supabase_client import SupabaseClient
 from flask_auth_utils import get_user_id_flask
-from flask_cache_utils import cache_data
+from flask_cache_utils import cache_data, skip_cache_if_empty_dataframe
 
 logger = logging.getLogger(__name__)
 
@@ -570,7 +570,7 @@ def calculate_performance_metrics_flask(fund: Optional[str] = None) -> Dict[str,
         }
 
 
-@cache_data(ttl=300)
+@cache_data(ttl=300, skip_cache_if=skip_cache_if_empty_dataframe)
 def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = None, display_currency: Optional[str] = None, _cache_version: Optional[str] = None) -> pd.DataFrame:
     """Calculate portfolio value over time (Flask version - Robust)
     

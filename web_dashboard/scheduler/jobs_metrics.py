@@ -666,6 +666,13 @@ def populate_performance_metrics_job(
             mark_job_completed('performance_metrics', dates_to_process[-1], None, list(all_funds_processed), duration_ms=duration_ms)
         
         logger.info(f"✅ {message}")
+
+        try:
+            from cache_version import bump_cache_version
+            bump_cache_version()
+            logger.info("🔄 Cache version bumped - dashboard charts will use fresh performance metrics")
+        except Exception as cache_error:
+            logger.warning(f"⚠️  Failed to bump cache version: {cache_error}")
         
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)

@@ -63,6 +63,7 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
     Returns:
         Dict with {'success': bool, 'dates_rebuilt': int, 'positions_updated': int, 'message': str}
     """
+    invalidate_dashboard_cache = False
     try:
         logger.info(f"Starting incremental rebuild for {fund_name} from {start_date}")
         
@@ -76,18 +77,49 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
         from utils.timezone_utils import get_trading_timezone
         import pandas as pd
         
-        # Update job status if job_id provided
-        if job_id:
-            _update_job_status(job_id, 'running', f'Step 1 of 5: Starting rebuild from {start_date}')
-        
         # Initialize Supabase client (service role for admin operations)
         client = SupabaseClient(use_service_role=True)
         supabase = client.supabase
         
-        # Step 1: Delete stale data
-        logger.info(f"Step 1: Deleting stale positions from {start_date} onwards...")
+        # Step 1: Load trades first — avoids deleting positions/metrics when there is nothing to rebuild
+        logger.info("Step 1: Loading trade log...")
         if job_id:
-            _update_job_status(job_id, 'running', f'Step 1 of 5: Deleting stale positions from {start_date}')
+            _update_job_status(job_id, 'running', f'Step 1 of 6: Loading trade history from {start_date}')
+        
+        repository = SupabaseRepository(fund_name=fund_name)
+        trades = repository.get_trade_history()
+        
+        if not trades or len(trades) == 0:
+            msg = f"No trades found for fund {fund_name}"
+            logger.warning(msg)
+            if job_id:
+                _update_job_status(job_id, 'success', msg)
+            return {
+                'success': True,
+                'dates_rebuilt': 0,
+                'positions_updated': 0,
+                'message': msg
+            }
+        
+        logger.info(f"   Loaded {len(trades)} trades")
+        
+        # Check for cancellation before destructive deletes
+        if job_id and _check_job_cancelled(job_id):
+            msg = "Rebuild cancelled due to new backdated trade"
+            logger.info(msg)
+            _update_job_status(job_id, 'failed', msg)
+            return {
+                'success': False,
+                'dates_rebuilt': 0,
+                'positions_updated': 0,
+                'message': msg
+            }
+        
+        # Step 2: Delete stale data (after we know trades exist)
+        invalidate_dashboard_cache = True
+        logger.info(f"Step 2: Deleting stale positions from {start_date} onwards...")
+        if job_id:
+            _update_job_status(job_id, 'running', f'Step 2 of 6: Deleting stale positions from {start_date}')
         
         delete_count_pos = 0
         delete_count_metrics = 0
@@ -111,44 +143,10 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
         except Exception as e:
             logger.warning(f"Error during deletion: {e}")
         
-        # Step 2: Get all trades for fund (from beginning)
-        logger.info("Step 2: Loading trade log...")
-        if job_id:
-            _update_job_status(job_id, 'running', 'Step 2 of 5: Loading trade history from database')
-        
-        repository = SupabaseRepository(fund_name=fund_name)
-        trades = repository.get_trade_history()
-        
-        if not trades or len(trades) == 0:
-            msg = f"No trades found for fund {fund_name}"
-            logger.warning(msg)
-            if job_id:
-                _update_job_status(job_id, 'success', msg)
-            return {
-                'success': True,
-                'dates_rebuilt': 0,
-                'positions_updated': 0,
-                'message': msg
-            }
-        
-        logger.info(f"   Loaded {len(trades)} trades")
-        
-        # Check for cancellation before processing
-        if job_id and _check_job_cancelled(job_id):
-            msg = "Rebuild cancelled due to new backdated trade"
-            logger.info(msg)
-            _update_job_status(job_id, 'failed', msg)
-            return {
-                'success': False,
-                'dates_rebuilt': 0,
-                'positions_updated': 0,
-                'message': msg
-            }
-        
         # Step 3: Rebuild positions using FIFO
         logger.info(f"Step 3: Rebuilding positions from {start_date}...")
         if job_id:
-            _update_job_status(job_id, 'running', f'Step 3 of 5: Calculating positions for {len(trades)} trades')
+            _update_job_status(job_id, 'running', f'Step 3 of 6: Calculating positions for {len(trades)} trades')
         
         # Get trading days from start_date onwards
         market_hours = MarketHours()
@@ -262,7 +260,7 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
         # Step 4: Fetch current prices for positions we need to rebuild
         logger.info("Step 4: Fetching current prices...")
         if job_id:
-            _update_job_status(job_id, 'running', f'Step 4 of 5: Fetching market prices for {len(tickers_to_price)} tickers')
+            _update_job_status(job_id, 'running', f'Step 4 of 6: Fetching market prices for {len(tickers_to_price)} tickers')
         
         # Get unique tickers that have positions in rebuild period
         tickers_to_price = set()
@@ -296,7 +294,7 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
         # Step 5: Save snapshots for rebuild dates (TRADING DAYS ONLY)
         logger.info("Step 5: Saving updated snapshots...")
         if job_id:
-            _update_job_status(job_id, 'running', f'Step 5 of 5: Saving {len(trading_days_to_rebuild)} snapshots')
+            _update_job_status(job_id, 'running', f'Step 5 of 6: Saving {len(trading_days_to_rebuild)} snapshots')
         
         positions_created = 0
         trading_tz = get_trading_timezone()
@@ -317,7 +315,7 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
                 # Update progress every 10 days
                 if idx > 0 and idx % 10 == 0:
                     progress_pct = int((idx / len(trading_days_to_rebuild)) * 100)
-                    _update_job_status(job_id, 'running', f'Step 5 of 5: Saving snapshots ({idx}/{len(trading_days_to_rebuild)}, {progress_pct}%)')
+                    _update_job_status(job_id, 'running', f'Step 5 of 6: Saving snapshots ({idx}/{len(trading_days_to_rebuild)}, {progress_pct}%)')
             
             if trading_day not in date_positions:
                 continue
@@ -377,11 +375,11 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
                     logger.error(f"Failed to save snapshot for {trading_day}: {e}")
         
         # Step 6: Recalculate performance_metrics for rebuilt dates
-        # The deletion in Step 1 removed stale metrics; now regenerate them
+        # The deletion in Step 2 removed stale metrics; now regenerate them
         # from the freshly rebuilt portfolio_positions.
         logger.info("Step 6: Recalculating performance_metrics for rebuilt dates...")
         if job_id:
-            _update_job_status(job_id, 'running', f'Step 6: Recalculating performance metrics for {len(trading_days_to_rebuild)} days')
+            _update_job_status(job_id, 'running', f'Step 6 of 6: Recalculating performance metrics for {len(trading_days_to_rebuild)} days')
         
         metrics_recalculated = 0
         try:
@@ -405,14 +403,6 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
         except Exception as e:
             logger.warning(f"   Failed to recalculate performance_metrics: {e}")
             # Non-fatal — the startup gap detection will catch this later
-        
-        # Bump cache version so dashboard serves fresh data
-        try:
-            from cache_version import bump_cache_version
-            bump_cache_version()
-            logger.info("   Bumped cache version to invalidate stale dashboard data")
-        except Exception as e:
-            logger.warning(f"   Failed to bump cache version: {e}")
         
         # Success
         msg = (
@@ -445,6 +435,14 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
             'positions_updated': 0,
             'message': error_msg
         }
+    finally:
+        if invalidate_dashboard_cache:
+            try:
+                from cache_version import bump_cache_version
+                bump_cache_version()
+                logger.info("Bumped cache version after rebuild (invalidates dashboard chart cache)")
+            except Exception as bump_err:
+                logger.warning(f"Failed to bump cache version after rebuild: {bump_err}")
 
 
 def _check_job_cancelled(job_id: str) -> bool:
