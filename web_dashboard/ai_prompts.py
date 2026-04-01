@@ -284,3 +284,68 @@ Return JSON only:
     "reasoning": "Internal reasoning for this assessment"
 }}"""
 
+# Meta synthesis: reconcile prior AI outputs only (no fresh OHLCV or raw posts).
+TICKER_META_ANALYSIS_PROMPT = """You are a senior research editor. Your inputs are ONLY pre-computed analysis artifacts
+(summaries, scores, and short reasoning from other models). Treat them as claims to reconcile—not as verified facts.
+
+## Ticker
+{ticker}
+
+## Artifact bundle (analysis outputs)
+{artifact_bundle}
+
+## Task
+1. Identify agreements and contradictions across sources (e.g. ticker stance vs social tone vs article conclusions vs congress risk notes).
+2. Produce a single calibrated view: adjust conviction downward when sources conflict or evidence is thin.
+3. If two standard ticker analysis snapshots are present, explain what changed between them; otherwise set what_changed_vs_last_run to "N/A (no prior snapshot)".
+4. Do not invent prices, dates, or events not mentioned in the bundle. If the bundle is sparse, say so and lower confidence_adjusted.
+
+Return JSON only:
+{{
+    "unified_conviction": "STRONG_BULLISH|BULLISH|NEUTRAL|BEARISH|STRONG_BEARISH|INSUFFICIENT_DATA",
+    "confidence_adjusted": 0.0 to 1.0,
+    "contradictions": ["short bullet describing a tension", "..."],
+    "what_changed_vs_last_run": "string",
+    "action_items": ["concrete next step for a human analyst", "..."],
+    "narrative": "2-4 tight paragraphs synthesizing the reconciled story for this ticker"
+}}"""
+
+# Daily market backdrop from index stats only — no stock picks.
+MARKET_DAILY_BRIEF_PROMPT = """You are a concise macro strategist. Input is ONLY recent benchmark percentage moves (1d and optional 5d).
+
+## Benchmark statistics
+{benchmark_stats}
+
+## Task
+Summarize risk tone for a US-focused equity trader: large-cap vs small-cap (RUT), growth (QQQ) vs broad (SPX/VTI). Mention commodities only if provided in the stats block.
+Do NOT recommend specific stocks or ETFs to buy/sell. No ticker picks.
+
+Return JSON only:
+{{
+    "headline": "max 120 chars, plain English",
+    "narrative": "2-3 short paragraphs, total under 800 chars",
+    "regime": {{
+        "risk_tone": "RISK_ON|RISK_OFF|NEUTRAL|MIXED",
+        "leadership_note": "who is leading/lagging in one sentence",
+        "caveats": ["data limitation or caution", "..."]
+    }}
+}}"""
+
+# Single action-queue row vs saved research (cached nightly).
+ACTION_QUEUE_AI_REVIEW_PROMPT = """You compare a mechanical trading signal row with optional saved AI research excerpts.
+
+## Queue row
+{queue_row}
+
+## Saved research (may be empty)
+{research_excerpt}
+
+## Task
+Decide if the human should treat the queue action as well-supported, questionable, or stale.
+
+Return JSON only:
+{{
+    "verdict": "ALIGNED|TENSION|STALE|INSUFFICIENT_DATA",
+    "one_liner": "max 200 chars, no line breaks"
+}}"""
+

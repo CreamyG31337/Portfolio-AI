@@ -11,7 +11,7 @@ CREATE TABLE ticker_analysis (
     sentiment VARCHAR(20),
     sentiment_score NUMERIC(3, 2),
     confidence_score NUMERIC(3, 2),
-    themes ARRAY,
+    themes TEXT[],
     summary TEXT,
     analysis_text TEXT,
     reasoning TEXT,
@@ -19,7 +19,7 @@ CREATE TABLE ticker_analysis (
     etf_changes_count INTEGER DEFAULT 0,
     congress_trades_count INTEGER DEFAULT 0,
     research_articles_count INTEGER DEFAULT 0,
-    embedding NULL,
+    embedding vector(768),
     created_at TIMESTAMP DEFAULT now(),
     updated_at TIMESTAMP DEFAULT now(),
     model_used VARCHAR(50) DEFAULT 'granite3.3:8b'::character varying,
@@ -31,10 +31,9 @@ CREATE TABLE ticker_analysis (
     target_price VARCHAR(20),
     stop_loss VARCHAR(20),
     key_levels JSONB,
-    catalysts ARRAY,
-    risks ARRAY,
-    invalidation TEXT
-,
+    catalysts TEXT[],
+    risks TEXT[],
+    invalidation TEXT,
     PRIMARY KEY (id)
 );
 

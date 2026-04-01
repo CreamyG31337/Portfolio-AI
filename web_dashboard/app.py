@@ -3576,6 +3576,19 @@ def api_ticker_info():
             "type": type(e).__name__
         }), 500
 
+def _serialize_ticker_meta_row(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """JSON-serialize dates for ticker_meta_analysis API responses."""
+    if not row:
+        return None
+    out: Dict[str, Any] = {}
+    for key, val in row.items():
+        if isinstance(val, (datetime, date)):
+            out[key] = val.isoformat()
+        else:
+            out[key] = val
+    return out
+
+
 @app.route('/api/v2/ticker/<ticker>/analysis', methods=['GET'])
 @require_auth
 def get_ticker_analysis(ticker: str):
@@ -3699,6 +3712,103 @@ def request_ticker_reanalysis(ticker: str):
     except Exception as e:
         logger.error(f"Error running re-analysis for {ticker}: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v2/ticker/<ticker>/meta-analysis', methods=['GET'])
+@require_auth
+def get_ticker_meta_analysis(ticker: str):
+    """Latest per-ticker meta synthesis (reconciles stored AI artifacts)."""
+    try:
+        from meta_analysis_service import TickerMetaAnalysisService
+        from postgres_client import PostgresClient
+        from supabase_client import SupabaseClient
+
+        ticker_upper = ticker.upper().strip()
+        postgres = PostgresClient()
+        supabase = SupabaseClient(use_service_role=True)
+        service = TickerMetaAnalysisService(
+            ollama=None,
+            supabase=supabase,
+            postgres=postgres,
+        )
+        row = service.fetch_meta_row(ticker_upper)
+        return jsonify({"meta": _serialize_ticker_meta_row(row)})
+    except Exception as e:
+        err = str(e).lower()
+        if "ticker_meta_analysis" in err or "does not exist" in err:
+            logger.warning("ticker_meta_analysis table missing: %s", e)
+            return jsonify(
+                {
+                    "meta": None,
+                    "error": "Meta analysis table not installed. Apply database/schema/research/tables/ticker_meta_analysis.sql",
+                }
+            ), 503
+        logger.error("Error fetching meta analysis for %s: %s", ticker, e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/v2/ticker/<ticker>/meta-analysis/rebuild', methods=['POST'])
+@require_auth
+def rebuild_ticker_meta_analysis(ticker: str):
+    """Run meta synthesis now (uses stored artifacts only)."""
+    try:
+        from flask_auth_utils import get_user_email_flask
+        from meta_analysis_service import TickerMetaAnalysisService
+        from ollama_client import OllamaClient, get_ollama_client
+        from postgres_client import PostgresClient
+        from supabase_client import SupabaseClient
+        from user_preferences import get_user_ai_model
+        from settings import get_summarizing_model
+
+        ticker_upper = ticker.upper().strip()
+        user_email = get_user_email_flask() or "anonymous"
+        body = request.get_json(silent=True) or {}
+        preferred_model = body.get("model") or get_user_ai_model() or get_summarizing_model()
+        is_glm = str(preferred_model).startswith("glm-")
+        is_webai = False
+        try:
+            from webai_wrapper import is_webai_model
+
+            is_webai = is_webai_model(str(preferred_model))
+        except Exception:
+            is_webai = False
+
+        ollama = get_ollama_client()
+        if not ollama and (is_glm or is_webai):
+            ollama = OllamaClient()
+        if not ollama:
+            return jsonify({"error": "AI backend not available (Ollama/GLM)."}), 503
+
+        supabase = SupabaseClient(use_service_role=True)
+        postgres = PostgresClient()
+        service = TickerMetaAnalysisService(ollama, supabase, postgres)
+        row = service.run_meta_analysis(
+            ticker_upper,
+            requested_by=user_email,
+            model_override=preferred_model,
+            force=True,
+        )
+        if not row:
+            return jsonify(
+                {"error": "Meta analysis could not run (no standard ticker_analysis or LLM failure)."}
+            ), 400
+        return jsonify(
+            {
+                "status": "completed",
+                "meta": _serialize_ticker_meta_row(row),
+            }
+        )
+    except Exception as e:
+        err = str(e).lower()
+        if "ticker_meta_analysis" in err or "does not exist" in err:
+            return jsonify(
+                {
+                    "error": "Meta analysis table not installed. Apply database/schema/research/tables/ticker_meta_analysis.sql",
+                }
+            ), 503
+        logger.error("Error rebuilding meta analysis for %s: %s", ticker, e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 
 @cache_data(ttl=300)
 def _get_ticker_price_history_cached(

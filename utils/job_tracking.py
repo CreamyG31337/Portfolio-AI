@@ -51,7 +51,10 @@ AI_JOB_NAMES = {
     'rescore_congress_sessions',
     'social_sentiment',
     'social_sentiment_ai',
-    'signal_scan'
+    'signal_scan',
+    'ticker_meta_analysis',
+    'market_daily_brief',
+    'action_queue_ai_review',
 }
 
 

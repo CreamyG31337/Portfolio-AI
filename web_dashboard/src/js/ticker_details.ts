@@ -161,6 +161,23 @@ interface TickerAnalysisApiResponse {
     analysis?: TickerAnalysis | null;
 }
 
+/** Row from ticker_meta_analysis (second-order synthesis). */
+interface TickerMetaAnalysisRow {
+    id?: string;
+    ticker?: string;
+    unified_conviction?: string;
+    confidence_adjusted?: number;
+    contradictions?: unknown;
+    what_changed_vs_last_run?: string;
+    action_items?: string[];
+    narrative?: string;
+    full_result?: Record<string, unknown>;
+    model_used?: string;
+    requested_by?: string;
+    updated_at?: string;
+    source_analysis_id?: string;
+}
+
 interface SignalAnalysis {
     ticker?: string;
     structure?: {
@@ -2717,6 +2734,7 @@ async function loadTickerAnalysis(ticker: string, expectedLoadSeq?: number): Pro
 
         if (!response.ok) {
             if (response.status === 404) {
+                hideMetaAnalysisBlock();
                 // No analysis available yet - show blank section with reanalyze button
                 renderEmptyAnalysis(ticker);
                 return;
@@ -2732,15 +2750,191 @@ async function loadTickerAnalysis(ticker: string, expectedLoadSeq?: number): Pro
             : payload as TickerAnalysis | null;
         if (analysis) {
             renderTickerAnalysis(analysis, ticker);
+            void loadTickerMetaAnalysis(ticker, expectedLoadSeq);
         } else {
+            hideMetaAnalysisBlock();
             // Analysis is null - show blank section
             renderEmptyAnalysis(ticker);
         }
     } catch (error) {
         if (isStaleLoad(expectedLoadSeq, ticker)) return;
         console.error('Error loading ticker analysis:', error);
+        hideMetaAnalysisBlock();
         // Show blank section even on error so user can still reanalyze
         renderEmptyAnalysis(ticker);
+    }
+}
+
+function hideMetaAnalysisBlock(): void {
+    const block = document.getElementById('meta-analysis-block');
+    if (block) block.classList.add('hidden');
+}
+
+function showMetaAnalysisBlock(): void {
+    const block = document.getElementById('meta-analysis-block');
+    if (block) block.classList.remove('hidden');
+}
+
+function setupMetaRebuildHandler(ticker: string): void {
+    const btn = document.getElementById('meta-rebuild-btn') as HTMLButtonElement | null;
+    if (btn) {
+        btn.onclick = () => requestMetaRebuild(ticker);
+    }
+}
+
+function renderTickerMetaAnalysisContent(meta: TickerMetaAnalysisRow): void {
+    const el = document.getElementById('meta-analysis-content');
+    if (!el) return;
+
+    const conv = meta.unified_conviction || 'N/A';
+    const conf =
+        meta.confidence_adjusted !== null && meta.confidence_adjusted !== undefined
+            ? `${(Number(meta.confidence_adjusted) * 100).toFixed(0)}%`
+            : 'N/A';
+    const rawContra = meta.contradictions;
+    const contra: string[] = Array.isArray(rawContra)
+        ? rawContra.map((c) => String(c))
+        : [];
+    const actions = meta.action_items || [];
+
+    const contraHtml =
+        contra.length > 0
+            ? `<ul class="list-disc list-inside text-sm text-text-primary space-y-1">${contra
+                .map((c) => `<li>${escapeHtml(c)}</li>`)
+                .join('')}</ul>`
+            : '<p class="text-sm text-text-secondary">None flagged</p>';
+
+    const actionsHtml =
+        actions.length > 0
+            ? `<ul class="list-decimal list-inside text-sm text-text-primary space-y-1">${actions
+                .map((a) => `<li>${escapeHtml(a)}</li>`)
+                .join('')}</ul>`
+            : '';
+
+    el.innerHTML = `
+        <div class="space-y-4">
+            <div class="flex flex-wrap gap-4 text-sm">
+                <div>
+                    <span class="text-text-secondary">Conviction</span>
+                    <div class="font-medium text-text-primary mt-0.5">${escapeHtml(conv)}</div>
+                </div>
+                <div>
+                    <span class="text-text-secondary">Adjusted confidence</span>
+                    <div class="font-medium text-text-primary mt-0.5">${escapeHtml(conf)}</div>
+                </div>
+                ${meta.updated_at ? `<div><span class="text-text-secondary">Updated</span><div class="font-medium text-text-primary mt-0.5">${escapeHtml(formatDate(meta.updated_at))}</div></div>` : ''}
+            </div>
+            ${meta.narrative ? `
+            <div class="bg-dashboard-background p-4 rounded-lg border border-border">
+                <h4 class="font-semibold text-text-primary mb-2">Narrative</h4>
+                <div class="text-text-primary whitespace-pre-wrap text-sm">${escapeHtml(meta.narrative)}</div>
+            </div>` : ''}
+            <div>
+                <h4 class="font-semibold text-text-primary mb-2">Contradictions / tensions</h4>
+                ${contraHtml}
+            </div>
+            ${meta.what_changed_vs_last_run ? `
+            <div class="bg-dashboard-background p-4 rounded-lg border border-border">
+                <h4 class="font-semibold text-text-primary mb-2">Change vs prior run</h4>
+                <p class="text-sm text-text-primary whitespace-pre-wrap">${escapeHtml(meta.what_changed_vs_last_run)}</p>
+            </div>` : ''}
+            ${actionsHtml ? `<div><h4 class="font-semibold text-text-primary mb-2">Action items</h4>${actionsHtml}</div>` : ''}
+            ${meta.model_used ? `<p class="text-xs text-text-tertiary">Model: ${escapeHtml(meta.model_used)}</p>` : ''}
+        </div>
+    `;
+}
+
+async function loadTickerMetaAnalysis(ticker: string, expectedLoadSeq?: number): Promise<void> {
+    if (isStaleLoad(expectedLoadSeq, ticker)) return;
+
+    const content = document.getElementById('meta-analysis-content');
+    const block = document.getElementById('meta-analysis-block');
+    if (!content || !block) return;
+
+    showMetaAnalysisBlock();
+    content.innerHTML = '<p class="text-sm text-text-tertiary">Loading meta synthesis…</p>';
+
+    try {
+        const response = await fetch(`/api/v2/ticker/${encodeURIComponent(ticker)}/meta-analysis`, {
+            credentials: 'include',
+        });
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
+
+        if (response.status === 503) {
+            const data = (await response.json()) as { error?: string };
+            content.innerHTML = `<p class="text-sm text-amber-600 dark:text-amber-400">${escapeHtml(data.error || 'Meta analysis not available.')}</p>`;
+            setupMetaRebuildHandler(ticker);
+            return;
+        }
+
+        if (!response.ok) {
+            content.innerHTML =
+                '<p class="text-sm text-text-secondary">Could not load meta synthesis.</p>';
+            setupMetaRebuildHandler(ticker);
+            return;
+        }
+
+        const data = (await response.json()) as { meta: TickerMetaAnalysisRow | null };
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
+
+        if (data.meta) {
+            renderTickerMetaAnalysisContent(data.meta);
+        } else {
+            content.innerHTML =
+                '<p class="text-sm text-text-secondary">No meta synthesis yet. Click <strong>Refresh meta</strong> to generate from saved analyses.</p>';
+        }
+        setupMetaRebuildHandler(ticker);
+    } catch (e) {
+        if (isStaleLoad(expectedLoadSeq, ticker)) return;
+        console.error('Error loading meta analysis:', e);
+        content.innerHTML =
+            '<p class="text-sm text-text-secondary">Meta synthesis unavailable.</p>';
+        setupMetaRebuildHandler(ticker);
+    }
+}
+
+async function requestMetaRebuild(ticker: string): Promise<void> {
+    const btn = document.getElementById('meta-rebuild-btn') as HTMLButtonElement | null;
+    const original = btn?.innerHTML ?? '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Working…';
+    }
+
+    try {
+        const response = await fetch(`/api/v2/ticker/${encodeURIComponent(ticker)}/meta-analysis/rebuild`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders(),
+            },
+            body: JSON.stringify({
+                model: selectedModel || undefined,
+            }),
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as {
+            meta?: TickerMetaAnalysisRow;
+            error?: string;
+            status?: string;
+        };
+
+        if (response.ok && payload.meta) {
+            showToast('Meta synthesis updated.', 'success');
+            renderTickerMetaAnalysisContent(payload.meta);
+        } else {
+            showToast(payload.error || 'Meta synthesis failed', 'error');
+        }
+    } catch (e) {
+        console.error('Meta rebuild error:', e);
+        showToast('Meta synthesis failed', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = original || '<i class="fas fa-sync-alt mr-2"></i>Refresh meta';
+        }
+        setupMetaRebuildHandler(ticker);
     }
 }
 

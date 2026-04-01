@@ -6,19 +6,11 @@ Handles research articles storage with connection pooling
 
 import os
 import logging
-from pathlib import Path
 from typing import Optional, Dict, Any, List
 from contextlib import contextmanager
-from dotenv import load_dotenv
+from env_loader import load_project_dotenv
 
-# Load environment variables from web_dashboard/.env
-# Try web_dashboard/.env first (when running from project root)
-# Then fall back to .env in current directory
-env_path = Path(__file__).parent / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
-else:
-    load_dotenv()  # Fallback to current directory
+load_project_dotenv()
 
 try:
     import psycopg2

@@ -21,10 +21,10 @@ from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 import logging
-from dotenv import load_dotenv
+from env_loader import load_project_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Repo root + web_dashboard/.env (cwd-independent)
+load_project_dotenv()
 
 try:
     from supabase import create_client, Client

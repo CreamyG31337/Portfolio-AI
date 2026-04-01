@@ -14,9 +14,11 @@ import os
 import sys
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent
+# Repo root + web_dashboard (postgres_client imports env_loader as a top-level module)
+project_root = Path(__file__).resolve().parent.parent.parent
+web_dashboard_dir = project_root / "web_dashboard"
 sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(web_dashboard_dir))
 
 from dotenv import load_dotenv
 
@@ -30,7 +32,7 @@ else:
 def apply_research_db_schema():
     """Apply ticker_analysis table to Research DB."""
     try:
-        from web_dashboard.postgres_client import PostgresClient
+        from postgres_client import PostgresClient
         
         print("\n[1/2] Applying Research DB schema (ticker_analysis table)...")
         
@@ -60,6 +62,35 @@ def apply_research_db_schema():
             conn.commit()
         
         print("[OK] ticker_analysis table created in Research DB")
+
+        meta_file = project_root / "database" / "schema" / "research" / "tables" / "ticker_meta_analysis.sql"
+        if meta_file.exists():
+            with open(meta_file, "r", encoding="utf-8") as f:
+                meta_sql = f.read()
+            with client.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(meta_sql)
+                conn.commit()
+            print("[OK] ticker_meta_analysis table applied in Research DB")
+        else:
+            print(f"[WARN] Meta schema file missing: {meta_file}")
+
+        for rel in (
+            "database/schema/research/tables/market_daily_brief.sql",
+            "database/schema/research/tables/action_queue_ai_review.sql",
+        ):
+            p = project_root / rel
+            if p.exists():
+                with open(p, "r", encoding="utf-8") as f:
+                    sql = f.read()
+                with client.get_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute(sql)
+                    conn.commit()
+                print(f"[OK] Applied research schema: {p.name}")
+            else:
+                print(f"[WARN] Research schema file missing: {p}")
+
         return True
         
     except Exception as e:

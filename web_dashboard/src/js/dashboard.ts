@@ -160,6 +160,21 @@ interface MoversData {
     processing_time: number;
 }
 
+interface ResearchContext {
+    analysis_stance?: string;
+    analysis_sentiment?: string;
+    analysis_age_hours?: number | null;
+    meta_conviction?: string;
+    meta_confidence_adjusted?: number | null;
+    meta_age_hours?: number | null;
+}
+
+interface AiReview {
+    verdict?: string;
+    one_liner?: string;
+    updated_at?: string;
+}
+
 interface ActionQueueItem {
     ticker: string;
     company_name?: string;
@@ -175,6 +190,18 @@ interface ActionQueueItem {
     analysis_date?: string;
     explanation?: string;
     note?: string;
+    research_context?: ResearchContext;
+    ai_review?: AiReview;
+}
+
+interface MarketBriefPayload {
+    brief_date: string;
+    headline?: string | null;
+    narrative?: string | null;
+    regime_json?: Record<string, unknown> | null;
+    inputs_digest?: unknown;
+    model_used?: string | null;
+    updated_at?: string | null;
 }
 
 interface ActionQueueData {
@@ -961,6 +988,7 @@ async function refreshDashboard(): Promise<void> {
             fetchCurrencyChart(),
             fetchExchangeRateData(),
             fetchCommoditiesChart(),
+            fetchMarketBrief(),
             fetchActionQueue(),
 
             loadPnlChart(state.currentFund),
@@ -1698,6 +1726,57 @@ async function fetchMovers(): Promise<void> {
     }
 }
 
+async function fetchMarketBrief(): Promise<void> {
+    showSpinner('market-brief-spinner');
+    const card = document.getElementById('market-brief-card');
+    const unavail = document.getElementById('market-brief-unavailable');
+    const headlineEl = document.getElementById('market-brief-headline');
+    const narrativeEl = document.getElementById('market-brief-narrative');
+    const asofEl = document.getElementById('market-brief-asof');
+    const inputsEl = document.getElementById('market-brief-inputs');
+
+    try {
+        const response = await fetch('/api/dashboard/market-brief', { credentials: 'include' });
+        hideSpinner('market-brief-spinner');
+
+        if (response.status === 404) {
+            if (card) card.classList.add('hidden');
+            if (unavail) unavail.classList.remove('hidden');
+            return;
+        }
+        if (!response.ok) {
+            if (card) card.classList.add('hidden');
+            if (unavail) unavail.classList.remove('hidden');
+            return;
+        }
+
+        const data = (await response.json()) as MarketBriefPayload;
+        if (unavail) unavail.classList.add('hidden');
+        if (card) card.classList.remove('hidden');
+
+        if (headlineEl) headlineEl.textContent = data.headline || '';
+        if (narrativeEl) narrativeEl.textContent = data.narrative || '';
+        if (asofEl) {
+            const d = data.brief_date || data.updated_at || '';
+            asofEl.textContent = d ? `As of ${d}` : '';
+        }
+        if (inputsEl) {
+            try {
+                inputsEl.textContent =
+                    data.inputs_digest !== undefined && data.inputs_digest !== null
+                        ? JSON.stringify(data.inputs_digest, null, 2)
+                        : '';
+            } catch {
+                inputsEl.textContent = '';
+            }
+        }
+    } catch {
+        hideSpinner('market-brief-spinner');
+        if (card) card.classList.add('hidden');
+        if (unavail) unavail.classList.remove('hidden');
+    }
+}
+
 async function fetchActionQueue(): Promise<void> {
     showSpinner('action-queue-spinner');
 
@@ -1753,7 +1832,7 @@ async function fetchActionQueue(): Promise<void> {
 
         const tableBody = document.getElementById('action-queue-table-body');
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="8" class="text-center text-theme-error-text py-4"><p>Error loading action queue: ${errorMsg}</p></td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="11" class="text-center text-theme-error-text py-4"><p>Error loading action queue: ${errorMsg}</p></td></tr>`;
         }
 
         const emptyEl = document.getElementById('action-queue-empty');
@@ -1904,6 +1983,82 @@ function renderActionQueue(data: ActionQueueData): void {
         noteCell.title = item.note || '';
         noteCell.textContent = item.note || '-';
         tr.appendChild(noteCell);
+
+        const researchCell = document.createElement('td');
+        researchCell.className = 'px-4 py-3 text-xs text-text-secondary max-w-[200px] align-top';
+        const rc = item.research_context;
+        if (rc && (rc.analysis_stance || rc.meta_conviction || rc.analysis_age_hours != null)) {
+            const wrap = document.createElement('div');
+            wrap.className = 'flex flex-col gap-1';
+            if (rc.analysis_stance) {
+                const b = document.createElement('span');
+                b.className =
+                    'inline-block px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-[10px] font-medium text-text-primary';
+                b.textContent = `TA ${rc.analysis_stance}`;
+                wrap.appendChild(b);
+            }
+            if (rc.meta_conviction) {
+                const m = document.createElement('span');
+                m.className =
+                    'inline-block px-1.5 py-0.5 rounded bg-accent/10 text-[10px] font-medium text-accent';
+                m.textContent = `Meta ${rc.meta_conviction}`;
+                wrap.appendChild(m);
+            }
+            const ages: string[] = [];
+            if (rc.analysis_age_hours != null) ages.push(`TA ${rc.analysis_age_hours}h`);
+            if (rc.meta_age_hours != null) ages.push(`Meta ${rc.meta_age_hours}h`);
+            if (ages.length) {
+                const ageEl = document.createElement('span');
+                ageEl.className = 'text-[10px] text-text-tertiary';
+                ageEl.textContent = ages.join(' · ');
+                wrap.appendChild(ageEl);
+            }
+            const rlink = document.createElement('a');
+            rlink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;
+            rlink.className = 'text-accent hover:underline text-[10px]';
+            rlink.textContent = 'Open analysis';
+            wrap.appendChild(rlink);
+            researchCell.appendChild(wrap);
+        } else {
+            const dash = document.createElement('span');
+            dash.textContent = '—';
+            researchCell.appendChild(dash);
+            const rlink = document.createElement('a');
+            rlink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;
+            rlink.className = 'block mt-1 text-accent hover:underline text-[10px]';
+            rlink.textContent = 'Ticker';
+            researchCell.appendChild(rlink);
+        }
+        tr.appendChild(researchCell);
+
+        const aiCell = document.createElement('td');
+        aiCell.className = 'px-4 py-3 text-xs max-w-[200px] align-top';
+        const ar = item.ai_review;
+        if (ar?.verdict) {
+            const verdictColors: Record<string, string> = {
+                ALIGNED: 'bg-theme-success-bg text-theme-success-text',
+                TENSION: 'bg-theme-warning-bg text-theme-warning-text',
+                STALE: 'bg-theme-info-bg text-theme-info-text',
+                INSUFFICIENT_DATA: 'bg-dashboard-surface-alt text-text-secondary'
+            };
+            const vb = document.createElement('span');
+            vb.className = `inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                verdictColors[ar.verdict] || 'bg-dashboard-surface-alt text-text-secondary'
+            }`;
+            vb.textContent = ar.verdict;
+            aiCell.appendChild(vb);
+            if (ar.one_liner) {
+                const ol = document.createElement('div');
+                ol.className = 'text-text-tertiary mt-1 line-clamp-2';
+                ol.title = ar.one_liner;
+                ol.textContent = ar.one_liner;
+                aiCell.appendChild(ol);
+            }
+        } else {
+            aiCell.textContent = '—';
+            aiCell.className += ' text-text-tertiary';
+        }
+        tr.appendChild(aiCell);
 
         const dateCell = document.createElement('td');
         dateCell.className = 'px-4 py-3 text-text-tertiary text-xs';

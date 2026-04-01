@@ -30,67 +30,15 @@ from flask_data_utils import (
 )
 from web_dashboard.utils.logo_utils import get_ticker_logo_urls
 from web_dashboard.watchlist_access import get_active_watchlist_rows
-from settings import get_signal_alert_policy, normalize_fund_type
 from utils.trade_reason import infer_trade_action
 
+from action_queue_service import (
+    attach_ai_reviews,
+    attach_research_context,
+    build_action_queue_items,
+)
+
 logger = logging.getLogger(__name__)
-
-
-def _build_global_dashboard_alert_policy(policies: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Build conservative policy for global watchlist usage in dashboard queue."""
-    if not policies:
-        return get_signal_alert_policy(None)
-
-    min_confidence = max(float(policy.get("min_confidence", 0.72)) for policy in policies)
-    fear_sets: List[set[str]] = []
-    for policy in policies:
-        raw = policy.get("fear_levels", [])
-        if isinstance(raw, list):
-            fear_sets.append({str(level).strip().upper() for level in raw if str(level).strip()})
-
-    if fear_sets:
-        common_levels = set.intersection(*fear_sets) if len(fear_sets) > 1 else fear_sets[0]
-        if not common_levels:
-            common_levels = set.union(*fear_sets)
-    else:
-        common_levels = {"HIGH", "EXTREME"}
-
-    return {
-        "profile_key": "GLOBAL_STRICT",
-        "min_confidence": min_confidence,
-        "fear_levels": sorted(common_levels),
-    }
-
-
-def _resolve_dashboard_alert_policy(supabase_client, fund: str | None) -> Dict[str, Any]:
-    """Resolve alert policy for selected fund, or strict global policy when fund is not selected."""
-    try:
-        if fund:
-            fund_result = supabase_client.supabase.table("funds").select(
-                "fund_type"
-            ).eq("name", fund).limit(1).execute()
-            if fund_result.data:
-                fund_type = fund_result.data[0].get("fund_type")
-                return get_signal_alert_policy(normalize_fund_type(fund_type))
-
-        rows_result = supabase_client.supabase.table("funds").select(
-            "fund_type, is_production"
-        ).execute()
-        rows = rows_result.data or []
-        production_rows = [row for row in rows if row.get("is_production") is True]
-        scoped_rows = production_rows if production_rows else rows
-        profile_keys = {
-            normalize_fund_type(row.get("fund_type"))
-            for row in scoped_rows
-            if row.get("fund_type")
-        }
-        if profile_keys:
-            policies = [get_signal_alert_policy(profile_key) for profile_key in sorted(profile_keys)]
-            return _build_global_dashboard_alert_policy(policies)
-    except Exception as e:
-        logger.warning(f"[Dashboard API] Failed resolving alert policy: {e}")
-
-    return get_signal_alert_policy(None)
 
 
 def _json_safe_number(value: Any, default: float = 0.0) -> float:
@@ -397,6 +345,7 @@ def get_action_queue():
     Query params:
         fund  – fund name, or "all" / empty for cross-fund view.
         limit – max items to return (1-25, default 10).
+        enrich – if "0", skip research Postgres joins (default: enrich on).
     """
     fund = request.args.get('fund')
     if not fund or fund.lower() == 'all':
@@ -404,6 +353,7 @@ def get_action_queue():
 
     limit = int(request.args.get('limit', 10))
     limit = max(1, min(limit, 25))
+    enrich = request.args.get('enrich', '1').lower() not in ('0', 'false', 'no')
 
     start_time = time.time()
 
@@ -412,179 +362,24 @@ def get_action_queue():
         if not supabase_client:
             return jsonify({"error": "Database client unavailable"}), 500
 
-        positions_df = get_current_positions(fund)
-        held_tickers = set()
-        if not positions_df.empty and 'ticker' in positions_df.columns:
-            held_tickers = set(
-                positions_df['ticker']
-                .dropna()
-                .astype(str)
-                .str.upper()
-                .str.strip()
-                .tolist()
-            )
+        actions = build_action_queue_items(supabase_client, fund, limit)
 
-        watchlist = get_active_watchlist_rows(supabase_client, fund=fund)
+        if enrich:
+            try:
+                from postgres_client import PostgresClient
 
-        if not watchlist:
-            return jsonify({
-                "data": [],
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "processing_time": time.time() - start_time
-            })
+                pg = PostgresClient()
+                attach_research_context(pg, actions)
+                attach_ai_reviews(pg, fund or "", actions)
+            except Exception as e:
+                logger.warning("[Dashboard API] Action queue enrich skipped: %s", e)
 
-        tickers = list({item.get("ticker") for item in watchlist if item.get("ticker")})
-
-        # Latest signals per ticker (batch)
-        latest_by_ticker: Dict[str, Dict[str, Any]] = {}
-        try:
-            batch_size = 100
-            for i in range(0, len(tickers), batch_size):
-                batch = tickers[i:i + batch_size]
-                rows = supabase_client.supabase.table("signal_analysis") \
-                    .select(
-                        "ticker, analysis_date, structure_signal, timing_signal, "
-                        "fear_risk_signal, overall_signal, confidence_score, explanation"
-                    ) \
-                    .in_("ticker", batch) \
-                    .order("analysis_date", desc=True) \
-                    .execute()
-                if rows.data:
-                    for row in rows.data:
-                        row_ticker = row.get("ticker")
-                        if row_ticker and row_ticker not in latest_by_ticker:
-                            latest_by_ticker[row_ticker] = row
-        except Exception as e:
-            logger.warning(f"[Dashboard API] Error fetching signal_analysis: {e}")
-
-        # Company name lookup
-        company_names_map: Dict[str, str] = {}
-        try:
-            for i in range(0, len(tickers), 100):
-                batch = tickers[i:i + 100]
-                result = supabase_client.supabase.table("securities") \
-                    .select("ticker, company_name") \
-                    .in_("ticker", batch) \
-                    .execute()
-                if result.data:
-                    for row in result.data:
-                        ticker = row.get("ticker")
-                        if ticker:
-                            company_names_map[ticker] = row.get("company_name") or ticker
-        except Exception as e:
-            logger.warning(f"[Dashboard API] Error fetching company names: {e}")
-
-        # Logo URLs
-        logo_urls_map = {}
-        try:
-            logo_urls_map = get_ticker_logo_urls(tickers)
-        except Exception as e:
-            logger.warning(f"[Dashboard API] Error fetching logo URLs: {e}")
-
-        alert_policy = _resolve_dashboard_alert_policy(supabase_client, fund)
-        min_confidence = float(alert_policy.get("min_confidence", 0.72))
-        risk_fear_levels = {
-            str(level).strip().upper()
-            for level in alert_policy.get("fear_levels", ["HIGH", "EXTREME"])
-        }
-        watch_confidence_floor = max(min_confidence - 0.10, 0.50)
-
-        def _get_fear_level(signal_row: Dict[str, Any]) -> str:
-            fear = signal_row.get("fear_risk_signal")
-            if isinstance(fear, dict):
-                return str(fear.get("fear_level") or "LOW").upper()
-            return "LOW"
-
-        def _get_trend(signal_row: Dict[str, Any]) -> str:
-            structure = signal_row.get("structure_signal")
-            if isinstance(structure, dict):
-                return structure.get("trend") or "NEUTRAL"
-            return "NEUTRAL"
-
-        def _score_action(action: str, confidence: float, fear_level: str, tier: str, is_held: bool) -> int:
-            base = 0
-            if action == "SELL":
-                base = 100
-            elif action == "BUY":
-                base = 90
-            elif action == "RISK":
-                base = 80
-            elif action == "WATCH":
-                base = 60
-
-            base += int((confidence or 0) * 20)
-
-            if fear_level == "EXTREME":
-                base += 15
-            elif fear_level == "HIGH":
-                base += 10
-            elif fear_level == "MODERATE":
-                base += 5
-
-            if tier == "A":
-                base += 5
-            elif tier == "B":
-                base += 3
-
-            if is_held:
-                base += 2
-
-            return base
-
-        actions: List[Dict[str, Any]] = []
-        for item in watchlist:
-            ticker = item.get("ticker")
-            if not ticker:
-                continue
-
-            signal = latest_by_ticker.get(ticker)
-            if not signal:
-                continue
-
-            overall_signal = signal.get("overall_signal") or "HOLD"
-            confidence = float(signal.get("confidence_score") or 0.0)
-            fear_level = _get_fear_level(signal)
-            trend = _get_trend(signal)
-            is_held = ticker in held_tickers
-            priority_tier = item.get("priority_tier") or "C"
-
-            # Determine action — every branch is scoped to the selected fund
-            # via is_held so the queue differs per fund (see docstring).
-            action = None
-            if overall_signal == "SELL" and is_held and confidence >= min_confidence:
-                action = "SELL"
-            elif overall_signal == "BUY" and not is_held and confidence >= min_confidence:
-                action = "BUY"
-            elif fear_level in risk_fear_levels and is_held:
-                action = "RISK"  # only warn about risk on positions the fund owns
-            elif overall_signal == "WATCH" and confidence >= watch_confidence_floor and not is_held:
-                action = "WATCH"  # monitor candidates the fund doesn't hold yet
-
-            if not action:
-                continue
-
-            score = _score_action(action, confidence, fear_level, priority_tier, is_held)
-            note = f"{overall_signal} signal, trend {trend}, fear {fear_level}"
-
-            actions.append({
-                "ticker": ticker,
-                "company_name": company_names_map.get(ticker),
-                "_logo_url": logo_urls_map.get(ticker),
-                "action": action,
-                "overall_signal": overall_signal,
-                "confidence": confidence,
-                "fear_level": fear_level,
-                "trend": trend,
-                "priority_score": score,
-                "priority_tier": priority_tier,
-                "is_held": is_held,
-                "analysis_date": signal.get("analysis_date"),
-                "explanation": signal.get("explanation"),
-                "note": note
-            })
-
-        actions.sort(key=lambda x: x.get("priority_score", 0), reverse=True)
-        actions = actions[:limit]
+        for row in actions:
+            ar = row.get("ai_review")
+            if ar and ar.get("updated_at") is not None:
+                u = ar["updated_at"]
+                if hasattr(u, "isoformat"):
+                    ar["updated_at"] = u.isoformat()
 
         return jsonify({
             "data": actions,
@@ -594,6 +389,37 @@ def get_action_queue():
     except Exception as e:
         logger.error(f"[Dashboard API] Error building action queue: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+
+def _serialize_brief_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, v in row.items():
+        if v is None:
+            out[k] = None
+        elif hasattr(v, "isoformat") and callable(getattr(v, "isoformat")):
+            out[k] = v.isoformat()
+        else:
+            out[k] = v
+    return out
+
+
+@dashboard_bp.route('/api/dashboard/market-brief', methods=['GET'])
+@require_auth
+def get_market_brief():
+    """Latest cached daily market brief from research Postgres (404 if none)."""
+    try:
+        from market_brief_service import fetch_latest_brief
+        from postgres_client import PostgresClient
+
+        pg = PostgresClient()
+        row = fetch_latest_brief(pg)
+        if not row:
+            return jsonify({"error": "No brief generated yet"}), 404
+        return jsonify(_serialize_brief_row(dict(row)))
+    except Exception as e:
+        logger.error("[Dashboard API] market-brief: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 
 @dashboard_bp.route('/api/dashboard/charts/performance', methods=['GET'])
 def get_performance_chart():

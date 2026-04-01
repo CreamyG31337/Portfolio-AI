@@ -50,6 +50,7 @@ This allows adding new domain guidance by creating/editing markdown files only, 
 
 > For detailed Web Dashboard documentation, see [web_dashboard/README.md](web_dashboard/README.md).
 > For the AI Research System deep dive, see [web_dashboard/AI_RESEARCH_SYSTEM.md](web_dashboard/AI_RESEARCH_SYSTEM.md).
+> For how the **dashboard Action Queue**, **market brief**, and **research enrichment** fit together, see [docs/DASHBOARD_RESEARCH_LOOP.md](docs/DASHBOARD_RESEARCH_LOOP.md).
 
 ---
 

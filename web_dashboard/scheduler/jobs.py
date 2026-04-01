@@ -169,6 +169,20 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '📊'
     },
+    'market_daily_brief': {
+        'name': 'Market Daily Brief',
+        'description': 'One LLM-backed regime summary per NY day from benchmark closes (cached in research DB)',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '📰',
+    },
+    'action_queue_ai_review': {
+        'name': 'Action Queue AI Review',
+        'description': 'Nightly cached LLM cross-check of top action-queue rows vs saved ticker research',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '⚡',
+    },
     'social_sentiment': {
         'name': '💬 Social Sentiment Tracking',
         'description': 'Fetch retail hype and sentiment from StockTwits and Reddit',
@@ -408,6 +422,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'hour': 21, 'minute': 0, 'timezone': 'America/Los_Angeles'}  # 9:00 PM PT
         ]
     },
+    'ticker_meta_analysis': {
+        'name': '🧩 Ticker Meta Analysis',
+        'description': 'Second-pass synthesis over stored AI artifacts (per ticker). Runs after main ticker analysis.',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '🧩',
+        'cron_triggers': [
+            {'hour': 22, 'minute': 30, 'timezone': 'America/Los_Angeles'}  # 10:30 PM PT
+        ]
+    },
     'etf_watchtower': {
         'name': '💼 ETF Watchtower',
         'description': 'Track daily ETF holdings changes (ARK, iShares) to detect institutional accumulation/distribution',
@@ -543,6 +567,10 @@ from scheduler.jobs_metrics import (
     refresh_exchange_rates_job,
     populate_performance_metrics_job
 )
+from scheduler.jobs_dashboard_research import (
+    action_queue_ai_review_job,
+    market_daily_brief_job,
+)
 
 # Import research jobs
 from scheduler.jobs_research import (
@@ -629,6 +657,8 @@ __all__ = [
     'benchmark_refresh_job',
     'refresh_exchange_rates_job',
     'populate_performance_metrics_job',
+    'market_daily_brief_job',
+    'action_queue_ai_review_job',
     # Research jobs
     'market_research_job',
     'rss_feed_ingest_job',
@@ -1184,6 +1214,40 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: benchmark_refresh (weekdays 9:30 AM - 4:00 PM EST, every 30 min during market hours)")
+
+    if AVAILABLE_JOBS.get('market_daily_brief', {}).get('enabled_by_default', True):
+        scheduler.add_job(
+            market_daily_brief_job,
+            trigger=CronTrigger(
+                day_of_week='mon-fri',
+                hour=17,
+                minute=45,
+                timezone='America/New_York'
+            ),
+            id='market_daily_brief',
+            name=f"{get_job_icon('market_daily_brief')} Market Daily Brief",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: market_daily_brief (weekdays 5:45 PM ET, after benchmark window)")
+
+    if AVAILABLE_JOBS.get('action_queue_ai_review', {}).get('enabled_by_default', True):
+        scheduler.add_job(
+            action_queue_ai_review_job,
+            trigger=CronTrigger(
+                day_of_week='mon-fri',
+                hour=19,
+                minute=0,
+                timezone='America/New_York'
+            ),
+            id='action_queue_ai_review',
+            name=f"{get_job_icon('action_queue_ai_review')} Action Queue AI Review",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: action_queue_ai_review (weekdays 7:00 PM ET)")
     
     # Social sentiment job - every 60 minutes (1 hour)
     if AVAILABLE_JOBS['social_sentiment']['enabled_by_default']:
@@ -1628,6 +1692,30 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: ticker_analysis (daily at 9:00 PM PT, 2-hour max)")
     
+    if AVAILABLE_JOBS.get('ticker_meta_analysis', {}).get('enabled_by_default', True):
+        from scheduler.jobs_ticker_meta_analysis import ticker_meta_analysis_job
+
+        meta_cfg = AVAILABLE_JOBS['ticker_meta_analysis']
+        meta_triggers = meta_cfg.get(
+            'cron_triggers', [{'hour': 22, 'minute': 30, 'timezone': 'America/Los_Angeles'}]
+        )
+        meta_trig = meta_triggers[0]
+        scheduler.add_job(
+            ticker_meta_analysis_job,
+            trigger=CronTrigger(
+                hour=meta_trig['hour'],
+                minute=meta_trig['minute'],
+                timezone=meta_trig.get('timezone', 'America/Los_Angeles'),
+            ),
+            id='ticker_meta_analysis',
+            name=f"{get_job_icon('ticker_meta_analysis')} Ticker Meta Analysis",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered job: ticker_meta_analysis (daily after ticker analysis)")
+
     # Securities Metadata Refresh - Daily at 1:00 AM EST (low priority, off-peak)
     if AVAILABLE_JOBS.get('refresh_securities_metadata', {}).get('enabled_by_default', True):
         scheduler.add_job(

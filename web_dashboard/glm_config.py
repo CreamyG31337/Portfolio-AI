@@ -20,6 +20,10 @@ from typing import List, Optional
 
 import requests
 
+from env_loader import load_project_dotenv
+
+load_project_dotenv()
+
 # Allowlist: only these are shown (4.7 = best quality, 4.5-air = fast/light)
 GLM_ALLOWED: List[str] = ["glm-4.7", "glm-4.5-air"]
 # Static list when API is unavailable

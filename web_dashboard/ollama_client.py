@@ -16,7 +16,7 @@ from typing import Generator, Optional, List, Dict, Any
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from dotenv import load_dotenv
+from env_loader import load_project_dotenv
 
 from summary_common import get_summary_system_prompt, parse_summary_response
 from prompt_safety import (
@@ -25,9 +25,8 @@ from prompt_safety import (
     sanitize_for_llm,
 )
 
-# Load environment variables from .env file (if it exists)
-# This allows local development with .env file, but Docker/CI can override with actual env vars
-load_dotenv()
+# Load .env from repo root and web_dashboard (cwd-independent)
+load_project_dotenv()
 
 logger = logging.getLogger(__name__)
 

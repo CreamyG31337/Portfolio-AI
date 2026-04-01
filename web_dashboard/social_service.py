@@ -16,17 +16,9 @@ import requests
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 from settings import get_summarizing_model
-from dotenv import load_dotenv
-from pathlib import Path
+from env_loader import load_project_dotenv
 
-# Load environment variables from web_dashboard/.env
-# Try web_dashboard/.env first (when running from project root)
-# Then fall back to .env in current directory
-env_path = Path(__file__).parent / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
-else:
-    load_dotenv()  # Fallback to current directory
+load_project_dotenv()
 
 logger = logging.getLogger(__name__)
 

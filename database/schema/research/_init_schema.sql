@@ -31,6 +31,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/social_posts.sql
 \i tables/social_sentiment_analysis.sql
 \i tables/ticker_analysis.sql
+\i tables/ticker_meta_analysis.sql
+\i tables/market_daily_brief.sql
+\i tables/action_queue_ai_review.sql
 
 -- FUNCTIONS
 \i functions/array_to_halfvec.sql
