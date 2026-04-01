@@ -676,22 +676,25 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                             # So target is CAD.
                             rate_map = fetch_latest_rates_bulk_flask(list(all_currencies), 'CAD')
 
-                            for _, row in current_positions.iterrows():
-                                curr = str(row.get('currency', 'CAD')).upper()
+                            # Use itertuples(index=False) for significantly better performance (O(N) vs O(1) overhead)
+                            for row in current_positions.itertuples(index=False):
+                                curr = str(getattr(row, 'currency', 'CAD')).upper()
                                 rate = rate_map.get(curr, 1.0)
 
                                 # Value
-                                m_val = float(row.get('market_value', 0) or 0)
+                                m_val = float(getattr(row, 'market_value', 0) or 0)
                                 if m_val == 0:
-                                    m_val = float(row.get('shares', 0) or 0) * float(row.get('current_price', 0) or row.get('price', 0) or 0)
+                                    shares = float(getattr(row, 'shares', 0) or 0)
+                                    price = float(getattr(row, 'current_price', 0) or getattr(row, 'price', 0) or 0)
+                                    m_val = shares * price
                                 current_val += m_val * rate
 
                                 # Cost
-                                c_basis = float(row.get('cost_basis', 0) or 0)
+                                c_basis = float(getattr(row, 'cost_basis', 0) or 0)
                                 current_cost += c_basis * rate
 
                                 # PnL
-                                u_pnl = float(row.get('unrealized_pnl', 0) or 0)
+                                u_pnl = float(getattr(row, 'unrealized_pnl', 0) or 0)
                                 current_pnl += u_pnl * rate
 
                             # Create row for today (noon)

@@ -33,3 +33,6 @@
 ## 2025-03-05 - O(N) Ticker Lookup Anti-Pattern in PortfolioSnapshot
 **Learning:** `PortfolioSnapshot` relied on an $O(N)$ linear list traversal in its `get_position_by_ticker` method. In highly active scenarios involving loops parsing CSV records or rebuilding historical portfolios, repeated calls scale to $O(N^2)$, causing significant CPU overhead for large portfolios.
 **Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.
+## 2025-05-20 - Iterrows Performance Anti-Pattern in DataFrame Iteration
+**Learning:** Using `df.iterrows()` inside calculation loops (e.g., `calculate_portfolio_value_over_time_flask` in `flask_data_utils.py`) incurs significant memory and CPU overhead (O(N)) because it creates a new Series object for every row.
+**Action:** Replace `df.iterrows()` with `df.itertuples(index=False)` which returns named tuples and has O(1) overhead. When accessing properties on the tuple, use `getattr(row, 'column_name', default)` to safely handle missing or invalid column names, improving performance by 10-100x for large datasets.
