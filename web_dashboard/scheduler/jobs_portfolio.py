@@ -256,8 +256,8 @@ def update_portfolio_prices_job(
                 logger.warning(f"⚠️ {message}")
                 return
         
+        invalidate_dashboard_cache = False
         try:
-            invalidate_dashboard_cache = False
             # Import dependencies (after sys.path is set up)
             from market_data.data_fetcher import MarketDataFetcher
             from market_data.price_cache import PriceCache
