@@ -33,3 +33,9 @@
 ## 2025-03-05 - O(N) Ticker Lookup Anti-Pattern in PortfolioSnapshot
 **Learning:** `PortfolioSnapshot` relied on an $O(N)$ linear list traversal in its `get_position_by_ticker` method. In highly active scenarios involving loops parsing CSV records or rebuilding historical portfolios, repeated calls scale to $O(N^2)$, causing significant CPU overhead for large portfolios.
 **Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.
+## 2026-04-02 - Iterrows Optimization in App Route
+**Learning:** Found multiple  usages inside  for API data processing which leads to significant overhead via object instantiations inside loops when building the positions object tree.
+**Action:** Use  in Pandas to eliminate Series overhead for each row, retrieving data safely via  combined with checking  since itertuples does not support dictionary fallback  behavior.
+## 2026-03-05 - Iterrows Optimization in App Route
+**Learning:** Found multiple `iterrows()` usages inside `web_dashboard/app.py` for API data processing which leads to significant overhead via object instantiations inside loops when building the positions object tree.
+**Action:** Use `itertuples(index=False)` in Pandas to eliminate Series overhead for each row, retrieving data safely via `getattr()` combined with checking `pd.isna` since itertuples does not support dictionary fallback `.get()` behavior.
