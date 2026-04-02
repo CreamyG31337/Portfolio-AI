@@ -104,7 +104,7 @@ def test_meta_analysis_rebuild_ok(client, auth_ok):
     ), patch("ollama_client.get_ollama_client", return_value=mock_ollama), patch(
         "meta_analysis_service.TickerMetaAnalysisService.run_meta_analysis",
         return_value=saved,
-    ):
+    ), patch("flask_wtf.csrf.validate_csrf"):
         resp = client.post(
             "/api/v2/ticker/ZZZ/meta-analysis/rebuild",
             json={},

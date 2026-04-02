@@ -106,6 +106,9 @@ def test_action_queue_enrich_merges_research_and_ai(client, auth_ok):
     ), patch(
         "routes.dashboard_routes.attach_ai_reviews",
         side_effect=_attach_ai,
+    ), patch(
+        "postgres_client.PostgresClient.__init__",
+        return_value=None,
     ):
         resp = client.get("/api/dashboard/action-queue?fund=TEST&limit=5")
 
