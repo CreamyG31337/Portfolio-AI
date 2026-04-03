@@ -660,27 +660,35 @@ def get_realized_pnl(fund: Optional[str] = None, display_currency: Optional[str]
         
         # Only process trades that have P&L (realized P&L should be non-zero for closed positions)
         # Filter out trades with None or zero P&L if they shouldn't be counted
-        for _, trade in sell_trades.iterrows():
-            pnl_val = trade.get('pnl', 0)
+        # ⚡ Bolt: Use itertuples(index=False) instead of iterrows() for 10-100x performance improvement in loops
+        for trade in sell_trades.itertuples(index=False):
+            pnl_val = getattr(trade, 'pnl', 0)
             pnl = 0.0 if pd.isna(pnl_val) else float(pnl_val)
             
-            shares = float(trade.get('shares', 0) or 0)
-            price = float(trade.get('price', 0) or 0)
+            shares = getattr(trade, 'shares', 0)
+            shares = float(shares) if not pd.isna(shares) else 0.0
+            price = getattr(trade, 'price', 0)
+            price = float(price) if not pd.isna(price) else 0.0
             proceeds = shares * price
             
+            ticker = getattr(trade, 'ticker', 'UNKNOWN')
+            ticker_str = str(ticker) if not pd.isna(ticker) else 'UNKNOWN'
+
             # Skip trades with zero shares (invalid data)
             if shares == 0:
-                logger.debug(f"get_realized_pnl: Skipping trade with zero shares: {trade.get('ticker', 'UNKNOWN')}")
+                logger.debug(f"get_realized_pnl: Skipping trade with zero shares: {ticker_str}")
                 continue
             
             # Get currency and convert to display currency
-            currency = str(trade.get('currency', 'CAD')).upper() if pd.notna(trade.get('currency')) else 'CAD'
+            currency_val = getattr(trade, 'currency', 'CAD')
+            currency = str(currency_val).upper() if not pd.isna(currency_val) else 'CAD'
             
             # Get trade date for historical rate lookup
             trade_date = None
-            if 'date' in trade and pd.notna(trade.get('date')):
+            date_val = getattr(trade, 'date', None)
+            if not pd.isna(date_val):
                 try:
-                    trade_date = pd.to_datetime(trade.get('date'))
+                    trade_date = pd.to_datetime(date_val)
                 except:
                     trade_date = None
             
@@ -693,7 +701,7 @@ def get_realized_pnl(fund: Optional[str] = None, display_currency: Optional[str]
             total_proceeds += proceeds_display
             
             # Track by ticker
-            ticker = str(trade.get('ticker', 'UNKNOWN'))
+            ticker = ticker_str
             if ticker not in trades_by_ticker:
                 trades_by_ticker[ticker] = {
                     'realized_pnl': 0.0,
@@ -1080,9 +1088,10 @@ def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, d
                                 rates_dict[(date_key, from_curr, to_curr)] = rate_val
                         
                         # Now build rate_list using the bulk-fetched data
-                        for _, row in unique_combos.iterrows():
-                            date_val = row['date_normalized']
-                            curr_val = row['currency_normalized']
+                        # ⚡ Bolt: Use itertuples(index=False) for O(N) memory/speed optimization over iterrows()
+                        for row in unique_combos.itertuples(index=False):
+                            date_val = getattr(row, 'date_normalized', None)
+                            curr_val = getattr(row, 'currency_normalized', None)
                             
                             if curr_val == display_currency.upper():
                                 rate_list.append({'date_normalized': date_val, 'currency_normalized': curr_val, 'conversion_rate': 1.0})
@@ -1108,9 +1117,10 @@ def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, d
                                 rate_list.append({'date_normalized': date_val, 'currency_normalized': curr_val, 'conversion_rate': rate})
                     else:
                         # Fallback if client not available
-                        for _, row in unique_combos.iterrows():
-                            date_val = row['date_normalized']
-                            curr_val = row['currency_normalized']
+                        # ⚡ Bolt: Use itertuples(index=False) for O(N) memory/speed optimization over iterrows()
+                        for row in unique_combos.itertuples(index=False):
+                            date_val = getattr(row, 'date_normalized', None)
+                            curr_val = getattr(row, 'currency_normalized', None)
                             if curr_val == display_currency.upper():
                                 rate = 1.0
                             elif curr_val == 'USD' and display_currency.upper() == 'CAD':
@@ -1126,9 +1136,10 @@ def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, d
                     logger = logging.getLogger(__name__)
                     logger.error(f"Error bulk fetching exchange rates: {e}")
                     # Fallback to defaults
-                    for _, row in unique_combos.iterrows():
-                        date_val = row['date_normalized']
-                        curr_val = row['currency_normalized']
+                    # ⚡ Bolt: Use itertuples(index=False) for O(N) memory/speed optimization over iterrows()
+                    for row in unique_combos.itertuples(index=False):
+                        date_val = getattr(row, 'date_normalized', None)
+                        curr_val = getattr(row, 'currency_normalized', None)
                         if curr_val == display_currency.upper():
                             rate = 1.0
                         elif curr_val == 'USD' and display_currency.upper() == 'CAD':
