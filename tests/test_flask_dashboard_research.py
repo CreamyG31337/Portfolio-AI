@@ -67,7 +67,10 @@ def test_market_brief_returns_json(client, auth_ok):
 
 
 @skip_without_plotly
-def test_action_queue_enrich_merges_research_and_ai(client, auth_ok):
+@patch("web_dashboard.postgres_client.PostgresClient.__init__", return_value=None)
+    def test_action_queue_enrich_merges_research_and_ai(mock_pg_init, client, auth_ok):
+        import os
+        os.environ["RESEARCH_DATABASE_URL"] = "postgresql://dummy"
     client.set_cookie("auth_token", "test.jwt.token")
     mock_supabase = MagicMock()
     item = {

@@ -84,7 +84,8 @@ def test_meta_analysis_get_serializes_row(client, auth_ok):
 
 
 @skip_without_plotly
-def test_meta_analysis_rebuild_ok(client, auth_ok):
+@patch("flask_wtf.csrf.validate_csrf", return_value=True)
+def test_meta_analysis_rebuild_ok(mock_csrf, client, auth_ok):
     client.set_cookie("auth_token", "test.jwt.token")
     saved = {
         "unified_conviction": "BULLISH",
