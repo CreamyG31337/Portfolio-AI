@@ -1080,6 +1080,7 @@ def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, d
                                 rates_dict[(date_key, from_curr, to_curr)] = rate_val
                         
                         # Now build rate_list using the bulk-fetched data
+                        # TODO(perf): Prefer itertuples over iterrows in tight loops (prototype Streamlit path).
                         for _, row in unique_combos.iterrows():
                             date_val = row['date_normalized']
                             curr_val = row['currency_normalized']
