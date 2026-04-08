@@ -73,6 +73,95 @@ def _get_yfinance_ticker_candidates(ticker: str) -> List[str]:
     return candidates
 
 
+def _needs_yfinance_company_refresh(basic_info: Dict[str, Any], ticker_upper: str) -> bool:
+    """True when securities row exists but company_name is missing or unreliable."""
+    name = (basic_info.get("company_name") or "").strip()
+    if not name:
+        return True
+    if name.upper() == "UNKNOWN":
+        return True
+    if name.upper() == ticker_upper.upper().strip():
+        return True
+    return False
+
+
+def _yfinance_first_valid_info(ticker_upper: str) -> Optional[Dict[str, Any]]:
+    """First Yahoo Finance ``info`` dict for ticker_upper that includes ``symbol``."""
+    try:
+        import yfinance as yf
+
+        yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
+        logger.info(
+            "Yahoo Finance lookup for %s candidates: %s",
+            ticker_upper,
+            yf_candidates,
+        )
+        for yf_symbol in yf_candidates:
+            try:
+                ticker_obj = yf.Ticker(yf_symbol)
+                candidate_info = ticker_obj.info
+                if candidate_info and candidate_info.get("symbol"):
+                    logger.info(
+                        "Yahoo Finance resolved %s via symbol %s",
+                        ticker_upper,
+                        yf_symbol,
+                )
+                    return candidate_info
+            except Exception as candidate_error:
+                logger.debug(
+                    "Yahoo Finance lookup failed for candidate %s: %s",
+                    yf_symbol,
+                    candidate_error,
+                )
+        return None
+    except Exception as e:
+        logger.warning("Yahoo Finance error for %s: %s", ticker_upper, e)
+        return None
+
+
+def _securities_row_fields_from_yfinance(
+    info: Dict[str, Any], ticker_upper: str
+) -> Dict[str, Any]:
+    """Build securities table-shaped fields from a Yahoo ``info`` dict (no logo_url)."""
+    company_name = (
+        info.get("longName")
+        or info.get("shortName")
+        or info.get("displayName")
+        or ticker_upper
+    )
+    sector = (
+        info.get("sector") or info.get("sectorDisp") or info.get("sectorKey")
+    )
+    industry = (
+        info.get("industry") or info.get("industryDisp") or info.get("industryKey")
+    )
+    currency = info.get("currency") or info.get("financialCurrency") or "USD"
+    exchange = (
+        info.get("exchange")
+        or info.get("exchangeName")
+        or info.get("fullExchangeName")
+    )
+    trailing_pe = info.get("trailingPE")
+    company_description = (
+        info.get("longBusinessSummary")
+        or info.get("longDescription")
+        or info.get("description")
+    )
+    yf_website = info.get("website")
+
+    return {
+        "ticker": ticker_upper,
+        "company_name": company_name,
+        "sector": sector if sector else None,
+        "industry": industry if industry else None,
+        "currency": currency,
+        "exchange": exchange if exchange else None,
+        "trailing_pe": trailing_pe,
+        "description": company_description.strip() if company_description else None,
+        "website": yf_website if yf_website else None,
+    }
+
+
 def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
                               extra_filter: Optional[Dict] = None) -> Set[str]:
     """Fetch unique tickers from a single Supabase table.
@@ -312,77 +401,82 @@ def _fetch_basic_info(ticker_upper: str, supabase_client) -> Dict[str, Any]:
                             result['basic_info']['description'] = description
                     except Exception as e:
                         logger.debug(f"Could not fetch company description for {ticker_upper}: {e}")
+
+                if _needs_yfinance_company_refresh(result["basic_info"], ticker_upper):
+                    logger.info(
+                        "Re-fetching %s from Yahoo Finance (placeholder or missing company_name)",
+                        ticker_upper,
+                    )
+                    info_refresh = _yfinance_first_valid_info(ticker_upper)
+                    if info_refresh and info_refresh.get("symbol"):
+                        yf_row = _securities_row_fields_from_yfinance(
+                            info_refresh, ticker_upper
+                        )
+                        for key, val in yf_row.items():
+                            if key == "ticker":
+                                result["basic_info"]["ticker"] = ticker_upper
+                            elif val is not None:
+                                result["basic_info"][key] = val
+                        result["basic_info"]["company_name"] = yf_row["company_name"]
+                        try:
+                            from web_dashboard.utils.logo_utils import get_ticker_logo_url
+
+                            use_alt = bool(result["basic_info"].get("use_alt_logo"))
+                            website = result["basic_info"].get("website")
+                            logo_url = get_ticker_logo_url(
+                                ticker_upper, use_alt=use_alt, website=website
+                            )
+                            if logo_url:
+                                result["basic_info"]["logo_url"] = logo_url
+                        except Exception as logo_err:
+                            logger.warning(
+                                "Error refreshing logo URL for %s: %s",
+                                ticker_upper,
+                                logo_err,
+                            )
+                        if supabase_client:
+                            update_payload = {
+                                k: v
+                                for k, v in yf_row.items()
+                                if k != "ticker" and v is not None
+                            }
+                            update_payload["company_name"] = yf_row["company_name"]
+                            try:
+                                supabase_client.supabase.table("securities").update(
+                                    update_payload
+                                ).eq("ticker", ticker_upper).execute()
+                                logger.info(
+                                    "Updated %s in securities after Yahoo name refresh: %s",
+                                    ticker_upper,
+                                    yf_row["company_name"],
+                                )
+                            except Exception as update_err:
+                                logger.warning(
+                                    "Could not persist Yahoo refresh for %s: %s",
+                                    ticker_upper,
+                                    update_err,
+                                )
+                    else:
+                        logger.warning(
+                            "Yahoo Finance could not refresh company_name for %s",
+                            ticker_upper,
+                        )
         except Exception as e:
             logger.warning(f"Error fetching basic info for {ticker_upper}: {e}")
 
     # 2. If no basic info found, try fetching from yfinance
     if not result['basic_info']:
         try:
-            import yfinance as yf
-            yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
             logger.info(
-                f"Looking up {ticker_upper} from Yahoo Finance candidates: {yf_candidates}"
+                "Looking up %s from Yahoo Finance (no securities row)",
+                ticker_upper,
             )
-
-            info = None
-            for yf_symbol in yf_candidates:
-                try:
-                    ticker_obj = yf.Ticker(yf_symbol)
-                    candidate_info = ticker_obj.info
-                    if candidate_info and candidate_info.get("symbol"):
-                        info = candidate_info
-                        logger.info(f"Yahoo Finance lookup succeeded for {ticker_upper} via {yf_symbol}")
-                        break
-                except Exception as candidate_error:
-                    logger.debug(
-                        f"Yahoo Finance lookup failed for candidate {yf_symbol}: {candidate_error}"
-                    )
+            info = _yfinance_first_valid_info(ticker_upper)
 
             if info and info.get('symbol'):
-                # Extract fields with multiple fallback attempts
-                company_name = (
-                    info.get('longName') or
-                    info.get('shortName') or
-                    info.get('displayName') or
-                    ticker_upper
-                )
-                sector = (
-                    info.get('sector') or
-                    info.get('sectorDisp') or
-                    info.get('sectorKey')
-                )
-                industry = (
-                    info.get('industry') or
-                    info.get('industryDisp') or
-                    info.get('industryKey')
-                )
-                currency = info.get('currency') or info.get('financialCurrency') or 'USD'
-                exchange = (
-                    info.get('exchange') or
-                    info.get('exchangeName') or
-                    info.get('fullExchangeName')
-                )
-                trailing_pe = info.get('trailingPE')
-                company_description = (
-                    info.get('longBusinessSummary') or
-                    info.get('longDescription') or
-                    info.get('description')
-                )
-
-                # Extract website for storage and potential alt-logo use
-                yf_website = info.get('website')
-
-                result['basic_info'] = {
-                    'ticker': ticker_upper,
-                    'company_name': company_name,
-                    'sector': sector if sector else None,
-                    'industry': industry if industry else None,
-                    'currency': currency,
-                    'exchange': exchange if exchange else None,
-                    'trailing_pe': trailing_pe,
-                    'description': company_description.strip() if company_description else None,
-                    'website': yf_website if yf_website else None,
-                }
+                yf_row = _securities_row_fields_from_yfinance(info, ticker_upper)
+                company_name = yf_row["company_name"]
+                result['basic_info'] = dict(yf_row)
 
                 # Add logo URL (new tickers default to Parqet; use_alt_logo is false)
                 try:
@@ -414,30 +508,20 @@ def _fetch_basic_info(ticker_upper: str, supabase_client) -> Dict[str, Any]:
     # 3. If we have basic_info but it's incomplete, try to enrich from yfinance
     if result['basic_info'] and (result['basic_info'].get('sector') is None or result['basic_info'].get('industry') is None or result['basic_info'].get('trailing_pe') is None):
         try:
-            import yfinance as yf
-            yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
             logger.info(
-                f"Re-fetching {ticker_upper} from Yahoo Finance candidates due to incomplete data: {yf_candidates}"
+                "Re-fetching %s from Yahoo Finance due to incomplete sector/industry/PE",
+                ticker_upper,
             )
-
-            info = None
-            for yf_symbol in yf_candidates:
-                try:
-                    ticker_obj = yf.Ticker(yf_symbol)
-                    candidate_info = ticker_obj.info
-                    if candidate_info and candidate_info.get("symbol"):
-                        info = candidate_info
-                        logger.info(f"Yahoo Finance enrichment succeeded for {ticker_upper} via {yf_symbol}")
-                        break
-                except Exception as candidate_error:
-                    logger.debug(
-                        f"Yahoo Finance enrichment failed for candidate {yf_symbol}: {candidate_error}"
-                    )
+            info = _yfinance_first_valid_info(ticker_upper)
 
             if info and info.get('symbol'):
                 sector = result['basic_info'].get('sector') or info.get('sector') or info.get('sectorDisp') or info.get('sectorKey')
                 industry = result['basic_info'].get('industry') or info.get('industry') or info.get('industryDisp') or info.get('industryKey')
-                trailing_pe = result['basic_info'].get('trailingPE') or info.get('trailingPE')
+                trailing_pe = (
+                    result['basic_info'].get('trailing_pe')
+                    or result['basic_info'].get('trailingPE')
+                    or info.get('trailingPE')
+                )
 
                 if sector or industry or trailing_pe:
                     updates = {}

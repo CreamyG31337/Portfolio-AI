@@ -358,8 +358,27 @@ class SupabaseClient:
                 # Always fetch from yfinance to get complete metadata (company_name, sector, industry, etc.)
                 try:
                     import yfinance as yf
-                    stock = yf.Ticker(ticker)
-                    info = stock.info
+                    from web_dashboard.ticker_utils import _get_yfinance_ticker_candidates
+
+                    info = None
+                    for yf_symbol in _get_yfinance_ticker_candidates(ticker):
+                        try:
+                            candidate = yf.Ticker(yf_symbol).info
+                            if candidate and candidate.get("symbol"):
+                                info = candidate
+                                logger.debug(
+                                    "yfinance resolved %s via candidate %s",
+                                    ticker,
+                                    yf_symbol,
+                                )
+                                break
+                        except Exception as cand_err:
+                            logger.debug(
+                                "yfinance candidate %s failed for %s: %s",
+                                yf_symbol,
+                                ticker,
+                                cand_err,
+                            )
                     
                     if info:
                         # Get company name (prefer longName over shortName)
