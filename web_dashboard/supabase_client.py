@@ -1032,18 +1032,34 @@ class SupabaseClient:
             logger.error(f"❌ Error caching benchmark data: {e}")
             return False
 
+    def delete_all_benchmark_data(self) -> bool:
+        """Remove every row from ``benchmark_data`` (reconstructible via ``benchmark_refresh_job``).
+
+        Does not touch any other table. PostgREST requires a filter; all realistic rows have
+        ``date >= 1970-01-01``.
+        """
+        try:
+            self.supabase.table("benchmark_data").delete().gte("date", "1970-01-01").execute()
+            logger.info("Deleted all rows from benchmark_data")
+            return True
+        except Exception as e:
+            logger.error("❌ Error deleting benchmark_data: %s", e)
+            return False
+
     def delete_benchmark_futures_invalid_volume_in_range(
         self, ticker: str, range_start: date, range_end: date
     ) -> bool:
-        """Remove ``benchmark_data`` rows for continuous futures with NULL or non-positive volume.
+        """Remove *continuous* futures rows with NULL, non-positive, or below-floor volume.
 
-        Sanitization drops zero/missing-volume Yahoo bars from the upsert payload; without this,
-        stale rows for those dates (and volume-based charts) keep bad values indefinitely.
+        Deletes stale rows that sanitizer would skip on ingest so the next upsert can replace them.
         """
         if not str(ticker).endswith("=F"):
             return True
+        from scheduler.benchmark_futures_quality import yahoo_futures_min_reported_volume
+
         start_s = range_start.isoformat()
         end_s = range_end.isoformat()
+        min_v = yahoo_futures_min_reported_volume(ticker)
         try:
             self.supabase.table("benchmark_data").delete().eq("ticker", ticker).gte(
                 "date", start_s
@@ -1051,6 +1067,10 @@ class SupabaseClient:
             self.supabase.table("benchmark_data").delete().eq("ticker", ticker).gte(
                 "date", start_s
             ).lte("date", end_s).is_("volume", "null").execute()
+            if min_v is not None and min_v > 0:
+                self.supabase.table("benchmark_data").delete().eq("ticker", ticker).gte(
+                    "date", start_s
+                ).lte("date", end_s).lt("volume", min_v).execute()
             return True
         except Exception as e:
             logger.error(

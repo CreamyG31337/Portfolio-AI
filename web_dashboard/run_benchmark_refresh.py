@@ -6,6 +6,10 @@ PowerShell::
     cd web_dashboard
     ..\\venv\\Scripts\\python.exe run_benchmark_refresh.py
 
+**Recreate only ``benchmark_data``** (no other tables) if the cache is inconsistent, then refill::
+
+    ..\\venv\\Scripts\\python.exe run_benchmark_refresh.py --rebuild-from-scratch --confirm-rebuild
+
 Optional explicit env file(s) (last wins for duplicate keys)::
 
     ..\\venv\\Scripts\\python.exe run_benchmark_refresh.py --env-file C:\\path\\to\\.env
@@ -79,6 +83,16 @@ def _url_ok() -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run benchmark_refresh_job (Yahoo → benchmark_data).")
     parser.add_argument(
+        "--rebuild-from-scratch",
+        action="store_true",
+        help="Delete ALL rows in benchmark_data only, then run the normal Yahoo refresh.",
+    )
+    parser.add_argument(
+        "--confirm-rebuild",
+        action="store_true",
+        help="Required with --rebuild-from-scratch (safety).",
+    )
+    parser.add_argument(
         "--env-file",
         action="append",
         default=[],
@@ -110,6 +124,20 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     from scheduler.jobs_metrics import benchmark_refresh_job
+    from supabase_client import SupabaseClient
+
+    if args.rebuild_from_scratch:
+        if not args.confirm_rebuild:
+            print(
+                "error: --rebuild-from-scratch requires --confirm-rebuild (deletes all benchmark_data rows).",
+                file=sys.stderr,
+            )
+            return 2
+        client = SupabaseClient(use_service_role=True)
+        if not client.delete_all_benchmark_data():
+            print("error: failed to clear benchmark_data", file=sys.stderr)
+            return 1
+        print("benchmark_data cleared; refilling from Yahoo…")
 
     benchmark_refresh_job()
     return 0

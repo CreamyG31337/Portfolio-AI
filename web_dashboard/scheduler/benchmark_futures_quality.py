@@ -30,6 +30,27 @@ _YAHOO_FUTURES_CLOSE_BOUNDS: dict[str, tuple[float, float]] = {
     "ZW=F": (300.0, 1100.0),
 }
 
+# Contract-scale floor on reported ``Volume`` for *continuous* ``*=F`` daily bars we cache.
+# If OHLC and volume disagree with a same-day re-download, causes include our cache getting out
+# of sync, client/library quirks, or merged partial rows — not something we persist; see
+# ``run_benchmark_refresh.py --rebuild-from-scratch`` to recreate ``benchmark_data`` only.
+_YAHOO_FUTURES_MIN_REPORTED_VOLUME: dict[str, int] = {
+    "CL=F": 1000,
+    "GC=F": 400,
+    "SI=F": 200,
+    "NG=F": 200,
+    "HG=F": 200,
+    "ZW=F": 200,
+}
+_DEFAULT_FUTURES_MIN_VOLUME = 150
+
+
+def yahoo_futures_min_reported_volume(ticker: str) -> int | None:
+    """Minimum trustworthy ``Volume`` for Yahoo ``*=F`` daily rows, or ``None`` if not a futures symbol."""
+    if not str(ticker).endswith("=F"):
+        return None
+    return _YAHOO_FUTURES_MIN_REPORTED_VOLUME.get(str(ticker), _DEFAULT_FUTURES_MIN_VOLUME)
+
 
 def sanitize_yahoo_continuous_futures_df(df: pd.DataFrame, ticker: str, name: str) -> pd.DataFrame:
     """Drop zero-volume rows; linearly interpolate closes for zero-range OHLC runs.
@@ -53,6 +74,21 @@ def sanitize_yahoo_continuous_futures_df(df: pd.DataFrame, ticker: str, name: st
                 name,
             )
             out = out.loc[~bad_vol].reset_index(drop=True)
+
+        min_v = yahoo_futures_min_reported_volume(ticker)
+        if min_v is not None and len(out) > 0:
+            bad_low = out["Volume"] < min_v
+            if bad_low.any():
+                n_low = int(bad_low.sum())
+                logger.warning(
+                    "Dropping %d row(s) below contract-scale volume floor for %s (%s); "
+                    "threshold=%s",
+                    n_low,
+                    ticker,
+                    name,
+                    min_v,
+                )
+                out = out.loc[~bad_low].reset_index(drop=True)
 
     if len(out) < 3:
         return out

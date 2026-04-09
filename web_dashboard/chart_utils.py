@@ -548,6 +548,17 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
         # Find the baseline close price at or near portfolio start date
         data['Date'] = pd.to_datetime(data['Date'])
         data['Close'] = pd.to_numeric(data['Close'], errors='coerce')
+        for _ohlc in ("Open", "High", "Low", "Volume"):
+            if _ohlc in data.columns:
+                data[_ohlc] = pd.to_numeric(data[_ohlc], errors="coerce")
+        data = data.dropna(subset=["Date", "Close"])
+        if str(norm_ticker).endswith("=F"):
+            from scheduler.benchmark_futures_quality import sanitize_yahoo_continuous_futures_df
+
+            data = sanitize_yahoo_continuous_futures_df(data, norm_ticker, norm_ticker)
+        if data.empty or len(data) < 2:
+            print(f"❌ No rows after futures sanitize for {norm_ticker}")
+            return None
         data = _drop_isolated_close_outliers_df(data, 'Date', 'Close')
         if data.empty:
             print(f"❌ No usable rows after outlier filter for {ticker}")
@@ -2451,26 +2462,37 @@ def create_commodity_chart(
             logger.warning(f"No usable rows for {config['name']} after outlier filter")
             continue
         
-        # Normalize to percentage change from first value (baseline 100)
-        first_close = float(df['close'].iloc[0])
-        df['normalized'] = ((df['close'].astype(float) / first_close) * 100)
+        # Baseline: median of first few closes (not only row 0). A single corrupt first-day
+        # Yahoo print makes index = close/bad_baseline and can look like +200%/300% when spot
+        # only moved tens of percent (e.g. crude ~$60 → ~$100).
+        k0 = min(5, len(df))
+        baseline_close = float(df["close"].iloc[:k0].median())
+        if baseline_close <= 0:
+            baseline_close = float(df["close"].iloc[0])
+        close_f = df["close"].astype(float)
+        df["normalized"] = (close_f / baseline_close) * 100
         
         # Calculate return for label
         if len(df) > 1:
-            final_value = df['normalized'].iloc[-1]
+            final_value = float(df["normalized"].iloc[-1])
             commodity_return = final_value - 100
             label_suffix = f" ({commodity_return:+.2f}%)"
         else:
             label_suffix = ""
         
-        # Add trace
+        # Add trace (y = performance index; hover also shows native USD close from Yahoo row)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['normalized'],
             mode='lines',
             name=f"{config['name']}{label_suffix}",
             line=dict(color=config['color'], width=3),
-            hovertemplate=f"{config['name']}<br>%{{x|%Y-%m-%d}}<br>%{{y:,.2f}}<extra></extra>"
+            customdata=close_f,
+            hovertemplate=(
+                f"{config['name']}<br>%{{x|%Y-%m-%d}}<br>"
+                "Index: %{y:.2f} (start≈100)<br>"
+                "Close: %{customdata:,.2f} USD<extra></extra>"
+            ),
         ))
     
     # Get theme configuration

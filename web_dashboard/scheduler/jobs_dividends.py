@@ -350,35 +350,40 @@ def fetch_dividend_data(ticker: str) -> List[DividendEvent]:
 
 def calculate_eligible_shares(fund: str, ticker: str, ex_date: date, client) -> Decimal:
     """
-    Calculate shares owned on day BEFORE ex_date.
-    Formula: Sum(shares) where date < ex_date
-    Note: In trade_log schema, shares is signed (positive=BUY, negative=SELL)
+    Shares held at the start of ex-dividend day: all trades with ``date`` strictly before
+    ``ex_date`` midnight (naive, ISO compared in DB).
+
+    ``trade_log`` stores **positive** share quantities for both buys and sells; sells are
+    identified by ``'SELL'`` in ``reason`` (same as ``update_portfolio_prices_job``).
     """
     try:
         # Convert ex_date to datetime for comparison
         ex_datetime = datetime.combine(ex_date, dt_time(0, 0, 0))
         ex_datetime_str = ex_datetime.isoformat()
-        
+
         # Get all trades before ex_date
         trades_result = client.supabase.table("trade_log")\
-            .select("shares, date")\
+            .select("shares, date, reason")\
             .eq("fund", fund)\
             .eq("ticker", ticker)\
             .lt("date", ex_datetime_str)\
             .order("date")\
             .execute()
-        
-        net_shares = Decimal('0')
-        
+
+        net_shares = Decimal("0")
+
         for trade in trades_result.data:
-            shares = Decimal(str(trade.get('shares', 0) or 0))
-            # Shares is already signed in trade_log (positive=buy, negative=sell)
-            net_shares += shares
-        
-        return max(net_shares, Decimal('0'))
+            shares = Decimal(str(trade.get("shares", 0) or 0))
+            reason = str(trade.get("reason", "") or "").upper()
+            if "SELL" in reason:
+                net_shares -= shares
+            else:
+                net_shares += shares
+
+        return max(net_shares, Decimal("0"))
     except Exception as e:
         logger.error(f"Error shares calc for {fund}/{ticker}: {e}")
-        return Decimal('0')
+        return Decimal("0")
 
 
 def get_price_on_date(ticker: str, target_date: date) -> Optional[Decimal]:
