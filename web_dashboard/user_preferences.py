@@ -52,7 +52,11 @@ def _get_cache():
 
 def _get_user_id():
     """Get user ID from either Flask or Streamlit context"""
-    # Try Flask first
+    return _get_authenticated_user_id()
+
+
+def _get_authenticated_user_id():
+    """Logged-in user (JWT / Streamlit session). Use for permission checks and writes."""
     try:
         from flask_auth_utils import get_user_id_flask
         from flask import has_request_context
@@ -62,8 +66,7 @@ def _get_user_id():
                 return user_id
     except (ImportError, RuntimeError):
         pass
-    
-    # Fall back to Streamlit
+
     if STREAMLIT_AVAILABLE and st is not None:
         try:
             from auth_utils import get_user_id, is_authenticated
@@ -71,8 +74,61 @@ def _get_user_id():
                 return get_user_id()
         except ImportError:
             pass
-    
+
     return None
+
+
+def _get_effective_user_id_for_prefs():
+    """User id for preference reads (Flask admin impersonation uses target user)."""
+    try:
+        from flask_auth_utils import get_effective_user_id_flask
+        from flask import has_request_context
+        if has_request_context():
+            uid = get_effective_user_id_flask()
+            if uid:
+                return uid
+    except (ImportError, RuntimeError):
+        pass
+    return _get_authenticated_user_id()
+
+
+def _preference_cache_key(pref_key: str) -> str:
+    """Isolate Flask session cache per effective user (impersonation-safe)."""
+    eff = ""
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            e = _get_effective_user_id_for_prefs()
+            if e:
+                eff = f"_{e}"
+    except (ImportError, RuntimeError):
+        pass
+    if not eff and STREAMLIT_AVAILABLE and st is not None:
+        try:
+            from auth_utils import get_user_id, is_authenticated
+            if is_authenticated():
+                u = get_user_id()
+                if u:
+                    eff = f"_{u}"
+        except ImportError:
+            pass
+    return f"_pref_{pref_key}{eff}"
+
+
+# Keys fetched when get_user_preferences RPC cannot scope by user (auth.uid only).
+_PREFERENCES_BULK_KEYS_FLASK_IMPERSONATION = (
+    "timezone",
+    "currency",
+    "ai_model",
+    "theme",
+    "selected_fund",
+    "v2_enabled",
+    "inverse_exchange_rate",
+    "ai_include_search",
+    "ai_include_insider_trades",
+    "ai_include_congress_trades",
+    "ai_include_etf_trades",
+)
 
 
 def _is_authenticated():
@@ -122,7 +178,7 @@ def get_user_preference(key: str, default: Any = None) -> Any:
     """
     # Check cache first (but skip cache for v2_enabled to ensure fresh reads)
     cache = _get_cache()
-    cache_key = f"_pref_{key}"
+    cache_key = _preference_cache_key(key)
     # v2_enabled controls navigation and must always be read fresh from database
     if key != 'v2_enabled' and cache_key in cache:
         cached_value = cache[cache_key]
@@ -139,7 +195,7 @@ def get_user_preference(key: str, default: Any = None) -> Any:
         if not _is_authenticated():
             return default
         
-        user_id = _get_user_id()
+        user_id = _get_effective_user_id_for_prefs()
         if not user_id:
             return default
         
@@ -177,8 +233,8 @@ def get_user_preference(key: str, default: Any = None) -> Any:
         if not client:
             return default
             
-        # Get user ID for potential fallback
-        user_id_fallback = _get_user_id()
+        # Explicit UUID for SECURITY DEFINER RPC (required for admin impersonation reads)
+        user_id_fallback = user_id
         
         # Call the RPC function to get preference
         # Use client.rpc() method which ensures Authorization header is set
@@ -186,7 +242,10 @@ def get_user_preference(key: str, default: Any = None) -> Any:
         rpc_result = None
         
         try:
-            rpc_result = client.rpc('get_user_preference', {'pref_key': key})
+            rpc_result = client.rpc(
+                "get_user_preference",
+                {"pref_key": key, "user_uuid": str(user_id)},
+            )
             rpc_success = True
             _log_pref_rpc_path("get_user_preference", "client.rpc", {"key": key})
             result = rpc_result # For backward compatibility with existing result variable use
@@ -366,8 +425,18 @@ def set_user_preference(key: str, value: Any) -> bool:
         if not _is_authenticated():
             logger.warning("Cannot set preference: user not authenticated")
             return False
-        
-        user_id = _get_user_id()
+
+        try:
+            from flask import has_request_context
+            if has_request_context():
+                from flask_auth_utils import is_impersonating_flask
+                if is_impersonating_flask():
+                    logger.info("Cannot set preference: admin impersonation active (writes disabled)")
+                    return False
+        except (ImportError, RuntimeError):
+            pass
+
+        user_id = _get_authenticated_user_id()
         if not user_id:
             logger.warning("Cannot set preference: no user_id")
             return False
@@ -530,7 +599,7 @@ def set_user_preference(key: str, value: Any) -> bool:
         # This ensures that even if the session cookie update has issues,
         # the current request context sees the new value immediately.
         cache = _get_cache()
-        cache_key = f"_pref_{key}"
+        cache_key = _preference_cache_key(key)
         
         # Don't cache v2_enabled to ensure fresh reads
         if key != 'v2_enabled':
@@ -607,9 +676,23 @@ def get_all_user_preferences() -> Dict[str, Any]:
         if not _is_authenticated():
             return {}
         
-        user_id = _get_user_id()
+        user_id = _get_effective_user_id_for_prefs()
         if not user_id:
             return {}
+
+        try:
+            from flask import has_request_context
+            if has_request_context():
+                from flask_auth_utils import is_impersonating_flask
+                if is_impersonating_flask():
+                    merged: Dict[str, Any] = {}
+                    for pk in _PREFERENCES_BULK_KEYS_FLASK_IMPERSONATION:
+                        val = get_user_preference(pk, default=None)
+                        if val is not None:
+                            merged[pk] = val
+                    return merged
+        except (ImportError, RuntimeError):
+            pass
         
         # Get Supabase client (works in both contexts)
         client = None

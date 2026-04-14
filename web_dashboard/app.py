@@ -633,6 +633,13 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
         except Exception:
             pass
 
+        impersonation_ctx: Dict[str, Any] = {"impersonating": False}
+        try:
+            from flask_auth_utils import get_impersonation_banner_context
+            impersonation_ctx = get_impersonation_banner_context()
+        except Exception:
+            pass
+
         return {
             'navigation_links': nav_links,
             'is_admin': is_admin_value,
@@ -642,6 +649,7 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             'scheduler_status': scheduler_status,
             'current_page': current_page,
             'user_theme': user_theme,
+            'impersonation': impersonation_ctx,
         }
     except Exception as e:
         logger.warning(f"Error building navigation context: {e}")
@@ -651,6 +659,7 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             'available_funds': [],
             'current_page': None,
             'user_theme': 'system',
+            'impersonation': {'impersonating': False},
         }
 
 

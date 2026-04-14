@@ -1,0 +1,35 @@
+{% if impersonation is defined and impersonation.impersonating %}
+<div id="impersonation-banner" role="status"
+    class="bg-theme-warning-bg border-b border-theme-warning-text text-text-primary px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-2 text-sm">
+        <i class="fas fa-user-secret text-theme-warning-text" aria-hidden="true"></i>
+        <span>Viewing as <strong class="font-semibold">{{ impersonation.impersonate_user_email|default('user', true) }}</strong>
+            <span class="text-text-secondary">(fund list and preferences read-only for this user; RLS still uses your admin session)</span>
+        </span>
+    </div>
+    <button type="button" id="impersonation-stop-btn"
+        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border border-border bg-dashboard-surface hover:bg-dashboard-surface-alt focus:outline-hidden focus:ring-2 focus:ring-accent">
+        <i class="fas fa-times mr-2" aria-hidden="true"></i>Stop view-as
+    </button>
+</div>
+<script>
+    (function () {
+        var btn = document.getElementById('impersonation-stop-btn');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            var meta = document.querySelector('meta[name="csrf-token"]');
+            var headers = { 'Content-Type': 'application/json' };
+            if (meta && meta.getAttribute('content')) {
+                headers['X-CSRFToken'] = meta.getAttribute('content');
+            }
+            fetch('/api/admin/impersonate/stop', { method: 'POST', credentials: 'include', headers: headers })
+                .then(function (r) {
+                    if (r.ok) {
+                        window.location.reload();
+                    }
+                })
+                .catch(function () { });
+        });
+    })();
+</script>
+{% endif %}

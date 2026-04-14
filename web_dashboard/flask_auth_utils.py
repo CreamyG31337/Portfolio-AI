@@ -12,10 +12,15 @@ import json
 import logging
 import os
 import threading
-from typing import Optional, Dict
+import uuid
+from typing import Optional, Dict, Any
 from flask import request
 
 logger = logging.getLogger(__name__)
+
+# Flask signed session keys for admin "view as user" (JWT remains the admin's).
+SESSION_IMPERSONATE_USER_ID = "impersonate_user_id"
+SESSION_IMPERSONATE_USER_EMAIL = "impersonate_user_email"
 
 # Lock dictionary to prevent concurrent refresh attempts with the same refresh_token
 # Key: refresh_token value, Value: threading.Lock
@@ -78,6 +83,104 @@ def get_refresh_token() -> Optional[str]:
     else:
         logger.warning(f"[FLASK_AUTH] refresh_token cookie NOT FOUND. Available cookies: {list(request.cookies.keys())}")
     return token
+
+
+def _is_uuid(value: Optional[str]) -> bool:
+    if not value or not isinstance(value, str):
+        return False
+    try:
+        uuid.UUID(value)
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def ensure_impersonation_session_valid() -> None:
+    """Clear impersonation from Flask session if caller is not a full admin or state is invalid.
+
+    Call once per authenticated request (e.g. end of require_auth). Idempotent per request.
+    """
+    if getattr(request, "_impersonation_session_checked", False):
+        return
+    request._impersonation_session_checked = True
+    try:
+        from flask import session, has_request_context
+
+        if not has_request_context():
+            return
+        raw_id = session.get(SESSION_IMPERSONATE_USER_ID)
+        if not raw_id:
+            return
+        if not _is_uuid(str(raw_id)):
+            session.pop(SESSION_IMPERSONATE_USER_ID, None)
+            session.pop(SESSION_IMPERSONATE_USER_EMAIL, None)
+            logger.info("Cleared impersonation: invalid user id in session")
+            return
+        auth_id = get_user_id_flask()
+        if not auth_id:
+            session.pop(SESSION_IMPERSONATE_USER_ID, None)
+            session.pop(SESSION_IMPERSONATE_USER_EMAIL, None)
+            return
+        if str(raw_id) == str(auth_id):
+            session.pop(SESSION_IMPERSONATE_USER_ID, None)
+            session.pop(SESSION_IMPERSONATE_USER_EMAIL, None)
+            logger.info("Cleared impersonation: cannot impersonate self")
+            return
+        if not can_modify_data_flask():
+            session.pop(SESSION_IMPERSONATE_USER_ID, None)
+            session.pop(SESSION_IMPERSONATE_USER_EMAIL, None)
+            logger.info("Cleared impersonation: user is not a full admin (can_modify_data false)")
+    except Exception as e:
+        logger.debug("ensure_impersonation_session_valid: %s", e, exc_info=True)
+
+
+def get_effective_user_id_flask() -> Optional[str]:
+    """User id for fund list and preference reads: impersonated target if active, else JWT user."""
+    ensure_impersonation_session_valid()
+    try:
+        from flask import session, has_request_context
+
+        if has_request_context():
+            imp = session.get(SESSION_IMPERSONATE_USER_ID)
+            if imp and _is_uuid(str(imp)):
+                return str(imp)
+    except Exception:
+        pass
+    return get_user_id_flask()
+
+
+def get_flask_cache_scope_id() -> str:
+    """Composite cache key segment: authenticated JWT user + effective user (impersonation-safe)."""
+    auth = get_user_id_flask() or "anonymous"
+    eff = get_effective_user_id_flask() or auth
+    return f"{auth}|{eff}"
+
+
+def is_impersonating_flask() -> bool:
+    """True if a full admin is viewing as another user (Flask session)."""
+    ensure_impersonation_session_valid()
+    auth = get_user_id_flask()
+    eff = get_effective_user_id_flask()
+    return bool(auth and eff and auth != eff)
+
+
+def get_impersonation_banner_context() -> Dict[str, Any]:
+    """Template/API payload for impersonation banner."""
+    ensure_impersonation_session_valid()
+    if not is_impersonating_flask():
+        return {"impersonating": False}
+    try:
+        from flask import session, has_request_context
+
+        if not has_request_context():
+            return {"impersonating": False}
+        return {
+            "impersonating": True,
+            "impersonate_user_id": str(session.get(SESSION_IMPERSONATE_USER_ID) or ""),
+            "impersonate_user_email": session.get(SESSION_IMPERSONATE_USER_EMAIL) or "",
+        }
+    except Exception:
+        return {"impersonating": False}
 
 
 def get_user_id_flask() -> Optional[str]:

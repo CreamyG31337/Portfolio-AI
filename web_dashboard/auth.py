@@ -310,6 +310,9 @@ def require_auth(f):
         request.user_id = user_data.get("user_id") or user_data.get("sub")
         request.user_email = user_data.get("email")
 
+        from flask_auth_utils import ensure_impersonation_session_valid
+        ensure_impersonation_session_valid()
+
         # Execute the route function
         response = f(*args, **kwargs)
 
@@ -410,6 +413,9 @@ def require_admin(f):
         # Add user data to request context
         request.user_id = user_data.get("user_id") or user_data.get("sub")
         request.user_email = user_data.get("email")
+
+        from flask_auth_utils import ensure_impersonation_session_valid
+        ensure_impersonation_session_valid()
 
         # Now check admin status - try using Supabase client (like Streamlit does)
         is_user_admin = False

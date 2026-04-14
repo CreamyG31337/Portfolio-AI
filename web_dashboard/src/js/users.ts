@@ -195,6 +195,8 @@ document.addEventListener('DOMContentLoaded', (): void => {
     if (meta) {
         currentUserEmail = meta.getAttribute('content') || '';
     }
+    const canMeta = document.querySelector('meta[name="can-modify-data"]');
+    canModify = canMeta?.getAttribute('content') === 'true';
 
     fetchUsers();
     fetchFunds();
@@ -477,11 +479,14 @@ async function handleUserAction(e: Event): Promise<void> {
     const isSelf = btn.dataset.isSelf === 'true';
 
     // Show action menu (simplified - in production, use a proper dropdown)
-    const action = await showActionMenu(email, role, isSelf);
+    const action = await showActionMenu(email, role, isSelf, canModify);
     if (!action) return;
 
     // Handle the action
     switch (action) {
+        case 'view-as':
+            await startViewAsUser(userId);
+            break;
         case 'edit-name':
             await showEditNameDialog(userId, email);
             break;
@@ -510,8 +515,49 @@ async function handleUserAction(e: Event): Promise<void> {
 }
 
 // Show Action Menu (simplified - use a proper modal/dropdown in production)
-async function showActionMenu(email: string, role: string, isSelf: boolean): Promise<string | null> {
+async function startViewAsUser(userId: string): Promise<void> {
+    if (!userId) {
+        showToast('Missing user id', 'error');
+        return;
+    }
+    try {
+        const response = await fetch('/api/admin/impersonate/start', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders(),
+            },
+            body: JSON.stringify({ user_id: userId }),
+        });
+        const data = (await response.json().catch(() => ({}))) as ApiResponse & {
+            impersonate_user_email?: string;
+        };
+        if (!response.ok) {
+            showToast(data.error || 'Could not start view-as user', 'error');
+            return;
+        }
+        window.location.href = '/';
+    } catch (e) {
+        console.error(e);
+        showToast('Could not start view-as user', 'error');
+    }
+}
+
+async function showActionMenu(
+    email: string,
+    role: string,
+    isSelf: boolean,
+    canImpersonate: boolean
+): Promise<string | null> {
     return new Promise((resolve) => {
+        const viewAsBtn =
+            canImpersonate && !isSelf
+                ? `<button type="button" class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="view-as">
+                        <i class="fas fa-user-secret mr-2 text-accent"></i>View as this user (dashboard)
+                    </button>`
+                : '';
+
         // Build role buttons based on current role
         let roleButtons = '';
         if (isSelf) {
@@ -563,6 +609,7 @@ async function showActionMenu(email: string, role: string, isSelf: boolean): Pro
                     </button>
                     <div class="border-t border-border my-3"></div>
                     <p class="text-xs text-text-secondary uppercase tracking-wide mb-2">Other Actions</p>
+                    ${viewAsBtn}
                     <button class="action-menu-btn w-full text-left px-4 py-3 hover:bg-dashboard-hover rounded-md border border-transparent hover:border-border transition-colors text-text-primary" data-action="send-invite">
                         <i class="fas fa-envelope mr-2 text-theme-info-text"></i>Send Invite
                     </button>

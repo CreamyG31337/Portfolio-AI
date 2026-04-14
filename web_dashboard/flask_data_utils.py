@@ -13,7 +13,7 @@ import numpy as np
 from datetime import datetime, timezone
 
 from supabase_client import SupabaseClient
-from flask_auth_utils import get_user_id_flask
+from flask_auth_utils import get_effective_user_id_flask, get_flask_cache_scope_id
 from flask_cache_utils import cache_data, skip_cache_if_empty_dataframe
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ def get_supabase_client_flask() -> Optional[SupabaseClient]:
 def get_available_funds_flask() -> List[str]:
     """Get list of available funds for current Flask user (cached 5min per user)"""
     try:
-        user_id = get_user_id_flask()
+        user_id = get_effective_user_id_flask()
         if not user_id:
             logger.warning("[get_available_funds_flask] No user_id in Flask session/cookie")
             return []
@@ -170,7 +170,7 @@ def get_current_positions_flask(
     fund: Optional[str] = None, _cache_version: Optional[str] = None
 ) -> pd.DataFrame:
     """Get current positions for Flask (cached 5min, with cache_version support)."""
-    user_id = get_user_id_flask() or "anonymous"
+    user_id = get_flask_cache_scope_id()
     return _get_current_positions_flask_cached(
         fund=fund, user_id=user_id, _cache_version=_cache_version
     )
@@ -301,7 +301,7 @@ def get_positions_as_of_date_flask(
     as_of_date: Any
 ) -> pd.DataFrame:
     """Get positions as of a specific date (Flask, cached 5min, user-scoped)."""
-    user_id = get_user_id_flask() or 'anonymous'
+    user_id = get_flask_cache_scope_id()
     return _get_positions_as_of_date_flask_cached(fund, str(as_of_date), user_id=user_id)
 
 
@@ -344,7 +344,7 @@ def get_trade_log_flask(
     limit: int = 1000, fund: Optional[str] = None, _cache_version: Optional[str] = None
 ) -> pd.DataFrame:
     """Get trade log for Flask (cached forever, with cache_version support)."""
-    user_id = get_user_id_flask() or "anonymous"
+    user_id = get_flask_cache_scope_id()
     return _get_trade_log_flask_cached(
         limit=limit, fund=fund, user_id=user_id, _cache_version=_cache_version
     )
@@ -413,7 +413,7 @@ def get_cash_balances_flask(
     fund: Optional[str] = None, _cache_version: Optional[str] = None
 ) -> Dict[str, float]:
     """Get cash balances by currency for Flask (cached 5min, with cache_version support)."""
-    user_id = get_user_id_flask() or "anonymous"
+    user_id = get_flask_cache_scope_id()
     return _get_cash_balances_flask_cached(
         fund=fund, user_id=user_id, _cache_version=_cache_version
     )
@@ -922,9 +922,8 @@ def fetch_dividend_log_flask(days_lookback: int = 365, fund: Optional[str] = Non
     Returns:
         List of dicts containing dividend records with securities(company_name) joined
     """
-    # Get user_id for cache key scoping (prevents cross-user cache hits)
-    # This ensures each user gets their own cached results, preventing RLS bypass
-    user_id = get_user_id_flask() or 'anonymous'
+    # Cache key scoping: authenticated JWT user + effective user (impersonation-safe)
+    user_id = get_flask_cache_scope_id()
     
     # Call the cached function with user_id included in kwargs (so it's in the cache key)
     return _fetch_dividend_log_flask_cached(days_lookback=days_lookback, fund=fund, user_id=user_id)

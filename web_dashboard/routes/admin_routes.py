@@ -7,18 +7,19 @@ Flask routes for admin user management, contributors, and contributor access.
 Migrated from app.py to follow the blueprint pattern.
 """
 
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, session
 import logging
 import os
 import re
 import sys
+import uuid
 from pathlib import Path
 from typing import Optional
 
 # Add parent directory to path to allow importing from root
 sys.path.append(str(Path(__file__).parent.parent))
 
-from auth import require_admin
+from auth import require_admin, require_auth
 from supabase_client import SupabaseClient
 from postgres_client import PostgresClient
 from flask_cache_utils import cache_data
@@ -311,9 +312,13 @@ def users_page():
         
         logger.debug(f"Rendering users page for user: {user_email}")
         
-        return render_template('users.html', 
-                             user_email=user_email,
-                             **nav_context)
+        from flask_auth_utils import can_modify_data_flask
+        return render_template(
+            "users.html",
+            user_email=user_email,
+            can_modify_data=can_modify_data_flask(),
+            **nav_context,
+        )
     except Exception as e:
         logger.error(f"Error rendering users page: {e}", exc_info=True)
         # Fallback with minimal context
@@ -323,9 +328,17 @@ def users_page():
         except Exception:
             # If navigation context also fails, use minimal fallback
             nav_context = {}
-        return render_template('users.html', 
-                             user_email='Admin',
-                             **nav_context)
+        try:
+            from flask_auth_utils import can_modify_data_flask
+            cmd = can_modify_data_flask()
+        except Exception:
+            cmd = False
+        return render_template(
+            "users.html",
+            user_email="Admin",
+            can_modify_data=cmd,
+            **nav_context,
+        )
 
 # User management routes
 @admin_bp.route('/api/admin/users/list')
@@ -346,6 +359,93 @@ def api_admin_users_list():
     except Exception as e:
         logger.error(f"Error in api_admin_users_list: {e}", exc_info=True)
         return jsonify({"error": "Failed to load users", "users": [], "stats": {"total_users": 0, "total_funds": 0, "total_assignments": 0}}), 500
+
+
+def _normalize_target_user_uuid(raw: object) -> Optional[str]:
+    if raw is None:
+        return None
+    try:
+        return str(uuid.UUID(str(raw).strip()))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+@admin_bp.route("/api/admin/impersonate/start", methods=["POST"])
+@require_auth
+def api_admin_impersonate_start():
+    """Full admin only: store impersonation target in Flask session (JWT stays admin)."""
+    try:
+        from flask_auth_utils import (
+            can_modify_data_flask,
+            get_user_id_flask,
+            SESSION_IMPERSONATE_USER_EMAIL,
+            SESSION_IMPERSONATE_USER_ID,
+        )
+
+        if not can_modify_data_flask():
+            return jsonify({"error": "Only full admins can use view-as"}), 403
+
+        payload = request.get_json(silent=True) or {}
+        target = _normalize_target_user_uuid(payload.get("user_id"))
+        if not target:
+            return jsonify({"error": "Valid user_id (UUID) required"}), 400
+
+        auth_id = get_user_id_flask()
+        if auth_id and target == str(auth_id):
+            return jsonify({"error": "Cannot view as yourself"}), 400
+
+        users = _get_cached_users_flask()
+        target_email: Optional[str] = None
+        for row in users:
+            if str(row.get("user_id")) == target:
+                target_email = row.get("email")
+                break
+        if target_email is None:
+            return jsonify({"error": "User not found"}), 404
+
+        session[SESSION_IMPERSONATE_USER_ID] = target
+        session[SESSION_IMPERSONATE_USER_EMAIL] = target_email or ""
+        session.modified = True
+        logger.info(
+            "Admin impersonation start: target=%s actor=%s",
+            target,
+            auth_id,
+        )
+        return jsonify(
+            {
+                "success": True,
+                "impersonate_user_id": target,
+                "impersonate_user_email": target_email,
+            }
+        )
+    except Exception as e:
+        logger.error("api_admin_impersonate_start: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to start view-as"}), 500
+
+
+@admin_bp.route("/api/admin/impersonate/stop", methods=["POST"])
+@require_auth
+def api_admin_impersonate_stop():
+    """Clear impersonation from session."""
+    try:
+        from flask_auth_utils import SESSION_IMPERSONATE_USER_EMAIL, SESSION_IMPERSONATE_USER_ID
+
+        session.pop(SESSION_IMPERSONATE_USER_ID, None)
+        session.pop(SESSION_IMPERSONATE_USER_EMAIL, None)
+        session.modified = True
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error("api_admin_impersonate_stop: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to stop view-as"}), 500
+
+
+@admin_bp.route("/api/admin/impersonate/status", methods=["GET"])
+@require_auth
+def api_admin_impersonate_status():
+    from flask_auth_utils import get_impersonation_banner_context
+
+    return jsonify(get_impersonation_banner_context())
+
 
 @admin_bp.route('/api/admin/users/grant-admin', methods=['POST'])
 @require_admin
