@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portfolio digest</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    header { background: linear-gradient(135deg, #2563eb, #1d4ed8); padding: 20px 24px; border-radius: 12px 12px 0 0; }
+    h1 { margin: 0; font-size: 1.35rem; color: #fff; }
+    .sub { margin: 6px 0 0; font-size: 0.85rem; color: #bfdbfe; }
+    .card { background: #1e293b; padding: 20px 24px; border-radius: 0 0 12px 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }
+    .kpi { background: #334155; padding: 12px; border-radius: 8px; }
+    .kpi label { display: block; font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; }
+    .kpi span { font-size: 1.1rem; font-weight: 600; }
+    table.movers { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 8px; }
+    table.movers th, table.movers td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #334155; }
+    .pos { color: #4ade80; }
+    .neg { color: #f87171; }
+    a { color: #60a5fa; }
+    .actions li { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Portfolio digest</h1>
+      <p class="sub">{{ as_of }} — {{ week_label }}</p>
+    </header>
+    <div class="card">
+      <div class="grid">
+        <div class="kpi">
+          <label>Total value</label>
+          <span>{{ "%.2f"|format(summary.total_value) }} {{ summary.display_currency }}</span>
+        </div>
+        <div class="kpi">
+          <label>Cash</label>
+          <span>{{ "%.2f"|format(summary.cash_balance) }} {{ summary.display_currency }}</span>
+        </div>
+        <div class="kpi">
+          <label>Day Δ</label>
+          <span class="{{ 'pos' if summary.day_change >= 0 else 'neg' }}">{{ "%+.2f"|format(summary.day_change) }} ({{ "%+.2f"|format(summary.day_change_pct) }}%)</span>
+        </div>
+        <div class="kpi">
+          <label>~5d Δ (holdings)</label>
+          <span class="{{ 'pos' if summary.five_day_change >= 0 else 'neg' }}">{{ "%+.2f"|format(summary.five_day_change) }} ({{ "%+.2f"|format(summary.five_day_change_pct) }}%)</span>
+        </div>
+        <div class="kpi">
+          <label>Unrealized P&amp;L</label>
+          <span class="{{ 'pos' if summary.unrealized_pnl >= 0 else 'neg' }}">{{ "%+.2f"|format(summary.unrealized_pnl) }} ({{ "%+.2f"|format(summary.unrealized_pnl_pct) }}%)</span>
+        </div>
+        <div class="kpi">
+          <label>Holdings</label>
+          <span>{{ summary.holdings_count }}</span>
+        </div>
+      </div>
+
+      {% if market_brief and market_brief.headline %}
+      <h2 style="font-size:1rem;margin:24px 0 8px;">Market brief</h2>
+      <p style="margin:0 0 8px;font-weight:600;">{{ market_brief.headline }}</p>
+      {% if market_brief.narrative %}
+      <p style="margin:0;font-size:0.9rem;color:#cbd5e1;line-height:1.5;">{{ market_brief.narrative }}</p>
+      {% endif %}
+      {% endif %}
+
+      {% if gainers or losers %}
+      <h2 style="font-size:1rem;margin:24px 0 8px;">Movers (5d %)</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:24px;">
+        <div style="flex:1;min-width:260px;">
+          <strong>Gainers</strong>
+          <table class="movers">
+            <thead><tr><th>Ticker</th><th>%</th></tr></thead>
+            <tbody>
+              {% for r in gainers %}
+              <tr><td>{{ r.ticker }}</td><td class="pos">{{ "%+.2f"|format(r.five_day_pnl_pct or 0) }}%</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div style="flex:1;min-width:260px;">
+          <strong>Losers</strong>
+          <table class="movers">
+            <thead><tr><th>Ticker</th><th>%</th></tr></thead>
+            <tbody>
+              {% for r in losers %}
+              <tr><td>{{ r.ticker }}</td><td class="neg">{{ "%+.2f"|format(r.five_day_pnl_pct or 0) }}%</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if action_queue %}
+      <h2 style="font-size:1rem;margin:24px 0 8px;">Action queue</h2>
+      <ul class="actions" style="padding-left:18px;">
+        {% for a in action_queue %}
+        <li><strong>{{ a.get('ticker','') }}</strong> — {{ a.get('action','') }} ({{ a.get('overall_signal','') }})</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      <p style="margin-top:24px;font-size:0.8rem;color:#64748b;">Log in to the dashboard for live positions and charts. This page expires with the newsletter issue.</p>
+      {% if dashboard_url %}
+      <p><a href="{{ dashboard_url }}">Open dashboard</a></p>
+      {% endif %}
+      {% if settings_url %}
+      <p><a href="{{ settings_url }}">Manage email digest</a></p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

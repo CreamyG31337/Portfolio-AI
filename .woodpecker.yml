@@ -52,6 +52,9 @@
 # - mailgun_api_key: (optional) Mailgun API key for newsletter webhook verification
 # - mailgun_webhook_signing_key: (optional) Mailgun webhook HMAC signing key
 # - newsletter_email: (optional) Newsletter receiving email (default: ai-research@drifting.space)
+# - mailgun_send_domain: (optional) Verified Mailgun domain for outbound portfolio digest (e.g. mg.example.com)
+# - mailgun_from: (optional) RFC5322 From for outbound digest (e.g. Portfolio <noreply@mg.example.com>)
+# Outbound digest also needs PUBLIC_BASE_URL (see deploy step: derived from APP_DOMAIN when possible)
 # - ollama_base_url: (optional) Ollama API URL (default: http://host.docker.internal:11434)
 # - ollama_model: (optional) Default AI model (default: mistral-nemo:12b)
 # - ollama_enabled: (optional) Enable AI assistant (default: true)
@@ -133,6 +136,10 @@ steps:
         from_secret: mailgun_webhook_signing_key
       NEWSLETTER_EMAIL:
         from_secret: newsletter_email
+      MAILGUN_SEND_DOMAIN:
+        from_secret: mailgun_send_domain
+      MAILGUN_FROM:
+        from_secret: mailgun_from
     commands:
       # Set timezone (Pacific Time - handles PST/PDT automatically)
       - ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -471,6 +478,11 @@ steps:
         [ -n "$MAILGUN_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_API_KEY=\"$MAILGUN_API_KEY\""
         [ -n "$MAILGUN_WEBHOOK_SIGNING_KEY" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_WEBHOOK_SIGNING_KEY=\"$MAILGUN_WEBHOOK_SIGNING_KEY\""
         [ -n "$NEWSLETTER_EMAIL" ] && FLASK_CMD="$FLASK_CMD -e NEWSLETTER_EMAIL=\"$NEWSLETTER_EMAIL\""
+        [ -n "$MAILGUN_SEND_DOMAIN" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_SEND_DOMAIN=\"$MAILGUN_SEND_DOMAIN\""
+        [ -n "$MAILGUN_FROM" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_FROM=\"$MAILGUN_FROM\""
+        if [ -n "$APP_DOMAIN" ]; then
+          FLASK_CMD="$FLASK_CMD -e PUBLIC_BASE_URL=\"https://$APP_DOMAIN\""
+        fi
         
         # Add Ollama settings for Flask
         FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL=\"${OLLAMA_BASE_URL:-http://host.docker.internal:11434}\""

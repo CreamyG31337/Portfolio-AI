@@ -214,39 +214,18 @@ def get_dashboard_summary():
         logger.debug(f"[Dashboard API] Currencies found: {all_currencies}")
         rate_map = fetch_latest_rates_bulk(list(all_currencies), display_currency)
         logger.debug(f"[Dashboard API] Exchange rates fetched: {len(rate_map)} rates")
-        def get_rate(curr): return rate_map.get(str(curr).upper(), 1.0)
-        
-        # Metrics Calculation
-        portfolio_value_no_cash = 0.0
-        total_pnl = 0.0
-        day_pnl = 0.0
-        
-        if not positions_df.empty:
-            rates = positions_df['currency'].fillna('CAD').astype(str).str.upper().map(get_rate)
-            portfolio_value_no_cash = (positions_df['market_value'].fillna(0) * rates).sum()
-            total_pnl = (positions_df['unrealized_pnl'].fillna(0) * rates).sum()
-            
-            if 'daily_pnl' in positions_df.columns:
-                 day_pnl = (positions_df['daily_pnl'].fillna(0) * rates).sum()
-        
-        # Cash
-        total_cash = 0.0
-        for curr, amount in cash_balances.items():
-            if amount > 0:
-                total_cash += amount * get_rate(curr)
-                
-        total_value = portfolio_value_no_cash + total_cash
-        
-        # Percentages
-        day_pnl_pct = 0.0
-        if (total_value - day_pnl) > 0:
-            day_pnl_pct = (day_pnl / (total_value - day_pnl)) * 100
-            
-        unrealized_pnl_pct = 0.0
-        cost_basis = portfolio_value_no_cash - total_pnl
-        if cost_basis > 0:
-            unrealized_pnl_pct = (total_pnl / cost_basis) * 100
-            
+
+        from portfolio_summary_math import compute_core_summary_metrics
+
+        core = compute_core_summary_metrics(positions_df, cash_balances, rate_map, display_currency)
+        total_value = core["total_value"]
+        total_cash = core["cash_balance"]
+        day_pnl = core["day_change"]
+        day_pnl_pct = core["day_change_pct"]
+        total_pnl = core["unrealized_pnl"]
+        unrealized_pnl_pct = core["unrealized_pnl_pct"]
+        portfolio_value_no_cash = total_value - total_cash
+
         # Thesis Data
         logger.debug(f"[Dashboard API] Fetching thesis data for fund={fund}")
         thesis = get_fund_thesis_data(fund) if fund else None

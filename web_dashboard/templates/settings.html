@@ -119,6 +119,41 @@
         {% endwith %}
     </div>
 
+    <!-- Email digest (portfolio) -->
+    <div
+        class="card shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">
+        <h2 class="text-2xl font-bold text-text-primary mb-4">Email digest</h2>
+        <p class="text-text-secondary mb-4">Optional portfolio summary by email. Preferences are stored in your
+            newsletter subscription row, not the general preferences JSON.</p>
+        <div id="newsletter-unavailable" class="hidden text-sm text-text-secondary mb-4">Portfolio digest is not
+            available on this deployment (missing newsletter type in the database).</div>
+        <div id="newsletter-form" class="hidden space-y-4">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="newsletter-active"
+                    class="rounded border-border bg-dashboard-background text-accent focus:ring-accent" />
+                <span class="text-sm text-text-primary">Subscribe to portfolio digest emails</span>
+            </label>
+            <div>
+                <label for="newsletter-cadence" class="block text-sm font-medium text-text-secondary mb-2">Cadence</label>
+                <select id="newsletter-cadence" class="form-input-theme">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="biweekly">Biweekly</option>
+                    <option value="monthly">Monthly</option>
+                </select>
+            </div>
+            <button type="button" id="newsletter-save-btn" class="btn-outline">
+                <i class="fas fa-save mr-2"></i>Save digest preferences
+            </button>
+        </div>
+        {% with id='newsletter-success', type='success', message='Digest preferences saved.', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
+        {% with id='newsletter-error', type='error', message='Failed to save digest preferences.', hidden=True %}
+            {% include "components/_alert.html" %}
+        {% endwith %}
+    </div>
+
     <!-- Security Settings -->
     <div
         class="card shadow-lg p-6 mb-6 hover:-translate-y-0.5 transition-transform duration-200">

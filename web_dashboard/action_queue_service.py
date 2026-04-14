@@ -93,9 +93,15 @@ def build_action_queue_items(
     supabase_client: SupabaseClient,
     fund: str | None,
     limit: int,
+    positions_df: Any | None = None,
 ) -> list[dict[str, Any]]:
-    """Rules-based queue (same semantics as dashboard get_action_queue)."""
-    positions_df = get_current_positions(fund)
+    """Rules-based queue (same semantics as dashboard get_action_queue).
+
+    If ``positions_df`` is provided (e.g. outbound digest service-role path), it is used
+    instead of loading via Flask-scoped ``get_current_positions``.
+    """
+    if positions_df is None:
+        positions_df = get_current_positions(fund)
     held_tickers: set[str] = set()
     if not positions_df.empty and "ticker" in positions_df.columns:
         held_tickers = set(

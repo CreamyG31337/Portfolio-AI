@@ -4372,3 +4372,107 @@ def api_admin_update_contributor(contributor_id):
     except Exception as e:
         logger.error(f"Error updating contributor: {e}", exc_info=True)
         return jsonify({"error": f"Failed to update contributor: {str(e)}"}), 500
+
+
+def _digest_target_user_allowed(user_id: str) -> bool:
+    try:
+        users = _get_cached_users_flask()
+        return any(str(u.get("user_id")) == str(user_id) for u in (users or []))
+    except Exception:
+        return False
+
+
+@admin_bp.route("/api/admin/outbound-newsletter/preview", methods=["POST"])
+@require_admin
+def api_admin_outbound_newsletter_preview():
+    """Build thin email HTML + preview digest URL (no Mailgun). Full admin only."""
+    from flask_auth_utils import can_modify_data_flask, get_user_id_flask
+    from digest_token import sign_preview_token
+    from outbound_digest_builder import build_digest_payload
+
+    if not can_modify_data_flask():
+        return jsonify({"error": "Full admin privileges required"}), 403
+
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    if not user_id:
+        return jsonify({"error": "user_id is required"}), 400
+    if not _digest_target_user_allowed(str(user_id)):
+        return jsonify({"error": "User not found or not visible to admin"}), 404
+
+    admin_id = get_user_id_flask()
+    if not admin_id:
+        return jsonify({"error": "Could not resolve admin user"}), 500
+
+    preview_tok = sign_preview_token(str(user_id), str(admin_id))
+    base = (os.getenv("PUBLIC_BASE_URL") or os.getenv("FLASK_PUBLIC_URL") or "").rstrip("/")
+    preview_digest_url = (
+        f"{base}/digest/preview?token={preview_tok}" if base else f"/digest/preview?token={preview_tok}"
+    )
+
+    payload = build_digest_payload(str(user_id), preview=True)
+    dashboard_url = f"{base}/dashboard" if base else "/dashboard"
+    manage_url = f"{base}/settings" if base else None
+    thin_html = render_template(
+        "email/digest_thin.html",
+        as_of=payload["as_of"],
+        week_label=payload["week_label"],
+        digest_url=preview_digest_url,
+        dashboard_url=dashboard_url,
+        manage_url=manage_url,
+        market_brief=payload.get("market_brief"),
+        kpi_value_url=None,
+        kpi_week_url=None,
+    )
+    return jsonify(
+        {
+            "success": True,
+            "email_html": thin_html,
+            "preview_digest_url": preview_digest_url,
+        }
+    )
+
+
+@admin_bp.route("/api/admin/outbound-newsletter/send", methods=["POST"])
+@require_admin
+def api_admin_outbound_newsletter_send():
+    """Create issue row and send Mailgun digest to target user (or admin inbox if send_to_self)."""
+    from flask_auth_utils import can_modify_data_flask, get_user_email_flask
+    from outbound_newsletter_pipeline import create_issue, send_digest_for_user, update_issue_status
+
+    if not can_modify_data_flask():
+        return jsonify({"error": "Full admin privileges required"}), 403
+
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    if not user_id:
+        return jsonify({"error": "user_id is required"}), 400
+    if not _digest_target_user_allowed(str(user_id)):
+        return jsonify({"error": "User not found or not visible to admin"}), 404
+
+    send_to_self = bool(data.get("send_to_self"))
+    override_email = None
+    if send_to_self:
+        override_email = get_user_email_flask()
+        if not override_email:
+            return jsonify({"error": "Could not resolve admin email for send_to_self"}), 400
+
+    meta_note = data.get("note")
+    issue = create_issue(
+        "admin_manual",
+        ttl_days=7,
+        metadata={"note": meta_note} if meta_note else {},
+    )
+    issue_id = str(issue["id"])
+    try:
+        send_digest_for_user(issue_id, str(user_id), to_email=override_email)
+        update_issue_status(issue_id, "completed")
+    except ValueError as e:
+        update_issue_status(issue_id, "failed")
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("outbound newsletter send failed: %s", e, exc_info=True)
+        update_issue_status(issue_id, "failed")
+        return jsonify({"error": "Send failed — check Mailgun configuration and logs."}), 500
+
+    return jsonify({"success": True, "issue_id": issue_id})

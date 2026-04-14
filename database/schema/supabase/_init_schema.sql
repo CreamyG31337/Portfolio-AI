@@ -38,6 +38,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/job_executions.sql
 \i tables/job_retry_queue.sql
 \i tables/job_steps.sql
+\i tables/outbound_newsletter_types.sql
+\i tables/outbound_newsletter_issues.sql
+\i tables/outbound_newsletter_sends.sql
 \i tables/performance_metrics.sql
 \i tables/politicians.sql
 \i tables/portfolio_positions.sql
@@ -49,6 +52,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/trade_log.sql
 \i tables/user_funds.sql
 \i tables/user_profiles.sql
+\i tables/user_newsletter_subscriptions.sql
 \i tables/watched_tickers.sql
 \i tables/watched_tickers_v2.sql
 
@@ -141,6 +145,10 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/funds_Users can view assigned funds.sql
 \i policies/job_executions_Allow authenticated users to read job executions.sql
 \i policies/job_executions_Allow service role to write job executions.sql
+\i policies/outbound_newsletter_issues_Service role full access.sql
+\i policies/outbound_newsletter_sends_Service role full access.sql
+\i policies/outbound_newsletter_types_Authenticated can read active types.sql
+\i policies/outbound_newsletter_types_Service role full access.sql
 \i policies/performance_metrics_Admins can view all performance metrics.sql
 \i policies/performance_metrics_Service role full access to performance_metrics.sql
 \i policies/performance_metrics_Users can view performance metrics for their funds.sql
@@ -167,6 +175,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/user_funds_Users can insert their own fund assignments.sql
 \i policies/user_funds_Users can update their own fund assignments.sql
 \i policies/user_funds_Users can view their own fund assignments.sql
+\i policies/user_newsletter_subscriptions_Service role full access.sql
+\i policies/user_newsletter_subscriptions_Users manage own.sql
 \i policies/user_profiles_Service role full access to user_profiles.sql
 \i policies/user_profiles_Users can insert their own profile.sql
 \i policies/user_profiles_Users can update their own profile.sql

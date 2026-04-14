@@ -134,6 +134,7 @@ let unregisteredContributors: UnregisteredContributor[] = [];
 let accessRecords: AccessRecord[] = [];
 let canModify = true; // Will be updated from API
 let currentUserEmail = '';
+let lastPreviewDigestUrl = '';
 
 // DOM Elements
 const elements: UsersDOMElements = {
@@ -233,6 +234,13 @@ document.addEventListener('DOMContentLoaded', (): void => {
     if (elements.revokeAccessBtn) {
         elements.revokeAccessBtn.addEventListener('click', handleRevokeAccess);
     }
+
+    const digestPreviewBtn = document.getElementById('digest-preview-btn');
+    const digestOpenBtn = document.getElementById('digest-open-btn');
+    const digestSendBtn = document.getElementById('digest-send-btn');
+    if (digestPreviewBtn) digestPreviewBtn.addEventListener('click', handleDigestPreview);
+    if (digestOpenBtn) digestOpenBtn.addEventListener('click', handleDigestOpen);
+    if (digestSendBtn) digestSendBtn.addEventListener('click', handleDigestSend);
 });
 
 // Fetch Users
@@ -264,6 +272,7 @@ async function fetchUsers(): Promise<void> {
 
         // Update contributor select for email update
         updateContributorSelect();
+        updateDigestUserSelect();
 
         // Update user selects for access management
         updateUserSelects();
@@ -1040,6 +1049,115 @@ function updateUserSelects(): void {
     }
     if (elements.revokeUserSelect) {
         elements.revokeUserSelect.innerHTML = html;
+    }
+}
+
+function updateDigestUserSelect(): void {
+    const sel = document.getElementById('digest-user-select') as HTMLSelectElement | null;
+    if (!sel) return;
+    const options: string[] = ['<option value="">-- Select user --</option>'];
+    users.forEach(u => {
+        const id = u.user_id || '';
+        const em = u.email || '';
+        if (id && em) {
+            options.push(
+                `<option value="${escapeHtmlForUsers(id)}">${escapeHtmlForUsers(em)}</option>`
+            );
+        }
+    });
+    sel.innerHTML = options.join('');
+}
+
+function absolutizeDigestUrl(url: string): string {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (url.startsWith('/')) return `${window.location.origin}${url}`;
+    return `${window.location.origin}/${url}`;
+}
+
+async function handleDigestPreview(): Promise<void> {
+    const sel = document.getElementById('digest-user-select') as HTMLSelectElement | null;
+    const iframe = document.getElementById('digest-email-iframe') as HTMLIFrameElement | null;
+    const resultEl = document.getElementById('digest-result');
+    if (!sel || !sel.value) {
+        showToast('Select a user', 'warning');
+        return;
+    }
+    if (resultEl) {
+        resultEl.classList.add('hidden');
+        resultEl.textContent = '';
+    }
+    try {
+        const response = await fetch('/api/admin/outbound-newsletter/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({ user_id: sel.value }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error((data as ApiResponse).error || `HTTP ${response.status}`);
+        }
+        lastPreviewDigestUrl = String((data as { preview_digest_url?: string }).preview_digest_url || '');
+        const html = String((data as { email_html?: string }).email_html || '');
+        if (iframe) iframe.srcdoc = html;
+        if (resultEl) {
+            resultEl.className = 'mt-4 text-sm text-theme-success-text';
+            resultEl.textContent = 'Preview ready. Use Open full digest for the hosted page.';
+            resultEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        if (resultEl) {
+            resultEl.className = 'mt-4 text-sm text-theme-error-text';
+            resultEl.textContent = err instanceof Error ? err.message : String(err);
+            resultEl.classList.remove('hidden');
+        }
+        showToast('Preview failed', 'error');
+    }
+}
+
+function handleDigestOpen(): void {
+    if (!lastPreviewDigestUrl) {
+        showToast('Run Preview first', 'warning');
+        return;
+    }
+    window.open(absolutizeDigestUrl(lastPreviewDigestUrl), '_blank', 'noopener,noreferrer');
+}
+
+async function handleDigestSend(): Promise<void> {
+    const sel = document.getElementById('digest-user-select') as HTMLSelectElement | null;
+    const selfCb = document.getElementById('digest-send-to-self') as HTMLInputElement | null;
+    const resultEl = document.getElementById('digest-result');
+    if (!sel || !sel.value) {
+        showToast('Select a user', 'warning');
+        return;
+    }
+    if (!window.confirm('Send portfolio digest email for this user?')) return;
+    try {
+        const response = await fetch('/api/admin/outbound-newsletter/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({
+                user_id: sel.value,
+                send_to_self: Boolean(selfCb?.checked),
+            }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error((data as ApiResponse).error || `HTTP ${response.status}`);
+        }
+        if (resultEl) {
+            resultEl.className = 'mt-4 text-sm text-theme-success-text';
+            resultEl.textContent = `Sent. Issue: ${(data as { issue_id?: string }).issue_id || 'ok'}`;
+            resultEl.classList.remove('hidden');
+        }
+        showToast('Digest sent', 'success');
+    } catch (err) {
+        if (resultEl) {
+            resultEl.className = 'mt-4 text-sm text-theme-error-text';
+            resultEl.textContent = err instanceof Error ? err.message : String(err);
+            resultEl.classList.remove('hidden');
+        }
+        showToast('Send failed', 'error');
     }
 }
 

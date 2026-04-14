@@ -732,6 +732,13 @@ try:
 except Exception as e:
     logger.error(f"Failed to register AI Blueprint: {e}", exc_info=True)
 
+try:
+    from routes.digest_routes import digest_bp
+    app.register_blueprint(digest_bp)
+    logger.info("Registered Digest Blueprint")
+except Exception as e:
+    logger.error(f"Failed to register Digest Blueprint: {e}", exc_info=True)
+
 # Auto-start scheduler on module load (not waiting for first request)
 def _start_scheduler_background():
     """Start scheduler in background thread on Flask app initialization."""
@@ -3161,6 +3168,110 @@ def get_preferences():
         return jsonify({"success": True, "preferences": preferences})
     except Exception as e:
         logger.error(f"Error getting preferences: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
+
+@app.route("/api/settings/newsletter-subscription", methods=["GET"])
+@require_auth
+def get_newsletter_subscription():
+    """Portfolio digest opt-in: reads user_newsletter_subscriptions (not preferences JSON)."""
+    try:
+        from flask_data_utils import get_supabase_client_flask
+        from flask_auth_utils import get_user_id_flask
+
+        uid = get_user_id_flask()
+        client = get_supabase_client_flask()
+        if not client:
+            return jsonify({"success": False, "error": "Database client unavailable"}), 503
+
+        nt = (
+            client.supabase.table("outbound_newsletter_types")
+            .select("id,slug,display_name")
+            .eq("slug", "portfolio_digest")
+            .eq("is_active", True)
+            .limit(1)
+            .execute()
+        )
+        if not nt.data:
+            return jsonify({"success": True, "newsletter_type": None, "subscription": None})
+
+        type_row = nt.data[0]
+        tid = type_row["id"]
+        subs = (
+            client.supabase.table("user_newsletter_subscriptions")
+            .select("*")
+            .eq("user_id", uid)
+            .eq("newsletter_type_id", tid)
+            .limit(1)
+            .execute()
+        )
+        sub = subs.data[0] if subs.data else None
+        return jsonify({"success": True, "newsletter_type": type_row, "subscription": sub})
+    except Exception as e:
+        logger.error(f"Error getting newsletter subscription: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
+
+@app.route("/api/settings/newsletter-subscription", methods=["POST"])
+@require_auth
+def update_newsletter_subscription():
+    """Upsert portfolio_digest subscription row (cadence + is_active)."""
+    try:
+        from datetime import datetime, timezone
+
+        from flask_data_utils import get_supabase_client_flask
+        from flask_auth_utils import get_user_id_flask
+
+        uid = get_user_id_flask()
+        client = get_supabase_client_flask()
+        if not client:
+            return jsonify({"success": False, "error": "Database client unavailable"}), 503
+
+        payload = request.get_json(silent=True) or {}
+        is_active = bool(payload.get("is_active", True))
+        cadence = str(payload.get("cadence", "weekly")).lower()
+        if cadence not in ("daily", "weekly", "biweekly", "monthly"):
+            return jsonify({"success": False, "error": "Invalid cadence"}), 400
+
+        nt = (
+            client.supabase.table("outbound_newsletter_types")
+            .select("id")
+            .eq("slug", "portfolio_digest")
+            .eq("is_active", True)
+            .limit(1)
+            .execute()
+        )
+        if not nt.data:
+            return jsonify({"success": False, "error": "Newsletter type not available"}), 400
+        tid = nt.data[0]["id"]
+
+        existing = (
+            client.supabase.table("user_newsletter_subscriptions")
+            .select("id")
+            .eq("user_id", uid)
+            .eq("newsletter_type_id", tid)
+            .limit(1)
+            .execute()
+        )
+        now = datetime.now(timezone.utc).isoformat()
+        if existing.data:
+            rid = existing.data[0]["id"]
+            client.supabase.table("user_newsletter_subscriptions").update(
+                {"is_active": is_active, "cadence": cadence, "updated_at": now}
+            ).eq("id", rid).execute()
+        else:
+            client.supabase.table("user_newsletter_subscriptions").insert(
+                {
+                    "user_id": uid,
+                    "newsletter_type_id": tid,
+                    "is_active": is_active,
+                    "cadence": cadence,
+                }
+            ).execute()
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error updating newsletter subscription: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/settings/selected-fund', methods=['POST'])

@@ -486,6 +486,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '📰'
     },
+    'outbound_portfolio_digest': {
+        'name': 'Outbound portfolio digest',
+        'description': 'Send portfolio digest via Mailgun to subscribed users (due by cadence). Requires MAILGUN_SEND_DOMAIN and MAILGUN_API_KEY.',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': False,
+        'icon': '📧',
+        'cron_triggers': [
+            {'hour': 12, 'minute': 0, 'timezone': 'America/New_York'}
+        ],
+    },
     'congress_trade_returns': {
         'name': 'Congress Trade Returns',
         'description': 'Compute % price change for each congress trade using yfinance adjusted close. Updates current prices daily.',
@@ -646,6 +656,9 @@ from scheduler.jobs_rebalance import (
 # Import newsletter AI processing job
 from scheduler.jobs_newsletter import newsletter_ai_processing_job
 
+# Outbound portfolio digest (Mailgun)
+from scheduler.jobs_outbound_newsletter import outbound_portfolio_digest_job
+
 # Import shared utilities
 from scheduler.jobs_common import calculate_relevance_score
 
@@ -704,6 +717,8 @@ __all__ = [
     'rebalance_recommendation_rrsp_job',
     # Newsletter AI processing job
     'newsletter_ai_processing_job',
+    # Outbound portfolio digest
+    'outbound_portfolio_digest_job',
     # Shared utilities
     'calculate_relevance_score',
     # Registry functions (defined in this file)
@@ -1816,3 +1831,23 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: newsletter_ai_processing (hourly safety net)")
+
+    if AVAILABLE_JOBS.get("outbound_portfolio_digest", {}).get("enabled_by_default", False):
+        ot = AVAILABLE_JOBS["outbound_portfolio_digest"].get(
+            "cron_triggers", [{"hour": 12, "minute": 0, "timezone": "America/New_York"}]
+        )[0]
+        scheduler.add_job(
+            outbound_portfolio_digest_job,
+            trigger=CronTrigger(
+                hour=ot.get("hour", 12),
+                minute=ot.get("minute", 0),
+                timezone=ot.get("timezone", "America/New_York"),
+            ),
+            id="outbound_portfolio_digest",
+            name=f"{get_job_icon('outbound_portfolio_digest')} Outbound portfolio digest",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered job: outbound_portfolio_digest (scheduled send)")

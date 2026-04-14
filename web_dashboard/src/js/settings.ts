@@ -22,6 +22,13 @@ interface ThemeRequest {
     theme: string;
 }
 
+interface NewsletterSubscriptionResponse {
+    success?: boolean;
+    error?: string;
+    newsletter_type?: { id: string; slug: string; display_name?: string } | null;
+    subscription?: { is_active: boolean; cadence: string } | null;
+}
+
 /**
  * Show success message for a given element ID
  * @param elementId - The ID of the element to show
@@ -352,6 +359,8 @@ document.addEventListener('DOMContentLoaded', function (): void {
         });
     }
 
+    void initNewsletterDigestPreferences();
+
     // Password Toggle Handler
     const toggleButtons = document.querySelectorAll('[data-toggle-password]');
     toggleButtons.forEach(button => {
@@ -379,6 +388,70 @@ document.addEventListener('DOMContentLoaded', function (): void {
         });
     });
 });
+
+async function initNewsletterDigestPreferences(): Promise<void> {
+    const form = document.getElementById('newsletter-form');
+    const unavail = document.getElementById('newsletter-unavailable');
+    const activeCb = document.getElementById('newsletter-active') as HTMLInputElement | null;
+    const cadenceSel = document.getElementById('newsletter-cadence') as HTMLSelectElement | null;
+    const saveBtn = document.getElementById('newsletter-save-btn');
+    if (!form || !unavail || !activeCb || !cadenceSel || !saveBtn) return;
+
+    try {
+        const response = await fetch('/api/settings/newsletter-subscription');
+        const data: NewsletterSubscriptionResponse = await response.json();
+        if (!response.ok || !data.success) {
+            unavail.textContent = data.error || 'Could not load digest preferences.';
+            unavail.classList.remove('hidden');
+            return;
+        }
+        if (!data.newsletter_type) {
+            unavail.classList.remove('hidden');
+            return;
+        }
+        form.classList.remove('hidden');
+        const sub = data.subscription;
+        activeCb.checked = Boolean(sub?.is_active);
+        const cad = (sub?.cadence || 'weekly').toLowerCase();
+        if (['daily', 'weekly', 'biweekly', 'monthly'].includes(cad)) {
+            cadenceSel.value = cad;
+        }
+
+        saveBtn.addEventListener('click', async (): Promise<void> => {
+            try {
+                const res = await fetch('/api/settings/newsletter-subscription', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                    body: JSON.stringify({
+                        is_active: activeCb.checked,
+                        cadence: cadenceSel.value,
+                    }),
+                });
+                const out: NewsletterSubscriptionResponse = await res.json().catch(() => ({}));
+                if (!res.ok || !out.success) {
+                    throw new Error(out.error || `HTTP ${res.status}`);
+                }
+                const okEl = document.getElementById('newsletter-success');
+                if (okEl) {
+                    okEl.classList.remove('hidden');
+                    setTimeout(() => okEl.classList.add('hidden'), 3000);
+                }
+            } catch (e) {
+                const errEl = document.getElementById('newsletter-error');
+                if (errEl) {
+                    errEl.textContent =
+                        (e instanceof Error ? e.message : 'Failed to save digest preferences.');
+                    errEl.classList.remove('hidden');
+                    setTimeout(() => errEl.classList.add('hidden'), 5000);
+                }
+            }
+        });
+    } catch (e) {
+        unavail.textContent =
+            e instanceof Error ? e.message : 'Could not load digest preferences.';
+        unavail.classList.remove('hidden');
+    }
+}
 
 function updateTimezonePreview(): void {
     const tzSelect = document.getElementById('timezone-select') as HTMLSelectElement | null;

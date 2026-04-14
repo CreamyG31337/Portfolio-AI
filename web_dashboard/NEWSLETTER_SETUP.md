@@ -52,6 +52,39 @@ Add these secrets to Woodpecker:
 
 These will be mapped to environment variables in your deployment config.
 
+### Outbound portfolio digest (per-user email)
+
+Sends a thin Mailgun email plus an expiring hosted digest (`/digest/view`). Separate from the **inbound** research newsletter pipeline.
+
+**Supabase:** apply schema under `database/schema/supabase/` for `outbound_newsletter_*` and `user_newsletter_subscriptions` (seed type `portfolio_digest`).
+
+**Environment variables** (add to `web_dashboard/.env` or deployment):
+
+```bash
+# Same API key as inbound is fine if your Mailgun account allows sending
+MAILGUN_API_KEY=...
+# Verified Mailgun domain for sending (e.g. mg.yourdomain.com)
+MAILGUN_SEND_DOMAIN=mg.yourdomain.com
+# RFC5322 From header
+MAILGUN_FROM=Portfolio <noreply@mg.yourdomain.com>
+# Optional EU API: https://api.eu.mailgun.net/v3
+# MAILGUN_API_BASE=https://api.eu.mailgun.net/v3
+
+# Public site URL for links in email (digest, KPI images, settings)
+PUBLIC_BASE_URL=https://your-app-domain.com
+# Optional subject override
+# OUTBOUND_DIGEST_SUBJECT=Your portfolio digest
+
+# Digest tokens use the same secret as Flask sessions
+FLASK_SECRET_KEY=...
+```
+
+**Woodpecker:** you can reuse `mailgun_api_key`. Add optional secrets `mailgun_send_domain` and `mailgun_from` if you want them injected explicitly; the deploy step can also set `PUBLIC_BASE_URL` from `APP_DOMAIN` (see pipeline comments).
+
+**Scheduler:** enable job `outbound_portfolio_digest` in the admin scheduler UI (off by default). It runs due sends per `user_newsletter_subscriptions` cadence when Mailgun env vars are set.
+
+**User opt-in:** Settings page stores preferences only in `user_newsletter_subscriptions`, not `user_profiles.preferences`.
+
 ## Features
 
 ✅ Mailgun webhook integration with HMAC-SHA256 signature verification
