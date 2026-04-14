@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from flask import render_template
+from flask import has_app_context, render_template
 
 from digest_token import sign_digest_view_token
 from mailgun_outbound import send_mailgun_message
@@ -23,6 +23,17 @@ logger = logging.getLogger(__name__)
 
 def _public_base_url() -> str:
     return (os.getenv("PUBLIC_BASE_URL") or os.getenv("FLASK_PUBLIC_URL") or "").rstrip("/")
+
+
+def _render_digest_thin_email(**template_vars: Any) -> str:
+    """Jinja ``render_template`` requires a Flask application context (scheduler has none)."""
+    if has_app_context():
+        return render_template("email/digest_thin.html", **template_vars)
+    # Lazy import avoids circular import while ``app`` module is still loading.
+    from app import app as flask_app
+
+    with flask_app.app_context():
+        return render_template("email/digest_thin.html", **template_vars)
 
 
 def _parse_ts(value: Any) -> Optional[datetime]:
@@ -98,8 +109,7 @@ def send_digest_for_user(
     kpi_value_url = f"{base}/digest/kpi.png?token={token}&kind=value" if base else None
     kpi_week_url = f"{base}/digest/kpi.png?token={token}&kind=week" if base else None
     manage_url = f"{base}/settings" if base else None
-    thin_html = render_template(
-        "email/digest_thin.html",
+    thin_html = _render_digest_thin_email(
         as_of=payload["as_of"],
         week_label=payload["week_label"],
         digest_url=digest_url if base else None,

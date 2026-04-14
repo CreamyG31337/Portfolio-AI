@@ -139,3 +139,24 @@ def test_mailgun_send_posts_multipart():
     args, kwargs = post.call_args
     assert "mg.example.com" in args[0]
     assert kwargs.get("auth") == ("api", "key")
+
+
+def test_render_digest_thin_email_without_flask_context(app):
+    """Background jobs must render Jinja without an active app context (see scheduler)."""
+    from flask import has_app_context
+
+    from outbound_newsletter_pipeline import _render_digest_thin_email
+
+    assert not has_app_context()
+    html = _render_digest_thin_email(
+        as_of="2026-01-01",
+        week_label="5 trading days",
+        digest_url="https://example.com/digest",
+        dashboard_url="https://example.com/dashboard",
+        manage_url="https://example.com/settings",
+        market_brief=None,
+        kpi_value_url=None,
+        kpi_week_url=None,
+    )
+    assert "Portfolio digest" in html
+    assert "2026-01-01" in html
