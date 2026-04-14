@@ -54,6 +54,18 @@ def _is_class_share_without_exchange(ticker: str) -> bool:
     return bool(re.match(r"^[A-Z0-9]+\.[A-Z]$", ticker_upper))
 
 
+def _class_share_with_tsx_suffix(ticker: str) -> Optional[str]:
+    """Convert class-share ticker to Yahoo/Parqet TSX style when applicable.
+
+    Example: TECK.B -> TECK-B.TO
+    """
+    ticker_upper = ticker.upper().strip()
+    match = re.match(r"^([A-Z0-9]+)\.([A-Z])$", ticker_upper)
+    if not match:
+        return None
+    return f"{match.group(1)}-{match.group(2)}.TO"
+
+
 def get_ticker_logo_url(
     ticker: str,
     use_alt: bool = False,
@@ -110,13 +122,19 @@ def get_ticker_logo_url(
         if domain:
             return f"https://unavatar.io/{domain}?fallback=false"
 
+    # For class-share symbols without exchange suffix, prefer TSX style variant
+    # that has better logo coverage in Parqet (e.g., TECK.B -> TECK-B.TO).
+    tsx_class_share = _class_share_with_tsx_suffix(ticker)
+    if tsx_class_share:
+        ticker = tsx_class_share
+
     # Clean ticker: remove spaces, convert class shares dots to hyphens
     try:
         from utils.ticker_utils import normalize_ticker_for_yahoo
         ticker = normalize_ticker_for_yahoo(ticker)
     except ImportError:
         pass
-        
+
     clean_ticker = ticker.upper().strip().replace(" ", "")
 
     # Parqet requires full ticker with suffix for Canadian exchanges (DRX.TO)
