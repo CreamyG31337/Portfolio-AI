@@ -28,12 +28,12 @@ def test_sanitize_drops_zero_volume_rows() -> None:
             "High": [10.5, 10.2, 10.1],
             "Low": [9.9, 9.9, 9.9],
             "Close": [10.2, 10.1, 10.05],
-            "Volume": [100, 0, 200],
+            "Volume": [5000, 0, 6000],
         }
     )
     out = mod.sanitize_yahoo_continuous_futures_df(df, "SI=F", "Silver")
     assert len(out) == 2
-    assert list(out["Volume"]) == [100, 200]
+    assert list(out["Volume"]) == [5000, 6000]
 
 
 def test_sanitize_interpolates_zero_range_interior_run() -> None:
@@ -48,7 +48,7 @@ def test_sanitize_interpolates_zero_range_interior_run() -> None:
             "High": [30.5, 30.388, 30.95, 30.8],
             "Low": [29.85, 30.388, 29.9, 30.5],
             "Close": [30.0, 30.388, 30.111, 30.7],
-            "Volume": [12, 55215, 19729, 2230],
+            "Volume": [15000, 55215, 19729, 2230],
         }
     )
     out = mod.sanitize_yahoo_continuous_futures_df(df, "SI=F", "Silver")
@@ -66,12 +66,30 @@ def test_sanitize_repairs_si_out_of_band_close() -> None:
             "High": [50.6, 4000.0, 4080.0, 50.2],
             "Low": [50.6, 4000.0, 4080.0, 50.2],
             "Close": [50.6, 4000.0, 4080.0, 50.2],
-            "Volume": [100, 100, 100, 100],
+            "Volume": [8000, 8000, 8000, 8000],
         }
     )
     out = mod.sanitize_yahoo_continuous_futures_df(df, "SI=F", "Silver")
     assert float(out.iloc[1]["Close"]) < 200
     assert float(out.iloc[2]["Close"]) < 200
+
+
+def test_sanitize_drops_cl_low_volume_spike_bar() -> None:
+    """Rows below the CL=F volume floor are dropped (defense in depth for corrupt cached bars)."""
+    mod = _load_module()
+    df = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2025-04-08", "2025-04-09", "2025-04-10"]),
+            "Open": [61.0, 29.35, 62.7],
+            "High": [61.75, 30.323, 63.34],
+            "Low": [57.88, 29.255, 58.76],
+            "Close": [59.58, 30.323, 60.07],
+            "Volume": [557655, 137, 391826],
+        }
+    )
+    out = mod.sanitize_yahoo_continuous_futures_df(df, "CL=F", "Crude Oil")
+    assert len(out) == 2
+    assert "2025-04-09" not in out["Date"].dt.strftime("%Y-%m-%d").tolist()
 
 
 def test_non_futures_passthrough() -> None:

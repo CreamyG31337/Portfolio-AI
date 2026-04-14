@@ -868,19 +868,34 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
                 : basicInfo.logo_url.replace('size=64', 'size=256');
 
             // Build fallback chain depending on logo source:
-            //   Alt (Clearbit)  -> Parqet -> Yahoo -> placeholder
-            //   Default (Parqet) -> Yahoo -> placeholder
-            const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+            //   Alt (Clearbit)  -> Parqet candidates -> Yahoo candidates -> placeholder
+            //   Default (Parqet) -> Yahoo candidates -> placeholder
+            const cleanTicker = ticker.replace(/\s+/g, '').toUpperCase();
+            const baseNoSuffix = cleanTicker.replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+            const classShareMatch = baseNoSuffix.match(/^([A-Z0-9]+)\.([A-Z])$/);
+            const normalizedTicker = classShareMatch
+                ? `${classShareMatch[1]}-${classShareMatch[2]}`
+                : baseNoSuffix;
+
+            // Include likely TSX variant for class-share tickers without explicit suffix (e.g. TECK.B -> TECK-B.TO)
+            const parqetCandidates = [normalizedTicker];
+            if (classShareMatch && !cleanTicker.match(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i)) {
+                parqetCandidates.push(`${normalizedTicker}.TO`);
+            }
+
             const fallbackUrls: string[] = [];
             if (isAltLogo) {
-                // If Clearbit fails, try Parqet as next fallback
+                for (const candidate of parqetCandidates) {
+                    fallbackUrls.push(
+                        `https://assets.parqet.com/logos/symbol/${candidate}?format=png&size=256`
+                    );
+                }
+            }
+            for (const candidate of parqetCandidates) {
                 fallbackUrls.push(
-                    `https://assets.parqet.com/logos/symbol/${cleanTicker}?format=png&size=256`
+                    `https://s.yimg.com/cv/apiv2/default/images/logos/${candidate}.png`
                 );
             }
-            fallbackUrls.push(
-                `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`
-            );
 
             let fallbackIndex = 0;
             tickerLogo.onerror = function () {
