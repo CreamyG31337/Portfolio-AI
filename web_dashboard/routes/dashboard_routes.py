@@ -1262,8 +1262,12 @@ def get_recent_activity():
                 logger.warning(f"Error fetching logo URLs: {e}")
         
         def infer_action(reason):
-            """Infer action type from reason field (matching Streamlit logic)"""
-            return infer_trade_action(reason, default='BUY')
+            """Infer activity action label from reason field for dashboard UI."""
+            action = infer_trade_action(reason, default='BUY')
+            # The dashboard activity table renders dividend reinvestment entries as DRIP.
+            if action == "DIVIDEND":
+                return "DRIP"
+            return action
         
         def calculate_display_amount(row, action):
             """Calculate display amount: P&L for sells, purchase amount for buys/drips"""

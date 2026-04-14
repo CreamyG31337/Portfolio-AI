@@ -3,6 +3,7 @@
 from datetime import date, datetime, UTC
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 
@@ -116,3 +117,43 @@ def test_action_queue_enrich_merges_research_and_ai(client, auth_ok):
     assert row["research_context"]["analysis_stance"] == "BULLISH"
     assert row["ai_review"]["verdict"] == "ALIGNED"
     assert "T" in (row["ai_review"]["updated_at"] or "")
+
+
+@skip_without_plotly
+def test_dashboard_activity_maps_dividend_reason_to_drip(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    trades_df = pd.DataFrame(
+        [
+            {
+                "date": "2026-04-01",
+                "ticker": "ABC",
+                "company_name": "ABC Corp",
+                "reason": "Dividend Reinvestment (DRIP)",
+                "shares": 1.5,
+                "price": 10.0,
+                "pnl": None,
+                "amount": 15.0,
+            },
+            {
+                "date": "2026-04-02",
+                "ticker": "XYZ",
+                "company_name": "XYZ Corp",
+                "reason": "Manual buy",
+                "shares": 2.0,
+                "price": 20.0,
+                "pnl": None,
+                "amount": 40.0,
+            },
+        ]
+    )
+
+    with patch("routes.dashboard_routes.get_trade_log", return_value=trades_df), patch(
+        "routes.dashboard_routes.get_ticker_logo_urls", return_value={}
+    ):
+        resp = client.get("/api/dashboard/activity?fund=TEST&limit=10&range=ALL")
+
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload and payload["data"]
+    assert payload["data"][0]["action"] == "DRIP"
+    assert payload["data"][1]["action"] == "BUY"
