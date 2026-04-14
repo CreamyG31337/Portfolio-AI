@@ -261,6 +261,9 @@ graphs/
 # Webull import data and test files
 webull_test_data.csv
 webull_*.csv
+# Dividend eligibility fix script — local dry-run / execute audit CSVs
+dividend_fix_dryrun*.csv
+dividend_fix_applied*.csv
 import_data/
 *.import
 
