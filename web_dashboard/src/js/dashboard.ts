@@ -1194,12 +1194,15 @@ async function fetchSummary(): Promise<void> {
         const userShareSection = document.getElementById('user-share-section');
         const userShareGrid = document.getElementById('user-share-grid');
         const userShareNoData = document.getElementById('user-share-no-data');
+        // Match Streamlit: contributor count can exceed dashboard login accounts per fund.
+        // Show "Your share" when the fund has multiple capital contributors or API sent a slice.
         const multiInvestor = (data.investor_count ?? 0) > 1;
+        const showYourShare = multiInvestor || data.user_investment != null;
         if (totalValueLabelEl) {
             totalValueLabelEl.textContent = multiInvestor ? 'Fund total value' : 'Total value';
         }
         if (userShareSection && userShareGrid && userShareNoData) {
-            if (multiInvestor) {
+            if (showYourShare) {
                 userShareSection.classList.remove('hidden');
                 const ui = data.user_investment;
                 if (ui) {
