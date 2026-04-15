@@ -52,8 +52,10 @@
 # - mailgun_api_key: (optional) Mailgun API key for newsletter webhook verification
 # - mailgun_webhook_signing_key: (optional) Mailgun webhook HMAC signing key
 # - newsletter_email: (optional) Newsletter receiving email (default: ai-research@drifting.space)
-# - mailgun_send_domain: (optional) Verified Mailgun domain for outbound portfolio digest (e.g. mg.example.com)
-# - mailgun_from: (optional) RFC5322 From for outbound digest (e.g. Portfolio <noreply@mg.example.com>)
+# - mailgun_send_domain / mailgun_from: (optional) Outbound portfolio digest — NOT passed via from_secret
+#   (Woodpecker errors if a secret name is missing). Set on the deploy host in:
+#   /home/lance/trading-dashboard-optional.env  e.g. MAILGUN_SEND_DOMAIN=mg.example.com
+#   MAILGUN_FROM="Portfolio <noreply@mg.example.com>"
 # Outbound digest also needs PUBLIC_BASE_URL (see deploy step: derived from APP_DOMAIN when possible)
 # - ollama_base_url: (optional) Ollama API URL (default: http://host.docker.internal:11434)
 # - ollama_model: (optional) Default AI model (default: mistral-nemo:12b)
@@ -136,10 +138,6 @@ steps:
         from_secret: mailgun_webhook_signing_key
       NEWSLETTER_EMAIL:
         from_secret: newsletter_email
-      MAILGUN_SEND_DOMAIN:
-        from_secret: mailgun_send_domain
-      MAILGUN_FROM:
-        from_secret: mailgun_from
     commands:
       # Set timezone (Pacific Time - handles PST/PDT automatically)
       - ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -442,6 +440,14 @@ steps:
       # Deploy in parallel with Streamlit for faster deployment
       - |
         echo "Deploying Trading Dashboard Flask container in parallel..."
+        # Optional vars (outbound Mailgun, etc.): Woodpecker has no optional from_secret; use host file if needed.
+        if [ -f /home/lance/trading-dashboard-optional.env ]; then
+          set -a
+          # shellcheck disable=SC1091
+          . /home/lance/trading-dashboard-optional.env
+          set +a
+          echo "Loaded /home/lance/trading-dashboard-optional.env (optional deploy vars)"
+        fi
         # Build base docker run command for Flask
         FLASK_CMD="docker run -d --name trading-dashboard-flask --restart unless-stopped -p 5001:5001 --network bridge-ipv6 --add-host=host.docker.internal:host-gateway"
         # Mount application logs directory (shared with Streamlit container)

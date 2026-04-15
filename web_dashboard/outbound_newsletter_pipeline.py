@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from flask import has_app_context, render_template
 
 from digest_token import sign_digest_view_token
-from mailgun_outbound import send_mailgun_message
+from mailgun_outbound import get_mailgun_outbound_params, send_mailgun_message
 from outbound_digest_builder import (
     PORTFOLIO_DIGEST_SLUG,
     build_digest_payload,
@@ -195,9 +195,7 @@ def list_due_subscriptions(cadence: str, newsletter_type_id: str) -> List[str]:
 
 def run_scheduled_digest_wave(cadence: str = "weekly") -> Dict[str, Any]:
     """Phase 3 entry: one issue per cadence wave for portfolio_digest."""
-    if not os.getenv("MAILGUN_API_KEY") or not (
-        os.getenv("MAILGUN_SEND_DOMAIN") or os.getenv("MAILGUN_DOMAIN")
-    ):
+    if not get_mailgun_outbound_params():
         logger.info("Skipping outbound digest wave: Mailgun send not configured")
         return {"issue": None, "sent": 0, "message": "mailgun not configured"}
 

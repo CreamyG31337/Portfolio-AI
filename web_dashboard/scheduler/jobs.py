@@ -488,7 +488,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     },
     'outbound_portfolio_digest': {
         'name': 'Outbound portfolio digest',
-        'description': 'Send portfolio digest via Mailgun to subscribed users (due by cadence). Requires MAILGUN_SEND_DOMAIN and MAILGUN_API_KEY.',
+        'description': 'Send portfolio digest via Mailgun to subscribed users (due by cadence). Requires MAILGUN_API_KEY and send domain (env or system_settings mailgun_send_domain).',
         'default_interval_minutes': 1440,
         'enabled_by_default': False,
         'icon': '📧',

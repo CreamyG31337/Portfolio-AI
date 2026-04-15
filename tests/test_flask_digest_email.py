@@ -141,6 +141,42 @@ def test_mailgun_send_posts_multipart():
     assert kwargs.get("auth") == ("api", "key")
 
 
+def test_mailgun_send_domain_from_system_settings():
+    """Send domain may live in system_settings (non-secret) when env is unset."""
+    from mailgun_outbound import send_mailgun_message
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"id": "<test@mailgun>"}
+    mock_resp.text = ""
+
+    def fake_setting(key: str, default=None):
+        if key == "mailgun_send_domain":
+            return "mg.fromdb.example.com"
+        if key == "mailgun_from":
+            return "DB <db@mg.fromdb.example.com>"
+        return default
+
+    with patch.dict(
+        os.environ,
+        {
+            "MAILGUN_API_KEY": "key",
+            "MAILGUN_SEND_DOMAIN": "",
+            "MAILGUN_DOMAIN": "",
+            "MAILGUN_FROM": "",
+        },
+        clear=False,
+    ), patch("settings.get_system_setting", side_effect=fake_setting), patch(
+        "mailgun_outbound.requests.post", return_value=mock_resp
+    ) as post:
+        out = send_mailgun_message("u@example.com", "Subj", "<p>hi</p>")
+        assert out.get("id")
+    args, kwargs = post.call_args
+    assert "mg.fromdb.example.com" in args[0]
+    multipart = kwargs.get("data") or []
+    assert any(t[0] == "from" and "db@mg.fromdb.example.com" in str(t[1]) for t in multipart)
+
+
 def test_render_digest_thin_email_without_flask_context(app):
     """Background jobs must render Jinja without an active app context (see scheduler)."""
     from flask import has_app_context
