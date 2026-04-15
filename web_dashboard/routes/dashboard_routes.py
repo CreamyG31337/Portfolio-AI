@@ -5,7 +5,7 @@ import math
 import time
 import pandas as pd
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Optional
 import json
 
 from auth import require_auth
@@ -270,6 +270,47 @@ def get_dashboard_summary():
             except Exception as e:
                 logger.warning(f"[Dashboard API] Could not calculate period change for range={time_range}: {e}")
         
+        user_investment_payload: Optional[Dict[str, Any]] = None
+        if fund is not None and investor_count > 1:
+            try:
+                from streamlit_utils import get_user_investment_metrics
+
+                uid = (get_user_email_flask() or "").strip()
+                raw_ui = get_user_investment_metrics(
+                    fund,
+                    float(portfolio_value_no_cash),
+                    include_cash=True,
+                    session_id="flask-dashboard-summary",
+                    display_currency=display_currency,
+                    user_email=uid,
+                )
+                if raw_ui:
+                    ownership_ratio = float(raw_ui["ownership_pct"]) / 100.0
+                    if days is not None and period_change is not None:
+                        user_change_dollars = float(period_change) * ownership_ratio
+                        user_change_pct = period_change_pct
+                    else:
+                        user_change_dollars = float(day_pnl) * ownership_ratio
+                        user_change_pct = day_pnl_pct
+                    user_investment_payload = {
+                        "net_contribution": _json_safe_number(raw_ui.get("net_contribution")),
+                        "current_value": _json_safe_number(raw_ui.get("current_value")),
+                        "gain_loss": _json_safe_number(raw_ui.get("gain_loss")),
+                        "gain_loss_pct": _json_safe_optional_number(raw_ui.get("gain_loss_pct")),
+                        "ownership_pct": _json_safe_number(raw_ui.get("ownership_pct")),
+                        "contributor_name": raw_ui.get("contributor_name"),
+                        "units": _json_safe_number(raw_ui.get("units")),
+                        "unit_price": _json_safe_number(raw_ui.get("unit_price")),
+                        "user_day_change": _json_safe_number(user_change_dollars),
+                        "user_day_change_pct": _json_safe_optional_number(user_change_pct),
+                    }
+            except Exception as uie:
+                logger.warning(
+                    "[Dashboard API] Could not attach user_investment to summary: %s",
+                    uie,
+                    exc_info=True,
+                )
+
         processing_time = time.time() - start_time
         response = {
             "total_value": total_value,
@@ -289,7 +330,8 @@ def get_dashboard_summary():
             "period_change_pct": period_change_pct,
             "range": time_range,
             "from_cache": False,
-            "processing_time": processing_time
+            "processing_time": processing_time,
+            "user_investment": user_investment_payload,
         }
         
         logger.info(f"[Dashboard API] Summary calculated successfully - total_value={total_value:.2f} {display_currency}, processing_time={processing_time:.3f}s")

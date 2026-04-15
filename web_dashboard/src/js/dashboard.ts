@@ -24,6 +24,20 @@ import { FormatterCache } from './formatters.js';
 console.log('[Dashboard] dashboard.ts file loaded and executing...');
 
 // Type definitions
+/** Per-login NAV slice from /api/dashboard/summary (multi-investor funds). */
+interface UserInvestmentSummary {
+    net_contribution: number;
+    current_value: number;
+    gain_loss: number;
+    gain_loss_pct: number | null;
+    ownership_pct: number;
+    contributor_name?: string | null;
+    units: number;
+    unit_price: number;
+    user_day_change: number;
+    user_day_change_pct: number | null;
+}
+
 interface DashboardSummary {
     total_value: number;
     cash_balance: number;
@@ -51,6 +65,7 @@ interface DashboardSummary {
     first_trade_date?: string | null;
     from_cache: boolean;
     processing_time: number;
+    user_investment?: UserInvestmentSummary | null;
 }
 
 interface DividendData {
@@ -1174,6 +1189,52 @@ async function fetchSummary(): Promise<void> {
                 }
             }
         }
+
+        const totalValueLabelEl = document.getElementById('metric-total-value-label');
+        const userShareSection = document.getElementById('user-share-section');
+        const userShareGrid = document.getElementById('user-share-grid');
+        const userShareNoData = document.getElementById('user-share-no-data');
+        const multiInvestor = (data.investor_count ?? 0) > 1;
+        if (totalValueLabelEl) {
+            totalValueLabelEl.textContent = multiInvestor ? 'Fund total value' : 'Total value';
+        }
+        if (userShareSection && userShareGrid && userShareNoData) {
+            if (multiInvestor) {
+                userShareSection.classList.remove('hidden');
+                const ui = data.user_investment;
+                if (ui) {
+                    userShareGrid.classList.remove('hidden');
+                    userShareNoData.classList.add('hidden');
+                    updateMetric('user-metric-value', ui.current_value, data.display_currency, true);
+                    const userCur = document.getElementById('user-metric-currency');
+                    if (userCur) {
+                        userCur.textContent = data.display_currency;
+                    }
+                    const uChange = ui.user_day_change ?? 0;
+                    const uPct = ui.user_day_change_pct ?? 0;
+                    updateChangeMetric('user-metric-change', 'user-metric-change-pct', uChange, uPct, data.display_currency);
+                    const userChangeLabel = document.getElementById('user-metric-change-label');
+                    if (userChangeLabel) {
+                        userChangeLabel.textContent = usePeriodChange
+                            ? `${data.range} change (your est.)`
+                            : 'Your change (est.)';
+                    }
+                    const gl = ui.gain_loss ?? 0;
+                    const glp = ui.gain_loss_pct ?? 0;
+                    updateChangeMetric('user-metric-return', 'user-metric-return-pct', gl, glp, data.display_currency);
+                    const ownEl = document.getElementById('user-metric-ownership');
+                    if (ownEl) {
+                        ownEl.textContent = `${(ui.ownership_pct ?? 0).toFixed(2)}%`;
+                    }
+                } else {
+                    userShareGrid.classList.add('hidden');
+                    userShareNoData.classList.remove('hidden');
+                }
+            } else {
+                userShareSection.classList.add('hidden');
+            }
+        }
+
         if (data.holdings_count !== undefined) updateMetric('metric-holdings-count', data.holdings_count, '', false);
 
         // Update First Trade Date

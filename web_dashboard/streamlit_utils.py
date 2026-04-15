@@ -1967,23 +1967,33 @@ def get_historical_fund_values(fund: str, dates: List[datetime], _cache_version:
 
 
 @st.cache_data(ttl=300)
-def get_user_investment_metrics(fund: str, total_portfolio_value: float, include_cash: bool = True, session_id: str = "unknown", display_currency: Optional[str] = None, _cache_version: str = CACHE_VERSION) -> Optional[Dict[str, Any]]:
+def get_user_investment_metrics(
+    fund: str,
+    total_portfolio_value: float,
+    include_cash: bool = True,
+    session_id: str = "unknown",
+    display_currency: Optional[str] = None,
+    user_email: Optional[str] = None,
+    _cache_version: str = CACHE_VERSION,
+) -> Optional[Dict[str, Any]]:
     """Get investment metrics for the currently logged-in user using NAV-based calculation.
-    
-    This calculates the user's investment performance using a unit-based system 
-    (similar to mutual fund NAV). Investors who join when the fund is worth more 
+
+    This calculates the user's investment performance using a unit-based system
+    (similar to mutual fund NAV). Investors who join when the fund is worth more
     get fewer units per dollar, resulting in accurate per-investor returns.
-    
-    CACHED: Results are cached with market-aware TTL (5min during market hours, 
-    1hr outside market hours) to improve performance.
-    
+
+    CACHED: ``@st.cache_data`` keys on all arguments including ``user_email``. From Streamlit,
+    pass ``user_email=get_user_email() or ""`` so each user gets a separate cache entry. From
+    Flask, pass ``get_user_email_flask()`` (never rely on Streamlit session state).
+
     Args:
         fund: Fund name
         total_portfolio_value: Total portfolio value (positions only, before cash) in display currency
         include_cash: Whether to include cash in total fund value (default True)
         session_id: Session ID for log tracking (default "unknown")
         display_currency: Optional display currency (defaults to user preference)
-    
+        user_email: Optional login email. If None, uses Streamlit ``get_user_email()`` only.
+
     Returns:
         Dict with keys:
         - net_contribution: User's net contribution amount (in display currency)
@@ -1992,7 +2002,7 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
         - gain_loss_pct: Gain/loss percentage (accurate per-user return)
         - ownership_pct: Ownership percentage (based on units)
         - contributor_name: Their name (for display)
-        
+
         Returns None if:
         - User not logged in
         - No contributor record found matching user's email
@@ -2000,12 +2010,18 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
     """
     if display_currency is None:
         display_currency = get_user_display_currency()
-    from auth_utils import get_user_email
     from datetime import datetime, timezone, timedelta
-    
-    # Get user email
-    user_email = get_user_email()
-    if not user_email:
+
+    if user_email is not None:
+        resolved_email = user_email.strip()
+    else:
+        from auth_utils import get_user_email
+
+        try:
+            resolved_email = (get_user_email() or "").strip()
+        except RuntimeError:
+            return None
+    if not resolved_email:
         return None
     
     client = get_supabase_client()
@@ -2287,7 +2303,7 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
             return None
         
         # Find the current user's data
-        user_email_lower = user_email.lower()
+        user_email_lower = resolved_email.lower()
         user_contributor = None
         user_units = 0.0
         
