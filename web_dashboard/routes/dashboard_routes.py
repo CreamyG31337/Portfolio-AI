@@ -80,11 +80,19 @@ def dashboard_page():
             
         user_email = get_effective_user_email_flask()
         
-        # Determine initial fund from user preference
-        selected_fund = get_user_selected_fund()
-        
         # Navigation context
         nav_context = get_navigation_context(current_page='dashboard')
+
+        # Dashboard should start on a concrete fund to avoid misleading aggregate "all funds"
+        # metrics in sections that are fundamentally per-fund/per-user.
+        selected_fund = get_user_selected_fund()
+        if not selected_fund or str(selected_fund).lower() == "all":
+            available = nav_context.get("available_funds") or []
+            if available:
+                selected_fund = available[0]
+
+        # Keep sidebar selector and dashboard JS initial state in sync.
+        nav_context["selected_fund"] = selected_fund
         
         return render_template('dashboard.html',
                              user_email=user_email,

@@ -1197,7 +1197,8 @@ async function fetchSummary(): Promise<void> {
         // Match Streamlit: contributor count can exceed dashboard login accounts per fund.
         // Show "Your share" when the fund has multiple capital contributors or API sent a slice.
         const multiInvestor = (data.investor_count ?? 0) > 1;
-        const showYourShare = multiInvestor || data.user_investment != null;
+        const isAggregateAllFunds = (state.currentFund || '').toLowerCase() === 'all';
+        const showYourShare = !isAggregateAllFunds && (multiInvestor || data.user_investment != null);
         if (totalValueLabelEl) {
             totalValueLabelEl.textContent = multiInvestor ? 'Fund total value' : 'Total value';
         }
