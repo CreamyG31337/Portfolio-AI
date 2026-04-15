@@ -2195,15 +2195,17 @@ def get_user_investment_metrics(
                 'timestamp': timestamp
             })
         
-        # Fill missing row emails from contributors table (legacy rows often omit email on fund_contributions)
+        # Build contributor_id -> email map from contributors table (source of truth).
+        # Used both to hydrate missing row emails and to resolve user identity even when
+        # fund_contributions.email is stale/mismatched.
+        contributor_id_to_email: Dict[str, str] = {}
         try:
             unique_ids = list({
                 c["contributor_id"]
                 for c in contributions
-                if c.get("contributor_id") and not _nav_normalize_email(c.get("email"))
+                if c.get("contributor_id")
             })
             if unique_ids and ledger_client:
-                id_to_email: Dict[str, str] = {}
                 chunk_size = 80
                 for i in range(0, len(unique_ids), chunk_size):
                     chunk = unique_ids[i : i + chunk_size]
@@ -2217,11 +2219,11 @@ def get_user_investment_metrics(
                         for row in res.data:
                             em = (row.get("email") or "").strip()
                             if em:
-                                id_to_email[str(row["id"])] = em
+                                contributor_id_to_email[str(row["id"])] = em
                 for c in contributions:
                     cid = c.get("contributor_id")
                     if cid and not _nav_normalize_email(c.get("email")):
-                        filled = id_to_email.get(str(cid))
+                        filled = contributor_id_to_email.get(str(cid))
                         if filled:
                             c["email"] = filled
         except Exception as e:
@@ -2417,6 +2419,18 @@ def get_user_investment_metrics(
                     user_contributor = c['contributor']
                     user_units = contributor_units.get(user_contributor, 0.0)
                     break
+            # Fallback: contributor_id mapped to contributors.email (authoritative identity).
+            if user_contributor is None or user_units <= 0:
+                for c in contributions:
+                    cid = c.get("contributor_id")
+                    if not cid:
+                        continue
+                    mapped_email = _nav_normalize_email(contributor_id_to_email.get(str(cid)))
+                    if mapped_email and mapped_email == user_email_norm:
+                        user_contributor = c["contributor"]
+                        user_units = contributor_units.get(user_contributor, 0.0)
+                        if user_units > 0:
+                            break
 
         if (user_contributor is None or user_units <= 0) and resolved_user_id:
             try:

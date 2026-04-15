@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import json
 
 from auth import require_auth
-from flask_auth_utils import get_user_email_flask, get_user_id_flask
+from flask_auth_utils import get_effective_user_id_flask, get_user_email_flask
 from user_preferences import get_user_theme, get_user_currency, get_user_selected_fund
 
 from flask_data_utils import (
@@ -283,7 +283,7 @@ def get_dashboard_summary():
                     session_id="flask-dashboard-summary",
                     display_currency=display_currency,
                     user_email=uid,
-                    user_id=(get_user_id_flask() or "").strip(),
+                    user_id=(get_effective_user_id_flask() or "").strip(),
                 )
                 if raw_ui:
                     ownership_ratio = float(raw_ui["ownership_pct"]) / 100.0
