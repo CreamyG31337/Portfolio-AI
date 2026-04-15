@@ -274,6 +274,68 @@ function appendFundParam(url: string): string {
     return `${url}${separator}fund=${encodeURIComponent(fund)}`;
 }
 
+/** Extra query params for chart/price APIs: Yahoo vs portfolio, optional calendar years. */
+function buildTickerChartExtraQuery(): string {
+    const psEl = document.getElementById('chart-price-source') as HTMLSelectElement | null;
+    const priceSource = psEl ? psEl.value : 'auto';
+    const yfEl = document.getElementById('chart-year-from') as HTMLSelectElement | null;
+    const ytEl = document.getElementById('chart-year-to') as HTMLSelectElement | null;
+    const yf = yfEl?.value?.trim() ?? '';
+    const yt = ytEl?.value?.trim() ?? '';
+    let q = `&price_source=${encodeURIComponent(priceSource)}`;
+    if (yf !== '' && yt !== '') {
+        q += `&year_from=${encodeURIComponent(yf)}&year_to=${encodeURIComponent(yt)}`;
+    }
+    return q;
+}
+
+function buildTickerYearQuery(): string {
+    const yfEl = document.getElementById('chart-year-from') as HTMLSelectElement | null;
+    const ytEl = document.getElementById('chart-year-to') as HTMLSelectElement | null;
+    const yf = yfEl?.value?.trim() ?? '';
+    const yt = ytEl?.value?.trim() ?? '';
+    if (yf !== '' && yt !== '') {
+        return `&year_from=${encodeURIComponent(yf)}&year_to=${encodeURIComponent(yt)}`;
+    }
+    return '';
+}
+
+function getChartPeriodChangeLabel(range: string): string {
+    const yfEl = document.getElementById('chart-year-from') as HTMLSelectElement | null;
+    const ytEl = document.getElementById('chart-year-to') as HTMLSelectElement | null;
+    const yfs = yfEl?.value?.trim() ?? '';
+    const yts = ytEl?.value?.trim() ?? '';
+    if (yfs !== '' && yts !== '') {
+        const a = Math.min(parseInt(yfs, 10), parseInt(yts, 10));
+        const b = Math.max(parseInt(yfs, 10), parseInt(yts, 10));
+        if (!Number.isNaN(a) && !Number.isNaN(b)) {
+            return `Change (${a}–${b})`;
+        }
+    }
+    const rangeLabels: { [key: string]: string } = {
+        '3m': 'Change (3M)',
+        '6m': 'Change (6M)',
+        '1y': 'Change (1Y)',
+        '5y': 'Change (5Y)',
+    };
+    return rangeLabels[range] || 'Change (3M)';
+}
+
+function populateChartYearSelects(): void {
+    const yf = document.getElementById('chart-year-from') as HTMLSelectElement | null;
+    const yt = document.getElementById('chart-year-to') as HTMLSelectElement | null;
+    if (!yf || !yt) return;
+    const currentY = new Date().getFullYear();
+    const minY = 1990;
+    const parts: string[] = ['<option value="">—</option>'];
+    for (let i = currentY; i >= minY; i--) {
+        parts.push(`<option value="${i}">${i}</option>`);
+    }
+    const html = parts.join('');
+    yf.innerHTML = html;
+    yt.innerHTML = html;
+}
+
 function getRecordTimestamp<T, K extends keyof T>(
     record: T,
     dateFields: ReadonlyArray<K>
@@ -315,6 +377,31 @@ let allEtfTrades: EtfHoldingTrade[] = [];
 let etfTradesCurrentPage: number = 0;
 const etfTradesPerPage: number = 20;
 let loadSeq: number = 0;
+/** Bumps on each chart fetch so superseded requests do not hide the loading spinner. */
+let chartLoadSeq: number = 0;
+
+function showChartLoadingSpinner(): void {
+    const el = document.getElementById('chart-loading');
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.style.removeProperty('display');
+}
+
+function hideChartLoadingSpinner(): void {
+    const el = document.getElementById('chart-loading');
+    if (!el) return;
+    el.classList.add('hidden');
+}
+
+function shouldApplyChartResult(myChartSeq: number, tickerForLoad: string, expectedLoadSeq?: number): boolean {
+    if (myChartSeq !== chartLoadSeq) {
+        return false;
+    }
+    if (expectedLoadSeq !== undefined && isStaleLoad(expectedLoadSeq, tickerForLoad)) {
+        return false;
+    }
+    return true;
+}
 
 // Initialize page on load
 document.addEventListener('DOMContentLoaded', function (): void {
@@ -356,6 +443,28 @@ document.addEventListener('DOMContentLoaded', function (): void {
                 loadAndRenderChart(currentTicker, useSolid, this.value);
             }
         });
+    }
+
+    populateChartYearSelects();
+    const reloadChartFromDataControls = (): void => {
+        if (!currentTicker) return;
+        const rs = document.getElementById('chart-range-selector') as HTMLSelectElement | null;
+        const range = rs ? rs.value : '3m';
+        const cb = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
+        const useSolid = cb ? cb.checked : false;
+        loadAndRenderChart(currentTicker, useSolid, range);
+    };
+    const chartPriceSourceEl = document.getElementById('chart-price-source') as HTMLSelectElement | null;
+    const chartYearFromEl = document.getElementById('chart-year-from') as HTMLSelectElement | null;
+    const chartYearToEl = document.getElementById('chart-year-to') as HTMLSelectElement | null;
+    if (chartPriceSourceEl) {
+        chartPriceSourceEl.addEventListener('change', reloadChartFromDataControls);
+    }
+    if (chartYearFromEl) {
+        chartYearFromEl.addEventListener('change', reloadChartFromDataControls);
+    }
+    if (chartYearToEl) {
+        chartYearToEl.addEventListener('change', reloadChartFromDataControls);
     }
 
     // Set up signals refresh button
@@ -810,6 +919,7 @@ async function loadTickerData(ticker: string): Promise<void> {
         if (isStaleLoad(seq, ticker)) return;
 
         // Load and render chart
+        populateChartYearSelects();
         const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
         const useSolid = checkbox ? checkbox.checked : false;
         const rangeSelector = document.getElementById('chart-range-selector') as HTMLSelectElement | null;
@@ -1109,15 +1219,15 @@ async function loadAndRenderChart(
     range: string = '3m',
     expectedLoadSeq?: number
 ): Promise<void> {
-    // Show loading indicator
+    const myChartSeq = ++chartLoadSeq;
     const chartLoading = document.getElementById('chart-loading');
     const chartContainer = document.getElementById('chart-container');
 
     if (!chartContainer || !chartLoading) return;
 
-    // Clear any existing chart
+    // Clear any existing chart and show loading indicator (must reset inline display from prior loads)
     chartContainer.innerHTML = '';
-    chartLoading.classList.remove('hidden');
+    showChartLoadingSpinner();
 
     // Show chart section (but with loading indicator)
     const chartSection = document.getElementById('chart-section');
@@ -1150,10 +1260,10 @@ async function loadAndRenderChart(
 
         console.log('Detected theme:', theme, 'from data-theme:', dataTheme);
 
-        const response = await fetch(appendFundParam(`/api/v2/ticker/chart?ticker=${encodeURIComponent(ticker)}&use_solid=${useSolid}&theme=${encodeURIComponent(theme)}&range=${encodeURIComponent(range)}`), {
+        const response = await fetch(appendFundParam(`/api/v2/ticker/chart?ticker=${encodeURIComponent(ticker)}&use_solid=${useSolid}&theme=${encodeURIComponent(theme)}&range=${encodeURIComponent(range)}${buildTickerChartExtraQuery()}`), {
             credentials: 'include'
         });
-        if (isStaleLoad(expectedLoadSeq, ticker)) return;
+        if (!shouldApplyChartResult(myChartSeq, ticker, expectedLoadSeq)) return;
 
         // Check if response is JSON
         const contentType = response.headers.get('content-type');
@@ -1180,7 +1290,7 @@ async function loadAndRenderChart(
         }
 
         const chartData: ChartData = await response.json();
-        if (isStaleLoad(expectedLoadSeq, ticker)) return;
+        if (!shouldApplyChartResult(myChartSeq, ticker, expectedLoadSeq)) return;
 
         // Validate chart data structure
         if (!chartData || !chartData.data || !chartData.layout) {
@@ -1192,11 +1302,10 @@ async function loadAndRenderChart(
         if (Plotly) {
             Plotly.newPlot('chart-container', chartData.data, chartData.layout, { responsive: true });
         }
-        if (isStaleLoad(expectedLoadSeq, ticker)) return;
+        if (!shouldApplyChartResult(myChartSeq, ticker, expectedLoadSeq)) return;
 
         // Hide loading indicator AFTER successful rendering
-        chartLoading.classList.add('hidden');
-        chartLoading.style.display = 'none';
+        hideChartLoadingSpinner();
 
         // Load price history for metrics
         loadPriceHistoryMetrics(ticker, range, expectedLoadSeq);
@@ -1204,10 +1313,10 @@ async function loadAndRenderChart(
         // Load ETF holding trades for table
         loadEtfTrades(ticker, range, expectedLoadSeq);
     } catch (error) {
-        if (isStaleLoad(expectedLoadSeq, ticker)) return;
+        if (!shouldApplyChartResult(myChartSeq, ticker, expectedLoadSeq)) return;
         console.error('Error loading chart:', error);
         // Hide loading indicator
-        chartLoading.classList.add('hidden');
+        hideChartLoadingSpinner();
         // Show error message to user
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         showTickerError(`Failed to load chart: ${errorMessage}`);
@@ -1224,7 +1333,7 @@ async function loadEtfTrades(
     expectedLoadSeq?: number
 ): Promise<void> {
     try {
-        const response = await fetch(appendFundParam(`/api/v2/ticker/etf-trades?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}`), {
+        const response = await fetch(appendFundParam(`/api/v2/ticker/etf-trades?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}${buildTickerYearQuery()}`), {
             credentials: 'include'
         });
         if (isStaleLoad(expectedLoadSeq, ticker)) return;
@@ -1436,23 +1545,13 @@ async function loadPriceHistoryMetrics(
     if (isStaleLoad(expectedLoadSeq, ticker)) return;
 
     try {
-        // Update metric label based on range
+        // Update metric label based on range or calendar years
         const changeLabelEl = document.getElementById('period-change-label');
         if (changeLabelEl) {
-            const rangeLabels: { [key: string]: string } = {
-                '3m': 'Change (3M)',
-                '6m': 'Change (6M)',
-                '1y': 'Change (1Y)',
-                '2y': 'Change (2Y)',
-                '5y': 'Change (5Y)',
-                '10y': 'Change (10Y)',
-                '20y': 'Change (20Y)',
-                'max': 'Change (max)',
-            };
-            changeLabelEl.textContent = rangeLabels[range] || 'Change (3M)';
+            changeLabelEl.textContent = getChartPeriodChangeLabel(range);
         }
 
-        const response = await fetch(appendFundParam(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}`), {
+        const response = await fetch(appendFundParam(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}${buildTickerChartExtraQuery()}`), {
             credentials: 'include'
         });
         if (isStaleLoad(expectedLoadSeq, ticker)) return;

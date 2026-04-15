@@ -1966,6 +1966,13 @@ def get_historical_fund_values(fund: str, dates: List[datetime], _cache_version:
         return {}, {}
 
 
+def _nav_normalize_email(value: Optional[str]) -> str:
+    """Lowercase + strip for comparing login email to contribution / contributor rows."""
+    if not value:
+        return ""
+    return str(value).strip().lower()
+
+
 def _get_supabase_client_for_nav_contribution_ledger(session_id: str = "unknown"):
     """Client for loading **all** ``fund_contributions`` rows when computing NAV.
 
@@ -2086,7 +2093,7 @@ def get_user_investment_metrics(
         t0 = time.time()
         while True:
             query = ledger_client.supabase.table("fund_contributions").select(
-                "contributor, email, amount, contribution_type, timestamp"
+                "contributor, contributor_id, email, amount, contribution_type, timestamp"
             ).eq("fund", fund)
             
             result = query.range(offset, offset + batch_size - 1).execute()
@@ -2165,13 +2172,50 @@ def get_user_investment_metrics(
                 except Exception as e:
                     print(f"⚠️  Could not parse timestamp '{timestamp_raw}' for contributor {record.get('contributor', 'Unknown')}: {e}")
             
+            cid = record.get("contributor_id")
             contributions.append({
                 'contributor': record.get('contributor', 'Unknown'),
-                'email': record.get('email', ''),
+                'contributor_id': str(cid) if cid is not None else None,
+                'email': (record.get('email') or '') if record.get('email') is not None else '',
                 'amount': float(record.get('amount', 0)),
                 'type': record.get('contribution_type', 'CONTRIBUTION').lower(),
                 'timestamp': timestamp
             })
+        
+        # Fill missing row emails from contributors table (legacy rows often omit email on fund_contributions)
+        try:
+            unique_ids = list({
+                c["contributor_id"]
+                for c in contributions
+                if c.get("contributor_id") and not _nav_normalize_email(c.get("email"))
+            })
+            if unique_ids and ledger_client:
+                id_to_email: Dict[str, str] = {}
+                chunk_size = 80
+                for i in range(0, len(unique_ids), chunk_size):
+                    chunk = unique_ids[i : i + chunk_size]
+                    res = (
+                        ledger_client.supabase.table("contributors")
+                        .select("id, email")
+                        .in_("id", chunk)
+                        .execute()
+                    )
+                    if res.data:
+                        for row in res.data:
+                            em = (row.get("email") or "").strip()
+                            if em:
+                                id_to_email[str(row["id"])] = em
+                for c in contributions:
+                    cid = c.get("contributor_id")
+                    if cid and not _nav_normalize_email(c.get("email")):
+                        filled = id_to_email.get(str(cid))
+                        if filled:
+                            c["email"] = filled
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "NAV: could not hydrate contributor emails: %s", e, exc_info=True
+            )
         
         contributions.sort(key=lambda x: x['timestamp'] or datetime.min)
         log_message(f"[{session_id}] PERF: get_user_investment_metrics - Parse contributions: {time.time() - t0:.2f}s", level='DEBUG')
@@ -2259,11 +2303,15 @@ def get_user_investment_metrics(
             if contributor not in contributor_units:
                 contributor_units[contributor] = 0.0
                 contributor_data[contributor] = {
-                    'email': contrib['email'],
+                    'email': contrib.get('email') or '',
                     'contributions': 0.0,
                     'withdrawals': 0.0,
                     'net_contribution': 0.0
                 }
+            else:
+                row_em = _nav_normalize_email(contrib.get('email'))
+                if row_em and not _nav_normalize_email(contributor_data[contributor].get('email')):
+                    contributor_data[contributor]['email'] = (contrib.get('email') or '').strip()
             
             # Determine NAV for this transaction
             # CRITICAL: Use PREVIOUS DAY'S Closing NAV to avoid self-referential inflation
@@ -2345,16 +2393,14 @@ def get_user_investment_metrics(
             log_message(f"[{session_id}] PERF: get_user_investment_metrics - Total units <= 0, returning None (total: {time.time() - func_start:.2f}s)", level='DEBUG')
             return None
         
-        # Find the current user's data
-        user_email_lower = resolved_email.lower()
+        # Match login to any ledger row's email (not only first stored per contributor name)
+        user_email_norm = _nav_normalize_email(resolved_email)
         user_contributor = None
         user_units = 0.0
-        
-        for contributor, data in contributor_data.items():
-            contrib_email = data.get('email', '')
-            if contrib_email and contrib_email.lower() == user_email_lower:
-                user_contributor = contributor
-                user_units = contributor_units.get(contributor, 0.0)
+        for c in contributions:
+            if _nav_normalize_email(c.get('email')) == user_email_norm:
+                user_contributor = c['contributor']
+                user_units = contributor_units.get(user_contributor, 0.0)
                 break
         
         if user_contributor is None or user_units <= 0:

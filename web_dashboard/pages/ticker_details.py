@@ -27,11 +27,7 @@ from postgres_client import PostgresClient
 from supabase_client import SupabaseClient
 from ticker_utils import get_ticker_info, get_ticker_external_links, get_ticker_price_history
 from chart_utils import create_ticker_price_chart
-from ticker_chart_ranges import (
-    normalize_ticker_chart_range,
-    ticker_chart_range_days,
-    use_yfinance_max_period,
-)
+from ticker_chart_ranges import normalize_ticker_chart_range, ticker_chart_range_days
 
 # Import from utils.db_utils - handle import error gracefully
 try:
@@ -419,23 +415,18 @@ try:
     with col1:
         time_range = st.selectbox(
             "Time Range",
-            options=['3m', '6m', '1y', '2y', '5y', '10y', '20y', 'max'],
+            options=['3m', '6m', '1y', '5y'],
             format_func=lambda x: {
                 '3m': '3 Months',
                 '6m': '6 Months',
                 '1y': '1 Year',
-                '2y': '2 Years',
                 '5y': '5 Years',
-                '10y': '10 Years',
-                '20y': '20 Years',
-                'max': 'Max (full history)',
             }[x],
             index=0
         )
         
         chart_range = normalize_ticker_chart_range(time_range)
         range_days = ticker_chart_range_days(chart_range)
-        yf_max = use_yfinance_max_period(chart_range)
 
         use_solid = st.checkbox("📱 Solid Lines Only (for mobile)", value=False, 
                                help="Use solid lines instead of dashed for better mobile readability")
@@ -446,7 +437,6 @@ try:
             current_ticker,
             supabase_client,
             days=range_days,
-            use_yfinance_max_period=yf_max,
         )
     
     if not price_history_df.empty:
@@ -498,11 +488,7 @@ try:
                 '3m': 'Change (3M)',
                 '6m': 'Change (6M)',
                 '1y': 'Change (1Y)',
-                '2y': 'Change (2Y)',
                 '5y': 'Change (5Y)',
-                '10y': 'Change (10Y)',
-                '20y': 'Change (20Y)',
-                'max': 'Change (max)',
             }
             change_label = range_labels.get(chart_range, 'Change (3M)')
             

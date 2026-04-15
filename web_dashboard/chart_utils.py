@@ -1702,11 +1702,7 @@ def _ticker_chart_range_caption(chart_range: str) -> str:
         "3m": "3M",
         "6m": "6M",
         "1y": "1Y",
-        "2y": "2Y",
         "5y": "5Y",
-        "10y": "10Y",
-        "20y": "20Y",
-        "max": "Max",
     }.get(str(chart_range).lower().strip(), "period")
 
 
@@ -1724,6 +1720,7 @@ def create_ticker_price_chart(
     etf_trades: Optional[List[Dict[str, Any]]] = None,
     trade_price_df: Optional[pd.DataFrame] = None,
     chart_range: str = "3m",
+    chart_range_label: Optional[str] = None,
 ) -> go.Figure:
     """Create a price history chart for an individual ticker with benchmark comparisons.
     
@@ -1739,12 +1736,17 @@ def create_ticker_price_chart(
         user_trades: Optional list of user trade dictionaries (from trade_log) to display as markers
         etf_trades: Optional list of ETF trade dictionaries (from get_etf_holding_trades) to display as markers
         trade_price_df: Optional full-resolution price DataFrame to align trade markers
-        chart_range: Range key (3m … 20y, max) for legend/title text; not used for math.
+        chart_range: Range key (3m, 6m, 1y, 5y) for legend/title text; not used for math.
+        chart_range_label: Optional override for captions (e.g. calendar years ``2020–2024``).
 
     Returns:
         Plotly Figure object
     """
-    range_caption = _ticker_chart_range_caption(chart_range)
+    range_caption = (
+        chart_range_label.strip()
+        if chart_range_label and str(chart_range_label).strip()
+        else _ticker_chart_range_caption(chart_range)
+    )
     fig = go.Figure()
     
     if ticker_df.empty or 'date' not in ticker_df.columns or 'normalized' not in ticker_df.columns:

@@ -934,7 +934,9 @@ def get_ticker_price_history(
     supabase_client=None,
     days: int = 90,
     fund: Optional[str] = None,
-    use_yfinance_max_period: bool = False,
+    price_source: str = "auto",
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
 ) -> pd.DataFrame:
     """Get historical price data for a ticker from portfolio_positions or yfinance.
     
@@ -944,12 +946,15 @@ def get_ticker_price_history(
     Args:
         ticker: Ticker symbol (e.g., "AAPL")
         supabase_client: Optional SupabaseClient instance
-        days: Number of days to look back (default: 90 for 3 months). Also sets the
-            earliest date when reading portfolio_positions. Ignored for Yahoo when
-            use_yfinance_max_period is True (Yahoo uses period="max").
+        days: Number of days to look back (default: 90 for 3 months). Sets the
+            earliest date when reading portfolio_positions and Yahoo history when
+            not using a calendar year range.
         fund: Optional fund name to filter portfolio data
-        use_yfinance_max_period: If True, Yahoo Finance uses period="max" (full available
-            history). Portfolio rows still use the ``days`` window from end_date.
+        price_source: ``auto`` = try portfolio snapshots first, then Yahoo (default).
+            ``market`` = always Yahoo for the requested window (full calendar history).
+        year_from / year_to: Inclusive calendar years (e.g. 2020, 2024). When both set,
+            the window is Jan 1 ``year_from`` through end of ``year_to`` (clipped to now)
+            and Yahoo is always used (portfolio is skipped).
         
     Returns:
         DataFrame with columns: date, price, normalized (baseline 100)
@@ -958,13 +963,31 @@ def get_ticker_price_history(
     ticker_upper = ticker.upper().strip()
     result_df = pd.DataFrame()
     fund_filter = _normalize_fund_filter(fund)
+
+    now_utc = datetime.now(timezone.utc)
+    use_calendar_years = year_from is not None and year_to is not None
+    if use_calendar_years:
+        yf = int(year_from)
+        yt = int(year_to)
+        if yf > yt:
+            yf, yt = yt, yf
+        current_year = now_utc.year
+        yf = max(1990, min(yf, current_year))
+        yt = max(1990, min(yt, current_year))
+        if yf > yt:
+            yf, yt = yt, yf
+        start_date = datetime(yf, 1, 1, tzinfo=timezone.utc)
+        end_of_to = datetime(yt, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        end_date = min(end_of_to, now_utc)
+        try_portfolio = False
+    else:
+        end_date = now_utc
+        start_date = end_date - timedelta(days=max(1, int(days)))
+        ps = str(price_source or "auto").strip().lower()
+        try_portfolio = ps != "market"
     
-    # Calculate date range
-    end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(days=max(1, int(days)))
-    
-    # Try portfolio_positions first
-    if supabase_client:
+    # Try portfolio_positions first (only when allowed — matches "from first buy" behavior)
+    if supabase_client and try_portfolio:
         try:
             pos_query = supabase_client.supabase.table("portfolio_positions")\
                 .select("date, price")\
@@ -990,7 +1013,7 @@ def get_ticker_price_history(
         except Exception as e:
             logger.warning(f"Error fetching from portfolio_positions for {ticker_upper}: {e}")
     
-    # Fallback to yfinance if insufficient portfolio data
+    # Yahoo Finance (required for market mode, calendar years, or when portfolio data is thin)
     try:
         import yfinance as yf
         yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
@@ -1005,10 +1028,7 @@ def get_ticker_price_history(
         for yf_symbol in yf_candidates:
             try:
                 ticker_obj = yf.Ticker(yf_symbol)
-                if use_yfinance_max_period:
-                    data = ticker_obj.history(period="max", auto_adjust=False)
-                else:
-                    data = ticker_obj.history(start=buffer_start, end=buffer_end, auto_adjust=False)
+                data = ticker_obj.history(start=buffer_start, end=buffer_end, auto_adjust=False)
 
                 if data.empty:
                     logger.debug(f"No Yahoo Finance data for candidate {yf_symbol}")
@@ -1018,10 +1038,8 @@ def get_ticker_price_history(
                 data = data.reset_index()
                 data['Date'] = pd.to_datetime(data['Date'])
 
-                # Clip future dates; for fixed windows also trim to start_date
-                data = data[data['Date'] <= end_date]
-                if not use_yfinance_max_period:
-                    data = data[data['Date'] >= start_date]
+                # Clip to requested window
+                data = data[(data['Date'] >= start_date) & (data['Date'] <= end_date)]
 
                 if data.empty:
                     logger.debug(f"No Yahoo Finance data in date range for candidate {yf_symbol}")

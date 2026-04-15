@@ -917,7 +917,7 @@ const SORTABLE_FIELDS: Record<string, string> = {
     Chamber: 'chamber',
     Party: 'party',
     State: 'state',
-    Date: 'transaction_date',
+    Date: 'disclosure_date',
     Type: 'type',
     Amount: 'amount',
     Return: 'pct_change',

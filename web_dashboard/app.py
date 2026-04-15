@@ -3530,6 +3530,26 @@ def _normalize_fund_param(fund: Optional[str]) -> Optional[str]:
         return None
     return fund_value
 
+
+def _ticker_price_request_params() -> Tuple[str, Optional[int], Optional[int]]:
+    """Parse price_source, year_from, year_to from the current request query."""
+    ps = (request.args.get("price_source") or "auto").strip().lower()
+    if ps not in ("auto", "market"):
+        ps = "auto"
+    yf = request.args.get("year_from", type=int)
+    yt = request.args.get("year_to", type=int)
+    if yf is None or yt is None:
+        return ps, None, None
+    return ps, yf, yt
+
+
+def _chart_figure_range_label(year_from: Optional[int], year_to: Optional[int]) -> Optional[str]:
+    """Legend/title label when using a calendar year range."""
+    if year_from is None or year_to is None:
+        return None
+    a, b = min(year_from, year_to), max(year_from, year_to)
+    return f"{a}–{b}"
+
 @app.route('/api/v2/ticker/list')
 @require_auth
 def api_ticker_list():
@@ -3983,7 +4003,9 @@ def _get_ticker_price_history_cached(
     user_is_admin: bool,
     auth_token: Optional[str],
     fund: Optional[str],
-    use_yfinance_max_period: bool = False,
+    price_source: str = "auto",
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
 ):
     """Get ticker price history with caching (300s TTL)"""
     from supabase_client import SupabaseClient
@@ -4002,7 +4024,9 @@ def _get_ticker_price_history_cached(
         supabase_client,
         days=days,
         fund=fund,
-        use_yfinance_max_period=use_yfinance_max_period,
+        price_source=price_source,
+        year_from=year_from,
+        year_to=year_to,
     )
 
 @app.route('/api/v2/ticker/price-history')
@@ -4016,20 +4040,16 @@ def api_ticker_price_history():
         if not ticker:
             return jsonify({"error": "Ticker symbol is required"}), 400
 
-        from ticker_chart_ranges import (
-            normalize_ticker_chart_range,
-            ticker_chart_range_days,
-            use_yfinance_max_period,
-        )
+        from ticker_chart_ranges import normalize_ticker_chart_range, ticker_chart_range_days
 
         range_param = (request.args.get("range") or "").strip()
         if range_param:
             chart_range = normalize_ticker_chart_range(range_param)
             days = ticker_chart_range_days(chart_range)
-            use_max = use_yfinance_max_period(chart_range)
         else:
             days = int(request.args.get('days', 90))
-            use_max = False
+
+        price_source, year_from, year_to = _ticker_price_request_params()
 
         fund = _normalize_fund_param(request.args.get('fund'))
         user_is_admin = is_admin()
@@ -4038,7 +4058,14 @@ def api_ticker_price_history():
 
         # Get price history (cached)
         price_df = _get_ticker_price_history_cached(
-            ticker, days, user_is_admin, auth_token, fund, use_max
+            ticker,
+            days,
+            user_is_admin,
+            auth_token,
+            fund,
+            price_source=price_source,
+            year_from=year_from,
+            year_to=year_to,
         )
 
         # Convert DataFrame to JSON
@@ -4067,7 +4094,10 @@ def _get_ticker_chart_data_cached(
     user_is_admin: bool,
     auth_token: Optional[str],
     fund: Optional[str],
-    range: str = '3m'
+    range: str = '3m',
+    price_source: str = 'auto',
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
 ):
     """Get ticker chart data with caching (300s TTL) - theme applied separately"""
     from supabase_client import SupabaseClient
@@ -4080,15 +4110,11 @@ def _get_ticker_chart_data_cached(
     if not supabase_client:
         raise ValueError("Unable to connect to database")
 
-    from ticker_chart_ranges import (
-        normalize_ticker_chart_range,
-        ticker_chart_range_days,
-        use_yfinance_max_period,
-    )
+    from ticker_chart_ranges import normalize_ticker_chart_range, ticker_chart_range_days
 
     chart_range = normalize_ticker_chart_range(range)
     range_days = ticker_chart_range_days(chart_range)
-    yf_max = use_yfinance_max_period(chart_range)
+    range_label = _chart_figure_range_label(year_from, year_to)
 
     from ticker_utils import get_ticker_price_history
     price_df = get_ticker_price_history(
@@ -4096,7 +4122,9 @@ def _get_ticker_chart_data_cached(
         supabase_client,
         days=range_days,
         fund=fund,
-        use_yfinance_max_period=yf_max,
+        price_source=price_source,
+        year_from=year_from,
+        year_to=year_to,
     )
 
     if price_df.empty:
@@ -4120,9 +4148,21 @@ def _get_ticker_chart_data_cached(
     # Preserve full-resolution data for trade marker alignment
     full_price_df = price_df.copy()
 
+    # Chart span for downsampling and auxiliary queries (prefer actual series dates)
+    if not price_df.empty:
+        dmin = pd.to_datetime(price_df['date']).min().date()
+        dmax = pd.to_datetime(price_df['date']).max().date()
+        span_days = max(1, (dmax - dmin).days)
+        chart_start_iso = dmin.isoformat()
+        chart_end_iso = dmax.isoformat()
+    else:
+        span_days = range_days
+        chart_start_iso = (date.today() - timedelta(days=range_days)).isoformat()
+        chart_end_iso = date.today().isoformat()
+
     # Downsample to maintain ~90 data points
     from chart_utils import downsample_price_data
-    price_df = downsample_price_data(price_df, range_days)
+    price_df = downsample_price_data(price_df, span_days)
 
     # Fetch congress trades for this ticker within the chart date range
     congress_trades = []
@@ -4130,9 +4170,8 @@ def _get_ticker_chart_data_cached(
         from cache_version import get_cache_version
         refresh_key = get_cache_version()
 
-        # Calculate date range for congress trades (match chart range)
-        start_date = (date.today() - timedelta(days=range_days)).isoformat()
-        end_date = date.today().isoformat()
+        start_date = chart_start_iso
+        end_date = chart_end_iso
 
         # Fetch congress trades (returns {trades: [...], total, has_more}; we need the list)
         congress_result = get_congress_trades_cached(
@@ -4174,8 +4213,8 @@ def _get_ticker_chart_data_cached(
         from postgres_client import PostgresClient
         pc = PostgresClient()
 
-        start_date = (date.today() - timedelta(days=range_days)).isoformat()
-        end_date = date.today().isoformat()
+        start_date = chart_start_iso
+        end_date = chart_end_iso
 
         etf_result = pc.execute_query("""
             SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
@@ -4203,6 +4242,7 @@ def _get_ticker_chart_data_cached(
         etf_trades=etf_trades,
         trade_price_df=full_price_df,
         chart_range=chart_range,
+        chart_range_label=range_label,
     )
 
     # Serialize with numpy array conversion for proper JSON encoding
@@ -4217,13 +4257,26 @@ def _get_ticker_chart_cached(
     auth_token: Optional[str],
     fund: Optional[str],
     theme: Optional[str] = None,
-    range: str = '3m'
+    range: str = '3m',
+    price_source: str = 'auto',
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
 ):
     """Get ticker chart with theme applied dynamically (not cached per theme)"""
     import json
 
     # Get cached chart data (without theme)
-    chart_json_str = _get_ticker_chart_data_cached(ticker, use_solid, user_is_admin, auth_token, fund, range)
+    chart_json_str = _get_ticker_chart_data_cached(
+        ticker,
+        use_solid,
+        user_is_admin,
+        auth_token,
+        fund,
+        range,
+        price_source,
+        year_from,
+        year_to,
+    )
 
     # Parse the JSON
     chart_data = json.loads(chart_json_str)
@@ -4284,7 +4337,14 @@ def _get_ticker_chart_cached(
     return json.dumps(chart_data)
 
 @cache_data(ttl=300)
-def _get_ticker_etf_trades_cached(ticker: str, user_is_admin: bool, auth_token: Optional[str], range: str = '3m'):
+def _get_ticker_etf_trades_cached(
+    ticker: str,
+    user_is_admin: bool,
+    auth_token: Optional[str],
+    range: str = '3m',
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
+):
     """Get ETF holding trades for a ticker within a date range (300s TTL).
 
     Data is fetched from Research DB (not Supabase).
@@ -4292,10 +4352,17 @@ def _get_ticker_etf_trades_cached(ticker: str, user_is_admin: bool, auth_token: 
     from postgres_client import PostgresClient
     from ticker_chart_ranges import normalize_ticker_chart_range, ticker_chart_range_days
 
-    range_days = ticker_chart_range_days(normalize_ticker_chart_range(range))
-
-    start_date = (date.today() - timedelta(days=range_days)).isoformat()
-    end_date = date.today().isoformat()
+    if year_from is not None and year_to is not None:
+        yfa = min(year_from, year_to)
+        ytb = max(year_from, year_to)
+        start_date = date(yfa, 1, 1).isoformat()
+        end_cap = date(ytb, 12, 31)
+        today_d = date.today()
+        end_date = min(end_cap, today_d).isoformat()
+    else:
+        range_days = ticker_chart_range_days(normalize_ticker_chart_range(range))
+        start_date = (date.today() - timedelta(days=range_days)).isoformat()
+        end_date = date.today().isoformat()
 
     pc = PostgresClient()
     result = pc.execute_query("""
@@ -4323,6 +4390,7 @@ def api_ticker_chart():
         from ticker_chart_ranges import normalize_ticker_chart_range
 
         chart_range = normalize_ticker_chart_range(request.args.get('range', '3m'))
+        price_source, year_from, year_to = _ticker_price_request_params()
 
         user_is_admin = is_admin()
         from flask_auth_utils import get_supabase_access_token
@@ -4336,7 +4404,10 @@ def api_ticker_chart():
             auth_token,
             fund,
             theme=client_theme if client_theme in ['dark', 'light'] else None,
-            range=chart_range
+            range=chart_range,
+            price_source=price_source,
+            year_from=year_from,
+            year_to=year_to,
         )
         return Response(chart_json, mimetype='application/json')
     except Exception as e:
@@ -4362,11 +4433,19 @@ def api_ticker_etf_trades():
         from ticker_chart_ranges import normalize_ticker_chart_range
 
         chart_range = normalize_ticker_chart_range(request.args.get('range', '3m'))
+        _, year_from, year_to = _ticker_price_request_params()
 
         user_is_admin = is_admin()
         auth_token = request.cookies.get('auth_token')
 
-        trades = _get_ticker_etf_trades_cached(ticker, user_is_admin, auth_token, chart_range)
+        trades = _get_ticker_etf_trades_cached(
+            ticker,
+            user_is_admin,
+            auth_token,
+            chart_range,
+            year_from=year_from,
+            year_to=year_to,
+        )
         return jsonify({"data": trades})
     except Exception as e:
         logger.error(f"Error fetching ETF trades for {ticker}: {e}", exc_info=True)
@@ -4527,13 +4606,13 @@ def get_congress_trades_cached(
             "Chamber": "chamber",
             "Party": "party",
             "State": "state",
-            "Date": "transaction_date",
+            "Date": "disclosure_date",
             "Type": "type",
             "Amount": "amount",
             "Return": "pct_change",
             "Owner": "owner"
         }
-        sort_column = sort_map.get(sort_by or "", "transaction_date")
+        sort_column = sort_map.get(sort_by or "", "disclosure_date")
         sort_direction = (sort_dir or "desc").lower()
         if sort_direction not in ("asc", "desc"):
             sort_direction = "desc"
@@ -4550,10 +4629,10 @@ def get_congress_trades_cached(
         if needs_post_filter:
             # For analysis-based filters, we must fetch all matching trades first, then filter and paginate
             query = _supabase_client.supabase.table("congress_trades_enriched").select(
-                "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner, pct_change"
+                "id, ticker, politician, chamber, party, state, transaction_date, disclosure_date, type, amount, owner, pct_change"
             )
             query = apply_filters(query)
-            query = query.order("transaction_date", desc=True).order("id", desc=True)
+            query = query.order("disclosure_date", desc=True, nullsfirst=False).order("transaction_date", desc=True).order("id", desc=True)
 
             # Fetch all rows (with batching due to Supabase 1000 row limit)
             all_trades = []
@@ -4615,7 +4694,7 @@ def get_congress_trades_cached(
 
             def _sort_key(trade: Dict[str, Any]):
                 value = trade.get(sort_column)
-                if sort_column == "transaction_date":
+                if sort_column in ("transaction_date", "disclosure_date"):
                     return value or ""
                 if sort_column == "amount":
                     return _parse_amount_max(value)
@@ -4653,7 +4732,7 @@ def get_congress_trades_cached(
 
         # Get paginated data
         query = _supabase_client.supabase.table("congress_trades_enriched").select(
-            "id, ticker, politician, chamber, party, state, transaction_date, type, amount, owner, pct_change"
+            "id, ticker, politician, chamber, party, state, transaction_date, disclosure_date, type, amount, owner, pct_change"
         )
         query = apply_filters(query)
         query = query.order(sort_column, desc=(sort_direction == "desc"), nullsfirst=sort_nullsfirst).order(
@@ -5036,7 +5115,7 @@ def api_congress_trades_data():
                 'Chamber': trade.get('chamber', 'N/A'),
                 'Party': trade.get('party', 'N/A'),
                 'State': trade.get('state', 'N/A'),
-                'Date': format_date_congress(trade.get('transaction_date')),
+                'Date': format_date_congress(trade.get('disclosure_date') or trade.get('transaction_date')),
                 'Type': trade.get('type', 'N/A'),
                 'Amount': trade.get('amount', 'N/A'),
                 'Return': pct_change,

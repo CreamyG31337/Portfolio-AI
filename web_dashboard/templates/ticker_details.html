@@ -188,26 +188,50 @@
 
 <!-- Price History Chart Section -->
 <div id="chart-section" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
-    <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold text-text-primary">📈 Price History</h2>
-        <div class="flex items-center gap-4">
-            <select id="chart-range-selector"
-                class="px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary">
-                <option value="3m">3 Months</option>
-                <option value="6m">6 Months</option>
-                <option value="1y">1 Year</option>
-                <option value="2y">2 Years</option>
-                <option value="5y">5 Years</option>
-                <option value="10y">10 Years</option>
-                <option value="20y">20 Years</option>
-                <option value="max">Max (full history)</option>
-            </select>
-            <label class="flex items-center text-text-secondary">
-                <input type="checkbox" id="solid-lines-checkbox"
-                    class="mr-2 rounded border-border bg-dashboard-background text-accent focus:ring-accent">
-                <span class="text-sm">📱 Solid Lines Only (for mobile)</span>
-            </label>
+    <div class="flex flex-col gap-4 mb-4">
+        <div class="flex flex-wrap justify-between items-start gap-4">
+            <h2 class="text-xl font-bold text-text-primary">📈 Price History</h2>
+            <div class="flex flex-wrap items-center gap-3">
+                <select id="chart-range-selector"
+                    class="px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary">
+                    <option value="3m">3 Months</option>
+                    <option value="6m">6 Months</option>
+                    <option value="1y">1 Year</option>
+                    <option value="5y">5 Years</option>
+                </select>
+                <label class="flex items-center text-text-secondary">
+                    <input type="checkbox" id="solid-lines-checkbox"
+                        class="mr-2 rounded border-border bg-dashboard-background text-accent focus:ring-accent">
+                    <span class="text-sm">📱 Solid Lines Only (for mobile)</span>
+                </label>
+            </div>
         </div>
+        <div class="flex flex-wrap items-end gap-4">
+            <div>
+                <label for="chart-price-source" class="block text-xs text-text-secondary mb-1">Price data</label>
+                <select id="chart-price-source"
+                    class="min-w-[12rem] px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary">
+                    <option value="auto">Auto (portfolio if held)</option>
+                    <option value="market">Market (Yahoo)</option>
+                </select>
+            </div>
+            <div>
+                <label for="chart-year-from" class="block text-xs text-text-secondary mb-1">From year</label>
+                <select id="chart-year-from"
+                    class="px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary min-w-[5.5rem]"></select>
+            </div>
+            <div>
+                <label for="chart-year-to" class="block text-xs text-text-secondary mb-1">To year</label>
+                <select id="chart-year-to"
+                    class="px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary min-w-[5.5rem]"></select>
+            </div>
+        </div>
+        <p class="text-xs text-text-secondary max-w-3xl">
+            Set both years to use a <span class="text-text-primary font-medium">calendar window</span> (Yahoo prices).
+            Leave as “—” to use the rolling range above. <span class="text-text-primary font-medium">Auto</span> prefers
+            your portfolio history when you hold the name; pick <span class="text-text-primary font-medium">Market</span>
+            for full Yahoo history in that window.
+        </p>
     </div>
     <p class="text-sm text-text-secondary mb-3 max-w-3xl">
         <span class="font-medium text-text-primary">Chart legend %</span> is
