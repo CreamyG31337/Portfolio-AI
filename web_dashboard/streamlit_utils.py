@@ -2024,6 +2024,7 @@ def get_user_investment_metrics(
     session_id: str = "unknown",
     display_currency: Optional[str] = None,
     user_email: Optional[str] = None,
+    user_id: Optional[str] = None,
     _cache_version: str = CACHE_VERSION,
 ) -> Optional[Dict[str, Any]]:
     """Get investment metrics for the currently logged-in user using NAV-based calculation.
@@ -2032,7 +2033,7 @@ def get_user_investment_metrics(
     (similar to mutual fund NAV). Investors who join when the fund is worth more
     get fewer units per dollar, resulting in accurate per-investor returns.
 
-    CACHED: ``@st.cache_data`` keys on all arguments including ``user_email``. From Streamlit,
+    CACHED: ``@st.cache_data`` keys on all arguments including ``user_email``/``user_id``. From Streamlit,
     pass ``user_email=get_user_email() or ""`` so each user gets a separate cache entry. From
     Flask, pass ``get_user_email_flask()`` (never rely on Streamlit session state).
 
@@ -2043,6 +2044,7 @@ def get_user_investment_metrics(
         session_id: Session ID for log tracking (default "unknown")
         display_currency: Optional display currency (defaults to user preference)
         user_email: Optional login email. If None, uses Streamlit ``get_user_email()`` only.
+        user_id: Optional auth user id. Used as fallback via contributor_access mapping.
 
     Returns:
         Dict with keys:
@@ -2070,8 +2072,19 @@ def get_user_investment_metrics(
         try:
             resolved_email = (get_user_email() or "").strip()
         except RuntimeError:
-            return None
-    if not resolved_email:
+            resolved_email = ""
+
+    resolved_user_id = (user_id or "").strip()
+    if not resolved_user_id:
+        try:
+            from auth_utils import get_user_id
+
+            resolved_user_id = (get_user_id() or "").strip()
+        except RuntimeError:
+            resolved_user_id = ""
+
+    # Require at least one identifier for matching.
+    if not resolved_email and not resolved_user_id:
         return None
 
     ledger_client = _get_supabase_client_for_nav_contribution_ledger(session_id)
@@ -2393,15 +2406,44 @@ def get_user_investment_metrics(
             log_message(f"[{session_id}] PERF: get_user_investment_metrics - Total units <= 0, returning None (total: {time.time() - func_start:.2f}s)", level='DEBUG')
             return None
         
-        # Match login to any ledger row's email (not only first stored per contributor name)
+        # Match login to any ledger row's email (not only first stored per contributor name).
+        # If that fails, fall back to contributor_access(user_id -> contributor_id) mapping.
         user_email_norm = _nav_normalize_email(resolved_email)
         user_contributor = None
         user_units = 0.0
-        for c in contributions:
-            if _nav_normalize_email(c.get('email')) == user_email_norm:
-                user_contributor = c['contributor']
-                user_units = contributor_units.get(user_contributor, 0.0)
-                break
+        if user_email_norm:
+            for c in contributions:
+                if _nav_normalize_email(c.get('email')) == user_email_norm:
+                    user_contributor = c['contributor']
+                    user_units = contributor_units.get(user_contributor, 0.0)
+                    break
+
+        if (user_contributor is None or user_units <= 0) and resolved_user_id:
+            try:
+                access_rows = (
+                    ledger_client.supabase.table("contributor_access")
+                    .select("contributor_id")
+                    .eq("user_id", resolved_user_id)
+                    .execute()
+                )
+                accessible_ids = {
+                    str(r.get("contributor_id"))
+                    for r in (access_rows.data or [])
+                    if r.get("contributor_id")
+                }
+                if accessible_ids:
+                    for c in contributions:
+                        cid = c.get("contributor_id")
+                        if cid and str(cid) in accessible_ids:
+                            user_contributor = c["contributor"]
+                            user_units = contributor_units.get(user_contributor, 0.0)
+                            if user_units > 0:
+                                break
+            except Exception as e:
+                log_message(
+                    f"[{session_id}] contributor_access fallback failed: {e}",
+                    level="WARNING",
+                )
         
         if user_contributor is None or user_units <= 0:
             log_message(f"[{session_id}] PERF: get_user_investment_metrics - User not found or no units, returning None (total: {time.time() - func_start:.2f}s)", level='DEBUG')

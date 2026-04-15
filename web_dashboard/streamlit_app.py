@@ -1581,6 +1581,7 @@ def main():
             session_id=session_id,
             display_currency=display_currency,
             user_email=get_user_email() or "",
+            user_id=get_user_id() or "",
         )
         log_message(f"[{session_id}] PERF: get_user_investment_metrics took {time.time() - t0:.2f}s", level='PERF')
         

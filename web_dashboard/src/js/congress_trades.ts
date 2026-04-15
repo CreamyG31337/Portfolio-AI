@@ -168,6 +168,7 @@ declare global {
 
 let gridApi: AgGridApi | null = null;
 let gridColumnApi: AgGridColumnApi | null = null;
+let resizeFitTimer: number | null = null;
 
 // Model selection
 let selectedModel: string | null = null;
@@ -917,7 +918,7 @@ const SORTABLE_FIELDS: Record<string, string> = {
     Chamber: 'chamber',
     Party: 'party',
     State: 'state',
-    Date: 'disclosure_date',
+    Date: 'transaction_date',
     Type: 'type',
     Amount: 'amount',
     Return: 'pct_change',
@@ -1041,8 +1042,8 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Date',
             headerName: 'Date',
-            minWidth: 90,
-            flex: 0.9,
+            minWidth: 130,
+            flex: 1.1,
             sortable: true,
             filter: true
         },
@@ -1211,32 +1212,31 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             : ((gridApiInstance as any).columnApi ?? null);
     gridDiv.setAttribute('data-initialized', 'true');
 
-    // Auto-size columns based on content
-    if (gridApi && gridColumnApi) {
-        // Function to auto-size columns based on their content
-        const autoSizeColumns = () => {
-            if (gridColumnApi) {
-                // Auto-size all displayed columns based on content
-                // Get all displayed column IDs from the grid
-                const allColumns = gridColumnApi.getAllDisplayedColumns();
-                if (allColumns && allColumns.length > 0) {
-                    const columnIds = allColumns.map((col: any) => col.getColId()).filter(Boolean);
-                    if (columnIds.length > 0) {
-                        gridColumnApi.autoSizeColumns(columnIds, false); // false = skipHeader (include header in sizing)
-                    }
-                }
+    // Fit columns to viewport width (more reliable than content autosize for infinite model)
+    if (gridApi) {
+        const fitColumnsToGrid = () => {
+            if (!gridApi) return;
+            try {
+                gridApi.sizeColumnsToFit();
+            } catch (err) {
+                console.debug('[CongressTrades] sizeColumnsToFit skipped:', err);
             }
         };
 
-        // Wait for grid to be ready before auto-sizing
+        // Initial fit once first rows are rendered
         gridApi.addEventListener('firstDataRendered', () => {
-            // Delay to ensure all content is rendered (especially logos and emojis)
-            // Longer delay for emoji rendering which can be slower
-            setTimeout(() => {
-                autoSizeColumns();
-            }, 500);
+            setTimeout(() => fitColumnsToGrid(), 50);
         });
 
+        // Re-fit when the browser window resizes
+        window.addEventListener('resize', () => {
+            if (resizeFitTimer) {
+                window.clearTimeout(resizeFitTimer);
+            }
+            resizeFitTimer = window.setTimeout(() => {
+                fitColumnsToGrid();
+            }, 120);
+        });
     }
 }
 

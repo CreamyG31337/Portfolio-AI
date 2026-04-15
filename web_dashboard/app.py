@@ -4606,13 +4606,13 @@ def get_congress_trades_cached(
             "Chamber": "chamber",
             "Party": "party",
             "State": "state",
-            "Date": "disclosure_date",
+            "Date": "transaction_date",
             "Type": "type",
             "Amount": "amount",
             "Return": "pct_change",
             "Owner": "owner"
         }
-        sort_column = sort_map.get(sort_by or "", "disclosure_date")
+        sort_column = sort_map.get(sort_by or "", "transaction_date")
         sort_direction = (sort_dir or "desc").lower()
         if sort_direction not in ("asc", "desc"):
             sort_direction = "desc"
@@ -4632,7 +4632,7 @@ def get_congress_trades_cached(
                 "id, ticker, politician, chamber, party, state, transaction_date, disclosure_date, type, amount, owner, pct_change"
             )
             query = apply_filters(query)
-            query = query.order("disclosure_date", desc=True, nullsfirst=False).order("transaction_date", desc=True).order("id", desc=True)
+            query = query.order("transaction_date", desc=True).order("id", desc=True)
 
             # Fetch all rows (with batching due to Supabase 1000 row limit)
             all_trades = []
@@ -5115,7 +5115,7 @@ def api_congress_trades_data():
                 'Chamber': trade.get('chamber', 'N/A'),
                 'Party': trade.get('party', 'N/A'),
                 'State': trade.get('state', 'N/A'),
-                'Date': format_date_congress(trade.get('disclosure_date') or trade.get('transaction_date')),
+                'Date': format_date_congress(trade.get('transaction_date')),
                 'Type': trade.get('type', 'N/A'),
                 'Amount': trade.get('amount', 'N/A'),
                 'Return': pct_change,
