@@ -395,7 +395,7 @@ def request_password_reset(email: str) -> Optional[Dict]:
         return None
     
     # Redirect to auth callback page which processes hash and redirects to Streamlit
-    # Build redirect URL from APP_DOMAIN env variable (e.g., "drifting.space" or "ai-trading.drifting.space")
+    # Build redirect URL from APP_DOMAIN env variable (e.g., "example.com" or "app.example.com")
     app_domain = os.getenv("APP_DOMAIN")
     if not app_domain:
         return {"error": "APP_DOMAIN environment variable is required. Please set it in your .env file or environment."}
@@ -424,7 +424,7 @@ def send_magic_link(email: str) -> Optional[Dict]:
         return None
     
     # Redirect to auth callback page which processes hash and redirects to Streamlit
-    # Build redirect URL from APP_DOMAIN env variable (e.g., "drifting.space" or "ai-trading.drifting.space")
+    # Build redirect URL from APP_DOMAIN env variable (e.g., "example.com" or "app.example.com")
     app_domain = os.getenv("APP_DOMAIN")
     if not app_domain:
         return {"error": "APP_DOMAIN environment variable is required. Please set it in your .env file or environment."}

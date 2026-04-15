@@ -83,7 +83,7 @@ if __name__ == "__main__":
         print("5. Add a new cookie with:")
         print(f"   Name: auth_token")
         print(f"   Value: {token}")
-        # Extract base domain (e.g., "drifting.space" from "ai-trading.drifting.space")
+        # Extract base domain (e.g., "example.com" from "app.example.com")
         base_domain = APP_DOMAIN.split('.', 1)[-1] if '.' in APP_DOMAIN else APP_DOMAIN
         print(f"   Domain: .{base_domain} (or {APP_DOMAIN})")
         print("   Path: /")

@@ -20,7 +20,7 @@
 # - supabase_url: Your Supabase project URL
 # - supabase_publishable_key: For user authentication
 # - supabase_secret_key: For admin scripts and debug operations
-# - app_domain: Your application domain (e.g., "ai-trading.drifting.space")
+# - app_domain: Your application domain (e.g., "app.example.com")
 #               Used for magic links, password resets, and cookie domain settings
 # - research_database_url: (optional) Postgres connection string for research articles
 #                          Format: postgresql://user:password@host:port/database
@@ -51,7 +51,7 @@
 #                       Set via environment variable when generating ai_service.keys.json
 # - mailgun_api_key: (optional) Mailgun API key for newsletter webhook verification
 # - mailgun_webhook_signing_key: (optional) Mailgun webhook HMAC signing key
-# - newsletter_email: (optional) Newsletter receiving email (default: ai-research@drifting.space)
+# - newsletter_email: (optional) Newsletter receiving email (default: e.g. noreply@example.com)
 # - mailgun_send_domain / mailgun_from: (optional) Outbound portfolio digest — NOT passed via from_secret
 #   (Woodpecker errors if a secret name is missing). Set on the deploy host in:
 #   /home/lance/trading-dashboard-optional.env  e.g. MAILGUN_SEND_DOMAIN=mg.example.com
