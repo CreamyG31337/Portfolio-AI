@@ -1006,6 +1006,21 @@ async function renderExternalLinks(basicInfo: BasicInfo): Promise<void> {
     }
 }
 
+/** Unrealized P&L as % of cost basis; em dash when basis is unusable. */
+function formatPositionPnlPct(costBasis: number | undefined, pnl: number | undefined): string {
+    const cb = Number(costBasis);
+    const p = Number(pnl);
+    if (!Number.isFinite(cb) || cb <= 0) {
+        return "—";
+    }
+    if (!Number.isFinite(p)) {
+        return "—";
+    }
+    const pct = (p / cb) * 100;
+    const sign = pct >= 0 ? "+" : "";
+    return `${sign}${pct.toFixed(2)}%`;
+}
+
 // Render portfolio data
 function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
     if (!portfolioData || (!portfolioData.has_positions && !portfolioData.has_trades)) {
@@ -1036,6 +1051,13 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
             });
 
             Object.values(latestTickerPositions).forEach(pos => {
+                const pnlPct = formatPositionPnlPct(pos.cost_basis, pos.pnl);
+                const pnlPctClass =
+                    pnlPct === "—"
+                        ? "text-text-secondary"
+                        : pos.pnl !== undefined && pos.pnl >= 0
+                            ? "text-theme-success-text"
+                            : "text-theme-error-text";
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${pos.fund || 'N/A'}</td>
@@ -1043,6 +1065,7 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatCurrency(pos.price || 0)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatCurrency(pos.cost_basis || 0)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm ${(pos.pnl || 0) >= 0 ? 'text-theme-success-text' : 'text-theme-error-text'}">${formatCurrency(pos.pnl || 0)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm ${pnlPctClass}">${pnlPct}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${formatDate(pos.date)}</td>
                 `;
                 tbody.appendChild(row);
@@ -1413,16 +1436,6 @@ async function loadPriceHistoryMetrics(
     if (isStaleLoad(expectedLoadSeq, ticker)) return;
 
     try {
-        // Convert range to days
-        const rangeDays: { [key: string]: number } = {
-            '3m': 90,
-            '6m': 180,
-            '1y': 365,
-            '2y': 730,
-            '5y': 1825
-        };
-        const days = rangeDays[range] || 90;
-
         // Update metric label based on range
         const changeLabelEl = document.getElementById('period-change-label');
         if (changeLabelEl) {
@@ -1431,12 +1444,15 @@ async function loadPriceHistoryMetrics(
                 '6m': 'Change (6M)',
                 '1y': 'Change (1Y)',
                 '2y': 'Change (2Y)',
-                '5y': 'Change (5Y)'
+                '5y': 'Change (5Y)',
+                '10y': 'Change (10Y)',
+                '20y': 'Change (20Y)',
+                'max': 'Change (max)',
             };
             changeLabelEl.textContent = rangeLabels[range] || 'Change (3M)';
         }
 
-        const response = await fetch(appendFundParam(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&days=${days}`), {
+        const response = await fetch(appendFundParam(`/api/v2/ticker/price-history?ticker=${encodeURIComponent(ticker)}&range=${encodeURIComponent(range)}`), {
             credentials: 'include'
         });
         if (isStaleLoad(expectedLoadSeq, ticker)) return;

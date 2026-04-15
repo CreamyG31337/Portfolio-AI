@@ -1966,6 +1966,49 @@ def get_historical_fund_values(fund: str, dates: List[datetime], _cache_version:
         return {}, {}
 
 
+def _get_supabase_client_for_nav_contribution_ledger(session_id: str = "unknown"):
+    """Client for loading **all** ``fund_contributions`` rows when computing NAV.
+
+    ``portfolio_positions`` / cash RLS often grants **full-fund** market data to anyone who
+    has **any** contribution row for that fund (subquery on ``fund_contributions`` by email).
+    But ``fund_contributions`` SELECT can return **only rows whose email matches** the viewer
+    unless they are also in ``user_funds``. Mixing a **partial** ledger with **full** fund
+    value makes total units too small, NAV too large, and one person appear to own the whole fund.
+
+    When ``SUPABASE_SECRET_KEY`` / ``SUPABASE_SERVICE_ROLE_KEY`` is set (normal on the Flask
+    server), use the service role **only** for this paginated read; the API still returns
+    only the signed-in user's derived metrics.
+
+    Falls back to the user-scoped client if the service key is missing (e.g. some local dev),
+    which may reproduce wrong numbers for email-only fund access.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    if not SupabaseClient:
+        return None
+    if os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
+        try:
+            logger.debug(
+                "[%s] NAV ledger: using service-role Supabase client for fund_contributions",
+                session_id,
+            )
+            return SupabaseClient(use_service_role=True)
+        except Exception as e:
+            logger.warning(
+                "[%s] NAV ledger: service-role client failed (%s); falling back to user JWT",
+                session_id,
+                e,
+            )
+    else:
+        logger.warning(
+            "[%s] NAV ledger: no service role key in env; fund_contributions use user JWT "
+            "(per-user NAV can be wrong for contributors who are not in user_funds for the fund)",
+            session_id,
+        )
+    return get_supabase_client()
+
+
 @st.cache_data(ttl=300)
 def get_user_investment_metrics(
     fund: str,
@@ -2023,11 +2066,11 @@ def get_user_investment_metrics(
             return None
     if not resolved_email:
         return None
-    
-    client = get_supabase_client()
-    if not client:
+
+    ledger_client = _get_supabase_client_for_nav_contribution_ledger(session_id)
+    if not ledger_client:
         return None
-    
+
     try:
         import time
         from log_handler import log_message
@@ -2042,7 +2085,7 @@ def get_user_investment_metrics(
         
         t0 = time.time()
         while True:
-            query = client.supabase.table("fund_contributions").select(
+            query = ledger_client.supabase.table("fund_contributions").select(
                 "contributor, email, amount, contribution_type, timestamp"
             ).eq("fund", fund)
             

@@ -3982,7 +3982,8 @@ def _get_ticker_price_history_cached(
     days: int,
     user_is_admin: bool,
     auth_token: Optional[str],
-    fund: Optional[str]
+    fund: Optional[str],
+    use_yfinance_max_period: bool = False,
 ):
     """Get ticker price history with caching (300s TTL)"""
     from supabase_client import SupabaseClient
@@ -3996,7 +3997,13 @@ def _get_ticker_price_history_cached(
         raise ValueError("Unable to connect to database")
 
     from ticker_utils import get_ticker_price_history
-    return get_ticker_price_history(ticker, supabase_client, days=days, fund=fund)
+    return get_ticker_price_history(
+        ticker,
+        supabase_client,
+        days=days,
+        fund=fund,
+        use_yfinance_max_period=use_yfinance_max_period,
+    )
 
 @app.route('/api/v2/ticker/price-history')
 @require_auth
@@ -4009,14 +4016,30 @@ def api_ticker_price_history():
         if not ticker:
             return jsonify({"error": "Ticker symbol is required"}), 400
 
-        days = int(request.args.get('days', 90))
+        from ticker_chart_ranges import (
+            normalize_ticker_chart_range,
+            ticker_chart_range_days,
+            use_yfinance_max_period,
+        )
+
+        range_param = (request.args.get("range") or "").strip()
+        if range_param:
+            chart_range = normalize_ticker_chart_range(range_param)
+            days = ticker_chart_range_days(chart_range)
+            use_max = use_yfinance_max_period(chart_range)
+        else:
+            days = int(request.args.get('days', 90))
+            use_max = False
+
         fund = _normalize_fund_param(request.args.get('fund'))
         user_is_admin = is_admin()
         from flask_auth_utils import get_supabase_access_token
         auth_token = get_supabase_access_token()
 
         # Get price history (cached)
-        price_df = _get_ticker_price_history_cached(ticker, days, user_is_admin, auth_token, fund)
+        price_df = _get_ticker_price_history_cached(
+            ticker, days, user_is_admin, auth_token, fund, use_max
+        )
 
         # Convert DataFrame to JSON
         if price_df.empty:
@@ -4057,17 +4080,24 @@ def _get_ticker_chart_data_cached(
     if not supabase_client:
         raise ValueError("Unable to connect to database")
 
-    # Convert range to days
-    range_days = {
-        '3m': 90,
-        '6m': 180,
-        '1y': 365,
-        '2y': 730,
-        '5y': 1825
-    }.get(range, 90)
+    from ticker_chart_ranges import (
+        normalize_ticker_chart_range,
+        ticker_chart_range_days,
+        use_yfinance_max_period,
+    )
+
+    chart_range = normalize_ticker_chart_range(range)
+    range_days = ticker_chart_range_days(chart_range)
+    yf_max = use_yfinance_max_period(chart_range)
 
     from ticker_utils import get_ticker_price_history
-    price_df = get_ticker_price_history(ticker, supabase_client, days=range_days, fund=fund)
+    price_df = get_ticker_price_history(
+        ticker,
+        supabase_client,
+        days=range_days,
+        fund=fund,
+        use_yfinance_max_period=yf_max,
+    )
 
     if price_df.empty:
         # Return empty chart data structure instead of raising error
@@ -4171,7 +4201,8 @@ def _get_ticker_chart_data_cached(
         congress_trades=congress_trades,
         user_trades=user_trades,
         etf_trades=etf_trades,
-        trade_price_df=full_price_df
+        trade_price_df=full_price_df,
+        chart_range=chart_range,
     )
 
     # Serialize with numpy array conversion for proper JSON encoding
@@ -4259,14 +4290,9 @@ def _get_ticker_etf_trades_cached(ticker: str, user_is_admin: bool, auth_token: 
     Data is fetched from Research DB (not Supabase).
     """
     from postgres_client import PostgresClient
+    from ticker_chart_ranges import normalize_ticker_chart_range, ticker_chart_range_days
 
-    range_days = {
-        '3m': 90,
-        '6m': 180,
-        '1y': 365,
-        '2y': 730,
-        '5y': 1825
-    }.get(range, 90)
+    range_days = ticker_chart_range_days(normalize_ticker_chart_range(range))
 
     start_date = (date.today() - timedelta(days=range_days)).isoformat()
     end_date = date.today().isoformat()
@@ -4294,10 +4320,9 @@ def api_ticker_chart():
         # Get theme from request (client detects actual page theme)
         client_theme = request.args.get('theme', '').strip().lower()
         # Get range from request (default: 3m)
-        chart_range = request.args.get('range', '3m').strip().lower()
-        # Validate range
-        if chart_range not in ['3m', '6m', '1y', '2y', '5y']:
-            chart_range = '3m'
+        from ticker_chart_ranges import normalize_ticker_chart_range
+
+        chart_range = normalize_ticker_chart_range(request.args.get('range', '3m'))
 
         user_is_admin = is_admin()
         from flask_auth_utils import get_supabase_access_token
@@ -4334,9 +4359,9 @@ def api_ticker_etf_trades():
         if not ticker:
             return jsonify({"error": "Ticker symbol is required"}), 400
 
-        chart_range = request.args.get('range', '3m').strip().lower()
-        if chart_range not in ['3m', '6m', '1y', '2y', '5y']:
-            chart_range = '3m'
+        from ticker_chart_ranges import normalize_ticker_chart_range
+
+        chart_range = normalize_ticker_chart_range(request.args.get('range', '3m'))
 
         user_is_admin = is_admin()
         auth_token = request.cookies.get('auth_token')

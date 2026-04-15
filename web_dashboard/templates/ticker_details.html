@@ -108,7 +108,11 @@
 
 <!-- Portfolio Data Section -->
 <div id="portfolio-section" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
-    <h2 class="text-xl font-bold mb-4 text-text-primary">💼 Portfolio Data</h2>
+    <h2 class="text-xl font-bold text-text-primary">💼 Portfolio Data</h2>
+    <p class="text-sm text-text-secondary mt-1 mb-4 max-w-3xl">
+        Dollar P&amp;L and P&amp;L % are <span class="text-text-primary font-medium">vs your cost basis</span> for this
+        ticker in each fund. The price chart below uses a different measure: <span class="text-text-primary font-medium">stock price change from the first day of the selected chart range</span>, which can be negative while your position is still profitable if you bought after a drawdown.
+    </p>
 
     <!-- Current Positions -->
     <div id="positions-container" class="mb-6">
@@ -132,6 +136,9 @@
                         <th
                             class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             P&L</th>
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                            P&amp;L %</th>
                         <th
                             class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Date</th>
@@ -191,6 +198,9 @@
                 <option value="1y">1 Year</option>
                 <option value="2y">2 Years</option>
                 <option value="5y">5 Years</option>
+                <option value="10y">10 Years</option>
+                <option value="20y">20 Years</option>
+                <option value="max">Max (full history)</option>
             </select>
             <label class="flex items-center text-text-secondary">
                 <input type="checkbox" id="solid-lines-checkbox"
@@ -199,6 +209,13 @@
             </label>
         </div>
     </div>
+    <p class="text-sm text-text-secondary mb-3 max-w-3xl">
+        <span class="font-medium text-text-primary">Chart legend %</span> is
+        <span class="text-text-primary font-medium">stock price</span> change from the first trading day in the selected
+        range to the last (the chart indexes to 100 on that first day). It is
+        <span class="text-text-primary font-medium">not</span> your position return vs cost basis — use
+        <span class="text-text-primary font-medium">P&amp;L %</span> in the portfolio table for that.
+    </p>
     <div class="mb-2 text-sm text-text-secondary md:hidden">
         💡 Tip: Rotate your device for better viewing
     </div>
@@ -208,11 +225,11 @@
     <div id="chart-container" class="overflow-x-auto"></div>
     <div id="chart-metrics" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mt-4">
         <div class="bg-dashboard-background p-4 rounded-lg">
-            <div id="first-price-label" class="text-sm text-text-secondary">First Price</div>
+            <div id="first-price-label" class="text-sm text-text-secondary">First in range</div>
             <div id="first-price" class="text-xl font-semibold text-text-primary">-</div>
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">
-            <div id="current-price-label" class="text-sm text-text-secondary">Current Price</div>
+            <div id="current-price-label" class="text-sm text-text-secondary">Last in range</div>
             <div id="current-price" class="text-xl font-semibold text-text-primary">-</div>
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">
