@@ -1154,6 +1154,24 @@ async function fetchSummary(): Promise<void> {
             processing_time: data.processing_time,
             from_cache: data.from_cache
         });
+        console.log('[Dashboard][Debug] User investment payload snapshot', {
+            ui_fund_from_state: state.currentFund,
+            ui_range_from_state: state.timeRange,
+            api_range: data.range ?? null,
+            api_investor_count: data.investor_count ?? null,
+            api_total_value: data.total_value ?? null,
+            api_cash_balance: data.cash_balance ?? null,
+            api_day_change: data.day_change ?? null,
+            api_day_change_pct: data.day_change_pct ?? null,
+            user_investment_present: data.user_investment != null,
+            user_current_value: data.user_investment?.current_value ?? null,
+            user_ownership_pct: data.user_investment?.ownership_pct ?? null,
+            user_net_contribution: data.user_investment?.net_contribution ?? null,
+            user_gain_loss: data.user_investment?.gain_loss ?? null,
+            user_gain_loss_pct: data.user_investment?.gain_loss_pct ?? null,
+            user_day_change: data.user_investment?.user_day_change ?? null,
+            user_day_change_pct: data.user_investment?.user_day_change_pct ?? null,
+        });
 
         // Update Metrics
         updateMetric('metric-total-value', data.total_value, data.display_currency, true);
@@ -1206,6 +1224,13 @@ async function fetchSummary(): Promise<void> {
         const multiInvestor = (data.investor_count ?? 0) > 1;
         const isAggregateAllFunds = (state.currentFund || '').toLowerCase() === 'all';
         const showYourShare = !isAggregateAllFunds && (multiInvestor || data.user_investment != null);
+        console.log('[Dashboard][Debug] User share visibility inputs', {
+            ui_fund_from_state: state.currentFund,
+            multiInvestor,
+            isAggregateAllFunds,
+            showYourShare,
+            user_investment_present: data.user_investment != null,
+        });
         // #region agent log
         fetch('http://127.0.0.1:7244/ingest/0c3342cc-ae91-4cff-8025-0f0444f375bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dc6352'},body:JSON.stringify({sessionId:'dc6352',runId:debugRunId,hypothesisId:'H3',location:'dashboard.ts:fetchSummary:shareVisibility',message:'User share visibility decision',data:{currentFund:state.currentFund,multiInvestor,isAggregateAllFunds,showYourShare,userInvestmentPresent:data.user_investment!=null},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
