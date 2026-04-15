@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import json
 
 from auth import require_auth
-from flask_auth_utils import get_effective_user_id_flask, get_user_email_flask
+from flask_auth_utils import get_effective_user_email_flask, get_effective_user_id_flask
 from user_preferences import get_user_theme, get_user_currency, get_user_selected_fund
 
 from flask_data_utils import (
@@ -275,7 +275,7 @@ def get_dashboard_summary():
             try:
                 from streamlit_utils import get_user_investment_metrics
 
-                uid = (get_user_email_flask() or "").strip()
+                uid = (get_effective_user_email_flask() or "").strip()
                 raw_ui = get_user_investment_metrics(
                     fund,
                     float(portfolio_value_no_cash),

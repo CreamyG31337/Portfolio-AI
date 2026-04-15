@@ -105,6 +105,7 @@ interface AgGridColumnDef {
     suppressMenu?: boolean;
     wrapHeaderText?: boolean;
     autoHeaderHeight?: boolean;
+    suppressSizeToFit?: boolean;
 }
 
 interface AgGridCellRendererParams {
@@ -980,6 +981,7 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
             checkboxSelection: true,
             headerCheckboxSelection: true,
             width: 50,
+            suppressSizeToFit: true,
             pinned: 'left',
             suppressMenu: true,
             sortable: false,
@@ -989,8 +991,9 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Ticker',
             headerName: 'Ticker',
-            minWidth: 80,
-            flex: 0.8,
+            width: 95,
+            minWidth: 90,
+            suppressSizeToFit: true,
             pinned: 'left',
             cellRenderer: TickerCellRenderer,
             sortable: true,
@@ -1042,16 +1045,18 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Date',
             headerName: 'Date',
+            width: 125,
             minWidth: 130,
-            flex: 1.1,
+            suppressSizeToFit: true,
             sortable: true,
             filter: true
         },
         {
             field: 'Type',
             headerName: 'Type',
+            width: 100,
             minWidth: 90,
-            flex: 0.9,
+            suppressSizeToFit: true,
             sortable: true,
             filter: true,
             cellRenderer: TypeCellRenderer
@@ -1059,8 +1064,9 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Amount',
             headerName: '💰 Amount',
-            minWidth: 150, // Increased to fit 5 diamonds (💎💎💎💎💎)
-            // Removed flex to allow auto-sizing to expand beyond minWidth
+            width: 130,
+            minWidth: 120,
+            suppressSizeToFit: true,
             sortable: true,
             filter: true,
             cellRenderer: AmountCellRenderer,
@@ -1072,8 +1078,9 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Return',
             headerName: 'Return %',
+            width: 100,
             minWidth: 95,
-            flex: 0.7,
+            suppressSizeToFit: true,
             sortable: true,
             filter: true,
             cellRenderer: class {
@@ -1108,8 +1115,9 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Score',
             headerName: 'Score',
+            width: 120,
             minWidth: 130,
-            flex: 1,
+            suppressSizeToFit: true,
             sortable: false,
             filter: true,
             cellRenderer: ScoreCellRenderer
@@ -1117,8 +1125,9 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         {
             field: 'Owner',
             headerName: 'Owner',
+            width: 110,
             minWidth: 100,
-            flex: 1,
+            suppressSizeToFit: true,
             sortable: true,
             filter: true
         },
