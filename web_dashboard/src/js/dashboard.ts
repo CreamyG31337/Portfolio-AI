@@ -1102,8 +1102,12 @@ function hideSpinner(spinnerId: string): void {
 async function fetchSummary(): Promise<void> {
     const url = `/api/dashboard/summary?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}`;
     const startTime = performance.now();
+    const debugRunId = `summary_${Date.now()}`;
 
     console.log('[Dashboard] Fetching summary...', { url, fund: state.currentFund });
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/0c3342cc-ae91-4cff-8025-0f0444f375bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dc6352'},body:JSON.stringify({sessionId:'dc6352',runId:debugRunId,hypothesisId:'H1',location:'dashboard.ts:fetchSummary:start',message:'Summary request built from UI state',data:{currentFund:state.currentFund,timeRange:state.timeRange,url},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     try {
         const response = await fetch(url, { credentials: 'include' });
@@ -1133,6 +1137,9 @@ async function fetchSummary(): Promise<void> {
         }
 
         const data: DashboardSummary = await response.json();
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/0c3342cc-ae91-4cff-8025-0f0444f375bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dc6352'},body:JSON.stringify({sessionId:'dc6352',runId:debugRunId,hypothesisId:'H2',location:'dashboard.ts:fetchSummary:data',message:'Summary payload received by UI',data:{currentFund:state.currentFund,investorCount:data.investor_count,userInvestmentPresent:data.user_investment!=null,userCurrentValue:data.user_investment?.current_value??null,userOwnership:data.user_investment?.ownership_pct??null,range:data.range},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         console.log('[Dashboard] Summary data received', {
             total_value: data.total_value,
             cash_balance: data.cash_balance,
@@ -1199,6 +1206,9 @@ async function fetchSummary(): Promise<void> {
         const multiInvestor = (data.investor_count ?? 0) > 1;
         const isAggregateAllFunds = (state.currentFund || '').toLowerCase() === 'all';
         const showYourShare = !isAggregateAllFunds && (multiInvestor || data.user_investment != null);
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/0c3342cc-ae91-4cff-8025-0f0444f375bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dc6352'},body:JSON.stringify({sessionId:'dc6352',runId:debugRunId,hypothesisId:'H3',location:'dashboard.ts:fetchSummary:shareVisibility',message:'User share visibility decision',data:{currentFund:state.currentFund,multiInvestor,isAggregateAllFunds,showYourShare,userInvestmentPresent:data.user_investment!=null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (totalValueLabelEl) {
             totalValueLabelEl.textContent = multiInvestor ? 'Fund total value' : 'Total value';
         }
