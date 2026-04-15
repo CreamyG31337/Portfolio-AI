@@ -78,7 +78,7 @@ def dashboard_page():
         # Users who prefer Streamlit can access it directly at /streamlit/
         # but Flask handles all authentication
             
-        user_email = get_user_email_flask()
+        user_email = get_effective_user_email_flask()
         
         # Determine initial fund from user preference
         selected_fund = get_user_selected_fund()
