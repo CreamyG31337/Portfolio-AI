@@ -19,6 +19,25 @@ def _load_module():
     return mod
 
 
+def test_precious_metals_keep_low_volume_rows() -> None:
+    """GC=F / SI=F: Yahoo often reports small positive volume on valid days — do not drop."""
+    mod = _load_module()
+    assert mod.yahoo_futures_min_reported_volume("GC=F") is None
+    assert mod.yahoo_futures_min_reported_volume("SI=F") is None
+    df = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2026-04-14", "2026-04-15"]),
+            "Open": [4825.0, 4800.0],
+            "High": [4841.6, 4843.6],
+            "Low": [4770.1, 4798.0],
+            "Close": [4825.0, 4800.0],
+            "Volume": [288, 288],
+        }
+    )
+    out = mod.sanitize_yahoo_continuous_futures_df(df, "GC=F", "Gold")
+    assert len(out) == 2
+
+
 def test_sanitize_drops_zero_volume_rows() -> None:
     mod = _load_module()
     df = pd.DataFrame(

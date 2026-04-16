@@ -2452,10 +2452,53 @@ def create_commodity_chart(
         
         if len(df) == 0:
             continue
+
+        # Same futures hygiene as benchmark_refresh_job (stale rows / pre-fix cache).
+        if str(ticker).endswith("=F"):
+            from scheduler.benchmark_futures_quality import sanitize_yahoo_continuous_futures_df
+
+            for _ohlc in ("open", "high", "low"):
+                if _ohlc not in df.columns:
+                    df[_ohlc] = df["close"]
+                else:
+                    df[_ohlc] = df[_ohlc].fillna(df["close"])
+
+            df = sanitize_yahoo_continuous_futures_df(
+                df.rename(
+                    columns={
+                        "date": "Date",
+                        "open": "Open",
+                        "high": "High",
+                        "low": "Low",
+                        "close": "Close",
+                        "volume": "Volume",
+                    }
+                ),
+                ticker,
+                config["name"],
+            ).rename(
+                columns={
+                    "Date": "date",
+                    "Open": "open",
+                    "High": "high",
+                    "Low": "low",
+                    "Close": "close",
+                    "Volume": "volume",
+                }
+            )
+            if len(df) == 0:
+                continue
         
-        # Defensive ratio drop only; corrupt Yahoo futures OHLC is fixed in benchmark_refresh_job.
+        # Isolated spikes + mild envelope (Yahoo metals often glitch within plausible price bands).
         for _ in range(2):
-            df = _drop_isolated_close_outliers_df(df, 'date', 'close', extreme_ratio=6.0)
+            df = _drop_isolated_close_outliers_df(
+                df,
+                "date",
+                "close",
+                extreme_ratio=6.0,
+                envelope_spike_pct=0.35,
+                reversion_neighbor_tolerance=0.04,
+            )
             if len(df) < 3:
                 break
         if len(df) == 0:

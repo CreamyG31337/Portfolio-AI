@@ -34,22 +34,30 @@ _YAHOO_FUTURES_CLOSE_BOUNDS: dict[str, tuple[float, float]] = {
 # If OHLC and volume disagree with a same-day re-download, causes include our cache getting out
 # of sync, client/library quirks, or merged partial rows — not something we persist; see
 # ``run_benchmark_refresh.py --rebuild-from-scratch`` to recreate ``benchmark_data`` only.
+#
+# **GC=F / SI=F:** Yahoo's reported daily volume on continuous gold/silver is often well under
+# a few hundred on *valid* sessions (empirically Apr 2026: many 30–150). A high floor here caused
+# almost the entire month to be dropped, leaving sparse junk history on charts.
 _YAHOO_FUTURES_MIN_REPORTED_VOLUME: dict[str, int] = {
     "CL=F": 1000,
-    "GC=F": 400,
-    "SI=F": 200,
     "NG=F": 200,
     "HG=F": 200,
     "ZW=F": 200,
 }
 _DEFAULT_FUTURES_MIN_VOLUME = 150
 
+# Precious-metal continuous symbols: only drop zero/NaN volume, not "low" positive prints.
+_NO_MIN_REPORTED_VOLUME_FLOOR: frozenset[str] = frozenset({"GC=F", "SI=F"})
+
 
 def yahoo_futures_min_reported_volume(ticker: str) -> int | None:
     """Minimum trustworthy ``Volume`` for Yahoo ``*=F`` daily rows, or ``None`` if not a futures symbol."""
     if not str(ticker).endswith("=F"):
         return None
-    return _YAHOO_FUTURES_MIN_REPORTED_VOLUME.get(str(ticker), _DEFAULT_FUTURES_MIN_VOLUME)
+    sym = str(ticker)
+    if sym in _NO_MIN_REPORTED_VOLUME_FLOOR:
+        return None
+    return _YAHOO_FUTURES_MIN_REPORTED_VOLUME.get(sym, _DEFAULT_FUTURES_MIN_VOLUME)
 
 
 def sanitize_yahoo_continuous_futures_df(df: pd.DataFrame, ticker: str, name: str) -> pd.DataFrame:
