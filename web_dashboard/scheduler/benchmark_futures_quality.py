@@ -49,6 +49,137 @@ _DEFAULT_FUTURES_MIN_VOLUME = 150
 # Precious-metal continuous symbols: only drop zero/NaN volume, not "low" positive prints.
 _NO_MIN_REPORTED_VOLUME_FLOOR: frozenset[str] = frozenset({"GC=F", "SI=F"})
 
+# GC=F: short runs (~2–10 sessions) where every close is far below/above stable levels on both
+# sides — matches Yahoo continuous-contract splice / scale bugs (“~half off for a few days”).
+_GC_DETACHED_LOW_FACTOR = 0.58
+_GC_DETACHED_HIGH_FACTOR = 1.65
+_GC_DETACHED_ANCHOR_ALIGN = 0.11
+_GC_DETACHED_MIN_RUN = 2
+_GC_DETACHED_MAX_RUN = 10
+
+
+def _repair_gc_detached_regime_runs(out: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Interpolate multi-day runs detached from medians before/after (classic V-shaped glitches)."""
+    if len(out) < _GC_DETACHED_MIN_RUN + 2:
+        return out
+
+    c = pd.to_numeric(out["Close"], errors="coerce").astype(float).to_numpy().copy()
+    n = len(c)
+    i = 1
+    while i < n - _GC_DETACHED_MIN_RUN:
+        best_e: int | None = None
+        left_a = float(np.nanmedian(c[max(0, i - 5) : i]))
+        if left_a <= 0 or np.isnan(left_a):
+            i += 1
+            continue
+
+        for e in range(i + _GC_DETACHED_MIN_RUN - 1, min(i + _GC_DETACHED_MAX_RUN - 1, n - 2) + 1):
+            right_seg = c[e + 1 : min(n, e + 6)]
+            if len(right_seg) == 0:
+                continue
+            right_a = float(np.nanmedian(right_seg))
+            if right_a <= 0 or np.isnan(right_a):
+                continue
+            regime_mid = (left_a + right_a) / 2.0
+            if abs(left_a - right_a) / regime_mid > _GC_DETACHED_ANCHOR_ALIGN:
+                continue
+            seg = c[i : e + 1]
+            if np.any(np.isnan(seg)):
+                continue
+            low_thr = min(left_a, right_a) * _GC_DETACHED_LOW_FACTOR
+            high_thr = max(left_a, right_a) * _GC_DETACHED_HIGH_FACTOR
+            if np.all(seg < low_thr):
+                best_e = e
+            elif np.all(seg > high_thr):
+                best_e = e
+
+        if best_e is not None:
+            right_a = float(np.nanmedian(c[best_e + 1 : min(n, best_e + 6)]))
+            left_a = float(np.nanmedian(c[max(0, i - 5) : i]))
+            regime_mid = (left_a + right_a) / 2.0
+            if (
+                left_a > 0
+                and right_a > 0
+                and not np.isnan(left_a)
+                and not np.isnan(right_a)
+                and abs(left_a - right_a) / regime_mid <= _GC_DETACHED_ANCHOR_ALIGN
+            ):
+                new_vals = np.linspace(left_a, right_a, (best_e - i) + 3)[1:-1]
+                for k, idx in enumerate(range(i, best_e + 1)):
+                    new_c = float(new_vals[k])
+                    old_c = float(c[idx])
+                    dt = out.iloc[idx]["Date"]
+                    logger.warning(
+                        "Repaired detached-regime run for %s (GC=F) on %s: "
+                        "interpolated OHLC to %.4f (was %.4f)",
+                        name,
+                        dt.date() if hasattr(dt, "date") else dt,
+                        new_c,
+                        old_c,
+                    )
+                    c[idx] = new_c
+                    for col in ("Open", "High", "Low", "Close"):
+                        out.iloc[idx, out.columns.get_loc(col)] = new_c
+            i = best_e + 1
+        else:
+            i += 1
+
+    return out
+
+
+def _repair_gc_interior_wide_bar_closes(out: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Fix occasional Yahoo GC=F rows: huge H-L range and body, but Close off the local trend.
+
+    Yahoo sometimes prints a *valid* OHLC triple (Close inside [Low, High]) that is still a bad
+    blend of contract marks — e.g. Open near the high, Close hugging the low, while the prior
+    and next sessions sit much closer together. That skews normalized commodity charts.
+    """
+    if len(out) < 3:
+        return out
+
+    cl = pd.to_numeric(out["Close"], errors="coerce").astype(float).to_numpy()
+    op = pd.to_numeric(out["Open"], errors="coerce").astype(float).to_numpy()
+    hi = pd.to_numeric(out["High"], errors="coerce").astype(float).to_numpy()
+    lo = pd.to_numeric(out["Low"], errors="coerce").astype(float).to_numpy()
+
+    fix_idx: list[int] = []
+    for i in range(1, len(out) - 1):
+        c, o, h, l = cl[i], op[i], hi[i], lo[i]
+        if any(np.isnan([c, o, h, l])) or c <= 0 or h < l:
+            continue
+        rng_pct = (h - l) / c
+        body_pct = abs(o - c) / c
+        prev_c = float(cl[i - 1])
+        next_c = float(cl[i + 1])
+        if prev_c <= 0 or next_c <= 0 or np.isnan(prev_c) or np.isnan(next_c):
+            continue
+        med_nb = float(np.median([prev_c, next_c]))
+        if med_nb <= 0:
+            continue
+        dev_nb = abs(c - med_nb) / med_nb
+        if rng_pct >= 0.09 and body_pct >= 0.07 and dev_nb >= 0.045:
+            fix_idx.append(i)
+
+    if not fix_idx:
+        return out
+
+    cl_orig = cl.copy()
+    for i in fix_idx:
+        new_c = float((cl_orig[i - 1] + cl_orig[i + 1]) / 2.0)
+        dt = out.iloc[i]["Date"]
+        logger.warning(
+            "Repaired wide-bar Yahoo glitch for %s (GC=F) on %s: "
+            "interpolated OHLC close to %.4f (was %.4f)",
+            name,
+            dt.date() if hasattr(dt, "date") else dt,
+            new_c,
+            float(cl_orig[i]),
+        )
+        for col in ("Open", "High", "Low", "Close"):
+            out.iloc[i, out.columns.get_loc(col)] = new_c
+
+    return out
+
 
 def yahoo_futures_min_reported_volume(ticker: str) -> int | None:
     """Minimum trustworthy ``Volume`` for Yahoo ``*=F`` daily rows, or ``None`` if not a futures symbol."""
@@ -232,5 +363,9 @@ def sanitize_yahoo_continuous_futures_df(df: pd.DataFrame, ticker: str, name: st
                     for col in ("Open", "High", "Low", "Close"):
                         out.iloc[idx, out.columns.get_loc(col)] = right
             i = j
+
+    if str(ticker) == "GC=F":
+        out = _repair_gc_detached_regime_runs(out, name)
+        out = _repair_gc_interior_wide_bar_closes(out, name)
 
     return out

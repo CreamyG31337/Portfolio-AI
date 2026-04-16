@@ -76,6 +76,64 @@ def test_sanitize_interpolates_zero_range_interior_run() -> None:
     assert abs(nov26 - (30.0 + 30.111) / 2) < 1e-6
 
 
+def test_gc_detached_regime_low_run_interpolated() -> None:
+    """Multi-day run ~half off stable medians on both sides -> bridge OHLC."""
+    mod = _load_module()
+    n = 13
+    closes = [5000.0] * 5 + [2500.0] * 3 + [5000.0] * 5
+    df = pd.DataFrame(
+        {
+            "Date": pd.date_range("2026-01-01", periods=n, freq="B"),
+            "Close": closes,
+            "Open": [c * 1.0002 for c in closes],
+            "High": [c * 1.002 for c in closes],
+            "Low": [c * 0.998 for c in closes],
+            "Volume": [1000] * n,
+        }
+    )
+    out = mod.sanitize_yahoo_continuous_futures_df(df, "GC=F", "Gold")
+    for j in range(5, 8):
+        assert abs(float(out.iloc[j]["Close"]) - 5000.0) < 1.0
+
+
+def test_gc_detached_regime_high_run_interpolated() -> None:
+    mod = _load_module()
+    n = 13
+    closes = [3000.0] * 5 + [5600.0] * 3 + [3050.0] * 5
+    df = pd.DataFrame(
+        {
+            "Date": pd.date_range("2026-01-01", periods=n, freq="B"),
+            "Close": closes,
+            "Open": [c * 1.0002 for c in closes],
+            "High": [c * 1.002 for c in closes],
+            "Low": [c * 0.998 for c in closes],
+            "Volume": [1000] * n,
+        }
+    )
+    out = mod.sanitize_yahoo_continuous_futures_df(df, "GC=F", "Gold")
+    for j in range(5, 8):
+        assert 3000.0 < float(out.iloc[j]["Close"]) < 3200.0
+
+
+def test_gc_wide_bar_close_repaired() -> None:
+    """Interior GC=F day: huge range + body but Close off local trend -> interpolate OHLC."""
+    mod = _load_module()
+    df = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2026-01-29", "2026-01-30", "2026-02-02"]),
+            "Open": [5415.0, 5376.0, 4807.0],
+            "High": [5586.0, 5440.0, 4855.0],
+            "Low": [5097.0, 4700.0, 4400.0],
+            "Close": [5318.0, 4713.0, 4622.0],
+            "Volume": [23709, 8374, 3588],
+        }
+    )
+    out = mod.sanitize_yahoo_continuous_futures_df(df, "GC=F", "Gold")
+    assert len(out) == 3
+    want = (5318.0 + 4622.0) / 2.0
+    assert abs(float(out.iloc[1]["Close"]) - want) < 0.01
+
+
 def test_sanitize_repairs_si_out_of_band_close() -> None:
     mod = _load_module()
     df = pd.DataFrame(
