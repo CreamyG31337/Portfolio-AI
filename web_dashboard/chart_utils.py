@@ -1696,6 +1696,16 @@ def create_trades_timeline_chart(trades_df: pd.DataFrame, fund_name: Optional[st
     return fig
 
 
+def _ticker_chart_range_caption(chart_range: str) -> str:
+    """Short label for chart range (matches ticker page selector: 3m, 6m, ...)."""
+    return {
+        "3m": "3M",
+        "6m": "6M",
+        "1y": "1Y",
+        "5y": "5Y",
+    }.get(str(chart_range).lower().strip(), "period")
+
+
 @log_execution_time()
 def create_ticker_price_chart(
     ticker_df: pd.DataFrame,
@@ -1708,7 +1718,9 @@ def create_ticker_price_chart(
     congress_trades: Optional[List[Dict[str, Any]]] = None,
     user_trades: Optional[List[Dict[str, Any]]] = None,
     etf_trades: Optional[List[Dict[str, Any]]] = None,
-    trade_price_df: Optional[pd.DataFrame] = None
+    trade_price_df: Optional[pd.DataFrame] = None,
+    chart_range: str = "3m",
+    chart_range_label: Optional[str] = None,
 ) -> go.Figure:
     """Create a price history chart for an individual ticker with benchmark comparisons.
     
@@ -1724,10 +1736,17 @@ def create_ticker_price_chart(
         user_trades: Optional list of user trade dictionaries (from trade_log) to display as markers
         etf_trades: Optional list of ETF trade dictionaries (from get_etf_holding_trades) to display as markers
         trade_price_df: Optional full-resolution price DataFrame to align trade markers
-        
+        chart_range: Range key (3m, 6m, 1y, 5y) for legend/title text; not used for math.
+        chart_range_label: Optional override for captions (e.g. calendar years ``2020–2024``).
+
     Returns:
         Plotly Figure object
     """
+    range_caption = (
+        chart_range_label.strip()
+        if chart_range_label and str(chart_range_label).strip()
+        else _ticker_chart_range_caption(chart_range)
+    )
     fig = go.Figure()
     
     if ticker_df.empty or 'date' not in ticker_df.columns or 'normalized' not in ticker_df.columns:
@@ -1758,11 +1777,11 @@ def create_ticker_price_chart(
     else:
         trade_df = df
     
-    # Calculate return percentage for label (from baseline 100)
+    # Calculate return percentage for label (from baseline 100 = first day in selected range)
     if len(df) > 1:
         last_value = df['normalized'].iloc[-1]
         ticker_return = last_value - 100  # Return from baseline
-        label_suffix = f" ({ticker_return:+.2f}%)"
+        label_suffix = f" ({range_caption} price {ticker_return:+.2f}%)"
     else:
         label_suffix = ""
     
@@ -1834,7 +1853,7 @@ def create_ticker_price_chart(
                         x=bench_data['Date'],
                         y=bench_data['normalized'],
                         mode='lines',
-                        name=f"{config['name']} ({bench_return:+.2f}%)",
+                        name=f"{config['name']} ({range_caption} {bench_return:+.2f}%)",
                         line=dict(color=config['color'], width=3, **line_style),
                         opacity=0.8,
                         visible=visibility,
@@ -2099,17 +2118,17 @@ def create_ticker_price_chart(
         line_dash="dash",
         line_color=theme_config['baseline_line_color'],
         opacity=0.5,
-        annotation_text="Baseline (0%)",
+        annotation_text=f"100 = first day in {range_caption} range",
         annotation_position="right"
     )
     
-    # Title
-    title = f"{ticker_symbol} Price History vs Benchmarks"
+    # Title — clarify that the index is anchored to the start of the chart window, not cost basis
+    title = f"{ticker_symbol} — {range_caption} price path vs benchmarks"
     
     fig.update_layout(
         title=title,
         xaxis_title="Date",
-        yaxis_title="Performance Index (Baseline 100)",
+        yaxis_title=f"Index (100 = first day in {range_caption} range)",
         hovermode='x unified',
         template=theme_config['template'],
         height=500,
@@ -2130,28 +2149,19 @@ def downsample_price_data(df: pd.DataFrame, days: int) -> pd.DataFrame:
     
     Args:
         df: DataFrame with columns: date, price, normalized
-        days: Number of days in the time range
+        days: Approximate calendar span (used only for backward compatibility); stepping
+            is driven by row count so very long ranges (e.g. max history) stay responsive.
         
     Returns:
         Downsampled DataFrame with approximately 90 data points
     """
+    _ = days  # retained for callers; interval is derived from row count
     if df.empty or len(df) <= 90:
-        return df
+        return df.sort_values('date').reset_index(drop=True)
     
-    # Calculate interval to get ~90 points
-    if days <= 90:
-        interval = 1  # Daily for 3 months
-    elif days <= 180:
-        interval = 2  # Every 2 days for 6 months
-    elif days <= 365:
-        interval = 4  # Every 4 days for 1 year
-    elif days <= 730:
-        interval = 8  # Every 8 days for 2 years
-    else:
-        interval = 20  # Every 20 days for 5 years
-    
-    # Sort by date and take every Nth row
     df_sorted = df.sort_values('date').reset_index(drop=True)
+    n = len(df_sorted)
+    interval = max(1, n // 90)
     downsampled = df_sorted.iloc[::interval].copy()
     
     # Always include the last row to show current price

@@ -108,7 +108,11 @@
 
 <!-- Portfolio Data Section -->
 <div id="portfolio-section" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
-    <h2 class="text-xl font-bold mb-4 text-text-primary">💼 Portfolio Data</h2>
+    <h2 class="text-xl font-bold text-text-primary">💼 Portfolio Data</h2>
+    <p class="text-sm text-text-secondary mt-1 mb-4 max-w-3xl">
+        Dollar P&amp;L and P&amp;L % are <span class="text-text-primary font-medium">vs your cost basis</span> for this
+        ticker in each fund. The price chart below uses a different measure: <span class="text-text-primary font-medium">stock price change from the first day of the selected chart range</span>, which can be negative while your position is still profitable if you bought after a drawdown.
+    </p>
 
     <!-- Current Positions -->
     <div id="positions-container" class="mb-6">
@@ -132,6 +136,9 @@
                         <th
                             class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             P&L</th>
+                        <th
+                            class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                            P&amp;L %</th>
                         <th
                             class="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                             Date</th>
@@ -181,24 +188,58 @@
 
 <!-- Price History Chart Section -->
 <div id="chart-section" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
-    <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold text-text-primary">📈 Price History</h2>
-        <div class="flex items-center gap-4">
-            <select id="chart-range-selector"
-                class="px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary">
-                <option value="3m">3 Months</option>
-                <option value="6m">6 Months</option>
-                <option value="1y">1 Year</option>
-                <option value="2y">2 Years</option>
-                <option value="5y">5 Years</option>
-            </select>
-            <label class="flex items-center text-text-secondary">
-                <input type="checkbox" id="solid-lines-checkbox"
-                    class="mr-2 rounded border-border bg-dashboard-background text-accent focus:ring-accent">
-                <span class="text-sm">📱 Solid Lines Only (for mobile)</span>
-            </label>
+    <div class="flex flex-col gap-4 mb-4">
+        <div class="flex flex-wrap justify-between items-start gap-4">
+            <h2 class="text-xl font-bold text-text-primary">📈 Price History</h2>
+            <div class="flex flex-wrap items-center gap-3">
+                <select id="chart-range-selector"
+                    class="px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary">
+                    <option value="3m">3 Months</option>
+                    <option value="6m">6 Months</option>
+                    <option value="1y">1 Year</option>
+                    <option value="5y">5 Years</option>
+                </select>
+                <label class="flex items-center text-text-secondary">
+                    <input type="checkbox" id="solid-lines-checkbox"
+                        class="mr-2 rounded border-border bg-dashboard-background text-accent focus:ring-accent">
+                    <span class="text-sm">📱 Solid Lines Only (for mobile)</span>
+                </label>
+            </div>
         </div>
+        <div class="flex flex-wrap items-end gap-4">
+            <div>
+                <label for="chart-price-source" class="block text-xs text-text-secondary mb-1">Price data</label>
+                <select id="chart-price-source"
+                    class="min-w-[12rem] px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary">
+                    <option value="auto">Auto (portfolio if held)</option>
+                    <option value="market">Market (Yahoo)</option>
+                </select>
+            </div>
+            <div>
+                <label for="chart-year-from" class="block text-xs text-text-secondary mb-1">From year</label>
+                <select id="chart-year-from"
+                    class="px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary min-w-[5.5rem]"></select>
+            </div>
+            <div>
+                <label for="chart-year-to" class="block text-xs text-text-secondary mb-1">To year</label>
+                <select id="chart-year-to"
+                    class="px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary min-w-[5.5rem]"></select>
+            </div>
+        </div>
+        <p class="text-xs text-text-secondary max-w-3xl">
+            Set both years to use a <span class="text-text-primary font-medium">calendar window</span> (Yahoo prices).
+            Leave as “—” to use the rolling range above. <span class="text-text-primary font-medium">Auto</span> prefers
+            your portfolio history when you hold the name; pick <span class="text-text-primary font-medium">Market</span>
+            for full Yahoo history in that window.
+        </p>
     </div>
+    <p class="text-sm text-text-secondary mb-3 max-w-3xl">
+        <span class="font-medium text-text-primary">Chart legend %</span> is
+        <span class="text-text-primary font-medium">stock price</span> change from the first trading day in the selected
+        range to the last (the chart indexes to 100 on that first day). It is
+        <span class="text-text-primary font-medium">not</span> your position return vs cost basis — use
+        <span class="text-text-primary font-medium">P&amp;L %</span> in the portfolio table for that.
+    </p>
     <div class="mb-2 text-sm text-text-secondary md:hidden">
         💡 Tip: Rotate your device for better viewing
     </div>
@@ -208,11 +249,11 @@
     <div id="chart-container" class="overflow-x-auto"></div>
     <div id="chart-metrics" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mt-4">
         <div class="bg-dashboard-background p-4 rounded-lg">
-            <div id="first-price-label" class="text-sm text-text-secondary">First Price</div>
+            <div id="first-price-label" class="text-sm text-text-secondary">First in range</div>
             <div id="first-price" class="text-xl font-semibold text-text-primary">-</div>
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">
-            <div id="current-price-label" class="text-sm text-text-secondary">Current Price</div>
+            <div id="current-price-label" class="text-sm text-text-secondary">Last in range</div>
             <div id="current-price" class="text-xl font-semibold text-text-primary">-</div>
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">

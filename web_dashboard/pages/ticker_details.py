@@ -27,6 +27,7 @@ from postgres_client import PostgresClient
 from supabase_client import SupabaseClient
 from ticker_utils import get_ticker_info, get_ticker_external_links, get_ticker_price_history
 from chart_utils import create_ticker_price_chart
+from ticker_chart_ranges import normalize_ticker_chart_range, ticker_chart_range_days
 
 # Import from utils.db_utils - handle import error gracefully
 try:
@@ -414,26 +415,19 @@ try:
     with col1:
         time_range = st.selectbox(
             "Time Range",
-            options=['3m', '6m', '1y', '2y', '5y'],
+            options=['3m', '6m', '1y', '5y'],
             format_func=lambda x: {
                 '3m': '3 Months',
-                '6m': '6 Months', 
+                '6m': '6 Months',
                 '1y': '1 Year',
-                '2y': '2 Years',
-                '5y': '5 Years'
+                '5y': '5 Years',
             }[x],
             index=0
         )
         
-        # Convert range to days
-        range_days = {
-            '3m': 90,
-            '6m': 180,
-            '1y': 365,
-            '2y': 730,
-            '5y': 1825
-        }[time_range]
-        
+        chart_range = normalize_ticker_chart_range(time_range)
+        range_days = ticker_chart_range_days(chart_range)
+
         use_solid = st.checkbox("📱 Solid Lines Only (for mobile)", value=False, 
                                help="Use solid lines instead of dashed for better mobile readability")
     
@@ -442,7 +436,7 @@ try:
         price_history_df = get_ticker_price_history(
             current_ticker,
             supabase_client,
-            days=range_days
+            days=range_days,
         )
     
     if not price_history_df.empty:
@@ -476,7 +470,8 @@ try:
             show_benchmarks=all_benchmarks,
             show_weekend_shading=True,
             use_solid_lines=use_solid,
-            congress_trades=congress_trades_for_chart if congress_trades_for_chart else None
+            congress_trades=congress_trades_for_chart if congress_trades_for_chart else None,
+            chart_range=chart_range,
         )
         
         st.plotly_chart(fig, use_container_width=True, key=f"ticker_price_chart_{current_ticker}")
@@ -493,10 +488,9 @@ try:
                 '3m': 'Change (3M)',
                 '6m': 'Change (6M)',
                 '1y': 'Change (1Y)',
-                '2y': 'Change (2Y)',
-                '5y': 'Change (5Y)'
+                '5y': 'Change (5Y)',
             }
-            change_label = range_labels.get(time_range, 'Change (3M)')
+            change_label = range_labels.get(chart_range, 'Change (3M)')
             
             col1, col2, col3 = st.columns(3)
             with col1:

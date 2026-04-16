@@ -72,11 +72,11 @@
         </div>
     </div>
 
-    <!-- Key Metrics Grid -->
+    <!-- Key Metrics Grid (fund-level; labels clarify when multiple investors) -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <!-- Total Value -->
         <div class="p-4 card shadow-xs">
-            <h5 class="mb-1 text-sm font-medium text-text-tertiary">Total Value</h5>
+            <h5 class="mb-1 text-sm font-medium text-text-tertiary" id="metric-total-value-label">Total value</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-total-value">--</span>
                 <span class="text-xs font-medium text-text-tertiary" id="metric-currency">CAD</span>
@@ -109,6 +109,46 @@
                 <span class="text-xs font-medium text-text-tertiary">(Combined)</span>
             </div>
         </div>
+    </div>
+
+    <!-- Your share (multi-investor funds; data from /api/dashboard/summary user_investment) -->
+    <div id="user-share-section" class="hidden mb-6">
+        <div class="mb-3">
+            <h3 class="text-lg font-bold text-text-primary">Your share <span class="text-sm font-normal text-text-tertiary">(NAV-based)</span></h3>
+            <p class="text-xs text-text-secondary">Estimated from contribution history and fund units. Not tax or legal advice.</p>
+        </div>
+        <div id="user-share-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="p-4 card shadow-xs border border-accent/30">
+                <h5 class="mb-1 text-sm font-medium text-text-tertiary">Your value</h5>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-text-primary" id="user-metric-value">--</span>
+                    <span class="text-xs font-medium text-text-tertiary" id="user-metric-currency">CAD</span>
+                </div>
+            </div>
+            <div class="p-4 card shadow-xs border border-accent/30">
+                <h5 class="mb-1 text-sm font-medium text-text-tertiary" id="user-metric-change-label">Your change</h5>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-text-primary" id="user-metric-change">--</span>
+                    <span class="text-sm font-medium px-2 py-0.5 rounded" id="user-metric-change-pct">--%</span>
+                </div>
+            </div>
+            <div class="p-4 card shadow-xs border border-accent/30">
+                <h5 class="mb-1 text-sm font-medium text-text-tertiary">Your return</h5>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-text-primary" id="user-metric-return">--</span>
+                    <span class="text-sm font-medium px-2 py-0.5 rounded" id="user-metric-return-pct">--%</span>
+                </div>
+            </div>
+            <div class="p-4 card shadow-xs border border-accent/30">
+                <h5 class="mb-1 text-sm font-medium text-text-tertiary">Ownership</h5>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-text-primary" id="user-metric-ownership">--</span>
+                </div>
+            </div>
+        </div>
+        <p id="user-share-no-data" class="hidden mt-3 text-sm text-text-secondary rounded-lg bg-dashboard-surface-alt border border-border px-4 py-3">
+            No personal contribution record matches this login email for the selected fund. Ask an admin to set your email on <strong class="font-medium text-text-primary">contributors</strong> and on your <strong class="font-medium text-text-primary">fund_contributions</strong> rows (or link <code class="text-xs bg-dashboard-surface px-1 rounded">contributor_id</code>), then refresh. Otherwise use fund totals above.
+        </p>
     </div>
 
     <!-- Fund Stats -->

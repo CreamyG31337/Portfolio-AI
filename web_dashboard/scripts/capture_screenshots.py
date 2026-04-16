@@ -3,10 +3,10 @@ import time
 import sys
 from playwright.sync_api import sync_playwright
 
-# Configuration
-BASE_URL = "https://ai-trading.drifting.space"
-EMAIL = "admin.test@tradingbot.local"
-PASSWORD = "vtg6Su2crPMvejomltTN"
+# Configuration (do not commit real URLs or credentials — use env)
+BASE_URL = os.environ.get("SCREENSHOT_BASE_URL", "http://localhost:5001").rstrip("/")
+EMAIL = os.environ.get("SCREENSHOT_EMAIL", "")
+PASSWORD = os.environ.get("SCREENSHOT_PASSWORD", "")
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "docs", "images")
 
 def ensure_dir(path):
@@ -26,6 +26,12 @@ def set_theme(page, theme):
         print(f"  Warning setting theme: {e}")
 
 def login(page):
+    if not EMAIL or not PASSWORD:
+        print(
+            "Set SCREENSHOT_EMAIL and SCREENSHOT_PASSWORD in the environment "
+            "(optional: SCREENSHOT_BASE_URL, default http://localhost:5001)."
+        )
+        sys.exit(1)
     print("Logging in...")
     page.goto(f"{BASE_URL}/")
     page.fill('input[name="email"]', EMAIL)

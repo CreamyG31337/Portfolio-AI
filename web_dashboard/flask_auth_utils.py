@@ -149,6 +149,21 @@ def get_effective_user_id_flask() -> Optional[str]:
     return get_user_id_flask()
 
 
+def get_effective_user_email_flask() -> Optional[str]:
+    """Email for current request context: impersonated target if active, else JWT email."""
+    ensure_impersonation_session_valid()
+    try:
+        from flask import has_request_context, session
+
+        if has_request_context():
+            imp_email = session.get(SESSION_IMPERSONATE_USER_EMAIL)
+            if imp_email:
+                return str(imp_email).strip()
+    except Exception:
+        pass
+    return get_user_email_flask()
+
+
 def get_flask_cache_scope_id() -> str:
     """Composite cache key segment: authenticated JWT user + effective user (impersonation-safe)."""
     auth = get_user_id_flask() or "anonymous"

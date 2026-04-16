@@ -1966,24 +1966,86 @@ def get_historical_fund_values(fund: str, dates: List[datetime], _cache_version:
         return {}, {}
 
 
+def _nav_normalize_email(value: Optional[str]) -> str:
+    """Lowercase + strip for comparing login email to contribution / contributor rows."""
+    if not value:
+        return ""
+    return str(value).strip().lower()
+
+
+def _get_supabase_client_for_nav_contribution_ledger(session_id: str = "unknown"):
+    """Client for loading **all** ``fund_contributions`` rows when computing NAV.
+
+    ``portfolio_positions`` / cash RLS often grants **full-fund** market data to anyone who
+    has **any** contribution row for that fund (subquery on ``fund_contributions`` by email).
+    But ``fund_contributions`` SELECT can return **only rows whose email matches** the viewer
+    unless they are also in ``user_funds``. Mixing a **partial** ledger with **full** fund
+    value makes total units too small, NAV too large, and one person appear to own the whole fund.
+
+    When ``SUPABASE_SECRET_KEY`` / ``SUPABASE_SERVICE_ROLE_KEY`` is set (normal on the Flask
+    server), use the service role **only** for this paginated read; the API still returns
+    only the signed-in user's derived metrics.
+
+    Falls back to the user-scoped client if the service key is missing (e.g. some local dev),
+    which may reproduce wrong numbers for email-only fund access.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    if not SupabaseClient:
+        return None
+    if os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
+        try:
+            logger.debug(
+                "[%s] NAV ledger: using service-role Supabase client for fund_contributions",
+                session_id,
+            )
+            return SupabaseClient(use_service_role=True)
+        except Exception as e:
+            logger.warning(
+                "[%s] NAV ledger: service-role client failed (%s); falling back to user JWT",
+                session_id,
+                e,
+            )
+    else:
+        logger.warning(
+            "[%s] NAV ledger: no service role key in env; fund_contributions use user JWT "
+            "(per-user NAV can be wrong for contributors who are not in user_funds for the fund)",
+            session_id,
+        )
+    return get_supabase_client()
+
+
 @st.cache_data(ttl=300)
-def get_user_investment_metrics(fund: str, total_portfolio_value: float, include_cash: bool = True, session_id: str = "unknown", display_currency: Optional[str] = None, _cache_version: str = CACHE_VERSION) -> Optional[Dict[str, Any]]:
+def get_user_investment_metrics(
+    fund: str,
+    total_portfolio_value: float,
+    include_cash: bool = True,
+    session_id: str = "unknown",
+    display_currency: Optional[str] = None,
+    user_email: Optional[str] = None,
+    user_id: Optional[str] = None,
+    _cache_version: str = CACHE_VERSION,
+) -> Optional[Dict[str, Any]]:
     """Get investment metrics for the currently logged-in user using NAV-based calculation.
-    
-    This calculates the user's investment performance using a unit-based system 
-    (similar to mutual fund NAV). Investors who join when the fund is worth more 
+
+    This calculates the user's investment performance using a unit-based system
+    (similar to mutual fund NAV). Investors who join when the fund is worth more
     get fewer units per dollar, resulting in accurate per-investor returns.
-    
-    CACHED: Results are cached with market-aware TTL (5min during market hours, 
-    1hr outside market hours) to improve performance.
-    
+
+    CACHED: ``@st.cache_data`` keys on all arguments including ``user_email``/``user_id``. From Streamlit,
+    pass ``user_email=get_user_email() or ""`` so each user gets a separate cache entry. From
+    Flask, pass ``get_user_email_flask()`` (never rely on Streamlit session state).
+
     Args:
         fund: Fund name
         total_portfolio_value: Total portfolio value (positions only, before cash) in display currency
         include_cash: Whether to include cash in total fund value (default True)
         session_id: Session ID for log tracking (default "unknown")
         display_currency: Optional display currency (defaults to user preference)
-    
+        user_email: Optional login email. If None, uses Streamlit ``get_user_email()`` only.
+        user_id: Optional auth user id. Used as fallback via contributor_access mapping.
+
     Returns:
         Dict with keys:
         - net_contribution: User's net contribution amount (in display currency)
@@ -1992,7 +2054,7 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
         - gain_loss_pct: Gain/loss percentage (accurate per-user return)
         - ownership_pct: Ownership percentage (based on units)
         - contributor_name: Their name (for display)
-        
+
         Returns None if:
         - User not logged in
         - No contributor record found matching user's email
@@ -2000,18 +2062,35 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
     """
     if display_currency is None:
         display_currency = get_user_display_currency()
-    from auth_utils import get_user_email
     from datetime import datetime, timezone, timedelta
-    
-    # Get user email
-    user_email = get_user_email()
-    if not user_email:
+
+    if user_email is not None:
+        resolved_email = user_email.strip()
+    else:
+        from auth_utils import get_user_email
+
+        try:
+            resolved_email = (get_user_email() or "").strip()
+        except RuntimeError:
+            resolved_email = ""
+
+    resolved_user_id = (user_id or "").strip()
+    if not resolved_user_id:
+        try:
+            from auth_utils import get_user_id
+
+            resolved_user_id = (get_user_id() or "").strip()
+        except RuntimeError:
+            resolved_user_id = ""
+
+    # Require at least one identifier for matching.
+    if not resolved_email and not resolved_user_id:
         return None
-    
-    client = get_supabase_client()
-    if not client:
+
+    ledger_client = _get_supabase_client_for_nav_contribution_ledger(session_id)
+    if not ledger_client:
         return None
-    
+
     try:
         import time
         from log_handler import log_message
@@ -2026,8 +2105,8 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
         
         t0 = time.time()
         while True:
-            query = client.supabase.table("fund_contributions").select(
-                "contributor, email, amount, contribution_type, timestamp"
+            query = ledger_client.supabase.table("fund_contributions").select(
+                "contributor, contributor_id, email, amount, contribution_type, timestamp"
             ).eq("fund", fund)
             
             result = query.range(offset, offset + batch_size - 1).execute()
@@ -2106,13 +2185,52 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
                 except Exception as e:
                     print(f"⚠️  Could not parse timestamp '{timestamp_raw}' for contributor {record.get('contributor', 'Unknown')}: {e}")
             
+            cid = record.get("contributor_id")
             contributions.append({
                 'contributor': record.get('contributor', 'Unknown'),
-                'email': record.get('email', ''),
+                'contributor_id': str(cid) if cid is not None else None,
+                'email': (record.get('email') or '') if record.get('email') is not None else '',
                 'amount': float(record.get('amount', 0)),
                 'type': record.get('contribution_type', 'CONTRIBUTION').lower(),
                 'timestamp': timestamp
             })
+        
+        # Build contributor_id -> email map from contributors table (source of truth).
+        # Used both to hydrate missing row emails and to resolve user identity even when
+        # fund_contributions.email is stale/mismatched.
+        contributor_id_to_email: Dict[str, str] = {}
+        try:
+            unique_ids = list({
+                c["contributor_id"]
+                for c in contributions
+                if c.get("contributor_id")
+            })
+            if unique_ids and ledger_client:
+                chunk_size = 80
+                for i in range(0, len(unique_ids), chunk_size):
+                    chunk = unique_ids[i : i + chunk_size]
+                    res = (
+                        ledger_client.supabase.table("contributors")
+                        .select("id, email")
+                        .in_("id", chunk)
+                        .execute()
+                    )
+                    if res.data:
+                        for row in res.data:
+                            em = (row.get("email") or "").strip()
+                            if em:
+                                contributor_id_to_email[str(row["id"])] = em
+                for c in contributions:
+                    cid = c.get("contributor_id")
+                    if cid and not _nav_normalize_email(c.get("email")):
+                        filled = contributor_id_to_email.get(str(cid))
+                        if filled:
+                            c["email"] = filled
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "NAV: could not hydrate contributor emails: %s", e, exc_info=True
+            )
         
         contributions.sort(key=lambda x: x['timestamp'] or datetime.min)
         log_message(f"[{session_id}] PERF: get_user_investment_metrics - Parse contributions: {time.time() - t0:.2f}s", level='DEBUG')
@@ -2200,11 +2318,15 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
             if contributor not in contributor_units:
                 contributor_units[contributor] = 0.0
                 contributor_data[contributor] = {
-                    'email': contrib['email'],
+                    'email': contrib.get('email') or '',
                     'contributions': 0.0,
                     'withdrawals': 0.0,
                     'net_contribution': 0.0
                 }
+            else:
+                row_em = _nav_normalize_email(contrib.get('email'))
+                if row_em and not _nav_normalize_email(contributor_data[contributor].get('email')):
+                    contributor_data[contributor]['email'] = (contrib.get('email') or '').strip()
             
             # Determine NAV for this transaction
             # CRITICAL: Use PREVIOUS DAY'S Closing NAV to avoid self-referential inflation
@@ -2286,18 +2408,87 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
             log_message(f"[{session_id}] PERF: get_user_investment_metrics - Total units <= 0, returning None (total: {time.time() - func_start:.2f}s)", level='DEBUG')
             return None
         
-        # Find the current user's data
-        user_email_lower = user_email.lower()
+        # Match login to any ledger row's email (not only first stored per contributor name).
+        # If that fails, fall back to contributor_access(user_id -> contributor_id) mapping.
+        user_email_norm = _nav_normalize_email(resolved_email)
         user_contributor = None
         user_units = 0.0
+        if user_email_norm:
+            for c in contributions:
+                if _nav_normalize_email(c.get('email')) == user_email_norm:
+                    user_contributor = c['contributor']
+                    user_units = contributor_units.get(user_contributor, 0.0)
+                    break
+            # Fallback: contributor_id mapped to contributors.email (authoritative identity).
+            if user_contributor is None or user_units <= 0:
+                for c in contributions:
+                    cid = c.get("contributor_id")
+                    if not cid:
+                        continue
+                    mapped_email = _nav_normalize_email(contributor_id_to_email.get(str(cid)))
+                    if mapped_email and mapped_email == user_email_norm:
+                        user_contributor = c["contributor"]
+                        user_units = contributor_units.get(user_contributor, 0.0)
+                        if user_units > 0:
+                            break
+
+        if (user_contributor is None or user_units <= 0) and resolved_user_id:
+            try:
+                access_rows = (
+                    ledger_client.supabase.table("contributor_access")
+                    .select("contributor_id")
+                    .eq("user_id", resolved_user_id)
+                    .execute()
+                )
+                accessible_ids = {
+                    str(r.get("contributor_id"))
+                    for r in (access_rows.data or [])
+                    if r.get("contributor_id")
+                }
+                if accessible_ids:
+                    for c in contributions:
+                        cid = c.get("contributor_id")
+                        if cid and str(cid) in accessible_ids:
+                            user_contributor = c["contributor"]
+                            user_units = contributor_units.get(user_contributor, 0.0)
+                            if user_units > 0:
+                                break
+            except Exception as e:
+                log_message(
+                    f"[{session_id}] contributor_access fallback failed: {e}",
+                    level="WARNING",
+                )
         
-        for contributor, data in contributor_data.items():
-            contrib_email = data.get('email', '')
-            if contrib_email and contrib_email.lower() == user_email_lower:
-                user_contributor = contributor
-                user_units = contributor_units.get(contributor, 0.0)
-                break
-        
+        # #region agent log
+        try:
+            import json as _json
+            with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
+                _f.write(
+                    _json.dumps(
+                        {
+                            "sessionId": "dc6352",
+                            "runId": f"nav_match_{int(time.time() * 1000)}",
+                            "hypothesisId": "H6",
+                            "location": "streamlit_utils.py:get_user_investment_metrics:identity_match",
+                            "message": "Resolved identity to contributor and units",
+                            "data": {
+                                "fund": fund,
+                                "resolved_email_present": bool(resolved_email),
+                                "resolved_user_id_present": bool(resolved_user_id),
+                                "matched_contributor": user_contributor,
+                                "matched_units": user_units,
+                                "total_units": total_units,
+                                "contribution_rows": len(contributions),
+                            },
+                            "timestamp": int(time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        # #endregion
+
         if user_contributor is None or user_units <= 0:
             log_message(f"[{session_id}] PERF: get_user_investment_metrics - User not found or no units, returning None (total: {time.time() - func_start:.2f}s)", level='DEBUG')
             return None
@@ -2315,6 +2506,39 @@ def get_user_investment_metrics(fund: str, total_portfolio_value: float, include
         ownership_pct = (user_units / total_units) * 100
         gain_loss = current_value - user_net_contribution
         gain_loss_pct = (gain_loss / user_net_contribution) * 100 if user_net_contribution > 0 else 0.0
+
+        # #region agent log
+        try:
+            import json as _json
+            with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
+                _f.write(
+                    _json.dumps(
+                        {
+                            "sessionId": "dc6352",
+                            "runId": f"nav_value_{int(time.time() * 1000)}",
+                            "hypothesisId": "H7",
+                            "location": "streamlit_utils.py:get_user_investment_metrics:value_math",
+                            "message": "Computed NAV value slice",
+                            "data": {
+                                "fund": fund,
+                                "user_contributor": user_contributor,
+                                "user_units": user_units,
+                                "total_units": total_units,
+                                "fund_total_value": fund_total_value,
+                                "current_nav": current_nav,
+                                "current_value": current_value,
+                                "user_net_contribution": user_net_contribution,
+                                "ownership_pct": ownership_pct,
+                                "gain_loss": gain_loss,
+                            },
+                            "timestamp": int(time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        # #endregion
         
         log_message(f"[{session_id}] PERF: get_user_investment_metrics - SUCCESS, total time: {time.time() - func_start:.2f}s", level='DEBUG')
         

@@ -46,7 +46,7 @@ docker run -d \
   -e SUPABASE_URL=your_url \
   -e SUPABASE_PUBLISHABLE_KEY=your_key \
   -e SUPABASE_SECRET_KEY=your_secret \
-  -e APP_DOMAIN=ai-trading.drifting.space \
+  -e APP_DOMAIN=app.example.com \
   trading-dashboard-flask
 ```
 

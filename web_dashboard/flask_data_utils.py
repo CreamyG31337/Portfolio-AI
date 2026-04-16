@@ -1197,20 +1197,40 @@ def fetch_latest_rates_bulk_flask(currencies: List[str], target_currency: str) -
 
 @cache_data(ttl=300)
 def get_investor_count_flask(fund: Optional[str] = None) -> int:
-    """Get number of unique investors (Flask version)"""
+    """Count investors for dashboard metrics.
+
+    When ``fund`` is set: returns **capital contributors** from ``fund_contributor_summary``
+    (same as Streamlit ``get_investor_count`` / distinct contributors in ``fund_contributions``).
+    This can be greater than the number of **login accounts** in ``user_funds`` for that fund.
+
+    When ``fund`` is None (aggregate cross-fund view): returns the legacy count of
+    ``user_funds`` rows (dashboard users with any fund access), unchanged.
+    """
     client = get_supabase_client_flask()
     if not client:
         return 0
-        
+
+    if fund:
+        try:
+            result = (
+                client.supabase.table("fund_contributor_summary")
+                .select("total_contributors")
+                .eq("fund", fund)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return int(result.data[0].get("total_contributors", 0))
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting contributor count for fund (Flask): {e}")
+            return 0
+
     try:
-        query = client.supabase.table("user_funds").select("user_id", count='exact')
-        if fund:
-            query = query.eq("fund_name", fund)
-            
+        query = client.supabase.table("user_funds").select("user_id", count="exact")
         result = query.execute()
         return result.count or 0
     except Exception as e:
-        logger.error(f"Error getting investor count (Flask): {e}")
+        logger.error(f"Error getting investor count (Flask, aggregate): {e}")
         return 0
 
 

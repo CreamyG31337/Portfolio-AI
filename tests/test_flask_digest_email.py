@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from unittest.mock import MagicMock, patch
 
@@ -139,6 +140,88 @@ def test_mailgun_send_posts_multipart():
     args, kwargs = post.call_args
     assert "mg.example.com" in args[0]
     assert kwargs.get("auth") == ("api", "key")
+
+
+def test_mailgun_send_domain_from_system_settings():
+    """Send domain may live in system_settings (non-secret) when env is unset."""
+    from mailgun_outbound import send_mailgun_message
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"id": "<test@mailgun>"}
+    mock_resp.text = ""
+
+    def fake_setting(key: str, default=None):
+        if key == "mailgun_send_domain":
+            return "mg.fromdb.example.com"
+        if key == "mailgun_from":
+            return "DB <db@mg.fromdb.example.com>"
+        return default
+
+    with patch.dict(
+        os.environ,
+        {
+            "MAILGUN_API_KEY": "key",
+            "MAILGUN_SEND_DOMAIN": "",
+            "MAILGUN_DOMAIN": "",
+            "MAILGUN_FROM": "",
+        },
+        clear=False,
+    ), patch("settings.get_system_setting", side_effect=fake_setting), patch(
+        "mailgun_outbound.requests.post", return_value=mock_resp
+    ) as post:
+        out = send_mailgun_message("u@example.com", "Subj", "<p>hi</p>")
+        assert out.get("id")
+    args, kwargs = post.call_args
+    assert "mg.fromdb.example.com" in args[0]
+    multipart = kwargs.get("data") or []
+    assert any(t[0] == "from" and "db@mg.fromdb.example.com" in str(t[1]) for t in multipart)
+
+
+def test_mailgun_warns_when_env_send_and_legacy_domain_conflict(caplog):
+    import mailgun_outbound as mo
+
+    mo._logged_mailgun_conflicts.clear()
+    with caplog.at_level(logging.WARNING, logger="mailgun_outbound"):
+        with patch.dict(
+            os.environ,
+            {
+                "MAILGUN_API_KEY": "k",
+                "MAILGUN_SEND_DOMAIN": "mg.a.example.com",
+                "MAILGUN_DOMAIN": "mg.b.example.com",
+            },
+            clear=False,
+        ):
+            params = mo.get_mailgun_outbound_params()
+    assert params is not None
+    assert params["domain"] == "mg.a.example.com"
+    assert "MAILGUN_SEND_DOMAIN" in caplog.text and "MAILGUN_DOMAIN" in caplog.text
+
+
+def test_mailgun_warns_when_env_domain_overrides_db(caplog):
+    import mailgun_outbound as mo
+
+    mo._logged_mailgun_conflicts.clear()
+
+    def fake_setting(key: str, default=None):
+        if key == "mailgun_send_domain":
+            return "mg.db.example.com"
+        return default
+
+    with caplog.at_level(logging.WARNING, logger="mailgun_outbound"):
+        with patch.dict(
+            os.environ,
+            {
+                "MAILGUN_API_KEY": "k",
+                "MAILGUN_SEND_DOMAIN": "mg.env.example.com",
+                "MAILGUN_DOMAIN": "",
+            },
+            clear=False,
+        ), patch("settings.get_system_setting", side_effect=fake_setting):
+            params = mo.get_mailgun_outbound_params()
+    assert params is not None
+    assert params["domain"] == "mg.env.example.com"
+    assert "overrides system_settings" in caplog.text
 
 
 def test_render_digest_thin_email_without_flask_context(app):

@@ -51,7 +51,7 @@ The Settings page has been successfully migrated from Streamlit to Flask. This d
    - Should redirect to Flask Settings page at `/settings`
 
 2. **Direct Access**:
-   - Navigate directly to `http://localhost:5001/settings` (or `https://ai-trading.drifting.space/settings` in production)
+   - Navigate directly to `http://localhost:5001/settings` (or your production URL `/settings`)
    - Should load Flask Settings page
 
 3. **Test Timezone**:

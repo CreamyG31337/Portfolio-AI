@@ -5,11 +5,11 @@ import math
 import time
 import pandas as pd
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Optional
 import json
 
 from auth import require_auth
-from flask_auth_utils import get_user_email_flask
+from flask_auth_utils import get_effective_user_email_flask, get_effective_user_id_flask
 from user_preferences import get_user_theme, get_user_currency, get_user_selected_fund
 
 from flask_data_utils import (
@@ -78,13 +78,21 @@ def dashboard_page():
         # Users who prefer Streamlit can access it directly at /streamlit/
         # but Flask handles all authentication
             
-        user_email = get_user_email_flask()
-        
-        # Determine initial fund from user preference
-        selected_fund = get_user_selected_fund()
+        user_email = get_effective_user_email_flask()
         
         # Navigation context
         nav_context = get_navigation_context(current_page='dashboard')
+
+        # Dashboard should start on a concrete fund to avoid misleading aggregate "all funds"
+        # metrics in sections that are fundamentally per-fund/per-user.
+        selected_fund = get_user_selected_fund()
+        if not selected_fund or str(selected_fund).lower() == "all":
+            available = nav_context.get("available_funds") or []
+            if available:
+                selected_fund = available[0]
+
+        # Keep sidebar selector and dashboard JS initial state in sync.
+        nav_context["selected_fund"] = selected_fund
         
         return render_template('dashboard.html',
                              user_email=user_email,
@@ -177,6 +185,7 @@ def get_latest_timestamp():
 def get_dashboard_summary():
     """Get top-level dashboard metrics"""
     fund = request.args.get('fund')
+    raw_fund = fund
     # Convert 'all' or empty string to None for aggregate view
     if not fund or fund.lower() == 'all':
         fund = None
@@ -194,6 +203,26 @@ def get_dashboard_summary():
     
     logger.info(f"[Dashboard API] /api/dashboard/summary called - fund={fund}, range={time_range}, currency={display_currency}")
     start_time = time.time()
+    # #region agent log
+    try:
+        with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
+            _f.write(json.dumps({
+                "sessionId": "dc6352",
+                "runId": f"summary_{int(start_time * 1000)}",
+                "hypothesisId": "H1",
+                "location": "dashboard_routes.py:get_dashboard_summary:start",
+                "message": "Summary request normalized on server",
+                "data": {
+                    "rawFund": raw_fund,
+                    "normalizedFund": fund,
+                    "range": time_range,
+                    "displayCurrency": display_currency
+                },
+                "timestamp": int(time.time() * 1000)
+            }) + "\n")
+    except Exception:
+        pass
+    # #endregion
     
     try:
         # Fetch Data
@@ -234,6 +263,28 @@ def get_dashboard_summary():
         # Investor & Holdings Count
         investor_count = get_investor_count(fund)
         holdings_count = len(positions_df) if not positions_df.empty else 0
+        # #region agent log
+        try:
+            with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
+                _f.write(json.dumps({
+                    "sessionId": "dc6352",
+                    "runId": f"summary_{int(start_time * 1000)}",
+                    "hypothesisId": "H2",
+                    "location": "dashboard_routes.py:get_dashboard_summary:core",
+                    "message": "Core summary totals computed",
+                    "data": {
+                        "fund": fund,
+                        "totalValue": total_value,
+                        "totalCash": total_cash,
+                        "portfolioValueNoCash": portfolio_value_no_cash,
+                        "investorCount": investor_count,
+                        "holdingsCount": holdings_count
+                    },
+                    "timestamp": int(time.time() * 1000)
+                }) + "\n")
+        except Exception:
+            pass
+        # #endregion
         
         # Get First Trade Date
         first_trade_date = None
@@ -270,6 +321,71 @@ def get_dashboard_summary():
             except Exception as e:
                 logger.warning(f"[Dashboard API] Could not calculate period change for range={time_range}: {e}")
         
+        user_investment_payload: Optional[Dict[str, Any]] = None
+        if fund is not None and investor_count > 1:
+            try:
+                from streamlit_utils import get_user_investment_metrics
+
+                uid = (get_effective_user_email_flask() or "").strip()
+                eff_user_id = (get_effective_user_id_flask() or "").strip()
+                raw_ui = get_user_investment_metrics(
+                    fund,
+                    float(portfolio_value_no_cash),
+                    include_cash=True,
+                    session_id="flask-dashboard-summary",
+                    display_currency=display_currency,
+                    user_email=uid,
+                    user_id=eff_user_id,
+                )
+                # #region agent log
+                try:
+                    with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
+                        _f.write(json.dumps({
+                            "sessionId": "dc6352",
+                            "runId": f"summary_{int(start_time * 1000)}",
+                            "hypothesisId": "H3",
+                            "location": "dashboard_routes.py:get_dashboard_summary:user_investment",
+                            "message": "User investment resolution result",
+                            "data": {
+                                "fund": fund,
+                                "emailProvided": bool(uid),
+                                "effectiveUserIdProvided": bool(eff_user_id),
+                                "userInvestmentPresent": raw_ui is not None,
+                                "userCurrentValue": (raw_ui or {}).get("current_value") if raw_ui else None,
+                                "userOwnershipPct": (raw_ui or {}).get("ownership_pct") if raw_ui else None
+                            },
+                            "timestamp": int(time.time() * 1000)
+                        }) + "\n")
+                except Exception:
+                    pass
+                # #endregion
+                if raw_ui:
+                    ownership_ratio = float(raw_ui["ownership_pct"]) / 100.0
+                    if days is not None and period_change is not None:
+                        user_change_dollars = float(period_change) * ownership_ratio
+                        user_change_pct = period_change_pct
+                    else:
+                        user_change_dollars = float(day_pnl) * ownership_ratio
+                        user_change_pct = day_pnl_pct
+                    user_investment_payload = {
+                        "net_contribution": _json_safe_number(raw_ui.get("net_contribution")),
+                        "current_value": _json_safe_number(raw_ui.get("current_value")),
+                        "gain_loss": _json_safe_number(raw_ui.get("gain_loss")),
+                        "gain_loss_pct": _json_safe_optional_number(raw_ui.get("gain_loss_pct")),
+                        "ownership_pct": _json_safe_number(raw_ui.get("ownership_pct")),
+                        "contributor_name": raw_ui.get("contributor_name"),
+                        "units": _json_safe_number(raw_ui.get("units")),
+                        "unit_price": _json_safe_number(raw_ui.get("unit_price")),
+                        "user_day_change": _json_safe_number(user_change_dollars),
+                        "user_day_change_pct": _json_safe_optional_number(user_change_pct),
+                    }
+            except Exception as uie:
+                logger.warning(
+                    "[Dashboard API] Could not attach user_investment to summary: %s",
+                    uie,
+                    exc_info=True,
+                )
+
         processing_time = time.time() - start_time
         response = {
             "total_value": total_value,
@@ -289,7 +405,8 @@ def get_dashboard_summary():
             "period_change_pct": period_change_pct,
             "range": time_range,
             "from_cache": False,
-            "processing_time": processing_time
+            "processing_time": processing_time,
+            "user_investment": user_investment_payload,
         }
         
         logger.info(f"[Dashboard API] Summary calculated successfully - total_value={total_value:.2f} {display_currency}, processing_time={processing_time:.3f}s")

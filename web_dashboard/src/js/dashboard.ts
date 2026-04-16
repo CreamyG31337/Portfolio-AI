@@ -24,6 +24,20 @@ import { FormatterCache } from './formatters.js';
 console.log('[Dashboard] dashboard.ts file loaded and executing...');
 
 // Type definitions
+/** Per-login NAV slice from /api/dashboard/summary (multi-investor funds). */
+interface UserInvestmentSummary {
+    net_contribution: number;
+    current_value: number;
+    gain_loss: number;
+    gain_loss_pct: number | null;
+    ownership_pct: number;
+    contributor_name?: string | null;
+    units: number;
+    unit_price: number;
+    user_day_change: number;
+    user_day_change_pct: number | null;
+}
+
 interface DashboardSummary {
     total_value: number;
     cash_balance: number;
@@ -51,6 +65,7 @@ interface DashboardSummary {
     first_trade_date?: string | null;
     from_cache: boolean;
     processing_time: number;
+    user_investment?: UserInvestmentSummary | null;
 }
 
 interface DividendData {
@@ -1087,8 +1102,12 @@ function hideSpinner(spinnerId: string): void {
 async function fetchSummary(): Promise<void> {
     const url = `/api/dashboard/summary?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}`;
     const startTime = performance.now();
+    const debugRunId = `summary_${Date.now()}`;
 
     console.log('[Dashboard] Fetching summary...', { url, fund: state.currentFund });
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/0c3342cc-ae91-4cff-8025-0f0444f375bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dc6352'},body:JSON.stringify({sessionId:'dc6352',runId:debugRunId,hypothesisId:'H1',location:'dashboard.ts:fetchSummary:start',message:'Summary request built from UI state',data:{currentFund:state.currentFund,timeRange:state.timeRange,url},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     try {
         const response = await fetch(url, { credentials: 'include' });
@@ -1118,6 +1137,9 @@ async function fetchSummary(): Promise<void> {
         }
 
         const data: DashboardSummary = await response.json();
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/0c3342cc-ae91-4cff-8025-0f0444f375bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dc6352'},body:JSON.stringify({sessionId:'dc6352',runId:debugRunId,hypothesisId:'H2',location:'dashboard.ts:fetchSummary:data',message:'Summary payload received by UI',data:{currentFund:state.currentFund,investorCount:data.investor_count,userInvestmentPresent:data.user_investment!=null,userCurrentValue:data.user_investment?.current_value??null,userOwnership:data.user_investment?.ownership_pct??null,range:data.range},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         console.log('[Dashboard] Summary data received', {
             total_value: data.total_value,
             cash_balance: data.cash_balance,
@@ -1132,6 +1154,49 @@ async function fetchSummary(): Promise<void> {
             processing_time: data.processing_time,
             from_cache: data.from_cache
         });
+        console.log('[Dashboard][Debug] User investment payload snapshot', {
+            ui_fund_from_state: state.currentFund,
+            ui_range_from_state: state.timeRange,
+            api_range: data.range ?? null,
+            api_investor_count: data.investor_count ?? null,
+            api_total_value: data.total_value ?? null,
+            api_cash_balance: data.cash_balance ?? null,
+            api_day_change: data.day_change ?? null,
+            api_day_change_pct: data.day_change_pct ?? null,
+            user_investment_present: data.user_investment != null,
+            user_current_value: data.user_investment?.current_value ?? null,
+            user_ownership_pct: data.user_investment?.ownership_pct ?? null,
+            user_net_contribution: data.user_investment?.net_contribution ?? null,
+            user_gain_loss: data.user_investment?.gain_loss ?? null,
+            user_gain_loss_pct: data.user_investment?.gain_loss_pct ?? null,
+            user_day_change: data.user_investment?.user_day_change ?? null,
+            user_day_change_pct: data.user_investment?.user_day_change_pct ?? null,
+        });
+        console.log(
+            '[Dashboard][Debug][JSON] User investment payload snapshot',
+            JSON.stringify(
+                {
+                    ui_fund_from_state: state.currentFund,
+                    ui_range_from_state: state.timeRange,
+                    api_range: data.range ?? null,
+                    api_investor_count: data.investor_count ?? null,
+                    api_total_value: data.total_value ?? null,
+                    api_cash_balance: data.cash_balance ?? null,
+                    api_day_change: data.day_change ?? null,
+                    api_day_change_pct: data.day_change_pct ?? null,
+                    user_investment_present: data.user_investment != null,
+                    user_net_contribution: data.user_investment?.net_contribution ?? null,
+                    user_current_value: data.user_investment?.current_value ?? null,
+                    user_ownership_pct: data.user_investment?.ownership_pct ?? null,
+                    user_gain_loss: data.user_investment?.gain_loss ?? null,
+                    user_gain_loss_pct: data.user_investment?.gain_loss_pct ?? null,
+                    user_day_change: data.user_investment?.user_day_change ?? null,
+                    user_day_change_pct: data.user_investment?.user_day_change_pct ?? null,
+                },
+                null,
+                0
+            )
+        );
 
         // Update Metrics
         updateMetric('metric-total-value', data.total_value, data.display_currency, true);
@@ -1174,6 +1239,80 @@ async function fetchSummary(): Promise<void> {
                 }
             }
         }
+
+        const totalValueLabelEl = document.getElementById('metric-total-value-label');
+        const userShareSection = document.getElementById('user-share-section');
+        const userShareGrid = document.getElementById('user-share-grid');
+        const userShareNoData = document.getElementById('user-share-no-data');
+        // Match Streamlit: contributor count can exceed dashboard login accounts per fund.
+        // Show "Your share" when the fund has multiple capital contributors or API sent a slice.
+        const multiInvestor = (data.investor_count ?? 0) > 1;
+        const isAggregateAllFunds = (state.currentFund || '').toLowerCase() === 'all';
+        const showYourShare = !isAggregateAllFunds && (multiInvestor || data.user_investment != null);
+        console.log('[Dashboard][Debug] User share visibility inputs', {
+            ui_fund_from_state: state.currentFund,
+            multiInvestor,
+            isAggregateAllFunds,
+            showYourShare,
+            user_investment_present: data.user_investment != null,
+        });
+        console.log(
+            '[Dashboard][Debug][JSON] User share visibility inputs',
+            JSON.stringify(
+                {
+                    ui_fund_from_state: state.currentFund,
+                    multiInvestor,
+                    isAggregateAllFunds,
+                    showYourShare,
+                    user_investment_present: data.user_investment != null,
+                },
+                null,
+                0
+            )
+        );
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/0c3342cc-ae91-4cff-8025-0f0444f375bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dc6352'},body:JSON.stringify({sessionId:'dc6352',runId:debugRunId,hypothesisId:'H3',location:'dashboard.ts:fetchSummary:shareVisibility',message:'User share visibility decision',data:{currentFund:state.currentFund,multiInvestor,isAggregateAllFunds,showYourShare,userInvestmentPresent:data.user_investment!=null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        if (totalValueLabelEl) {
+            totalValueLabelEl.textContent = multiInvestor ? 'Fund total value' : 'Total value';
+        }
+        if (userShareSection && userShareGrid && userShareNoData) {
+            if (showYourShare) {
+                userShareSection.classList.remove('hidden');
+                const ui = data.user_investment;
+                if (ui) {
+                    userShareGrid.classList.remove('hidden');
+                    userShareNoData.classList.add('hidden');
+                    updateMetric('user-metric-value', ui.current_value, data.display_currency, true);
+                    const userCur = document.getElementById('user-metric-currency');
+                    if (userCur) {
+                        userCur.textContent = data.display_currency;
+                    }
+                    const uChange = ui.user_day_change ?? 0;
+                    const uPct = ui.user_day_change_pct ?? 0;
+                    updateChangeMetric('user-metric-change', 'user-metric-change-pct', uChange, uPct, data.display_currency);
+                    const userChangeLabel = document.getElementById('user-metric-change-label');
+                    if (userChangeLabel) {
+                        userChangeLabel.textContent = usePeriodChange
+                            ? `${data.range} change (your est.)`
+                            : 'Your change (est.)';
+                    }
+                    const gl = ui.gain_loss ?? 0;
+                    const glp = ui.gain_loss_pct ?? 0;
+                    updateChangeMetric('user-metric-return', 'user-metric-return-pct', gl, glp, data.display_currency);
+                    const ownEl = document.getElementById('user-metric-ownership');
+                    if (ownEl) {
+                        ownEl.textContent = `${(ui.ownership_pct ?? 0).toFixed(2)}%`;
+                    }
+                } else {
+                    userShareGrid.classList.add('hidden');
+                    userShareNoData.classList.remove('hidden');
+                }
+            } else {
+                userShareSection.classList.add('hidden');
+            }
+        }
+
         if (data.holdings_count !== undefined) updateMetric('metric-holdings-count', data.holdings_count, '', false);
 
         // Update First Trade Date
