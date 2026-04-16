@@ -1175,10 +1175,14 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
                     total_value_cad = Decimal('0')
                     total_cost_basis_cad = Decimal('0')
 
-                    for _, pos in current_positions.iterrows():
-                        ticker = pos['Ticker']
-                        value = Decimal(str(pos['Total Value']))
-                        cost_basis = Decimal(str(pos['Cost Basis']))
+                    # Optimize: pre-compute indices for fast tuple access without .iterrows()
+                    idx_ticker = current_positions.columns.get_loc('Ticker')
+                    idx_value = current_positions.columns.get_loc('Total Value')
+                    idx_cost = current_positions.columns.get_loc('Cost Basis')
+                    for pos in current_positions.itertuples(index=False, name=None):
+                        ticker = pos[idx_ticker]
+                        value = Decimal(str(pos[idx_value]))
+                        cost_basis = Decimal(str(pos[idx_cost]))
 
                         # Convert USD to CAD if needed
                         if is_us_ticker(ticker):
