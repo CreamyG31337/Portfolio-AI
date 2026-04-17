@@ -2480,20 +2480,20 @@ def create_commodity_chart(
                 else:
                     df[_ohlc] = df[_ohlc].fillna(df["close"])
 
+            _yahoo_cols = df.rename(
+                columns={
+                    "date": "Date",
+                    "open": "Open",
+                    "high": "High",
+                    "low": "Low",
+                    "close": "Close",
+                    "volume": "Volume",
+                }
+            )
             df, _qc = validate_and_repair_benchmark_df(
-                df.rename(
-                    columns={
-                        "date": "Date",
-                        "open": "Open",
-                        "high": "High",
-                        "low": "Low",
-                        "close": "Close",
-                        "volume": "Volume",
-                    }
-                ),
-                ticker,
-                config["name"],
-            ).rename(
+                _yahoo_cols, ticker, config["name"]
+            )
+            df = df.rename(
                 columns={
                     "Date": "date",
                     "Open": "open",
