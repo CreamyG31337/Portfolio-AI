@@ -23,9 +23,10 @@ interface TickerAutocompleteConfig {
 let tickerListCache: string[] = [];
 let tickerNamesCache: Record<string, string> = {};
 let tickerListLoaded: boolean = false;
+let tickerListPending: Promise<{ tickers: string[]; names: Record<string, string> }> | null = null;
 
 /**
- * Load ticker list from API endpoint
+ * Load ticker list from API endpoint, with deduplication and retry
  */
 async function loadTickerList(
     url: string = '/api/v2/ticker/list',
@@ -36,26 +37,43 @@ async function loadTickerList(
         return { tickers: tickerListCache, names: tickerNamesCache };
     }
 
-    try {
+    // Deduplicate concurrent calls — share the same in-flight promise
+    if (tickerListPending) {
+        return tickerListPending;
+    }
+
+    const fetchOnce = async (): Promise<{ tickers: string[]; names: Record<string, string> }> => {
         let finalUrl = withNames ? `${url}${url.includes('?') ? '&' : '?'}with_names=1` : url;
         finalUrl = appendFundParam ? appendFundParam(finalUrl) : finalUrl;
-        const response = await fetch(finalUrl, {
-            credentials: 'include'
-        });
 
-        if (!response.ok) {
-            throw new Error('Failed to load ticker list');
+        // Retry up to 2 times for transient errors (e.g. token refresh in progress)
+        const MAX_RETRIES = 2;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                if (attempt > 0) {
+                    await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+                }
+                const response = await fetch(finalUrl, { credentials: 'include' });
+                if (!response.ok) {
+                    throw new Error(`Failed to load ticker list (HTTP ${response.status})`);
+                }
+                const data: TickerListResponse = await response.json();
+                tickerListCache = data.tickers || [];
+                tickerNamesCache = data.ticker_names || {};
+                tickerListLoaded = true;
+                return { tickers: tickerListCache, names: tickerNamesCache };
+            } catch (error) {
+                if (attempt === MAX_RETRIES) {
+                    console.error('Error loading ticker list:', error);
+                    return { tickers: [], names: {} };
+                }
+            }
         }
-
-        const data: TickerListResponse = await response.json();
-        tickerListCache = data.tickers || [];
-        tickerNamesCache = data.ticker_names || {};
-        tickerListLoaded = true;
-        return { tickers: tickerListCache, names: tickerNamesCache };
-    } catch (error) {
-        console.error('Error loading ticker list:', error);
         return { tickers: [], names: {} };
-    }
+    };
+
+    tickerListPending = fetchOnce().finally(() => { tickerListPending = null; });
+    return tickerListPending;
 }
 
 /**
