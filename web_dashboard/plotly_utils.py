@@ -23,6 +23,7 @@ USAGE:
 
 import json
 import logging
+import math
 import numpy as np
 import pandas as pd
 from datetime import datetime as dt
@@ -49,6 +50,13 @@ def convert_datetime_to_str(value: Any) -> Union[str, None]:
         return pd.Timestamp(value).isoformat()
     if isinstance(value, dt):
         return value.isoformat()
+    return value
+
+
+def _json_safe_python_float(value: float) -> float | None:
+    """Return a finite float, or None for NaN/Inf (strict JSON has no NaN; browsers reject it)."""
+    if math.isnan(value) or math.isinf(value):
+        return None
     return value
 
 
@@ -81,7 +89,7 @@ def convert_numpy_to_list(obj: Any) -> Any:
                     return [convert_datetime_to_str(x) for x in arr]
                 decoded = base64.b64decode(obj['bdata'])
                 arr = np.frombuffer(decoded, dtype=dtype_char)
-                return arr.tolist()
+                return [convert_numpy_to_list(x) for x in arr.tolist()]
             except Exception as e:
                 logger.warning(f"Failed to decode numpy array: {e}")
                 return []
@@ -94,13 +102,19 @@ def convert_numpy_to_list(obj: Any) -> Any:
         # Check if it's a datetime64 array
         if np.issubdtype(obj.dtype, np.datetime64):
             return [convert_datetime_to_str(x) for x in obj]
-        return obj.tolist() if hasattr(obj, 'tolist') else float(obj)
-    elif isinstance(obj, np.generic):
-        return obj.tolist() if hasattr(obj, 'tolist') else float(obj)
+        raw = obj.tolist() if hasattr(obj, 'tolist') else float(obj)
+        if isinstance(raw, list):
+            return [convert_numpy_to_list(x) for x in raw]
+        return convert_numpy_to_list(raw)
     elif isinstance(obj, np.floating):
-        return float(obj)
+        return _json_safe_python_float(float(obj))
     elif isinstance(obj, np.integer):
         return int(obj)
+    elif isinstance(obj, np.generic):
+        conv = obj.tolist() if hasattr(obj, 'tolist') else float(obj)
+        return convert_numpy_to_list(conv)
+    elif isinstance(obj, float):
+        return _json_safe_python_float(obj)
     else:
         return obj
 
@@ -148,5 +162,6 @@ def serialize_plotly_figure(fig: go.Figure, pre_convert_traces: bool = True) -> 
     
     # Additional safety: Convert any remaining numpy types and datetime objects
     chart_data = convert_numpy_to_list(chart_data)
-    
-    return json.dumps(chart_data)
+
+    # Browsers reject ``NaN``/``Infinity`` tokens; ``allow_nan=False`` catches any slip-through.
+    return json.dumps(chart_data, allow_nan=False)
