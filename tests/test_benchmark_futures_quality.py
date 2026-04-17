@@ -10,6 +10,15 @@ import pandas as pd
 _ROOT = Path(__file__).resolve().parent.parent
 
 
+def _load_ingest_module():
+    path = _ROOT / "web_dashboard" / "scheduler" / "benchmark_ingest.py"
+    spec = importlib.util.spec_from_file_location("benchmark_ingest", path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _load_module():
     path = _ROOT / "web_dashboard" / "scheduler" / "benchmark_futures_quality.py"
     spec = importlib.util.spec_from_file_location("benchmark_futures_quality", path)
@@ -149,6 +158,56 @@ def test_sanitize_repairs_si_out_of_band_close() -> None:
     out = mod.sanitize_yahoo_continuous_futures_df(df, "SI=F", "Silver")
     assert float(out.iloc[1]["Close"]) < 200
     assert float(out.iloc[2]["Close"]) < 200
+
+
+def test_cl_detached_regime_low_run_via_ingest() -> None:
+    mod = _load_ingest_module()
+    n = 13
+    closes = [70.0] * 5 + [35.0] * 3 + [68.0] * 5
+    df = pd.DataFrame(
+        {
+            "Date": pd.date_range("2025-01-01", periods=n, freq="B"),
+            "Close": closes,
+            "Open": [c * 1.0002 for c in closes],
+            "High": [c * 1.002 for c in closes],
+            "Low": [c * 0.998 for c in closes],
+            "Volume": [5000] * n,
+        }
+    )
+    out, events = mod.validate_and_repair_benchmark_df(df, "CL=F", "Crude Oil")
+    assert any(e.get("action") == "repair_cl_detached_regime" for e in events)
+    for j in range(5, 8):
+        assert abs(float(out.iloc[j]["Close"]) - 69.0) < 2.0
+
+
+def test_cl_wide_bar_via_ingest() -> None:
+    mod = _load_ingest_module()
+    df = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2025-06-01", "2025-06-02", "2025-06-03"]),
+            "Open": [65.0, 64.0, 64.5],
+            "High": [65.5, 66.5, 65.0],
+            "Low": [64.5, 58.0, 64.0],
+            "Close": [65.0, 58.5, 64.8],
+            "Volume": [200000, 250000, 200000],
+        }
+    )
+    out, events = mod.validate_and_repair_benchmark_df(df, "CL=F", "Crude Oil")
+    assert any(e.get("action") == "repair_cl_wide_bar" for e in events)
+    assert abs(float(out.iloc[1]["Close"]) - (65.0 + 64.8) / 2.0) < 0.01
+
+
+def test_non_futures_ingest_passthrough() -> None:
+    mod = _load_ingest_module()
+    df = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2025-01-01"]),
+            "Close": [100.0],
+        }
+    )
+    out, ev = mod.validate_and_repair_benchmark_df(df, "VTI", "VTI")
+    assert len(ev) == 0
+    assert len(out) == 1
 
 
 def test_sanitize_drops_cl_low_volume_spike_bar() -> None:

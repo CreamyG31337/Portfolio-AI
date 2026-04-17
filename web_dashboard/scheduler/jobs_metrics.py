@@ -40,7 +40,11 @@ elif sys.path[0] != str(project_root):
     sys.path.remove(str(project_root))
     sys.path.insert(0, str(project_root))
 
-from scheduler.benchmark_futures_quality import sanitize_yahoo_continuous_futures_df
+from scheduler.benchmark_ingest import (
+    emit_benchmark_qc_events,
+    reconcile_benchmark_cache_to_yahoo,
+    validate_and_repair_benchmark_df,
+)
 from scheduler.scheduler_core import log_job_execution
 
 # Initialize logger
@@ -195,7 +199,8 @@ def benchmark_refresh_job() -> None:
 
                 data = data.dropna(subset=["Date", "Close"]).sort_values("Date").reset_index(drop=True)
 
-                data = sanitize_yahoo_continuous_futures_df(data, ticker, name)
+                data, qc_events = validate_and_repair_benchmark_df(data, ticker, name)
+                emit_benchmark_qc_events(qc_events)
                 if len(data) < 3:
                     logger.warning(
                         "Insufficient rows after futures sanitize for %s (%s)",
@@ -284,6 +289,17 @@ def benchmark_refresh_job() -> None:
                     total_rows_cached += len(rows)
                     benchmarks_updated += 1
                     logger.info(f"✅ Cached {len(rows)} rows for {name} ({ticker})")
+                    try:
+                        reconcile_benchmark_cache_to_yahoo(
+                            client, ticker, name, start_date, end_date
+                        )
+                    except Exception as rec_err:
+                        logger.warning(
+                            "benchmark QC reconcile failed for %s (%s): %s",
+                            name,
+                            ticker,
+                            rec_err,
+                        )
                     if str(ticker).endswith("=F"):
                         rs = start_date.date() if hasattr(start_date, "date") else start_date
                         re = end_date.date() if hasattr(end_date, "date") else end_date

@@ -553,11 +553,15 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
                 data[_ohlc] = pd.to_numeric(data[_ohlc], errors="coerce")
         data = data.dropna(subset=["Date", "Close"])
         if str(norm_ticker).endswith("=F"):
-            from scheduler.benchmark_futures_quality import sanitize_yahoo_continuous_futures_df
+            from scheduler.benchmark_ingest import (
+                emit_benchmark_qc_events,
+                validate_and_repair_benchmark_df,
+            )
 
-            data = sanitize_yahoo_continuous_futures_df(data, norm_ticker, norm_ticker)
+            data, _qc = validate_and_repair_benchmark_df(data, norm_ticker, norm_ticker)
+            emit_benchmark_qc_events(_qc)
         if data.empty or len(data) < 2:
-            print(f"❌ No rows after futures sanitize for {norm_ticker}")
+            print(f"❌ No rows after futures validate for {norm_ticker}")
             return None
         data = _drop_isolated_close_outliers_df(data, 'Date', 'Close')
         if data.empty:
@@ -2465,7 +2469,10 @@ def create_commodity_chart(
 
         # Same futures hygiene as benchmark_refresh_job (stale rows / pre-fix cache).
         if str(ticker).endswith("=F"):
-            from scheduler.benchmark_futures_quality import sanitize_yahoo_continuous_futures_df
+            from scheduler.benchmark_ingest import (
+                emit_benchmark_qc_events,
+                validate_and_repair_benchmark_df,
+            )
 
             for _ohlc in ("open", "high", "low"):
                 if _ohlc not in df.columns:
@@ -2473,7 +2480,7 @@ def create_commodity_chart(
                 else:
                     df[_ohlc] = df[_ohlc].fillna(df["close"])
 
-            df = sanitize_yahoo_continuous_futures_df(
+            df, _qc = validate_and_repair_benchmark_df(
                 df.rename(
                     columns={
                         "date": "Date",
@@ -2496,6 +2503,7 @@ def create_commodity_chart(
                     "Volume": "volume",
                 }
             )
+            emit_benchmark_qc_events(_qc)
             if len(df) == 0:
                 continue
         
