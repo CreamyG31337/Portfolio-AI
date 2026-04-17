@@ -121,7 +121,7 @@ def _make_supabase_for_put():
 def test_get_cash_balances_ok(cash_api_client, mock_admin_supabase):
     mock_db = _make_supabase_for_get()
     with _mock_admin_auth(True), patch(
-        "routes.fund_routes.get_supabase_client", return_value=mock_db
+        "routes.fund_routes.SupabaseClient", return_value=mock_db
     ):
         _set_admin_cookie(cash_api_client)
         resp = cash_api_client.get("/api/v2/funds/MyFund/cash-balances")
@@ -143,7 +143,7 @@ def test_get_cash_balances_fund_not_found(cash_api_client, mock_admin_supabase):
 
     mock_client.supabase.table.side_effect = table_side_effect
     with _mock_admin_auth(True), patch(
-        "routes.fund_routes.get_supabase_client", return_value=mock_client
+        "routes.fund_routes.SupabaseClient", return_value=mock_client
     ):
         _set_admin_cookie(cash_api_client)
         resp = cash_api_client.get("/api/v2/funds/MissingFund/cash-balances")
@@ -154,7 +154,7 @@ def test_get_cash_balances_fund_not_found(cash_api_client, mock_admin_supabase):
 def test_put_cash_balances_forbidden_when_readonly(cash_api_client, mock_admin_supabase):
     mock_db = _make_supabase_for_put()
     with _mock_admin_auth(True), patch(
-        "routes.fund_routes.get_supabase_client", return_value=mock_db
+        "routes.fund_routes.SupabaseClient", return_value=mock_db
     ), patch("flask_auth_utils.can_modify_data_flask", return_value=False):
         _set_admin_cookie(cash_api_client)
         resp = cash_api_client.put(
@@ -170,7 +170,7 @@ def test_put_cash_balances_forbidden_when_readonly(cash_api_client, mock_admin_s
 def test_put_cash_balances_bad_body_returns_400(cash_api_client, mock_admin_supabase):
     mock_db = _make_supabase_for_put()
     with _mock_admin_auth(True), patch(
-        "routes.fund_routes.get_supabase_client", return_value=mock_db
+        "routes.fund_routes.SupabaseClient", return_value=mock_db
     ), patch("flask_auth_utils.can_modify_data_flask", return_value=True):
         _set_admin_cookie(cash_api_client)
         resp = cash_api_client.put(
@@ -185,7 +185,7 @@ def test_put_cash_balances_bad_body_returns_400(cash_api_client, mock_admin_supa
 def test_put_cash_balances_success(cash_api_client, mock_admin_supabase):
     mock_db = _make_supabase_for_put()
     with _mock_admin_auth(True), patch(
-        "routes.fund_routes.get_supabase_client", return_value=mock_db
+        "routes.fund_routes.SupabaseClient", return_value=mock_db
     ), patch("flask_auth_utils.can_modify_data_flask", return_value=True), patch(
         "cache_version.bump_cache_version"
     ) as bump:

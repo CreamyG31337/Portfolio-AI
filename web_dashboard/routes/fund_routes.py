@@ -56,7 +56,8 @@ def get_fund_cash_balances(fund_name: str):
         return jsonify({"error": "Invalid fund name. Names cannot contain '/', '\\', or '..'"}), 400
 
     try:
-        client = get_supabase_client()
+        # Service role: RLS on cash_balances is SELECT-only for user_funds; admins must read any fund.
+        client = SupabaseClient(use_service_role=True)
         fund_row = client.supabase.table("funds").select("name").eq("name", fund_name).execute()
         if not fund_row.data:
             return jsonify({"error": f"Fund '{fund_name}' not found"}), 404
@@ -93,7 +94,8 @@ def put_fund_cash_balances(fund_name: str):
     cad, usd = amounts  # type: ignore[misc]
 
     try:
-        client = get_supabase_client()
+        # Service role: no INSERT/UPDATE policy for JWT role on cash_balances — upsert requires bypass.
+        client = SupabaseClient(use_service_role=True)
         fund_row = client.supabase.table("funds").select("name").eq("name", fund_name).execute()
         if not fund_row.data:
             return jsonify({"error": f"Fund '{fund_name}' not found"}), 404
