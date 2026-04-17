@@ -511,7 +511,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     if (!fund) {
         const tbody = document.getElementById('trades-table-body');
         if (tbody) {
-            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center text-text-secondary">Please select a fund from the sidebar menu</td></tr>';
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="8" class="px-6 py-4 text-center text-text-secondary">Please select a fund from the sidebar menu</td></tr>';
         }
         return;
     }
@@ -522,7 +522,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     const tbody = document.getElementById('trades-table-body');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center">Loading...</td></tr>';
+    tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="8" class="px-6 py-4 text-center">Loading...</td></tr>';
 
     try {
         const response = await fetch(`/api/admin/trades/recent?fund=${encodeURIComponent(fund)}&page=${page}&limit=${limit}`, {
@@ -538,7 +538,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
         tbody.innerHTML = '';
 
         if (data.trades.length === 0) {
-            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center text-text-secondary">No trades found</td></tr>';
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="8" class="px-6 py-4 text-center text-text-secondary">No trades found</td></tr>';
         } else {
             data.trades.forEach(trade => {
                 const tr = document.createElement('tr');
@@ -560,6 +560,13 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                 const total = trade.shares * trade.price;
                 const tradeId = trade.id;
 
+                const reason = trade.reason || '';
+                const isGenericReason = reason.startsWith('Imported from Webull');
+                const reasonDisplay = reason.length > 45 ? reason.slice(0, 42) + '…' : reason;
+                const reasonCell = isGenericReason
+                    ? `<span class="text-theme-warning-text" title="${escapeHtmlForTradeEntry(reason)}">⚠ ${escapeHtmlForTradeEntry(reasonDisplay)}</span>`
+                    : `<span class="text-text-secondary" title="${escapeHtmlForTradeEntry(reason)}">${escapeHtmlForTradeEntry(reasonDisplay) || '—'}</span>`;
+
                 tr.innerHTML = `
                     <td class="px-6 py-4">${escapeHtmlForTradeEntry(dateStr)}</td>
                     <td class="px-6 py-4">${actionBadge}</td>
@@ -567,6 +574,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                     <td class="px-6 py-4 text-right">${trade.shares}</td>
                     <td class="px-6 py-4 text-right">$${trade.price.toFixed(2)}</td>
                     <td class="px-6 py-4 text-right">$${total.toFixed(2)}</td>
+                    <td class="px-6 py-4 text-sm max-w-[200px]">${reasonCell}</td>
                     <td class="px-6 py-4 text-center whitespace-nowrap">
                         <button type="button" data-trade-id="${tradeId}" class="edit-trade-btn text-accent hover:text-accent/80 text-sm font-medium me-2" title="Edit trade">
                             <i class="fas fa-pen-to-square"></i>
@@ -606,7 +614,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     } catch (error) {
         console.error('[Trade Entry] Error fetching trades:', error);
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        tbody.innerHTML = `<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center text-theme-error-text">Error loading trades: ${escapeHtmlForTradeEntry(errorMsg)}</td></tr>`;
+        tbody.innerHTML = `<tr class="bg-dashboard-surface border-b border-border"><td colspan="8" class="px-6 py-4 text-center text-theme-error-text">Error loading trades: ${escapeHtmlForTradeEntry(errorMsg)}</td></tr>`;
     }
 }
 
