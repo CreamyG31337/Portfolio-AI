@@ -880,9 +880,11 @@ def get_cash_balances(fund: Optional[str] = None) -> Dict[str, float]:
         
         balances = {"CAD": 0.0, "USD": 0.0}
         if all_rows:
+            from routes.fund_cash_balance_utils import cash_amount_from_row
+
             for row in all_rows:
-                currency = row.get('currency', 'CAD')
-                amount = float(row.get('balance', 0))
+                currency = str(row.get("currency", "CAD")).upper()
+                amount = cash_amount_from_row(row)
                 balances[currency] = balances.get(currency, 0) + amount
         
         return balances

@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from supabase_client import SupabaseClient
 from flask_auth_utils import get_effective_user_id_flask, get_flask_cache_scope_id
 from flask_cache_utils import cache_data, skip_cache_if_empty_dataframe
+from routes.fund_cash_balance_utils import cash_amount_from_row
 
 logger = logging.getLogger(__name__)
 
@@ -399,8 +400,8 @@ def _get_cash_balances_flask_cached(
         balances = {"CAD": 0.0, "USD": 0.0}
         if all_rows:
             for row in all_rows:
-                currency = row.get('currency', 'CAD')
-                amount = float(row.get('balance', 0))
+                currency = str(row.get("currency", "CAD")).upper()
+                amount = cash_amount_from_row(row)
                 balances[currency] = balances.get(currency, 0) + amount
         
         return balances
