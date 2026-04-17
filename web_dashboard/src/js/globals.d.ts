@@ -29,6 +29,8 @@ declare global {
         confirmDeleteFund?: () => Promise<void>;
         refreshTickerMetadata?: () => Promise<void>;
         rebuildPortfolio?: () => Promise<void>;
+        loadCashBalancesForSelectedFund?: () => void;
+        saveCashBalances?: () => Promise<void>;
     }
     
     // ApexCharts removed - all charts now use Plotly

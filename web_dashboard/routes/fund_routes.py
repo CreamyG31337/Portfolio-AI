@@ -6,7 +6,10 @@ import os
 import sys
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+
+from routes.fund_cash_balance_utils import cash_amount_from_row, parse_put_cash_balances_body
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -43,6 +46,84 @@ def normalize_dividend_mode(value: str | None) -> str:
             f"Invalid dividend_mode '{value}'. Valid values: {sorted(VALID_DIVIDEND_MODES)}"
         )
     return mode
+
+
+@fund_bp.route('/funds/<fund_name>/cash-balances', methods=['GET'])
+@require_admin
+def get_fund_cash_balances(fund_name: str):
+    """Return CAD/USD cash balances for a fund."""
+    if not validate_fund_name(fund_name):
+        return jsonify({"error": "Invalid fund name. Names cannot contain '/', '\\', or '..'"}), 400
+
+    try:
+        client = get_supabase_client()
+        fund_row = client.supabase.table("funds").select("name").eq("name", fund_name).execute()
+        if not fund_row.data:
+            return jsonify({"error": f"Fund '{fund_name}' not found"}), 404
+
+        result = client.supabase.table("cash_balances").select("*").eq("fund", fund_name).execute()
+        balances = {"CAD": 0.0, "USD": 0.0}
+        for row in result.data or []:
+            cur = str(row.get("currency", "CAD")).upper()
+            if cur in balances:
+                balances[cur] = cash_amount_from_row(row)
+
+        return jsonify(balances)
+    except Exception as e:
+        logger.error(f"Error fetching cash balances for {fund_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@fund_bp.route('/funds/<fund_name>/cash-balances', methods=['PUT'])
+@require_admin
+def put_fund_cash_balances(fund_name: str):
+    """Set CAD/USD cash balances for a fund (requires modify permission)."""
+    from flask_auth_utils import can_modify_data_flask
+
+    if not can_modify_data_flask():
+        return jsonify({"error": "Read-only admin cannot modify cash balances"}), 403
+
+    if not validate_fund_name(fund_name):
+        return jsonify({"error": "Invalid fund name. Names cannot contain '/', '\\', or '..'"}), 400
+
+    data = request.get_json()
+    amounts, err = parse_put_cash_balances_body(data)
+    if err:
+        return jsonify({"error": err}), 400
+    cad, usd = amounts  # type: ignore[misc]
+
+    try:
+        client = get_supabase_client()
+        fund_row = client.supabase.table("funds").select("name").eq("name", fund_name).execute()
+        if not fund_row.data:
+            return jsonify({"error": f"Fund '{fund_name}' not found"}), 404
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        client.supabase.table("cash_balances").upsert(
+            [
+                {"fund": fund_name, "currency": "CAD", "amount": cad, "updated_at": now_iso},
+                {"fund": fund_name, "currency": "USD", "amount": usd, "updated_at": now_iso},
+            ],
+            on_conflict="fund,currency",
+        ).execute()
+
+        try:
+            from cache_version import bump_cache_version
+
+            bump_cache_version()
+        except Exception as bump_err:
+            logger.warning(f"Cash balances updated but cache bump failed: {bump_err}")
+
+        return jsonify(
+            {
+                "message": f"Cash balances updated for '{fund_name}'",
+                "balances": {"CAD": cad, "USD": usd},
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error updating cash balances for {fund_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @fund_bp.route('/funds', methods=['GET'])
 @require_admin

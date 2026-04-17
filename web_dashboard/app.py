@@ -2125,7 +2125,7 @@ def admin_dashboard():
 def admin_funds_page():
     """Render the fund management page"""
     from flask import render_template
-    from flask_auth_utils import get_user_email_flask
+    from flask_auth_utils import get_user_email_flask, can_modify_data_flask
     from app import get_navigation_context
 
     user_email = get_user_email_flask()
@@ -2135,6 +2135,7 @@ def admin_funds_page():
 
     return render_template('funds.html',
                          user_email=user_email,
+                         can_modify_data=can_modify_data_flask(),
                          **nav_context)
 
 @app.route('/api/admin/users')

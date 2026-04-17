@@ -56,6 +56,10 @@ const getElements = () => ({
     refreshTicker: document.getElementById('refresh-ticker') as HTMLInputElement | null,
     refreshCurrency: document.getElementById('refresh-currency') as HTMLSelectElement | null,
     refreshResult: document.getElementById('refresh-result'),
+    cashFundSelect: document.getElementById('cash-fund-select') as HTMLSelectElement | null,
+    cashCadInput: document.getElementById('cash-cad-input') as HTMLInputElement | null,
+    cashUsdInput: document.getElementById('cash-usd-input') as HTMLInputElement | null,
+    cashSaveBtn: document.getElementById('cash-save-btn') as HTMLButtonElement | null,
 });
 
 // Utility functions (scoped to funds.ts to avoid conflicts with other files)
@@ -151,6 +155,30 @@ async function loadFunds(): Promise<void> {
                 opt.textContent = fund.name;
                 rebuildSelect.appendChild(opt);
             });
+        }
+
+        const cashSelect = elements.cashFundSelect;
+        if (cashSelect) {
+            const prev = cashSelect.value;
+            cashSelect.innerHTML = '<option value="">Select fund...</option>';
+            allFunds.forEach(fund => {
+                const opt = document.createElement('option');
+                opt.value = fund.name;
+                opt.textContent = fund.name;
+                cashSelect.appendChild(opt);
+            });
+            if (prev && allFunds.some(f => f.name === prev)) {
+                cashSelect.value = prev;
+            }
+            cashSelect.onchange = () => {
+                const v = cashSelect.value;
+                if (v) {
+                    void loadCashBalancesForFund(v);
+                } else {
+                    if (elements.cashCadInput) elements.cashCadInput.value = '';
+                    if (elements.cashUsdInput) elements.cashUsdInput.value = '';
+                }
+            };
         }
 
         // Populate stats cards
@@ -481,6 +509,96 @@ async function refreshTickerMetadata(): Promise<void> {
     }
 }
 
+interface CashBalancesResponse {
+    CAD?: number;
+    USD?: number;
+    error?: string;
+    message?: string;
+    balances?: { CAD?: number; USD?: number };
+}
+
+async function loadCashBalancesForFund(fundName: string): Promise<void> {
+    const elements = getElements();
+    const cadEl = elements.cashCadInput;
+    const usdEl = elements.cashUsdInput;
+    if (!fundName) {
+        showToastForFunds('❌ Please select a fund', 'error');
+        return;
+    }
+    try {
+        const response = await fetch(
+            `/api/v2/funds/${encodeURIComponent(fundName)}/cash-balances`,
+            { credentials: 'include' }
+        );
+        const data: CashBalancesResponse = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        if (cadEl) cadEl.value = String(data.CAD ?? 0);
+        if (usdEl) usdEl.value = String(data.USD ?? 0);
+    } catch (error) {
+        console.error('[Funds] Error loading cash balances:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        showToastForFunds('❌ ' + errorMessage, 'error');
+    }
+}
+
+function loadCashBalancesForSelectedFund(): void {
+    const sel = getElements().cashFundSelect;
+    const fundName = sel?.value || '';
+    void loadCashBalancesForFund(fundName);
+}
+
+async function saveCashBalances(): Promise<void> {
+    const elements = getElements();
+    const sel = elements.cashFundSelect;
+    const fundName = sel?.value || '';
+    const cadEl = elements.cashCadInput;
+    const usdEl = elements.cashUsdInput;
+    const saveBtn = elements.cashSaveBtn;
+
+    if (saveBtn?.disabled) {
+        return;
+    }
+
+    if (!fundName) {
+        showToastForFunds('❌ Please select a fund', 'error');
+        return;
+    }
+    const cad = parseFloat((cadEl?.value ?? '').trim());
+    const usd = parseFloat((usdEl?.value ?? '').trim());
+    if (!Number.isFinite(cad) || !Number.isFinite(usd)) {
+        showToastForFunds('❌ Enter valid CAD and USD numbers', 'error');
+        return;
+    }
+
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        const response = await fetch(
+            `/api/v2/funds/${encodeURIComponent(fundName)}/cash-balances`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                body: JSON.stringify({ CAD: cad, USD: usd }),
+                credentials: 'include',
+            }
+        );
+        const data: CashBalancesResponse = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        if (cadEl && data.balances) cadEl.value = String(data.balances.CAD ?? cad);
+        if (usdEl && data.balances) usdEl.value = String(data.balances.USD ?? usd);
+        showToastForFunds(data.message || '✅ Cash balances saved', 'success');
+    } catch (error) {
+        console.error('[Funds] Error saving cash balances:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        showToastForFunds('❌ ' + errorMessage, 'error');
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
 // Rebuild portfolio
 async function rebuildPortfolio(): Promise<void> {
     const elements = getElements();
@@ -535,3 +653,5 @@ window.showDeleteConfirm = showDeleteConfirm;
 window.confirmDeleteFund = confirmDeleteFund;
 window.refreshTickerMetadata = refreshTickerMetadata;
 window.rebuildPortfolio = rebuildPortfolio;
+window.loadCashBalancesForSelectedFund = loadCashBalancesForSelectedFund;
+window.saveCashBalances = saveCashBalances;
