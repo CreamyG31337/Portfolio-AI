@@ -501,8 +501,8 @@ class CSVRepository(BaseRepository):
             
             # Convert to Trade objects
             trades = []
-            for _, row in df.iterrows():
-                trade = Trade.from_csv_dict(row.to_dict(), timestamp=row['Date'])
+            for row_dict in df.to_dict('records'):
+                trade = Trade.from_csv_dict(row_dict, timestamp=row_dict['Date'])
                 trades.append(trade)
             
             return sorted(trades, key=lambda x: x.timestamp)

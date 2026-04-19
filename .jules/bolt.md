@@ -33,3 +33,6 @@
 ## 2025-03-05 - O(N) Ticker Lookup Anti-Pattern in PortfolioSnapshot
 **Learning:** `PortfolioSnapshot` relied on an $O(N)$ linear list traversal in its `get_position_by_ticker` method. In highly active scenarios involving loops parsing CSV records or rebuilding historical portfolios, repeated calls scale to $O(N^2)$, causing significant CPU overhead for large portfolios.
 **Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.
+## 2024-05-19 - Pandas CSV Trade Loading Anti-Pattern
+**Learning:** Iterating over a pandas DataFrame using `iterrows()` and then converting each row to a dict via `row.to_dict()` is extremely slow (often O(N)) when loading data into object models. This causes significant performance degradation when loading large trade histories from CSVs in `csv_repository.py`.
+**Action:** Always convert the entire DataFrame to dictionaries upfront using `df.to_dict('records')` when parsing pandas DataFrames into python objects. This operation is O(1) relative to the iteration overhead and runs significantly faster.
