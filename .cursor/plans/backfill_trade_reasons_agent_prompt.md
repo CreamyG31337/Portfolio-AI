@@ -109,7 +109,7 @@ Research report conclusion: {conclusion}
 
 Relevant excerpt: {content_excerpt}
 
-Write exactly one sentence (max 25 words) explaining why {ticker} was a buy candidate in September 2025. Focus on the specific investment thesis: valuation, growth drivers, or competitive advantage.
+Write exactly one sentence (max 25 words) explaining why {ticker} was a buy candidate in fall 2025. Focus on the specific investment thesis: valuation, growth drivers, or competitive advantage.
 ```
 
 ### Tier 2 — Individual stock, ticker_analysis fallback

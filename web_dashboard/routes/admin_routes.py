@@ -2364,12 +2364,12 @@ def api_submit_trade():
         logger.error(f"Error submitting trade: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-@admin_bp.route('/api/admin/trades/<int:trade_id>', methods=['PUT'])
+@admin_bp.route('/api/admin/trades/<uuid:trade_id>', methods=['PUT'])
 @require_admin
-def api_update_trade(trade_id: int):
+def api_update_trade(trade_id):
     """Update an existing trade.
     
-    PUT /api/admin/trades/<trade_id>
+    PUT /api/admin/trades/<trade_id>  (trade_id is UUID — matches trade_log.id)
     
     Request Body:
         action (str): BUY or SELL
@@ -2393,11 +2393,12 @@ def api_update_trade(trade_id: int):
             return jsonify({"error": "No data provided"}), 400
         
         client = SupabaseClient(use_service_role=True)
-        
+        tid = str(trade_id)
+
         # Fetch existing trade to verify it exists and get the fund
         existing = client.supabase.table("trade_log") \
             .select("*") \
-            .eq("id", trade_id) \
+            .eq("id", tid) \
             .execute()
         
         if not existing.data:
@@ -2449,7 +2450,7 @@ def api_update_trade(trade_id: int):
         
         client.supabase.table("trade_log") \
             .update(update_data) \
-            .eq("id", trade_id) \
+            .eq("id", tid) \
             .execute()
         
         # Determine earliest affected date for rebuild
@@ -2469,7 +2470,7 @@ def api_update_trade(trade_id: int):
         
         return jsonify({
             "success": True,
-            "message": f"Trade {trade_id} updated: {action} {shares} {ticker}",
+            "message": f"Trade {tid} updated: {action} {shares} {ticker}",
             "rebuild_job_id": job_id
         })
     
@@ -2478,12 +2479,12 @@ def api_update_trade(trade_id: int):
         return jsonify({"error": str(e)}), 500
 
 
-@admin_bp.route('/api/admin/trades/<int:trade_id>', methods=['DELETE'])
+@admin_bp.route('/api/admin/trades/<uuid:trade_id>', methods=['DELETE'])
 @require_admin
-def api_delete_trade(trade_id: int):
+def api_delete_trade(trade_id):
     """Delete a trade.
     
-    DELETE /api/admin/trades/<trade_id>
+    DELETE /api/admin/trades/<trade_id>  (trade_id is UUID)
     
     Returns:
         JSON response with success status and optional rebuild_job_id
@@ -2494,11 +2495,12 @@ def api_delete_trade(trade_id: int):
             return jsonify({"error": "Read-only admin cannot delete trades"}), 403
         
         client = SupabaseClient(use_service_role=True)
-        
+        tid = str(trade_id)
+
         # Fetch existing trade to get fund and date for rebuild
         existing = client.supabase.table("trade_log") \
             .select("*") \
-            .eq("id", trade_id) \
+            .eq("id", tid) \
             .execute()
         
         if not existing.data:
@@ -2511,7 +2513,7 @@ def api_delete_trade(trade_id: int):
         # Delete the trade
         client.supabase.table("trade_log") \
             .delete() \
-            .eq("id", trade_id) \
+            .eq("id", tid) \
             .execute()
         
         # Trigger rebuild from the deleted trade's date
@@ -2526,7 +2528,7 @@ def api_delete_trade(trade_id: int):
         
         return jsonify({
             "success": True,
-            "message": f"Trade {trade_id} deleted",
+            "message": f"Trade {tid} deleted",
             "rebuild_job_id": job_id
         })
     

@@ -12,7 +12,8 @@ import { setupTickerAutocomplete, getCompanyName } from './ticker_autocomplete.j
 
 // Type definitions
 interface Trade {
-    id: number;
+    /** Supabase trade_log.id (UUID string) */
+    id: string;
     date: string;
     ticker: string;
     shares: number;
@@ -689,7 +690,7 @@ async function handleEditSubmit(e: Event): Promise<void> {
     e.preventDefault();
 
     const idInput = document.getElementById('edit-trade-id') as HTMLInputElement | null;
-    const tradeId = idInput ? parseInt(idInput.value) : 0;
+    const tradeId = idInput ? idInput.value.trim() : '';
     if (!tradeId) return;
 
     const saveBtn = document.getElementById('edit-modal-save') as HTMLButtonElement | null;
@@ -724,7 +725,7 @@ async function handleEditSubmit(e: Event): Promise<void> {
             reason: reasonInput?.value || ''
         };
 
-        const response = await fetch(`/api/admin/trades/${tradeId}`, {
+        const response = await fetch(`/api/admin/trades/${encodeURIComponent(tradeId)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
             body: JSON.stringify(payload),
@@ -785,7 +786,7 @@ function closeDeleteModal(): void {
 
 async function handleDeleteConfirm(): Promise<void> {
     const idInput = document.getElementById('delete-trade-id') as HTMLInputElement | null;
-    const tradeId = idInput ? parseInt(idInput.value) : 0;
+    const tradeId = idInput ? idInput.value.trim() : '';
     if (!tradeId) return;
 
     const confirmBtn = document.getElementById('delete-modal-confirm') as HTMLButtonElement | null;
@@ -795,7 +796,7 @@ async function handleDeleteConfirm(): Promise<void> {
     }
 
     try {
-        const response = await fetch(`/api/admin/trades/${tradeId}`, {
+        const response = await fetch(`/api/admin/trades/${encodeURIComponent(tradeId)}`, {
             method: 'DELETE',
             headers: { ...getCsrfHeaders() },
             credentials: 'include'
