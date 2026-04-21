@@ -33,3 +33,6 @@
 ## 2025-03-05 - O(N) Ticker Lookup Anti-Pattern in PortfolioSnapshot
 **Learning:** `PortfolioSnapshot` relied on an $O(N)$ linear list traversal in its `get_position_by_ticker` method. In highly active scenarios involving loops parsing CSV records or rebuilding historical portfolios, repeated calls scale to $O(N^2)$, causing significant CPU overhead for large portfolios.
 **Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.
+## 2026-05-19 - Pandas Iteration Optimization (iterrows vs to_dict)
+**Learning:** Found multiple instances of `for _, row in df.iterrows():` being used for bulk extraction and insertion to databases. `iterrows()` is notoriously slow (O(N) overhead) as it wraps each row in a Series object and forces type inference checks.
+**Action:** When extracting data from a DataFrame to python native lists/dicts, avoid `iterrows()`. Use `df.to_dict('records')` for a single, bulk O(1) conversion to native dictionaries, which is typically 10-100x faster and eliminates row-by-row Series overhead.

@@ -109,7 +109,8 @@ def _top_movers_from_positions(positions_df: pd.DataFrame, limit: int = 5) -> Tu
             "company_name": row.get("company") or row.get("company_name"),
             "five_day_pnl_pct": float(row["five_day_pnl_pct"]) if pd.notna(row["five_day_pnl_pct"]) else None,
         }
-    return [row_to_dict(r) for _, r in gainers.iterrows()], [row_to_dict(r) for _, r in losers.iterrows()]
+    # Optimization: to_dict('records') is 10-100x faster than iterrows()
+    return [row_to_dict(r) for r in gainers.to_dict('records')], [row_to_dict(r) for r in losers.to_dict('records')]
 
 
 def fetch_market_brief_dict() -> Optional[Dict[str, Any]]:

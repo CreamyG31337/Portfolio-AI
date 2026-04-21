@@ -485,7 +485,8 @@ class SupabaseClient:
             # Convert DataFrame to list of dictionaries
             # NOTE: total_value is a GENERATED COLUMN - do not include it in inserts
             positions = []
-            for _, row in positions_df.iterrows():
+            # Optimization: to_dict('records') is 10-100x faster than iterrows()
+            for row in positions_df.to_dict('records'):
                 positions.append({
                     "ticker": row["Ticker"],
                     "shares": float(row["Shares"]),
@@ -531,7 +532,8 @@ class SupabaseClient:
             
             # Convert DataFrame to list of dictionaries
             trades = []
-            for _, row in trades_df.iterrows():
+            # Optimization: to_dict('records') is 10-100x faster than iterrows()
+            for row in trades_df.to_dict('records'):
                 trades.append({
                     "date": row["Date"].isoformat() if pd.notna(row["Date"]) else datetime.now(timezone.utc).isoformat(),
                     "ticker": row["Ticker"],
@@ -698,7 +700,8 @@ class SupabaseClient:
             
             # Return as list of dictionaries with the exact format the chart expects
             daily_data = []
-            for _, row in df.iterrows():
+            # Optimization: to_dict('records') is 10-100x faster than iterrows()
+            for row in df.to_dict('records'):
                 daily_data.append({
                     "date": row["date"].strftime('%Y-%m-%d'),  # Convert to string for JSON serialization
                     "performance_index": round(float(row["performance_index"]), 2),
