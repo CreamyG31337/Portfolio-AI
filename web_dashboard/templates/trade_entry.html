@@ -227,6 +227,27 @@
         <!-- History Content -->
         <div class="hidden p-4 rounded-lg bg-dashboard-surface" id="history-content" role="tabpanel"
             aria-labelledby="history-tab">
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <label for="trade-history-side-filter" class="text-sm font-medium text-text-secondary whitespace-nowrap">Show</label>
+                    <select id="trade-history-side-filter"
+                        class="bg-dashboard-surface border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent min-w-[11rem] p-2.5">
+                        <option value="all" selected>All trades</option>
+                        <option value="buy">Buys only</option>
+                        <option value="sell">Sells only</option>
+                    </select>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <label for="trade-history-page-size" class="text-sm font-medium text-text-secondary whitespace-nowrap">Rows per page</label>
+                    <select id="trade-history-page-size"
+                        class="bg-dashboard-surface border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent p-2.5">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
             <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
                 <table class="w-full text-sm text-left rtl:text-right text-text-secondary">
                     <thead class="text-xs text-text-secondary uppercase bg-dashboard-surface-alt">

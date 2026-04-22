@@ -179,7 +179,22 @@ function updateSelectedFundDisplay(): void {
 // State
 let parsedTradeData: ParsedTrade | null = null;
 let currentPage = 0;
-const limit = 20;
+
+const TRADE_HISTORY_PAGE_SIZES = [10, 20, 50, 100] as const;
+
+function getTradeHistoryPageSize(): number {
+    const sel = document.getElementById('trade-history-page-size') as HTMLSelectElement | null;
+    const n = parseInt(sel?.value || '20', 10);
+    if (!Number.isFinite(n)) return 20;
+    return (TRADE_HISTORY_PAGE_SIZES as readonly number[]).includes(n) ? n : 20;
+}
+
+function getTradeHistorySideFilter(): 'all' | 'buy' | 'sell' {
+    const sel = document.getElementById('trade-history-side-filter') as HTMLSelectElement | null;
+    const v = (sel?.value || 'all').toLowerCase();
+    if (v === 'buy' || v === 'sell') return v;
+    return 'all';
+}
 
 // Tab configuration
 interface TabConfig {
@@ -518,7 +533,8 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     }
 
     currentPage = page;
-    const offset = page * limit;
+    const pageSize = getTradeHistoryPageSize();
+    const side = getTradeHistorySideFilter();
 
     const tbody = document.getElementById('trades-table-body');
     if (!tbody) return;
@@ -526,7 +542,13 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
     tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="8" class="px-6 py-4 text-center">Loading...</td></tr>';
 
     try {
-        const response = await fetch(`/api/admin/trades/recent?fund=${encodeURIComponent(fund)}&page=${page}&limit=${limit}`, {
+        const params = new URLSearchParams({
+            fund,
+            page: String(page),
+            limit: String(pageSize),
+            side
+        });
+        const response = await fetch(`/api/admin/trades/recent?${params.toString()}`, {
             credentials: 'include'
         });
 
@@ -607,8 +629,12 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
         const pageEnd = document.getElementById('page-end');
         const totalCount = document.getElementById('total-count');
 
-        if (pageStart) pageStart.textContent = ((page * limit) + 1).toString();
-        if (pageEnd) pageEnd.textContent = Math.min((page + 1) * limit, data.total).toString();
+        if (pageStart) {
+            pageStart.textContent = data.total === 0 ? '0' : String(page * pageSize + 1);
+        }
+        if (pageEnd) {
+            pageEnd.textContent = String(data.total === 0 ? 0 : Math.min((page + 1) * pageSize, data.total));
+        }
         if (totalCount) totalCount.textContent = data.total.toString();
 
         renderPagination(data.pages, page);
@@ -958,10 +984,20 @@ document.addEventListener('DOMContentLoaded', () => {
             updateSelectedFundDisplay();
             const historyContent = document.getElementById('history-content');
             if (historyContent && !historyContent.classList.contains('hidden')) {
-                fetchRecentTrades();
+                currentPage = 0;
+                fetchRecentTrades(0);
             }
         });
     }
+
+    const tradeHistoryPageSize = document.getElementById('trade-history-page-size');
+    const tradeHistorySide = document.getElementById('trade-history-side-filter');
+    const resetHistoryPageAndFetch = (): void => {
+        currentPage = 0;
+        void fetchRecentTrades(0);
+    };
+    tradeHistoryPageSize?.addEventListener('change', resetHistoryPageAndFetch);
+    tradeHistorySide?.addEventListener('change', resetHistoryPageAndFetch);
 
     // Set default date/time
     // Use server-provided last trading date (avoids UTC timezone bugs and handles weekends)

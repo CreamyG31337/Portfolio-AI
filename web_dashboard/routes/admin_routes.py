@@ -2537,6 +2537,39 @@ def api_delete_trade(trade_id):
         return jsonify({"error": str(e)}), 500
 
 
+def _trade_entry_display_action(trade_row: dict) -> str:
+    """Match web_dashboard/src/js/trade_entry.ts inferAction (table badges)."""
+    a = str(trade_row.get("action") or "").strip().upper()
+    if a in ("BUY", "SELL"):
+        return a
+    reason = str(trade_row.get("reason") or "").lower()
+    if "sell" in reason or "sold" in reason:
+        return "SELL"
+    return "BUY"
+
+
+def _fetch_trade_log_batches(client, fund: str, batch_size: int = 1000) -> list:
+    """All non-DRIP trade_log rows for a fund, newest first (paginated Supabase reads)."""
+    rows: list = []
+    offset = 0
+    while True:
+        data_res = (
+            client.supabase.table("trade_log")
+            .select("*")
+            .eq("fund", fund)
+            .neq("reason", "DRIP")
+            .order("date", desc=True)
+            .range(offset, offset + batch_size - 1)
+            .execute()
+        )
+        batch = data_res.data or []
+        rows.extend(batch)
+        if len(batch) < batch_size:
+            break
+        offset += batch_size
+    return rows
+
+
 @admin_bp.route('/api/admin/trades/recent')
 @require_admin
 def api_recent_trades():
@@ -2547,12 +2580,13 @@ def api_recent_trades():
     Query Parameters:
         fund (str): Fund name (required)
         page (int): Page number for pagination (default: 0)
-        limit (int): Number of trades per page (default: 20)
+        limit (int): Number of trades per page (default: 20, max 100, min 5)
+        side (str): Optional. ``all`` (default), ``buy``, or ``sell`` — matches Trade Entry UI badges.
         
     Returns:
         JSON response with:
             - trades (list): Array of trade objects
-            - total (int): Total number of trades (excluding DRIP)
+            - total (int): Total number of trades (excluding DRIP), after ``side`` filter
             - page (int): Current page number
             - pages (int): Total number of pages
             
@@ -2561,40 +2595,50 @@ def api_recent_trades():
     """
     try:
         fund = request.args.get('fund')
-        page = int(request.args.get('page', 0))
+        page = max(0, int(request.args.get('page', 0)))
         limit = int(request.args.get('limit', 20))
-        offset = page * limit
+        limit = max(5, min(limit, 100))
+        side_raw = (request.args.get('side') or 'all').strip().lower()
+        if side_raw not in ('all', 'buy', 'sell'):
+            side_raw = 'all'
         
         if not fund:
-            return jsonify({"trades": [], "total": 0})
+            return jsonify({"trades": [], "total": 0, "page": 0, "pages": 0})
             
         # Use service role as requested for all admin pages
         client = SupabaseClient(use_service_role=True)
         
-        # Get total count (excluding DRIP)
-        count_res = client.supabase.table("trade_log")\
-            .select("id", count="exact")\
-            .eq("fund", fund)\
-            .neq("reason", "DRIP")\
-            .execute()
-        total = count_res.count or 0
+        if side_raw == 'all':
+            count_res = client.supabase.table("trade_log")\
+                .select("id", count="exact")\
+                .eq("fund", fund)\
+                .neq("reason", "DRIP")\
+                .execute()
+            total = count_res.count or 0
+            offset = page * limit
+            data_res = client.supabase.table("trade_log")\
+                .select("*")\
+                .eq("fund", fund)\
+                .neq("reason", "DRIP")\
+                .order("date", desc=True)\
+                .range(offset, offset + limit - 1)\
+                .execute()
+            trades = data_res.data or []
+        else:
+            want = "BUY" if side_raw == "buy" else "SELL"
+            all_rows = _fetch_trade_log_batches(client, fund)
+            filtered = [r for r in all_rows if _trade_entry_display_action(r) == want]
+            total = len(filtered)
+            offset = page * limit
+            trades = filtered[offset:offset + limit]
         
-        # Get data
-        data_res = client.supabase.table("trade_log")\
-            .select("*")\
-            .eq("fund", fund)\
-            .neq("reason", "DRIP")\
-            .order("date", desc=True)\
-            .range(offset, offset + limit - 1)\
-            .execute()
-            
-        trades = data_res.data or []
+        pages = (total + limit - 1) // limit if total > 0 else 0
         
         return jsonify({
             "trades": trades,
             "total": total,
             "page": page,
-            "pages": (total + limit - 1) // limit
+            "pages": pages,
         })
     except Exception as e:
         logger.error(f"Error fetching recent trades: {e}", exc_info=True)
