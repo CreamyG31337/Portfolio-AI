@@ -563,11 +563,11 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
 
                 const reason = trade.reason || '';
                 const isGenericReason = reason.startsWith('Imported from Webull');
-                // Wider column + line-clamp (see td classes); show full text in title tooltip.
+                // Full reason in-cell (wrapped); wide column on td. Title duplicates for tooltip/copy.
                 const reasonBody = escapeHtmlForTradeEntry(reason) || '—';
                 const reasonCell = isGenericReason
-                    ? `<span class="text-theme-warning-text block line-clamp-4 break-words whitespace-normal" title="${escapeHtmlForTradeEntry(reason)}">⚠ ${reasonBody}</span>`
-                    : `<span class="text-text-secondary block line-clamp-4 break-words whitespace-normal" title="${escapeHtmlForTradeEntry(reason)}">${reasonBody}</span>`;
+                    ? `<span class="text-theme-warning-text block break-words whitespace-normal" title="${escapeHtmlForTradeEntry(reason)}">⚠ ${reasonBody}</span>`
+                    : `<span class="text-text-secondary block break-words whitespace-normal" title="${escapeHtmlForTradeEntry(reason)}">${reasonBody}</span>`;
 
                 tr.innerHTML = `
                     <td class="px-6 py-4">${escapeHtmlForTradeEntry(dateStr)}</td>

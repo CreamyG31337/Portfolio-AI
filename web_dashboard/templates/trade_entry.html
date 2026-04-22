@@ -377,5 +377,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script type="module" src="/assets/js/trade_entry.js"></script>
+<script type="module" src="/assets/js/trade_entry.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 {% endblock %}
