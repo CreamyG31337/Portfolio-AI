@@ -563,10 +563,11 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
 
                 const reason = trade.reason || '';
                 const isGenericReason = reason.startsWith('Imported from Webull');
-                const reasonDisplay = reason.length > 45 ? reason.slice(0, 42) + '…' : reason;
+                // Wider column + line-clamp (see td classes); show full text in title tooltip.
+                const reasonBody = escapeHtmlForTradeEntry(reason) || '—';
                 const reasonCell = isGenericReason
-                    ? `<span class="text-theme-warning-text" title="${escapeHtmlForTradeEntry(reason)}">⚠ ${escapeHtmlForTradeEntry(reasonDisplay)}</span>`
-                    : `<span class="text-text-secondary" title="${escapeHtmlForTradeEntry(reason)}">${escapeHtmlForTradeEntry(reasonDisplay) || '—'}</span>`;
+                    ? `<span class="text-theme-warning-text block line-clamp-4 break-words whitespace-normal" title="${escapeHtmlForTradeEntry(reason)}">⚠ ${reasonBody}</span>`
+                    : `<span class="text-text-secondary block line-clamp-4 break-words whitespace-normal" title="${escapeHtmlForTradeEntry(reason)}">${reasonBody}</span>`;
 
                 tr.innerHTML = `
                     <td class="px-6 py-4">${escapeHtmlForTradeEntry(dateStr)}</td>
@@ -575,7 +576,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                     <td class="px-6 py-4 text-right">${trade.shares}</td>
                     <td class="px-6 py-4 text-right">$${trade.price.toFixed(2)}</td>
                     <td class="px-6 py-4 text-right">$${total.toFixed(2)}</td>
-                    <td class="px-6 py-4 text-sm max-w-[200px]">${reasonCell}</td>
+                    <td class="px-6 py-4 text-sm min-w-[14rem] max-w-2xl align-top">${reasonCell}</td>
                     <td class="px-6 py-4 text-center whitespace-nowrap">
                         <button type="button" data-trade-id="${tradeId}" class="edit-trade-btn text-accent hover:text-accent/80 text-sm font-medium me-2" title="Edit trade">
                             <i class="fas fa-pen-to-square"></i>
