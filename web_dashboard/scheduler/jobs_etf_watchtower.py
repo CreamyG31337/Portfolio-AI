@@ -952,7 +952,7 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     if len(significant) > 5:  # Need enough data points to detect pattern
         from collections import Counter
         # Round percentages to 0.1% to detect clustering
-        rounded_pcts = [round(abs(row['percent_change']), 1) for _, row in significant.iterrows()]
+        rounded_pcts = significant['percent_change'].abs().round(1).tolist()
         pct_counts = Counter(rounded_pcts)
         most_common_pct, most_common_count = pct_counts.most_common(1)[0]
         
@@ -961,9 +961,9 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
             # Additional check: ensure it's a small percentage (systematic adjustments are typically <2%)
             if most_common_pct <= 2.0:
                 # Check if all changes are in same direction (systematic adjustments are uniform)
-                all_same_direction = (
-                    all(row['share_diff'] > 0 for _, row in significant.iterrows()) or
-                    all(row['share_diff'] < 0 for _, row in significant.iterrows())
+                all_same_direction = bool(
+                    (significant['share_diff'] > 0).all() or
+                    (significant['share_diff'] < 0).all()
                 )
                 
                 if all_same_direction:
@@ -1023,14 +1023,24 @@ def save_holdings_snapshot(pc: PostgresClient, etf_ticker: str, holdings: pd.Dat
     
     # Prepare records
     records = []
-    for _, row in aggregated.iterrows():
+    # Find indices to avoid dict allocation
+    idx_ticker = aggregated.columns.get_loc('ticker')
+    idx_name = aggregated.columns.get_loc('name')
+    idx_shares = aggregated.columns.get_loc('shares')
+    idx_weight = aggregated.columns.get_loc('weight_percent')
+
+    for row in aggregated.itertuples(index=False, name=None):
+        name_val = row[idx_name]
+        shares_val = row[idx_shares]
+        weight_val = row[idx_weight]
+
         record = (
             date_str,
             etf_ticker,
-            row['ticker'],
-            str(row.get('name', '')) if pd.notna(row.get('name')) else '',
-            float(row['shares']) if row.get('shares', 0) > 0 else None,
-            float(row['weight_percent']) if row.get('weight_percent', 0) > 0 else None,
+            row[idx_ticker],
+            str(name_val) if pd.notna(name_val) and name_val else '',
+            float(shares_val) if shares_val and shares_val > 0 else None,
+            float(weight_val) if weight_val and weight_val > 0 else None,
         )
         records.append(record)
     
@@ -1089,25 +1099,36 @@ def upsert_securities_metadata(db: SupabaseClient, df: pd.DataFrame, provider: s
                 unique_securities[col] = None
         
         records = []
-        for _, row in unique_securities.iterrows():
-            ticker = row['ticker']
+        idx_ticker = unique_securities.columns.get_loc('ticker')
+        idx_name = unique_securities.columns.get_loc('name')
+        idx_sector = unique_securities.columns.get_loc('sector')
+        idx_industry = unique_securities.columns.get_loc('industry')
+        idx_currency = unique_securities.columns.get_loc('currency')
+
+        for row in unique_securities.itertuples(index=False, name=None):
+            ticker = row[idx_ticker]
             if not ticker or len(str(ticker)) > 20:  # Skip long garbage tickers
                 continue
                 
             record = {
                 'ticker': ticker,
-                'company_name': row['name'],
+                'company_name': row[idx_name],
                 'last_updated': datetime.now(timezone.utc).isoformat()
             }
             
             # Add optional fields if they have values
-            if row.get('sector'):
-                record['sector'] = row['sector']
-            if row.get('industry'):
-                record['industry'] = row['industry']
+            sector_val = row[idx_sector]
+            if pd.notna(sector_val) and sector_val:
+                record['sector'] = sector_val
+
+            industry_val = row[idx_industry]
+            if pd.notna(industry_val) and industry_val:
+                record['industry'] = industry_val
+
             # Note: asset_class, exchange, and first_detected_by don't exist in Supabase securities table
-            if row.get('currency'):
-                record['currency'] = row['currency']
+            currency_val = row[idx_currency]
+            if pd.notna(currency_val) and currency_val:
+                record['currency'] = currency_val
                 
             records.append(record)
             

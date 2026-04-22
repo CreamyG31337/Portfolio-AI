@@ -485,15 +485,27 @@ class SupabaseClient:
             # Convert DataFrame to list of dictionaries
             # NOTE: total_value is a GENERATED COLUMN - do not include it in inserts
             positions = []
-            for _, row in positions_df.iterrows():
+
+            # Find column indices for fast tuple access
+            idx_ticker = positions_df.columns.get_loc("Ticker")
+            idx_shares = positions_df.columns.get_loc("Shares")
+            idx_price = positions_df.columns.get_loc("Current Price")
+            idx_cost = positions_df.columns.get_loc("Cost Basis")
+            idx_pnl = positions_df.columns.get_loc("PnL")
+            idx_date = positions_df.columns.get_loc("Date")
+
+            fallback_date = datetime.now(timezone.utc).isoformat()
+
+            for row in positions_df.itertuples(index=False, name=None):
+                date_val = row[idx_date]
                 positions.append({
-                    "ticker": row["Ticker"],
-                    "shares": float(row["Shares"]),
-                    "price": float(row["Current Price"]),
-                    "cost_basis": float(row["Cost Basis"]),
+                    "ticker": row[idx_ticker],
+                    "shares": float(row[idx_shares]),
+                    "price": float(row[idx_price]),
+                    "cost_basis": float(row[idx_cost]),
                     # "total_value": market_value,  # REMOVED: Generated column - DB calculates automatically
-                    "pnl": float(row["PnL"]),
-                    "date": row["Date"].isoformat() if pd.notna(row["Date"]) else datetime.now(timezone.utc).isoformat()
+                    "pnl": float(row[idx_pnl]),
+                    "date": date_val.isoformat() if pd.notna(date_val) else fallback_date
                 })
             
             # Upsert positions (insert or update on conflict)
@@ -531,15 +543,27 @@ class SupabaseClient:
             
             # Convert DataFrame to list of dictionaries
             trades = []
-            for _, row in trades_df.iterrows():
+
+            idx_date = trades_df.columns.get_loc("Date")
+            idx_ticker = trades_df.columns.get_loc("Ticker")
+            idx_shares = trades_df.columns.get_loc("Shares")
+            idx_price = trades_df.columns.get_loc("Price")
+            idx_cost = trades_df.columns.get_loc("Cost Basis")
+            idx_pnl = trades_df.columns.get_loc("PnL")
+            idx_reason = trades_df.columns.get_loc("Reason")
+
+            fallback_date = datetime.now(timezone.utc).isoformat()
+
+            for row in trades_df.itertuples(index=False, name=None):
+                date_val = row[idx_date]
                 trades.append({
-                    "date": row["Date"].isoformat() if pd.notna(row["Date"]) else datetime.now(timezone.utc).isoformat(),
-                    "ticker": row["Ticker"],
-                    "shares": float(row["Shares"]),
-                    "price": float(row["Price"]),
-                    "cost_basis": float(row["Cost Basis"]),
-                    "pnl": float(row["PnL"]),
-                    "reason": str(row["Reason"])
+                    "date": date_val.isoformat() if pd.notna(date_val) else fallback_date,
+                    "ticker": row[idx_ticker],
+                    "shares": float(row[idx_shares]),
+                    "price": float(row[idx_price]),
+                    "cost_basis": float(row[idx_cost]),
+                    "pnl": float(row[idx_pnl]),
+                    "reason": str(row[idx_reason])
                 })
             
             # Insert trades (no upsert needed for trade log)
@@ -698,14 +722,22 @@ class SupabaseClient:
             
             # Return as list of dictionaries with the exact format the chart expects
             daily_data = []
-            for _, row in df.iterrows():
+
+            idx_date = df.columns.get_loc("date")
+            idx_perf_idx = df.columns.get_loc("performance_index")
+            idx_total_val = df.columns.get_loc("total_value")
+            idx_cost = df.columns.get_loc("cost_basis")
+            idx_pnl = df.columns.get_loc("unrealized_pnl")
+            idx_perf_pct = df.columns.get_loc("performance_pct")
+
+            for row in df.itertuples(index=False, name=None):
                 daily_data.append({
-                    "date": row["date"].strftime('%Y-%m-%d'),  # Convert to string for JSON serialization
-                    "performance_index": round(float(row["performance_index"]), 2),
-                    "total_value": round(float(row["total_value"]), 2),
-                    "cost_basis": round(float(row["cost_basis"]), 2),
-                    "unrealized_pnl": round(float(row["unrealized_pnl"]), 2),
-                    "performance_pct": round(float(row["performance_pct"]), 2)
+                    "date": row[idx_date].strftime('%Y-%m-%d'),  # Convert to string for JSON serialization
+                    "performance_index": round(float(row[idx_perf_idx]), 2),
+                    "total_value": round(float(row[idx_total_val]), 2),
+                    "cost_basis": round(float(row[idx_cost]), 2),
+                    "unrealized_pnl": round(float(row[idx_pnl]), 2),
+                    "performance_pct": round(float(row[idx_perf_pct]), 2)
                 })
             
             return sorted(daily_data, key=lambda x: x["date"])
