@@ -1,28 +1,27 @@
 #!/usr/bin/env python3
 """
-Backfill trade_log.reason for Webull CSV import rows only.
+Backfill trade_log.reason for **earliest qualifying BUY** rows using the research DB
+(``research_articles`` + ``securities``) + optional GLM.
 
-Scopes to funds in --funds (default: RRSP Lance Webull + TFSA). Preflight aborts if any
-`Imported from Webull%` rows exist outside that allowlist.
+For each (fund, ticker) in ``--funds``, picks the earliest BUY (``trade_log.action`` when set,
+else inferred from reason), groups by ticker, generates one sentence per ticker, updates **only**
+rows that are safe to overwrite (see below).
+
+**Replaceable reasons (default):** exact match to ``--placeholder-reason`` (same default as
+``mark_chimera_initial_buys.py``) **or** reason starting with ``Imported from Webull``. Any other
+text on an initial-buy row is **skipped** (no GLM spend) unless you pass
+``--force-overwrite-custom-reasons`` (production apply also requires ``--confirm-force-overwrite``).
 
 Non-ETF tickers with **no** matching research article (``tickers`` array / ``.TO`` key) are **not**
-updated (Webull import text stays). ETF tickers still use templates or ``asset_class=ETF``.
-There is no ``ticker_analysis`` fallback.
+updated. ETF tickers use templates or ``asset_class=ETF``.
 
-For Tier 1, the report **body** is not sent whole: we **mechanically** take windows around lines
-that mention the ticker (plus a capped conclusion). If the ticker never appears in ``content``,
-the row is left unchanged (multi-ticker PDFs where the symbol is only in metadata are skipped).
+Default ``--funds``: Project Chimera + RRSP Lance Webull (one command covers both; add others via ``--funds`` if needed).
 
-**Tier 3 (ETFs):** uses GLM with research ``securities`` metadata (name, sector, description) plus an
-optional objective hint from the legacy template map; if GLM fails or ``--skip-llm``, falls back
-to the old one-line template.
-
-Default: dry-run (no writes). Production writes require BOTH --apply and --confirm-production.
+Default: dry-run. Production writes require ``--apply`` and ``--confirm-production``.
 
 Usage (repo root):
-  python web_dashboard/scripts/backfill_webull_trade_reasons.py
-  python web_dashboard/scripts/backfill_webull_trade_reasons.py --skip-llm --quiet
-  python web_dashboard/scripts/backfill_webull_trade_reasons.py --tickers AEM.TO,VOO
+  python web_dashboard/scripts/backfill_webull_trade_reasons.py --quiet
+  python web_dashboard/scripts/backfill_webull_trade_reasons.py --funds "Project Chimera" --max-tickers 3 --quiet
   python web_dashboard/scripts/backfill_webull_trade_reasons.py --apply --confirm-production --audit-file audit.jsonl
 
 Python path: run from repo root; script adds ``web_dashboard/`` to ``sys.path``.
@@ -58,6 +57,7 @@ import requests
 from glm_config import get_zhipu_api_key
 from postgres_client import PostgresClient
 from supabase_client import SupabaseClient
+from utils.trade_reason import infer_trade_action
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,8 +67,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 WEBULL_REASON_PREFIX = "Imported from Webull"
-# Webull CSV imports were dual-written to RRSP + TFSA in production (see project notes).
-WEBULL_FUNDS_DEFAULT: Tuple[str, ...] = ("RRSP Lance Webull", "TFSA")
+# Keep in sync with mark_chimera_initial_buys.PLACEHOLDER_REASON
+DEFAULT_PLACEHOLDER_REASON = "Initial buy (rationale pending)"
+DEFAULT_FUNDS: Tuple[str, ...] = ("Project Chimera", "RRSP Lance Webull")
 
 ZHIPU_API_URL = "https://api.z.ai/api/coding/paas/v4"
 GLM_MODEL = "glm-4.7"
@@ -208,20 +209,55 @@ def _is_likely_test_supabase() -> bool:
     return "localhost" in url or "127.0.0.1" in url or ":5433" in url or "test" in url
 
 
-def _fetch_trade_log_webull(
-    supabase: Any, funds: Sequence[str]
-) -> List[Dict[str, Any]]:
-    """Paginate trade_log rows for Webull import reasons within fund allowlist."""
+def _parse_ts(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    s = str(value)
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    return datetime.fromisoformat(s.replace(" ", "T", 1))
+
+
+def _is_initial_buy_row(row: Dict[str, Any]) -> bool:
+    act = str(row.get("action") or "").strip().upper()
+    if act == "DIVIDEND":
+        return False
+    shares = float(row.get("shares") or 0)
+    if shares <= 0:
+        return False
+    if act == "SELL":
+        return False
+    if act == "BUY":
+        return True
+    return infer_trade_action(row.get("reason"), default="BUY") == "BUY"
+
+
+def _reason_is_replaceable(
+    reason: Optional[str],
+    *,
+    placeholder: str,
+    webull_prefix: str,
+    force_any: bool,
+) -> bool:
+    if force_any:
+        return True
+    s = (reason or "").strip()
+    if s == (placeholder or "").strip():
+        return True
+    return s.startswith(webull_prefix)
+
+
+def _fetch_trade_log_in_funds(supabase: Any, funds: Sequence[str]) -> List[Dict[str, Any]]:
+    """All trade_log rows in allowlist (ordered by date for stable earliest-buy picks)."""
     page_size = 1000
     offset = 0
     out: List[Dict[str, Any]] = []
     while True:
         q = (
             supabase.table("trade_log")
-            .select("id,fund,ticker,date,reason")
-            .like("reason", f"{WEBULL_REASON_PREFIX}%")
+            .select("id,fund,ticker,date,reason,shares,action")
             .in_("fund", list(funds))
-            .order("id")
+            .order("date")
             .range(offset, offset + page_size - 1)
         )
         res = q.execute()
@@ -233,49 +269,29 @@ def _fetch_trade_log_webull(
     return out
 
 
-def _count_webull_outside_allowlist(supabase: Any, funds: Set[str]) -> int:
-    """Rows with Webull import reason but fund not in allowlist (should be 0)."""
-    page_size = 1000
-    offset = 0
-    total = 0
-    while True:
-        q = (
-            supabase.table("trade_log")
-            .select("id,fund")
-            .like("reason", f"{WEBULL_REASON_PREFIX}%")
-            .order("id")
-            .range(offset, offset + page_size - 1)
-        )
-        res = q.execute()
-        batch = res.data or []
-        for row in batch:
-            if row.get("fund") not in funds:
-                total += 1
-        if len(batch) < page_size:
-            break
-        offset += page_size
-    return total
-
-
-def _count_webull_in_scope(supabase: Any, funds: Sequence[str]) -> int:
-    page_size = 1000
-    offset = 0
-    total = 0
-    while True:
-        q = (
-            supabase.table("trade_log")
-            .select("id", count="exact")
-            .like("reason", f"{WEBULL_REASON_PREFIX}%")
-            .in_("fund", list(funds))
-            .range(offset, offset + page_size - 1)
-        )
-        res = q.execute()
-        batch = res.data or []
-        total += len(batch)
-        if len(batch) < page_size:
-            break
-        offset += page_size
-    return total
+def _group_initial_buy_rows_by_ticker(
+    rows: List[Dict[str, Any]], funds: Sequence[str]
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Earliest qualifying BUY per (fund, ticker), grouped by ticker."""
+    fund_set = set(funds)
+    by_pair: Dict[Tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        f = str(r.get("fund") or "")
+        t = str(r.get("ticker") or "")
+        if f not in fund_set or not t:
+            continue
+        by_pair[(f, t)].append(r)
+    initial: List[Dict[str, Any]] = []
+    for (f, t), lst in by_pair.items():
+        buys = [x for x in lst if _is_initial_buy_row(x)]
+        if not buys:
+            continue
+        buys.sort(key=lambda x: _parse_ts(x["date"]))
+        initial.append(buys[0])
+    by_ticker: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for r in initial:
+        by_ticker[str(r["ticker"])].append(r)
+    return dict(by_ticker)
 
 
 def _glm_chat(system: str, user: str, skip: bool) -> Optional[str]:
@@ -417,12 +433,30 @@ def _validate_reason(text: str) -> bool:
 
 
 def run() -> int:
-    parser = argparse.ArgumentParser(description="Backfill Webull import trade_log.reason values.")
+    parser = argparse.ArgumentParser(
+        description="Backfill trade_log.reason from research DB (+ optional GLM), earliest BUY per (fund,ticker)."
+    )
     parser.add_argument(
         "--funds",
         type=str,
-        default=",".join(WEBULL_FUNDS_DEFAULT),
-        help="Comma-separated fund allowlist (default: RRSP Lance Webull)",
+        default=",".join(DEFAULT_FUNDS),
+        help="Comma-separated funds (default: Project Chimera + RRSP Lance Webull)",
+    )
+    parser.add_argument(
+        "--placeholder-reason",
+        type=str,
+        default=DEFAULT_PLACEHOLDER_REASON,
+        help="Reason text treated as safe to overwrite (must match mark_chimera_initial_buys if you use that script).",
+    )
+    parser.add_argument(
+        "--force-overwrite-custom-reasons",
+        action="store_true",
+        help="Allow overwriting any reason on targeted initial-buy rows (dangerous).",
+    )
+    parser.add_argument(
+        "--confirm-force-overwrite",
+        action="store_true",
+        help="Required with --apply --force-overwrite-custom-reasons on non-test Supabase.",
     )
     parser.add_argument("--apply", action="store_true", help="Perform Supabase updates (default: dry-run).")
     parser.add_argument(
@@ -446,7 +480,7 @@ def run() -> int:
         "--tickers",
         type=str,
         default="",
-        help="Comma-separated tickers to process (must still match Webull import rows). Overrides --max-tickers.",
+        help="Comma-separated tickers to process (must be in candidate set). Overrides --max-tickers.",
     )
     args = parser.parse_args()
 
@@ -454,6 +488,9 @@ def run() -> int:
     if not funds:
         logger.error("Empty --funds")
         return 2
+
+    force_any = bool(args.force_overwrite_custom_reasons)
+    placeholder = (args.placeholder_reason or "").strip()
 
     logger.info("Supabase host fingerprint: %s", _fingerprint_supabase())
     likely_test = _is_likely_test_supabase()
@@ -466,27 +503,24 @@ def run() -> int:
         logger.error("Refusing --apply without --confirm-production on non-test Supabase URL.")
         return 3
 
+    if args.apply and force_any and not likely_test and not args.confirm_force_overwrite:
+        logger.error(
+            "Refusing --apply with --force-overwrite-custom-reasons without --confirm-force-overwrite "
+            "on non-test Supabase URL."
+        )
+        return 7
+
     supabase = SupabaseClient(use_service_role=True).supabase
     pg = PostgresClient()
 
-    outside = _count_webull_outside_allowlist(supabase, set(funds))
-    if outside > 0:
-        logger.error(
-            "Preflight failed: %s trade_log rows have %r reason but fund NOT in allowlist %s. Abort.",
-            outside,
-            WEBULL_REASON_PREFIX + "%",
-            funds,
-        )
-        return 4
-
-    rows = _fetch_trade_log_webull(supabase, funds)
+    rows = _fetch_trade_log_in_funds(supabase, funds)
     if not rows:
-        logger.info("No rows to process (allowlist + Webull reason pattern). Exiting.")
+        logger.info("No trade_log rows in allowlist. Exiting.")
         return 0
-
-    by_ticker: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for r in rows:
-        by_ticker[str(r["ticker"])].append(r)
+    by_ticker = _group_initial_buy_rows_by_ticker(rows, funds)
+    if not by_ticker:
+        logger.info("No qualifying initial BUY rows in scope. Exiting.")
+        return 0
 
     if args.tickers.strip():
         want = {t.strip().upper() for t in args.tickers.split(",") if t.strip()}
@@ -494,13 +528,13 @@ def run() -> int:
         tickers_sorted = sorted(k for k in by_ticker if k.upper() in want)
         missing = want - keys_upper
         if missing:
-            logger.warning("Requested tickers not in Webull-import set (ignored): %s", ", ".join(sorted(missing)))
+            logger.warning(
+                "Requested tickers not in candidate set (ignored): %s", ", ".join(sorted(missing))
+            )
     else:
         tickers_sorted = sorted(by_ticker.keys())
         if args.max_tickers and args.max_tickers > 0:
             tickers_sorted = tickers_sorted[: args.max_tickers]
-
-    in_scope_slice_total = sum(len(by_ticker[t]) for t in tickers_sorted)
 
     reports = _load_research_reports(pg)
     by_key = _reports_by_match_key(reports)
@@ -510,12 +544,33 @@ def run() -> int:
     # (template text only as fallback or with --skip-llm). No Tier 2.
     tier_counts = {1: 0, 3: 0, 0: 0}
     skipped: List[str] = []
+    skipped_protected: List[str] = []
     planned: Dict[str, Dict[str, Any]] = {}
 
     for ticker in tickers_sorted:
         trows = by_ticker[ticker]
-        funds_here = sorted({str(x["fund"]) for x in trows})
-        n = len(trows)
+        trows_target = [
+            r
+            for r in trows
+            if _reason_is_replaceable(
+                str(r.get("reason") or ""),
+                placeholder=placeholder,
+                webull_prefix=WEBULL_REASON_PREFIX,
+                force_any=force_any,
+            )
+        ]
+        if not trows_target:
+            if trows:
+                skipped_protected.append(ticker)
+                logger.info(
+                    "Skipping %s: initial-buy row(s) have custom reasons (not placeholder/Webull). "
+                    "Use --force-overwrite-custom-reasons to include.",
+                    ticker,
+                )
+            tier_counts[0] += 1
+            continue
+        funds_here = sorted({str(x["fund"]) for x in trows_target})
+        n = len(trows_target)
         tpl_fallback = _tier3_template(ticker)
         sr = sec_rows.get(ticker, {})
         asset_u = (sr.get("asset_class") or "").upper()
@@ -634,12 +689,14 @@ def run() -> int:
             continue
 
         tier_counts[tier] += 1
+        row_ids = [str(r["id"]) for r in trows_target]
         planned[ticker] = {
             "reason": reason,
             "tier": tier,
             "source": source,
             "row_count": n,
             "funds": funds_here,
+            "row_ids": row_ids,
         }
 
         if not args.quiet:
@@ -647,42 +704,56 @@ def run() -> int:
             print(f"TIER: {tier}")
             print(f"SOURCE: {source}")
             print(f"PROPOSED REASON: {reason}")
-            print(f"AFFECTS: {n} trade_log rows (funds: {funds_here})")
+            print(f"AFFECTS: {n} trade_log rows (funds: {funds_here})  ids={row_ids}")
+            if len(trows) != len(trows_target):
+                print(f"  (skipped {len(trows) - len(trows_target)} fund(s) with protected reasons)")
             print("---")
 
     print()
     print("Summary (planned)")
     print("  Tier 1 (research report + GLM):", tier_counts[1])
     print("  Tier 3 (ETF metadata + GLM, or template if --skip-llm / GLM empty):", tier_counts[3])
-    print("  Unchanged (no report match, or LLM empty):", tier_counts[0])
+    print("  Unchanged (no report match, LLM empty, or no replaceable reason):", tier_counts[0])
     print("  Skipped tickers:", ", ".join(skipped) if skipped else "(none)")
+    print(
+        "  Skipped (protected custom reasons on initial-buy row):",
+        ", ".join(skipped_protected) if skipped_protected else "(none)",
+    )
 
     if not args.apply:
         logger.info("Dry-run complete (--apply not set). No database writes.")
         return 0
 
-    in_scope_before = in_scope_slice_total
     audit_fp = open(args.audit_file, "a", encoding="utf-8") if args.audit_file else None
 
     updated = 0
     try:
         for ticker, meta in planned.items():
             expected = meta["row_count"]
+            row_ids = meta["row_ids"]
+            exp_ids = set(row_ids)
             old_rows = (
                 supabase.table("trade_log")
-                .select("id,fund,reason")
-                .eq("ticker", ticker)
-                .like("reason", f"{WEBULL_REASON_PREFIX}%")
-                .in_("fund", list(funds))
+                .select("id,fund,reason,ticker")
+                .in_("id", row_ids)
                 .execute()
             )
             current = old_rows.data or []
+            got_ids = {str(r["id"]) for r in current}
             if len(current) == 0:
                 logger.warning(
-                    "Skipping %s: no rows still match Webull import (likely already updated); continuing.",
+                    "Skipping %s: no rows found for planned ids (likely deleted or id drift); continuing.",
                     ticker,
                 )
                 continue
+            if got_ids != exp_ids:
+                logger.error(
+                    "Abort apply: ticker %s expected id set %s, got %s — stopping.",
+                    ticker,
+                    sorted(exp_ids),
+                    sorted(got_ids),
+                )
+                return 5
             if len(current) != expected:
                 logger.error(
                     "Abort apply: ticker %s expected %s rows, found %s — stopping without further updates.",
@@ -691,8 +762,18 @@ def run() -> int:
                     len(current),
                 )
                 return 5
+            for row in current:
+                if str(row.get("ticker") or "") != ticker:
+                    logger.error(
+                        "Abort apply: row %s ticker mismatch (expected %s got %s).",
+                        row.get("id"),
+                        ticker,
+                        row.get("ticker"),
+                    )
+                    return 5
             new_reason = meta["reason"]
             for row in current:
+                old_reason = row.get("reason")
                 if audit_fp:
                     audit_fp.write(
                         json.dumps(
@@ -700,31 +781,25 @@ def run() -> int:
                                 "id": row["id"],
                                 "fund": row.get("fund"),
                                 "ticker": ticker,
-                                "old_reason": row.get("reason"),
+                                "old_reason": old_reason,
                                 "new_reason": new_reason,
-                                "script": "backfill_webull_trade_reasons",
+                                "force_overwrite_custom_reasons": force_any,
+                                "script": "backfill_initial_buy_reasons",
                                 "utc_timestamp": datetime.now(timezone.utc).isoformat(),
                             }
                         )
                         + "\n"
                     )
-            supabase.table("trade_log").update({"reason": new_reason}).eq("ticker", ticker).like(
-                "reason", f"{WEBULL_REASON_PREFIX}%"
-            ).in_("fund", list(funds)).execute()
+                supabase.table("trade_log").update({"reason": new_reason, "action": "BUY"}).eq(
+                    "id", row["id"]
+                ).eq("reason", old_reason).execute()
             updated += len(current)
     finally:
         if audit_fp:
             audit_fp.close()
 
-    remaining = _count_webull_in_scope(supabase, funds)
-    expected_remaining = in_scope_before - updated
     print()
-    print("Post-apply: rows still matching Webull import pattern in allowlist:", remaining)
-    print("Expected (in-scope before - updated):", expected_remaining)
-    if remaining != expected_remaining:
-        logger.error("Post-apply verification FAILED (count mismatch).")
-        return 6
-    logger.info("Verification OK. Apply complete. Rows touched: %s", updated)
+    logger.info("Apply complete. Rows touched: %s", updated)
     return 0
 
 

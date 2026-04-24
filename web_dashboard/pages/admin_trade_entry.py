@@ -303,6 +303,12 @@ else:
                             final_reason = f"{trade_action} order"
                         
                         # Insert trade
+                        act = str(trade_action or "BUY").strip().upper()
+                        if act not in ("BUY", "SELL", "DIVIDEND"):
+                            from utils.trade_reason import infer_trade_action
+                            act = infer_trade_action(final_reason, default="BUY")
+                        if act not in ("BUY", "SELL", "DIVIDEND"):
+                            act = "BUY"
                         trade_data = {
                             "fund": trade_fund,
                             "ticker": trade_ticker,
@@ -311,6 +317,7 @@ else:
                             "cost_basis": float(cost_basis),
                             "pnl": float(pnl),
                             "reason": final_reason,
+                            "action": act,
                             "currency": trade_currency,
                             "date": trade_datetime.isoformat()
                         }
@@ -578,6 +585,7 @@ Time: December 19, 2025 09:30 EST""",
                         admin_client.ensure_ticker_in_securities(trade.ticker, trade.currency)
                         
                         # Insert the trade
+                        act = inferred_action if inferred_action in ("BUY", "SELL", "DIVIDEND") else "BUY"
                         trade_data = {
                             "fund": email_fund,
                             "ticker": trade.ticker,
@@ -586,6 +594,7 @@ Time: December 19, 2025 09:30 EST""",
                             "cost_basis": float(trade.cost_basis),
                             "pnl": float(trade.pnl) if trade.pnl else 0,
                             "reason": trade.reason or f"EMAIL TRADE - {inferred_action}",
+                            "action": act,
                             "currency": trade.currency,
                             "date": trade.timestamp.isoformat()
                         }

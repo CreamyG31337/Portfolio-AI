@@ -28,6 +28,7 @@ from supabase_client import SupabaseClient
 from ticker_utils import get_ticker_info, get_ticker_external_links, get_ticker_price_history
 from chart_utils import create_ticker_price_chart
 from ticker_chart_ranges import normalize_ticker_chart_range, ticker_chart_range_days
+from utils.trade_reason import infer_trade_action
 
 # Import from utils.db_utils - handle import error gracefully
 try:
@@ -390,10 +391,17 @@ if portfolio_data and (portfolio_data.get('has_positions') or portfolio_data.get
         trades = portfolio_data.get('trades', [])
         if trades:
             st.subheader("Recent Trade History")
+            def _trade_row_action(trade: dict) -> str:
+                raw = (trade.get('action') or '').strip().upper()
+                if raw in ('BUY', 'SELL', 'DIVIDEND'):
+                    return raw
+                inf = infer_trade_action(trade.get('reason'), default='BUY')
+                return inf if inf in ('BUY', 'SELL', 'DIVIDEND') else 'BUY'
+
             trade_df = pd.DataFrame([
                 {
                     'Date': format_date_safe(trade.get('date')),
-                    'Action': trade.get('action', 'N/A'),
+                    'Action': _trade_row_action(trade),
                     'Shares': f"{(trade.get('shares') or 0):,.2f}",
                     'Price': f"${(trade.get('price') or 0):.2f}",
                     'Fund': trade.get('fund', 'N/A'),

@@ -468,6 +468,7 @@ def insert_drip_transaction(
                 'cost_basis': float(net_amount),
                 'pnl': 0.0,
                 'reason': 'DRIP',
+                'action': 'DIVIDEND',
                 'currency': currency
             }
 

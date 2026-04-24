@@ -62,8 +62,10 @@ CREATE TABLE trade_log (
     cost_basis DECIMAL(10, 2) NOT NULL,
     pnl DECIMAL(10, 2) NOT NULL DEFAULT 0,
     reason TEXT NOT NULL,
+    action VARCHAR(10) NOT NULL DEFAULT 'BUY',
     currency VARCHAR(10) NOT NULL DEFAULT 'USD',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT trade_log_action_check CHECK (action IN ('BUY', 'SELL', 'DIVIDEND'))
 );
 
 -- Cash balances table

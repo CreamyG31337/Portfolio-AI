@@ -518,6 +518,11 @@ class SupabaseClient:
         try:
             if trades_df.empty:
                 return True
+
+            # trade_log.fund is NOT NULL in schema; require it explicitly.
+            fund_col = "Fund" if "Fund" in trades_df.columns else ("fund" if "fund" in trades_df.columns else None)
+            if fund_col is None:
+                raise ValueError("upsert_trade_log requires a 'Fund' column in trades_df")
             
             # Extract unique tickers and ensure they exist in securities table
             unique_tickers = trades_df['Ticker'].unique()
@@ -531,15 +536,26 @@ class SupabaseClient:
             
             # Convert DataFrame to list of dictionaries
             trades = []
+            from utils.trade_reason import infer_trade_action
+
             for _, row in trades_df.iterrows():
+                fund_value = str(row.get(fund_col) or "").strip()
+                if not fund_value:
+                    raise ValueError("upsert_trade_log encountered row with missing/empty fund")
+                reason_str = str(row["Reason"])
+                act = infer_trade_action(reason_str, default="BUY")
+                if act not in ("BUY", "SELL", "DIVIDEND"):
+                    act = "BUY"
                 trades.append({
+                    "fund": fund_value,
                     "date": row["Date"].isoformat() if pd.notna(row["Date"]) else datetime.now(timezone.utc).isoformat(),
                     "ticker": row["Ticker"],
                     "shares": float(row["Shares"]),
                     "price": float(row["Price"]),
                     "cost_basis": float(row["Cost Basis"]),
                     "pnl": float(row["PnL"]),
-                    "reason": str(row["Reason"])
+                    "reason": reason_str,
+                    "action": act,
                 })
             
             # Insert trades (no upsert needed for trade log)

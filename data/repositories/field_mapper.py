@@ -221,6 +221,17 @@ class PositionMapper:
         )
 
 
+def _coerce_trade_log_action(action: Optional[str], reason: Optional[str]) -> str:
+    """Normalize to BUY | SELL | DIVIDEND for trade_log.action."""
+    a = (action or "").strip().upper()
+    if a in ("BUY", "SELL", "DIVIDEND"):
+        return a
+    inferred = infer_trade_action(reason, default="BUY")
+    if inferred in ("BUY", "SELL", "DIVIDEND"):
+        return inferred
+    return "BUY"
+
+
 class TradeMapper:
     """Maps between Trade domain model and database format."""
 
@@ -235,14 +246,13 @@ class TradeMapper:
             'cost_basis': float(trade.cost_basis) if trade.cost_basis else 0.0,
             'pnl': float(trade.pnl) if trade.pnl else 0.0,
             'reason': trade.reason or '',
+            'action': _coerce_trade_log_action(getattr(trade, "action", None), trade.reason),
             'currency': trade.currency,
             'fund': fund,
             'date': trade.timestamp.isoformat(),
             'created_at': datetime.now().isoformat()
         }
-        
-        # Action is inferred from reason field, not stored separately
-        
+
         return db_data
 
     @staticmethod
@@ -250,8 +260,11 @@ class TradeMapper:
         """Convert database row to Trade model."""
         from ..models.trade import Trade
 
-        # Derive action from reason field
-        action = infer_trade_action(row.get('reason', ''), default='BUY')
+        stored = (row.get("action") or "").strip().upper()
+        if stored in ("BUY", "SELL", "DIVIDEND"):
+            action = stored
+        else:
+            action = infer_trade_action(row.get('reason', ''), default='BUY')
 
         return Trade(
             ticker=row['ticker'],

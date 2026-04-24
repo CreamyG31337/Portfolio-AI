@@ -423,12 +423,14 @@ async function handleEmailParse(): Promise<void> {
         }
 
         if (previewAction) {
-            const action = result.trade.action || (result.trade.reason && result.trade.reason.toLowerCase().includes('sell') ? 'SELL' : 'BUY');
+            const action = inferAction(result.trade);
             previewAction.textContent = action;
 
             // Color action
             if (action === 'SELL') {
                 previewAction.className = 'font-bold text-lg text-theme-error-text';
+            } else if (action === 'DIVIDEND') {
+                previewAction.className = 'font-bold text-lg text-theme-info-text';
             } else {
                 previewAction.className = 'font-bold text-lg text-theme-success-text';
             }
@@ -461,16 +463,7 @@ async function handleEmailConfirm(): Promise<void> {
         return;
     }
 
-    // Determine action if missing
-    let action = parsedTradeData.action;
-    if (!action) {
-        const reason = (parsedTradeData.reason || '').toLowerCase();
-        if (reason.includes('sell') || reason.includes('sold')) {
-            action = 'SELL';
-        } else {
-            action = 'BUY';
-        }
-    }
+    const action = inferAction(parsedTradeData);
 
     const payload = {
         fund: fund,
@@ -513,11 +506,13 @@ async function handleEmailConfirm(): Promise<void> {
 
 // Infer action from trade data
 function inferAction(trade: Trade): string {
-    if (trade.action && (trade.action === 'BUY' || trade.action === 'SELL')) {
-        return trade.action;
+    const a = (trade.action || '').trim().toUpperCase();
+    if (a === 'BUY' || a === 'SELL' || a === 'DIVIDEND') {
+        return a;
     }
     const reason = (trade.reason || '').toLowerCase();
     if (reason.includes('sell') || reason.includes('sold')) return 'SELL';
+    if (reason.includes('drip') || reason.includes('dividend')) return 'DIVIDEND';
     return 'BUY';
 }
 
@@ -570,6 +565,8 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                 const action = inferAction(trade);
                 const actionBadge = action === 'SELL'
                     ? '<span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-300">SELL</span>'
+                    : action === 'DIVIDEND'
+                    ? '<span class="bg-sky-100 text-sky-900 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-sky-900 dark:text-sky-100">DIVIDEND</span>'
                     : '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-300">BUY</span>';
 
                 const dateStr = new Date(trade.date).toLocaleString('en-US', {
@@ -667,6 +664,10 @@ function openEditModal(trade: Trade): void {
     const modal = document.getElementById('edit-trade-modal');
     if (!modal) return;
 
+    if (modal instanceof HTMLElement) {
+        modal.dataset.storedAction = (trade.action || '').trim().toUpperCase();
+    }
+
     // Populate form fields
     const idInput = document.getElementById('edit-trade-id') as HTMLInputElement | null;
     const buyRadio = document.getElementById('edit-action-buy') as HTMLInputElement | null;
@@ -689,8 +690,13 @@ function openEditModal(trade: Trade): void {
     // Set action radio
     const action = inferAction(trade);
     if (buyRadio && sellRadio) {
-        buyRadio.checked = action === 'BUY';
-        sellRadio.checked = action === 'SELL';
+        if (action === 'DIVIDEND') {
+            buyRadio.checked = false;
+            sellRadio.checked = false;
+        } else {
+            buyRadio.checked = action === 'BUY';
+            sellRadio.checked = action === 'SELL';
+        }
     }
 
     // Parse date/time from ISO string, displayed in EST
@@ -727,8 +733,20 @@ async function handleEditSubmit(e: Event): Promise<void> {
     }
 
     try {
+        const editModal = document.getElementById('edit-trade-modal');
+        const storedRaw = editModal instanceof HTMLElement ? (editModal.dataset.storedAction || '') : '';
         const buyRadio = document.getElementById('edit-action-buy') as HTMLInputElement | null;
-        const action = buyRadio?.checked ? 'BUY' : 'SELL';
+        const sellRadio = document.getElementById('edit-action-sell') as HTMLInputElement | null;
+        let action: string;
+        if (buyRadio?.checked) {
+            action = 'BUY';
+        } else if (sellRadio?.checked) {
+            action = 'SELL';
+        } else if (storedRaw === 'DIVIDEND') {
+            action = 'DIVIDEND';
+        } else {
+            action = 'BUY';
+        }
 
         const tickerInput = document.getElementById('edit-ticker') as HTMLInputElement | null;
         const sharesInput = document.getElementById('edit-shares') as HTMLInputElement | null;

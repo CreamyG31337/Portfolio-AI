@@ -309,6 +309,17 @@ web_dashboard/scripts/archive_investigation/*_output*
 test_output*.txt
 debug_output*.txt
 
+# Trade reason source material (keep scripts, not raw reason content)
+web_dashboard/scripts/improved_reasons_*.csv
+web_dashboard/scripts/improved_reasons_*.txt
+# Trade reason apply/backfill audit trails (IDs, funds, tickers, reasons — keep local)
+web_dashboard/scripts/*_audit.jsonl
+
+# Local database backup dumps (never commit)
+backups/**/*.sql
+backups/**/*.dump
+*.db-backup.sql
+
 # URL key files for obfuscated scraper URLs (developer reference only)
 *.keys.json
 

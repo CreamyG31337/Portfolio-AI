@@ -40,6 +40,16 @@ interface TickerTrade {
     reason?: string;
 }
 
+/** Prefer persisted trade_log.action; otherwise infer from reason (legacy rows). */
+function inferTickerTradeAction(trade: TickerTrade): string {
+    const a = (trade.action || '').trim().toUpperCase();
+    if (a === 'BUY' || a === 'SELL' || a === 'DIVIDEND') return a;
+    const reason = (trade.reason || '').toLowerCase();
+    if (reason.includes('sell') || reason.includes('sold')) return 'SELL';
+    if (reason.includes('drip') || reason.includes('dividend')) return 'DIVIDEND';
+    return 'BUY';
+}
+
 interface TickerPortfolioData {
     has_positions?: boolean;
     has_trades?: boolean;
@@ -1200,7 +1210,7 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatDate(trade.date)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${trade.action || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${inferTickerTradeAction(trade)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatNumber(trade.shares || 0, 2)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${formatCurrency(trade.price || 0)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-text-primary">${trade.fund || 'N/A'}</td>

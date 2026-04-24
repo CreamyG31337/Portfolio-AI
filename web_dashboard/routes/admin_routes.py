@@ -19,6 +19,8 @@ from typing import Optional
 # Add parent directory to path to allow importing from root
 sys.path.append(str(Path(__file__).parent.parent))
 
+from utils.trade_reason import infer_trade_action
+
 from auth import require_admin, require_auth
 from supabase_client import SupabaseClient
 from postgres_client import PostgresClient
@@ -122,8 +124,7 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
         from collections import deque
         from decimal import Decimal
         from app import get_supabase_client
-        from utils.trade_reason import infer_trade_action
-        
+
         has_action_column = False
 
         if existing_trades is None:
@@ -166,7 +167,7 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
             else:
                 trade_action = infer_trade_action(t.get('reason', ''), default='BUY')
             
-            if trade_action == 'BUY':
+            if trade_action in ('BUY', 'DIVIDEND'):
                 lots.append((Decimal(str(t['shares'])), Decimal(str(t['price']))))
             elif trade_action == 'SELL':
                 rem = Decimal(str(t['shares']))
@@ -2243,7 +2244,7 @@ def api_submit_trade():
         # Additional validation for email-parsed trades
         if data.get('source') == 'email':
             # Validate parsed trade structure
-            if not all([ticker, action in ['BUY', 'SELL'], shares > 0, price > 0]):
+            if not all([ticker, action in ['BUY', 'SELL', 'DIVIDEND'], shares > 0, price > 0]):
                 return jsonify({"error": "Invalid parsed trade data"}), 400
             
             # Validate timestamp is reasonable (not more than 1 day in future)
@@ -2279,6 +2280,11 @@ def api_submit_trade():
              final_reason = f"{final_reason} - BUY"
              
         # 4. Insert Trade Log
+        act = str(action or "BUY").strip().upper()
+        if act not in ("BUY", "SELL", "DIVIDEND"):
+            act = infer_trade_action(final_reason, default="BUY")
+        if act not in ("BUY", "SELL", "DIVIDEND"):
+            act = "BUY"
         trade_data = {
             "fund": fund,
             "ticker": ticker,
@@ -2287,6 +2293,7 @@ def api_submit_trade():
             "cost_basis": cost_basis,
             "pnl": pnl,
             "reason": final_reason,
+            "action": act,
             "currency": currency,
             "date": trade_dt.isoformat()
         }
@@ -2297,7 +2304,7 @@ def api_submit_trade():
             from decimal import Decimal
             trade_obj = TradeModel(
                 ticker=ticker,
-                action=action,
+                action=act,
                 shares=Decimal(str(shares)),
                 price=Decimal(str(price)),
                 timestamp=trade_dt,
@@ -2436,6 +2443,13 @@ def api_update_trade(trade_id):
         except Exception as e:
             logger.warning(f"Metadata fetch warning for {ticker}: {e}")
         
+        act_raw = data.get("action", old_trade.get("action"))
+        act = str(act_raw or "").strip().upper()
+        if act not in ("BUY", "SELL", "DIVIDEND"):
+            act = infer_trade_action(reason, default="BUY")
+        if act not in ("BUY", "SELL", "DIVIDEND"):
+            act = "BUY"
+
         # Update the trade
         update_data = {
             "ticker": ticker,
@@ -2444,6 +2458,7 @@ def api_update_trade(trade_id):
             "cost_basis": cost_basis,
             "pnl": pnl,
             "reason": reason,
+            "action": act,
             "currency": currency,
             "date": trade_dt.isoformat()
         }
@@ -2538,14 +2553,11 @@ def api_delete_trade(trade_id):
 
 
 def _trade_entry_display_action(trade_row: dict) -> str:
-    """Match web_dashboard/src/js/trade_entry.ts inferAction (table badges)."""
+    """Resolve display/filter action: prefer trade_log.action, else infer from reason."""
     a = str(trade_row.get("action") or "").strip().upper()
-    if a in ("BUY", "SELL"):
+    if a in ("BUY", "SELL", "DIVIDEND"):
         return a
-    reason = str(trade_row.get("reason") or "").lower()
-    if "sell" in reason or "sold" in reason:
-        return "SELL"
-    return "BUY"
+    return infer_trade_action(trade_row.get("reason"), default="BUY")
 
 
 def _fetch_trade_log_batches(client, fund: str, batch_size: int = 1000) -> list:
@@ -2625,9 +2637,11 @@ def api_recent_trades():
                 .execute()
             trades = data_res.data or []
         else:
-            want = "BUY" if side_raw == "buy" else "SELL"
             all_rows = _fetch_trade_log_batches(client, fund)
-            filtered = [r for r in all_rows if _trade_entry_display_action(r) == want]
+            if side_raw == "buy":
+                filtered = [r for r in all_rows if _trade_entry_display_action(r) in ("BUY", "DIVIDEND")]
+            else:
+                filtered = [r for r in all_rows if _trade_entry_display_action(r) == "SELL"]
             total = len(filtered)
             offset = page * limit
             trades = filtered[offset:offset + limit]
