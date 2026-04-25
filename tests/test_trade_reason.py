@@ -1,4 +1,9 @@
-from utils.trade_reason import infer_trade_action, is_dividend_reason, is_sell_reason
+from utils.trade_reason import (
+    infer_trade_action,
+    is_boilerplate_buy_rationale,
+    is_dividend_reason,
+    is_sell_reason,
+)
 
 
 def test_infer_trade_action_sell_variants() -> None:
@@ -16,3 +21,18 @@ def test_infer_trade_action_defaults_to_buy_for_unknown() -> None:
     assert infer_trade_action("manual adjustment", default="BUY") == "BUY"
     assert infer_trade_action(None, default="BUY") == "BUY"
     assert not is_sell_reason("quarterly dividend")
+
+
+def test_is_boilerplate_buy_rationale() -> None:
+    assert is_boilerplate_buy_rationale("EMAIL TRADE - BUY")
+    assert is_boilerplate_buy_rationale("MANUAL BUY MOO - Filled")
+    assert is_boilerplate_buy_rationale("Market Buy")
+    assert is_boilerplate_buy_rationale("Limit Buy - Filled")
+    assert is_boilerplate_buy_rationale("buy order")
+    assert not is_boilerplate_buy_rationale("")
+    assert not is_boilerplate_buy_rationale(
+        "Wide moat utility with decades of dividend growth and predictable cash flows."
+    )
+    assert not is_boilerplate_buy_rationale(
+        "KO offers core stability with a wide economic moat despite market-driven softness."
+    )
