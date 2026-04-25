@@ -288,7 +288,7 @@ def get_summarizing_model() -> str:
     """Get the summarizing model setting.
     
     Returns:
-        Model name for summarization (defaults to granite3.3:8b)
+        Model name for summarization (defaults to glm-4.7)
     """
     import os
     # Check system setting first
@@ -302,7 +302,7 @@ def get_summarizing_model() -> str:
         return env_model
     
     # Final fallback
-    return "granite3.3:8b"
+    return "glm-4.7"
 
 
 def get_summarizing_fallback_models() -> list[str]:

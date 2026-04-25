@@ -371,7 +371,7 @@
 <!-- AI Assistant Configuration (passed to TypeScript) -->
 <script id="ai-assistant-config" type="application/json">
 {
-    "defaultModel": {{ default_model|tojson|safe if default_model else '"granite3.2:8b"' }},
+    "defaultModel": {{ default_model|tojson|safe if default_model else '"glm-4.7"' }},
     "availableFunds": {{ available_funds|tojson|safe }},
     "ollamaModels": {{ ollama_models|tojson|safe }},
     "ollamaAvailable": {{ ollama_available|tojson|safe }},

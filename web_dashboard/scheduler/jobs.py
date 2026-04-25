@@ -358,8 +358,8 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             },
             'model': {
                 'type': 'text', 
-                'default': 'granite3.3:8b', 
-                'description': 'Ollama model name (defaults to get_summarizing_model() from settings if not provided)'
+                'default': 'glm-4.7', 
+                'description': 'AI model name (defaults to get_summarizing_model() from settings if not provided)'
             }
         }
     },

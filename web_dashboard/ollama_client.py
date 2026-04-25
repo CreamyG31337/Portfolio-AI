@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Default configuration from environment variables
 # Priority: Docker env vars > .env file > Python defaults
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "glm-4.7")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 
@@ -288,7 +288,7 @@ class OllamaClient:
         self,
         prompt: str,
         context: str = "",
-        model: str = "llama3",
+        model: str = "glm-4.7",
         stream: bool = True,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
@@ -622,7 +622,7 @@ class OllamaClient:
     def generate_completion(
         self, 
         prompt: str, 
-        model: str = "llama3", 
+        model: str = "glm-4.7", 
         json_mode: bool = False,
         temperature: Optional[float] = None
     ) -> Optional[str]:
@@ -683,7 +683,7 @@ class OllamaClient:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "granite3.3:8b"
+                model = "glm-4.7"
 
         audit_start = time.time()
         result: Dict[str, Any] = {}
@@ -857,7 +857,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "granite3.3:8b"
+                model = "glm-4.7"
 
         # Web-based AI service: use cookie-based service, not Ollama
         try:
@@ -987,7 +987,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "granite3.3:8b"
+                model = "glm-4.7"
 
         # Web-based AI service: use cookie-based service, not Ollama (note: doesn't support streaming)
         try:
@@ -1204,7 +1204,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
     def query_ollama_chat(
         self,
         messages: List[Dict[str, str]],
-        model: str = "llama3",
+        model: str = "glm-4.7",
         stream: bool = True,
         temperature: Optional[float] = None,
         max_tokens: int = 2048,
@@ -1639,13 +1639,13 @@ def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
     except Exception as e:
         logger.warning("Could not load summarization settings: %s", e)
         if not primary:
-            primary = "granite3.3:8b"
+            primary = "glm-4.7"
         fallback_models = []
 
     defaults: List[str] = []
     p = (primary or "").strip()
     if p.startswith("glm-"):
-        defaults = ["granite3.3:8b"]
+        defaults = ["glm-4.7"]
     else:
         defaults = ["glm-4.5-air"]
 

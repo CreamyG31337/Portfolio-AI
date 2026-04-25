@@ -388,7 +388,7 @@ class ChatHandler:
             try:
                 for chunk in client.query_ollama(
                     prompt=full_prompt,
-                    model=self.model or "granite3.2:8b",
+                    model=self.model or "glm-4.7",
                     stream=True,
                     temperature=None,
                     max_tokens=None,

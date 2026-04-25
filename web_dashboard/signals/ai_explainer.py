@@ -127,13 +127,13 @@ def _get_explanation_model_chain(requested_model: Optional[str] = None) -> List[
     except Exception as e:
         logger.warning("Could not load summarization settings for explainer chain: %s", e)
         if not primary:
-            primary = "granite3.3:8b"
+            primary = "glm-4.7"
 
     # Cross-provider defaults so there is always at least one alternative
     defaults: List[str] = []
     p = (primary or "").strip()
     if p.startswith("glm-"):
-        defaults = ["granite3.3:8b"]
+        defaults = ["glm-4.7"]
     else:
         defaults = ["glm-4.5-air"]
 
