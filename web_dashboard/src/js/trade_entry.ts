@@ -505,7 +505,7 @@ async function handleEmailConfirm(): Promise<void> {
 }
 
 // Infer action from trade data
-function inferAction(trade: Trade): string {
+function inferAction(trade: Trade | ParsedTrade): string {
     const a = (trade.action || '').trim().toUpperCase();
     if (a === 'BUY' || a === 'SELL' || a === 'DIVIDEND') {
         return a;

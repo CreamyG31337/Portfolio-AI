@@ -33,3 +33,6 @@
 ## 2025-03-05 - O(N) Ticker Lookup Anti-Pattern in PortfolioSnapshot
 **Learning:** `PortfolioSnapshot` relied on an $O(N)$ linear list traversal in its `get_position_by_ticker` method. In highly active scenarios involving loops parsing CSV records or rebuilding historical portfolios, repeated calls scale to $O(N^2)$, causing significant CPU overhead for large portfolios.
 **Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.
+## 2026-04-26 - Avoiding df.iterrows() for bulk processing
+**Learning:** Iterating over Pandas DataFrames using `df.iterrows()` is significantly slower than using `df.to_dict('records')` or vectorized operations, especially for generating list of dictionaries for bulk database inserts (e.g. in `web_dashboard/supabase_client.py`)
+**Action:** When converting DataFrames to a list of dicts or iterating over rows to build payloads, prefer `for row in df.to_dict('records'):` for O(1) bulk conversion, which avoids the overhead of creating a Series for each row.
