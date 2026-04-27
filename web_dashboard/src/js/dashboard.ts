@@ -418,6 +418,19 @@ function formatTimestampForDisplay(date: Date): string {
     return `${datePart} at ${timePart} (${timeZonePart})`;
 }
 
+function formatSummaryUpdatedAt(value: string | null | undefined): string {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
 async function initTimeDisplay(): Promise<void> {
     const el = document.getElementById('last-updated-text');
     if (!el) return;
@@ -1950,7 +1963,8 @@ async function fetchPortfolioAiSummary(): Promise<void> {
         }
         if (asofEl) {
             const d = s.updated_at || '';
-            asofEl.textContent = d ? `Updated ${d}` : '';
+            const formatted = formatSummaryUpdatedAt(d);
+            asofEl.textContent = formatted ? `Updated ${formatted}` : '';
         }
         if (fallbackEl) {
             if (s.currency_fallback_note) {
@@ -2016,7 +2030,8 @@ async function fetchFundDigest(): Promise<void> {
         if (narrativeEl) narrativeEl.textContent = d.narrative || '';
         if (asofEl) {
             const t = d.updated_at || '';
-            asofEl.textContent = t ? `Updated ${t}` : '';
+            const formatted = formatSummaryUpdatedAt(t);
+            asofEl.textContent = formatted ? `Updated ${formatted}` : '';
         }
     } catch {
         hideSpinner('fund-digest-spinner');
@@ -2057,7 +2072,8 @@ async function fetchMarketBrief(): Promise<void> {
         if (narrativeEl) narrativeEl.textContent = data.narrative || '';
         if (asofEl) {
             const d = data.brief_date || data.updated_at || '';
-            asofEl.textContent = d ? `As of ${d}` : '';
+            const formatted = formatSummaryUpdatedAt(d);
+            asofEl.textContent = formatted ? `As of ${formatted}` : '';
         }
         if (inputsEl) {
             try {

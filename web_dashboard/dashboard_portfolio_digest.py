@@ -9,6 +9,8 @@ from typing import Any
 
 import pandas as pd
 from portfolio_summary_math import compute_core_summary_metrics
+from portfolio_summary_math import fetch_latest_rates_bulk_with_client
+from supabase_client import SupabaseClient
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +34,9 @@ def build_dashboard_portfolio_digest(
     tr = (time_range or "ALL").upper()
     days = _DAYS_MAP.get(tr)
 
-    from streamlit_utils import (
-        calculate_portfolio_value_over_time,
-        fetch_latest_rates_bulk,
-        get_cash_balances,
-        get_current_positions,
-    )
-
-    positions_df = get_current_positions(fund)
-    cash_balances = get_cash_balances(fund)
+    client = SupabaseClient(use_service_role=True)
+    positions_df = pd.DataFrame(client.get_current_positions(fund) or [])
+    cash_balances = client.get_cash_balances(fund)
 
     all_currencies: set[str] = set()
     if not positions_df.empty and "currency" in positions_df.columns:
@@ -49,22 +45,20 @@ def build_dashboard_portfolio_digest(
         )
     all_currencies.update(str(c).upper() for c in cash_balances.keys())
     dc = (display_currency or "CAD").upper()
-    rate_map = fetch_latest_rates_bulk(list(all_currencies), dc)
+    rate_map = fetch_latest_rates_bulk_with_client(client, list(all_currencies), dc)
 
     core = compute_core_summary_metrics(positions_df, cash_balances, rate_map, dc)
 
     period: dict[str, Any] = {}
     if days is not None:
         try:
-            range_df = calculate_portfolio_value_over_time(
-                fund, days=days, display_currency=dc
-            )
-            if not range_df.empty:
+            range_df = pd.DataFrame(client.get_daily_performance_data(days=days, fund=fund) or [])
+            if not range_df.empty and "total_value" in range_df.columns:
                 period = {
                     "range": tr,
-                    "start_value": float(range_df["value"].iloc[0]),
-                    "end_value": float(range_df["value"].iloc[-1]),
-                    "change": float(range_df["value"].iloc[-1] - range_df["value"].iloc[0]),
+                    "start_value": float(range_df["total_value"].iloc[0]),
+                    "end_value": float(range_df["total_value"].iloc[-1]),
+                    "change": float(range_df["total_value"].iloc[-1] - range_df["total_value"].iloc[0]),
                 }
                 if period["start_value"]:
                     period["change_pct"] = period["change"] / period["start_value"] * 100.0

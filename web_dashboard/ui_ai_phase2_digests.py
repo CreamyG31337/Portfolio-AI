@@ -10,6 +10,7 @@ import pandas as pd
 import yfinance as yf
 
 from exchange_rates_utils import get_supabase_client as get_fx_supabase_client
+from supabase_client import SupabaseClient
 from web_dashboard.watchlist_access import get_active_watchlist_rows
 
 
@@ -119,7 +120,10 @@ def build_dashboard_commodities_digest(days: int = 90) -> dict[str, Any]:
         hist = yf.download(symbol, period=period, interval="1d", progress=False, auto_adjust=True)
         if hist.empty or "Close" not in hist:
             continue
-        close = pd.to_numeric(hist["Close"], errors="coerce").dropna()
+        close_col = hist["Close"]
+        if isinstance(close_col, pd.DataFrame):
+            close_col = close_col.iloc[:, 0]
+        close = pd.to_numeric(close_col, errors="coerce").dropna()
         if close.empty:
             continue
         start = float(close.iloc[0])
@@ -137,10 +141,9 @@ def build_dashboard_commodities_digest(days: int = 90) -> dict[str, Any]:
 
 def build_dashboard_currency_digest(fund: str | None = None) -> dict[str, Any]:
     """Build compact currency exposure + recent USD/CAD change digest."""
-    from streamlit_utils import get_cash_balances, get_current_positions
-
-    positions = get_current_positions(fund)
-    cash_balances = get_cash_balances(fund)
+    client = SupabaseClient(use_service_role=True)
+    positions = pd.DataFrame(client.get_current_positions(fund) or [])
+    cash_balances = client.get_cash_balances(fund)
     exposure: dict[str, float] = {}
 
     if not positions.empty and "currency" in positions.columns and "market_value" in positions.columns:

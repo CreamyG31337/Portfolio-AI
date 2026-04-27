@@ -196,6 +196,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+function formatUpdatedAtToMinute(value: string | undefined): string {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hour = String(date.getHours()).padStart(2, '0');
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
 async function loadSignalsAiSummary(): Promise<void> {
     try {
         const response = await fetch('/api/signals/ai-summary', { credentials: 'include' });
@@ -220,7 +233,8 @@ async function loadSignalsAiSummary(): Promise<void> {
             li.textContent = item;
             bulletsEl.appendChild(li);
         });
-        asof.textContent = row.updated_at ? `Updated ${new Date(row.updated_at).toLocaleString()}` : '';
+        const updated = formatUpdatedAtToMinute(row.updated_at);
+        asof.textContent = updated ? `Updated ${updated}` : '';
         card.classList.remove('hidden');
     } catch {
         // non-blocking UI enhancement
