@@ -8,6 +8,10 @@ Applies the database schema for ETF AI analysis:
 2. Ticker analysis table (Research DB)
 3. AI analysis queue table (Supabase)
 4. AI analysis skip list table (Supabase)
+
+Research DDL (ticker_analysis, market_daily_brief, ui_ai_summary, etc.) uses
+``RESEARCH_DATABASE_URL`` — a separate Postgres from Supabase portfolio DB.
+See ``web_dashboard/env.example`` and ``.env.test.template``.
 """
 
 import os
