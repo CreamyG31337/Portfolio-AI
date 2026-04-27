@@ -152,6 +152,23 @@ Or in your deployment configuration (systemd, Docker, etc.).
      --cookie "auth_token=your_token"
    ```
 
+## Scheduler Health Verification (Read-Only)
+
+Use the server-first runbook for scheduler/job health checks:
+[`docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md`](docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md)
+
+Quick check (no restarts, no writes):
+
+```bash
+tailscale status
+ssh -i "<key_path>" lance@ts-ubuntu-server "hostname && date && whoami"
+ssh -i "<key_path>" lance@ts-ubuntu-server "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.RunningFor}}'"
+ssh -i "<key_path>" lance@ts-ubuntu-server "docker logs --since 30m trading-dashboard --tail 200"
+ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python /app/web_dashboard/scripts/check_job_status.py"
+```
+
+Important: do not use local-machine scheduler checks as the source of truth for production.
+
 ## Caddy Configuration
 
 Update your Caddyfile to route `/settings` and `/api/settings/*` to port 5001 (see `CADDYFILE_MIGRATION.md`).

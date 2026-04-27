@@ -170,6 +170,8 @@ The dashboard includes APScheduler for running background tasks inside the Docke
 - **Entrypoint script** starts APScheduler before Streamlit
 - Jobs run in background threads while dashboard serves requests
 - Job status and logs accessible via admin UI
+- For production checks, use the server-first runbook: [`docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md`](docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md)
+- Avoid local-only scheduler checks for production diagnosis; verify from server/container context.
 
 ### Available Jobs
 | Job | Interval | Description |
