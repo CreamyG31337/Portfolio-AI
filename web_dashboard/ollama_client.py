@@ -36,6 +36,8 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:1143
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "glm-4.7")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
+# Z.AI / GLM HTTP read timeout (seconds). Article summarization uses this; see docs/GLM_ZAI_SUMMARY_TIMING.md.
+GLM_TIMEOUT = int(os.getenv("GLM_TIMEOUT", "180"))
 
 # Keep summarization output bounded so prompt + article + output fits model context.
 SUMMARY_MIN_PREDICT = 256
@@ -571,7 +573,13 @@ class OllamaClient:
 
         request_start = time.time()
         try:
-            response = requests.post(url, json=payload, headers=headers, stream=stream, timeout=self.timeout)
+            response = requests.post(
+                url,
+                json=payload,
+                headers=headers,
+                stream=stream,
+                timeout=GLM_TIMEOUT,
+            )
             response.raise_for_status()
 
             if stream:
@@ -1332,7 +1340,7 @@ def _generate_summary_via_webai(
     if stream and progress_callback:
         progress_callback(0, 10)  # Indicate start
 
-    timeout_sec = 120
+    timeout_sec = GLM_TIMEOUT
     start_time = time.time()
     logger.info(
         f"🤖 Web-based AI summary query starting: model={model}, "
@@ -1442,7 +1450,7 @@ def _generate_summary_via_zhipu(
         "temperature": temperature,
     }
 
-    timeout_sec = 120
+    timeout_sec = GLM_TIMEOUT
     start_time = time.time()
     logger.info(
         f"🤖 Z.AI summary query starting: model={model}, temp={temperature}, max_tokens={max_tokens}, "
@@ -1645,7 +1653,8 @@ def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
     defaults: List[str] = []
     p = (primary or "").strip()
     if p.startswith("glm-"):
-        defaults = ["glm-4.7"]
+        # Keep a fast GLM fallback in-chain even when DB fallback list is unset.
+        defaults = ["glm-4.7", "glm-4.5-air"]
     else:
         defaults = ["glm-4.5-air"]
 

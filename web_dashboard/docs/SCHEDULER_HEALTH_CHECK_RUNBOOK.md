@@ -75,6 +75,10 @@ Use these rules before raising an incident:
 
 Market-day jobs may appear stale on weekends/holidays depending on trigger configuration.
 
+## Z.AI / GLM summarization timeouts
+
+Article summarization uses Z.AI `chat/completions` with a configurable HTTP read timeout (`GLM_TIMEOUT`, default 180s). Measured production timing and tuning notes: [GLM_ZAI_SUMMARY_TIMING.md](GLM_ZAI_SUMMARY_TIMING.md).
+
 ## Known Benign Log Signals
 
 These can be noisy but not necessarily outages:
