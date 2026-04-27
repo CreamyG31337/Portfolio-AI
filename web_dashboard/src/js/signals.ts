@@ -156,6 +156,7 @@ class TickerCellRenderer {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     loadSignalsData(refreshKey);
+    void loadSignalsAiSummary();
 
     // Set up refresh button
     const refreshBtn = document.getElementById('refresh-btn');
@@ -194,6 +195,37 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+async function loadSignalsAiSummary(): Promise<void> {
+    try {
+        const response = await fetch('/api/signals/ai-summary', { credentials: 'include' });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const row = payload?.summary;
+        if (!row) return;
+
+        const card = document.getElementById('signals-ai-summary-card');
+        const headline = document.getElementById('signals-ai-summary-headline');
+        const narrative = document.getElementById('signals-ai-summary-narrative');
+        const bulletsEl = document.getElementById('signals-ai-summary-bullets');
+        const asof = document.getElementById('signals-ai-summary-asof');
+        if (!card || !headline || !narrative || !bulletsEl || !asof) return;
+
+        headline.textContent = row.headline || '';
+        narrative.textContent = row.narrative || '';
+        bulletsEl.innerHTML = '';
+        const bullets = Array.isArray(row.bullets) ? row.bullets : [];
+        bullets.forEach((item: string) => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            bulletsEl.appendChild(li);
+        });
+        asof.textContent = row.updated_at ? `Updated ${new Date(row.updated_at).toLocaleString()}` : '';
+        card.classList.remove('hidden');
+    } catch {
+        // non-blocking UI enhancement
+    }
+}
 
 // Refresh data
 function refreshData(): void {

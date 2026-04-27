@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Any
 import sys
 from pathlib import Path
+import json
 
 # Add parent directory to path to allow importing from root
 sys.path.append(str(Path(__file__).parent.parent))
@@ -528,6 +529,40 @@ def api_watchlist_signals():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@signals_bp.route('/api/signals/ai-summary')
+@require_auth
+def api_signals_ai_summary():
+    """Return cached tier-1 AI summary for the signals overview screen."""
+    try:
+        from postgres_client import PostgresClient
+        from ui_ai_summary_scopes import make_global_scope_key
+        from ui_ai_summary_service import fetch_ui_summary_row
+
+        row = fetch_ui_summary_row(PostgresClient(), "signals.overview", make_global_scope_key("ALL"))
+        if not row:
+            return jsonify({"summary": None, "hint": "No cached summary yet. Run ui_ai_summaries job."})
+
+        payload = dict(row)
+        sj = payload.get("summary_json")
+        if isinstance(sj, str):
+            try:
+                sj = json.loads(sj)
+            except json.JSONDecodeError:
+                sj = {}
+        if not isinstance(sj, dict):
+            sj = {}
+        payload["summary_json"] = sj
+        payload["headline"] = sj.get("headline")
+        payload["narrative"] = sj.get("narrative")
+        payload["bullets"] = sj.get("bullets")
+        if payload.get("updated_at") and hasattr(payload["updated_at"], "isoformat"):
+            payload["updated_at"] = payload["updated_at"].isoformat()
+        return jsonify({"summary": payload})
+    except Exception as e:
+        logger.error("Error fetching signals ai summary: %s", e, exc_info=True)
+        return jsonify({"summary": None, "error": str(e)}), 500
 
 
 @signals_bp.route('/api/signals/fear_risk/<ticker>')

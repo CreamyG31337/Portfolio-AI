@@ -11,7 +11,12 @@ import { getCsrfHeaders } from './csrf.js';
 import { setupTickerAutocomplete, getCompanyName } from './ticker_autocomplete.js';
 
 // Type definitions
-interface Trade {
+interface TradeActionLike {
+    action?: string;
+    reason?: string;
+}
+
+interface Trade extends TradeActionLike {
     /** Supabase trade_log.id (UUID string) */
     id: string;
     date: string;
@@ -30,13 +35,11 @@ interface TradesResponse {
     pages: number;
 }
 
-interface ParsedTrade {
+interface ParsedTrade extends TradeActionLike {
     ticker: string;
-    action?: string;
     shares: number;
     price: number;
     currency?: string;
-    reason?: string;
     timestamp: string;
 }
 
@@ -505,7 +508,7 @@ async function handleEmailConfirm(): Promise<void> {
 }
 
 // Infer action from trade data
-function inferAction(trade: Trade): string {
+function inferAction(trade: TradeActionLike): string {
     const a = (trade.action || '').trim().toUpperCase();
     if (a === 'BUY' || a === 'SELL' || a === 'DIVIDEND') {
         return a;

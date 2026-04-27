@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, date, timezone
 from typing import Optional, List, Dict, Any
 import sys
 from pathlib import Path
+import json
 
 # Add parent directory to path to allow importing from root
 # This ensures we can import modules like 'auth', 'supabase_client', etc.
@@ -795,6 +796,40 @@ def get_available_models():
             "error": str(e),
             "models": []
         }), 500
+
+
+@research_bp.route('/api/research/ai-summary', methods=['GET'])
+@require_auth
+def get_research_ai_summary():
+    """Return cached tier-1 AI summary for research feed."""
+    try:
+        from postgres_client import PostgresClient
+        from ui_ai_summary_scopes import make_global_scope_key
+        from ui_ai_summary_service import fetch_ui_summary_row
+
+        row = fetch_ui_summary_row(PostgresClient(), "research.feed", make_global_scope_key("7D"))
+        if not row:
+            return jsonify({"summary": None, "hint": "No cached summary yet. Run ui_ai_summaries job."})
+
+        payload = dict(row)
+        sj = payload.get("summary_json")
+        if isinstance(sj, str):
+            try:
+                sj = json.loads(sj)
+            except json.JSONDecodeError:
+                sj = {}
+        if not isinstance(sj, dict):
+            sj = {}
+        payload["summary_json"] = sj
+        payload["headline"] = sj.get("headline")
+        payload["narrative"] = sj.get("narrative")
+        payload["bullets"] = sj.get("bullets")
+        if payload.get("updated_at") and hasattr(payload["updated_at"], "isoformat"):
+            payload["updated_at"] = payload["updated_at"].isoformat()
+        return jsonify({"summary": payload})
+    except Exception as e:
+        logger.error("Error fetching research ai summary: %s", e, exc_info=True)
+        return jsonify({"summary": None, "error": str(e)}), 500
 
 
 @research_bp.route('/api/research/article/<article_id>', methods=['GET'])

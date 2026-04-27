@@ -391,3 +391,71 @@ Return JSON only:
     "sources_note": "one sentence listing which input blocks were informative vs sparse"
 }}"""
 
+SIGNALS_OVERVIEW_PROMPT = """You are summarizing a cached watchlist signals digest.
+Use only the provided JSON (signal counts, fear counts, top tickers) and do not invent data.
+
+## Digest
+{digest_json}
+
+## Task
+Give a concise screen-level read: balance of BUY/SELL/WATCH/HOLD, fear/risk skew, and what should be reviewed manually.
+This is non-binding research context, not trading instructions.
+
+Return JSON only:
+{{
+    "headline": "max 140 chars",
+    "narrative": "2-4 short paragraphs, under 1200 chars",
+    "bullets": ["optional concise observation", "..."]
+}}"""
+
+RESEARCH_FEED_PROMPT = """You are summarizing a cached research feed digest.
+Use only the provided JSON (counts, sources, title/conclusion snippets) and do not invent article content.
+
+## Digest
+{digest_json}
+
+## Task
+Summarize what appears most relevant this period, where coverage is concentrated, and notable sentiment skew.
+This is non-binding research context, not trading instructions.
+
+Return JSON only:
+{{
+    "headline": "max 140 chars",
+    "narrative": "2-4 short paragraphs, under 1200 chars",
+    "bullets": ["optional concise observation", "..."]
+}}"""
+
+DASHBOARD_COMMODITIES_PROMPT = """You are summarizing a commodities trend digest from normalized market series.
+Use only the provided JSON and do not invent prices.
+
+## Digest
+{digest_json}
+
+## Task
+Describe cross-commodity directionality and divergence over the sampled window, plus one caution.
+This is non-binding research context, not trading instructions.
+
+Return JSON only:
+{{
+    "headline": "max 140 chars",
+    "narrative": "2-4 short paragraphs, under 1200 chars",
+    "bullets": ["optional concise observation", "..."]
+}}"""
+
+DASHBOARD_CURRENCY_PROMPT = """You are summarizing portfolio currency exposure plus FX trend context.
+Use only the provided JSON and do not invent rates.
+
+## Digest
+{digest_json}
+
+## Task
+Explain exposure concentration and whether recent USD/CAD movement could matter for review.
+This is non-binding research context, not trading instructions.
+
+Return JSON only:
+{{
+    "headline": "max 140 chars",
+    "narrative": "2-4 short paragraphs, under 1200 chars",
+    "bullets": ["optional concise observation", "..."]
+}}"""
+

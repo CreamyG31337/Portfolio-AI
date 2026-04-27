@@ -15,6 +15,12 @@ from settings import get_summarizing_model
 from supabase_client import SupabaseClient
 from ticker_analysis_service import extract_json
 from ui_ai_summary_scopes import make_portfolio_scope_key, scope_dashboard_portfolio
+from ui_ai_phase2_digests import (
+    build_dashboard_commodities_digest,
+    build_dashboard_currency_digest,
+    build_research_feed_digest,
+    build_signals_overview_digest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +140,168 @@ def refresh_dashboard_portfolio_overview(
         model_used=model,
     )
     return fetch_ui_summary_row(postgres, scope, sk)
+
+
+def _run_llm_json_summary(
+    ollama: OllamaClient,
+    *,
+    model: str,
+    prompt: str,
+) -> dict[str, Any] | None:
+    full = ""
+    for chunk in ollama.query_ollama(
+        prompt=prompt,
+        model=model,
+        stream=True,
+        system_prompt="Return ONLY valid JSON with headline, narrative, bullets.",
+        json_mode=True,
+        temperature=0.2,
+    ):
+        full += chunk
+    return extract_json(full)
+
+
+def refresh_scope_summary(
+    ollama: OllamaClient,
+    postgres: PostgresClient,
+    *,
+    scope: str,
+    scope_key: str,
+    content_class: str,
+    digest: dict[str, Any],
+    prompt_template: str,
+    force_llm: bool = False,
+    model_override: str | None = None,
+) -> dict[str, Any] | None:
+    """Refresh a generic tier-1 scope row from digest + prompt template."""
+    fp = digest_fingerprint(digest)
+    d_hash = sha256_hex(fp)
+    existing = fetch_ui_summary_row(postgres, scope, scope_key)
+    if existing and existing.get("inputs_digest") == d_hash and not force_llm:
+        logger.info("ui_ai_summary skip LLM (unchanged digest) scope=%s key=%s", scope, scope_key)
+        return existing
+
+    model = (model_override or "").strip() or get_summarizing_model()
+    prompt = prompt_template.format(digest_json=json.dumps(digest, indent=2, default=str))
+    parsed = _run_llm_json_summary(ollama, model=model, prompt=prompt)
+    if not parsed:
+        logger.error("scope summary JSON parse failed scope=%s key=%s", scope, scope_key)
+        return existing
+
+    summary_json = {
+        "headline": (parsed.get("headline") or "")[:200],
+        "narrative": parsed.get("narrative") or "",
+        "bullets": parsed.get("bullets") if isinstance(parsed.get("bullets"), list) else [],
+        "digest": digest,
+    }
+    upsert_ui_summary(
+        postgres,
+        scope=scope,
+        scope_key=scope_key,
+        content_class=content_class,
+        summary_json=summary_json,
+        inputs_digest=d_hash,
+        model_used=model,
+    )
+    return fetch_ui_summary_row(postgres, scope, scope_key)
+
+
+def refresh_signals_overview(
+    ollama: OllamaClient,
+    postgres: PostgresClient,
+    supabase: SupabaseClient,
+    *,
+    force_llm: bool = False,
+    model_override: str | None = None,
+) -> dict[str, Any] | None:
+    from ai_prompts import SIGNALS_OVERVIEW_PROMPT
+    from ui_ai_summary_scopes import make_global_scope_key
+
+    digest = build_signals_overview_digest(supabase)
+    return refresh_scope_summary(
+        ollama,
+        postgres,
+        scope="signals.overview",
+        scope_key=make_global_scope_key("ALL"),
+        content_class="price_linked",
+        digest=digest,
+        prompt_template=SIGNALS_OVERVIEW_PROMPT,
+        force_llm=force_llm,
+        model_override=model_override,
+    )
+
+
+def refresh_research_feed(
+    ollama: OllamaClient,
+    postgres: PostgresClient,
+    *,
+    force_llm: bool = False,
+    model_override: str | None = None,
+) -> dict[str, Any] | None:
+    from ai_prompts import RESEARCH_FEED_PROMPT
+    from ui_ai_summary_scopes import make_global_scope_key
+
+    digest = build_research_feed_digest(postgres)
+    return refresh_scope_summary(
+        ollama,
+        postgres,
+        scope="research.feed",
+        scope_key=make_global_scope_key("7D"),
+        content_class="content_linked",
+        digest=digest,
+        prompt_template=RESEARCH_FEED_PROMPT,
+        force_llm=force_llm,
+        model_override=model_override,
+    )
+
+
+def refresh_dashboard_commodities(
+    ollama: OllamaClient,
+    postgres: PostgresClient,
+    *,
+    force_llm: bool = False,
+    model_override: str | None = None,
+) -> dict[str, Any] | None:
+    from ai_prompts import DASHBOARD_COMMODITIES_PROMPT
+    from ui_ai_summary_scopes import make_global_scope_key
+
+    digest = build_dashboard_commodities_digest(days=90)
+    return refresh_scope_summary(
+        ollama,
+        postgres,
+        scope="dashboard.commodities",
+        scope_key=make_global_scope_key("90D"),
+        content_class="price_linked",
+        digest=digest,
+        prompt_template=DASHBOARD_COMMODITIES_PROMPT,
+        force_llm=force_llm,
+        model_override=model_override,
+    )
+
+
+def refresh_dashboard_currency(
+    ollama: OllamaClient,
+    postgres: PostgresClient,
+    *,
+    fund: str,
+    force_llm: bool = False,
+    model_override: str | None = None,
+) -> dict[str, Any] | None:
+    from ai_prompts import DASHBOARD_CURRENCY_PROMPT
+
+    digest = build_dashboard_currency_digest(fund=fund)
+    scope_key = f"{fund}|FX|30D"
+    return refresh_scope_summary(
+        ollama,
+        postgres,
+        scope="dashboard.currency",
+        scope_key=scope_key,
+        content_class="price_linked",
+        digest=digest,
+        prompt_template=DASHBOARD_CURRENCY_PROMPT,
+        force_llm=force_llm,
+        model_override=model_override,
+    )
 
 
 def fetch_rollup_row(postgres: PostgresClient, fund: str) -> dict[str, Any] | None:

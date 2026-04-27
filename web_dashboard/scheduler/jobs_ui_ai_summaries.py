@@ -56,9 +56,13 @@ def ui_ai_summaries_job() -> None:
         from postgres_client import PostgresClient
         from supabase_client import SupabaseClient
         from ui_ai_summary_service import (
+            refresh_dashboard_commodities,
+            refresh_dashboard_currency,
             list_production_fund_names,
             refresh_dashboard_portfolio_overview,
             refresh_fund_cross_screen_rollup,
+            refresh_research_feed,
+            refresh_signals_overview,
         )
 
         market_open = MarketHours().is_market_open()
@@ -78,6 +82,14 @@ def ui_ai_summaries_job() -> None:
                 pass
             return
 
+        try:
+            refresh_signals_overview(ollama, postgres, supabase, force_llm=False)
+            refresh_research_feed(ollama, postgres, force_llm=False)
+            refresh_dashboard_commodities(ollama, postgres, force_llm=False)
+        except Exception as exc:
+            errors += 1
+            logger.error("ui_ai global tier1 refresh failed: %s", exc, exc_info=True)
+
         for fund in funds:
             try:
                 refresh_dashboard_portfolio_overview(
@@ -91,6 +103,17 @@ def ui_ai_summaries_job() -> None:
             except Exception as exc:
                 errors += 1
                 logger.error("ui_ai tier1 failed %s: %s", fund, exc, exc_info=True)
+
+            try:
+                refresh_dashboard_currency(
+                    ollama,
+                    postgres,
+                    fund=fund,
+                    force_llm=False,
+                )
+            except Exception as exc:
+                errors += 1
+                logger.error("ui_ai currency tier1 failed %s: %s", fund, exc, exc_info=True)
 
             try:
                 refresh_fund_cross_screen_rollup(

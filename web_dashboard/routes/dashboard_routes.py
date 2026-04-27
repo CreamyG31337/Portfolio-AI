@@ -546,6 +546,10 @@ def _serialize_ui_ai_summary_row(row: Dict[str, Any]) -> Dict[str, Any]:
 @require_auth
 def get_dashboard_ai_summary():
     """Cached tier-1 AI read for dashboard portfolio metrics (research DB)."""
+    scope = (request.args.get("scope") or "").strip().lower()
+    if scope in {"commodities", "currency"}:
+        return _get_dashboard_scope_summary(scope)
+
     fund = request.args.get('fund')
     if not fund or str(fund).lower() == 'all':
         return jsonify({"error": "fund query parameter is required", "summary": None}), 400
@@ -593,6 +597,30 @@ def get_dashboard_ai_summary():
             ), 503
         logger.error("[Dashboard API] ai-summary: %s", e, exc_info=True)
         return jsonify({"error": str(e), "summary": None}), 500
+
+
+def _get_dashboard_scope_summary(scope: str):
+    """Fetch dashboard scope-level summary for commodities/currency."""
+    try:
+        from postgres_client import PostgresClient
+        from ui_ai_summary_scopes import make_global_scope_key
+        from ui_ai_summary_service import fetch_ui_summary_row
+
+        pg = PostgresClient()
+        if scope == "commodities":
+            row = fetch_ui_summary_row(pg, "dashboard.commodities", make_global_scope_key("90D"))
+        else:
+            fund = request.args.get("fund")
+            if not fund or str(fund).lower() == "all":
+                return jsonify({"error": "fund query parameter is required for currency scope", "summary": None}), 400
+            row = fetch_ui_summary_row(pg, "dashboard.currency", f"{fund}|FX|30D")
+
+        if not row:
+            return jsonify({"summary": None, "scope": scope, "hint": "No cached summary yet. Run ui_ai_summaries job."})
+        return jsonify({"summary": _serialize_ui_ai_summary_row(dict(row)), "scope": scope})
+    except Exception as e:
+        logger.error("[Dashboard API] scope ai-summary (%s): %s", scope, e, exc_info=True)
+        return jsonify({"summary": None, "scope": scope, "error": str(e)}), 500
 
 
 def _serialize_fund_digest_row(row: Dict[str, Any]) -> Dict[str, Any]:

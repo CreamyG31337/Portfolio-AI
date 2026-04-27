@@ -22,7 +22,17 @@ SCOPE_REGISTRY: dict[str, dict[str, str]] = {
     "research.feed": {
         "content_class": "content_linked",
         "template": "research.html",
-        "description": "Planned: recent article titles/conclusions digest",
+        "description": "Recent article titles/conclusions digest",
+    },
+    "dashboard.commodities": {
+        "content_class": "price_linked",
+        "template": "dashboard.html",
+        "description": "Commodity trend bundle digest (gold/silver/oil/uranium/lithium)",
+    },
+    "dashboard.currency": {
+        "content_class": "price_linked",
+        "template": "dashboard.html",
+        "description": "Currency exposure + USD/CAD trend digest",
     },
 }
 
@@ -37,3 +47,9 @@ def make_portfolio_scope_key(fund: str, display_currency: str, time_range: str) 
     c = (display_currency or "CAD").strip().upper()
     r = (time_range or "ALL").strip().upper()
     return f"{f}|{c}|{r}"
+
+
+def make_global_scope_key(time_range: str = "ALL") -> str:
+    """Stable key for global/non-fund scopes."""
+    r = (time_range or "ALL").strip().upper()
+    return f"global|{r}"
