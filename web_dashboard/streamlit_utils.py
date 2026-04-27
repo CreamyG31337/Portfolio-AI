@@ -1083,9 +1083,9 @@ def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, d
                         
                         # Now build rate_list using the bulk-fetched data
                         # TODO(perf): Prefer itertuples over iterrows in tight loops (prototype Streamlit path).
-                        for _, row in unique_combos.iterrows():
-                            date_val = row['date_normalized']
-                            curr_val = row['currency_normalized']
+                        for row in unique_combos.itertuples(index=False):
+                            date_val = getattr(row, 'date_normalized')
+                            curr_val = getattr(row, 'currency_normalized')
                             
                             if curr_val == display_currency.upper():
                                 rate_list.append({'date_normalized': date_val, 'currency_normalized': curr_val, 'conversion_rate': 1.0})
@@ -1111,9 +1111,9 @@ def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, d
                                 rate_list.append({'date_normalized': date_val, 'currency_normalized': curr_val, 'conversion_rate': rate})
                     else:
                         # Fallback if client not available
-                        for _, row in unique_combos.iterrows():
-                            date_val = row['date_normalized']
-                            curr_val = row['currency_normalized']
+                        for row in unique_combos.itertuples(index=False):
+                            date_val = getattr(row, 'date_normalized')
+                            curr_val = getattr(row, 'currency_normalized')
                             if curr_val == display_currency.upper():
                                 rate = 1.0
                             elif curr_val == 'USD' and display_currency.upper() == 'CAD':

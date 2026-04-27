@@ -33,3 +33,6 @@
 ## 2025-03-05 - O(N) Ticker Lookup Anti-Pattern in PortfolioSnapshot
 **Learning:** `PortfolioSnapshot` relied on an $O(N)$ linear list traversal in its `get_position_by_ticker` method. In highly active scenarios involving loops parsing CSV records or rebuilding historical portfolios, repeated calls scale to $O(N^2)$, causing significant CPU overhead for large portfolios.
 **Action:** Always wrap data models representing collections with internal dictionary caches to provide $O(1)$ access. Added `_positions_by_ticker` via `__post_init__` to `PortfolioSnapshot`, keeping it cleanly synced during `add_position` and `remove_position` mutations while offering an explicit fallback for deserialization pipelines that bypass the constructor.
+## 2025-03-09 - iterrows() Anti-Pattern in Pandas Processing
+**Learning:** Found several places using `df.iterrows()` inside tight loops (like iterating over positions or mapping exchange rates). `iterrows()` is incredibly slow in pandas as it creates a Series for every row.
+**Action:** Replaced `iterrows()` with `itertuples(index=False)` and accessed properties using `getattr(row, 'column_name')`. This can speed up DataFrame iterations by 10-100x.

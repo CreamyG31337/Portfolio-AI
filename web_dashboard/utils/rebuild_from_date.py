@@ -214,12 +214,12 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
         for trading_day in all_dates:
             day_trades = trade_df[trade_df['Date'].dt.date == trading_day]
             
-            for _, trade in day_trades.iterrows():
-                ticker = trade['Ticker']
-                shares = Decimal(str(trade['Shares']))
-                price = Decimal(str(trade['Price']))
-                action = str(trade['Action']).upper()
-                reason = str(trade.get('Reason', '') or '').upper()
+            for trade in day_trades.itertuples(index=False):
+                ticker = getattr(trade, 'Ticker')
+                shares = Decimal(str(getattr(trade, 'Shares')))
+                price = Decimal(str(getattr(trade, 'Price')))
+                action = str(getattr(trade, 'Action')).upper()
+                reason = str(getattr(trade, 'Reason', '') or '').upper()
 
                 # Skip dividend events for cash-dividend funds.
                 if cash_dividend_fund and is_dividend_reason(reason):
@@ -283,9 +283,10 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
                 result = fetcher.fetch_price_data(ticker, start=start_dt, end=end_dt)
                 
                 if result.df is not None and not result.df.empty:
-                    for idx, row in result.df.iterrows():
+                    for row in result.df.itertuples():
+                        idx = getattr(row, 'Index')
                         price_date = idx.date() if hasattr(idx, 'date') else idx
-                        price = Decimal(str(row['Close']))
+                        price = Decimal(str(getattr(row, 'Close')))
                         if price > 0:
                             price_cache[(ticker, price_date)] = price
             except Exception as e:

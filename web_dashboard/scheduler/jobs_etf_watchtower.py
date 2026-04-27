@@ -952,7 +952,7 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     if len(significant) > 5:  # Need enough data points to detect pattern
         from collections import Counter
         # Round percentages to 0.1% to detect clustering
-        rounded_pcts = [round(abs(row['percent_change']), 1) for _, row in significant.iterrows()]
+        rounded_pcts = significant['percent_change'].abs().round(1).tolist()
         pct_counts = Counter(rounded_pcts)
         most_common_pct, most_common_count = pct_counts.most_common(1)[0]
         
@@ -962,8 +962,8 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
             if most_common_pct <= 2.0:
                 # Check if all changes are in same direction (systematic adjustments are uniform)
                 all_same_direction = (
-                    all(row['share_diff'] > 0 for _, row in significant.iterrows()) or
-                    all(row['share_diff'] < 0 for _, row in significant.iterrows())
+                    (significant['share_diff'] > 0).all() or
+                    (significant['share_diff'] < 0).all()
                 )
                 
                 if all_same_direction:
@@ -1023,14 +1023,14 @@ def save_holdings_snapshot(pc: PostgresClient, etf_ticker: str, holdings: pd.Dat
     
     # Prepare records
     records = []
-    for _, row in aggregated.iterrows():
+    for row in aggregated.itertuples(index=False):
         record = (
             date_str,
             etf_ticker,
-            row['ticker'],
-            str(row.get('name', '')) if pd.notna(row.get('name')) else '',
-            float(row['shares']) if row.get('shares', 0) > 0 else None,
-            float(row['weight_percent']) if row.get('weight_percent', 0) > 0 else None,
+            row.ticker,
+            str(getattr(row, 'name', '')) if pd.notna(getattr(row, 'name', None)) else '',
+            float(row.shares) if getattr(row, 'shares', 0) > 0 else None,
+            float(row.weight_percent) if getattr(row, 'weight_percent', 0) > 0 else None,
         )
         records.append(record)
     
@@ -1089,25 +1089,28 @@ def upsert_securities_metadata(db: SupabaseClient, df: pd.DataFrame, provider: s
                 unique_securities[col] = None
         
         records = []
-        for _, row in unique_securities.iterrows():
-            ticker = row['ticker']
+        for row in unique_securities.itertuples(index=False):
+            ticker = getattr(row, 'ticker', None)
             if not ticker or len(str(ticker)) > 20:  # Skip long garbage tickers
                 continue
                 
             record = {
                 'ticker': ticker,
-                'company_name': row['name'],
+                'company_name': getattr(row, 'name', None),
                 'last_updated': datetime.now(timezone.utc).isoformat()
             }
             
             # Add optional fields if they have values
-            if row.get('sector'):
-                record['sector'] = row['sector']
-            if row.get('industry'):
-                record['industry'] = row['industry']
+            sector = getattr(row, 'sector', None)
+            if sector:
+                record['sector'] = sector
+            industry = getattr(row, 'industry', None)
+            if industry:
+                record['industry'] = industry
             # Note: asset_class, exchange, and first_detected_by don't exist in Supabase securities table
-            if row.get('currency'):
-                record['currency'] = row['currency']
+            currency = getattr(row, 'currency', None)
+            if currency:
+                record['currency'] = currency
                 
             records.append(record)
             

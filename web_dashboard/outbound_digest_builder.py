@@ -105,11 +105,11 @@ def _top_movers_from_positions(positions_df: pd.DataFrame, limit: int = 5) -> Tu
     losers = df.nsmallest(limit, "five_day_pnl_pct")
     def row_to_dict(row: Any) -> Dict[str, Any]:
         return {
-            "ticker": str(row.get("ticker", "")),
-            "company_name": row.get("company") or row.get("company_name"),
-            "five_day_pnl_pct": float(row["five_day_pnl_pct"]) if pd.notna(row["five_day_pnl_pct"]) else None,
+            "ticker": str(getattr(row, "ticker", "")),
+            "company_name": getattr(row, "company", None) or getattr(row, "company_name", None),
+            "five_day_pnl_pct": float(getattr(row, "five_day_pnl_pct", 0.0)) if pd.notna(getattr(row, "five_day_pnl_pct", None)) else None,
         }
-    return [row_to_dict(r) for _, r in gainers.iterrows()], [row_to_dict(r) for _, r in losers.iterrows()]
+    return [row_to_dict(r) for r in gainers.itertuples(index=False)], [row_to_dict(r) for r in losers.itertuples(index=False)]
 
 
 def fetch_market_brief_dict() -> Optional[Dict[str, Any]]:
