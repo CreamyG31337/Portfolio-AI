@@ -8,13 +8,6 @@ import logging
 from typing import Any
 
 import pandas as pd
-
-from flask_data_utils import (
-    calculate_portfolio_value_over_time_flask,
-    fetch_latest_rates_bulk_flask,
-    get_cash_balances_flask,
-    get_current_positions_flask,
-)
 from portfolio_summary_math import compute_core_summary_metrics
 
 logger = logging.getLogger(__name__)
@@ -39,8 +32,15 @@ def build_dashboard_portfolio_digest(
     tr = (time_range or "ALL").upper()
     days = _DAYS_MAP.get(tr)
 
-    positions_df = get_current_positions_flask(fund)
-    cash_balances = get_cash_balances_flask(fund)
+    from streamlit_utils import (
+        calculate_portfolio_value_over_time,
+        fetch_latest_rates_bulk,
+        get_cash_balances,
+        get_current_positions,
+    )
+
+    positions_df = get_current_positions(fund)
+    cash_balances = get_cash_balances(fund)
 
     all_currencies: set[str] = set()
     if not positions_df.empty and "currency" in positions_df.columns:
@@ -49,14 +49,14 @@ def build_dashboard_portfolio_digest(
         )
     all_currencies.update(str(c).upper() for c in cash_balances.keys())
     dc = (display_currency or "CAD").upper()
-    rate_map = fetch_latest_rates_bulk_flask(list(all_currencies), dc)
+    rate_map = fetch_latest_rates_bulk(list(all_currencies), dc)
 
     core = compute_core_summary_metrics(positions_df, cash_balances, rate_map, dc)
 
     period: dict[str, Any] = {}
     if days is not None:
         try:
-            range_df = calculate_portfolio_value_over_time_flask(
+            range_df = calculate_portfolio_value_over_time(
                 fund, days=days, display_currency=dc
             )
             if not range_df.empty:

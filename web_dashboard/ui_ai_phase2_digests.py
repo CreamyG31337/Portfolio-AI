@@ -10,7 +10,6 @@ import pandas as pd
 import yfinance as yf
 
 from exchange_rates_utils import get_supabase_client as get_fx_supabase_client
-from flask_data_utils import get_cash_balances_flask, get_current_positions_flask
 from web_dashboard.watchlist_access import get_active_watchlist_rows
 
 
@@ -76,8 +75,8 @@ def build_research_feed_digest(postgres_client: Any, days: int = 7, limit: int =
         SELECT id, title, source, article_type, sentiment, sentiment_score,
                conclusion, summary, tickers, published_at, fetched_at
         FROM research_articles
-        WHERE COALESCE(published_at, fetched_at, created_at) >= %s
-        ORDER BY COALESCE(published_at, fetched_at, created_at) DESC
+        WHERE COALESCE(published_at, fetched_at) >= %s
+        ORDER BY COALESCE(published_at, fetched_at) DESC
         LIMIT %s
         """,
         (since, limit),
@@ -138,8 +137,10 @@ def build_dashboard_commodities_digest(days: int = 90) -> dict[str, Any]:
 
 def build_dashboard_currency_digest(fund: str | None = None) -> dict[str, Any]:
     """Build compact currency exposure + recent USD/CAD change digest."""
-    positions = get_current_positions_flask(fund)
-    cash_balances = get_cash_balances_flask(fund)
+    from streamlit_utils import get_cash_balances, get_current_positions
+
+    positions = get_current_positions(fund)
+    cash_balances = get_cash_balances(fund)
     exposure: dict[str, float] = {}
 
     if not positions.empty and "currency" in positions.columns and "market_value" in positions.columns:
