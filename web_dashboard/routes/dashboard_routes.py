@@ -517,6 +517,139 @@ def get_market_brief():
         return jsonify({"error": str(e)}), 500
 
 
+def _serialize_ui_ai_summary_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, v in row.items():
+        if k == "summary_json" and v is not None:
+            if isinstance(v, str):
+                try:
+                    out[k] = json.loads(v)
+                except json.JSONDecodeError:
+                    out[k] = {}
+            else:
+                out[k] = v
+        elif v is None:
+            out[k] = None
+        elif hasattr(v, "isoformat") and callable(getattr(v, "isoformat")):
+            out[k] = v.isoformat()
+        else:
+            out[k] = v
+    sj = out.get("summary_json") or {}
+    if isinstance(sj, dict):
+        out["headline"] = sj.get("headline")
+        out["narrative"] = sj.get("narrative")
+        out["bullets"] = sj.get("bullets")
+    return out
+
+
+@dashboard_bp.route('/api/dashboard/ai-summary', methods=['GET'])
+@require_auth
+def get_dashboard_ai_summary():
+    """Cached tier-1 AI read for dashboard portfolio metrics (research DB)."""
+    fund = request.args.get('fund')
+    if not fund or str(fund).lower() == 'all':
+        return jsonify({"error": "fund query parameter is required", "summary": None}), 400
+    tr = (request.args.get('range', 'ALL') or 'ALL').upper()
+    dc = get_user_currency() or 'CAD'
+    try:
+        from postgres_client import PostgresClient
+        from ui_ai_summary_scopes import make_portfolio_scope_key, scope_dashboard_portfolio
+        from ui_ai_summary_service import fetch_ui_summary_row
+
+        pg = PostgresClient()
+        sk = make_portfolio_scope_key(fund, dc, tr)
+        row = fetch_ui_summary_row(pg, scope_dashboard_portfolio(), sk)
+        fallback_note = None
+        if not row and dc.upper() != 'CAD':
+            sk_cad = make_portfolio_scope_key(fund, 'CAD', tr)
+            row = fetch_ui_summary_row(pg, scope_dashboard_portfolio(), sk_cad)
+            if row:
+                fallback_note = "Showing CAD-generated summary; switch currency preference or wait for a refresh."
+
+        if not row:
+            return jsonify(
+                {
+                    "summary": None,
+                    "scope": scope_dashboard_portfolio(),
+                    "scope_key": sk,
+                    "hint": "No summary yet. Ensure ui_ai_summary exists and scheduler job ui_ai_summaries has run.",
+                }
+            )
+
+        payload = _serialize_ui_ai_summary_row(dict(row))
+        if fallback_note:
+            payload["currency_fallback_note"] = fallback_note
+        return jsonify({"summary": payload})
+    except Exception as e:
+        err = str(e).lower()
+        if "ui_ai_summary" in err or "does not exist" in err:
+            logger.warning("[Dashboard API] ai-summary table missing: %s", e)
+            return jsonify(
+                {
+                    "error": "ui_ai_summary not installed",
+                    "summary": None,
+                    "hint": "Apply database/schema/research/tables/ui_ai_summary.sql",
+                }
+            ), 503
+        logger.error("[Dashboard API] ai-summary: %s", e, exc_info=True)
+        return jsonify({"error": str(e), "summary": None}), 500
+
+
+def _serialize_fund_digest_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, v in row.items():
+        if k == "sources_used" and v is not None:
+            if isinstance(v, str):
+                try:
+                    out[k] = json.loads(v)
+                except json.JSONDecodeError:
+                    out[k] = {}
+            else:
+                out[k] = v
+        elif v is None:
+            out[k] = None
+        elif hasattr(v, "isoformat") and callable(getattr(v, "isoformat")):
+            out[k] = v.isoformat()
+        else:
+            out[k] = v
+    return out
+
+
+@dashboard_bp.route('/api/dashboard/fund-digest', methods=['GET'])
+@require_auth
+def get_dashboard_fund_digest():
+    """Tier-2 per-fund cross-screen digest (market brief + portfolio summary)."""
+    fund = request.args.get('fund')
+    if not fund or str(fund).lower() == 'all':
+        return jsonify({"error": "fund query parameter is required", "digest": None}), 400
+    try:
+        from postgres_client import PostgresClient
+        from ui_ai_summary_service import fetch_rollup_row
+
+        pg = PostgresClient()
+        row = fetch_rollup_row(pg, fund)
+        if not row:
+            return jsonify(
+                {
+                    "digest": None,
+                    "hint": "No rollup yet. Run scheduler job ui_ai_summaries after tier-1 summaries exist.",
+                }
+            )
+        return jsonify({"digest": _serialize_fund_digest_row(dict(row))})
+    except Exception as e:
+        err = str(e).lower()
+        if "ui_ai_rollup_fund" in err or "does not exist" in err:
+            logger.warning("[Dashboard API] fund-digest table missing: %s", e)
+            return jsonify(
+                {
+                    "error": "ui_ai_rollup_fund not installed",
+                    "digest": None,
+                }
+            ), 503
+        logger.error("[Dashboard API] fund-digest: %s", e, exc_info=True)
+        return jsonify({"error": str(e), "digest": None}), 500
+
+
 @dashboard_bp.route('/api/dashboard/charts/performance', methods=['GET'])
 def get_performance_chart():
     """Get portfolio performance chart as Plotly JSON.

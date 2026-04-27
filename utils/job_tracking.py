@@ -55,6 +55,7 @@ AI_JOB_NAMES = {
     'ticker_meta_analysis',
     'market_daily_brief',
     'action_queue_ai_review',
+    'ui_ai_summaries',
 }
 
 

@@ -203,6 +203,50 @@
         No market brief yet (runs after benchmarks on weekdays).
     </div>
 
+    <!-- Tier-1: portfolio metrics AI read (cached; scheduler ui_ai_summaries) -->
+    <div id="portfolio-ai-summary-card" class="p-4 card shadow-xs mb-6 hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <div>
+                <h3 class="text-lg font-bold text-text-primary">📊 Portfolio snapshot (AI)</h3>
+                <p class="text-xs text-text-secondary">From fund totals and weights — research only, not trade advice</p>
+            </div>
+            <div class="text-xs text-text-tertiary" id="portfolio-ai-summary-asof"></div>
+        </div>
+        <div class="relative min-h-[3rem]">
+            {% with id='portfolio-ai-summary-spinner', size='8' %}
+                {% include "components/_loading_spinner.html" %}
+            {% endwith %}
+            <p id="portfolio-ai-summary-headline" class="text-sm font-semibold text-text-primary mb-2"></p>
+            <p id="portfolio-ai-summary-narrative" class="text-sm text-text-secondary leading-relaxed"></p>
+            <ul id="portfolio-ai-summary-bullets" class="mt-3 list-disc list-inside text-sm text-text-secondary"></ul>
+            <p id="portfolio-ai-summary-fallback" class="hidden mt-2 text-xs text-amber-600 dark:text-amber-400"></p>
+        </div>
+    </div>
+    <div id="portfolio-ai-summary-unavailable" class="hidden mb-6 text-xs text-text-tertiary px-1">
+        No portfolio AI summary yet (job <code class="text-xs">ui_ai_summaries</code> on weekdays).
+    </div>
+
+    <!-- Tier-2: per-fund cross-screen digest -->
+    <div id="fund-digest-card" class="p-4 card shadow-xs mb-6 hidden border border-accent/20">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <div>
+                <h3 class="text-lg font-bold text-text-primary">🧠 Fund digest</h3>
+                <p class="text-xs text-text-secondary">Market backdrop + portfolio summary — reconciled read, not instructions</p>
+            </div>
+            <div class="text-xs text-text-tertiary" id="fund-digest-asof"></div>
+        </div>
+        <div class="relative min-h-[3rem]">
+            {% with id='fund-digest-spinner', size='8' %}
+                {% include "components/_loading_spinner.html" %}
+            {% endwith %}
+            <p id="fund-digest-headline" class="text-sm font-semibold text-text-primary mb-2"></p>
+            <p id="fund-digest-narrative" class="text-sm text-text-secondary leading-relaxed"></p>
+        </div>
+    </div>
+    <div id="fund-digest-unavailable" class="hidden mb-6 text-xs text-text-tertiary px-1">
+        No fund digest yet (runs after tier-1 summaries).
+    </div>
+
     <!-- Action Queue -->
     <div class="p-4 card shadow-xs mb-6">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">

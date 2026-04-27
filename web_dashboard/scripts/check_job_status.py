@@ -19,7 +19,7 @@ db = SupabaseClient(use_service_role=True)
 running = db.supabase.table('job_executions') \
     .select('job_name, started_at') \
     .eq('status', 'running') \
-    .in_('job_name', ['etf_group_analysis', 'ticker_analysis', 'ticker_meta_analysis']) \
+    .in_('job_name', ['etf_group_analysis', 'ticker_analysis', 'ticker_meta_analysis', 'ui_ai_summaries']) \
     .execute()
 
 if running.data:

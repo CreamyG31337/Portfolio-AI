@@ -92,3 +92,12 @@ flowchart TB
 **Phase 3** — Tier-2 per-fund rollup job + `GET` API + dashboard card; wire **2h open / throttled closed** as above.
 
 **Phase 4** — Tests (market-open mock, digest skip when inputs unchanged), scheduler registration in [`jobs.py`](web_dashboard/scheduler/jobs.py).
+
+## Plan validation log
+
+**2026-04-26 (post-user commits):** Re-checked repo. Still accurate.
+
+- **New work from this plan:** None. No `ui_ai_summary` / `ui_ai_rollup` tables, jobs, or routes; grep hits only this file.
+- **Tier-A references still present:** [`market_brief_service.py`](web_dashboard/market_brief_service.py), [`GET /api/dashboard/market-brief`](web_dashboard/routes/dashboard_routes.py), [`market_daily_brief.sql`](database/schema/research/tables/market_daily_brief.sql) + [`ticker_meta_analysis.sql`](database/schema/research/tables/ticker_meta_analysis.sql) in [`_init_schema.sql`](database/schema/research/_init_schema.sql), [`jobs_dashboard_research.py`](web_dashboard/scheduler/jobs_dashboard_research.py) (market brief + action queue AI).
+- **Research `tables/`:** 18 SQL files; no conflicting new “screen summary” table added.
+- **Optional follow-up when implementing:** Re-skim [`web_dashboard/scheduler/jobs.py`](web_dashboard/scheduler/jobs.py) `AVAILABLE_JOBS` and [`web_dashboard/docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md`](web_dashboard/docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md) so the new 2h digest job is documented alongside any scheduler changes you have made.

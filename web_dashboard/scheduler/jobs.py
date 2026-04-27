@@ -183,6 +183,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '⚡',
     },
+    'ui_ai_summaries': {
+        'name': 'UI AI summaries',
+        'description': (
+            'Tier-1 dashboard portfolio digest + tier-2 per-fund rollup (research DB); '
+            'skips LLM when inputs unchanged'
+        ),
+        'default_interval_minutes': 120,
+        'enabled_by_default': True,
+        'icon': '🧠',
+    },
     'social_sentiment': {
         'name': '💬 Social Sentiment Tracking',
         'description': 'Fetch retail hype and sentiment from StockTwits and Reddit',
@@ -581,6 +591,7 @@ from scheduler.jobs_dashboard_research import (
     action_queue_ai_review_job,
     market_daily_brief_job,
 )
+from scheduler.jobs_ui_ai_summaries import ui_ai_summaries_job
 
 # Import research jobs
 from scheduler.jobs_research import (
@@ -672,6 +683,7 @@ __all__ = [
     'populate_performance_metrics_job',
     'market_daily_brief_job',
     'action_queue_ai_review_job',
+    'ui_ai_summaries_job',
     # Research jobs
     'market_research_job',
     'rss_feed_ingest_job',
@@ -1263,7 +1275,27 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: action_queue_ai_review (weekdays 7:00 PM ET)")
-    
+
+    if AVAILABLE_JOBS.get('ui_ai_summaries', {}).get('enabled_by_default', True):
+        scheduler.add_job(
+            ui_ai_summaries_job,
+            trigger=CronTrigger(
+                day_of_week='mon-fri',
+                hour='10,12,14,16,18',
+                minute=10,
+                timezone='America/New_York',
+            ),
+            id='ui_ai_summaries',
+            name=f"{get_job_icon('ui_ai_summaries')} UI AI summaries",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info(
+            "Registered job: ui_ai_summaries (weekdays ~2h cadence 10/12/14/16/18 ET; digest skip when unchanged)"
+        )
+
     # Social sentiment job - every 60 minutes (1 hour)
     if AVAILABLE_JOBS['social_sentiment']['enabled_by_default']:
         scheduler.add_job(

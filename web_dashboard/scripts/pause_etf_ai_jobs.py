@@ -23,7 +23,7 @@ def pause_jobs():
         
         scheduler = get_scheduler()
         
-        jobs_to_pause = ['etf_group_analysis', 'ticker_analysis', 'ticker_meta_analysis']
+        jobs_to_pause = ['etf_group_analysis', 'ticker_analysis', 'ticker_meta_analysis', 'ui_ai_summaries']
         
         for job_id in jobs_to_pause:
             job = scheduler.get_job(job_id)
@@ -48,7 +48,7 @@ def resume_jobs():
         
         scheduler = get_scheduler()
         
-        jobs_to_resume = ['etf_group_analysis', 'ticker_analysis', 'ticker_meta_analysis']
+        jobs_to_resume = ['etf_group_analysis', 'ticker_analysis', 'ticker_meta_analysis', 'ui_ai_summaries']
         
         for job_id in jobs_to_resume:
             job = scheduler.get_job(job_id)
@@ -72,7 +72,7 @@ def check_status():
         
         scheduler = get_scheduler()
         
-        jobs_to_check = ['etf_group_analysis', 'ticker_analysis', 'ticker_meta_analysis']
+        jobs_to_check = ['etf_group_analysis', 'ticker_analysis', 'ticker_meta_analysis', 'ui_ai_summaries']
         
         print("Job Status:")
         print("=" * 60)

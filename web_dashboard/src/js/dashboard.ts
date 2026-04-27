@@ -219,6 +219,25 @@ interface MarketBriefPayload {
     updated_at?: string | null;
 }
 
+interface PortfolioAiSummaryPayload {
+    scope?: string;
+    scope_key?: string;
+    headline?: string | null;
+    narrative?: string | null;
+    bullets?: string[];
+    summary_json?: { headline?: string; narrative?: string; bullets?: string[] };
+    updated_at?: string | null;
+    currency_fallback_note?: string;
+}
+
+interface FundDigestPayload {
+    fund?: string;
+    headline?: string | null;
+    narrative?: string | null;
+    sources_used?: Record<string, unknown> | null;
+    updated_at?: string | null;
+}
+
 interface ActionQueueData {
     data: ActionQueueItem[];
     updated_at: string;
@@ -1004,6 +1023,8 @@ async function refreshDashboard(): Promise<void> {
             fetchExchangeRateData(),
             fetchCommoditiesChart(),
             fetchMarketBrief(),
+            fetchPortfolioAiSummary(),
+            fetchFundDigest(),
             fetchActionQueue(),
 
             loadPnlChart(state.currentFund),
@@ -1862,6 +1883,145 @@ async function fetchMovers(): Promise<void> {
         if (losersBody) {
             losersBody.innerHTML = `<tr><td colspan="4" class="text-center text-theme-error-text py-4"><p>Error: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
         }
+    }
+}
+
+async function fetchPortfolioAiSummary(): Promise<void> {
+    showSpinner('portfolio-ai-summary-spinner');
+    const card = document.getElementById('portfolio-ai-summary-card');
+    const unavail = document.getElementById('portfolio-ai-summary-unavailable');
+    const headlineEl = document.getElementById('portfolio-ai-summary-headline');
+    const narrativeEl = document.getElementById('portfolio-ai-summary-narrative');
+    const bulletsEl = document.getElementById('portfolio-ai-summary-bullets');
+    const asofEl = document.getElementById('portfolio-ai-summary-asof');
+    const fallbackEl = document.getElementById('portfolio-ai-summary-fallback');
+
+    const fund = state.currentFund;
+    if (!fund || fund.toLowerCase() === 'all') {
+        hideSpinner('portfolio-ai-summary-spinner');
+        if (card) card.classList.add('hidden');
+        if (unavail) unavail.classList.add('hidden');
+        return;
+    }
+
+    const url = `/api/dashboard/ai-summary?fund=${encodeURIComponent(fund)}&range=${encodeURIComponent(state.timeRange)}`;
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        hideSpinner('portfolio-ai-summary-spinner');
+
+        if (response.status === 503) {
+            if (card) card.classList.add('hidden');
+            if (unavail) {
+                unavail.textContent = 'Portfolio AI summary table not installed on server.';
+                unavail.classList.remove('hidden');
+            }
+            return;
+        }
+
+        const data = (await response.json()) as { summary: PortfolioAiSummaryPayload | null; hint?: string };
+        if (!data.summary) {
+            if (card) card.classList.add('hidden');
+            if (unavail) {
+                unavail.textContent = data.hint || 'No portfolio AI summary yet.';
+                unavail.classList.remove('hidden');
+            }
+            return;
+        }
+
+        if (unavail) unavail.classList.add('hidden');
+        if (card) card.classList.remove('hidden');
+
+        const s = data.summary;
+        const h = s.headline || (s.summary_json && s.summary_json.headline) || '';
+        const n = s.narrative || (s.summary_json && s.summary_json.narrative) || '';
+        const bullets = s.bullets || (s.summary_json && s.summary_json.bullets) || [];
+
+        if (headlineEl) headlineEl.textContent = h;
+        if (narrativeEl) narrativeEl.textContent = n;
+        if (bulletsEl) {
+            bulletsEl.innerHTML = '';
+            if (Array.isArray(bullets)) {
+                for (const b of bullets) {
+                    const li = document.createElement('li');
+                    li.textContent = String(b);
+                    bulletsEl.appendChild(li);
+                }
+            }
+        }
+        if (asofEl) {
+            const d = s.updated_at || '';
+            asofEl.textContent = d ? `Updated ${d}` : '';
+        }
+        if (fallbackEl) {
+            if (s.currency_fallback_note) {
+                fallbackEl.textContent = s.currency_fallback_note;
+                fallbackEl.classList.remove('hidden');
+            } else {
+                fallbackEl.textContent = '';
+                fallbackEl.classList.add('hidden');
+            }
+        }
+    } catch {
+        hideSpinner('portfolio-ai-summary-spinner');
+        if (card) card.classList.add('hidden');
+        if (unavail) unavail.classList.remove('hidden');
+    }
+}
+
+async function fetchFundDigest(): Promise<void> {
+    showSpinner('fund-digest-spinner');
+    const card = document.getElementById('fund-digest-card');
+    const unavail = document.getElementById('fund-digest-unavailable');
+    const headlineEl = document.getElementById('fund-digest-headline');
+    const narrativeEl = document.getElementById('fund-digest-narrative');
+    const asofEl = document.getElementById('fund-digest-asof');
+
+    const fund = state.currentFund;
+    if (!fund || fund.toLowerCase() === 'all') {
+        hideSpinner('fund-digest-spinner');
+        if (card) card.classList.add('hidden');
+        if (unavail) unavail.classList.add('hidden');
+        return;
+    }
+
+    const url = `/api/dashboard/fund-digest?fund=${encodeURIComponent(fund)}`;
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        hideSpinner('fund-digest-spinner');
+
+        if (response.status === 503) {
+            if (card) card.classList.add('hidden');
+            if (unavail) {
+                unavail.textContent = 'Fund digest table not installed on server.';
+                unavail.classList.remove('hidden');
+            }
+            return;
+        }
+
+        const data = (await response.json()) as { digest: FundDigestPayload | null; hint?: string };
+        if (!data.digest) {
+            if (card) card.classList.add('hidden');
+            if (unavail) {
+                unavail.textContent = data.hint || 'No fund digest yet.';
+                unavail.classList.remove('hidden');
+            }
+            return;
+        }
+
+        if (unavail) unavail.classList.add('hidden');
+        if (card) card.classList.remove('hidden');
+
+        const d = data.digest;
+        if (headlineEl) headlineEl.textContent = d.headline || '';
+        if (narrativeEl) narrativeEl.textContent = d.narrative || '';
+        if (asofEl) {
+            const t = d.updated_at || '';
+            asofEl.textContent = t ? `Updated ${t}` : '';
+        }
+    } catch {
+        hideSpinner('fund-digest-spinner');
+        if (card) card.classList.add('hidden');
+        if (unavail) unavail.classList.remove('hidden');
     }
 }
 

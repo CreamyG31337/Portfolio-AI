@@ -50,8 +50,9 @@ ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python
    - Heartbeat every ~15s indicates the scheduler loop is alive.
 
 4. Job execution state
-   - Use `check_job_status.py` to see jobs currently marked running.
+   - Use `check_job_status.py` to see jobs currently marked running (includes `ui_ai_summaries` alongside ETF/ticker AI jobs).
    - Use `read_job_logs.py --days 1` for recent success/failure/running status.
+   - **`ui_ai_summaries`**: weekdays ~2h cadence (10:10 / 12:10 / 14:10 / 16:10 / 18:10 America/New_York). Refreshes tier-1 `ui_ai_summary` (dashboard portfolio digest) and tier-2 `ui_ai_rollup_fund` per production fund; skips LLM calls when `inputs_digest` is unchanged. Requires research tables `ui_ai_summary` and `ui_ai_rollup_fund` (see `apply_etf_ai_schema.py` / schema files).
 
 5. Confirm or disprove stale-job claims
    - Query specific jobs over the last week:

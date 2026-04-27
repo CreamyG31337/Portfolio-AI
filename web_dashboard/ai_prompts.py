@@ -349,3 +349,45 @@ Return JSON only:
     "one_liner": "max 200 chars, no line breaks"
 }}"""
 
+# Dashboard portfolio overview from structured fund metrics only — not trade instructions.
+DASHBOARD_PORTFOLIO_OVERVIEW_PROMPT = """You are a portfolio analyst. Input is ONLY a JSON digest of current fund metrics
+(weights, sector mix, P&L percentages, period change). Treat numbers as reported; do not invent tickers or prices not listed.
+
+## Digest
+{digest_json}
+
+## Task
+Explain what this snapshot suggests about risk concentration, recent performance vs the selected range, and cash vs invested balance.
+This is research context for a human investor — NOT buy/sell instructions.
+
+Return JSON only:
+{{
+    "headline": "max 140 chars",
+    "narrative": "2-4 short paragraphs, under 1200 chars",
+    "bullets": ["optional concise observation", "..."]
+}}"""
+
+# Tier-2 rollup: synthesize pre-computed summaries only.
+FUND_CROSS_SCREEN_ROLLUP_PROMPT = """You reconcile pre-written AI summaries and metrics excerpts for ONE fund.
+Inputs are claims from other models — not verified facts. Do not recommend specific trades.
+
+## Fund
+{fund}
+
+## Market backdrop (may be empty)
+{market_backdrop}
+
+## Dashboard portfolio summary (may be empty)
+{portfolio_summary}
+
+## Task
+Give one coherent picture: how the fund snapshot fits the broader backdrop, key tensions or gaps, and what a human should verify next.
+Not investment advice.
+
+Return JSON only:
+{{
+    "headline": "max 160 chars",
+    "narrative": "3-5 short paragraphs, under 2000 chars",
+    "sources_note": "one sentence listing which input blocks were informative vs sparse"
+}}"""
+
