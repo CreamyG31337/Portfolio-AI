@@ -14,8 +14,8 @@ sys.path.insert(1, str(project_root / "web_dashboard"))
 
 load_dotenv(project_root / "web_dashboard" / ".env")
 
-from postgres_client import PostgresClient
-from supabase_client import SupabaseClient
+from postgres_client import PostgresClient  # noqa: E402
+from supabase_client import SupabaseClient  # noqa: E402
 
 
 def _print_section(title: str) -> None:
@@ -29,12 +29,16 @@ def main() -> int:
     _print_section("Newsletter backlog")
     newsletter_rows = research.execute_query(
         """
-        SELECT COUNT(*)::int AS pending_count
+        SELECT
+            COUNT(*) FILTER (WHERE summary IS NULL)::int AS summary_missing_count,
+            COUNT(*) FILTER (WHERE embedding IS NULL)::int AS embedding_missing_count,
+            COUNT(*) FILTER (WHERE summary IS NULL OR embedding IS NULL)::int AS pending_ui_count
         FROM newsletters
-        WHERE summary IS NULL
         """
     )
-    print(f"Pending newsletters (summary IS NULL): {newsletter_rows[0]['pending_count']}")
+    print(f"Summary missing: {newsletter_rows[0]['summary_missing_count']}")
+    print(f"Embedding missing (UI Pending): {newsletter_rows[0]['embedding_missing_count']}")
+    print(f"Pending by job selector (summary OR embedding missing): {newsletter_rows[0]['pending_ui_count']}")
 
     _print_section("Article backlog")
     article_rows = research.execute_query(

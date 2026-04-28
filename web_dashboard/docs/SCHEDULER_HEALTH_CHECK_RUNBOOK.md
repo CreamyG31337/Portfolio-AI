@@ -65,7 +65,9 @@ ssh -i "<key_path>" lance@ts-ubuntu-server \
 
 6. Backlog health snapshot (read-only)
    - Run `check_job_backlog_health.py` and capture:
-     - pending newsletters (`summary IS NULL`)
+     - pending newsletters by both summary and embedding:
+       - `summary IS NULL`
+       - `embedding IS NULL` (this is what newsletter UI status uses for Pending)
      - missing article summaries
      - retry queue counts (`pending/retrying/abandoned`) and oldest row timestamp
      - running-job age buckets (`30m+`, `1h+`, `3h+`, `6h+`)

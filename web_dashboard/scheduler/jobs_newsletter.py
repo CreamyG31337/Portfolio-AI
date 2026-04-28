@@ -71,11 +71,12 @@ def newsletter_ai_processing_job() -> None:
         repo = NewsletterRepository()
         service = NewsletterService()
 
-        # Fetch newsletters that haven't been summarized yet (limit batch size)
+        # Fetch newsletters that are not fully processed yet (limit batch size).
+        # UI "Pending" means no embedding, so include those rows too.
         pending_query = """
             SELECT id, subject, body_plain, body_html
             FROM newsletters
-            WHERE summary IS NULL
+            WHERE summary IS NULL OR embedding IS NULL
             ORDER BY received_at ASC
             LIMIT 10
         """
@@ -83,7 +84,7 @@ def newsletter_ai_processing_job() -> None:
 
         if not rows:
             duration_ms = int((time.time() - start_time) * 1000)
-            logger.info(f"📰 Newsletter AI job: no pending newsletters to process.")
+            logger.info("📰 Newsletter AI job: no pending newsletters to process.")
             log_job_execution(job_id, success=True,
                               message="No pending newsletters", duration_ms=duration_ms)
             mark_job_completed(
