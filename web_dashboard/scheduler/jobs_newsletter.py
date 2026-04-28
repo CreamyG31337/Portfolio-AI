@@ -86,8 +86,14 @@ def newsletter_ai_processing_job() -> None:
             logger.info(f"📰 Newsletter AI job: no pending newsletters to process.")
             log_job_execution(job_id, success=True,
                               message="No pending newsletters", duration_ms=duration_ms)
-            mark_job_completed(job_id, target_date,
-                               message="No pending newsletters", duration_ms=duration_ms)
+            mark_job_completed(
+                job_id,
+                target_date,
+                None,
+                [],
+                duration_ms=duration_ms,
+                message="No pending newsletters",
+            )
             return
 
         logger.info(f"📰 Newsletter AI job: processing {len(rows)} pending newsletter(s)…")
@@ -179,7 +185,14 @@ def newsletter_ai_processing_job() -> None:
         msg = f"Processed {processed}, failed {failed} of {len(rows)} newsletters"
         logger.info(f"📰 Newsletter AI job complete: {msg} ({duration_ms}ms)")
         log_job_execution(job_id, success=(failed == 0), message=msg, duration_ms=duration_ms)
-        mark_job_completed(job_id, target_date, message=msg, duration_ms=duration_ms)
+        mark_job_completed(
+            job_id,
+            target_date,
+            None,
+            [],
+            duration_ms=duration_ms,
+            message=msg,
+        )
 
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)

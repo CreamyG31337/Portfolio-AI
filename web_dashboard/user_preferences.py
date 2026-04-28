@@ -822,7 +822,7 @@ def get_user_currency() -> Optional[str]:
     # Import here to avoid circular dependency
     try:
         from streamlit_utils import SUPPORTED_CURRENCIES
-    except ImportError:
+    except Exception:
         # Fallback if import fails
         SUPPORTED_CURRENCIES = {'CAD': 'Canadian Dollar', 'USD': 'US Dollar'}
     
@@ -867,7 +867,7 @@ def set_user_currency(currency: str) -> bool:
     # Import here to avoid circular dependency
     try:
         from streamlit_utils import SUPPORTED_CURRENCIES
-    except ImportError:
+    except Exception:
         # Fallback if import fails
         SUPPORTED_CURRENCIES = {'CAD': 'Canadian Dollar', 'USD': 'US Dollar'}
     
