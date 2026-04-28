@@ -143,17 +143,29 @@ steps:
       - ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
       
       # Format build timestamp in UTC (will be converted to user's timezone in Python)
-      # CI_PIPELINE_STARTED is Unix timestamp, format in UTC
+      # Guard against CI_PIPELINE_STARTED=0 (Unix epoch), which would render as 1969-12-31 in Pacific.
       - |
-        if [ -n "$CI_PIPELINE_STARTED" ]; then
-          export BUILD_TIMESTAMP=$(date -u -d "@$CI_PIPELINE_STARTED" "+%Y-%m-%d %H:%M UTC" 2>/dev/null || date -u -r "$CI_PIPELINE_STARTED" "+%Y-%m-%d %H:%M UTC" 2>/dev/null || date -u "+%Y-%m-%d %H:%M UTC")
+        BUILD_TS_SOURCE=""
+        BUILD_TS_EPOCH=""
+        if [ -n "$CI_PIPELINE_STARTED" ] && [ "$CI_PIPELINE_STARTED" -gt 0 ] 2>/dev/null; then
+          BUILD_TS_EPOCH="$CI_PIPELINE_STARTED"
+          BUILD_TS_SOURCE="CI_PIPELINE_STARTED"
+        elif [ -n "$CI_PIPELINE_CREATED" ] && [ "$CI_PIPELINE_CREATED" -gt 0 ] 2>/dev/null; then
+          BUILD_TS_EPOCH="$CI_PIPELINE_CREATED"
+          BUILD_TS_SOURCE="CI_PIPELINE_CREATED"
+        fi
+
+        if [ -n "$BUILD_TS_EPOCH" ]; then
+          export BUILD_TIMESTAMP=$(date -u -d "@$BUILD_TS_EPOCH" "+%Y-%m-%d %H:%M UTC" 2>/dev/null || date -u -r "$BUILD_TS_EPOCH" "+%Y-%m-%d %H:%M UTC" 2>/dev/null || date -u "+%Y-%m-%d %H:%M UTC")
         else
           export BUILD_TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M UTC")
+          BUILD_TS_SOURCE="date_now_utc_fallback"
         fi
         echo "=== BUILD_TIMESTAMP diagnostics (web footer / container env) ==="
         echo "CI_PIPELINE_STARTED=$CI_PIPELINE_STARTED"
         echo "CI_PIPELINE_CREATED=$CI_PIPELINE_CREATED"
         echo "CI_STEP_STARTED=$CI_STEP_STARTED"
+        echo "Timestamp source=$BUILD_TS_SOURCE"
         echo "Computed BUILD_TIMESTAMP=$BUILD_TIMESTAMP"
         if [ "$CI_PIPELINE_STARTED" = "0" ]; then
           echo "WARNING: CI_PIPELINE_STARTED is 0 — shell treats 0 as non-empty, so date uses @0 (Unix epoch). Footer can show 1969-12-31 in Pacific."
