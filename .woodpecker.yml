@@ -150,6 +150,15 @@ steps:
         else
           export BUILD_TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M UTC")
         fi
+        echo "=== BUILD_TIMESTAMP diagnostics (web footer / container env) ==="
+        echo "CI_PIPELINE_STARTED=$CI_PIPELINE_STARTED"
+        echo "CI_PIPELINE_CREATED=$CI_PIPELINE_CREATED"
+        echo "CI_STEP_STARTED=$CI_STEP_STARTED"
+        echo "Computed BUILD_TIMESTAMP=$BUILD_TIMESTAMP"
+        if [ "$CI_PIPELINE_STARTED" = "0" ]; then
+          echo "WARNING: CI_PIPELINE_STARTED is 0 — shell treats 0 as non-empty, so date uses @0 (Unix epoch). Footer can show 1969-12-31 in Pacific."
+        fi
+        echo "=== end BUILD_TIMESTAMP diagnostics ==="
       
       # Create all required directories once at the start
       - mkdir -p /home/lance/trading-dashboard-logs /home/lance/ollama-logs /shared/cookies /deploy_target/frontend
