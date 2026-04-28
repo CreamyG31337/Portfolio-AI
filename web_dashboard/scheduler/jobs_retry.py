@@ -48,7 +48,7 @@ def process_retry_queue_job() -> None:
         
         from utils.job_tracking import (
             get_pending_retries, mark_retrying, 
-            mark_resolved, mark_abandoned
+            mark_resolved, mark_abandoned, mark_pending_retry
         )
         from scheduler.jobs_portfolio import backfill_portfolio_prices_range
         from supabase_client import SupabaseClient
@@ -155,7 +155,13 @@ def process_retry_queue_job() -> None:
                     logger.warning(f"  ⚠️  Abandoned after {retry_count + 1} retries: {job_name} {target_date} {entity_id or 'all_funds'}")
                 else:
                     failed_count += 1
-                    # Status reverts to 'pending' automatically for next retry
+                    mark_pending_retry(
+                        job_name,
+                        target_date,
+                        entity_id,
+                        entity_type,
+                        error_message=str(e),
+                    )
         
         # Summary
         duration_ms = int((time.time() - start_time) * 1000)

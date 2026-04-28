@@ -677,6 +677,41 @@ def mark_abandoned(
         logger.warning(f"Failed to mark abandoned: {e}")
 
 
+def mark_pending_retry(
+    job_name: str,
+    target_date: date,
+    entity_id: Optional[str],
+    entity_type: str = "fund",
+    error_message: str = "",
+) -> None:
+    """
+    Return a retry entry back to 'pending' after a failed retry attempt.
+
+    This keeps non-terminal failures eligible for the next retry cycle instead
+    of leaving entries stuck in 'retrying'.
+    """
+    try:
+        from supabase_client import SupabaseClient
+
+        client = SupabaseClient(use_service_role=True)
+        effective_entity_id = entity_id if entity_id is not None else ""
+
+        payload: Dict[str, Any] = {"status": "pending"}
+        if error_message:
+            payload["error_message"] = error_message[:1000]
+
+        client.supabase.table("job_retry_queue")\
+            .update(payload)\
+            .eq("job_name", job_name)\
+            .eq("target_date", target_date.isoformat())\
+            .eq("entity_id", effective_entity_id)\
+            .eq("entity_type", entity_type)\
+            .eq("status", "retrying")\
+            .execute()
+    except Exception as e:
+        logger.warning(f"Failed to mark retry pending: {e}")
+
+
 def log_job_step(
     job_name: str,
     step_name: str,

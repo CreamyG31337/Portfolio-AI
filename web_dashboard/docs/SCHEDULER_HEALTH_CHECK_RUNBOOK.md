@@ -32,6 +32,7 @@ ssh -i "<key_path>" lance@ts-ubuntu-server "docker ps --format 'table {{.Names}}
 ssh -i "<key_path>" lance@ts-ubuntu-server "docker logs --since 30m trading-dashboard --tail 200"
 ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python /app/web_dashboard/scripts/check_job_status.py"
 ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python /app/web_dashboard/scripts/read_job_logs.py --days 1 --limit 120"
+ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python /app/web_dashboard/scripts/check_job_backlog_health.py"
 ```
 
 ## Detailed Verification Flow
@@ -61,6 +62,13 @@ ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python
 ssh -i "<key_path>" lance@ts-ubuntu-server \
   "docker exec trading-dashboard python /app/web_dashboard/scripts/read_job_logs.py --days 7 --job <job_name> --limit 10"
 ```
+
+6. Backlog health snapshot (read-only)
+   - Run `check_job_backlog_health.py` and capture:
+     - pending newsletters (`summary IS NULL`)
+     - missing article summaries
+     - retry queue counts (`pending/retrying/abandoned`) and oldest row timestamp
+     - running-job age buckets (`30m+`, `1h+`, `3h+`, `6h+`)
 
 ## Interpreting Results
 

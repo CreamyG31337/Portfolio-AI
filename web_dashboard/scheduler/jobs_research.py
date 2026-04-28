@@ -369,8 +369,13 @@ def market_research_job() -> None:
                         logger.info(f"Extracted sector from article: {extracted_sector}")
 
                     # Log extracted metadata
-                    if tickers or sectors:
-                        logger.debug(f"Extracted metadata - Tickers: {tickers}, Sectors: {sectors}, Themes: {summary_data.get('key_themes', [])}")
+                    if extracted_tickers or sectors:
+                        logger.debug(
+                            "Extracted metadata - Tickers: %s, Sectors: %s, Themes: %s",
+                            extracted_tickers,
+                            sectors,
+                            summary_data.get("key_themes", []),
+                        )
 
                 if not summary:
                     logger.warning(f"Failed to generate summary for {title[:50]}...")
@@ -1636,6 +1641,7 @@ def archive_retry_job() -> None:
                                 extracted_tickers = []
                                 extracted_sector = None
                                 embedding = None
+                                title = article.get("title", "Untitled")
                                 
                                 summary_input = f"Title: {title}\n\n{extracted_content}" if title else extracted_content
                                 summary_data = generate_summary(summary_input)

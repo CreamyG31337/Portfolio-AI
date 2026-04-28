@@ -1000,19 +1000,8 @@ def register_default_jobs(scheduler) -> None:
 
         logger.info("Registered job: performance_metrics_populate (daily at 5 PM EST)")
 
-    # Scheduler Heartbeat - Updates file timestamp every 20s to detect crashes
-    # This is critical for the entrypoint/Streamlit/Flask coordination
-    from scheduler.scheduler_core import _update_heartbeat
-    scheduler.add_job(
-        _update_heartbeat,
-        trigger=IntervalTrigger(seconds=20),
-        id='scheduler_heartbeat',
-        name='Scheduler Heartbeat',
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True
-    )
-    logger.info("Registered job: scheduler_heartbeat (every 20s)")
+    # Heartbeat registration is owned by scheduler_core.start_scheduler().
+    # Keep a single authoritative registration path to avoid drift.
     
     # Portfolio price update job - during market hours only (weekdays 9:30 AM - 4:00 PM EST)
     # NOTE: Exchange rates are NOT required for this job - positions are stored in native currency
@@ -1189,13 +1178,14 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: alpha_research_collect (daily at 10:30 PM PT)")
     
-    # Symbol Article Scraper: Daily at 2:00 AM EST (off-peak, avoids conflicts with 3:00 AM cleanup)
+    # Symbol Article Scraper: Daily at 2:10 AM EST.
+    # Staggered to reduce overlap with other 2:00 AM jobs.
     if AVAILABLE_JOBS.get('symbol_article_scraper', {}).get('enabled_by_default'):
         scheduler.add_job(
             symbol_article_scraper_job,
             trigger=CronTrigger(
                 hour=2,
-                minute=0,
+                minute=10,
                 timezone='America/New_York'
             ),
             id='symbol_article_scraper',
@@ -1204,7 +1194,7 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: symbol_article_scraper (daily at 2:00 AM EST)")
+        logger.info("Registered job: symbol_article_scraper (daily at 2:10 AM EST)")
     
     # Benchmark refresh job - every 30 minutes during market hours (weekdays 9:30 AM - 4:00 PM EST)
     if AVAILABLE_JOBS['benchmark_refresh']['enabled_by_default']:

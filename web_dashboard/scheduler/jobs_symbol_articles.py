@@ -192,6 +192,7 @@ def symbol_article_scraper_job() -> None:
                 for article_url in article_urls:
                     try:
                         articles_processed += 1
+                        title = ""
                         
                         # Check robots.txt compliance (if enabled)
                         try:
