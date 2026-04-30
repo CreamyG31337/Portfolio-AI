@@ -1248,7 +1248,8 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: market_daily_brief (weekdays 5:45 PM ET, after benchmark window)")
-        # Secondary catch-up trigger: if the 5:45 PM run is blocked, fill missing weekdays next morning.
+        # If 5:45 PM hits the global AI lock, jobs_dashboard_research schedules a one-shot retry (~60s).
+        # Morning job: safety net after rest or if retries were unavailable.
         scheduler.add_job(
             market_daily_brief_job,
             trigger=CronTrigger(

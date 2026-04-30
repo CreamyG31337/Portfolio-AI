@@ -5,9 +5,17 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, UTC
 from typing import Any
+
+# Only one market_daily_brief execution at a time (cron + lock-retry share this).
+_market_daily_brief_run_lock = threading.Lock()
+
+# Single pending one-shot retry when skipped due to global AI lock (replace_existing).
+_MARKET_DAILY_BRIEF_LOCK_RETRY_JOB_ID = "market_daily_brief_lock_retry"
+_MARKET_DAILY_BRIEF_LOCK_RETRY_DELAY_SEC = 60
 
 try:
     from scheduler.scheduler_core import log_job_execution
@@ -45,67 +53,105 @@ def _compute_missing_brief_dates(postgres, *, lookback_days: int = 5) -> list[da
     return missing
 
 
+def _schedule_market_daily_brief_after_ai_lock(blocking_job: str) -> None:
+    """Re-run the brief soon after the global AI lock clears (one-shot, debounced)."""
+    try:
+        from scheduler.scheduler_core import get_scheduler
+
+        sched = get_scheduler(create=False)
+        if not sched or not getattr(sched, "running", False):
+            return
+        run_date = datetime.now(UTC) + timedelta(seconds=_MARKET_DAILY_BRIEF_LOCK_RETRY_DELAY_SEC)
+        sched.add_job(
+            market_daily_brief_job,
+            trigger="date",
+            run_date=run_date,
+            id=_MARKET_DAILY_BRIEF_LOCK_RETRY_JOB_ID,
+            name="Market Daily Brief (retry after AI lock)",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info(
+            "Scheduled market_daily_brief retry at %s UTC (%ss) while AI lock held by %s",
+            run_date.isoformat(),
+            _MARKET_DAILY_BRIEF_LOCK_RETRY_DELAY_SEC,
+            blocking_job,
+        )
+    except Exception as exc:
+        logger.warning("Could not schedule market_daily_brief lock retry: %s", exc)
+
+
 def market_daily_brief_job() -> None:
+    if not _market_daily_brief_run_lock.acquire(blocking=False):
+        logger.info("market_daily_brief: already in progress; skipping concurrent invocation")
+        return
+
     job_id = "market_daily_brief"
     start = time.time()
-    target_date = datetime.now(timezone.utc).date()
+    target_date = datetime.now(UTC).date()
     try:
-        from utils.job_tracking import get_running_ai_job
-
-        running = get_running_ai_job(exclude_job_name=job_id)
-        if running:
-            logger.info("AI lock active (%s). Skipping %s.", running, job_id)
-            return
-    except Exception as exc:
-        logger.warning("AI lock check failed: %s", exc)
-
-    try:
-        from utils.job_tracking import mark_job_completed, mark_job_failed, mark_job_started
-
-        mark_job_started(job_id, target_date)
-    except Exception:
-        pass
-
-    try:
-        from market_brief_service import run_market_daily_brief
-        from ollama_client import OllamaClient, get_ollama_client
-        from postgres_client import PostgresClient
-        from supabase_client import SupabaseClient
-
-        ollama = get_ollama_client()
-        if not ollama:
-            ollama = OllamaClient()
-        postgres = PostgresClient()
-        supabase = SupabaseClient(use_service_role=True)
-        dates_to_fill = _compute_missing_brief_dates(postgres, lookback_days=5)
-        if not dates_to_fill:
-            row = run_market_daily_brief(ollama, postgres, supabase)
-            msg = "ok" if row else "no row (benchmark or LLM failure)"
-        else:
-            successes = 0
-            for brief_day in dates_to_fill:
-                row = run_market_daily_brief(ollama, postgres, supabase, brief_date=brief_day)
-                if row:
-                    successes += 1
-            msg = f"backfill {successes}/{len(dates_to_fill)} day(s)"
-        duration_ms = int((time.time() - start) * 1000)
-        log_job_execution(job_id, True, msg, duration_ms)
         try:
-            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=msg)
+            from utils.job_tracking import get_running_ai_job
+
+            running = get_running_ai_job(exclude_job_name=job_id)
+            if running:
+                logger.info("AI lock active (%s). Skipping %s.", running, job_id)
+                _schedule_market_daily_brief_after_ai_lock(running)
+                return
+        except Exception as exc:
+            logger.warning("AI lock check failed: %s", exc)
+
+        try:
+            from utils.job_tracking import mark_job_completed, mark_job_failed, mark_job_started
+
+            mark_job_started(job_id, target_date)
         except Exception:
             pass
-        logger.info("market_daily_brief_job: %s", msg)
-    except Exception as exc:
-        duration_ms = int((time.time() - start) * 1000)
-        err = str(exc)
-        log_job_execution(job_id, False, err, duration_ms)
-        try:
-            from utils.job_tracking import mark_job_failed
 
-            mark_job_failed(job_id, target_date, None, err, duration_ms=duration_ms)
-        except Exception:
-            pass
-        logger.error("market_daily_brief_job failed: %s", exc, exc_info=True)
+        try:
+            from market_brief_service import run_market_daily_brief
+            from ollama_client import OllamaClient, get_ollama_client
+            from postgres_client import PostgresClient
+            from supabase_client import SupabaseClient
+
+            ollama = get_ollama_client()
+            if not ollama:
+                ollama = OllamaClient()
+            postgres = PostgresClient()
+            supabase = SupabaseClient(use_service_role=True)
+            dates_to_fill = _compute_missing_brief_dates(postgres, lookback_days=5)
+            if not dates_to_fill:
+                row = run_market_daily_brief(ollama, postgres, supabase)
+                msg = "ok" if row else "no row (benchmark or LLM failure)"
+            else:
+                successes = 0
+                for brief_day in dates_to_fill:
+                    row = run_market_daily_brief(ollama, postgres, supabase, brief_date=brief_day)
+                    if row:
+                        successes += 1
+                msg = f"backfill {successes}/{len(dates_to_fill)} day(s)"
+            duration_ms = int((time.time() - start) * 1000)
+            log_job_execution(job_id, True, msg, duration_ms)
+            try:
+                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=msg)
+            except Exception:
+                pass
+            logger.info("market_daily_brief_job: %s", msg)
+        except Exception as exc:
+            duration_ms = int((time.time() - start) * 1000)
+            err = str(exc)
+            log_job_execution(job_id, False, err, duration_ms)
+            try:
+                from utils.job_tracking import mark_job_failed
+
+                mark_job_failed(job_id, target_date, None, err, duration_ms=duration_ms)
+            except Exception:
+                pass
+            logger.error("market_daily_brief_job failed: %s", exc, exc_info=True)
+    finally:
+        _market_daily_brief_run_lock.release()
 
 
 def _signal_date_to_sql(val: Any) -> date | None:
@@ -125,7 +171,7 @@ def _signal_date_to_sql(val: Any) -> date | None:
 def action_queue_ai_review_job() -> None:
     job_id = "action_queue_ai_review"
     start = time.time()
-    target_date = datetime.now(timezone.utc).date()
+    target_date = datetime.now(UTC).date()
     try:
         from utils.job_tracking import get_running_ai_job
 
