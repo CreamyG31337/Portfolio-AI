@@ -5,6 +5,7 @@ Per-ticker meta analysis: second LLM pass over stored analysis artifacts only.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from datetime import datetime, UTC
@@ -17,6 +18,11 @@ from supabase_client import SupabaseClient
 from ticker_analysis_service import extract_json
 
 logger = logging.getLogger(__name__)
+
+
+def artifact_bundle_digest(bundle: str) -> str:
+    """SHA-256 hex of UTF-8 bundle text (same bytes the meta LLM sees)."""
+    return hashlib.sha256(bundle.encode("utf-8")).hexdigest()
 
 _MAX_TEXT = 1200
 _MAX_REASON = 500
@@ -71,7 +77,7 @@ class TickerMetaAnalysisService:
             SELECT id, ticker, source_analysis_id, source_analysis_snapshot_at,
                    unified_conviction, confidence_adjusted, contradictions,
                    what_changed_vs_last_run, action_items, narrative, full_result,
-                   model_used, requested_by, created_at, updated_at
+                   model_used, requested_by, artifact_bundle_digest, created_at, updated_at
             FROM ticker_meta_analysis
             WHERE ticker = %s
             LIMIT 1
@@ -81,30 +87,23 @@ class TickerMetaAnalysisService:
         return rows[0] if rows else None
 
     def needs_refresh(self, ticker: str) -> tuple[bool, dict[str, Any] | None]:
-        """Return (needs_run, latest_standard_row_or_none)."""
-        latest_list = self.fetch_latest_standard_analyses(ticker)
-        if not latest_list:
+        """Return (needs_run, primary_standard_row_or_none).
+
+        Refresh when there is no meta row, when the stored artifact digest differs from
+        the current bundle (social/articles/congress/standard snapshots), or when the
+        row predates digest tracking (NULL digest).
+        """
+        bundle, primary = self.build_artifact_bundle(ticker)
+        if not primary:
             return False, None
-        latest = latest_list[0]
+        digest = artifact_bundle_digest(bundle)
         meta = self.fetch_meta_row(ticker)
         if not meta:
-            return True, latest
-        src_id = meta.get("source_analysis_id")
-        latest_id = latest.get("id")
-        if src_id != latest_id:
-            return True, latest
-        snap = meta.get("source_analysis_snapshot_at")
-        lu = latest.get("updated_at")
-        if snap is None or lu is None:
-            return True, latest
-        if isinstance(lu, datetime) and isinstance(snap, datetime):
-            if lu.tzinfo is None:
-                lu = lu.replace(tzinfo=UTC)
-            if snap.tzinfo is None:
-                snap = snap.replace(tzinfo=UTC)
-            if lu > snap:
-                return True, latest
-        return False, latest
+            return True, primary
+        stored = meta.get("artifact_bundle_digest")
+        if stored != digest:
+            return True, primary
+        return False, primary
 
     def _fetch_social_snippets(self, ticker: str) -> list[dict[str, Any]]:
         return self.postgres.execute_query(
@@ -321,12 +320,14 @@ class TickerMetaAnalysisService:
             logger.error("Meta analysis JSON parse failed for %s", ticker_u)
             return None
 
+        bundle_digest = artifact_bundle_digest(bundle)
         self._save_meta(
             ticker_u,
             primary,
             response,
             model,
             requested_by,
+            bundle_digest,
         )
         return self.fetch_meta_row(ticker_u)
 
@@ -337,6 +338,7 @@ class TickerMetaAnalysisService:
         response: dict[str, Any],
         model_used: str,
         requested_by: str | None,
+        bundle_digest: str,
     ) -> None:
         src_id = primary.get("id")
         snap = primary.get("updated_at")
@@ -358,12 +360,12 @@ class TickerMetaAnalysisService:
                 ticker, source_analysis_id, source_analysis_snapshot_at,
                 unified_conviction, confidence_adjusted, contradictions,
                 what_changed_vs_last_run, action_items, narrative, full_result,
-                model_used, requested_by
+                model_used, requested_by, artifact_bundle_digest
             ) VALUES (
                 %s, %s, %s,
                 %s, %s, %s::jsonb,
                 %s, %s, %s, %s::jsonb,
-                %s, %s
+                %s, %s, %s
             )
             ON CONFLICT (ticker) DO UPDATE SET
                 source_analysis_id = EXCLUDED.source_analysis_id,
@@ -377,6 +379,7 @@ class TickerMetaAnalysisService:
                 full_result = EXCLUDED.full_result,
                 model_used = EXCLUDED.model_used,
                 requested_by = EXCLUDED.requested_by,
+                artifact_bundle_digest = EXCLUDED.artifact_bundle_digest,
                 updated_at = NOW()
         """
 
@@ -395,6 +398,7 @@ class TickerMetaAnalysisService:
                 full_json,
                 model_used,
                 requested_by,
+                bundle_digest,
             ),
         )
         logger.info("Saved ticker meta analysis for %s", ticker)

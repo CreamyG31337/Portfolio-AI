@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS ticker_meta_analysis (
     full_result JSONB,
     model_used VARCHAR(100),
     requested_by VARCHAR(100),
+    artifact_bundle_digest VARCHAR(64),
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (id),

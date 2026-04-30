@@ -184,6 +184,7 @@ interface TickerMetaAnalysisRow {
     full_result?: Record<string, unknown>;
     model_used?: string;
     requested_by?: string;
+    artifact_bundle_digest?: string;
     updated_at?: string;
     source_analysis_id?: string;
 }

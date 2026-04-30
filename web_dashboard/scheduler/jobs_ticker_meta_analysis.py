@@ -23,6 +23,7 @@ from ai_skip_list_manager import AISkipListManager
 from meta_analysis_service import TickerMetaAnalysisService
 from ollama_client import OllamaClient, get_ollama_client
 from postgres_client import PostgresClient
+from settings import get_summarizing_model
 from supabase_client import SupabaseClient
 from ticker_analysis_service import TickerAnalysisService
 
@@ -30,7 +31,8 @@ logger = logging.getLogger(__name__)
 
 # Do not starve the server: meta is cheaper than full ticker analysis but still LLM-bound.
 _MAX_SECONDS = 45 * 60
-_MAX_TICKERS_PER_RUN = 80
+# Digest-based refresh can increase nightly work; cap per run (tune if backlog grows).
+_MAX_TICKERS_PER_RUN = 100
 
 
 def ticker_meta_analysis_job() -> None:
@@ -75,16 +77,30 @@ def ticker_meta_analysis_job() -> None:
     try:
         supabase = SupabaseClient(use_service_role=True)
         postgres = PostgresClient()
+        preferred_model = get_summarizing_model()
+        is_glm = str(preferred_model).startswith("glm-")
+        is_webai = False
+        try:
+            from webai_wrapper import is_webai_model
+
+            is_webai = is_webai_model(str(preferred_model))
+        except Exception:
+            pass
+
         ollama = get_ollama_client()
+        if not ollama and (is_glm or is_webai):
+            ollama = OllamaClient()
         if not ollama:
             ollama = OllamaClient()
+
         skip_list = AISkipListManager(supabase)
         ticker_service = TickerAnalysisService(ollama, supabase, postgres, skip_list)
         meta_service = TickerMetaAnalysisService(ollama, supabase, postgres)
 
         tickers: list[tuple[str, int]] = ticker_service.get_tickers_to_analyze()
         processed = 0
-        skipped = 0
+        skipped_fresh = 0
+        skipped_no_standard = 0
         failed = 0
 
         for ticker, _prio in tickers:
@@ -96,19 +112,31 @@ def ticker_meta_analysis_job() -> None:
                 break
 
             need, latest = meta_service.needs_refresh(ticker)
-            if not need or not latest:
-                skipped += 1
+            if latest is None:
+                skipped_no_standard += 1
+                continue
+            if not need:
+                skipped_fresh += 1
                 continue
 
             try:
-                meta_service.run_meta_analysis(ticker, requested_by=None, model_override=None, force=True)
+                meta_service.run_meta_analysis(
+                    ticker,
+                    requested_by=None,
+                    model_override=preferred_model,
+                    force=True,
+                )
                 processed += 1
             except Exception as exc:
                 logger.error("Meta analysis failed for %s: %s", ticker, exc, exc_info=True)
                 failed += 1
 
         duration_ms = int((time.time() - start) * 1000)
-        msg = f"Processed {processed}, skipped {skipped}, failed {failed}"
+        skipped_total = skipped_fresh + skipped_no_standard
+        msg = (
+            f"Processed {processed}, skipped {skipped_total} "
+            f"(fresh_digest={skipped_fresh}, no_standard={skipped_no_standard}), failed {failed}"
+        )
         log_job_execution(job_id, success=True, message=msg, duration_ms=duration_ms)
         try:
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=msg)
