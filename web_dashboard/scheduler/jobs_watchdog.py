@@ -186,6 +186,7 @@ def detect_stale_running_jobs() -> None:
         logger.warning(f"Found {len(result.data)} stale running job(s)")
         
         for job in result.data:
+            row_id = job.get("id")
             job_name = job['job_name']
             target_date_str = job.get('target_date')
             fund_name = job.get('fund_name') or None
@@ -240,6 +241,22 @@ def detect_stale_running_jobs() -> None:
                 )
             except Exception as e:
                 logger.warning(f"  Failed to mark {job_name} as failed: {e}")
+
+            # Ensure the exact stale row is not left behind due to key mismatches
+            # (e.g., historical NULL fund_name vs newer '' normalization).
+            if row_id:
+                try:
+                    client.supabase.table("job_executions")\
+                        .update({
+                            "status": "failed",
+                            "completed_at": datetime.now(timezone.utc).isoformat(),
+                            "error_message": (error_message or "Stale running job auto-cleared")[:500],
+                        })\
+                        .eq("id", row_id)\
+                        .eq("status", "running")\
+                        .execute()
+                except Exception as e:
+                    logger.warning(f"  Failed to force-update stale row id={row_id}: {e}")
             
             # Add to retry queue if calculation job
             if is_calculation_job(job_name):

@@ -58,6 +58,15 @@ AI_JOB_NAMES = {
     'ui_ai_summaries',
 }
 
+AI_JOB_MAX_AGE_HOURS: Dict[str, int] = {
+    # Longer-running heavy jobs.
+    'ticker_analysis': 3,
+    'etf_group_analysis': 2,
+    'ticker_research': 2,
+    'market_research': 2,
+    # Most other AI jobs should finish well within an hour.
+}
+
 
 def mark_job_started(
     job_name: str,
@@ -381,7 +390,7 @@ def cleanup_stale_running_jobs(max_age_hours: int = 24) -> int:
 
 def get_running_ai_job(
     exclude_job_name: Optional[str] = None,
-    max_age_hours: int = 6
+    max_age_hours: int = 1
 ) -> Optional[str]:
     """
     Check if any AI job is currently running (global lock).
@@ -397,7 +406,7 @@ def get_running_ai_job(
         from supabase_client import SupabaseClient
         client = SupabaseClient(use_service_role=True)
         result = client.supabase.table("job_executions") \
-            .select("job_name, started_at") \
+            .select("id, job_name, started_at") \
             .eq("status", "running") \
             .in_("job_name", list(AI_JOB_NAMES)) \
             .execute()
@@ -405,26 +414,66 @@ def get_running_ai_job(
         if not result.data:
             return None
 
-        cutoff = datetime.now(timezone.utc).timestamp() - (max_age_hours * 3600)
+        now_utc = datetime.now(timezone.utc)
+        # Newest first gives most accurate lock owner when multiple rows are running.
+        sorted_rows = sorted(
+            result.data,
+            key=lambda r: (r.get("started_at") or ""),
+            reverse=True,
+        )
 
-        for row in result.data:
+        for row in sorted_rows:
             job_name = row.get("job_name")
             if not job_name or job_name == exclude_job_name:
                 continue
 
+            stale_after_hours = AI_JOB_MAX_AGE_HOURS.get(job_name, max_age_hours)
             started_at = row.get("started_at")
-            if started_at:
-                try:
-                    started = datetime.fromisoformat(
-                        started_at.replace("Z", "+00:00") if isinstance(started_at, str) else str(started_at)
-                    )
-                    if started.tzinfo is None:
-                        started = started.replace(tzinfo=timezone.utc)
-                    if started.timestamp() < cutoff:
-                        continue
-                except Exception:
-                    # If parse fails, treat as active to be safe
-                    pass
+            if not started_at:
+                return job_name
+
+            try:
+                started = datetime.fromisoformat(
+                    started_at.replace("Z", "+00:00") if isinstance(started_at, str) else str(started_at)
+                )
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=timezone.utc)
+                age_seconds = (now_utc - started).total_seconds()
+
+                # Self-heal stale lock rows by id to avoid fund_name NULL/'' key mismatches.
+                if age_seconds >= (stale_after_hours * 3600):
+                    row_id = row.get("id")
+                    if row_id:
+                        try:
+                            client.supabase.table("job_executions") \
+                                .update({
+                                    "status": "failed",
+                                    "completed_at": now_utc.isoformat(),
+                                    "error_message": (
+                                        f"Auto-cleared stale AI lock "
+                                        f"(running > {stale_after_hours}h)"
+                                    )[:500],
+                                }) \
+                                .eq("id", row_id) \
+                                .eq("status", "running") \
+                                .execute()
+                            logger.warning(
+                                "Auto-cleared stale AI lock row id=%s job=%s age=%.1fm",
+                                row_id,
+                                job_name,
+                                age_seconds / 60.0,
+                            )
+                        except Exception as clear_err:
+                            logger.warning(
+                                "Failed to auto-clear stale AI lock id=%s (%s): %s",
+                                row_id,
+                                job_name,
+                                clear_err,
+                            )
+                    continue
+            except Exception:
+                # If parse fails, treat as active to be safe.
+                return job_name
 
             return job_name
 
