@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 try:
@@ -17,6 +17,32 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_missing_brief_dates(postgres, *, lookback_days: int = 5) -> list[date]:
+    """Return missing weekday brief dates in a short recent window."""
+    from market_brief_service import _ny_today
+
+    today_ny = _ny_today()
+    start_date = today_ny - timedelta(days=lookback_days)
+
+    existing_rows = postgres.execute_query(
+        """
+        SELECT brief_date
+        FROM market_daily_brief
+        WHERE brief_date >= %s AND brief_date <= %s
+        """,
+        (start_date, today_ny),
+    )
+    existing_dates = {row["brief_date"] for row in (existing_rows or []) if row.get("brief_date")}
+
+    missing: list[date] = []
+    cursor = start_date
+    while cursor <= today_ny:
+        if cursor.weekday() < 5 and cursor not in existing_dates:
+            missing.append(cursor)
+        cursor += timedelta(days=1)
+    return missing
 
 
 def market_daily_brief_job() -> None:
@@ -51,8 +77,17 @@ def market_daily_brief_job() -> None:
             ollama = OllamaClient()
         postgres = PostgresClient()
         supabase = SupabaseClient(use_service_role=True)
-        row = run_market_daily_brief(ollama, postgres, supabase)
-        msg = "ok" if row else "no row (benchmark or LLM failure)"
+        dates_to_fill = _compute_missing_brief_dates(postgres, lookback_days=5)
+        if not dates_to_fill:
+            row = run_market_daily_brief(ollama, postgres, supabase)
+            msg = "ok" if row else "no row (benchmark or LLM failure)"
+        else:
+            successes = 0
+            for brief_day in dates_to_fill:
+                row = run_market_daily_brief(ollama, postgres, supabase, brief_date=brief_day)
+                if row:
+                    successes += 1
+            msg = f"backfill {successes}/{len(dates_to_fill)} day(s)"
         duration_ms = int((time.time() - start) * 1000)
         log_job_execution(job_id, True, msg, duration_ms)
         try:
