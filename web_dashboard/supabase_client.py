@@ -122,51 +122,46 @@ class SupabaseClient:
             # The Supabase Python SDK uses multiple internal clients (postgrest, auth, etc.)
             # We need to ensure the Authorization header is set for ALL of them
             
-            # Only call set_session if token is not expired
+            # Only call set_session if token is valid AND a refresh_token was supplied.
+            # Calling set_session() with an empty refresh_token causes the Supabase SDK to
+            # throw errors containing the word "token" (e.g. "refresh token is required"),
+            # which previously triggered a spurious full-session wipe via the broad
+            # "token" in error_str check below.
             if token_is_valid:
-                try:
-                    self._auth_diagnostics["set_session_attempted"] = True
-                    # Method 1: Set session via auth client (standard approach)
-                    # This is the CORRECT way - it sets auth headers globally for ALL requests
-                    # including RPC calls, table queries, etc.
-                    if refresh_token:
-                        # Use both tokens for proper session
+                if refresh_token:
+                    try:
+                        self._auth_diagnostics["set_session_attempted"] = True
                         self.supabase.auth.set_session(
                             access_token=user_token,
                             refresh_token=refresh_token
                         )
                         self._auth_diagnostics["set_session_success"] = True
                         logger.debug("[SUPABASE_CLIENT] ✅ Successfully called auth.set_session() with refresh_token")
-                    else:
-                        # Try with empty refresh_token as fallback
-                        self.supabase.auth.set_session(
-                            access_token=user_token,
-                            refresh_token=""
-                        )
-                        self._auth_diagnostics["set_session_success"] = True
-                        logger.debug("[SUPABASE_CLIENT] ⚠️ Called auth.set_session() without refresh_token (may not work for RPC)")
-                except Exception as e:
-                    logger.warning(f"[SUPABASE_CLIENT] ❌ auth.set_session() failed: {e}")
-                    # Check if this is a signature/JWT validation error - if so, mark session as invalid
-                    # so the auth middleware can force a logout/redirect
-                    error_str = str(e).lower()
-                    if "invalid jwt" in error_str or "signature" in error_str or "token" in error_str:
-                        try:
-                            from flask import request, has_request_context
-                            if has_request_context():
-                                request._supabase_session_invalid = True
-                                logger.warning("[SUPABASE_CLIENT] 🚨 Marked session as invalid due to JWT error")
-                        except ImportError:
-                            pass  # Not in Flask context
+                    except Exception as e:
+                        logger.warning(f"[SUPABASE_CLIENT] ❌ auth.set_session() failed: {e}")
+                        # Only treat as session-invalid for genuine signature/tamper errors,
+                        # NOT for expired tokens (those are handled by the refresh flow in
+                        # @require_auth and should never reach here with a valid token).
+                        error_str = str(e).lower()
+                        if "invalid jwt" in error_str or "invalid signature" in error_str or "jwt signature" in error_str:
+                            try:
+                                from flask import request, has_request_context
+                                if has_request_context():
+                                    request._supabase_session_invalid = True
+                                    logger.warning("[SUPABASE_CLIENT] 🚨 Marked session as invalid due to JWT signature error")
+                            except ImportError:
+                                pass
+                else:
+                    # No refresh_token available — skip set_session entirely.
+                    # Legacy header injection below will set the Authorization header
+                    # directly on the postgrest client, which is sufficient for RLS queries.
+                    logger.debug("[SUPABASE_CLIENT] Skipping set_session() — no refresh_token provided; relying on header injection")
             else:
-                # Token is expired - mark session as invalid so refresh flow can handle it
-                try:
-                    from flask import request, has_request_context
-                    if has_request_context():
-                        request._supabase_session_invalid = True
-                        logger.warning("[SUPABASE_CLIENT] 🚨 Marked session as invalid due to expired token")
-                except ImportError:
-                    pass  # Not in Flask context
+                # Token is expired. Do NOT mark session as invalid here — the @require_auth
+                # decorator refreshes the token before calling get_supabase_client(), so this
+                # path should only be reached on unprotected routes. Marking invalid would wipe
+                # the refresh_token cookie and make recovery impossible.
+                logger.debug("[SUPABASE_CLIENT] Skipping set_session() — token is expired")
             if self._legacy_header_injection_enabled:
                 self._apply_legacy_header_injection(user_token)
             elif SUPABASE_AUTH_DIAGNOSTICS:
