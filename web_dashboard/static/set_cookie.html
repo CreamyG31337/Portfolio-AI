@@ -92,7 +92,20 @@
             function setCookie(name, value, days) {
                 var expires = new Date();
                 expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
-                document.cookie = name + '=' + value + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Strict';
+                var secure = window.location.protocol === 'https:' ? '; Secure' : '';
+                document.cookie = name + '=' + value + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax' + secure;
+            }
+
+            // Compute cookie lifetime from JWT exp claim so auth_token cookie expires with the JWT
+            function getTokenExpiryDays(token) {
+                try {
+                    var b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+                    var payload = JSON.parse(atob(b64));
+                    if (payload.exp) {
+                        return Math.max((payload.exp - Date.now() / 1000) / 86400, 1 / 24);
+                    }
+                } catch (e) {}
+                return 1 / 24; // default 1 hour
             }
 
             // Helper function to clear cookie
@@ -185,7 +198,7 @@
                 }, 3000);
             } else if (token) {
                 // Set the cookies (login or refresh)
-                setCookie('auth_token', token, 7); // 7 days expiration
+                setCookie('auth_token', token, getTokenExpiryDays(token));
                 if (refreshToken) {
                     setCookie('refresh_token', refreshToken, 30); // 30 days for refresh token
                 }
