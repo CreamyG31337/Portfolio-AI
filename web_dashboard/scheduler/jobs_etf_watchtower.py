@@ -952,7 +952,8 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     if len(significant) > 5:  # Need enough data points to detect pattern
         from collections import Counter
         # Round percentages to 0.1% to detect clustering
-        rounded_pcts = [round(abs(row['percent_change']), 1) for _, row in significant.iterrows()]
+        # OPTIMIZATION: Replaced slow .iterrows() with vectorized .abs().round().tolist()
+        rounded_pcts = significant['percent_change'].abs().round(1).tolist()
         pct_counts = Counter(rounded_pcts)
         most_common_pct, most_common_count = pct_counts.most_common(1)[0]
         
@@ -961,10 +962,8 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
             # Additional check: ensure it's a small percentage (systematic adjustments are typically <2%)
             if most_common_pct <= 2.0:
                 # Check if all changes are in same direction (systematic adjustments are uniform)
-                all_same_direction = (
-                    all(row['share_diff'] > 0 for _, row in significant.iterrows()) or
-                    all(row['share_diff'] < 0 for _, row in significant.iterrows())
-                )
+                # OPTIMIZATION: Replaced slow .iterrows() with fast boolean vectorization (.all())
+                all_same_direction = (significant['share_diff'] > 0).all() or (significant['share_diff'] < 0).all()
                 
                 if all_same_direction:
                     logger.info(f"🔍 {etf_ticker}: Detected systematic adjustment ({most_common_count}/{len(significant)} changes at ~{most_common_pct:.1f}%) - filtering out")
@@ -1023,7 +1022,8 @@ def save_holdings_snapshot(pc: PostgresClient, etf_ticker: str, holdings: pd.Dat
     
     # Prepare records
     records = []
-    for _, row in aggregated.iterrows():
+    # OPTIMIZATION: Replaced .iterrows() with .to_dict('records') for much faster iteration
+    for row in aggregated.to_dict('records'):
         record = (
             date_str,
             etf_ticker,
@@ -1089,14 +1089,15 @@ def upsert_securities_metadata(db: SupabaseClient, df: pd.DataFrame, provider: s
                 unique_securities[col] = None
         
         records = []
-        for _, row in unique_securities.iterrows():
-            ticker = row['ticker']
+        # OPTIMIZATION: Replaced .iterrows() with .itertuples(index=False) for much faster iteration
+        for row in unique_securities.itertuples(index=False):
+            ticker = row.ticker
             if not ticker or len(str(ticker)) > 20:  # Skip long garbage tickers
                 continue
                 
             record = {
                 'ticker': ticker,
-                'company_name': row['name'],
+                'company_name': row.name,
                 'last_updated': datetime.now(timezone.utc).isoformat()
             }
             
