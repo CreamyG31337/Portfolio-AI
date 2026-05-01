@@ -251,6 +251,17 @@ def require_auth(f):
                 new_token = None
                 new_refresh = None
                 expires_in = None
+        elif refresh_token:
+            # No auth_token and no session_token, but a refresh_token exists.
+            # This happens for magic-link users after the session_token (24h) expires
+            # but the refresh_token (30d) is still valid. Try to recover.
+            success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+            if not success:
+                logger.warning("[AUTH] require_auth: No session/auth token and refresh failed, redirecting to login")
+                if request.path.startswith('/api/'):
+                    return jsonify({"error": "Session expired, please log in again"}), 401
+                else:
+                    return redirect('/auth')
         else:
             # No token at all - redirect to login
             if request.path.startswith('/api/'):
@@ -288,16 +299,35 @@ def require_auth(f):
                 else:
                     return redirect('/auth')
 
-        # Try to verify with auth_manager (for session_token format)
-        user_data = auth_manager.verify_session(token)
+        # If the token was just issued by a successful refresh, decode the claims
+        # directly from the JWT — no additional network round-trip to Supabase needed.
+        # (Without SUPABASE_JWT_SECRET, verify_supabase_token falls back to an HTTP call
+        # on every request, which adds latency and fails under rate-limiting.)
+        if new_token and token == new_token:
+            try:
+                import base64 as _b64, json as _json
+                parts = new_token.split('.')
+                pad = parts[1] + '=' * (4 - len(parts[1]) % 4)
+                claims = _json.loads(_b64.urlsafe_b64decode(pad))
+                user_data = {
+                    "sub": claims.get("sub"),
+                    "user_id": claims.get("sub"),
+                    "email": claims.get("email"),
+                    "exp": claims.get("exp"),
+                }
+            except Exception:
+                user_data = None
+        else:
+            # Try to verify with auth_manager (for session_token format)
+            user_data = auth_manager.verify_session(token)
 
-        # If that fails, try verifying as Supabase token (securely)
-        if not user_data:
-            user_data = auth_manager.verify_supabase_token(token)
+            # If that fails, try verifying as Supabase token (securely)
+            if not user_data:
+                user_data = auth_manager.verify_supabase_token(token)
 
-            # If verification successful but format needs adjusting
-            if user_data and ("user_id" not in user_data):
-                user_data["user_id"] = user_data.get("sub")
+                # If verification successful but format needs adjusting
+                if user_data and ("user_id" not in user_data):
+                    user_data["user_id"] = user_data.get("sub")
 
         if not user_data:
             # For HTML pages, redirect to login; for API, return JSON error
