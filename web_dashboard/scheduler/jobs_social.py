@@ -55,6 +55,37 @@ def fetch_social_sentiment_job() -> None:
     """
     job_id = 'social_sentiment'
     start_time = time.time()
+    job_started = False
+    job_finalized = False
+    target_date = datetime.now(timezone.utc).date()
+
+    def _finalize_success(message: str) -> None:
+        nonlocal job_finalized
+        if job_finalized:
+            return
+        duration_ms = int((time.time() - start_time) * 1000)
+        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+        if job_started:
+            try:
+                from utils.job_tracking import mark_job_completed
+                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+            except Exception as e:
+                logger.warning(f"Failed to finalize success for {job_id}: {e}")
+        job_finalized = True
+
+    def _finalize_failure(message: str) -> None:
+        nonlocal job_finalized
+        if job_finalized:
+            return
+        duration_ms = int((time.time() - start_time) * 1000)
+        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        if job_started:
+            try:
+                from utils.job_tracking import mark_job_failed
+                mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+            except Exception as e:
+                logger.warning(f"Failed to finalize failure for {job_id}: {e}")
+        job_finalized = True
 
     # Global AI lock (prevent overlapping AI jobs)
     try:
@@ -73,21 +104,17 @@ def fetch_social_sentiment_job() -> None:
         logger.info("Starting social sentiment job...")
         
         # Mark job as started
-        target_date = datetime.now(timezone.utc).date()
         mark_job_started('social_sentiment', target_date)
+        job_started = True
         
         # Import dependencies (lazy imports)
         try:
             from social_service import SocialSentimentService
             from supabase_client import SupabaseClient
         except ImportError as e:
-            duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
-            try:
-                log_job_execution(job_id, False, message, duration_ms)
-            except Exception as log_error:
-                logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
+            _finalize_failure(message)
             return
         
         # Initialize service
@@ -128,11 +155,9 @@ def fetch_social_sentiment_job() -> None:
         logger.info(f"Processing {len(all_tickers)} unique tickers for social sentiment")
         
         if not all_tickers:
-            duration_ms = int((time.time() - start_time) * 1000)
             message = "No tickers to process"
-            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-            mark_job_completed('social_sentiment', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"ℹ️ {message}")
+            _finalize_success(message)
             return
         
         # 4. Process each ticker with timeouts and progress logging
@@ -231,10 +256,19 @@ def fetch_social_sentiment_job() -> None:
         if timeout_tickers:
             parts.append(f"{len(timeout_tickers)} timeouts")
         message = f"Processed {success_count + error_count + len(timeout_tickers)}/{len(all_tickers)} tickers: {', '.join(parts)}"
-        
-        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('social_sentiment', target_date, None, [], duration_ms=duration_ms, message=message)
-        logger.info(f"✅ Social sentiment job completed: {message} in {duration_min:.1f} minutes")
+        timed_out = len(timeout_tickers) > 0
+        if timed_out:
+            message = (
+                f"{message}. Timed out before full batch completion "
+                f"({success_count + error_count}/{len(all_tickers)} finished)"
+            )
+
+        if timed_out and success_count == 0:
+            _finalize_failure(message)
+            logger.warning(f"⚠️ Social sentiment timed out with no successful ticker processing in {duration_min:.1f} minutes")
+        else:
+            _finalize_success(message)
+            logger.info(f"✅ Social sentiment job completed: {message} in {duration_min:.1f} minutes")
         
         # Log failed tickers if any
         if failed_tickers:
@@ -243,11 +277,12 @@ def fetch_social_sentiment_job() -> None:
             logger.warning(f"⏱️  Timeout tickers ({len(timeout_tickers)}): {', '.join(timeout_tickers[:10])}{'...' if len(timeout_tickers) > 10 else ''}")
         
     except Exception as e:
-        duration_ms = int((time.time() - start_time) * 1000)
         message = f"Error: {str(e)}"
-        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
-        mark_job_failed('social_sentiment', target_date, None, str(e), duration_ms=duration_ms)
         logger.error(f"❌ Social sentiment job failed: {e}", exc_info=True)
+        _finalize_failure(message)
+    finally:
+        if job_started and not job_finalized:
+            _finalize_failure("Job exited without terminal status")
 
 
 def cleanup_social_metrics_job() -> None:

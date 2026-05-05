@@ -67,7 +67,37 @@ def market_research_job() -> None:
     job_id = 'market_research'
     start_time = time.time()
     target_date = datetime.now(timezone.utc).date()
+    job_started = False
+    job_finalized = False
     from utils.job_tracking import log_job_step
+
+    def _finalize_success(message: str) -> None:
+        nonlocal job_finalized
+        if job_finalized:
+            return
+        duration_ms = int((time.time() - start_time) * 1000)
+        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+        if job_started:
+            try:
+                from utils.job_tracking import mark_job_completed
+                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+            except Exception as e:
+                logger.warning(f"Failed to finalize success for {job_id}: {e}")
+        job_finalized = True
+
+    def _finalize_failure(message: str) -> None:
+        nonlocal job_finalized
+        if job_finalized:
+            return
+        duration_ms = int((time.time() - start_time) * 1000)
+        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        if job_started:
+            try:
+                from utils.job_tracking import mark_job_failed
+                mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+            except Exception as e:
+                logger.warning(f"Failed to finalize failure for {job_id}: {e}")
+        job_finalized = True
 
     # Global AI lock (SearXNG + Ollama workload)
     try:
@@ -88,6 +118,7 @@ def market_research_job() -> None:
         
         # Mark job as started in database
         mark_job_started('market_research', target_date)
+        job_started = True
         
         # Import dependencies (lazy imports to avoid circular dependencies)
         try:
@@ -95,20 +126,18 @@ def market_research_job() -> None:
             from ollama_client import get_ollama_client
             from research_repository import ResearchRepository
         except ImportError as e:
-            duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            _finalize_failure(message)
             return
 
         # Check if SearXNG is available
         log_job_step(job_id, "searxng_check", "Checking SearXNG health...")
         if not check_searxng_health():
-            duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG is not available - skipping research job"
             log_job_step(job_id, "searxng_check", message, status="skipped")
-            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             logger.info(f"ℹ️ {message}")
+            _finalize_failure(message)
             return
         log_job_step(job_id, "searxng_check", "SearXNG is healthy", status="success")
         
@@ -117,10 +146,9 @@ def market_research_job() -> None:
         ollama_client = get_ollama_client()
         
         if not searxng_client:
-            duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG client not initialized"
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            _finalize_failure(message)
             return
         
         # Initialize research repository
@@ -166,11 +194,10 @@ def market_research_job() -> None:
         )
         
         if not search_results or not search_results.get('results'):
-            duration_ms = int((time.time() - start_time) * 1000)
             message = "No search results found"
             log_job_step(job_id, "search", message, status="skipped")
-            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             logger.info(f"ℹ️ {message}")
+            _finalize_success(message)
             return
 
         log_job_step(job_id, "search", f"Found {len(search_results.get('results', []))} results", status="success")
@@ -227,21 +254,28 @@ def market_research_job() -> None:
             f"{articles_skipped} skipped, {articles_blacklisted} blacklisted, "
             f"{articles_irrelevant} non-market"
         )
+        timed_out = (time.time() - start_time) >= MAX_JOB_DURATION and articles_processed < total_results
+        if timed_out:
+            message = (
+                f"{message}. Timed out before full batch completion "
+                f"({articles_processed}/{total_results} processed)"
+            )
         log_job_step(job_id, "complete", message, status="success")
-        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed('market_research', target_date, None, [], duration_ms=duration_ms, message=message)
-        logger.info(f"✅ {message} in {duration_min:.1f} minutes")
+        if timed_out and articles_saved == 0:
+            _finalize_failure(message)
+            logger.warning(f"⚠️ Market research timed out with no saved articles in {duration_min:.1f} minutes")
+        else:
+            _finalize_success(message)
+            logger.info(f"✅ {message} in {duration_min:.1f} minutes")
 
     except Exception as e:
-        duration_ms = int((time.time() - start_time) * 1000)
         message = f"Error: {str(e)}"
         log_job_step(job_id, "fatal", message, status="failed")
-        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
-        try:
-            mark_job_failed('market_research', target_date, None, message, duration_ms=duration_ms)
-        except Exception:
-            pass  # Don't fail if tracking fails
         logger.error(f"❌ Market research job failed: {e}", exc_info=True)
+        _finalize_failure(message)
+    finally:
+        if job_started and not job_finalized:
+            _finalize_failure("Job exited without terminal status")
 
 
 def rss_feed_ingest_job() -> None:

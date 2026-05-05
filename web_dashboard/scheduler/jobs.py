@@ -439,7 +439,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '🧩',
         'cron_triggers': [
-            {'hour': 22, 'minute': 30, 'timezone': 'America/Los_Angeles'}  # 10:30 PM PT
+            {'hour': 23, 'minute': 45, 'timezone': 'America/Los_Angeles'}  # 11:45 PM PT
         ]
     },
     'etf_watchtower': {
@@ -492,7 +492,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     'newsletter_ai_processing': {
         'name': '📰 Newsletter AI Processing',
         'description': 'Safety-net: summarize any newsletters still missing an AI summary (primary processing happens inline after webhook)',
-        'default_interval_minutes': 60,  # Hourly safety net (webhook triggers immediate processing)
+        'default_interval_minutes': 30,  # Frequent safety net to drain backlog after webhook misses
         'enabled_by_default': True,
         'icon': '📰'
     },
@@ -1160,14 +1160,14 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: opportunity_discovery_scan (daily at 9:30 PM PT)")
 
-    # Alpha Research Job: Daily at 10:30 PM PT
+    # Alpha Research Job: Daily at 11:15 PM PT
     if AVAILABLE_JOBS.get('alpha_research', {}).get('enabled_by_default'):
         from scheduler.jobs_alpha import alpha_research_job
         scheduler.add_job(
             alpha_research_job,
             trigger=CronTrigger(
-                hour=22,
-                minute=30,
+                hour=23,
+                minute=15,
                 timezone='America/Los_Angeles'
             ),
             id='alpha_research_collect',
@@ -1176,7 +1176,7 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: alpha_research_collect (daily at 10:30 PM PT)")
+        logger.info("Registered job: alpha_research_collect (daily at 11:15 PM PT)")
     
     # Symbol Article Scraper: Daily at 2:10 AM EST.
     # Staggered to reduce overlap with other 2:00 AM jobs.
@@ -1856,7 +1856,7 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: rebalance_recommendation_rrsp (monthly on day 1 at 6:30 PM PT)")
 
-    # Newsletter AI Processing - every 10 minutes
+    # Newsletter AI Processing - every 30 minutes
     if AVAILABLE_JOBS.get('newsletter_ai_processing', {}).get('enabled_by_default', True):
         scheduler.add_job(
             newsletter_ai_processing_job,
@@ -1869,7 +1869,7 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: newsletter_ai_processing (hourly safety net)")
+        logger.info("Registered job: newsletter_ai_processing (every 30 minutes safety net)")
 
     if AVAILABLE_JOBS.get("outbound_portfolio_digest", {}).get("enabled_by_default", False):
         ot = AVAILABLE_JOBS["outbound_portfolio_digest"].get(
