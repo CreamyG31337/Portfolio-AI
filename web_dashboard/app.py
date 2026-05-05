@@ -6608,87 +6608,95 @@ def webhook_newsletter():
 
         def _process_newsletter_ai(nl_id: str) -> None:
             """Background thread: generate AI summary, tickers, and embedding."""
-            try:
-                from newsletter_repository import NewsletterRepository as NLRepo
-                from newsletter_service import NewsletterService as NLService
-                from ollama_client import generate_summary
+            import threading
+            import time as time_mod
 
+            from newsletter_repository import NewsletterRepository as NLRepo
+            from newsletter_service import NewsletterService as NLService
+            from newsletter_service import run_newsletter_ai_pipeline
+            from ollama_client import generate_summary
+
+            t_all = time_mod.perf_counter()
+            NLService.log_step(
+                nl_id,
+                "bg_thread",
+                "start",
+                thread=threading.current_thread().name,
+                pipeline_source="webhook_bg",
+            )
+            try:
                 bg_repo = NLRepo()
                 bg_service = NLService()
 
                 nl = bg_repo.get_newsletter_by_id(nl_id)
                 if not nl:
+                    NLService.log_step(nl_id, "fetch_row", "fail", err="not_found")
                     logger.warning(f"BG: Newsletter {nl_id} not found for AI processing")
                     return
 
+                ra = nl.get("received_at")
+                NLService.log_step(
+                    nl_id,
+                    "fetch_row",
+                    "ok",
+                    received_at=str(ra) if ra else "",
+                )
+
                 content = nl.get("body_plain") or ""
+                src = "plain"
                 if not content and nl.get("body_html"):
                     content = bg_service.extract_text_from_html(nl["body_html"])
+                    src = "html"
+                t_ce = time_mod.perf_counter()
+                NLService.log_step(nl_id, "content_extract", "start", source=src)
+                pre_len = len(content or "")
                 content = bg_service.clean_forwarded_body(content)
-                if not content:
+                NLService.log_step(
+                    nl_id,
+                    "content_extract",
+                    "ok" if (content or "").strip() else "skip",
+                    duration_ms=int((time_mod.perf_counter() - t_ce) * 1000),
+                    chars_pre_clean=pre_len,
+                    chars_after_clean=len(content or ""),
+                    source=src,
+                )
+                if not (content or "").strip():
+                    NLService.log_step(nl_id, "body_clean", "skip", reason="empty_after_clean")
                     logger.warning(f"BG: Newsletter {nl_id} has no content — skipping AI")
                     return
 
-                # AI summary
-                clean_subj = bg_service.clean_subject(nl.get("subject") or "")
-                summary_input = f"Subject: {clean_subj}\n\n{content}" if clean_subj else content
-                summary_data = generate_summary(summary_input, article_type="Newsletter")
-                summary = None
-                ai_tickers: list = []
-                if isinstance(summary_data, str):
-                    summary = summary_data
-                elif isinstance(summary_data, dict):
-                    summary = summary_data.get("summary", "")
-                    ai_tickers = bg_service.sanitize_ai_tickers(summary_data.get("tickers", []))
-                    try:
-                        from ticker_inference import infer_tickers_from_companies, infer_tickers_from_text
-                        ai_tickers = sorted(
-                            set(ai_tickers)
-                            | set(infer_tickers_from_companies(summary_data.get("companies", [])))
-                            | set(infer_tickers_from_text(nl.get("subject") or ""))
-                        )
-                    except Exception as infer_err:
-                        logger.warning(f"BG: Company->ticker inference failed for newsletter {nl_id}: {infer_err}")
+                NLService.log_step(nl_id, "body_clean", "ok", chars=len(content))
 
-                # Re-extract tickers from cleaned text
-                known_tickers = bg_service.get_known_tickers_for_validation()
-                extracted = bg_service.extract_tickers(
-                    f"{clean_subj}\n\n{content}",
-                    validate_known_tickers=True,
-                    known_tickers=known_tickers,
+                known = bg_service.get_known_tickers_for_validation()
+                run_newsletter_ai_pipeline(
+                    nl_id,
+                    content=content,
+                    subject=nl.get("subject") or "",
+                    service=bg_service,
+                    repo=bg_repo,
+                    generate_summary=generate_summary,
+                    pipeline_source="webhook_bg",
+                    include_subject_in_update=False,
+                    extract_known_tickers=known,
                 )
-                # AI tickers are inference-first; keep sanitized AI outputs even when
-                # symbols are not explicitly present in text. Extraction remains a backstop.
-                all_tickers = sorted(set(ai_tickers) | set(extracted)) if ai_tickers else extracted
-
-                # Validate merged tickers against real company data
-                if all_tickers:
-                    try:
-                        from ticker_validator import validate_extracted_tickers
-                        article_text = f"{clean_subj}\n\n{content}"
-                        all_tickers = validate_extracted_tickers(
-                            tickers=all_tickers,
-                            companies=summary_data.get("companies", []) if isinstance(summary_data, dict) else [],
-                            article_text=article_text,
-                            strict=True,
-                        )
-                    except Exception as val_err:
-                        logger.warning(f"BG: Ticker validation failed for newsletter {nl_id}: {val_err}")
-
-                # Embedding
-                embedding = bg_service.generate_embedding(content)
-
-                # Persist
-                bg_repo.client.execute_update(
-                    "UPDATE newsletters SET summary=%s, tickers=%s, processed_at=CURRENT_TIMESTAMP WHERE id=%s",
-                    (summary, all_tickers if all_tickers else None, nl_id),
-                )
-                if embedding:
-                    bg_repo.update_embedding(nl_id, embedding)
 
                 logger.info(f"✅ BG: Newsletter {nl_id} AI processing complete")
             except Exception as bg_err:
+                NLService.log_step(
+                    nl_id,
+                    "pipeline",
+                    "fail",
+                    err=f"{type(bg_err).__name__}: {bg_err}",
+                )
                 logger.error(f"❌ BG: Newsletter {nl_id} AI processing failed: {bg_err}", exc_info=True)
+            finally:
+                NLService.log_step(
+                    nl_id,
+                    "bg_thread",
+                    "ok",
+                    duration_ms=int((time_mod.perf_counter() - t_all) * 1000),
+                    pipeline_source="webhook_bg",
+                )
 
         thread = threading.Thread(
             target=_process_newsletter_ai,

@@ -10,7 +10,8 @@ import hmac
 import hashlib
 import logging
 import time
-from typing import Optional, List, Dict, Any, Set
+from collections.abc import Callable
+from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
@@ -22,13 +23,244 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+def run_newsletter_ai_pipeline(
+    nl_id: str,
+    *,
+    content: str,
+    subject: str,
+    service: "NewsletterService",
+    repo: Any,
+    generate_summary: Callable[..., Any],
+    pipeline_source: str,
+    include_subject_in_update: bool,
+    extract_known_tickers: Optional[Set[str]] = None,
+) -> None:
+    """Summarize, extract/validate tickers, embed, and persist one newsletter row.
+
+    Emits structured ``log_step`` lines for each phase. Callers must ensure
+    ``content`` is non-empty after cleaning.
+    """
+    t_row = time.perf_counter()
+    NewsletterService.log_step(
+        nl_id, "picker", "start", pipeline_source=pipeline_source,
+    )
+    clean_subj = service.clean_subject(subject)
+    summary_input = f"Subject: {clean_subj}\n\n{content}" if clean_subj else content
+    try:
+        try:
+            from settings import get_summarizing_model
+
+            summarizer_model = (get_summarizing_model() or "unknown").strip()
+        except Exception:
+            summarizer_model = "unknown"
+
+        t0 = time.perf_counter()
+        NewsletterService.log_step(
+            nl_id,
+            "ai_summary",
+            "start",
+            model=summarizer_model,
+            chars_in=len(summary_input),
+        )
+        summary_data = generate_summary(summary_input, article_type="Newsletter")
+        if isinstance(summary_data, str):
+            chars_out = len(summary_data or "")
+        elif isinstance(summary_data, dict):
+            chars_out = len(str(summary_data.get("summary") or ""))
+        else:
+            chars_out = 0
+        NewsletterService.log_step(
+            nl_id,
+            "ai_summary",
+            "ok",
+            duration_ms=int((time.perf_counter() - t0) * 1000),
+            chars_out=chars_out,
+        )
+    except Exception as e:
+        NewsletterService.log_step(
+            nl_id,
+            "ai_summary",
+            "fail",
+            duration_ms=int((time.perf_counter() - t0) * 1000),
+            err=f"{type(e).__name__}: {e}",
+        )
+        raise
+
+    summary = None
+    tickers: List[str] = []
+    if isinstance(summary_data, str):
+        summary = summary_data
+    elif isinstance(summary_data, dict):
+        summary = summary_data.get("summary", "")
+        tickers = service.sanitize_ai_tickers(summary_data.get("tickers", []))
+        t_inf = time.perf_counter()
+        NewsletterService.log_step(nl_id, "ticker_inference", "start", ai_tickers=len(tickers))
+        try:
+            from ticker_inference import infer_tickers_from_companies, infer_tickers_from_text
+
+            tickers = sorted(
+                set(tickers)
+                | set(infer_tickers_from_companies(summary_data.get("companies", [])))
+                | set(infer_tickers_from_text(subject))
+            )
+            NewsletterService.log_step(
+                nl_id,
+                "ticker_inference",
+                "ok",
+                duration_ms=int((time.perf_counter() - t_inf) * 1000),
+                merged=len(tickers),
+            )
+        except Exception as infer_err:
+            NewsletterService.log_step(
+                nl_id,
+                "ticker_inference",
+                "fail",
+                duration_ms=int((time.perf_counter() - t_inf) * 1000),
+                err=f"{type(infer_err).__name__}: {infer_err}",
+            )
+            logger.warning(
+                "Company->ticker inference failed for newsletter %s: %s", nl_id, infer_err
+            )
+
+    t0 = time.perf_counter()
+    NewsletterService.log_step(nl_id, "ticker_extract", "start")
+    if extract_known_tickers is not None:
+        extracted_tickers = service.extract_tickers(
+            f"{clean_subj}\n\n{content}",
+            validate_known_tickers=True,
+            known_tickers=extract_known_tickers,
+        )
+    else:
+        extracted_tickers = service.extract_tickers(f"{clean_subj}\n\n{content}")
+    all_tickers = sorted(set(tickers) | set(extracted_tickers)) if tickers else extracted_tickers
+    NewsletterService.log_step(
+        nl_id,
+        "ticker_extract",
+        "ok",
+        duration_ms=int((time.perf_counter() - t0) * 1000),
+        extracted=len(extracted_tickers),
+        merged=len(all_tickers),
+    )
+
+    t0 = time.perf_counter()
+    NewsletterService.log_step(nl_id, "ticker_validate", "start", candidates=len(all_tickers))
+    if all_tickers:
+        try:
+            from ticker_validator import validate_extracted_tickers
+
+            article_text = f"{clean_subj}\n\n{content}"
+            all_tickers = validate_extracted_tickers(
+                tickers=all_tickers,
+                companies=summary_data.get("companies", [])
+                if isinstance(summary_data, dict)
+                else [],
+                article_text=article_text,
+                strict=True,
+            )
+            NewsletterService.log_step(
+                nl_id,
+                "ticker_validate",
+                "ok",
+                duration_ms=int((time.perf_counter() - t0) * 1000),
+                final=len(all_tickers),
+            )
+        except Exception as val_err:
+            NewsletterService.log_step(
+                nl_id,
+                "ticker_validate",
+                "fail",
+                duration_ms=int((time.perf_counter() - t0) * 1000),
+                err=f"{type(val_err).__name__}: {val_err}",
+            )
+            logger.warning("Ticker validation failed for newsletter %s: %s", nl_id, val_err)
+    else:
+        NewsletterService.log_step(
+            nl_id,
+            "ticker_validate",
+            "skip",
+            duration_ms=int((time.perf_counter() - t0) * 1000),
+            reason="no_tickers",
+        )
+
+    embedding = service.generate_embedding_for_newsletter(nl_id, content)
+
+    tickers_out = all_tickers if all_tickers else None
+    if include_subject_in_update:
+        repo.client.execute_update(
+            """
+                    UPDATE newsletters
+                    SET summary = %s,
+                        tickers = %s,
+                        subject = %s,
+                        processed_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+            """,
+            (summary, tickers_out, clean_subj, nl_id),
+        )
+    else:
+        repo.client.execute_update(
+            "UPDATE newsletters SET summary=%s, tickers=%s, processed_at=CURRENT_TIMESTAMP WHERE id=%s",
+            (summary, tickers_out, nl_id),
+        )
+    if embedding:
+        repo.update_embedding(nl_id, embedding)
+
+    note = ""
+    if not embedding:
+        note = "row_will_remain_pending_ui"
+    NewsletterService.log_step(
+        nl_id,
+        "persist",
+        "ok",
+        embedding_persisted=bool(embedding),
+        tickers=len(all_tickers),
+        note=note,
+    )
+    NewsletterService.log_step(
+        nl_id,
+        "picker",
+        "ok",
+        duration_ms=int((time.perf_counter() - t_row) * 1000),
+        pipeline_source=pipeline_source,
+    )
+
+
 class NewsletterService:
     """Service for processing newsletter emails from Mailgun"""
 
     _KNOWN_TICKERS_CACHE_TTL_SECONDS = 3600
     _known_tickers_cache: Optional[Set[str]] = None
     _known_tickers_cache_at: float = 0.0
-    
+
+    @staticmethod
+    def log_step(
+        nl_id: str,
+        step: str,
+        status: str,
+        *,
+        duration_ms: Optional[int] = None,
+        **extra: Any,
+    ) -> None:
+        """Emit one structured log line for newsletter AI processing (grep by ``[nl=...]``)."""
+        short = (str(nl_id) or "")[:8] or "????????"
+        bits: List[str] = [f"[nl={short}]", f"step={step}", f"status={status}"]
+        if duration_ms is not None:
+            bits.append(f"duration_ms={duration_ms}")
+        for key, val in extra.items():
+            if val is None or val == "":
+                continue
+            sval = str(val).replace("\n", " ").strip()
+            if len(sval) > 120:
+                sval = sval[:117] + "..."
+            bits.append(f"{key}={sval}")
+        line = " ".join(bits)
+        if status == "fail":
+            logger.error(line)
+        elif status in ("skip",):
+            logger.warning(line)
+        else:
+            logger.info(line)
+
     def __init__(self):
         """Initialize newsletter service"""
         self.mailgun_signing_key = os.getenv("MAILGUN_WEBHOOK_SIGNING_KEY")
@@ -714,6 +946,31 @@ class NewsletterService:
 
         return cleaned
     
+    def _embedding_attempt(self, text: str) -> Tuple[Optional[List[float]], str, Optional[str]]:
+        """Return ``(embedding, reason_code, err_detail)``. ``reason_code`` empty on success."""
+        if not text or not str(text).strip():
+            return None, "empty_content", None
+        try:
+            from ollama_client import get_ollama_client
+
+            ollama = get_ollama_client()
+            if not ollama:
+                return None, "ollama_unavailable", None
+
+            max_chars = 6000
+            text_use = text[:max_chars] if len(text) > max_chars else text
+            if len(text) > max_chars:
+                logger.debug("Truncated text to %s characters for embedding", max_chars)
+
+            embedding = ollama.generate_embedding(text_use, model="nomic-embed-text")
+            if not embedding:
+                return None, "no_embedding_returned", None
+            if len(embedding) != 768:
+                return None, "dim_mismatch", f"got {len(embedding)} expected 768"
+            return embedding, "", None
+        except Exception as e:
+            return None, "exception", f"{type(e).__name__}: {e}"
+
     def generate_embedding(self, text: str) -> Optional[List[float]]:
         """Generate vector embedding for text using Ollama
         
@@ -723,37 +980,43 @@ class NewsletterService:
         Returns:
             List of floats (768 dimensions) or None if failed
         """
-        try:
-            from ollama_client import get_ollama_client
-            
-            ollama = get_ollama_client()
-            if not ollama:
-                logger.warning("Ollama client not available - skipping embedding generation")
-                return None
-            
-            # Truncate text to avoid token limits (keep first ~6000 chars)
-            max_chars = 6000
-            if len(text) > max_chars:
-                text = text[:max_chars]
-                logger.debug(f"Truncated text to {max_chars} characters for embedding")
-            
-            # Generate embedding using nomic-embed-text model
-            embedding = ollama.generate_embedding(text, model="nomic-embed-text")
-            
-            if not embedding:
-                logger.warning("Failed to generate embedding")
-                return None
-            
-            if len(embedding) != 768:
-                logger.warning(f"Unexpected embedding dimension: {len(embedding)} (expected 768)")
-                return None
+        emb, reason, err = self._embedding_attempt(text)
+        if emb:
+            logger.debug("Generated %s-dimension embedding", len(emb))
+            return emb
+        if reason == "ollama_unavailable":
+            logger.warning("Ollama client not available - skipping embedding generation")
+        elif reason == "no_embedding_returned":
+            logger.warning("Failed to generate embedding")
+        elif reason == "dim_mismatch":
+            logger.warning("Unexpected embedding dimension: %s", err)
+        elif reason == "exception":
+            logger.error("Error generating embedding: %s", err)
+        return None
 
-            logger.debug(f"Generated {len(embedding)}-dimension embedding")
-            return embedding
-            
-        except Exception as e:
-            logger.error(f"Error generating embedding: {e}")
-            return None
+    def generate_embedding_for_newsletter(self, nl_id: str, text: str) -> Optional[List[float]]:
+        """Like ``generate_embedding`` but emits ``log_step`` lines for a newsletter id."""
+        t0 = time.perf_counter()
+        chars_in = len(text or "")
+        NewsletterService.log_step(nl_id, "embedding", "start", chars_in=chars_in)
+        emb, reason, err = self._embedding_attempt(text)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        if emb:
+            NewsletterService.log_step(
+                nl_id,
+                "embedding",
+                "ok",
+                duration_ms=elapsed_ms,
+                dim=len(emb),
+                chars_in=min(chars_in, 6000),
+            )
+            return emb
+        log_status = "fail" if reason == "exception" else "skip"
+        extras: Dict[str, Any] = {"duration_ms": elapsed_ms, "reason": reason}
+        if err:
+            extras["err"] = err
+        NewsletterService.log_step(nl_id, "embedding", log_status, **extras)
+        return None
     
     def process_newsletter(
         self,

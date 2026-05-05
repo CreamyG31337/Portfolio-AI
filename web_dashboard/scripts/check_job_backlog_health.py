@@ -32,13 +32,39 @@ def main() -> int:
         SELECT
             COUNT(*) FILTER (WHERE summary IS NULL)::int AS summary_missing_count,
             COUNT(*) FILTER (WHERE embedding IS NULL)::int AS embedding_missing_count,
-            COUNT(*) FILTER (WHERE summary IS NULL OR embedding IS NULL)::int AS pending_ui_count
+            COUNT(*) FILTER (WHERE summary IS NULL OR embedding IS NULL)::int AS pending_ui_count,
+            COALESCE(
+                EXTRACT(
+                    EPOCH FROM (
+                        NOW()
+                        - MIN(received_at) FILTER (
+                            WHERE summary IS NULL OR embedding IS NULL
+                        )
+                    )
+                )::bigint,
+                0
+            ) AS oldest_pending_age_seconds,
+            COUNT(*) FILTER (
+                WHERE (summary IS NULL OR embedding IS NULL)
+                  AND received_at < NOW() - INTERVAL '1 hour'
+            )::int AS pending_over_1h_count
         FROM newsletters
         """
     )
-    print(f"Summary missing: {newsletter_rows[0]['summary_missing_count']}")
-    print(f"Embedding missing (UI Pending): {newsletter_rows[0]['embedding_missing_count']}")
-    print(f"Pending by job selector (summary OR embedding missing): {newsletter_rows[0]['pending_ui_count']}")
+    nr = newsletter_rows[0]
+    age_sec = int(nr.get("oldest_pending_age_seconds") or 0)
+    age_min = age_sec / 60.0
+    age_h = age_sec / 3600.0
+    age_human = (
+        f"{age_h:.1f}h" if age_h >= 1.0 else f"{age_min:.1f}m"
+    ) if age_sec > 0 else "n/a"
+    print(f"Summary missing: {nr['summary_missing_count']}")
+    print(f"Embedding missing (UI Pending): {nr['embedding_missing_count']}")
+    print(f"Pending by job selector (summary OR embedding missing): {nr['pending_ui_count']}")
+    print(
+        f"Oldest pending age: {age_human} ({age_sec}s) | "
+        f"pending rows older than 1h: {nr.get('pending_over_1h_count', 0)}"
+    )
 
     _print_section("Article backlog")
     article_rows = research.execute_query(

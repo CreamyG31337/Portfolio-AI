@@ -9,7 +9,7 @@ without blocking the Mailgun webhook.
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 import sys
 
@@ -31,6 +31,11 @@ from scheduler.scheduler_core import log_job_execution
 logger = logging.getLogger(__name__)
 
 
+def _has_summary_value(row: dict) -> bool:
+    s = row.get("summary")
+    return s is not None and str(s).strip() != ""
+
+
 def newsletter_ai_processing_job() -> None:
     """Process newsletters that are missing AI summaries.
 
@@ -41,7 +46,8 @@ def newsletter_ai_processing_job() -> None:
     4. Generate a vector embedding for semantic search
     5. Update the database record
 
-    The job is idempotent — it only touches rows where ``summary IS NULL``.
+    The job is idempotent — it only touches rows where ``summary IS NULL``
+    or ``embedding IS NULL`` (UI Pending = no embedding).
     """
     job_id = "newsletter_ai_processing"
     start_time = time.time()
@@ -58,14 +64,15 @@ def newsletter_ai_processing_job() -> None:
 
     processed = 0
     failed = 0
+    skipped = 0
 
     try:
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
-        target_date = datetime.now(timezone.utc).date()
+        target_date = datetime.now(UTC).date()
         mark_job_started(job_id, target_date)
 
         from newsletter_repository import NewsletterRepository
-        from newsletter_service import NewsletterService
+        from newsletter_service import NewsletterService, run_newsletter_ai_pipeline
         from ollama_client import generate_summary
 
         repo = NewsletterRepository()
@@ -74,7 +81,8 @@ def newsletter_ai_processing_job() -> None:
         # Fetch newsletters that are not fully processed yet (limit batch size).
         # UI "Pending" means no embedding, so include those rows too.
         pending_query = """
-            SELECT id, subject, body_plain, body_html
+            SELECT id, subject, body_plain, body_html, received_at, summary,
+                   (embedding IS NULL) AS embedding_is_null
             FROM newsletters
             WHERE summary IS NULL OR embedding IS NULL
             ORDER BY received_at ASC
@@ -97,85 +105,98 @@ def newsletter_ai_processing_job() -> None:
             )
             return
 
-        logger.info(f"📰 Newsletter AI job: processing {len(rows)} pending newsletter(s)…")
+        now = datetime.now(UTC)
+        summary_missing = sum(1 for r in rows if not _has_summary_value(r))
+        embedding_only = sum(
+            1 for r in rows if _has_summary_value(r) and r.get("embedding_is_null")
+        )
+        received_dates = [r["received_at"] for r in rows if r.get("received_at")]
+        oldest = min(received_dates) if received_dates else None
+        oldest_age_min = 0.0
+        oldest_iso = ""
+        if oldest is not None:
+            if isinstance(oldest, datetime) and oldest.tzinfo is None:
+                oldest = oldest.replace(tzinfo=UTC)
+            if isinstance(oldest, datetime):
+                oldest_iso = oldest.isoformat()
+                oldest_age_min = (now - oldest.astimezone(UTC)).total_seconds() / 60.0
+            else:
+                oldest_iso = str(oldest)
+
+        logger.info(
+            "newsletter_ai_processing batch: pending=%d summary_missing=%d "
+            "embedding_only_missing=%d oldest_received_at=%s oldest_age_min=%.1f",
+            len(rows),
+            summary_missing,
+            embedding_only,
+            oldest_iso or "n/a",
+            oldest_age_min,
+        )
 
         for row in rows:
             nl_id = str(row["id"])
             subject = row.get("subject") or "(No subject)"
             try:
-                # Get content (prefer plain text, fall back to HTML extraction)
                 content = row.get("body_plain") or ""
+                src = "plain"
                 if not content and row.get("body_html"):
                     content = service.extract_text_from_html(row["body_html"])
+                    src = "html"
 
-                # Clean forwarded body if not already cleaned
+                t_ce = time.perf_counter()
+                NewsletterService.log_step(
+                    nl_id,
+                    "content_extract",
+                    "start",
+                    source=src,
+                    pipeline_source="scheduled_job",
+                )
+                pre_len = len(content or "")
                 content = service.clean_forwarded_body(content)
-
-                if not content:
-                    logger.warning(f"Newsletter {nl_id} has no content — skipping.")
-                    continue
-
-                # Generate AI summary
-                clean_subj = service.clean_subject(subject)
-                summary_input = f"Subject: {clean_subj}\n\n{content}" if clean_subj else content
-                summary_data = generate_summary(summary_input, article_type="Newsletter")
-                summary = None
-                tickers = []
-                if isinstance(summary_data, str):
-                    summary = summary_data
-                elif isinstance(summary_data, dict):
-                    summary = summary_data.get("summary", "")
-                    tickers = service.sanitize_ai_tickers(summary_data.get("tickers", []))
-                    try:
-                        from ticker_inference import infer_tickers_from_companies, infer_tickers_from_text
-                        tickers = sorted(
-                            set(tickers)
-                            | set(infer_tickers_from_companies(summary_data.get("companies", [])))
-                            | set(infer_tickers_from_text(subject))
-                        )
-                    except Exception as infer_err:
-                        logger.warning(f"Company->ticker inference failed for newsletter {nl_id}: {infer_err}")
-
-                # Also re-extract tickers from cleaned subject+body
-                extracted_tickers = service.extract_tickers(f"{clean_subj}\n\n{content}")
-                # Merge AI-detected tickers with regex-extracted ones (deduplicated)
-                all_tickers = sorted(set(tickers) | set(extracted_tickers)) if tickers else extracted_tickers
-
-                # Validate merged tickers against real company data
-                if all_tickers:
-                    try:
-                        from ticker_validator import validate_extracted_tickers
-                        article_text = f"{clean_subj}\n\n{content}"
-                        all_tickers = validate_extracted_tickers(
-                            tickers=all_tickers,
-                            companies=summary_data.get("companies", []) if isinstance(summary_data, dict) else [],
-                            article_text=article_text,
-                            strict=True,
-                        )
-                    except Exception as val_err:
-                        logger.warning(f"Ticker validation failed for newsletter {nl_id}: {val_err}")
-
-                # Generate embedding
-                embedding = service.generate_embedding(content)
-
-                # Update database
-                update_query = """
-                    UPDATE newsletters
-                    SET summary = %s,
-                        tickers = %s,
-                        subject = %s,
-                        processed_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                """
-                repo.client.execute_update(
-                    update_query,
-                    (summary, all_tickers if all_tickers else None, clean_subj, nl_id),
+                NewsletterService.log_step(
+                    nl_id,
+                    "content_extract",
+                    "ok" if (content or "").strip() else "skip",
+                    duration_ms=int((time.perf_counter() - t_ce) * 1000),
+                    chars_pre_clean=pre_len,
+                    chars_after_clean=len(content or ""),
+                    source=src,
+                    pipeline_source="scheduled_job",
                 )
 
-                if embedding:
-                    repo.update_embedding(nl_id, embedding)
+                if not (content or "").strip():
+                    NewsletterService.log_step(
+                        nl_id,
+                        "body_clean",
+                        "skip",
+                        reason="empty_after_clean",
+                        pipeline_source="scheduled_job",
+                    )
+                    logger.warning(f"Newsletter {nl_id} has no content — skipping.")
+                    skipped += 1
+                    continue
+
+                NewsletterService.log_step(
+                    nl_id,
+                    "body_clean",
+                    "ok",
+                    chars=len(content),
+                    pipeline_source="scheduled_job",
+                )
+
+                run_newsletter_ai_pipeline(
+                    nl_id,
+                    content=content,
+                    subject=subject,
+                    service=service,
+                    repo=repo,
+                    generate_summary=generate_summary,
+                    pipeline_source="scheduled_job",
+                    include_subject_in_update=True,
+                )
 
                 processed += 1
+                clean_subj = service.clean_subject(subject)
                 logger.info(f"✅ Newsletter {nl_id} summarized: {clean_subj[:60]}")
 
             except Exception as e:
@@ -183,8 +204,15 @@ def newsletter_ai_processing_job() -> None:
                 logger.error(f"❌ Error processing newsletter {nl_id}: {e}", exc_info=True)
 
         duration_ms = int((time.time() - start_time) * 1000)
-        msg = f"Processed {processed}, failed {failed} of {len(rows)} newsletters"
-        logger.info(f"📰 Newsletter AI job complete: {msg} ({duration_ms}ms)")
+        msg = (
+            f"processed={processed} failed={failed} skipped={skipped} "
+            f"of={len(rows)} newsletters"
+        )
+        logger.info(
+            "newsletter_ai_processing complete: %s duration_ms=%d",
+            msg,
+            duration_ms,
+        )
         log_job_execution(job_id, success=(failed == 0), message=msg, duration_ms=duration_ms)
         mark_job_completed(
             job_id,
