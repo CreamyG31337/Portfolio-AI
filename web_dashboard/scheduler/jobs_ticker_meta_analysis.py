@@ -77,7 +77,7 @@ def ticker_meta_analysis_job() -> None:
     try:
         supabase = SupabaseClient(use_service_role=True)
         postgres = PostgresClient()
-        preferred_model = get_summarizing_model()
+        preferred_model = get_summarizing_model("ticker_meta")
         is_glm = str(preferred_model).startswith("glm-")
         is_webai = False
         try:

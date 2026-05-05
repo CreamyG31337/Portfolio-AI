@@ -3,7 +3,7 @@ Article Relevance Validation Job
 =================================
 
 Overnight batch job that validates ticker assignments on research articles
-using GLM 4.5-air.  Articles are tagged with tickers during scraping via AI
+using the cheap GLM role (AI_CHEAP_MODEL / glm-5-turbo by default). Articles are tagged with tickers during scraping via AI
 extraction, but this is imperfect (e.g. "PRE" articles matching "Preat"
 content).  This job reviews unvalidated articles and cleans up incorrect
 ticker tags at the source.
@@ -16,8 +16,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import sys
-
-import requests
 
 # Path setup (same pattern as other scheduler jobs)
 current_dir = Path(__file__).resolve().parent
@@ -32,6 +30,7 @@ elif sys.path[0] != project_root:
     sys.path.insert(0, project_root)
 
 from scheduler.scheduler_core import log_job_execution
+from model_registry import get_cheap_model
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,6 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 10          # Articles per GLM call
 MAX_ARTICLES_PER_RUN = 200   # Total articles to process per run
 LOOKBACK_DAYS = 90       # Only validate articles from the last N days
-GLM_MODEL = "glm-4.5-air"   # Fast/cheap model for classification
 GLM_MAX_TOKENS = 4096    # Needs headroom for reasoning chain + JSON output
 GLM_TIMEOUT = 120        # seconds
 DELAY_BETWEEN_BATCHES = 2    # seconds
@@ -52,7 +50,7 @@ DELAY_BETWEEN_BATCHES = 2    # seconds
 # ---------------------------------------------------------------------------
 
 def article_relevance_job() -> None:
-    """Validate ticker assignments on research articles using GLM 4.5-air.
+    """Validate ticker assignments on research articles using the cheap GLM (get_cheap_model()).
 
     1. Fetches unvalidated articles (ticker_validated_at IS NULL)
     2. Groups into batches of BATCH_SIZE
@@ -301,60 +299,44 @@ def _validate_batch(
         "Return ONLY valid JSON, no markdown or explanation."
     )
 
-    url = f"{base_url.rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": GLM_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.0,
-        "max_tokens": GLM_MAX_TOKENS,
-    }
+    _ = api_key, base_url  # legacy signature; transport uses glm_config key + get_glm_base_urls()
 
-    # Retry with backoff for rate limiting
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+
+    from glm_transport import glm_chat_completion_text
+
     max_retries = 3
     base_delay = 10
 
     for attempt in range(max_retries):
         try:
-            response = requests.post(
-                url, json=payload, headers=headers, timeout=GLM_TIMEOUT
+            raw = glm_chat_completion_text(
+                messages,
+                model=get_cheap_model(),
+                stream=False,
+                json_mode=True,
+                temperature=0.0,
+                max_tokens=GLM_MAX_TOKENS,
+                timeout=float(GLM_TIMEOUT),
+                allow_cheap_fallback=False,
             )
+            if attempt < max_retries - 1 and raw and "429" in raw and "GLM API error" in raw:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(
+                    "GLM rate limited (429). Waiting %ds before retry...", delay
+                )
+                time.sleep(delay)
+                continue
 
-            if response.status_code == 429:
-                if attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)
-                    logger.warning(
-                        "GLM rate limited (429). Waiting %ds before retry...", delay
-                    )
-                    time.sleep(delay)
-                    continue
-                else:
-                    logger.error("GLM rate limited after %d retries", max_retries)
-                    return None
-
-            response.raise_for_status()
-
-            data = response.json()
-            choices = data.get("choices") or []
-            if not choices:
-                logger.warning("GLM returned empty choices")
-                return None
-
-            content = (choices[0].get("message") or {}).get("content", "")
-            if not content:
+            if not raw or not raw.strip():
                 logger.warning("GLM returned empty content")
                 return None
 
-            # Parse JSON from response (strip markdown fences if present)
-            content = content.strip()
+            content = raw.strip()
             if content.startswith("```"):
-                # Strip ```json ... ```
                 content = content.split("\n", 1)[-1] if "\n" in content else content
                 if content.endswith("```"):
                     content = content[:-3]
@@ -369,17 +351,11 @@ def _validate_batch(
         except json.JSONDecodeError as e:
             logger.warning("Failed to parse GLM JSON response: %s", e)
             return None
-        except requests.exceptions.Timeout:
-            logger.warning("GLM request timed out (attempt %d)", attempt + 1)
+        except Exception as e:
+            logger.warning("GLM validation call failed: %s", e)
             if attempt < max_retries - 1:
                 time.sleep(base_delay)
                 continue
-            return None
-        except requests.exceptions.ConnectionError as e:
-            logger.warning("GLM connection error: %s", e)
-            return None
-        except Exception as e:
-            logger.warning("GLM validation call failed: %s", e)
             return None
 
     return None

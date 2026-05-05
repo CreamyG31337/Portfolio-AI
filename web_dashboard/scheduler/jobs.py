@@ -45,7 +45,7 @@ web_dashboard_path = str(current_dir.parent)
 if web_dashboard_path not in sys.path:
     sys.path.insert(1, web_dashboard_path)  # Insert at index 1, after project_root
 
-
+from model_registry import PRIMARY_MODEL_DEFAULT
 
 # Job definitions with metadata
 AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
@@ -367,8 +367,8 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
                 'description': 'Sessions to process per batch'
             },
             'model': {
-                'type': 'text', 
-                'default': 'glm-4.7', 
+                'type': 'text',
+                'default': PRIMARY_MODEL_DEFAULT,
                 'description': 'AI model name (defaults to get_summarizing_model() from settings if not provided)'
             }
         }

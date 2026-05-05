@@ -97,7 +97,7 @@ def run_market_daily_brief(
     from ai_prompts import MARKET_DAILY_BRIEF_PROMPT
 
     prompt = MARKET_DAILY_BRIEF_PROMPT.format(benchmark_stats=stats_text)
-    model = (model_override or "").strip() or get_summarizing_model()
+    model = (model_override or "").strip() or get_summarizing_model("market_brief")
     system_prompt = (
         "You are a macro commentator. Return ONLY valid JSON with the exact keys requested. "
         "No stock picks or ticker symbols."

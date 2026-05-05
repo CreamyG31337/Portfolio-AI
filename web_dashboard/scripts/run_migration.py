@@ -9,20 +9,23 @@ import os
 import sys
 from pathlib import Path
 
-# Add the project root to the path
-project_root = Path(__file__).parent.parent.parent
+# Add project root and web_dashboard so postgres_client / env_loader resolve
+project_root = Path(__file__).resolve().parent.parent.parent
+web_dashboard = project_root / "web_dashboard"
 sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(web_dashboard))
 
 try:
-    from web_dashboard.postgres_client import PostgresClient
+    from postgres_client import PostgresClient
     from dotenv import load_dotenv
 except ImportError as e:
     print(f"[ERROR] Missing dependencies: {e}")
     print("Install with: pip install psycopg2-binary python-dotenv")
     sys.exit(1)
 
-# Load environment variables
-load_dotenv("web_dashboard/.env")
+# Load environment variables (repo root then web_dashboard; matches env_loader)
+load_dotenv(project_root / ".env")
+load_dotenv(project_root / "web_dashboard" / ".env")
 
 
 def run_migration(migration_file: Path) -> bool:

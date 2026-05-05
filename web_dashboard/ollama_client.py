@@ -12,12 +12,18 @@ import json
 import logging
 import time
 import threading
-from typing import Generator, Optional, List, Dict, Any
+from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, Tuple
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from env_loader import load_project_dotenv
 
+from glm_transport import (
+    glm_chat_completion,
+    glm_chat_completion_text,
+    glm_raw_indicates_transport_failure,
+    glm_should_try_cheap_fallback,
+)
 from summary_common import get_summary_system_prompt, parse_summary_response
 from prompt_safety import (
     contains_instruction_like_text,
@@ -33,16 +39,120 @@ logger = logging.getLogger(__name__)
 # Default configuration from environment variables
 # Priority: Docker env vars > .env file > Python defaults
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "glm-4.7")
+_explicit_ollama_model = os.getenv("OLLAMA_MODEL", "").strip()
+if _explicit_ollama_model:
+    OLLAMA_MODEL = _explicit_ollama_model
+else:
+    try:
+        from model_registry import get_primary_model
+
+        OLLAMA_MODEL = get_primary_model()
+    except ImportError:
+        OLLAMA_MODEL = "glm-5.1"
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 # Z.AI / GLM HTTP read timeout (seconds). Article summarization uses this; see docs/GLM_ZAI_SUMMARY_TIMING.md.
 GLM_TIMEOUT = int(os.getenv("GLM_TIMEOUT", "180"))
+# json_mode GLM calls (e.g. LLM-as-judge, structured output) often need longer wall time than chat.
+# Effective timeout is max(GLM_TIMEOUT, this value) when json_mode is True on _query_glm.
+GLM_JSON_MODE_MIN_TIMEOUT = int(os.getenv("GLM_JSON_MODE_MIN_TIMEOUT", "360"))
 
 # Keep summarization output bounded so prompt + article + output fits model context.
 SUMMARY_MIN_PREDICT = 256
 SUMMARY_DEFAULT_PREDICT = 1024
 SUMMARY_CONTEXT_MARGIN = 256
+
+
+class OllamaHostBusyError(RuntimeError):
+    """Every candidate Ollama base URL had no free per-host inference slot (see env tuning below)."""
+
+
+_HOST_SLOTS: Dict[str, threading.Semaphore] = {}
+_HOST_SLOTS_GUARD = threading.Lock()
+
+
+def _max_concurrent_per_host() -> int:
+    raw = os.getenv("OLLAMA_MAX_CONCURRENT_PER_HOST", "1")
+    try:
+        return int(raw)
+    except ValueError:
+        return 1
+
+
+def _host_slots_enabled() -> bool:
+    """When False (``OLLAMA_MAX_CONCURRENT_PER_HOST`` <= 0), slot limiting is disabled."""
+    return _max_concurrent_per_host() > 0
+
+
+def _host_slot_wait_seconds() -> float:
+    raw = os.getenv("OLLAMA_HOST_SLOT_WAIT_SEC", "30")
+    try:
+        return float(raw)
+    except ValueError:
+        return 30.0
+
+
+def _host_semaphore(host_key: str) -> threading.Semaphore:
+    """Process-local limiter for one Ollama base URL (not shared across Gunicorn workers)."""
+    key = host_key.rstrip("/")
+    with _HOST_SLOTS_GUARD:
+        if key not in _HOST_SLOTS:
+            n = max(1, _max_concurrent_per_host())
+            _HOST_SLOTS[key] = threading.Semaphore(n)
+        return _HOST_SLOTS[key]
+
+
+def _release_ollama_response_slot(response: Any) -> None:
+    """Release a streaming inference slot attached by :meth:`OllamaClient._post_ollama`."""
+    if response is None:
+        return
+    pair = getattr(response, "_ollama_slot_pair", None)
+    if not isinstance(pair, tuple) or len(pair) != 2:
+        return
+    sem, owned = pair
+    setattr(response, "_ollama_slot_pair", None)
+    if owned and sem is not None:
+        sem.release()
+
+
+def coalesce_ollama_generate_response_text(data: Any) -> str:
+    """Return assistant text from a single Ollama ``/api/generate`` JSON object (non-streaming).
+
+    Reasoning/thinking models (e.g. Qwen3 family) sometimes leave ``response`` empty and
+    emit content under ``thinking`` or ``think``. Prefer ``response`` when present.
+    """
+    if not isinstance(data, dict):
+        return ""
+    err = data.get("error")
+    if err:
+        logger.warning("Ollama generate JSON error field: %s", err)
+    primary = data.get("response")
+    if isinstance(primary, str) and primary.strip():
+        return primary
+    for key in ("thinking", "think"):
+        alt = data.get(key)
+        if alt is not None and str(alt).strip():
+            logger.info(
+                "Ollama `response` empty; coalescing from %r (%d chars)",
+                key,
+                len(str(alt)),
+            )
+            return str(alt)
+    return ""
+
+
+def ollama_tags_list_contains_model(available_names: Sequence[str], requested: str) -> bool:
+    """Return True if Ollama ``/api/tags`` names include ``requested`` (exact or ``name:extra``)."""
+    r = (requested or "").strip()
+    if not r:
+        return True
+    names = [str(n).strip() for n in available_names if str(n).strip()]
+    if r in names:
+        return True
+    for n in names:
+        if n.startswith(r + ":") or n.startswith(r + "-"):
+            return True
+    return False
 
 
 def load_model_config() -> Dict[str, Any]:
@@ -98,6 +208,19 @@ def _fit_summary_num_predict(
             fitted,
         )
     return max(SUMMARY_MIN_PREDICT, fitted)
+
+
+def _pop_env_url(settings: Dict[str, Any], env_attr: str, url_attr: str) -> None:
+    """Resolve optional env indirection for URLs (mutates settings in place).
+
+    If ``env_attr`` names an environment variable that is set and non-empty,
+    its value becomes ``url_attr``. Keys ``*_env`` are removed after resolution.
+    """
+    env_name = settings.pop(env_attr, None)
+    if env_name and str(env_name).strip():
+        v = os.getenv(str(env_name).strip())
+        if v and str(v).strip():
+            settings[url_attr] = str(v).strip().rstrip("/")
 
 
 class OllamaClient:
@@ -167,6 +290,9 @@ class OllamaClient:
             settings = models[model_name].copy()
         else:
             settings = default_config.copy()
+
+        _pop_env_url(settings, "base_url_env", "base_url")
+        _pop_env_url(settings, "fallback_base_url_env", "fallback_base_url")
         
         # Check database for admin overrides
         try:
@@ -186,6 +312,25 @@ class OllamaClient:
             db_predict = get_system_setting(f"model_{model_name}_num_predict", default=None)
             if db_predict is not None:
                 settings['num_predict'] = db_predict
+
+            db_base = get_system_setting(f"model_{model_name}_base_url", default=None)
+            if db_base is not None and str(db_base).strip():
+                settings["base_url"] = str(db_base).strip().rstrip("/")
+
+            db_fb = get_system_setting(f"model_{model_name}_fallback_base_url", default=None)
+            if db_fb is not None and str(db_fb).strip():
+                settings["fallback_base_url"] = str(db_fb).strip().rstrip("/")
+
+            db_think = get_system_setting(f"model_{model_name}_think", default=None)
+            if db_think is not None:
+                settings["think"] = db_think
+
+            db_stream = get_system_setting(f"model_{model_name}_streaming_timeout", default=None)
+            if db_stream is not None:
+                try:
+                    settings["streaming_timeout"] = int(db_stream)
+                except (TypeError, ValueError):
+                    pass
                 
         except Exception as e:
             logger.debug(f"Could not load database overrides for {model_name}: {e}")
@@ -203,6 +348,312 @@ class OllamaClient:
         """
         settings = self.get_model_settings(model_name)
         return settings.get('desc', '')
+
+    def _resolve_urls(self, model: str) -> Tuple[str, Optional[str]]:
+        """Return ``(primary_base_url, fallback_base_url_or_none)`` for Ollama HTTP calls."""
+        s = self.get_model_settings(model)
+        raw_primary = s.get("base_url")
+        primary = (str(raw_primary).strip() if raw_primary else "") or self.base_url
+        primary = primary.rstrip("/")
+        default_norm = self.base_url.rstrip("/")
+        fb_raw = s.get("fallback_base_url")
+        if fb_raw is not None and str(fb_raw).strip():
+            fb = str(fb_raw).strip().rstrip("/")
+            if fb != primary:
+                return primary, fb
+        if primary != default_norm:
+            return primary, default_norm
+        return primary, None
+
+    def _apply_think_to_payload(self, payload: Dict[str, Any], model_settings: Dict[str, Any]) -> None:
+        """Set top-level ``think`` when configured for this model."""
+        if "think" in model_settings:
+            val = model_settings["think"]
+            if val is not None:
+                payload["think"] = bool(val)
+
+    def _post_ollama(
+        self,
+        model: str,
+        path: str,
+        payload: Dict[str, Any],
+        *,
+        stream: bool,
+    ) -> requests.Response:
+        """POST to Ollama; retry on fallback host after connect/timeout/5xx/404.
+
+        When ``OLLAMA_MAX_CONCURRENT_PER_HOST`` > 0, limits in-flight requests per base URL
+        inside this process. If a host is saturated longer than
+        ``OLLAMA_HOST_SLOT_WAIT_SEC``, tries the next URL for this model; if all are busy,
+        raises :class:`OllamaHostBusyError` so callers can try another model/host.
+
+        Streaming responses transfer slot ownership to the returned ``Response``; the slot is
+        released when stream helpers close the body (see ``_release_ollama_response_slot``).
+        """
+        primary, fallback = self._resolve_urls(model)
+        candidates = [primary]
+        if fallback and fallback.rstrip("/") != primary.rstrip("/"):
+            candidates.append(fallback.rstrip("/"))
+        last_exc: Optional[BaseException] = None
+        n_hosts = len(candidates)
+        slot_busy_hosts = 0
+        for idx, base in enumerate(candidates):
+            url = f"{base.rstrip('/')}{path}"
+            sem: Optional[threading.Semaphore] = None
+            acquired = False
+            r: Optional[requests.Response] = None
+            returning_ok = False
+            try:
+                if _host_slots_enabled():
+                    sem = _host_semaphore(base)
+                    wait = max(0.0, _host_slot_wait_seconds())
+                    if not sem.acquire(timeout=wait):
+                        logger.warning(
+                            "[Ollama] Inference slot busy on %s (model=%s, waited %.1fs); "
+                            "trying next host if any",
+                            base,
+                            model,
+                            wait,
+                        )
+                        slot_busy_hosts += 1
+                        continue
+                    acquired = True
+                if idx > 0:
+                    logger.info("[Ollama] Retrying POST %s on fallback %s (model=%s)", path, base, model)
+                r = self.session.post(url, json=payload, stream=stream, timeout=self.timeout)
+                if stream and acquired and sem is not None:
+                    setattr(r, "_ollama_slot_pair", (sem, True))
+                    acquired = False
+                r.raise_for_status()
+                returning_ok = True
+                return r
+            except requests.exceptions.ConnectionError as e:
+                last_exc = e
+                logger.warning("[Ollama] POST %s failed on %s: %s", path, base, e)
+            except requests.exceptions.Timeout as e:
+                last_exc = e
+                logger.warning("[Ollama] POST %s timed out on %s: %s", path, base, e)
+            except requests.exceptions.HTTPError as e:
+                resp = e.response
+                status = resp.status_code if resp is not None else 0
+                # 404 on "second GPU" host often means wrong service or stale proxy; try default Ollama.
+                if status >= 500 or (status == 404 and idx < n_hosts - 1):
+                    last_exc = e
+                    logger.warning(
+                        "[Ollama] POST %s HTTP %s on %s (model=%s)",
+                        path,
+                        status,
+                        base,
+                        model,
+                    )
+                else:
+                    raise
+            finally:
+                if acquired and sem is not None:
+                    sem.release()
+                # Streaming slot was transferred to ``r`` (acquired cleared); if we are not
+                # returning ``r`` to the caller, release here or slots leak on retryable HTTP.
+                if not returning_ok and r is not None:
+                    _release_ollama_response_slot(r)
+                    try:
+                        r.close()
+                    except Exception:
+                        pass
+        if last_exc:
+            raise last_exc
+        if slot_busy_hosts >= n_hosts:
+            raise OllamaHostBusyError(
+                f"No free Ollama inference slot on any of {n_hosts} host(s) for model={model}; "
+                "increase OLLAMA_MAX_CONCURRENT_PER_HOST, OLLAMA_HOST_SLOT_WAIT_SEC, or use fallback models."
+            )
+        raise requests.exceptions.RequestException("Ollama POST failed with no exception captured")
+
+    def _stream_generate_response(
+        self,
+        response: requests.Response,
+        *,
+        idle_timeout_seconds: float,
+        include_thinking: bool,
+        request_start_time: float,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> Generator[str, None, None]:
+        """Stream ``/api/generate`` lines with idle-based timeout and optional thinking chunks."""
+        last_chunk_at = time.monotonic()
+        timeout_triggered = threading.Event()
+        done_event = threading.Event()
+
+        def watchdog() -> None:
+            sleep_slice = min(5.0, max(1.0, idle_timeout_seconds / 10))
+            while not done_event.is_set():
+                time.sleep(sleep_slice)
+                if done_event.is_set():
+                    return
+                if time.monotonic() - last_chunk_at > idle_timeout_seconds:
+                    timeout_triggered.set()
+                    logger.error(
+                        "[ERROR] Ollama streaming idle timeout after %.1fs (no chunks)",
+                        idle_timeout_seconds,
+                    )
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+                    done_event.set()
+                    return
+
+        wd = threading.Thread(target=watchdog, daemon=True)
+        wd.start()
+        tokens_received = 0
+        estimated_total_tokens = 800
+        thinking_parts: list[str] = []
+        yielded_response_text = False
+        try:
+            for line in response.iter_lines():
+                if timeout_triggered.is_set():
+                    elapsed = time.time() - request_start_time
+                    logger.error(f"[ERROR] Ollama streaming timed out after {elapsed:.2f}s")
+                    yield (
+                        f"\n\n[ERROR: Streaming timed out after {elapsed:.1f}s - "
+                        "response may be incomplete]"
+                    )
+                    break
+                if line:
+                    last_chunk_at = time.monotonic()
+                    try:
+                        chunk_data = json.loads(line)
+                        thinking = chunk_data.get("thinking") or chunk_data.get("think")
+                        if thinking:
+                            thinking_parts.append(str(thinking))
+                            logger.info("[Ollama] thinking chunk (%d chars)", len(str(thinking)))
+                            if include_thinking:
+                                yield f"<think>{thinking}</think>"
+                        if "response" in chunk_data:
+                            chunk_text = chunk_data["response"] or ""
+                            if chunk_text.strip():
+                                yielded_response_text = True
+                            yield chunk_text
+                            tokens_received += len(chunk_text.split())
+                            if progress_callback:
+                                estimated_progress = min(
+                                    95, int((tokens_received / estimated_total_tokens) * 100)
+                                )
+                                progress_callback(tokens_received, estimated_progress)
+                        if chunk_data.get("done", False):
+                            if (
+                                not yielded_response_text
+                                and not include_thinking
+                                and thinking_parts
+                            ):
+                                merged = "".join(thinking_parts)
+                                if merged.strip():
+                                    logger.info(
+                                        "Ollama stream: no `response` tokens; coalescing "
+                                        "%d chars from thinking",
+                                        len(merged),
+                                    )
+                                    yield merged
+                            if progress_callback:
+                                progress_callback(tokens_received, 100)
+                            elapsed = time.time() - request_start_time
+                            logger.info(f"[OK] Ollama streaming completed in {elapsed:.2f}s")
+                            break
+                    except json.JSONDecodeError:
+                        continue
+        finally:
+            done_event.set()
+            try:
+                response.close()
+            except Exception:
+                pass
+            _release_ollama_response_slot(response)
+
+    def _stream_chat_response(
+        self,
+        response: requests.Response,
+        *,
+        idle_timeout_seconds: float,
+        include_thinking: bool,
+        request_start_time: float,
+    ) -> Generator[str, None, None]:
+        """Stream ``/api/chat`` lines with idle-based timeout and optional thinking content."""
+        last_chunk_at = time.monotonic()
+        timeout_triggered = threading.Event()
+        done_event = threading.Event()
+
+        def watchdog() -> None:
+            sleep_slice = min(5.0, max(1.0, idle_timeout_seconds / 10))
+            while not done_event.is_set():
+                time.sleep(sleep_slice)
+                if done_event.is_set():
+                    return
+                if time.monotonic() - last_chunk_at > idle_timeout_seconds:
+                    timeout_triggered.set()
+                    logger.error(
+                        "[ERROR] Ollama chat streaming idle timeout after %.1fs (no chunks)",
+                        idle_timeout_seconds,
+                    )
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+                    done_event.set()
+                    return
+
+        wd = threading.Thread(target=watchdog, daemon=True)
+        wd.start()
+        thinking_parts: list[str] = []
+        yielded_content_text = False
+        try:
+            for line in response.iter_lines():
+                if timeout_triggered.is_set():
+                    elapsed = time.time() - request_start_time
+                    yield f"\n\n[ERROR: Chat streaming timed out after {elapsed:.1f}s]"
+                    break
+                if line:
+                    last_chunk_at = time.monotonic()
+                    try:
+                        chunk_data = json.loads(line)
+                        msg = chunk_data.get("message") or {}
+                        thinking = (
+                            msg.get("thinking")
+                            or msg.get("think")
+                            or chunk_data.get("thinking")
+                        )
+                        if thinking:
+                            thinking_parts.append(str(thinking))
+                            logger.info("[Ollama] chat thinking chunk (%d chars)", len(str(thinking)))
+                            if include_thinking:
+                                yield f"<think>{thinking}</think>"
+                        if "content" in msg and msg.get("content") is not None:
+                            piece = str(msg["content"])
+                            if piece.strip():
+                                yielded_content_text = True
+                            yield piece
+                        if chunk_data.get("done", False):
+                            if (
+                                not yielded_content_text
+                                and not include_thinking
+                                and thinking_parts
+                            ):
+                                merged = "".join(thinking_parts)
+                                if merged.strip():
+                                    logger.info(
+                                        "Ollama chat stream: no content; coalescing %d thinking chars",
+                                        len(merged),
+                                    )
+                                    yield merged
+                            elapsed = time.time() - request_start_time
+                            logger.info(f"[OK] Ollama chat streaming completed in {elapsed:.2f}s")
+                            break
+                    except json.JSONDecodeError:
+                        continue
+        finally:
+            done_event.set()
+            try:
+                response.close()
+            except Exception:
+                pass
+            _release_ollama_response_slot(response)
     
     def check_health(self) -> bool:
         """Check if Ollama API is available.
@@ -225,6 +676,43 @@ class OllamaClient:
                 return False
         except Exception as e:
             logger.warning(f"❌ Ollama health check failed: {e}")
+            return False
+
+    def check_health_for_model(self, model: Optional[str] = None) -> bool:
+        """Probe ``/api/tags`` on the resolved host and verify ``model`` is listed (when given)."""
+        if not self.enabled:
+            return False
+        if not model:
+            return self.check_health()
+        primary, _ = self._resolve_urls(model)
+        try:
+            response = self.session.get(f"{primary}/api/tags", timeout=5)
+            if response.status_code != 200:
+                logger.warning(
+                    "Ollama health check failed for model=%s url=%s: HTTP %s",
+                    model,
+                    primary,
+                    response.status_code,
+                )
+                return False
+            data = response.json()
+            if not isinstance(data, dict):
+                logger.warning("Ollama /api/tags for model=%s url=%s: unexpected JSON", model, primary)
+                return False
+            names = [str(m.get("name", "")) for m in data.get("models", []) if m.get("name")]
+            if not ollama_tags_list_contains_model(names, str(model)):
+                logger.warning(
+                    "Ollama at %s does not list model %s. Install with: ollama pull %s. "
+                    "Sample of available: %s",
+                    primary,
+                    model,
+                    model,
+                    names[:12],
+                )
+                return False
+            return True
+        except Exception as e:
+            logger.warning("Ollama health check failed for model=%s url=%s: %s", model, primary, e)
             return False
     
     def list_available_models(self) -> List[str]:
@@ -290,14 +778,15 @@ class OllamaClient:
         self,
         prompt: str,
         context: str = "",
-        model: str = "glm-4.7",
+        model: Optional[str] = None,
         stream: bool = True,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         num_ctx: Optional[int] = None,
         system_prompt: Optional[str] = None,
         json_mode: bool = False,
-        streaming_timeout: int = 90
+        streaming_timeout: int = 90,
+        include_thinking: bool = False,
     ) -> Generator[str, None, None]:
         """Query Ollama API with a prompt and optional context.
         
@@ -311,11 +800,20 @@ class OllamaClient:
             num_ctx: Context window size. If None, uses model default.
             system_prompt: Optional system prompt to set model behavior
             json_mode: Whether to enforce JSON output format
-            streaming_timeout: Timeout in seconds for streaming responses (default: 90)
+            streaming_timeout: Max idle seconds between stream chunks (default: 90).
+                Overridden by ``streaming_timeout`` in model_config / system_settings when set.
+            include_thinking: When True, yield ``<think>...</think>`` for thinking chunks.
             
         Yields:
             Response chunks as strings (streaming) or full response (non-streaming)
         """
+        if not model or not str(model).strip():
+            try:
+                from model_registry import get_primary_model
+
+                model = get_primary_model()
+            except ImportError:
+                model = "glm-5.1"
         # Route GLM models to Z.AI transport (independent of Ollama availability).
         if model and str(model).startswith("glm-"):
             yield from self._query_glm(
@@ -362,6 +860,8 @@ class OllamaClient:
         effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.7)
         effective_ctx = num_ctx if num_ctx is not None else model_settings.get('num_ctx', 4096)
         effective_max_tokens = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
+        cfg_idle = model_settings.get("streaming_timeout")
+        effective_idle = float(cfg_idle) if cfg_idle is not None else float(streaming_timeout)
         
         # Prepare request payload
         payload = {
@@ -382,80 +882,49 @@ class OllamaClient:
         # Add format if json_mode is enabled
         if json_mode:
             payload["format"] = "json"
+
+        self._apply_think_to_payload(payload, model_settings)
         
         # Track request timing
         request_start_time = time.time()
         
         try:
-            logger.info(f"[Ollama] query starting: model={model}, temp={effective_temp}, ctx={effective_ctx}, max_tokens={effective_max_tokens}, stream={stream}, timeout={streaming_timeout}s")
+            logger.info(
+                f"[Ollama] query starting: model={model}, temp={effective_temp}, ctx={effective_ctx}, "
+                f"max_tokens={effective_max_tokens}, stream={stream}, idle_timeout={effective_idle}s"
+            )
             logger.debug(f"Prompt length: {len(full_prompt)} chars")
             
-            response = self.session.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                stream=stream,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
+            response = self._post_ollama(model, "/api/generate", payload, stream=stream)
             
             connection_time = time.time() - request_start_time
             logger.debug(f"Ollama connection established in {connection_time:.2f}s, streaming...")
             
             if stream:
-                # Stream response chunks with timeout protection
-                timeout_triggered = threading.Event()
-                response_iterator = response.iter_lines()
-                
-                def timeout_handler():
-                    """Handler called when streaming timeout is reached"""
-                    timeout_triggered.set()
-                    logger.error(f"[ERROR] Ollama streaming timeout after {streaming_timeout}s - killing connection")
-                
-                # Set up timeout timer
-                timeout_timer = threading.Timer(streaming_timeout, timeout_handler)
-                timeout_timer.daemon = True
-                timeout_timer.start()
-                
-                try:
-                    for line in response_iterator:
-                        # Check if timeout was triggered
-                        if timeout_triggered.is_set():
-                            elapsed = time.time() - request_start_time
-                            logger.error(f"[ERROR] Ollama streaming timed out after {elapsed:.2f}s")
-                            yield f"\n\n[ERROR: Streaming timed out after {elapsed:.1f}s - response may be incomplete]"
-                            break
-                        
-                        if line:
-                            try:
-                                chunk_data = json.loads(line)
-                                if "response" in chunk_data:
-                                    yield chunk_data["response"]
-                                if chunk_data.get("done", False):
-                                    # Cancel timeout timer on successful completion
-                                    timeout_timer.cancel()
-                                    elapsed = time.time() - request_start_time
-                                    logger.info(f"[OK] Ollama streaming completed in {elapsed:.2f}s")
-                                    break
-                            except json.JSONDecodeError:
-                                continue
-                finally:
-                    # Always cancel the timer when done
-                    timeout_timer.cancel()
-                    
+                yield from self._stream_generate_response(
+                    response,
+                    idle_timeout_seconds=effective_idle,
+                    include_thinking=include_thinking,
+                    request_start_time=request_start_time,
+                )
             else:
                 # Non-streaming response
                 data = response.json()
                 elapsed = time.time() - request_start_time
                 logger.info(f"[OK] Ollama request completed in {elapsed:.2f}s")
-                yield data.get("response", "")
+                yield coalesce_ollama_generate_response_text(data)
+                _release_ollama_response_slot(response)
                 
+        except OllamaHostBusyError:
+            raise
         except requests.exceptions.Timeout:
             elapsed = time.time() - request_start_time
             logger.error(f"[ERROR] Ollama request timed out after {elapsed:.2f}s (timeout setting: {self.timeout}s)")
             yield "Request timed out. Please try again with a shorter prompt or context."
         except requests.exceptions.ConnectionError as e:
             elapsed = time.time() - request_start_time
-            logger.error(f"[ERROR] Cannot connect to Ollama API at {self.base_url} after {elapsed:.2f}s: {e}")
+            primary_url, _ = self._resolve_urls(model)
+            logger.error(f"[ERROR] Cannot connect to Ollama API at {primary_url} after {elapsed:.2f}s: {e}")
             yield "Cannot connect to AI assistant. Please check if Ollama is running."
         except requests.exceptions.HTTPError as e:
             elapsed = time.time() - request_start_time
@@ -526,28 +995,23 @@ class OllamaClient:
         max_tokens: Optional[int],
         system_prompt: Optional[str],
         json_mode: bool,
+        _cheap_fallback_done: bool = False,
     ) -> Generator[str, None, None]:
         """Route completion requests to Z.AI chat/completions for glm-* models."""
-        try:
-            from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
-        except ImportError as e:
-            logger.error("GLM config unavailable: %s", e)
-            yield "GLM backend is not available."
-            return
-
-        key = get_zhipu_api_key()
-        if not key:
-            logger.error("GLM API key not configured")
-            yield "GLM API key is not configured."
-            return
-
         full_prompt = prompt
         if context:
             full_prompt = f"{context}\n\nUser question: {prompt}"
 
         model_settings = self.get_model_settings(model)
         effective_temp = temperature if temperature is not None else model_settings.get("temperature", 0.3)
-        effective_max_tokens = max_tokens if max_tokens is not None else model_settings.get("num_predict", 2048)
+        cfg_cap = model_settings.get("max_tokens") or model_settings.get("num_predict", 2048)
+        try:
+            cfg_cap_int = int(cfg_cap)
+        except (TypeError, ValueError):
+            cfg_cap_int = 2048
+        effective_max_tokens = max_tokens if max_tokens is not None else cfg_cap_int
+        if json_mode:
+            effective_max_tokens = max(int(effective_max_tokens), 2048)
 
         messages: List[Dict[str, str]] = []
         if system_prompt:
@@ -561,76 +1025,24 @@ class OllamaClient:
             )
         messages.append({"role": "user", "content": full_prompt})
 
-        url = f"{ZHIPU_BASE_URL.rstrip('/')}/chat/completions"
-        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-        payload = {
-            "model": model,
-            "messages": messages,
-            "stream": stream,
-            "max_tokens": effective_max_tokens,
-            "temperature": effective_temp,
-        }
+        glm_http_timeout = max(GLM_TIMEOUT, GLM_JSON_MODE_MIN_TIMEOUT) if json_mode else GLM_TIMEOUT
 
-        request_start = time.time()
-        try:
-            response = requests.post(
-                url,
-                json=payload,
-                headers=headers,
-                stream=stream,
-                timeout=GLM_TIMEOUT,
-            )
-            response.raise_for_status()
-
-            if stream:
-                for line in response.iter_lines(decode_unicode=True):
-                    if not line or not line.strip():
-                        continue
-                    s = line.strip()
-                    if not s.startswith("data: "):
-                        continue
-                    data = s[6:].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        obj = json.loads(data)
-                        for choice in (obj.get("choices") or [])[:1]:
-                            delta = choice.get("delta") or {}
-                            part = delta.get("content") or ""
-                            if part:
-                                yield part
-                            if choice.get("finish_reason") == "stop":
-                                return
-                    except json.JSONDecodeError:
-                        continue
-            else:
-                data = response.json()
-                content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-                if content:
-                    yield content
-                else:
-                    yield "GLM returned an empty response."
-        except requests.exceptions.Timeout:
-            elapsed = time.time() - request_start
-            logger.error("GLM request timed out after %.2fs", elapsed)
-            yield "GLM request timed out. Please try again."
-        except requests.exceptions.ConnectionError as e:
-            elapsed = time.time() - request_start
-            logger.error("GLM connection error after %.2fs: %s", elapsed, e)
-            yield "Cannot connect to GLM API."
-        except requests.exceptions.HTTPError as e:
-            elapsed = time.time() - request_start
-            logger.error("GLM HTTP error after %.2fs: %s", elapsed, e)
-            yield f"GLM API error: {str(e)}"
-        except Exception as e:
-            elapsed = time.time() - request_start
-            logger.error("Unexpected GLM query error after %.2fs: %s", elapsed, e, exc_info=True)
-            yield f"GLM error: {str(e)}"
+        yield from glm_chat_completion(
+            messages,
+            model=model,
+            stream=stream,
+            json_mode=json_mode,
+            temperature=float(effective_temp),
+            max_tokens=int(effective_max_tokens),
+            timeout=float(glm_http_timeout),
+            allow_cheap_fallback=True,
+            _cheap_fallback_done=_cheap_fallback_done,
+        )
     
     def generate_completion(
-        self, 
-        prompt: str, 
-        model: str = "glm-4.7", 
+        self,
+        prompt: str,
+        model: Optional[str] = None,
         json_mode: bool = False,
         temperature: Optional[float] = None
     ) -> Optional[str]:
@@ -645,6 +1057,13 @@ class OllamaClient:
         Returns:
             Full response string or None if failed
         """
+        if not model or not str(model).strip():
+            try:
+                from model_registry import get_primary_model
+
+                model = get_primary_model()
+            except ImportError:
+                model = "glm-5.1"
         try:
             generator = self.query_ollama(
                 prompt=prompt,
@@ -654,6 +1073,8 @@ class OllamaClient:
                 temperature=temperature
             )
             return next(generator, None)
+        except OllamaHostBusyError:
+            raise
         except Exception as e:
             logger.error(f"Error generating completion: {e}")
             return None
@@ -691,7 +1112,7 @@ class OllamaClient:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "glm-4.7"
+                model = "qwen3.6:27b"
 
         audit_start = time.time()
         result: Dict[str, Any] = {}
@@ -825,7 +1246,9 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         self,
         text: str,
         model: Optional[str] = None,
-        article_type: str = ""
+        article_type: str = "",
+        *,
+        num_ctx_override: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Generate a comprehensive summary with Chain of Thought analysis, sentiment categorization, and relationship extraction.
         
@@ -865,7 +1288,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "glm-4.7"
+                model = "qwen3.6:27b"
 
         # Web-based AI service: use cookie-based service, not Ollama
         try:
@@ -897,6 +1320,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get('temperature', 0.3)
         effective_ctx = model_settings.get('num_ctx', 4096)
+        if num_ctx_override is not None:
+            effective_ctx = int(num_ctx_override)
         requested_max_tokens = model_settings.get("num_predict", SUMMARY_DEFAULT_PREDICT)
 
         # Warn if skill-enhanced prompt + article + output may overflow context
@@ -936,25 +1361,21 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 "num_ctx": effective_ctx
             }
         }
+        self._apply_think_to_payload(payload, model_settings)
         
         try:
             start_time = time.time()
             logger.info(f"Generating enhanced summary with model {model}")
-            response = self.session.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
+            response = self._post_ollama(model, "/api/generate", payload, stream=False)
             
             elapsed_time = time.time() - start_time
             logger.info(f"✅ Summary generated in {elapsed_time:.2f}s")
             
             data = response.json()
-            raw_response = data.get("response", "").strip()
-            
+            raw_response = coalesce_ollama_generate_response_text(data).strip()
+
             if not raw_response:
-                logger.warning("Empty response from Ollama")
+                logger.warning("Empty response from Ollama (no response/thinking text)")
                 return {}
 
             return parse_summary_response(raw_response)
@@ -963,7 +1384,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             logger.error(f"❌ Ollama summary request timed out after {self.timeout}s")
             return {}
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"[ERROR] Cannot connect to Ollama API at {self.base_url}: {e}")
+            primary_url, _ = self._resolve_urls(model)
+            logger.error(f"[ERROR] Cannot connect to Ollama API at {primary_url}: {e}")
             return {}
         except Exception as e:
             logger.error(f"❌ Error generating summary: {e}", exc_info=True)
@@ -974,7 +1396,9 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         text: str,
         model: Optional[str] = None,
         article_type: str = "",
-        progress_callback=None
+        progress_callback=None,
+        *,
+        num_ctx_override: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Generate a comprehensive summary with streaming progress updates.
 
@@ -995,7 +1419,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "glm-4.7"
+                model = "qwen3.6:27b"
 
         # Web-based AI service: use cookie-based service, not Ollama (note: doesn't support streaming)
         try:
@@ -1036,6 +1460,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get("temperature", 0.3)
         effective_ctx = model_settings.get("num_ctx", 4096)
+        if num_ctx_override is not None:
+            effective_ctx = int(num_ctx_override)
         requested_max_tokens = model_settings.get("num_predict", SUMMARY_DEFAULT_PREDICT)
 
         # Warn if skill-enhanced prompt + article + output may overflow context
@@ -1064,6 +1490,9 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             )
 
         # Prepare streaming request payload
+        cfg_idle = model_settings.get("streaming_timeout")
+        effective_idle = float(cfg_idle) if cfg_idle is not None else 90.0
+
         payload = {
             "model": model,
             "prompt": text,
@@ -1075,46 +1504,31 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 "num_ctx": effective_ctx
             }
         }
+        self._apply_think_to_payload(payload, model_settings)
         
         try:
             start_time = time.time()
             logger.info(f"Generating streaming summary with model {model}")
             
-            response = self.session.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                stream=True,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
+            response = self._post_ollama(model, "/api/generate", payload, stream=True)
             
-            # Accumulate response while streaming
+            # Accumulate response while streaming (idle-based timeout inside helper)
             raw_response = ""
             tokens_received = 0
-            estimated_total_tokens = 800  # Average summary length
-            
-            for line in response.iter_lines():
-                if line:
-                    try:
-                        chunk_data = json.loads(line)
-                        if "response" in chunk_data:
-                            chunk_text = chunk_data["response"]
-                            raw_response += chunk_text
-                            tokens_received += len(chunk_text.split())  # Rough token count
-                            
-                            # Call progress callback if provided
-                            if progress_callback:
-                                # Estimate progress (cap at 95% until done)
-                                estimated_progress = min(95, int((tokens_received / estimated_total_tokens) * 100))
-                                progress_callback(tokens_received, estimated_progress)
-                        
-                        if chunk_data.get("done", False):
-                            # Final callback at 100%
-                            if progress_callback:
-                                progress_callback(tokens_received, 100)
-                            break
-                    except json.JSONDecodeError:
-                        continue
+
+            def _accumulate_chunk(txt: str) -> None:
+                nonlocal raw_response, tokens_received
+                raw_response += txt
+                tokens_received += len(txt.split())
+
+            for piece in self._stream_generate_response(
+                response,
+                idle_timeout_seconds=effective_idle,
+                include_thinking=False,
+                request_start_time=start_time,
+                progress_callback=progress_callback,
+            ):
+                _accumulate_chunk(piece)
             
             elapsed_time = time.time() - start_time
             logger.info(f"✅ Streaming summary generated in {elapsed_time:.2f}s ({tokens_received} tokens)")
@@ -1130,7 +1544,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             logger.error(f"❌ Ollama streaming summary timed out after {self.timeout}s")
             return {}
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"[ERROR] Cannot connect to Ollama API at {self.base_url}: {e}")
+            primary_url, _ = self._resolve_urls(model)
+            logger.error(f"[ERROR] Cannot connect to Ollama API at {primary_url}: {e}")
             return {}
         except Exception as e:
             logger.error(f"❌ Error generating streaming summary: {e}", exc_info=True)
@@ -1161,12 +1576,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         
         try:
             logger.debug(f"Generating embedding with model {model}")
-            response = self.session.post(
-                f"{self.base_url}/api/embeddings",
-                json=payload,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
+            response = self._post_ollama(model, "/api/embeddings", payload, stream=False)
             
             data = response.json()
             embedding = data.get("embedding", [])
@@ -1184,7 +1594,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             return []
         except requests.exceptions.ConnectionError as e:
             audit_error = str(e)
-            logger.error(f"[ERROR] Cannot connect to Ollama API at {self.base_url}: {e}")
+            primary_url, _ = self._resolve_urls(model)
+            logger.error(f"[ERROR] Cannot connect to Ollama API at {primary_url}: {e}")
             return []
         except Exception as e:
             audit_error = str(e)
@@ -1212,11 +1623,13 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
     def query_ollama_chat(
         self,
         messages: List[Dict[str, str]],
-        model: str = "glm-4.7",
+        model: Optional[str] = None,
         stream: bool = True,
         temperature: Optional[float] = None,
-        max_tokens: int = 2048,
-        num_ctx: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        num_ctx: Optional[int] = None,
+        streaming_timeout: int = 90,
+        include_thinking: bool = False,
     ) -> Generator[str, None, None]:
         """Query Ollama using chat API format.
         
@@ -1227,6 +1640,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             temperature: Model temperature (0.0-1.0). If None, uses model default.
             max_tokens: Maximum tokens in response
             num_ctx: Context window size. If None, uses model default.
+            streaming_timeout: Max idle seconds between stream chunks (overridden by model config when set).
+            include_thinking: Yield ``<think>...</think>`` when the server emits thinking.
             
         Yields:
             Response chunks as strings
@@ -1234,7 +1649,13 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         if not self.enabled:
             yield "AI assistant is currently disabled."
             return
-        
+        if not model or not str(model).strip():
+            try:
+                from model_registry import get_primary_model
+
+                model = get_primary_model()
+            except ImportError:
+                model = "glm-5.1"
         # Get model-specific defaults if values not provided
         model_settings = self.get_model_settings(model)
         
@@ -1242,6 +1663,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.7)
         effective_ctx = num_ctx if num_ctx is not None else model_settings.get('num_ctx', 4096)
         effective_max_tokens = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
+        cfg_idle = model_settings.get("streaming_timeout")
+        effective_idle = float(cfg_idle) if cfg_idle is not None else float(streaming_timeout)
         
         payload = {
             "model": model,
@@ -1253,32 +1676,44 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 "num_ctx": effective_ctx
             }
         }
-        
+        self._apply_think_to_payload(payload, model_settings)
+
+        request_start_time = time.time()
         try:
-            response = self.session.post(
-                f"{self.base_url}/api/chat",
-                json=payload,
-                stream=stream,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
+            response = self._post_ollama(model, "/api/chat", payload, stream=stream)
             
             if stream:
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            chunk_data = json.loads(line)
-                            if "message" in chunk_data and "content" in chunk_data["message"]:
-                                yield chunk_data["message"]["content"]
-                            if chunk_data.get("done", False):
-                                break
-                        except json.JSONDecodeError:
-                            continue
+                yield from self._stream_chat_response(
+                    response,
+                    idle_timeout_seconds=effective_idle,
+                    include_thinking=include_thinking,
+                    request_start_time=request_start_time,
+                )
             else:
                 data = response.json()
-                if "message" in data and "content" in data["message"]:
-                    yield data["message"]["content"]
-                    
+                msg = data.get("message") or {}
+                thinking = msg.get("thinking") or msg.get("think")
+                if thinking:
+                    logger.info("[Ollama] chat thinking (%d chars)", len(str(thinking)))
+                    if include_thinking:
+                        yield f"<think>{thinking}</think>"
+                content = msg.get("content")
+                if content and str(content).strip():
+                    yield str(content)
+                elif (
+                    thinking
+                    and str(thinking).strip()
+                    and not include_thinking
+                ):
+                    logger.info(
+                        "Ollama chat non-stream: empty content; coalescing thinking (%d chars)",
+                        len(str(thinking)),
+                    )
+                    yield str(thinking)
+                _release_ollama_response_slot(response)
+
+        except OllamaHostBusyError:
+            raise
         except Exception as e:
             logger.error(f"Error in chat API: {e}")
             yield f"An error occurred: {str(e)}"
@@ -1405,7 +1840,7 @@ def _generate_summary_via_zhipu(
 ) -> Dict[str, Any]:
     """Run article summarization via Z.AI /chat/completions. Used when model.startswith('glm-')."""
     try:
-        from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
+        from glm_config import get_zhipu_api_key
         from summary_common import get_summary_system_prompt, parse_summary_response
     except ImportError:
         logger.warning("glm_config or summary_common not available for GLM summary")
@@ -1423,13 +1858,15 @@ def _generate_summary_via_zhipu(
         logger.debug(f"Truncated text from {original_len} to {max_chars} characters for Z.AI summarization")
 
     system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
-    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": text},
+    ]
     total_chars = len(system_prompt) + len(text)
     logger.debug(f"Z.AI prompt length: {total_chars} chars (system: {len(system_prompt)}, user: {len(text)})")
 
-    # Model config: max_tokens, temperature
     cfg_path = os.path.join(os.path.dirname(__file__), "model_config.json")
-    me = {}
+    me: Dict[str, Any] = {}
     if os.path.exists(cfg_path):
         try:
             with open(cfg_path, "r", encoding="utf-8") as f:
@@ -1437,124 +1874,69 @@ def _generate_summary_via_zhipu(
             me = (mc.get("models") or {}).get(model, mc.get("default_config") or {})
         except Exception:
             pass
-    max_tokens = me.get("max_tokens") or me.get("num_predict") or 1024
+    max_tokens = int(me.get("max_tokens") or me.get("num_predict") or 1024)
     temperature = float(me.get("temperature", 0.3))
 
-    url = f"{ZHIPU_BASE_URL.rstrip('/')}/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": stream,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
-
-    timeout_sec = GLM_TIMEOUT
+    timeout_sec = float(GLM_TIMEOUT)
     start_time = time.time()
     logger.info(
-        f"🤖 Z.AI summary query starting: model={model}, temp={temperature}, max_tokens={max_tokens}, "
-        f"stream={stream}, timeout={timeout_sec}s, url={url}"
+        "🤖 Z.AI summary query starting: model=%s, temp=%s, max_tokens=%s, stream=%s, timeout=%ss",
+        model,
+        temperature,
+        max_tokens,
+        stream,
+        timeout_sec,
     )
-
-    try:
-        conn_start = time.time()
-        r = requests.post(url, json=payload, headers=headers, stream=stream, timeout=timeout_sec)
-        connection_time = time.time() - conn_start
-        if stream:
-            logger.debug(f"⏱️  Z.AI connection established in {connection_time:.2f}s, streaming...")
-        r.raise_for_status()
-    except requests.exceptions.Timeout as e:
-        elapsed = time.time() - start_time
-        logger.error(
-            f"❌ Z.AI summary request timed out after {elapsed:.2f}s (timeout setting: {timeout_sec}s): {e}",
-            exc_info=True,
-        )
-        return {}
-    except requests.exceptions.ConnectionError as e:
-        elapsed = time.time() - start_time
-        logger.error(
-            f"❌ Cannot connect to Z.AI API at {url} after {elapsed:.2f}s: {e}",
-            exc_info=True,
-        )
-        return {}
-    except requests.exceptions.HTTPError as e:
-        elapsed = time.time() - start_time
-        status_code = getattr(e.response, "status_code", None) if hasattr(e, "response") else None
-        error_detail = ""
-        if hasattr(e, "response") and e.response is not None:
-            try:
-                error_body = e.response.text[:500]
-                error_detail = f" Response: {error_body}"
-            except Exception:
-                pass
-        logger.error(
-            f"❌ Z.AI API HTTP error after {elapsed:.2f}s: {e} (status={status_code}){error_detail}",
-            exc_info=True,
-        )
-        return {}
-    except Exception as e:
-        elapsed = time.time() - start_time
-        logger.error(
-            f"❌ Unexpected error querying Z.AI after {elapsed:.2f}s: {e}",
-            exc_info=True,
-        )
-        return {}
 
     raw = ""
     tokens_received = 0
-    if stream:
-        try:
-            for line in r.iter_lines(decode_unicode=True):
-                if not line or not line.strip():
-                    continue
-                s = line.strip()
-                if s.startswith("data: "):
-                    data = s[6:].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        obj = json.loads(data)
-                        for c in (obj.get("choices") or [])[:1]:
-                            part = (c.get("delta") or {}).get("content") or ""
-                            if part:
-                                raw += part
-                                tokens_received += len(part.split())  # Rough token count
-                                if progress_callback:
-                                    progress_callback(len(raw), min(95, len(raw) // 10))
-                            if c.get("finish_reason") == "stop":
-                                break
-                    except json.JSONDecodeError:
-                        continue
-            if progress_callback:
-                progress_callback(len(raw), 100)
-            elapsed = time.time() - start_time
-            logger.info(f"✅ Z.AI streaming summary completed in {elapsed:.2f}s ({tokens_received} tokens)")
-        except Exception as e:
-            elapsed = time.time() - start_time
-            logger.error(
-                f"❌ Z.AI streaming error after {elapsed:.2f}s: {e}",
-                exc_info=True,
-            )
-            return {}
-    else:
-        try:
-            data = r.json()
-            raw = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-            elapsed = time.time() - start_time
-            logger.info(f"✅ Z.AI summary request completed in {elapsed:.2f}s")
-        except Exception as e:
-            elapsed = time.time() - start_time
-            logger.error(
-                f"❌ Z.AI response parsing error after {elapsed:.2f}s: {e}",
-                exc_info=True,
-            )
-            return {}
+    try:
+        for chunk in glm_chat_completion(
+            messages,
+            model=model,
+            stream=stream,
+            json_mode=False,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout_sec,
+            allow_cheap_fallback=False,
+        ):
+            if chunk:
+                raw += chunk
+                if stream:
+                    tokens_received += len(chunk.split())
+                    if progress_callback:
+                        progress_callback(len(raw), min(95, len(raw) // 10))
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(
+            "❌ Z.AI summary error after %.2fs: %s",
+            elapsed,
+            e,
+            exc_info=True,
+        )
+        return {}
 
-    if not raw or not raw.strip():
+    elapsed = time.time() - start_time
+    if stream:
+        if progress_callback:
+            progress_callback(len(raw), 100)
+        logger.info(
+            "✅ Z.AI streaming summary completed in %.2fs (%d tokens)",
+            elapsed,
+            tokens_received,
+        )
+    else:
+        logger.info("✅ Z.AI summary request completed in %.2fs", elapsed)
+
+    stripped = (raw or "").strip()
+    if not stripped:
         logger.warning("Empty response from Z.AI")
         return {}
-    return parse_summary_response(raw.strip())
+    if glm_raw_indicates_transport_failure(stripped):
+        logger.warning("Z.AI summary transport failed (no parse): %s", stripped[:240])
+        return {}
+    return parse_summary_response(stripped)
 
 
 def generate_summary(
@@ -1573,17 +1955,58 @@ def generate_summary(
             len(model_chain),
             candidate,
         )
-        result = _generate_summary_once(
-            text=text,
-            model=candidate,
-            article_type=article_type,
-            stream=False,
-            progress_callback=None,
-        )
+        try:
+            result = _generate_summary_once(
+                text=text,
+                model=candidate,
+                article_type=article_type,
+                stream=False,
+                progress_callback=None,
+            )
+        except OllamaHostBusyError:
+            logger.warning(
+                "Summary: all Ollama hosts busy for model=%s; trying next in chain",
+                candidate,
+            )
+            continue
         if _has_summary_output(result):
             logger.info("Summary generated successfully with model=%s", candidate)
             return result
         logger.warning("Summary attempt failed/empty for model=%s", candidate)
+
+    head = model_chain[0] if model_chain else None
+    tried = {str(c).strip() for c in model_chain if c}
+    try:
+        from model_registry import get_cheap_model
+
+        cheap = (get_cheap_model() or "").strip()
+    except Exception:
+        cheap = ""
+    if (
+        head
+        and str(head).strip().startswith("glm-")
+        and cheap
+        and cheap not in tried
+        and glm_should_try_cheap_fallback(
+            model=str(head).strip(),
+            cheap_fallback_done=False,
+            http_status=None,
+        )
+    ):
+        logger.info("Summary chain exhausted; trying cheap GLM model=%s", cheap)
+        try:
+            result = _generate_summary_once(
+                text=text,
+                model=cheap,
+                article_type=article_type,
+                stream=False,
+                progress_callback=None,
+            )
+        except OllamaHostBusyError:
+            result = {}
+        if _has_summary_output(result):
+            logger.info("Summary generated successfully with cheap model=%s", cheap)
+            return result
 
     logger.error("All summary attempts failed across model chain: %s", model_chain)
     return {}
@@ -1608,17 +2031,58 @@ def generate_summary_streaming(
             len(model_chain),
             candidate,
         )
-        result = _generate_summary_once(
-            text=text,
-            model=candidate,
-            article_type=article_type,
-            stream=True,
-            progress_callback=progress_callback,
-        )
+        try:
+            result = _generate_summary_once(
+                text=text,
+                model=candidate,
+                article_type=article_type,
+                stream=True,
+                progress_callback=progress_callback,
+            )
+        except OllamaHostBusyError:
+            logger.warning(
+                "Streaming summary: all Ollama hosts busy for model=%s; trying next in chain",
+                candidate,
+            )
+            continue
         if _has_summary_output(result):
             logger.info("Streaming summary generated successfully with model=%s", candidate)
             return result
         logger.warning("Streaming summary attempt failed/empty for model=%s", candidate)
+
+    head = model_chain[0] if model_chain else None
+    tried = {str(c).strip() for c in model_chain if c}
+    try:
+        from model_registry import get_cheap_model
+
+        cheap = (get_cheap_model() or "").strip()
+    except Exception:
+        cheap = ""
+    if (
+        head
+        and str(head).strip().startswith("glm-")
+        and cheap
+        and cheap not in tried
+        and glm_should_try_cheap_fallback(
+            model=str(head).strip(),
+            cheap_fallback_done=False,
+            http_status=None,
+        )
+    ):
+        logger.info("Streaming summary chain exhausted; trying cheap GLM model=%s", cheap)
+        try:
+            result = _generate_summary_once(
+                text=text,
+                model=cheap,
+                article_type=article_type,
+                stream=True,
+                progress_callback=progress_callback,
+            )
+        except OllamaHostBusyError:
+            result = {}
+        if _has_summary_output(result):
+            logger.info("Streaming summary generated successfully with cheap model=%s", cheap)
+            return result
 
     logger.error("All streaming summary attempts failed across model chain: %s", model_chain)
     return {}
@@ -1635,7 +2099,7 @@ def _has_summary_output(result: Any) -> bool:
 
 
 def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
-    """Build ordered model chain: primary model followed by configured/provider fallbacks."""
+    """Build ordered model chain: primary model followed by configured (DB/env) fallbacks only."""
     primary = requested_model
     fallback_models: List[str] = []
     try:
@@ -1647,18 +2111,10 @@ def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
     except Exception as e:
         logger.warning("Could not load summarization settings: %s", e)
         if not primary:
-            primary = "glm-4.7"
+            primary = "qwen3.6:27b"
         fallback_models = []
 
-    defaults: List[str] = []
-    p = (primary or "").strip()
-    if p.startswith("glm-"):
-        # Keep a fast GLM fallback in-chain even when DB fallback list is unset.
-        defaults = ["glm-4.7", "glm-4.5-air"]
-    else:
-        defaults = ["glm-4.5-air"]
-
-    chain = [primary] + fallback_models + defaults
+    chain = [primary] + fallback_models
     ordered: List[str] = []
     seen: set[str] = set()
     for m in chain:
@@ -1669,6 +2125,14 @@ def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
             continue
         seen.add(s)
         ordered.append(s)
+
+    # Drop glm-* fallbacks when Z.AI is flaky; keep primary model even if it is glm-*.
+    if os.getenv("SUMMARY_SKIP_GLM_FALLBACK", "").strip().lower() in ("1", "true", "yes", "on"):
+        if ordered:
+            head, tail = ordered[0], ordered[1:]
+            tail = [x for x in tail if not str(x).strip().startswith("glm-")]
+            ordered = [head] + tail
+
     return ordered
 
 
@@ -1679,6 +2143,7 @@ def _generate_summary_once(
     article_type: str = "",
     stream: bool,
     progress_callback=None,
+    num_ctx_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Generate a summary once for the specified model/provider."""
     start_ms = time.time()
@@ -1724,9 +2189,15 @@ def _generate_summary_once(
                 model=model,
                 article_type=article_type,
                 progress_callback=progress_callback,
+                num_ctx_override=num_ctx_override,
             )
             return result
-        result = client.generate_summary(text, model=model, article_type=article_type)
+        result = client.generate_summary(
+            text,
+            model=model,
+            article_type=article_type,
+            num_ctx_override=num_ctx_override,
+        )
         return result
     except Exception as e:
         error_msg = str(e)

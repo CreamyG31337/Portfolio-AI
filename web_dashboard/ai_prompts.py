@@ -139,7 +139,7 @@ def get_system_prompt(model: str = None, allow_search: bool = True) -> str:
     """Get the appropriate system prompt based on the model and search preference.
     
     Args:
-        model: Model name (e.g., 'gemini-2.0-flash-exp', 'llama3.2:3b', 'glm-4.7')
+        model: Model name (e.g., 'gemini-2.0-flash-exp', 'llama3.2:3b', 'glm-5.1')
         allow_search: Whether the model should be told it can search (default: True)
         
     Returns:

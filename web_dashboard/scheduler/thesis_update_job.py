@@ -494,9 +494,8 @@ def generate_thesis(fund_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         Dict with thesis title, overview, and pillars, or None on failure
     """
     from glm_config import get_zhipu_api_key
-
-    # Use Z.AI coding API for GLM-4.7 (the general endpoint doesn't have this model)
-    ZHIPU_API_URL = "https://api.z.ai/api/coding/paas/v4"
+    from glm_transport import glm_chat_completion_text
+    from model_registry import get_primary_model
 
     # Build context for AI
     context = format_thesis_context(fund_data)
@@ -525,85 +524,60 @@ You must respond with valid JSON only, no markdown or explanation outside the JS
         logger.error("GLM API key not available")
         return None
 
-    # GLM API call (OpenAI-compatible format)
-    # Using glm-4-plus for best quality, or glm-4.5-air for faster response
-    url = f"{ZHIPU_API_URL}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "glm-4.7",  # User's model with available credits
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": full_prompt}
-        ],
-        "temperature": 0.3,
-        "max_tokens": 8192,
-        # GLM doesn't have json_mode, but the system prompt instructs JSON output
-    }
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": full_prompt},
+    ]
+    model_id = get_primary_model()
 
-    # Retry logic with exponential backoff for rate limiting (429)
-    # GLM coding API has strict rate limits - be conservative
     max_retries = 5
     base_delay = 15  # seconds (longer delay for GLM's strict limits)
 
     for attempt in range(max_retries):
         try:
-            logger.info(f"Calling GLM API for thesis generation (attempt {attempt + 1}/{max_retries})...")
-            logger.info(f"URL: {url}")
-            response = requests.post(url, json=payload, headers=headers, timeout=180)
+            logger.info(
+                "Calling GLM API for thesis generation (attempt %s/%s, model=%s)...",
+                attempt + 1,
+                max_retries,
+                model_id,
+            )
+            raw = glm_chat_completion_text(
+                messages,
+                model=model_id,
+                stream=False,
+                json_mode=False,
+                temperature=0.3,
+                max_tokens=8192,
+                timeout=180.0,
+                allow_cheap_fallback=False,
+            )
 
-            # Log actual response for debugging
-            logger.info(f"Response status: {response.status_code}")
-            if response.status_code != 200:
-                logger.error(f"Response body: {response.text[:500]}")
+            if attempt < max_retries - 1 and raw and "429" in raw and "GLM API error" in raw:
+                delay = base_delay * (2 ** attempt)
+                logger.warning("Rate limited (429). Waiting %ss before retry...", delay)
+                time.sleep(delay)
+                continue
 
-            # Handle rate limiting with retry
-            if response.status_code == 429:
-                if attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)  # Exponential backoff: 5s, 10s, 20s
-                    logger.warning(f"Rate limited (429). Waiting {delay}s before retry...")
-                    time.sleep(delay)
-                    continue
-                else:
-                    logger.error("Rate limited after all retries")
-                    return None
-
-            response.raise_for_status()
-
-            data = response.json()
-            choices = data.get("choices", [])
-            if not choices:
-                logger.error("GLM returned no choices")
-                logger.error(f"Full response: {data}")
-                return None
-
-            content = choices[0].get("message", {}).get("content", "")
-            finish_reason = choices[0].get("finish_reason", "unknown")
-
-            if not content:
+            if not raw or not raw.strip():
                 logger.error("GLM returned empty content")
-                logger.error(f"Full response: {data}")
                 return None
 
-            logger.info(f"GLM response received ({len(content)} chars, finish_reason={finish_reason})")
+            logger.info("GLM response received (%d chars)", len(raw))
+            return parse_thesis_response(raw)
 
-            # Parse JSON response
-            thesis = parse_thesis_response(content)
-            return thesis
-
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             if attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
-                logger.warning(f"Request failed: {e}. Waiting {delay}s before retry...")
+                logger.warning("Request failed: %s. Waiting %ss before retry...", e, delay)
                 time.sleep(delay)
             else:
-                logger.error(f"GLM API request failed after {max_retries} attempts: {e}", exc_info=True)
+                logger.error(
+                    "GLM API request failed after %s attempts: %s",
+                    max_retries,
+                    e,
+                    exc_info=True,
+                )
                 return None
-        except Exception as e:
-            logger.error(f"Error generating thesis: {e}", exc_info=True)
-            return None
 
     return None
 

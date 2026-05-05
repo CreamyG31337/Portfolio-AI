@@ -32,6 +32,7 @@ from ai_context_builder import (
 )
 from ai_prompts import get_system_prompt
 from user_preferences import get_user_ai_model, set_user_ai_model
+from model_registry import get_cheap_model, get_primary_model
 from streamlit_utils import (
     get_current_positions, get_trade_log, get_cash_balances,
     calculate_portfolio_value_over_time, get_fund_thesis_data, get_available_funds,
@@ -555,8 +556,15 @@ with st.sidebar:
             st.error("❌ GLM API key not configured. Please configure in AI Settings.")
             st.stop()
         
-        # Display GLM model details
-        if selected_model == "glm-4.7":
+        # Display GLM model details (primary/cheap ids come from model_registry / env)
+        _pm, _cm = get_primary_model(), get_cheap_model()
+        if selected_model == _pm:
+            st.caption(f"ℹ️ 🚀 {_pm} — primary GLM (long context; plan-dependent)")
+        elif selected_model == _cm:
+            st.caption(f"ℹ️ ⚡ {_cm} — cheap / high-volume GLM")
+        elif selected_model == "glm-5":
+            st.caption("ℹ️ GLM-5 - GLM-5 base (plan-dependent)")
+        elif selected_model == "glm-4.7":
             st.caption("ℹ️ 🧠 GLM-4.7 - Advanced reasoning with 128K context")
         elif selected_model == "glm-4.5-air":
             st.caption("ℹ️ ⚡ GLM-4.5 Air - Fast responses with 128K context")

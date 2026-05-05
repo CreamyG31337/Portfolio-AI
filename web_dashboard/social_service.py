@@ -13,7 +13,7 @@ import logging
 import time
 import re
 import requests
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 from datetime import datetime, timezone, timedelta
 from settings import get_summarizing_model
 from env_loader import load_project_dotenv
@@ -21,6 +21,72 @@ from env_loader import load_project_dotenv
 load_project_dotenv()
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_json_markdown_fence(text: str) -> str:
+    """Remove optional ```json ... ``` wrapping from model output."""
+    s = text.strip()
+    s = re.sub(r"^```(?:json)?\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s*```\s*$", "", s)
+    return s.strip()
+
+
+def _iter_raw_json_values(t: str, opener: str) -> Iterator[Any]:
+    """Yield successfully decoded JSON values starting at each ``opener`` (``{`` or ``[``).
+
+    Uses :meth:`json.JSONDecoder.raw_decode` so each value is one balanced structure,
+    not a greedy ``\\{.*\\}`` span that breaks when multiple JSON blobs appear.
+    """
+    dec = json.JSONDecoder()
+    for i, ch in enumerate(t):
+        if ch != opener:
+            continue
+        try:
+            val, _end = dec.raw_decode(t, i)
+        except json.JSONDecodeError:
+            continue
+        yield val
+
+
+def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
+    """Parse a JSON object from model output; tolerate fences and leading prose."""
+    if not text or not str(text).strip():
+        return None
+    t = str(text).strip()
+    for candidate in (t, _strip_json_markdown_fence(t)):
+        if not candidate:
+            continue
+        try:
+            out = json.loads(candidate)
+            if isinstance(out, dict):
+                return out
+        except json.JSONDecodeError:
+            continue
+    for val in _iter_raw_json_values(t, "{"):
+        if isinstance(val, dict):
+            return val
+    return None
+
+
+def _extract_json_array(text: str) -> Optional[List[Any]]:
+    """Parse a JSON array from model output; tolerate fences and leading prose."""
+    if not text or not str(text).strip():
+        return None
+    t = str(text).strip()
+    for candidate in (t, _strip_json_markdown_fence(t)):
+        if not candidate:
+            continue
+        try:
+            out = json.loads(candidate)
+            if isinstance(out, list):
+                return out
+        except json.JSONDecodeError:
+            continue
+    for val in _iter_raw_json_values(t, "["):
+        if isinstance(val, list):
+            return val
+    return None
+
 
 # FlareSolverr configuration (for bypassing Cloudflare on StockTwits)
 # Default: host.docker.internal for Docker containers
@@ -786,19 +852,25 @@ OUTPUT JSON ONLY:
                     # Call Ollama (reusing query_ollama logic or direct call)
                     # We'll use query_ollama from client
                     response_text = ""
+                    opportunity_model = get_summarizing_model()
                     for chunk in self.ollama.query_ollama(
-                        prompt=user_prompt, 
-                        model="granite3.3:8b", # Explicitly use Granite for analysis
+                        prompt=user_prompt,
+                        model=opportunity_model,
                         system_prompt=system_prompt,
                         json_mode=True,
                         temperature=0.1,
-                        stream=True
+                        stream=True,
                     ):
                         response_text += chunk
                     
-                    # Parse
-                    import json
-                    result = json.loads(response_text)
+                    result = _extract_json_object(response_text)
+                    if not result:
+                        logger.warning(
+                            "Could not parse opportunity JSON for post %s (model=%s)",
+                            post_id,
+                            opportunity_model,
+                        )
+                        continue
                     
                     if result.get('is_opportunity') and result.get('ticker'):
                         # Normalize ticker
@@ -1160,10 +1232,11 @@ Provide analysis in JSON format:
                 logger.warning(f"AI analysis failed for session {session_id}")
                 return None
             
-            try:
-                analysis_result = json.loads(ai_response)
-            except json.JSONDecodeError:
-                logger.warning(f"Invalid JSON response from AI for session {session_id}")
+            analysis_result = _extract_json_object(ai_response)
+            if not analysis_result:
+                logger.warning(
+                    "Invalid or unrecoverable JSON from AI for session %s", session_id
+                )
                 return None
             
             # Store analysis results in research DB
@@ -1175,8 +1248,6 @@ Provide analysis in JSON format:
                 'confidence_score': analysis_result.get('confidence_score'),
                 'sentiment_label': analysis_result.get('sentiment_label'),
                 'summary': analysis_result.get('summary'),
-                'key_themes': analysis_result.get('key_themes', []),
-                'reasoning': analysis_result.get('reasoning'),
                 'key_themes': analysis_result.get('key_themes', []),
                 'reasoning': analysis_result.get('reasoning'),
                 'model_used': model_name,
@@ -1254,31 +1325,36 @@ For each ticker, provide JSON validation:
             )
             
             if ai_response:
-                try:
-                    validated_tickers = json.loads(ai_response)
-                    
+                validated_tickers = _extract_json_array(ai_response)
+                if not validated_tickers:
+                    logger.warning("Could not parse AI ticker extraction as JSON array")
+                else:
                     for ticker_data in validated_tickers:
-                        # Look up company info from Supabase
-                        company_info = self._lookup_company_info(ticker_data['ticker'])
-                        
-                        insert_query = """
-                            INSERT INTO extracted_tickers 
-                            (analysis_id, ticker, confidence, context, is_primary, 
-                             company_name, sector)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """
-                        self.postgres.execute_update(insert_query, (
-                            analysis_id,
-                            ticker_data['ticker'],
-                            ticker_data.get('confidence', 0.5),
-                            ticker_data.get('context', ''),
-                            ticker_data.get('is_primary', False),
-                            ticker_data.get('company_name') or company_info.get('company_name'),
-                            company_info.get('sector')
-                        ))
-                        
-                except (json.JSONDecodeError, KeyError) as e:
-                    logger.warning(f"Error parsing AI ticker extraction: {e}")
+                        if not isinstance(ticker_data, dict):
+                            continue
+                        sym = ticker_data.get("ticker")
+                        if not sym:
+                            continue
+                        try:
+                            company_info = self._lookup_company_info(str(sym))
+                            
+                            insert_query = """
+                                INSERT INTO extracted_tickers 
+                                (analysis_id, ticker, confidence, context, is_primary, 
+                                 company_name, sector)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            """
+                            self.postgres.execute_update(insert_query, (
+                                analysis_id,
+                                str(sym),
+                                ticker_data.get('confidence', 0.5),
+                                ticker_data.get('context', ''),
+                                ticker_data.get('is_primary', False),
+                                ticker_data.get('company_name') or company_info.get('company_name'),
+                                company_info.get('sector')
+                            ))
+                        except Exception as e:
+                            logger.warning("Error inserting extracted ticker row: %s", e)
                     
         except Exception as e:
             logger.warning(f"Error during AI ticker extraction: {e}")

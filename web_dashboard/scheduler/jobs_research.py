@@ -7,7 +7,7 @@ Jobs for fetching and storing market research articles from various sources.
 
 import logging
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add parent directory to path if needed (standard boilerplate for these jobs)
@@ -36,11 +36,7 @@ elif sys.path[0] != str(project_root):
     sys.path.insert(0, str(project_root))
 
 from scheduler.scheduler_core import log_job_execution
-from scheduler.jobs_common import (
-    calculate_relevance_score,
-    claim_recent_summary_input,
-    has_strong_market_signal,
-)
+from scheduler.jobs_common import calculate_relevance_score
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -96,8 +92,7 @@ def market_research_job() -> None:
         # Import dependencies (lazy imports to avoid circular dependencies)
         try:
             from searxng_client import get_searxng_client, check_searxng_health
-            from research_utils import extract_article_content
-            from ollama_client import get_ollama_client, generate_summary
+            from ollama_client import get_ollama_client
             from research_repository import ResearchRepository
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
@@ -105,7 +100,7 @@ def market_research_job() -> None:
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
             return
-        
+
         # Check if SearXNG is available
         log_job_step(job_id, "searxng_check", "Checking SearXNG health...")
         if not check_searxng_health():
@@ -194,304 +189,37 @@ def market_research_job() -> None:
         total_results = len(search_results.get('results', []))
         logger.info(f"📊 Processing {total_results} search results (max {MAX_ARTICLE_DURATION}s per article, {MAX_JOB_DURATION}s total)")
         
-        for idx, result in enumerate(search_results['results'], 1):
-            # Check overall job timeout
-            elapsed = time.time() - start_time
-            if elapsed > MAX_JOB_DURATION:
-                remaining = total_results - idx + 1
-                log_job_step(job_id, "timeout", f"Job timeout reached ({elapsed/60:.1f}m). {remaining} remaining", status="failed")
-                logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Skipping {remaining} remaining articles")
-                break
-            
-            article_start = time.time()
-            logger.info(f"📰 Processing article {idx}/{total_results}: {result.get('title', 'Unknown')[:50]}...")
-            processing_claimed = False
-            url = ""
-            try:
-                url = result.get('url', '')
-                title = result.get('title', '')
-                
-                if not url or not title:
-                    logger.debug("Skipping result with missing URL or title")
-                    continue
+        from scheduler.article_pipeline import (
+            get_research_article_worker_count,
+            run_article_pipeline_parallel,
+        )
+        from scheduler.market_research_workers import MarketResearchCtx, process_market_research_pair
 
-                processing_claimed = research_repo.claim_processing_url(url)
-                if not processing_claimed:
-                    logger.debug(f"Article already being processed by another job thread: {title[:50]}...")
-                    articles_skipped += 1
-                    continue
-                
-                # Check robots.txt compliance (if enabled)
-                try:
-                    from robots_utils import check_url_allowed
-                    if not check_url_allowed(url):
-                        logger.info(f"ℹ️ Skipping URL disallowed by robots.txt: {url[:60]}...")
-                        articles_skipped += 1
-                        continue
-                except ImportError:
-                    # robots_utils not available, skip check
-                    pass
-                
-                # Check if domain is blacklisted
-                from research_utils import is_domain_blacklisted
-                is_blocked, domain = is_domain_blacklisted(url, blacklist)
-                if is_blocked:
-                    logger.info(f"ℹ️ Skipping blacklisted domain: {domain}")
-                    articles_blacklisted += 1
-                    continue
-                
-                
-                # Check if article already exists
-                if research_repo.article_exists(url):
-                    logger.debug(f"Article already exists: {title[:50]}...")
-                    articles_skipped += 1
-                    continue
-                
-                # Check per-article timeout before expensive operations
-                article_elapsed = time.time() - article_start
-                if article_elapsed > MAX_ARTICLE_DURATION:
-                    logger.warning(f"⏱️  Article timeout ({article_elapsed:.1f}s) - skipping: {title[:50]}...")
-                    continue
-                
-                # Extract article content
-                log_job_step(job_id, "extract", f"Extracting article {idx}/{total_results}: {title[:60]}")
-                logger.info(f"  Extracting content: {title[:50]}...")
-                extracted = extract_article_content(url)
-                
-                # Check timeout after extraction
-                article_elapsed = time.time() - article_start
-                if article_elapsed > MAX_ARTICLE_DURATION:
-                    logger.warning(f"⏱️  Article timeout after extraction ({article_elapsed:.1f}s) - skipping AI processing: {title[:50]}...")
-                    continue
-                
-                # Check for paid subscription articles
-                if extracted.get('error') == 'paid_subscription':
-                    # Check if archive was submitted
-                    if extracted.get('archive_submitted'):
-                        logger.info(f"Paywalled article submitted to archive, saving for retry: {title[:50]}...")
-                        # Save article with minimal content so retry job can find it
-                        article_id = research_repo.save_article(
-                            tickers=None,
-                            sector=None,
-                            article_type="Market News",
-                            title=title,
-                            url=url,
-                            summary="[Paywalled - Submitted to archive for processing]",
-                            content="[Paywalled - Submitted to archive for processing]",
-                            source=extracted.get('source'),
-                            published_at=None,
-                            relevance_score=0.0,
-                            embedding=None
-                        )
-                        if article_id:
-                            # Mark as archive submitted
-                            research_repo.mark_archive_submitted(article_id, url)
-                            articles_skipped += 1
-                            logger.info(f"Saved paywalled article for archive retry: {article_id}")
-                    else:
-                        logger.info(f"Skipping paid subscription article: {title[:50]}...")
-                        articles_skipped += 1
-                    continue
-                
-                # Initialize health tracker (lazy import to avoid circular deps)
-                from research_domain_health import DomainHealthTracker, normalize_domain
-                tracker = DomainHealthTracker()
-                
-                # Get auto-blacklist threshold
-                from settings import get_system_setting
-                threshold = get_system_setting("auto_blacklist_threshold", default=4)
-                
-                # Check if extraction succeeded
-                content = extracted.get('content', '')
-                if not content or not extracted.get('success'):
-                    # Record failure with reason
-                    error_reason = extracted.get('error', 'unknown')
-                    failure_count = tracker.record_failure(url, error_reason)
-                    
-                    domain = normalize_domain(url)
-                    logger.warning(f"⚠️ Domain extraction failed: {domain} (failure {failure_count}/{threshold}) - Reason: {error_reason}")
-                    
-                    # Check if we should auto-blacklist
-                    if tracker.should_auto_blacklist(url):
-                        if tracker.auto_blacklist_domain(url):
-                            logger.warning(f"🚫 AUTO-BLACKLISTED: {domain} ({failure_count} consecutive failures of type: {error_reason})")
-                            articles_blacklisted += 1
-                        else:
-                            logger.warning(f"Failed to auto-blacklist {domain}")
-                    
-                    continue
-                
-                # Record success
-                tracker.record_success(url)
-                
-                # Check timeout before AI processing (most expensive)
-                article_elapsed = time.time() - article_start
-                remaining_time = MAX_ARTICLE_DURATION - article_elapsed
-                if remaining_time < 60:  # Need at least 60s for AI processing
-                    logger.warning(f"⏱️  Not enough time for AI processing ({remaining_time:.1f}s remaining) - skipping: {title[:50]}...")
-                    continue
-                
-                # Generate summary via shared AI fallback chain; embedding remains Ollama-only
-                summary = None
-                summary_data = {}
-                extracted_tickers = []
-                extracted_sector = None
-                embedding = None
-                log_job_step(job_id, "ai_summary", f"Generating AI summary for: {title[:60]}")
-                logger.info(f"  Generating summary for: {title[:50]}...")
-                summary_input = f"Title: {title}\n\n{content}" if title else content
-                should_summarize, summary_hash = claim_recent_summary_input(summary_input)
-                if not should_summarize:
-                    logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:50]}...")
-                    articles_skipped += 1
-                    continue
-                summary_data = generate_summary(summary_input, article_type="Market News")
+        ctx_mr = MarketResearchCtx(
+            job_id=job_id,
+            job_start_time=start_time,
+            research_repo=research_repo,
+            ollama_client=ollama_client,
+            blacklist=blacklist,
+            total_results=total_results,
+            max_job_duration=MAX_JOB_DURATION,
+            max_article_duration=MAX_ARTICLE_DURATION,
+        )
+        pairs = list(enumerate(search_results["results"], 1))
+        workers_mr = get_research_article_worker_count()
+        agg_mr = run_article_pipeline_parallel(
+            lambda p, c=ctx_mr: process_market_research_pair(c, p),
+            pairs,
+            max_workers=workers_mr,
+            job_start_time=start_time,
+            max_job_duration_sec=MAX_JOB_DURATION,
+        )
+        articles_processed = agg_mr.processed
+        articles_saved = agg_mr.saved
+        articles_skipped = agg_mr.skipped
+        articles_blacklisted = agg_mr.blacklisted
+        articles_irrelevant = agg_mr.irrelevant
 
-                # Handle backward compatibility: if old string format is returned
-                if isinstance(summary_data, str):
-                    summary = summary_data
-                    logger.debug("Received old string format summary, using as-is")
-                elif isinstance(summary_data, dict) and summary_data:
-                    summary = summary_data.get("summary", "")
-
-                    # Extract tickers with real-company validation
-                    extracted_tickers = _extract_and_validate_tickers(
-                        summary_data, title, content,
-                    )
-                    if extracted_tickers:
-                        logger.info(f"Extracted {len(extracted_tickers)} validated ticker(s): {extracted_tickers}")
-
-                    sectors = summary_data.get("sectors", [])
-
-                    # Use first sector if available
-                    if sectors:
-                        extracted_sector = sectors[0]
-                        logger.info(f"Extracted sector from article: {extracted_sector}")
-
-                    # Log extracted metadata
-                    if extracted_tickers or sectors:
-                        logger.debug(
-                            "Extracted metadata - Tickers: %s, Sectors: %s, Themes: %s",
-                            extracted_tickers,
-                            sectors,
-                            summary_data.get("key_themes", []),
-                        )
-
-                if not summary:
-                    logger.warning(f"Failed to generate summary for {title[:50]}...")
-
-                market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                has_market_signal = has_strong_market_signal(
-                    title=title,
-                    content=content,
-                    tickers=extracted_tickers,
-                )
-                if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
-                    reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
-                    if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
-                        reason = reason or "No strong market signals detected in article text"
-                    articles_irrelevant += 1
-                    logger.info(
-                        f"  🚫 Skipping non-market article: {title[:50]}... "
-                        f"Reason: {reason or 'No market relevance detected'}"
-                    )
-                    continue
-
-                # Generate embedding for semantic search (Ollama-only)
-                if ollama_client:
-                    logger.debug(f"Generating embedding for: {title[:50]}...")
-                    embedding = ollama_client.generate_embedding(content[:6000])  # Truncate to avoid token limits
-                    if not embedding:
-                        logger.warning(f"Failed to generate embedding for {title[:50]}...")
-                else:
-                    logger.debug("Ollama not available - skipping embedding generation")
-                
-                # Calculate relevance score (market_research_job doesn't check owned tickers - always 0.5 for general market news)
-                relevance_score = calculate_relevance_score(extracted_tickers, extracted_sector, owned_tickers=None)
-                
-                # Extract logic_check for relationship confidence scoring
-                logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
-                
-                # Save article to database
-                article_id = research_repo.save_article(
-                    tickers=extracted_tickers if extracted_tickers else None,  # Use extracted tickers if available
-                    sector=extracted_sector,  # Use extracted sector if available
-                    article_type="Market News",
-                    title=extracted.get('title') or title,
-                    url=url,
-                    summary=summary,
-                    content=content,
-                    source=extracted.get('source'),
-                    published_at=extracted.get('published_at'),
-                    relevance_score=relevance_score,
-                    embedding=embedding,
-                    claims=summary_data.get("claims") if isinstance(summary_data, dict) else None,
-                    fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
-                    conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
-                    sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-                    sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
-                    logic_check=logic_check
-                )
-                
-                article_duration = time.time() - article_start
-                
-                if article_id:
-                    articles_saved += 1
-                    log_job_step(job_id, "save", f"Saved: {title[:60]} ({article_duration:.0f}s)", status="success",
-                                metadata={"tickers": extracted_tickers} if extracted_tickers else None)
-                    logger.info(f"✅ Saved article in {article_duration:.1f}s: {title[:50]}...")
-                    
-                    # Extract and save relationships (GraphRAG edges)
-                    if isinstance(summary_data, dict) and logic_check and logic_check != "HYPE_DETECTED":
-                        relationships = summary_data.get("relationships", [])
-                        if relationships and isinstance(relationships, list):
-                            # Calculate initial confidence based on logic_check
-                            if logic_check == "DATA_BACKED":
-                                initial_confidence = 0.8
-                            else:  # NEUTRAL
-                                initial_confidence = 0.4
-                            
-                            # Normalize and save each relationship
-                            from research_utils import normalize_relationship
-                            relationships_saved = 0
-                            for rel in relationships:
-                                if isinstance(rel, dict):
-                                    source = rel.get("source", "").strip()
-                                    target = rel.get("target", "").strip()
-                                    rel_type = rel.get("type", "").strip()
-                                    
-                                    if source and target and rel_type:
-                                        # Normalize relationship direction (Option A: Supplier -> Buyer)
-                                        norm_source, norm_target, norm_type = normalize_relationship(source, target, rel_type)
-                                        
-                                        # Save relationship
-                                        rel_id = research_repo.save_relationship(
-                                            source_ticker=norm_source,
-                                            target_ticker=norm_target,
-                                            relationship_type=norm_type,
-                                            initial_confidence=initial_confidence,
-                                            source_article_id=article_id
-                                        )
-                                        if rel_id:
-                                            relationships_saved += 1
-                            
-                            if relationships_saved > 0:
-                                logger.info(f"✅ Saved {relationships_saved} relationship(s) from article: {title[:50]}...")
-                else:
-                    logger.warning(f"Failed to save article: {title[:50]}...")
-                
-                articles_processed += 1
-                
-            except Exception as e:
-                article_duration = time.time() - article_start
-                title_safe = result.get('title', 'Unknown')[:50] if result else 'Unknown'
-                log_job_step(job_id, "error", f"Error processing article: {str(e)[:100]}", status="failed")
-                logger.error(f"❌ Error processing article after {article_duration:.1f}s '{title_safe}...': {e}")
-                continue
-            finally:
-                if processing_claimed:
-                    research_repo.release_processing_url(url)
-        
         duration_ms = int((time.time() - start_time) * 1000)
         duration_min = duration_ms / 60000
         message = (
@@ -544,8 +272,7 @@ def rss_feed_ingest_job() -> None:
         # Import dependencies
         try:
             from rss_utils import get_rss_client
-            from research_utils import extract_article_content
-            from ollama_client import get_ollama_client, generate_summary
+            from ollama_client import get_ollama_client
             from research_repository import ResearchRepository
             from postgres_client import PostgresClient
         except ImportError as e:
@@ -636,198 +363,32 @@ def rss_feed_ingest_job() -> None:
                 
                 logger.info(f"  Found {len(items)} items (filtered {junk_filtered} junk articles)")
                 
-                # Process each item
-                for item in items:
-                    try:
-                        url = item.get('url')
-                        title = item.get('title')
-                        content = item.get('content', '')
-                        
-                        if not url or not title:
-                            continue
-                        
-                        # Check robots.txt compliance (if enabled)
-                        try:
-                            from robots_utils import check_url_allowed
-                            if not check_url_allowed(url):
-                                logger.info(f"  Skipping URL disallowed by robots.txt: {url[:60]}...")
-                                total_articles_skipped += 1
-                                continue
-                        except ImportError:
-                            # robots_utils not available, skip check
-                            pass
-                        
-                        # Check if already exists
-                        if research_repo.article_exists(url):
-                            logger.debug(f"Article already exists: {title[:50]}...")
-                            total_articles_skipped += 1
-                            continue
-                        
-                        # Use RSS content if available, otherwise fetch from URL
-                        if not content or len(content) < 200:
-                            logger.info(f"  Extracting full content: {title[:40]}...")
-                            extracted = extract_article_content(url)
-                            
-                            # Check for paid subscription articles
-                            if extracted.get('error') == 'paid_subscription':
-                                # Check if archive was submitted
-                                if extracted.get('archive_submitted'):
-                                    logger.info(f"  Paywalled article submitted to archive, saving for retry: {title[:40]}...")
-                                    # Save article with minimal content so retry job can find it
-                                    article_id = research_repo.save_article(
-                                        tickers=None,
-                                        sector=None,
-                                        article_type="Market News",
-                                        title=title,
-                                        url=url,
-                                        summary="[Paywalled - Submitted to archive for processing]",
-                                        content="[Paywalled - Submitted to archive for processing]",
-                                        source=item.get('source'),
-                                        published_at=item.get('published_at'),
-                                        relevance_score=0.0,
-                                        embedding=None
-                                    )
-                                    if article_id:
-                                        # Mark as archive submitted
-                                        research_repo.mark_archive_submitted(article_id, url)
-                                        total_articles_skipped += 1
-                                        logger.info(f"  Saved paywalled article for archive retry: {article_id}")
-                                else:
-                                    logger.info(f"  Skipping paid subscription article: {title[:40]}...")
-                                    total_articles_skipped += 1
-                                continue
-                            
-                            content = extracted.get('content', '')
-                            if not content:
-                                logger.warning(f"Failed to extract content for {title[:40]}...")
-                                continue
-                        
-                        # Generate AI summary and embedding
-                        summary = None
-                        summary_data = {}
-                        extracted_tickers = item.get('tickers', []) or []  # May be from RSS metadata
-                        extracted_sector = None
-                        embedding = None
-                        
-                        summary_input = f"Title: {title}\n\n{content}" if title else content
-                        should_summarize, summary_hash = claim_recent_summary_input(summary_input)
-                        if not should_summarize:
-                            logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
-                            total_articles_skipped += 1
-                            continue
-                        summary_data = generate_summary(summary_input, article_type="Market News")
+                from scheduler.article_pipeline import (
+                    get_research_article_worker_count,
+                    run_article_pipeline_parallel,
+                )
+                from scheduler.rss_feed_workers import RssFeedItemCtx, process_rss_feed_item
 
-                        if isinstance(summary_data, str):
-                            summary = summary_data
-                        elif isinstance(summary_data, dict) and summary_data:
-                            summary = summary_data.get("summary", "")
+                workers_rss = get_research_article_worker_count()
+                ctx_rss = RssFeedItemCtx(
+                    research_repo=research_repo,
+                    ollama_client=ollama_client,
+                    owned_tickers=owned_tickers,
+                    feed_name=feed_name,
+                    sleep_after_article_sec=0.0 if workers_rss > 1 else 0.5,
+                )
+                agg_rss = run_article_pipeline_parallel(
+                    lambda it, c=ctx_rss: process_rss_feed_item(c, it),
+                    items,
+                    max_workers=workers_rss,
+                    job_start_time=start_time,
+                    max_job_duration_sec=50 * 60,
+                )
+                total_articles_processed += agg_rss.processed
+                total_articles_saved += agg_rss.saved
+                total_articles_skipped += agg_rss.skipped
+                total_articles_irrelevant += agg_rss.irrelevant
 
-                            # Extract tickers from AI if not already from RSS
-                            if not extracted_tickers:
-                                extracted_tickers = _extract_and_validate_tickers(
-                                    summary_data, title, content,
-                                )
-
-                            # Extract sector
-                            sectors = summary_data.get("sectors", [])
-                            if sectors:
-                                extracted_sector = sectors[0]
-
-                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                        has_market_signal = has_strong_market_signal(
-                            title=title,
-                            content=content,
-                            tickers=extracted_tickers,
-                        )
-                        if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
-                            reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
-                            if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
-                                reason = reason or "No strong market signals detected in RSS content"
-                            total_articles_irrelevant += 1
-                            logger.info(
-                                f"  🚫 Skipping non-market RSS item: {title[:40]}... "
-                                f"Reason: {reason or 'No market relevance detected'}"
-                            )
-                            continue
-
-                        # Generate embedding (Ollama-only)
-                        if ollama_client:
-                            embedding = ollama_client.generate_embedding(content[:6000])
-                        
-                        # Calculate relevance score
-                        relevance_score = calculate_relevance_score(
-                            extracted_tickers if extracted_tickers else [],
-                            extracted_sector,
-                            owned_tickers=list(owned_tickers) if owned_tickers else None
-                        )
-                        
-                        # Extract logic_check for relationship confidence
-                        logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
-                        
-                        # Save article
-                        article_id = research_repo.save_article(
-                            tickers=extracted_tickers if extracted_tickers else None,
-                            sector=extracted_sector,
-                            article_type="Market News",  # RSS feeds are general news
-                            title=title,
-                            url=url,
-                            summary=summary,
-                            content=content,
-                            source=item.get('source'),
-                            published_at=item.get('published_at'),
-                            relevance_score=relevance_score,
-                            embedding=embedding,
-                            claims=summary_data.get("claims") if isinstance(summary_data, dict) else None,
-                            fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
-                            conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
-                            sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-                            sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
-                            logic_check=logic_check
-                        )
-                        
-                        if article_id:
-                            total_articles_saved += 1
-                            logger.info(f"  ✅ Saved: {title[:40]}...")
-                            
-                            # Extract and save relationships
-                            if isinstance(summary_data, dict) and logic_check and logic_check != "HYPE_DETECTED":
-                                relationships = summary_data.get("relationships", [])
-                                if relationships and isinstance(relationships, list):
-                                    if logic_check == "DATA_BACKED":
-                                        initial_confidence = 0.8
-                                    else:
-                                        initial_confidence = 0.4
-                                    
-                                    from research_utils import normalize_relationship
-                                    relationships_saved = 0
-                                    for rel in relationships:
-                                        if isinstance(rel, dict):
-                                            source = rel.get("source", "").strip()
-                                            target = rel.get("target", "").strip()
-                                            rel_type = rel.get("type", "").strip()
-                                            
-                                            if source and target and rel_type:
-                                                norm_source, norm_target, norm_type = normalize_relationship(source, target, rel_type)
-                                                rel_id = research_repo.save_relationship(
-                                                    source_ticker=norm_source,
-                                                    target_ticker=norm_target,
-                                                    relationship_type=norm_type,
-                                                    initial_confidence=initial_confidence,
-                                                    source_article_id=article_id
-                                                )
-                                                if rel_id:
-                                                    relationships_saved += 1
-                                    
-                                    if relationships_saved > 0:
-                                        logger.info(f"  ✅ Saved {relationships_saved} relationship(s)")
-                        
-                        total_articles_processed += 1
-                        time.sleep(0.5)  # Small delay between articles
-                        
-                    except Exception as e:
-                        logger.error(f"Error processing RSS item: {e}")
-                        continue
-                
                 # Update feed's last_fetched_at timestamp
                 try:
                     postgres_client.execute_update(
@@ -904,8 +465,7 @@ def ticker_research_job() -> None:
         # Import dependencies (lazy imports)
         try:
             from searxng_client import get_searxng_client, check_searxng_health
-            from research_utils import extract_article_content
-            from ollama_client import get_ollama_client, generate_summary
+            from ollama_client import get_ollama_client
             from research_repository import ResearchRepository
             from supabase_client import SupabaseClient
         except ImportError as e:
@@ -914,7 +474,7 @@ def ticker_research_job() -> None:
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
             return
-        
+
         # Check SearXNG health
         if not check_searxng_health():
             duration_ms = int((time.time() - start_time) * 1000)
@@ -1067,173 +627,39 @@ def ticker_research_job() -> None:
                 if not search_results or not search_results.get('results'):
                     logger.debug(f"No results for sector: {sector}")
                     continue
-                
-                # Process results
-                for result in search_results['results']:
-                    # Check per-item timeout
-                    item_elapsed = time.time() - item_start
-                    if item_elapsed > MAX_ITEM_DURATION:
-                        logger.warning(f"⏱️  Sector timeout ({item_elapsed:.1f}s) - stopping sector: {sector}")
-                        break
-                    processing_claimed = False
-                    url = ""
-                    try:
-                        url = result.get('url', '')
-                        title = result.get('title', '')
-                        
-                        if not url or not title:
-                            continue
-                        
-                        # Check robots.txt compliance (if enabled)
-                        try:
-                            from robots_utils import check_url_allowed
-                            if not check_url_allowed(url):
-                                logger.debug(f"Skipping URL disallowed by robots.txt: {url[:60]}...")
-                                continue
-                        except ImportError:
-                            # robots_utils not available, skip check
-                            pass
-                        
-                        # Check blacklist
-                        from research_utils import is_domain_blacklisted
-                        is_blocked, domain = is_domain_blacklisted(url, blacklist)
-                        if is_blocked:
-                            logger.debug(f"Skipping blacklisted: {domain}")
-                            continue
 
-                        processing_claimed = research_repo.claim_processing_url(url)
-                        if not processing_claimed:
-                            logger.debug(f"Article already being processed by another job thread: {title[:40]}...")
-                            articles_skipped += 1
-                            continue
+                from scheduler.article_pipeline import (
+                    get_research_article_worker_count,
+                    run_article_pipeline_parallel,
+                )
+                from scheduler.ticker_research_workers import (
+                    SectorArticleCtx,
+                    process_sector_search_result,
+                )
 
-                        # Deduplicate
-                        if research_repo.article_exists(url):
-                            continue
-                        
-                        # Extract content
-                        logger.info(f"  Extracting: {title[:40]}...")
-                        extracted = extract_article_content(url)
-                        
-                        content = extracted.get('content', '')
-                        if not content:
-                            continue
-                        
-                        # Summarize and generate embedding
-                        summary = None
-                        summary_data = {}
-                        embedding = None
-                        summary_input = f"Title: {title}\n\n{content}" if title else content
-                        should_summarize, summary_hash = claim_recent_summary_input(summary_input)
-                        if not should_summarize:
-                            logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
-                            articles_skipped += 1
-                            continue
-                        summary_data = generate_summary(summary_input, article_type="Ticker News")
+                workers_sec = get_research_article_worker_count()
+                item_start_sec = time.time()
+                deadline_sec = item_start_sec + MAX_ITEM_DURATION
+                ctx_sec = SectorArticleCtx(
+                    research_repo=research_repo,
+                    ollama_client=ollama_client,
+                    blacklist=blacklist,
+                    sector=sector,
+                    result_deadline=deadline_sec,
+                    sleep_after_article_sec=0.0 if workers_sec > 1 else 1.0,
+                )
+                agg_sec = run_article_pipeline_parallel(
+                    lambda r, c=ctx_sec: process_sector_search_result(c, r),
+                    search_results["results"],
+                    max_workers=workers_sec,
+                    job_start_time=start_time,
+                    max_job_duration_sec=MAX_JOB_DURATION,
+                )
+                articles_saved += agg_sec.saved
+                articles_skipped += agg_sec.skipped
+                articles_irrelevant += agg_sec.irrelevant
+                articles_failed += agg_sec.failed
 
-                        if isinstance(summary_data, str):
-                            summary = summary_data
-                        elif isinstance(summary_data, dict) and summary_data:
-                            summary = summary_data.get("summary", "")
-
-                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                        has_market_signal = has_strong_market_signal(
-                            title=title,
-                            content=content,
-                            required_terms=[sector],
-                        )
-                        if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
-                            reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
-                            if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
-                                reason = reason or "No strong market signals detected for sector query"
-                            articles_irrelevant += 1
-                            logger.info(
-                                f"  🚫 Skipping non-market sector article: {title[:40]}... "
-                                f"Reason: {reason or 'No market relevance detected'}"
-                            )
-                            continue
-
-                        # Generate embedding for semantic search (Ollama-only)
-                        if ollama_client:
-                            embedding = ollama_client.generate_embedding(content[:6000])
-                            if not embedding:
-                                logger.warning(f"Failed to generate embedding for sector {sector}")
-                        
-                        # Extract logic_check for relationship confidence scoring
-                        logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
-                        
-                        # Save with sector but no specific ticker (since it's ETF sector research)
-                        article_id = research_repo.save_article(
-                            tickers=None,  # No specific ticker for ETF sector research
-                            sector=sector,
-                            article_type="Ticker News",  # Still use Ticker News type
-                            title=extracted.get('title') or title,
-                            url=url,
-                            summary=summary,
-                            content=content,
-                            source=extracted.get('source'),
-                            published_at=extracted.get('published_at'),
-                            relevance_score=0.7,  # Slightly lower relevance for sector-level news
-                            embedding=embedding,
-                            claims=summary_data.get("claims") if isinstance(summary_data, dict) else None,
-                            fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
-                            conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
-                            sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-                            sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
-                            logic_check=logic_check
-                        )
-                        
-                        if article_id:
-                            articles_saved += 1
-                            logger.info(f"  ✅ Saved sector news: {title[:30]}")
-                            
-                            # Extract and save relationships (GraphRAG edges)
-                            if isinstance(summary_data, dict) and logic_check and logic_check != "HYPE_DETECTED":
-                                relationships = summary_data.get("relationships", [])
-                                if relationships and isinstance(relationships, list):
-                                    # Calculate initial confidence based on logic_check
-                                    if logic_check == "DATA_BACKED":
-                                        initial_confidence = 0.8
-                                    else:  # NEUTRAL
-                                        initial_confidence = 0.4
-                                    
-                                    # Normalize and save each relationship
-                                    from research_utils import normalize_relationship
-                                    relationships_saved = 0
-                                    for rel in relationships:
-                                        if isinstance(rel, dict):
-                                            source = rel.get("source", "").strip()
-                                            target = rel.get("target", "").strip()
-                                            rel_type = rel.get("type", "").strip()
-                                            
-                                            if source and target and rel_type:
-                                                # Normalize relationship direction (Option A: Supplier -> Buyer)
-                                                norm_source, norm_target, norm_type = normalize_relationship(source, target, rel_type)
-                                                
-                                                # Save relationship
-                                                rel_id = research_repo.save_relationship(
-                                                    source_ticker=norm_source,
-                                                    target_ticker=norm_target,
-                                                    relationship_type=norm_type,
-                                                    initial_confidence=initial_confidence,
-                                                    source_article_id=article_id
-                                                )
-                                                if rel_id:
-                                                    relationships_saved += 1
-                                    
-                                    if relationships_saved > 0:
-                                        logger.info(f"  ✅ Saved {relationships_saved} relationship(s) from sector article: {title[:30]}")
-                        
-                        # Small delay between articles
-                        time.sleep(1)
-                        
-                    except Exception as e:
-                        logger.error(f"Error processing sector article for {sector}: {e}")
-                        articles_failed += 1
-                    finally:
-                        if processing_claimed:
-                            research_repo.release_processing_url(url)
-                
                 sectors_researched += 1
                 
                 # Delay between sectors
@@ -1268,198 +694,41 @@ def ticker_research_job() -> None:
                 if not search_results or not search_results.get('results'):
                     logger.debug(f"No results for {ticker}")
                     continue
-                
-                # Process results
-                for result in search_results['results']:
-                    # Check per-item timeout
-                    item_elapsed = time.time() - item_start
-                    if item_elapsed > MAX_ITEM_DURATION:
-                        logger.warning(f"⏱️  Ticker timeout ({item_elapsed:.1f}s) - stopping: {ticker}")
-                        break
-                    processing_claimed = False
-                    url = ""
-                    try:
-                        url = result.get('url', '')
-                        title = result.get('title', '')
-                        
-                        if not url or not title:
-                            continue
-                        
-                        # Check robots.txt compliance (if enabled)
-                        try:
-                            from robots_utils import check_url_allowed
-                            if not check_url_allowed(url):
-                                logger.debug(f"Skipping URL disallowed by robots.txt: {url[:60]}...")
-                                continue
-                        except ImportError:
-                            # robots_utils not available, skip check
-                            pass
-                        
-                        # Check blacklist
-                        from research_utils import is_domain_blacklisted
-                        is_blocked, domain = is_domain_blacklisted(url, blacklist)
-                        if is_blocked:
-                            logger.debug(f"Skipping blacklisted: {domain}")
-                            continue
 
-                        processing_claimed = research_repo.claim_processing_url(url)
-                        if not processing_claimed:
-                            logger.debug(f"Article already being processed by another job thread: {title[:40]}...")
-                            articles_skipped += 1
-                            continue
+                from scheduler.article_pipeline import (
+                    get_research_article_worker_count,
+                    run_article_pipeline_parallel,
+                )
+                from scheduler.ticker_research_workers import (
+                    TickerArticleCtx,
+                    process_ticker_search_result,
+                )
 
-                         # Deduplicate
-                        if research_repo.article_exists(url):
-                            continue
-                        
-                        # Extract content
-                        logger.info(f"  Extracting: {title[:40]}...")
-                        extracted = extract_article_content(url)
-                        
-                        content = extracted.get('content', '')
-                        if not content:
-                            continue
-                        
-                        # Summarize and generate embedding
-                        summary = None
-                        summary_data = {}
-                        extracted_tickers = []
-                        extracted_sector = None
-                        embedding = None
-                        summary_input = f"Title: {title}\n\n{content}" if title else content
-                        should_summarize, summary_hash = claim_recent_summary_input(summary_input)
-                        if not should_summarize:
-                            logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
-                            articles_skipped += 1
-                            continue
-                        summary_data = generate_summary(summary_input, article_type="Ticker News")
+                workers_tk = get_research_article_worker_count()
+                item_start_sec = time.time()
+                deadline_sec = item_start_sec + MAX_ITEM_DURATION
+                ctx_tk = TickerArticleCtx(
+                    research_repo=research_repo,
+                    ollama_client=ollama_client,
+                    blacklist=blacklist,
+                    ticker=ticker,
+                    company=company or "",
+                    owned_tickers=owned_tickers,
+                    result_deadline=deadline_sec,
+                    sleep_after_article_sec=0.0 if workers_tk > 1 else 1.0,
+                )
+                agg_tk = run_article_pipeline_parallel(
+                    lambda r, c=ctx_tk: process_ticker_search_result(c, r),
+                    search_results["results"],
+                    max_workers=workers_tk,
+                    job_start_time=start_time,
+                    max_job_duration_sec=MAX_JOB_DURATION,
+                )
+                articles_saved += agg_tk.saved
+                articles_skipped += agg_tk.skipped
+                articles_irrelevant += agg_tk.irrelevant
+                articles_failed += agg_tk.failed
 
-                        # Handle backward compatibility: if old string format is returned
-                        if isinstance(summary_data, str):
-                            summary = summary_data
-                            logger.debug("Received old string format summary, using as-is")
-                        elif isinstance(summary_data, dict) and summary_data:
-                            summary = summary_data.get("summary", "")
-
-                            # Extract tickers with real-company validation
-                            extracted_tickers = _extract_and_validate_tickers(
-                                summary_data, title, content,
-                            )
-                            if extracted_tickers:
-                                logger.info(f"Extracted {len(extracted_tickers)} validated ticker(s): {extracted_tickers}")
-
-                            sectors = summary_data.get("sectors", [])
-
-                            # Use first sector if available
-                            if sectors:
-                                extracted_sector = sectors[0]
-                                logger.info(f"Extracted sector from article: {extracted_sector}")
-
-                        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                        required_terms = [ticker]
-                        if company and company.lower() != "none":
-                            required_terms.append(company)
-                        has_market_signal = has_strong_market_signal(
-                            title=title,
-                            content=content,
-                            tickers=extracted_tickers,
-                            required_terms=required_terms,
-                        )
-                        if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
-                            reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
-                            if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
-                                reason = reason or "No strong market signals detected for ticker query"
-                            articles_irrelevant += 1
-                            logger.info(
-                                f"  🚫 Skipping non-market ticker article: {title[:40]}... "
-                                f"Reason: {reason or 'No market relevance detected'}"
-                            )
-                            continue
-
-                        # Generate embedding for semantic search (Ollama-only)
-                        if ollama_client:
-                            embedding = ollama_client.generate_embedding(content[:6000])  # Truncate to avoid token limits
-                            if not embedding:
-                                logger.warning(f"Failed to generate embedding for {ticker}")
-                        
-                        # Calculate relevance score (check if any tickers are owned)
-                        relevance_score = calculate_relevance_score(extracted_tickers, extracted_sector, owned_tickers=owned_tickers)
-                        
-                        # Extract logic_check for relationship confidence scoring
-                        logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
-                        
-                        # Save article
-                        article_id = research_repo.save_article(
-                            tickers=extracted_tickers if extracted_tickers else None,
-                            sector=extracted_sector,  # Use extracted sector if available
-                            article_type="Ticker News",
-                            title=extracted.get('title') or title,
-                            url=url,
-                            summary=summary,
-                            content=content,
-                            source=extracted.get('source'),
-                            published_at=extracted.get('published_at'),
-                            relevance_score=relevance_score,
-                            embedding=embedding,
-                            claims=summary_data.get("claims") if isinstance(summary_data, dict) else None,
-                            fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
-                            conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
-                            sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-                            sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
-                            logic_check=logic_check
-                        )
-                        
-                        if article_id:
-                            articles_saved += 1
-                            logger.info(f"  ✅ Saved: {title[:30]}")
-                            
-                            # Extract and save relationships (GraphRAG edges)
-                            if isinstance(summary_data, dict) and logic_check and logic_check != "HYPE_DETECTED":
-                                relationships = summary_data.get("relationships", [])
-                                if relationships and isinstance(relationships, list):
-                                    # Calculate initial confidence based on logic_check
-                                    if logic_check == "DATA_BACKED":
-                                        initial_confidence = 0.8
-                                    else:  # NEUTRAL
-                                        initial_confidence = 0.4
-                                    
-                                    # Normalize and save each relationship
-                                    from research_utils import normalize_relationship
-                                    relationships_saved = 0
-                                    for rel in relationships:
-                                        if isinstance(rel, dict):
-                                            source = rel.get("source", "").strip()
-                                            target = rel.get("target", "").strip()
-                                            rel_type = rel.get("type", "").strip()
-                                            
-                                            if source and target and rel_type:
-                                                # Normalize relationship direction (Option A: Supplier -> Buyer)
-                                                norm_source, norm_target, norm_type = normalize_relationship(source, target, rel_type)
-                                                
-                                                # Save relationship
-                                                rel_id = research_repo.save_relationship(
-                                                    source_ticker=norm_source,
-                                                    target_ticker=norm_target,
-                                                    relationship_type=norm_type,
-                                                    initial_confidence=initial_confidence,
-                                                    source_article_id=article_id
-                                                )
-                                                if rel_id:
-                                                    relationships_saved += 1
-                                    
-                                    if relationships_saved > 0:
-                                        logger.info(f"  ✅ Saved {relationships_saved} relationship(s) from article: {title[:30]}")
-                        
-                        # Small delay between articles to be nice
-                        time.sleep(1)
-                        
-                    except Exception as e:
-                        logger.error(f"Error processing article for {ticker}: {e}")
-                        articles_failed += 1
-                    finally:
-                        if processing_claimed:
-                            research_repo.release_processing_url(url)
-                
                 tickers_processed += 1
                 
                 # Delay between tickers to avoid rate limiting SearXNG
@@ -1521,11 +790,9 @@ def archive_retry_job() -> None:
         # Import dependencies
         try:
             from research_repository import ResearchRepository
-            from research_utils import extract_article_content
             from archive_service import check_archived, get_archived_content
             from paywall_detector import is_paywalled_article
             from ollama_client import get_ollama_client, generate_summary
-            from postgres_client import PostgresClient
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"

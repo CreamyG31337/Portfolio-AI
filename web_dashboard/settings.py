@@ -284,25 +284,39 @@ def get_all_system_settings() -> dict:
         return {}
 
 
-def get_summarizing_model() -> str:
+def get_summarizing_model(scope: Optional[str] = None) -> str:
     """Get the summarizing model setting.
-    
+
+    When ``scope`` is set (e.g. ``meta_analysis``, ``market_brief``), reads
+    ``system_settings`` key ``ai_summarizing_model_<scope>`` first (suffix is
+    lowercased non-alphanumeric runs replaced with ``_``). If unset, falls back to
+    the global ``ai_summarizing_model`` chain.
+
+    Args:
+        scope: Optional logical workload name for per-job model overrides.
+
     Returns:
-        Model name for summarization (defaults to glm-4.7)
+        Model name for summarization (defaults to ``qwen3.6:27b`` when unset)
     """
     import os
-    # Check system setting first
+    import re
+
+    if scope and str(scope).strip():
+        suffix = re.sub(r"[^a-zA-Z0-9]+", "_", str(scope).strip()).strip("_").lower()
+        if suffix:
+            scoped = get_system_setting(f"ai_summarizing_model_{suffix}", default=None)
+            if scoped:
+                return str(scoped).strip()
+
     model = get_system_setting("ai_summarizing_model", default=None)
     if model:
-        return model
-    
-    # Fall back to environment variable
+        return str(model).strip()
+
     env_model = os.getenv("OLLAMA_SUMMARIZING_MODEL")
     if env_model:
-        return env_model
-    
-    # Final fallback
-    return "glm-4.7"
+        return env_model.strip()
+
+    return "qwen3.6:27b"
 
 
 def get_summarizing_fallback_models() -> list[str]:
@@ -310,6 +324,8 @@ def get_summarizing_fallback_models() -> list[str]:
 
     Source:
     1. system_settings.ai_summarizing_fallback_models (list or comma/newline string)
+    2. ``OLLAMA_SUMMARIZING_FALLBACK_MODELS`` (comma-separated) when (1) is empty
+    3. Built-in ``granite3.3:8b`` then ``qwen3.6:27b`` when still empty (order de-duped with primary)
     """
     configured = get_system_setting("ai_summarizing_fallback_models", default=None)
     models: list[str] = []
@@ -324,6 +340,16 @@ def get_summarizing_fallback_models() -> list[str]:
             s = m.strip()
             if s:
                 models.append(s)
+
+    env_fb = os.getenv("OLLAMA_SUMMARIZING_FALLBACK_MODELS", "").strip()
+    if not models and env_fb:
+        for m in env_fb.replace("\n", ",").split(","):
+            s = m.strip()
+            if s:
+                models.append(s)
+
+    if not models:
+        models = ["granite3.3:8b", "qwen3.6:27b"]
 
     # Stable de-dup preserving order
     seen: set[str] = set()

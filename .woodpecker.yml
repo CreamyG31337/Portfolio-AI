@@ -448,6 +448,7 @@ steps:
         
         # Add Ollama and Streamlit settings
         DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL=\"${OLLAMA_BASE_URL:-http://host.docker.internal:11434}\""
+        [ -n "$OLLAMA_BASE_URL_2" ] && DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL_2=\"$OLLAMA_BASE_URL_2\""
         DOCKER_CMD="$DOCKER_CMD -e OLLAMA_MODEL=\"${OLLAMA_MODEL:-mistral-nemo:12b}\""
         DOCKER_CMD="$DOCKER_CMD -e OLLAMA_ENABLED=\"${OLLAMA_ENABLED:-true}\""
         DOCKER_CMD="$DOCKER_CMD -e STREAMLIT_SERVER_HEADLESS=true"
@@ -517,6 +518,7 @@ steps:
         
         # Add Ollama settings for Flask
         FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL=\"${OLLAMA_BASE_URL:-http://host.docker.internal:11434}\""
+        [ -n "$OLLAMA_BASE_URL_2" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_2=\"$OLLAMA_BASE_URL_2\""
         FLASK_CMD="$FLASK_CMD -e OLLAMA_MODEL=\"${OLLAMA_MODEL:-mistral-nemo:12b}\""
         FLASK_CMD="$FLASK_CMD -e OLLAMA_ENABLED=\"${OLLAMA_ENABLED:-true}\""
         

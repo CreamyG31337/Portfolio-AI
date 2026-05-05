@@ -276,9 +276,9 @@ class ChatHandler:
             Streaming SSE response
         """
         from flask import jsonify
-        from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
+        from glm_config import get_zhipu_api_key
+        from glm_transport import glm_chat_completion
         from pathlib import Path
-        import requests
         
         try:
             key = get_zhipu_api_key()
@@ -296,7 +296,10 @@ class ChatHandler:
                 except Exception:
                     pass
             
-            max_tokens = me.get("max_tokens") or me.get("num_predict") or 4096
+            try:
+                max_tokens = int(me.get("max_tokens") or me.get("num_predict") or 4096)
+            except (TypeError, ValueError):
+                max_tokens = 4096
             temperature = float(me.get("temperature", 0.1))
             
             # Build messages array
@@ -312,41 +315,20 @@ class ChatHandler:
                     messages.append({"role": role, "content": content})
             messages.append({"role": "user", "content": full_prompt})
             
-            url = f"{ZHIPU_BASE_URL.rstrip('/')}/chat/completions"
-            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-            payload = {
-                "model": self.model,
-                "messages": messages,
-                "stream": True,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            
             def generate_glm():
                 try:
-                    r = requests.post(url, json=payload, headers=headers, stream=True, timeout=90)
-                    r.raise_for_status()
-                    for line in r.iter_lines(decode_unicode=True):
-                        if not line or not line.strip():
-                            continue
-                        s = line.strip()
-                        if s.startswith("data: "):
-                            data = s[6:].strip()
-                            if data == "[DONE]":
-                                yield f"data: {json.dumps({'chunk': '', 'done': True})}\n\n"
-                                return
-                            try:
-                                obj = json.loads(data)
-                                for c in (obj.get("choices") or [])[:1]:
-                                    delta = c.get("delta") or {}
-                                    part = delta.get("content") or ""
-                                    if part:
-                                        yield f"data: {json.dumps({'chunk': part, 'done': False})}\n\n"
-                                    if c.get("finish_reason") == "stop":
-                                        yield f"data: {json.dumps({'chunk': '', 'done': True})}\n\n"
-                                        return
-                            except json.JSONDecodeError:
-                                continue
+                    for part in glm_chat_completion(
+                        messages,
+                        model=self.model,
+                        stream=True,
+                        json_mode=False,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=90.0,
+                        allow_cheap_fallback=True,
+                    ):
+                        if part:
+                            yield f"data: {json.dumps({'chunk': part, 'done': False})}\n\n"
                     yield f"data: {json.dumps({'chunk': '', 'done': True})}\n\n"
                 except Exception as e:
                     logger.error(f"GLM streaming error: {e}", exc_info=True)
@@ -386,9 +368,11 @@ class ChatHandler:
         def generate():
             """Generator for streaming response"""
             try:
+                from model_registry import get_primary_model
+
                 for chunk in client.query_ollama(
                     prompt=full_prompt,
-                    model=self.model or "glm-4.7",
+                    model=self.model or get_primary_model(),
                     stream=True,
                     temperature=None,
                     max_tokens=None,

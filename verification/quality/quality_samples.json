@@ -1,0 +1,46 @@
+{
+  "samples": [
+    {
+      "id": "synth-01-earnings",
+      "title": "MidCap Semiconductor Firm Beats Q3 Earnings Expectations",
+      "article_type": "Market News",
+      "gold_tickers": ["NVDA", "AMD"],
+      "content": "Title context: MidCap Semiconductor Firm Beats Q3 Earnings Expectations.\n\nSAN JOSE — ChipWorks Inc. reported third-quarter revenue of $412 million, up 14% year over year, and non-GAAP EPS of $0.89 versus consensus of $0.81. Management cited strength in data-center accelerators and automotive sensor modules. Gross margin expanded to 52.1% from 49.8% a year ago. The company guided Q4 revenue to a range of $430–$450 million, above Street estimates. CFO noted inventory days improved modestly. Competitors including larger GPU vendors continue to dominate high-end training clusters, but ChipWorks highlighted design wins at two hyperscale customers. Shares rose in after-hours trading following the release."
+    },
+    {
+      "id": "synth-02-macro",
+      "title": "Treasury Yields Dip After Inflation Print",
+      "article_type": "Market News",
+      "gold_tickers": ["TLT"],
+      "content": "WASHINGTON — The benchmark 10-year Treasury yield fell 8 basis points to 4.12% after the latest CPI report showed core inflation cooling slightly month over month. Analysts at RiverStone Macro said the print reduces pressure on the Federal Reserve to hike further near term. Equity futures turned positive, with cyclicals outperforming defensives in premarket trade. Currency markets saw the dollar index ease 0.3%. Traders pointed to positioning ahead of next week’s policy commentary as a secondary driver."
+    },
+    {
+      "id": "synth-03-mna",
+      "title": "Regional Bank Announces Merger With Smaller Peer",
+      "article_type": "Market News",
+      "gold_tickers": ["RF", "PBCT"],
+      "content": "CHARLOTTE — First Ridge Bancorp agreed to acquire Coastal Community Bank in an all-stock transaction valued at approximately $1.8 billion. Coastal shareholders will receive 0.62 shares of First Ridge for each share held. The deal is expected to close in the second half of 2026, subject to shareholder and regulatory approvals. Executives emphasized cost synergies of $140 million annualized by year three and minimal branch overlap in overlapping metro markets. Pro forma capital ratios are projected to remain above regulatory minimums."
+    },
+    {
+      "id": "synth-04-biotech",
+      "title": "Biotech Phase 2 Trial Meets Primary Endpoint",
+      "article_type": "Market News",
+      "gold_tickers": ["XBI"],
+      "content": "BOSTON — HelixBio Therapeutics announced its phase 2 trial of HBX-204 in moderate plaque psoriasis met the primary endpoint of PASI-75 response at week 12 versus placebo. Safety profile was consistent with prior studies; no new serious adverse events were attributed to therapy. The company plans to engage regulators on a pivotal program timeline. Cash runway extends into late 2027 excluding partnership proceeds. Analysts cautioned commercial competition remains intense in the IL-23 class."
+    },
+    {
+      "id": "synth-05-retail",
+      "title": "National Retailer Guides Holiday Same-Store Sales Flat",
+      "article_type": "Market News",
+      "gold_tickers": ["TGT", "WMT"],
+      "content": "MINNEAPOLIS — Lakeside Retail Co. issued guidance for comparable sales roughly flat year over year for the holiday quarter, citing cautious consumer spending on discretionary categories while essentials remained stable. Inventory levels were down 6% versus last year. E-commerce grew mid-single digits as a percent of total sales. Management highlighted promotional intensity in apparel and home goods. The firm maintained full-year EPS outlook at the low end of prior range."
+    },
+    {
+      "id": "synth-06-junk-control",
+      "title": "Horoscope Stocks to Watch This Week",
+      "article_type": "Market News",
+      "gold_tickers": [],
+      "content": "This short lifestyle blurb lists zodiac signs and lucky colors for investing. It does not mention earnings, revenue, tickers, or any verifiable corporate events. Readers are encouraged to pick stocks based on moon phases. No SEC filings or analyst estimates are referenced."
+    }
+  ]
+}

@@ -55,7 +55,7 @@ class TickerMetaAnalysisService:
             c = str(model_override).strip()
             if c:
                 return c
-        return get_summarizing_model()
+        return get_summarizing_model("meta_analysis")
 
     def fetch_latest_standard_analyses(self, ticker: str) -> list[dict[str, Any]]:
         rows = self.postgres.execute_query(

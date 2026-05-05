@@ -4,7 +4,6 @@
 import logging
 import time
 import sys
-import os
 from pathlib import Path
 from scheduler.scheduler_core import log_job_execution
 
@@ -35,7 +34,6 @@ def opportunity_discovery_job() -> None:
     # Import job tracking at the start
     from datetime import datetime, timezone
     target_date = datetime.now(timezone.utc).date()
-    from scheduler.jobs_common import claim_recent_summary_input, has_strong_market_signal
     from utils.job_tracking import log_job_step
 
     # Global AI lock (SearXNG + Ollama workload)
@@ -61,8 +59,7 @@ def opportunity_discovery_job() -> None:
         # Import dependencies
         try:
             from searxng_client import get_searxng_client, check_searxng_health
-            from research_utils import extract_article_content
-            from ollama_client import get_ollama_client, generate_summary
+            from ollama_client import get_ollama_client
             from research_repository import ResearchRepository
             from settings import get_discovery_search_queries
         except ImportError as e:
@@ -153,221 +150,47 @@ def opportunity_discovery_job() -> None:
         MAX_JOB_DURATION = 40 * 60  # 40 minutes total
         MAX_ARTICLE_DURATION = 4 * 60  # 4 minutes per article
 
-        for idx, result in enumerate(search_results['results'], 1):
-            # Check overall job timeout
-            elapsed = time.time() - start_time
-            if elapsed > MAX_JOB_DURATION:
-                log_job_step(job_id, "timeout", f"Job timeout reached ({elapsed/60:.1f}m)", status="failed")
-                logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Stopping opportunity discovery")
-                break
+        from scheduler.alpha_opportunity_workers import (
+            OpportunityDiscoveryCtx,
+            process_opportunity_discovery_item,
+        )
+        from scheduler.article_pipeline import get_research_article_worker_count, run_article_pipeline_parallel
 
-            article_start = time.time()
-            processing_claimed = False
-            url = ""
-            try:
-                url = result.get('url', '')
-                title = result.get('title', '')
+        workers_o = get_research_article_worker_count()
+        ctx_opp = OpportunityDiscoveryCtx(
+            research_repo=research_repo,
+            ollama_client=ollama_client,
+            blacklist=blacklist,
+            job_id=job_id,
+            total_results=total_results,
+            max_article_duration=MAX_ARTICLE_DURATION,
+            sleep_after_article_sec=0.0 if workers_o > 1 else 1.0,
+        )
+        indexed_opp = list(enumerate(search_results["results"], 1))
+        agg_opp = run_article_pipeline_parallel(
+            lambda pair, c=ctx_opp: process_opportunity_discovery_item(c, pair),
+            indexed_opp,
+            max_workers=workers_o,
+            job_start_time=start_time,
+            max_job_duration_sec=MAX_JOB_DURATION,
+        )
+        if (time.time() - start_time) > MAX_JOB_DURATION:
+            log_job_step(
+                job_id,
+                "timeout",
+                f"Job timeout reached ({(time.time() - start_time) / 60:.1f}m)",
+                status="failed",
+            )
+            logger.warning(
+                "⏱️  Job timeout reached (%.1fm). Stopping opportunity discovery",
+                (time.time() - start_time) / 60,
+            )
 
-                if not url or not title:
-                    continue
-
-                processing_claimed = research_repo.claim_processing_url(url)
-                if not processing_claimed:
-                    logger.debug(f"Article already being processed by another job thread: {title[:40]}...")
-                    articles_skipped += 1
-                    continue
-
-                # Check robots.txt compliance (if enabled)
-                try:
-                    from robots_utils import check_url_allowed
-                    if not check_url_allowed(url):
-                        logger.debug(f"Skipping URL disallowed by robots.txt: {url[:60]}...")
-                        articles_skipped += 1
-                        continue
-                except ImportError:
-                    pass
-
-                # Check blacklist
-                from research_utils import is_domain_blacklisted
-                is_blocked, domain = is_domain_blacklisted(url, blacklist)
-                if is_blocked:
-                    logger.debug(f"Skipping blacklisted: {domain}")
-                    articles_blacklisted += 1
-                    continue
-
-                # Per-article timeout guard
-                if time.time() - article_start > MAX_ARTICLE_DURATION:
-                    logger.warning(f"⏱️  Article timeout - skipping: {title[:40]}...")
-                    continue
-
-                # Check if already exists
-                if research_repo.article_exists(url):
-                    logger.debug(f"Article already exists: {title[:50]}...")
-                    articles_skipped += 1
-                    continue
-
-                # Extract content
-                log_job_step(job_id, "extract", f"Extracting article {idx}/{total_results}: {title[:60]}")
-                logger.info(f"  💎 Extracting: {title[:40]}...")
-                extracted = extract_article_content(url)
-
-                # Health tracking
-                from research_domain_health import DomainHealthTracker
-                tracker = DomainHealthTracker()
-                from settings import get_system_setting
-                threshold = get_system_setting("auto_blacklist_threshold", default=4)
-
-                content = extracted.get('content', '')
-                if not content or not extracted.get('success'):
-                    error_reason = extracted.get('error', 'unknown')
-                    failure_count = tracker.record_failure(url, error_reason)
-
-                    if tracker.should_auto_blacklist(url):
-                        if tracker.auto_blacklist_domain(url):
-                            logger.warning(f"🚫 AUTO-BLACKLISTED: {domain}")
-                            articles_blacklisted += 1
-                    continue
-
-                # Per-article timeout guard after extraction
-                if time.time() - article_start > MAX_ARTICLE_DURATION:
-                    logger.warning(f"⏱️  Article timeout after extraction - skipping: {title[:40]}...")
-                    continue
-
-                tracker.record_success(url)
-
-                # Generate summary and embedding
-                summary = None
-                summary_data = {}
-                extracted_tickers = []
-                extracted_ticker = None
-                extracted_sector = None
-                embedding = None
-
-                summary_input = f"Title: {title}\n\n{content}" if title else content
-                should_summarize, summary_hash = claim_recent_summary_input(summary_input)
-                if not should_summarize:
-                    logger.info(f"  ⏭️ Skipping duplicate summary hash {summary_hash}: {title[:40]}...")
-                    articles_skipped += 1
-                    continue
-
-                log_job_step(job_id, "ai_summary", f"Generating AI summary for: {title[:60]}")
-                summary_data = generate_summary(summary_input, article_type="Opportunity Discovery")
-
-                if isinstance(summary_data, str):
-                    summary = summary_data
-                elif isinstance(summary_data, dict) and summary_data:
-                    summary = summary_data.get("summary", "")
-
-                    # Extract tickers with real-company validation
-                    from ticker_validator import extract_and_validate_tickers
-                    extracted_tickers = extract_and_validate_tickers(
-                        summary_data, title, content,
-                    )
-                    sectors = summary_data.get("sectors", [])
-
-                    if extracted_tickers:
-                        extracted_ticker = extracted_tickers[0]
-                        logger.info(f"  🎯 Discovered ticker: {extracted_ticker}")
-
-                    if sectors:
-                        extracted_sector = sectors[0]
-
-                market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
-                has_market_signal = has_strong_market_signal(
-                    title=title,
-                    content=content,
-                    tickers=extracted_tickers,
-                )
-                if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
-                    reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
-                    if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
-                        reason = reason or "No strong market signals detected in article text"
-                    articles_irrelevant += 1
-                    logger.info(
-                        f"  🚫 Skipping non-market opportunity: {title[:50]}... "
-                        f"Reason: {reason or 'No market relevance detected'}"
-                    )
-                    continue
-
-                # Embedding is Ollama-only
-                if ollama_client:
-                    embedding = ollama_client.generate_embedding(content[:6000])
-
-                # Extract logic_check for relationship confidence scoring
-                logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
-
-                # Save article with opportunity_discovery type
-                article_id = research_repo.save_article(
-                    tickers=[extracted_ticker] if extracted_ticker else None,
-                    sector=extracted_sector,
-                    article_type="Opportunity Discovery",  # Special tag
-                    title=extracted.get('title') or title,
-                    url=url,
-                    summary=summary,
-                    content=content,
-                    source=extracted.get('source'),
-                    published_at=extracted.get('published_at'),
-                    relevance_score=0.7,  # Moderate-high relevance
-                    embedding=embedding,
-                    claims=summary_data.get("claims") if isinstance(summary_data, dict) else None,
-                    fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
-                    conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
-                    sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-                    sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
-                    logic_check=logic_check
-                )
-
-                if article_id:
-                    articles_saved += 1
-                    article_dur = time.time() - article_start
-                    log_job_step(job_id, "save", f"Saved: {title[:60]} ({article_dur:.0f}s)", status="success",
-                                metadata={"tickers": extracted_tickers} if extracted_tickers else None)
-                    logger.info(f"  ✅ Saved opportunity: {title[:30]}")
-
-                    # Extract and save relationships (GraphRAG edges)
-                    if isinstance(summary_data, dict) and logic_check and logic_check != "HYPE_DETECTED":
-                        relationships = summary_data.get("relationships", [])
-                        if relationships and isinstance(relationships, list):
-                            if logic_check == "DATA_BACKED":
-                                initial_confidence = 0.8
-                            else:  # NEUTRAL
-                                initial_confidence = 0.4
-
-                            from research_utils import normalize_relationship
-                            relationships_saved = 0
-                            for rel in relationships:
-                                if isinstance(rel, dict):
-                                    source = rel.get("source", "").strip()
-                                    target = rel.get("target", "").strip()
-                                    rel_type = rel.get("type", "").strip()
-
-                                    if source and target and rel_type:
-                                        norm_source, norm_target, norm_type = normalize_relationship(source, target, rel_type)
-                                        rel_id = research_repo.save_relationship(
-                                            source_ticker=norm_source,
-                                            target_ticker=norm_target,
-                                            relationship_type=norm_type,
-                                            initial_confidence=initial_confidence,
-                                            source_article_id=article_id
-                                        )
-                                        if rel_id:
-                                            relationships_saved += 1
-
-                            if relationships_saved > 0:
-                                logger.info(f"  ✅ Saved {relationships_saved} relationship(s) from opportunity article: {title[:30]}")
-
-                articles_processed += 1
-
-                # Delay between articles
-                time.sleep(1)
-
-            except Exception as e:
-                log_job_step(job_id, "error", f"Error processing article: {str(e)[:100]}", status="failed")
-                logger.error(f"Error processing discovery article: {e}")
-                continue
-            finally:
-                if processing_claimed:
-                    research_repo.release_processing_url(url)
+        articles_processed += agg_opp.processed
+        articles_saved += agg_opp.saved
+        articles_skipped += agg_opp.skipped
+        articles_blacklisted += agg_opp.blacklisted
+        articles_irrelevant += agg_opp.irrelevant
 
         duration_ms = int((time.time() - start_time) * 1000)
         message = (

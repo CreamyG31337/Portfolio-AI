@@ -72,7 +72,7 @@ DEFAULT_PLACEHOLDER_REASON = "Initial buy (rationale pending)"
 DEFAULT_FUNDS: Tuple[str, ...] = ("Project Chimera", "RRSP Lance Webull")
 
 ZHIPU_API_URL = "https://api.z.ai/api/coding/paas/v4"
-GLM_MODEL = "glm-4.7"
+GLM_MODEL = "glm-5.1"
 MAX_REASON_CHARS = 500
 # Tier 1: conclusion + mechanical excerpts only (never full multi-ticker report body).
 MAX_CONCLUSION_FOR_GLM = 1800
@@ -310,7 +310,7 @@ def _glm_chat(system: str, user: str, skip: bool) -> Optional[str]:
             {"role": "user", "content": user},
         ],
         "temperature": 0.25,
-        # glm-4.7 uses `reasoning_content`; long inputs + reasoning can exhaust budget before `content`.
+        # GLM on Z.AI may use `reasoning_content`; long inputs + reasoning can exhaust budget before `content`.
         "max_tokens": 8192,
     }
     for attempt in range(GLM_MAX_RETRIES):

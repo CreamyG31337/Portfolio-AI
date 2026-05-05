@@ -78,6 +78,82 @@ _AI_AUDIT_LOG_DIR = Path(__file__).resolve().parent.parent / "logs" / "ai_audit"
 _AI_AUDIT_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+def _ollama_per_model_health() -> list[dict[str, object]]:
+    """Probe Ollama /api/tags per configured model (resolved base + fallback URLs)."""
+    out: list[dict[str, object]] = []
+    try:
+        from ollama_client import get_ollama_client, load_model_config
+    except ImportError:
+        return out
+
+    client = get_ollama_client()
+    if not client or not getattr(client, "enabled", False):
+        return out
+
+    models_to_probe: set[str] = set()
+    try:
+        cfg = load_model_config() or {}
+        for name in (cfg.get("models") or {}).keys():
+            if name:
+                models_to_probe.add(str(name))
+    except Exception:
+        pass
+
+    for extra in ("granite3.3:8b", "qwen3.6:27b"):
+        models_to_probe.add(extra)
+
+    try:
+        from settings import get_summarizing_model
+
+        for scope in (None, "meta_analysis", "market_brief", "ticker_meta"):
+            try:
+                m = get_summarizing_model(scope)
+                if m:
+                    models_to_probe.add(str(m))
+            except Exception:
+                pass
+    except ImportError:
+        pass
+
+    try:
+        from webai_wrapper import is_webai_model
+    except ImportError:
+
+        def is_webai_model(_: str) -> bool:  # type: ignore[misc]
+            return False
+
+    for m in sorted(models_to_probe):
+        if not m or str(m).startswith("glm-"):
+            continue
+        try:
+            if is_webai_model(str(m)):
+                continue
+        except Exception:
+            pass
+        try:
+            primary, fallback = client._resolve_urls(str(m))
+            ok = client.check_health_for_model(str(m))
+            out.append(
+                {
+                    "model": str(m),
+                    "base_url": primary,
+                    "fallback_url": fallback or "",
+                    "ok": ok,
+                }
+            )
+        except Exception as e:
+            out.append(
+                {
+                    "model": str(m),
+                    "base_url": "",
+                    "fallback_url": "",
+                    "ok": False,
+                    "error": str(e)[:120],
+                }
+            )
+    return out
+
+
 def _is_valid_ai_audit_date(date_str: str) -> bool:
     """Validate YYYY-MM-DD date values used for ai_audit JSONL file names."""
     if not _AI_AUDIT_DATE_PATTERN.fullmatch(date_str):
@@ -3472,6 +3548,7 @@ def api_ai_status():
         
         return jsonify({
             "ollama": {"status": ollama_ok, "message": ollama_msg},
+            "ollama_hosts": _ollama_per_model_health(),
             "postgres": pg_status,
             "webai": webai_status,
             "glm": glm_status
@@ -4141,7 +4218,8 @@ def api_save_glm_api_key():
 def api_test_glm_api_key():
     """Test GLM 4.7 (Zhipu) API key with a minimal chat/completions request."""
     try:
-        from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL, GLM_4_7_MODEL
+        from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
+        from model_registry import get_primary_model
         import requests
 
         key = get_zhipu_api_key()
@@ -4151,7 +4229,7 @@ def api_test_glm_api_key():
         url = f"{ZHIPU_BASE_URL}/chat/completions"
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         payload = {
-            "model": GLM_4_7_MODEL,
+            "model": get_primary_model(),
             "messages": [{"role": "user", "content": "Say OK in one word."}],
             "max_tokens": 10,
             "stream": False,

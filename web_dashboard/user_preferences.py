@@ -912,8 +912,12 @@ def get_user_ai_model() -> Optional[str]:
     except Exception as e:
         logger.warning(f"Could not load system default model: {e}")
     
-    # Fall back to hardcoded default (GLM 4.7)
-    return "glm-4.7"
+    try:
+        from model_registry import get_primary_model
+
+        return get_primary_model()
+    except Exception:
+        return "glm-5.1"
 
     # Fall back to environment variable (deprotilized in favor of Granite)
     # env_model = os.getenv("OLLAMA_MODEL")

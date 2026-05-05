@@ -52,7 +52,17 @@
             "num_ctx": 39000,
             "num_predict": 4096,
             "temperature": 0.1,
-            "desc": "Enterprise grade for chat/summarization. 39k target keeps a small VRAM safety margin on 16GB GPU."
+            "desc": "Enterprise grade for chat/summarization. Uses OLLAMA_BASE_URL unless overridden per-model."
+        },
+        "qwen3.6:27b": {
+            "num_ctx": 32768,
+            "num_predict": 4096,
+            "temperature": 0.2,
+            "base_url_env": "OLLAMA_BASE_URL_2",
+            "fallback_base_url_env": "OLLAMA_BASE_URL",
+            "think": false,
+            "streaming_timeout": 600,
+            "desc": "Qwen3.6 27B on OLLAMA_BASE_URL_2 (second host where the model is pulled). think=false disables chain-of-thought."
         },
         "phi4:14b": {
             "num_ctx": 8192,
@@ -117,12 +127,47 @@
             "max_tokens": 4096,
             "desc": "Zhipu GLM-4.7 via Z.AI. Best quality."
         },
+        "glm-4.5": {
+            "provider": "zhipu",
+            "num_ctx": 128000,
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "desc": "Zhipu GLM-4.5 (full MoE) via Z.AI."
+        },
         "glm-4.5-air": {
             "provider": "zhipu",
             "num_ctx": 128000,
             "temperature": 0.1,
             "max_tokens": 4096,
             "desc": "Zhipu GLM-4.5 Air via Z.AI. Faster, lighter."
+        },
+        "glm-4.6": {
+            "provider": "zhipu",
+            "num_ctx": 200000,
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "desc": "Zhipu GLM-4.6 via Z.AI (if enabled for your key)."
+        },
+        "glm-5.1": {
+            "provider": "zhipu",
+            "num_ctx": 200000,
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "desc": "Zhipu GLM-5.1 via Z.AI. Default web GLM when key is set."
+        },
+        "glm-5-turbo": {
+            "provider": "zhipu",
+            "num_ctx": 200000,
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "desc": "Zhipu GLM-5 Turbo via Z.AI. Faster GLM-5 family."
+        },
+        "glm-5": {
+            "provider": "zhipu",
+            "num_ctx": 200000,
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "desc": "Zhipu GLM-5 base via Z.AI (if enabled for your key)."
         },
         "gemini-2.5-flash": {
             "provider": "webai",

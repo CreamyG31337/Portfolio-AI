@@ -250,9 +250,14 @@ SEARXNG_TIMEOUT=10
 
 # Ollama
 OLLAMA_BASE_URL=http://host.docker.internal:11434
+# Second host for models that use OLLAMA_BASE_URL_2 (e.g. qwen3.6:27b) when that model runs on a different machine
+# than OLLAMA_BASE_URL.
+# OLLAMA_BASE_URL_2=http://second-ollama-host:11434
 OLLAMA_MODEL=llama3
 OLLAMA_TIMEOUT=120
 OLLAMA_ENABLED=true
+
+Per-model Ollama routing (`base_url`, `fallback_base_url`, `think`, `streaming_timeout`) is configured in `web_dashboard/model_config.json` with optional `system_settings` overrides (`model_<name>_base_url`, etc.).
 
 # Database
 RESEARCH_DATABASE_URL=postgresql://user:pass@host:5432/dbname

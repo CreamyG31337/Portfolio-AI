@@ -78,7 +78,7 @@ def seeded_ai_audit_logs(ai_audit_logs):
             {
                 "timestamp": "2026-02-08T11:30:00Z",
                 "function": "analyze_crowd_sentiment",
-                "model": "glm-4.7",
+                "model": "glm-5.1",
                 "provider": "glm",
                 "duration_ms": 800,
                 "success": False,

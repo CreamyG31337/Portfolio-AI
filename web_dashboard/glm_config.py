@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GLM 4.7 (Zhipu / Z.AI) configuration and API key loading.
+GLM / Zhipu / Z.AI configuration and API key loading (GLM-5.x, 4.7, 4.5, etc.).
 
 Uses the Z.AI OpenAI-compatible Coding API by default:
   https://api.z.ai/api/coding/paas/v4
@@ -24,16 +24,26 @@ from env_loader import load_project_dotenv
 
 load_project_dotenv()
 
-# Allowlist: only these are shown (4.7 = best quality, 4.5-air = fast/light)
-GLM_ALLOWED: List[str] = ["glm-4.7", "glm-4.5-air"]
+# Allowlist: order = rough preference for UI; only ids also returned by GET /models are shown.
+# GLM-5.x / 4.6 availability depends on Z.AI plan; keys that recently lacked 5.x may need cache refresh.
+GLM_ALLOWED: List[str] = [
+    "glm-5.1",
+    "glm-5-turbo",
+    "glm-5",
+    "glm-4.7",
+    "glm-4.6",
+    "glm-4.5",
+    "glm-4.5-air",
+]
 # Static list when API is unavailable
-GLM_MODELS: List[str] = ["glm-4.7", "glm-4.5-air"]
+GLM_MODELS: List[str] = ["glm-5.1", "glm-5-turbo", "glm-4.5-air"]
 
 # Z.AI OpenAI-compatible Coding API (GLM-4.7, Coding Plan)
 # Override with ZHIPU_BASE_URL if using general endpoint (e.g. open.bigmodel.cn)
 _DEFAULT_ZHIPU_BASE = "https://api.z.ai/api/coding/paas/v4"
 ZHIPU_BASE_URL = os.getenv("ZHIPU_BASE_URL", _DEFAULT_ZHIPU_BASE).rstrip("/")
-GLM_4_7_MODEL = "glm-4.7"
+# Legacy export name (admin smoke + scripts); static default — prefer model_registry.get_primary_model().
+from model_registry import PRIMARY_MODEL_DEFAULT as GLM_4_7_MODEL  # noqa: E402
 
 # Cache for models from GET /models (TTL 24h)
 _CACHE_DIR = Path(__file__).resolve().parent / ".cache"

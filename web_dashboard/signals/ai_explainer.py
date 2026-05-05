@@ -14,8 +14,6 @@ import time
 from typing import Any, Dict, List, Optional
 import logging
 
-import requests
-
 from ollama_client import get_ollama_client
 from settings import get_summarizing_model, get_summarizing_fallback_models
 
@@ -127,17 +125,9 @@ def _get_explanation_model_chain(requested_model: Optional[str] = None) -> List[
     except Exception as e:
         logger.warning("Could not load summarization settings for explainer chain: %s", e)
         if not primary:
-            primary = "glm-4.7"
+            primary = "qwen3.6:27b"
 
-    # Cross-provider defaults so there is always at least one alternative
-    defaults: List[str] = []
-    p = (primary or "").strip()
-    if p.startswith("glm-"):
-        defaults = ["glm-4.7"]
-    else:
-        defaults = ["glm-4.5-air"]
-
-    chain = [primary] + fallback_models + defaults
+    chain = [primary] + fallback_models
     ordered: List[str] = []
     seen: set[str] = set()
     for m in chain:
@@ -154,7 +144,8 @@ def _get_explanation_model_chain(requested_model: Optional[str] = None) -> List[
 def _generate_explanation_via_glm(prompt: str, model: str, temperature: float = 0.2) -> Optional[str]:
     """Generate a signal explanation using the Z.AI (GLM) chat completions API."""
     try:
-        from glm_config import get_zhipu_api_key, ZHIPU_BASE_URL
+        from glm_config import get_zhipu_api_key
+        from glm_transport import glm_chat_completion_text
     except ImportError:
         logger.warning("glm_config not available for GLM signal explanation")
         return None
@@ -164,38 +155,28 @@ def _generate_explanation_via_glm(prompt: str, model: str, temperature: float = 
         logger.warning("Z.AI API key not set - cannot generate signal explanation with GLM")
         return None
 
-    url = f"{ZHIPU_BASE_URL.rstrip('/')}/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "You are a concise trading assistant that explains technical signals in plain English."},
-            {"role": "user", "content": prompt},
-        ],
-        "max_tokens": 512,
-        "temperature": temperature,
-        "stream": False,
-    }
+    messages = [
+        {"role": "system", "content": "You are a concise trading assistant that explains technical signals in plain English."},
+        {"role": "user", "content": prompt},
+    ]
 
     start = time.time()
     try:
-        r = requests.post(url, json=payload, headers=headers, timeout=60)
-        r.raise_for_status()
-        data = r.json()
-        choices = data.get("choices") or []
-        if choices:
-            content = (choices[0].get("message") or {}).get("content", "")
-            elapsed = time.time() - start
-            if content and content.strip():
-                logger.info("GLM signal explanation generated in %.2fs with model=%s", elapsed, model)
-                return content.strip()
+        content = glm_chat_completion_text(
+            messages,
+            model=model,
+            stream=False,
+            json_mode=False,
+            temperature=float(temperature),
+            max_tokens=512,
+            timeout=60.0,
+            allow_cheap_fallback=True,
+        )
+        elapsed = time.time() - start
+        if content and content.strip() and not content.strip().startswith("GLM "):
+            logger.info("GLM signal explanation generated in %.2fs with model=%s", elapsed, model)
+            return content.strip()
         logger.warning("Empty GLM response for signal explanation (model=%s)", model)
-        return None
-    except requests.exceptions.Timeout:
-        logger.warning("GLM signal explanation timed out (model=%s, %.1fs)", model, time.time() - start)
-        return None
-    except requests.exceptions.ConnectionError as e:
-        logger.warning("Cannot connect to Z.AI for signal explanation: %s", e)
         return None
     except Exception as e:
         logger.warning("GLM signal explanation failed (model=%s): %s", model, e)
