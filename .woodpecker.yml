@@ -57,9 +57,15 @@
 #   /home/lance/trading-dashboard-optional.env  e.g. MAILGUN_SEND_DOMAIN=mg.example.com
 #   MAILGUN_FROM="Portfolio <noreply@mg.example.com>"
 # Outbound digest also needs PUBLIC_BASE_URL (see deploy step: derived from APP_DOMAIN when possible)
-# - ollama_base_url: (optional) Ollama API URL (default: http://host.docker.internal:11434)
-# - ollama_model: (optional) Default AI model (default: mistral-nemo:12b)
-# - ollama_enabled: (optional) Enable AI assistant (default: true)
+# Ollama (NOT passed via from_secret — avoids Woodpecker errors when unset). Set on the deploy host:
+#   - Export before the agent runs, OR
+#   - Put in /home/lance/trading-dashboard-optional.env (sourced for BOTH Streamlit + Flask deploy steps)
+# Recommended dual-GPU (see web_dashboard/model_config.json + ollama_client semantic aliases):
+#   OLLAMA_BASE_URL=http://amd-host:11434          # legacy: primary for granite when using aliases
+#   OLLAMA_BASE_URL_2=http://nvidia-3090:11434    # legacy: primary for qwen3.6 when using aliases
+# Optional explicit names (override without swapping the legacy pair):
+#   OLLAMA_BASE_URL_AMD=...   OLLAMA_BASE_URL_NVIDIA=...
+# Also supported: OLLAMA_MODEL, OLLAMA_ENABLED, OLLAMA_SUMMARIZING_MODEL, etc.
 #
 # Note: Secrets are loaded using from_secret in the environment section
 # Note: Repository must be marked as "Trusted" in Woodpecker settings to use volumes
@@ -396,10 +402,17 @@ steps:
       # Added --add-host to allow connecting to Ollama on the host machine via host.docker.internal (Linux support)
       # NOTE: On Windows/Mac, host.docker.internal works natively. On Linux, you MUST add "--add-host=host.docker.internal:host-gateway"
       # IPv6 support: Containers will use IPv6 if Docker daemon has IPv6 enabled (see DOCKER_IPV6_SETUP.md)
-      # Ollama settings can be overridden via Woodpecker secrets or environment variables
+      # Ollama: see file header — host env or /home/lance/trading-dashboard-optional.env (not Woodpecker secrets)
       # RESEARCH_DATABASE_URL is optional - only set if research articles storage is needed
       # FMP_API_KEY is optional - only set if congress trading module is needed
       - |
+        if [ -f /home/lance/trading-dashboard-optional.env ]; then
+          set -a
+          # shellcheck disable=SC1091
+          . /home/lance/trading-dashboard-optional.env
+          set +a
+          echo "Loaded /home/lance/trading-dashboard-optional.env (Streamlit + Ollama optional vars)"
+        fi
         # Build base docker run command
         DOCKER_CMD="docker run -d --name trading-dashboard --restart unless-stopped -p 8501:8501 --network bridge-ipv6 --add-host=host.docker.internal:host-gateway"
         # Mount application logs directory (host logs -> container logs)
@@ -449,6 +462,8 @@ steps:
         # Add Ollama and Streamlit settings
         DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL=\"${OLLAMA_BASE_URL:-http://host.docker.internal:11434}\""
         [ -n "$OLLAMA_BASE_URL_2" ] && DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL_2=\"$OLLAMA_BASE_URL_2\""
+        [ -n "$OLLAMA_BASE_URL_AMD" ] && DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL_AMD=\"$OLLAMA_BASE_URL_AMD\""
+        [ -n "$OLLAMA_BASE_URL_NVIDIA" ] && DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL_NVIDIA=\"$OLLAMA_BASE_URL_NVIDIA\""
         DOCKER_CMD="$DOCKER_CMD -e OLLAMA_MODEL=\"${OLLAMA_MODEL:-mistral-nemo:12b}\""
         DOCKER_CMD="$DOCKER_CMD -e OLLAMA_ENABLED=\"${OLLAMA_ENABLED:-true}\""
         DOCKER_CMD="$DOCKER_CMD -e STREAMLIT_SERVER_HEADLESS=true"
@@ -519,6 +534,8 @@ steps:
         # Add Ollama settings for Flask
         FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL=\"${OLLAMA_BASE_URL:-http://host.docker.internal:11434}\""
         [ -n "$OLLAMA_BASE_URL_2" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_2=\"$OLLAMA_BASE_URL_2\""
+        [ -n "$OLLAMA_BASE_URL_AMD" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_AMD=\"$OLLAMA_BASE_URL_AMD\""
+        [ -n "$OLLAMA_BASE_URL_NVIDIA" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_NVIDIA=\"$OLLAMA_BASE_URL_NVIDIA\""
         FLASK_CMD="$FLASK_CMD -e OLLAMA_MODEL=\"${OLLAMA_MODEL:-mistral-nemo:12b}\""
         FLASK_CMD="$FLASK_CMD -e OLLAMA_ENABLED=\"${OLLAMA_ENABLED:-true}\""
         

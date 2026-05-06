@@ -73,6 +73,20 @@ Woodpecker needs access to the Docker socket to build images. Ensure:
 
 Since you're using Portainer for container management, the `.woodpecker.yml` can be simplified to just build the image. The current config includes a deploy step that uses SSH - you can remove that if you're only using Portainer.
 
+## Ollama in production (Flask / scheduler)
+
+Woodpecker’s deploy step does **not** map Ollama keys from repository secrets (optional secrets are awkward in Woodpecker). Production gets Ollama the same way as other optional deploy vars:
+
+1. **`/home/lance/trading-dashboard-optional.env`** on the deploy host — sourced before **both** Streamlit and Flask `docker run` (see `.woodpecker.yml`). Put lines such as:
+   - `OLLAMA_BASE_URL=http://...` — AMD box (granite primary) when using the legacy pair
+   - `OLLAMA_BASE_URL_2=http://...` — NVIDIA / 3090 box (qwen primary)
+   - Optional: `OLLAMA_BASE_URL_AMD=...` and `OLLAMA_BASE_URL_NVIDIA=...` if you don’t want to rely on the legacy ordering
+   - `OLLAMA_MODEL=...`, `OLLAMA_ENABLED=true`, etc. as needed
+
+2. **Model ↔ host routing** is in the **image**: `web_dashboard/model_config.json` (not secrets). DB overrides (`system_settings` keys like `model_<name>_base_url`) can still override per model.
+
+Local **development** uses `web_dashboard/.env` or repo templates (`.env.test.template`, `web_dashboard/env.example`); those files are not used by the Woodpecker deploy path.
+
 ## Environment Variables in Portainer
 
 When creating the container in Portainer, set these environment variables:
