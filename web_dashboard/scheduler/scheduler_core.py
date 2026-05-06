@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -1662,23 +1662,115 @@ def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
         # Fallback if import fails (shouldn't happen in normal operation)
         AVAILABLE_JOBS = {}
         
+    def _fallback_status_from_persistent_jobstore() -> List[Dict[str, Any]]:
+        """Return best-effort job status even when this process has no scheduler instance.
+
+        In multi-worker Flask deployments, only one process owns the in-memory scheduler.
+        Other workers should still be able to display Next Run by reading from the
+        SQLAlchemyJobStore table (`apscheduler_jobs`) in Supabase.
+        """
+        scheduler_running = is_scheduler_running()
+        scheduler_stopped = not scheduler_running
+
+        try:
+            from supabase_client import SupabaseClient
+
+            client = SupabaseClient(use_service_role=True)
+            res = (
+                client.supabase.table("apscheduler_jobs")
+                .select("id,next_run_time")
+                .order("id")
+                .limit(500)
+                .execute()
+            )
+            rows = res.data or []
+        except Exception as exc:
+            logger.warning("Could not read apscheduler_jobs for status fallback: %s", exc)
+            rows = []
+
+        # Map persisted job ids -> datetime (UTC) or None
+        next_run_map: Dict[str, datetime | None] = {}
+        for r in rows:
+            jid = r.get("id")
+            if not jid:
+                continue
+            nrt = r.get("next_run_time")
+            try:
+                if nrt is None:
+                    next_run_map[str(jid)] = None
+                else:
+                    # SQLAlchemyJobStore stores UTC epoch seconds.
+                    next_run_map[str(jid)] = datetime.fromtimestamp(float(nrt), tz=timezone.utc)
+            except Exception:
+                next_run_map[str(jid)] = None
+
+        def _trigger_desc_from_config(cfg: Dict[str, Any]) -> str:
+            if cfg.get("cron_triggers"):
+                cron_config = cfg["cron_triggers"][0]
+                hour = cron_config.get("hour", "*")
+                minute = cron_config.get("minute", 0)
+                tz = cron_config.get("timezone", "")
+                if isinstance(hour, int) and isinstance(minute, int):
+                    base = f"At {hour:02d}:{minute:02d}"
+                    return f"{base} ({tz})" if tz else base
+                return "Cron schedule"
+            interval_mins = cfg.get("default_interval_minutes", 0) or 0
+            if interval_mins:
+                if interval_mins < 60:
+                    return f"Every {interval_mins} minute{'s' if interval_mins != 1 else ''}"
+                if interval_mins < 1440:
+                    hours = interval_mins // 60
+                    return f"Every {hours} hour{'s' if hours != 1 else ''}"
+                days = interval_mins // 1440
+                return f"Every {days} day{'s' if days != 1 else ''}"
+            return "Manual"
+
+        statuses: List[Dict[str, Any]] = []
+
+        # Prefer job ids from persisted store; supplement with AVAILABLE_JOBS so UI can still show everything.
+        all_ids = sorted(set(next_run_map.keys()) | set(AVAILABLE_JOBS.keys()))
+        for job_id in all_ids:
+            cfg = AVAILABLE_JOBS.get(job_id, {})
+            next_run = next_run_map.get(job_id)
+            has_schedule = next_run is not None or bool(cfg.get("cron_triggers")) or bool(cfg.get("default_interval_minutes"))
+
+            statuses.append(
+                {
+                    "id": job_id,
+                    "name": cfg.get("name", job_id),
+                    "next_run": next_run,
+                    # When we don't own the scheduler process, we can't reliably distinguish "paused" vs "no next run".
+                    "is_paused": bool(has_schedule and scheduler_running and next_run is None),
+                    "trigger": _trigger_desc_from_config(cfg),
+                    "is_running": False,
+                    "running_since": None,
+                    "last_error": None,
+                    "recent_logs": [],
+                    "scheduler_stopped": scheduler_stopped,
+                    "has_schedule": has_schedule,
+                    "parameters": cfg.get("parameters", {}),
+                    "trigger_details": {"type": "unknown", "raw": "jobstore-fallback"},
+                }
+            )
+
+        return statuses
+
     # Use create=False to avoid creating a new scheduler instance if one doesn't exist
     # This prevents "Duplicate scheduler created" logs from UI workers
     scheduler = get_scheduler(create=False)
-    
+
     if scheduler:
         # With SQLAlchemyJobStore, jobs are always available from the database,
         # even if the scheduler is stopped
         jobs = scheduler.get_jobs()
     else:
-        # If scheduler doesn't exist, we can't get jobs
-        # This only happens in worker processes that haven't initialized the scheduler
-        logger.debug("Scheduler not initialized, no jobs available")
-        return []
-    
+        # Multi-worker Flask: this process doesn't own the scheduler. Use persistent jobstore fallback.
+        logger.debug("Scheduler not initialized in this process; using jobstore fallback for job status.")
+        return _fallback_status_from_persistent_jobstore()
+
     if not jobs:
-        logger.debug("No jobs found in jobstore (scheduler may not have been started yet)")
-        return []
+        logger.debug("No jobs found in scheduler.get_jobs(); using jobstore fallback for job status.")
+        return _fallback_status_from_persistent_jobstore()
     
     # Map all job IDs to job names
     job_id_to_name = {}
