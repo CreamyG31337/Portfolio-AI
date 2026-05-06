@@ -285,7 +285,7 @@ Return JSON only:
 }}"""
 
 # Meta synthesis: reconcile prior AI outputs only (no fresh OHLCV or raw posts).
-TICKER_META_ANALYSIS_PROMPT = """You are a senior research editor. Your inputs are ONLY pre-computed analysis artifacts
+TICKER_META_ANALYSIS_PROMPT_LEGACY = """You are a senior research editor. Your inputs are ONLY pre-computed analysis artifacts
 (summaries, scores, and short reasoning from other models). Treat them as claims to reconcile—not as verified facts.
 
 ## Ticker
@@ -298,13 +298,49 @@ TICKER_META_ANALYSIS_PROMPT = """You are a senior research editor. Your inputs a
 1. Identify agreements and contradictions across sources (e.g. ticker stance vs social tone vs article conclusions vs congress risk notes).
 2. Produce a single calibrated view: adjust conviction downward when sources conflict or evidence is thin.
 3. If two standard ticker analysis snapshots are present, explain what changed between them; otherwise set what_changed_vs_last_run to "N/A (no prior snapshot)".
-4. Do not invent prices, dates, or events not mentioned in the bundle. If the bundle is sparse, say so and lower confidence_adjusted.
+4. Do not invent prices, dates, or events not mentioned in the bundle. If the bundle is sparse, say so and lower confidence.
 
 Return JSON only:
 {{
-    "unified_conviction": "STRONG_BULLISH|BULLISH|NEUTRAL|BEARISH|STRONG_BEARISH|INSUFFICIENT_DATA",
-    "confidence_adjusted": 0.0 to 1.0,
+    "stance": "STRONG_BULLISH|BULLISH|NEUTRAL|BEARISH|STRONG_BEARISH|INSUFFICIENT_DATA",
+    "confidence": 0.0 to 1.0,
+    "horizon": "INTRADAY|SWING|POSITION|UNKNOWN",
     "contradictions": ["short bullet describing a tension", "..."],
+    "risk_flags": ["specific risk to monitor", "..."],
+    "key_drivers": ["most important supporting signal/fact", "..."],
+    "actionability_score": 0 to 100,
+    "what_changed_vs_last_run": "string",
+    "action_items": ["concrete next step for a human analyst", "..."],
+    "narrative": "2-4 tight paragraphs synthesizing the reconciled story for this ticker"
+}}"""
+
+TICKER_META_ANALYSIS_PROMPT = """You are a senior research editor. Your inputs are ONLY pre-computed analysis artifacts
+(summaries, scores, and short reasoning from other models). Treat them as claims to reconcile—not as verified facts.
+
+## Ticker
+{ticker}
+
+## Artifact bundle (analysis outputs)
+{artifact_bundle}
+
+## Task
+1. Identify agreements and contradictions across sources (e.g. ticker stance vs social tone vs article conclusions vs congress risk notes).
+2. Treat technical signals as first-class timing/risk inputs:
+   - If signal direction conflicts with narrative/news flow, downgrade confidence and record contradiction.
+   - If fear level is HIGH/EXTREME, add at least one risk flag unless offset is explicitly justified.
+3. Produce a single calibrated view: adjust conviction downward when sources conflict or evidence is thin.
+4. If two standard ticker analysis snapshots are present, explain what changed between them; otherwise set what_changed_vs_last_run to "N/A (no prior snapshot)".
+5. Do not invent prices, dates, or events not mentioned in the bundle. If the bundle is sparse, say so and lower confidence.
+
+Return JSON only:
+{{
+    "stance": "STRONG_BULLISH|BULLISH|NEUTRAL|BEARISH|STRONG_BEARISH|INSUFFICIENT_DATA",
+    "confidence": 0.0 to 1.0,
+    "horizon": "INTRADAY|SWING|POSITION|UNKNOWN",
+    "contradictions": ["short bullet describing a tension", "..."],
+    "risk_flags": ["specific risk to monitor", "..."],
+    "key_drivers": ["most important supporting signal/fact", "..."],
+    "actionability_score": 0 to 100,
     "what_changed_vs_last_run": "string",
     "action_items": ["concrete next step for a human analyst", "..."],
     "narrative": "2-4 tight paragraphs synthesizing the reconciled story for this ticker"

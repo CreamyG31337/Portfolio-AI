@@ -49,6 +49,7 @@ def test_needs_refresh_true_when_no_meta() -> None:
         [],
         [],
         [],
+        [],
     ]
     sb = MagicMock()
     _congress_empty_supabase(sb)
@@ -63,7 +64,7 @@ def test_needs_refresh_false_when_digest_matches() -> None:
     sb = MagicMock()
     _congress_empty_supabase(sb)
     pg_build = MagicMock()
-    pg_build.execute_query.side_effect = [[_STD_ROW], [], []]
+    pg_build.execute_query.side_effect = [[_STD_ROW], [], [], []]
     svc0 = _svc(pg_build, sb)
     bundle, _ = svc0.build_artifact_bundle("ABC")
     digest = artifact_bundle_digest(bundle)
@@ -71,6 +72,7 @@ def test_needs_refresh_false_when_digest_matches() -> None:
     pg = MagicMock()
     pg.execute_query.side_effect = [
         [_STD_ROW],
+        [],
         [],
         [],
         [{"artifact_bundle_digest": digest, "source_analysis_id": str(_STD_ROW["id"])}],
@@ -111,7 +113,7 @@ def test_needs_refresh_true_when_social_snippet_changes() -> None:
     ]
 
     pg1 = MagicMock()
-    pg1.execute_query.side_effect = [[_STD_ROW], social_a, []]
+    pg1.execute_query.side_effect = [[_STD_ROW], [], social_a, []]
     svc1 = _svc(pg1, sb)
     bundle_a, _ = svc1.build_artifact_bundle("ABC")
     digest_a = artifact_bundle_digest(bundle_a)
@@ -119,6 +121,7 @@ def test_needs_refresh_true_when_social_snippet_changes() -> None:
     pg2 = MagicMock()
     pg2.execute_query.side_effect = [
         [_STD_ROW],
+        [],
         social_b,
         [],
         [{"artifact_bundle_digest": digest_a}],
@@ -167,6 +170,7 @@ def test_build_artifact_bundle_includes_standard_block() -> None:
         ],
         [],
         [],
+        [],
     ]
     sb = MagicMock()
     _congress_empty_supabase(sb)
@@ -175,6 +179,63 @@ def test_build_artifact_bundle_includes_standard_block() -> None:
     assert primary is not None
     assert "Latest standard ticker_analysis" in bundle
     assert "Buy the dip" in bundle
+
+
+def test_build_artifact_bundle_omits_signal_and_brief_when_phase1_disabled(monkeypatch) -> None:
+    monkeypatch.delenv("META_ANALYSIS_PHASE1_SIGNAL_FUSION", raising=False)
+    monkeypatch.setenv("META_ANALYSIS_PHASE1_SIGNAL_FUSION", "false")
+    pg = MagicMock()
+    pg.execute_query.side_effect = [[_STD_ROW], [], []]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    svc = _svc(pg, sb)
+    bundle, _ = svc.build_artifact_bundle("ABC")
+    assert "Technical signal snapshot" not in bundle
+    assert "Latest market regime context" not in bundle
+    sb.supabase.table.assert_called()
+
+
+def test_build_artifact_bundle_includes_signal_snapshot() -> None:
+    pg = MagicMock()
+    pg.execute_query.side_effect = [[_STD_ROW], [], [], []]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    sb.supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[
+            {
+                "analysis_date": "2026-04-02T10:00:00+00:00",
+                "overall_signal": "BUY",
+                "confidence_score": 0.81,
+                "structure_signal": {"trend": "UP"},
+                "timing_signal": {"timing": "EARLY"},
+                "fear_risk_signal": {"fear_level": "LOW"},
+                "momentum_signal": {"bias": "BULLISH", "composite_score": 0.73},
+                "fundamental_signal": {"bias": "NEUTRAL", "composite_score": 0.51},
+            }
+        ]
+    )
+    svc = _svc(pg, sb)
+    bundle, _ = svc.build_artifact_bundle("ABC")
+    assert "Technical signal snapshot (latest)" in bundle
+    assert "overall_signal: BUY" in bundle
+
+
+def test_save_meta_falls_back_to_stance_and_confidence() -> None:
+    pg = MagicMock()
+    sb = MagicMock()
+    svc = _svc(pg, sb)
+    response = {
+        "stance": "BULLISH",
+        "confidence": 0.66,
+        "contradictions": ["x"],
+        "what_changed_vs_last_run": "N/A",
+        "action_items": ["verify"],
+        "narrative": "n",
+    }
+    svc._save_meta("ABC", _STD_ROW, response, "m", None, "digest")
+    args = pg.execute_update.call_args[0][1]
+    assert args[3] == "BULLISH"
+    assert args[4] == 0.66
 
 
 def test_artifact_bundle_digest_stable() -> None:

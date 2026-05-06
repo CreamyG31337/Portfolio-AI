@@ -15,6 +15,18 @@ import os
 logger = logging.getLogger(__name__)
 
 
+def is_meta_analysis_phase1_signal_fusion_enabled() -> bool:
+    """Gate Phase 1 ticker-meta inputs (signal snapshot + market brief) and matching prompt.
+
+    Set ``META_ANALYSIS_PHASE1_SIGNAL_FUSION`` to ``false``, ``0``, ``no``, or ``off`` to revert
+    to the pre-fusion bundle and prompt without redeploying code.
+
+    Default: enabled (true).
+    """
+    raw = os.getenv("META_ANALYSIS_PHASE1_SIGNAL_FUSION", "true").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
 DEFAULT_FUND_PROFILE_SETTINGS: dict[str, dict[str, Any]] = {
     "DEFAULT": {
         "signal_alert_min_confidence": 0.72,

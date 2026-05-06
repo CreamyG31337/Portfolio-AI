@@ -13,7 +13,7 @@ from typing import Any
 
 from ollama_client import OllamaClient
 from postgres_client import PostgresClient
-from settings import get_summarizing_model
+from settings import get_summarizing_model, is_meta_analysis_phase1_signal_fusion_enabled
 from supabase_client import SupabaseClient
 from ticker_analysis_service import extract_json
 
@@ -134,6 +134,38 @@ class TickerMetaAnalysisService:
             (ticker, ticker),
         ) or []
 
+    def _fetch_signal_snapshot(self, ticker: str) -> dict[str, Any] | None:
+        """Fetch the latest technical signal snapshot for ticker (if any)."""
+        try:
+            res = (
+                self.supabase.supabase.table("signal_analysis")
+                .select(
+                    "analysis_date, overall_signal, confidence_score, "
+                    "structure_signal, timing_signal, fear_risk_signal, momentum_signal, fundamental_signal"
+                )
+                .eq("ticker", ticker)
+                .order("analysis_date", desc=True)
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as exc:
+            logger.debug("Signal snapshot fetch failed for %s: %s", ticker, exc)
+            return None
+
+    def _fetch_market_brief_snippet(self) -> dict[str, Any] | None:
+        """Fetch the latest market regime brief for global context."""
+        rows = self.postgres.execute_query(
+            """
+            SELECT brief_date, headline, narrative, regime_json, updated_at
+            FROM market_daily_brief
+            ORDER BY brief_date DESC
+            LIMIT 1
+            """
+        )
+        return rows[0] if rows else None
+
     def _fetch_congress_snippets(self, ticker: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         trade_rows: list[dict[str, Any]] = []
         session_summaries: list[dict[str, Any]] = []
@@ -210,6 +242,57 @@ class TickerMetaAnalysisService:
             parts.append(f"- analysis_excerpt: {_clip(row.get('analysis_text'), _MAX_TEXT)}")
             parts.append(f"- reasoning_excerpt: {_clip(row.get('reasoning'), _MAX_REASON)}")
             parts.append("")
+
+        if is_meta_analysis_phase1_signal_fusion_enabled():
+            signal = self._fetch_signal_snapshot(ticker)
+            if signal:
+                structure = signal.get("structure_signal") or {}
+                timing = signal.get("timing_signal") or {}
+                fear = signal.get("fear_risk_signal") or {}
+                momentum = signal.get("momentum_signal") or {}
+                fundamental = signal.get("fundamental_signal") or {}
+                parts.append("### Technical signal snapshot (latest)")
+                parts.append(f"- analysis_date: {signal.get('analysis_date')}")
+                parts.append(
+                    f"- overall_signal: {signal.get('overall_signal')} "
+                    f"(confidence={signal.get('confidence_score')})"
+                )
+                parts.append(
+                    f"- trend: {structure.get('trend')} | timing: {timing.get('timing')} "
+                    f"| fear_level: {fear.get('fear_level')}"
+                )
+                parts.append(
+                    f"- momentum_bias: {momentum.get('bias')} | momentum_score: {momentum.get('composite_score')}"
+                )
+                parts.append(
+                    f"- fundamental_bias: {fundamental.get('bias')} | "
+                    f"fundamental_score: {fundamental.get('composite_score')}"
+                )
+                parts.append("")
+            else:
+                parts.append("### Technical signal snapshot (latest)")
+                parts.append("- signal_data: MISSING")
+                parts.append("")
+
+            market_brief = self._fetch_market_brief_snippet()
+            if market_brief:
+                regime = market_brief.get("regime_json") or {}
+                caveats = regime.get("caveats") if isinstance(regime, dict) else []
+                caveat_txt = ", ".join(caveats[:3]) if isinstance(caveats, list) else ""
+                parts.append("### Latest market regime context")
+                parts.append(
+                    f"- brief_date: {market_brief.get('brief_date')} "
+                    f"(updated {market_brief.get('updated_at')})"
+                )
+                parts.append(f"- headline: {_clip(market_brief.get('headline'), 180)}")
+                parts.append(
+                    f"- risk_tone: {(regime or {}).get('risk_tone')} | "
+                    f"leadership_note: {_clip((regime or {}).get('leadership_note'), 180)}"
+                )
+                if caveat_txt:
+                    parts.append(f"- caveats: {_clip(caveat_txt, 220)}")
+                parts.append(f"- narrative: {_clip(market_brief.get('narrative'), 600)}")
+                parts.append("")
 
         social = self._fetch_social_snippets(ticker)
         if social:
@@ -289,9 +372,14 @@ class TickerMetaAnalysisService:
             logger.error("Meta analysis requires an LLM client for %s", ticker_u)
             return None
 
-        from ai_prompts import TICKER_META_ANALYSIS_PROMPT
+        from ai_prompts import TICKER_META_ANALYSIS_PROMPT, TICKER_META_ANALYSIS_PROMPT_LEGACY
 
-        prompt = TICKER_META_ANALYSIS_PROMPT.format(ticker=ticker_u, artifact_bundle=bundle)
+        tmpl = (
+            TICKER_META_ANALYSIS_PROMPT
+            if is_meta_analysis_phase1_signal_fusion_enabled()
+            else TICKER_META_ANALYSIS_PROMPT_LEGACY
+        )
+        prompt = tmpl.format(ticker=ticker_u, artifact_bundle=bundle)
         try:
             from skill_loader import build_enhanced_prompt
 
@@ -319,6 +407,21 @@ class TickerMetaAnalysisService:
         if not response:
             logger.error("Meta analysis JSON parse failed for %s", ticker_u)
             return None
+
+        contradictions = response.get("contradictions") or []
+        if not isinstance(contradictions, list):
+            contradictions = [str(contradictions)]
+        risk_flags = response.get("risk_flags") or []
+        if not isinstance(risk_flags, list):
+            risk_flags = [str(risk_flags)]
+        logger.info(
+            "Meta synthesis for %s: stance=%s confidence=%s contradictions=%s risk_flags=%s",
+            ticker_u,
+            response.get("stance") or response.get("unified_conviction"),
+            response.get("confidence") if response.get("confidence") is not None else response.get("confidence_adjusted"),
+            len(contradictions),
+            len(risk_flags),
+        )
 
         bundle_digest = artifact_bundle_digest(bundle)
         self._save_meta(
@@ -389,8 +492,16 @@ class TickerMetaAnalysisService:
                 ticker,
                 str(src_id) if src_id else None,
                 snap,
-                (response.get("unified_conviction") or "")[:40] or None,
-                response.get("confidence_adjusted"),
+                (
+                    response.get("unified_conviction")
+                    or response.get("stance")
+                    or "INSUFFICIENT_DATA"
+                )[:40] or None,
+                (
+                    response.get("confidence_adjusted")
+                    if response.get("confidence_adjusted") is not None
+                    else response.get("confidence")
+                ),
                 json.dumps(contradictions),
                 response.get("what_changed_vs_last_run"),
                 action_items,
