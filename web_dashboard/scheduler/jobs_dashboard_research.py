@@ -27,7 +27,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def _compute_missing_brief_dates(postgres, *, lookback_days: int = 5) -> list[date]:
+def _compute_missing_brief_dates(postgres, *, lookback_days: int = 12) -> list[date]:
     """Return missing weekday brief dates in a short recent window."""
     from market_brief_service import _ny_today
 
@@ -125,7 +125,7 @@ def market_daily_brief_job() -> None:
 
             ny_today = _ny_today()
             weekend = ny_today.weekday() >= 5
-            dates_to_fill = _compute_missing_brief_dates(postgres, lookback_days=5)
+            dates_to_fill = _compute_missing_brief_dates(postgres, lookback_days=12)
             if not dates_to_fill:
                 if weekend:
                     # Do not write a Sat/Sun brief row; cron should be mon-fri only but lock-retry

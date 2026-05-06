@@ -431,6 +431,32 @@ function formatSummaryUpdatedAt(value: string | null | undefined): string {
     return `${year}-${month}-${day} ${hour}:${minute}`;
 }
 
+/** Postgres DATE serialized as YYYY-MM-DD — do not use ``new Date(str)`` (UTC midnight shifts local calendar day). */
+function formatCalendarDateFromYmd(value: string | null | undefined): string {
+    if (!value) return "";
+    const s = String(value).trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+    const y = Number(s.slice(0, 4));
+    const mo = Number(s.slice(5, 7));
+    const d = Number(s.slice(8, 10));
+    const cal = new Date(y, mo - 1, d);
+    if (Number.isNaN(cal.getTime())) return "";
+    return cal.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+/** Market brief: show trading-day date (brief_date) and real refresh time (updated_at) separately. */
+function formatMarketBriefAsOfLine(
+    briefDate: string | null | undefined,
+    updatedAt: string | null | undefined
+): string {
+    const day = formatCalendarDateFromYmd(briefDate ?? "");
+    const refreshed = formatSummaryUpdatedAt(updatedAt ?? "");
+    if (day && refreshed) return `Trading day ${day} · refreshed ${refreshed}`;
+    if (day) return `Trading day ${day}`;
+    if (refreshed) return `Refreshed ${refreshed}`;
+    return "";
+}
+
 async function initTimeDisplay(): Promise<void> {
     const el = document.getElementById('last-updated-text');
     if (!el) return;
@@ -2071,9 +2097,8 @@ async function fetchMarketBrief(): Promise<void> {
         if (headlineEl) headlineEl.textContent = data.headline || '';
         if (narrativeEl) narrativeEl.textContent = data.narrative || '';
         if (asofEl) {
-            const d = data.brief_date || data.updated_at || '';
-            const formatted = formatSummaryUpdatedAt(d);
-            asofEl.textContent = formatted ? `As of ${formatted}` : '';
+            const line = formatMarketBriefAsOfLine(data.brief_date ?? null, data.updated_at ?? null);
+            asofEl.textContent = line ? `As of ${line}` : '';
         }
         if (inputsEl) {
             try {
