@@ -16,6 +16,7 @@ import requests
 from typing import Any, Dict, Iterator, List, Optional
 from datetime import datetime, timezone, timedelta
 from settings import get_summarizing_model
+from ollama_client import collect_with_summary_model_chain
 from env_loader import load_project_dotenv
 
 load_project_dotenv()
@@ -849,20 +850,24 @@ OUTPUT JSON ONLY:
                     
                     user_prompt = f"Analyze this post from r/{subreddit}:\n\n{full_text}"
                     
-                    # Call Ollama (reusing query_ollama logic or direct call)
-                    # We'll use query_ollama from client
-                    response_text = ""
                     opportunity_model = get_summarizing_model()
-                    for chunk in self.ollama.query_ollama(
+                    response_text, opportunity_model = collect_with_summary_model_chain(
+                        self.ollama,
                         prompt=user_prompt,
-                        model=opportunity_model,
+                        requested_model=opportunity_model,
                         system_prompt=system_prompt,
                         json_mode=True,
                         temperature=0.1,
                         stream=True,
-                    ):
-                        response_text += chunk
-                    
+                        response_ok=lambda s: _extract_json_object(s) is not None,
+                    )
+                    if not response_text:
+                        logger.warning(
+                            "Opportunity scan: all summarization models failed for post %s",
+                            post_id,
+                        )
+                        continue
+
                     result = _extract_json_object(response_text)
                     if not result:
                         logger.warning(

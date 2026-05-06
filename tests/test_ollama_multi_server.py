@@ -25,7 +25,10 @@ def _reachable(url: str) -> bool:
 
 
 def test_qwen_payload_includes_think_false_and_routes_to_env_second_host(monkeypatch: pytest.MonkeyPatch) -> None:
-    """qwen3.6:27b requests include top-level think:false; second host from OLLAMA_BASE_URL_2."""
+    """qwen3.6:27b hits NVIDIA URL first; granite3.3:8b hits AMD URL first (semantic env aliases)."""
+    monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_NVIDIA", raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://amd-test:11434")
     monkeypatch.setenv("OLLAMA_BASE_URL_2", "http://rtx-test:11434")
     client = ollama_client.OllamaClient(base_url="http://amd-test:11434")
     captured: list[tuple[str, dict]] = []
@@ -51,6 +54,63 @@ def test_qwen_payload_includes_think_false_and_routes_to_env_second_host(monkeyp
     g_url, g_payload = captured[0]
     assert "amd-test" in g_url
     assert "think" not in g_payload
+
+
+def test_ollama_semantic_host_env_aliases_fallback_to_legacy_pair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OLLAMA_BASE_URL_AMD / _NVIDIA fall back to OLLAMA_BASE_URL / _2 when unset."""
+    monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_NVIDIA", raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://legacy-amd:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL_2", "http://legacy-nv:11434")
+    assert ollama_client._resolve_ollama_host_env("OLLAMA_BASE_URL_AMD") == "http://legacy-amd:11434"
+    assert ollama_client._resolve_ollama_host_env("OLLAMA_BASE_URL_NVIDIA") == "http://legacy-nv:11434"
+
+
+def test_ollama_semantic_host_env_explicit_overrides_legacy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://wrong-amd:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL_2", "http://wrong-nv:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL_AMD", "http://explicit-amd:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL_NVIDIA", "http://explicit-nv:11434")
+    assert ollama_client._resolve_ollama_host_env("OLLAMA_BASE_URL_AMD") == "http://explicit-amd:11434"
+    assert ollama_client._resolve_ollama_host_env("OLLAMA_BASE_URL_NVIDIA") == "http://explicit-nv:11434"
+
+
+def test_fallback_retry_on_http_404_for_default_base_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Models using only OLLAMA_BASE_URL (e.g. mistral-nemo) retry on OLLAMA_BASE_URL_2 after 404."""
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://host-a:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL_2", "http://host-b:11434")
+    monkeypatch.setattr(
+        settings_module,
+        "get_system_setting",
+        lambda _key, default=None: default,
+    )
+    client = ollama_client.OllamaClient(base_url="http://host-a:11434")
+    posts: list[str] = []
+
+    def fake_post(url: str, json: dict | None = None, **kwargs: object) -> MagicMock:
+        posts.append(url)
+        if "host-a" in url:
+            r = MagicMock()
+            r.raise_for_status.side_effect = requests.HTTPError(response=MagicMock(status_code=404))
+            return r
+        r = MagicMock()
+        r.raise_for_status = lambda: None
+        r.json.return_value = {"response": "ok"}
+        return r
+
+    monkeypatch.setattr(client.session, "post", fake_post)
+    out = client._post_ollama(
+        "mistral-nemo:12b",
+        "/api/generate",
+        {"model": "mistral-nemo:12b", "prompt": "x"},
+        stream=False,
+    )
+    assert len(posts) == 2
+    assert "host-a" in posts[0]
+    assert "host-b" in posts[1]
+    assert out.json()["response"] == "ok"
 
 
 def test_fallback_retry_on_http_404_for_qwen(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -24,7 +24,7 @@ import pandas as pd
 
 from supabase_client import SupabaseClient
 from postgres_client import PostgresClient
-from ollama_client import OllamaClient
+from ollama_client import OllamaClient, collect_with_summary_model_chain
 from ai_skip_list_manager import AISkipListManager
 from ai_context_builder import (
     format_fundamentals_table,
@@ -975,22 +975,24 @@ class TickerAnalysisService:
                 logger.error("TICKER_ANALYSIS_PROMPT not found in ai_prompts.py")
                 return None
             
-            # Analyze with LLM
+            # Analyze with LLM (summarization model chain + multi-host / GLM fallbacks)
             model = self._resolve_analysis_model(model_override)
             system_prompt = "You are a financial analyst. Return ONLY valid JSON with the exact fields specified."
-            
-            full_response = ""
-            for chunk in self.ollama.query_ollama(
+
+            full_response, model = collect_with_summary_model_chain(
+                self.ollama,
                 prompt=prompt,
-                model=model,
+                requested_model=model,
                 stream=True,
                 system_prompt=system_prompt,
                 json_mode=True,
-                temperature=0.1
-            ):
-                full_response += chunk
-            
-            # Parse JSON
+                temperature=0.1,
+                response_ok=lambda s: extract_json(s) is not None,
+            )
+            if not full_response:
+                logger.error("LLM failed on all summarization models for %s", ticker_upper)
+                return None
+
             response = extract_json(full_response)
             if not response:
                 logger.error(f"Failed to parse JSON response for {ticker_upper}")

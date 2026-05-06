@@ -210,17 +210,44 @@ def _fit_summary_num_predict(
     return max(SUMMARY_MIN_PREDICT, fitted)
 
 
+# Optional semantic names for dual-Ollama layouts (see env.example). When unset, each maps to the
+# legacy pair so existing deployments keep working:
+#   OLLAMA_BASE_URL_AMD      → OLLAMA_BASE_URL
+#   OLLAMA_BASE_URL_NVIDIA   → OLLAMA_BASE_URL_2
+_OLLAMA_HOST_ENV_ALIASES: Dict[str, str] = {
+    "OLLAMA_BASE_URL_AMD": "OLLAMA_BASE_URL",
+    "OLLAMA_BASE_URL_NVIDIA": "OLLAMA_BASE_URL_2",
+}
+
+
+def _resolve_ollama_host_env(var_name: str) -> Optional[str]:
+    """Resolve a host env var, including semantic aliases that fall back to the legacy URL pair."""
+    key = str(var_name).strip()
+    if not key:
+        return None
+    raw = os.getenv(key, "").strip().rstrip("/")
+    if raw:
+        return raw
+    legacy = _OLLAMA_HOST_ENV_ALIASES.get(key)
+    if legacy:
+        raw = os.getenv(legacy, "").strip().rstrip("/")
+        if raw:
+            return raw
+    return None
+
+
 def _pop_env_url(settings: Dict[str, Any], env_attr: str, url_attr: str) -> None:
     """Resolve optional env indirection for URLs (mutates settings in place).
 
     If ``env_attr`` names an environment variable that is set and non-empty,
     its value becomes ``url_attr``. Keys ``*_env`` are removed after resolution.
+    Semantic keys like ``OLLAMA_BASE_URL_AMD`` fall back to ``OLLAMA_BASE_URL`` when unset.
     """
     env_name = settings.pop(env_attr, None)
     if env_name and str(env_name).strip():
-        v = os.getenv(str(env_name).strip())
-        if v and str(v).strip():
-            settings[url_attr] = str(v).strip().rstrip("/")
+        v = _resolve_ollama_host_env(str(env_name).strip())
+        if v:
+            settings[url_attr] = v
 
 
 class OllamaClient:
@@ -363,6 +390,11 @@ class OllamaClient:
                 return primary, fb
         if primary != default_norm:
             return primary, default_norm
+        # When the model uses the default Ollama URL only, still try the optional second host
+        # (same pattern as qwen3.6:27b in model_config). _post_ollama retries 404/5xx on fallback.
+        env_secondary = os.getenv("OLLAMA_BASE_URL_2", "").strip().rstrip("/")
+        if env_secondary and env_secondary != primary:
+            return primary, env_secondary
         return primary, None
 
     def _apply_think_to_payload(self, payload: Dict[str, Any], model_settings: Dict[str, Any]) -> None:
@@ -1065,16 +1097,15 @@ class OllamaClient:
             except ImportError:
                 model = "glm-5.1"
         try:
-            generator = self.query_ollama(
+            text, _used = collect_with_summary_model_chain(
+                self,
                 prompt=prompt,
-                model=model,
+                requested_model=model,
                 stream=False,
                 json_mode=json_mode,
-                temperature=temperature
+                temperature=temperature,
             )
-            return next(generator, None)
-        except OllamaHostBusyError:
-            raise
+            return text
         except Exception as e:
             logger.error(f"Error generating completion: {e}")
             return None
@@ -1163,62 +1194,67 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         # User prompt with the actual posts
         user_prompt = f"Analyze the sentiment for {ticker} based on these posts:\n\n{combined_text}"
         
-        try:
-            # Calculate dynamic timeout based on text length (min 30s, max 90s)
-            dynamic_timeout = max(30, min(90, len(combined_text) // 100))
-            
-            # Query Ollama (non-streaming for structured response)
-            full_response = ""
-            for chunk in self.query_ollama(
-                prompt=user_prompt,
-                model=model,
-                stream=True,
-                system_prompt=system_prompt,
-                temperature=0.1,  # Low temperature for strict JSON adherence
-                json_mode=True,   # Enforce JSON mode
-                streaming_timeout=dynamic_timeout
-            ):
-                full_response += chunk
-            
-            # Parse JSON response
-            import re
-            # Try to extract JSON from response (handle cases where AI adds extra text)
-            json_match = re.search(r'\{[^{}]*"sentiment"[^{}]*\}', full_response, re.DOTALL)
+        import re
+
+        dynamic_timeout = max(30, min(90, len(combined_text) // 100))
+        model_used = model
+        full_response = ""
+
+        def _parse_crowd_json(body: str) -> Optional[Dict[str, Any]]:
+            json_match = re.search(r'\{[^{}]*"sentiment"[^{}]*\}', body, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
             else:
-                json_str = full_response.strip()
-            
-            # Remove markdown code blocks if present
-            json_str = re.sub(r'```json\s*', '', json_str)
-            json_str = re.sub(r'```\s*', '', json_str)
+                json_str = body.strip()
+            json_str = re.sub(r"```json\s*", "", json_str)
+            json_str = re.sub(r"```\s*", "", json_str)
             json_str = json_str.strip()
-            
             parsed = json.loads(json_str)
-            
-            # Validate sentiment label
             sentiment = parsed.get("sentiment", "NEUTRAL").strip().upper()
             valid_sentiments = ["EUPHORIC", "BULLISH", "NEUTRAL", "BEARISH", "FEARFUL"]
-            
             if sentiment not in valid_sentiments:
-                logger.warning(f"Invalid sentiment label '{sentiment}', defaulting to NEUTRAL")
+                logger.warning("Invalid sentiment label '%s', defaulting to NEUTRAL", sentiment)
                 sentiment = "NEUTRAL"
-            
-            result = {
+            return {
                 "sentiment": sentiment,
-                "reasoning": parsed.get("reasoning", "Sentiment analysis completed")
+                "reasoning": parsed.get("reasoning", "Sentiment analysis completed"),
             }
+
+        def _crowd_ok(body: str) -> bool:
+            if _looks_like_query_ollama_user_facing_error(body):
+                return False
+            try:
+                _parse_crowd_json(body)
+                return True
+            except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+                return False
+
+        try:
+            full_response, model_used = collect_with_summary_model_chain(
+                self,
+                prompt=user_prompt,
+                requested_model=model,
+                stream=True,
+                system_prompt=system_prompt,
+                temperature=0.1,
+                json_mode=True,
+                streaming_timeout=dynamic_timeout,
+                response_ok=_crowd_ok,
+            )
+            if not full_response:
+                raise json.JSONDecodeError("empty response", "", 0)
+            result = _parse_crowd_json(full_response)
             return result
-            
+
         except json.JSONDecodeError as e:
             audit_error = str(e)
-            logger.error(f"❌ Failed to parse JSON from Ollama response: {e}")
-            logger.debug(f"Response was: {full_response[:500]}")
+            logger.error("❌ Failed to parse JSON from Ollama response: %s", e)
+            logger.debug("Response was: %s", (full_response or "")[:500])
             result = {"sentiment": "NEUTRAL", "reasoning": "Failed to parse AI response"}
             return result
         except Exception as e:
             audit_error = str(e)
-            logger.error(f"❌ Error analyzing crowd sentiment: {e}", exc_info=True)
+            logger.error("❌ Error analyzing crowd sentiment: %s", e, exc_info=True)
             result = {"sentiment": "NEUTRAL", "reasoning": f"Error: {str(e)}"}
             return result
         finally:
@@ -1227,7 +1263,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
 
                 log_inference(
                     function="analyze_crowd_sentiment",
-                    model=model,
+                    model=model_used,
                     provider="ollama",
                     input_chars=len(combined_text),
                     input_hash=_compute_input_hash(combined_text),
@@ -2134,6 +2170,118 @@ def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
             ordered = [head] + tail
 
     return ordered
+
+
+def _looks_like_query_ollama_user_facing_error(text: str) -> bool:
+    """True when :meth:`OllamaClient.query_ollama` likely yielded a failure message, not model output."""
+    t = (text or "").strip()
+    if not t:
+        return True
+    if t.startswith("{"):
+        return False
+    low = t.lower()
+    markers = (
+        "ai assistant is currently disabled",
+        "not found. please ensure the model is installed",
+        "request timed out. please try again",
+        "cannot connect to ai assistant",
+        "ai assistant error:",
+        "an error occurred:",
+    )
+    return any(m in low for m in markers)
+
+
+def collect_with_summary_model_chain(
+    ollama: OllamaClient,
+    *,
+    prompt: str,
+    context: str = "",
+    requested_model: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    json_mode: bool = False,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    num_ctx: Optional[int] = None,
+    stream: bool = True,
+    streaming_timeout: int = 90,
+    include_thinking: bool = False,
+    response_ok: Optional[Callable[[str], bool]] = None,
+) -> Tuple[Optional[str], str]:
+    """Run :meth:`OllamaClient.query_ollama` across the summarization model chain until success.
+
+    Uses :func:`_get_summary_model_chain` (primary + configured fallbacks, including GLM when listed).
+    On each candidate, tries the next model when the body is empty, matches
+    :func:`_looks_like_query_ollama_user_facing_error`, or ``response_ok`` returns False.
+
+    Returns:
+        ``(full_text, model_used)`` on success, or ``(None, last_model_tried)`` if every candidate fails.
+    """
+    chain = _get_summary_model_chain(requested_model)
+    if not chain:
+        logger.error("collect_with_summary_model_chain: empty model chain")
+        return None, ""
+
+    def _default_ok(body: str) -> bool:
+        if _looks_like_query_ollama_user_facing_error(body):
+            return False
+        return bool((body or "").strip())
+
+    ok_fn = response_ok or _default_ok
+    last_model = chain[-1]
+    for idx, candidate in enumerate(chain, start=1):
+        last_model = candidate
+        full = ""
+        try:
+            for chunk in ollama.query_ollama(
+                prompt=prompt,
+                context=context,
+                model=candidate,
+                stream=stream,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                num_ctx=num_ctx,
+                system_prompt=system_prompt,
+                json_mode=json_mode,
+                streaming_timeout=streaming_timeout,
+                include_thinking=include_thinking,
+            ):
+                full += chunk
+        except OllamaHostBusyError:
+            logger.warning(
+                "collect_with_summary_model_chain: hosts busy for model=%s (%s/%s); trying next",
+                candidate,
+                idx,
+                len(chain),
+            )
+            continue
+        except Exception as exc:
+            logger.warning(
+                "collect_with_summary_model_chain: error for model=%s (%s/%s): %s",
+                candidate,
+                idx,
+                len(chain),
+                exc,
+            )
+            continue
+
+        if ok_fn(full):
+            if idx > 1:
+                logger.info(
+                    "collect_with_summary_model_chain: success with model=%s (attempt %s/%s)",
+                    candidate,
+                    idx,
+                    len(chain),
+                )
+            return full, candidate
+
+        logger.warning(
+            "collect_with_summary_model_chain: response not acceptable for model=%s (%s/%s)",
+            candidate,
+            idx,
+            len(chain),
+        )
+
+    return None, last_model
 
 
 def _generate_summary_once(

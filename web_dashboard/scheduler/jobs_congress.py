@@ -158,7 +158,7 @@ def fetch_congress_trades_job() -> None:
         # Import dependencies (lazy imports)
         try:
             from supabase_client import SupabaseClient
-            from ollama_client import get_ollama_client
+            from ollama_client import collect_with_summary_model_chain, get_ollama_client
             from web_dashboard.utils.politician_mapping import lookup_politician_metadata, resolve_politician_name
             from settings import get_summarizing_model
             from data.committee_jurisdictions import get_committee_context
@@ -598,19 +598,23 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
                                             exc,
                                         )
 
-                                    # Query Ollama (non-streaming for structured response)
-                                    # Get model from settings (defaults to granite3.3:8b from model_config.json)
+                                    # Summarization model chain (Ollama multi-host + GLM fallbacks)
                                     model_name = get_summarizing_model()
-                                    full_response = ""
-                                    for chunk in ollama_client.query_ollama(
+                                    full_response, model_name = collect_with_summary_model_chain(
+                                        ollama_client,
                                         prompt=prompt,
-                                        model=model_name,
+                                        requested_model=model_name,
                                         stream=True,
-                                        temperature=0.1  # Lower temperature for consistent JSON
-                                    ):
-                                        full_response += chunk
+                                        temperature=0.1,
+                                        response_ok=lambda s: _parse_ai_conflict_json(s)[0] is not None,
+                                    )
+                                    full_response = full_response or ""
 
-                                    parsed, parse_err = _parse_ai_conflict_json(full_response)
+                                    parsed, parse_err = (
+                                        _parse_ai_conflict_json(full_response)
+                                        if full_response
+                                        else (None, "all summarization models failed")
+                                    )
                                     if parsed:
                                         conflict_score = float(parsed.get("conflict_score", 0.0))
                                         conflict_score = max(0.0, min(1.0, conflict_score))

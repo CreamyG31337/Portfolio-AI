@@ -47,7 +47,7 @@ else:
     load_dotenv()
 
 from supabase_client import SupabaseClient
-from ollama_client import OllamaClient
+from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from data.committee_jurisdictions import get_committee_context
 
@@ -554,23 +554,23 @@ def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, ver
     
     for attempt in range(max_retries + 1):
         try:
-            # Use structured system prompt to encourage JSON output
-            full_response = ""
-            for chunk in ollama.query_ollama(
+            full_response, model_used = collect_with_summary_model_chain(
+                ollama,
                 prompt=prompt,
-                model=model,
+                requested_model=model,
                 stream=True,
                 system_prompt=system_prompt,
-                temperature=0.1  # Low temp for consistent JSON
-            ):
-                full_response += chunk
-                if verbose:
-                    print(chunk, end='', flush=True)
-            
-            if verbose:
+                temperature=0.1,
+                response_ok=lambda s: extract_json(s) is not None,
+            )
+            model = model_used
+            if verbose and full_response:
+                print(full_response)
                 print(f"\n{'='*80}\n")
-            
-            # Parse JSON directly (no regex needed with format="json")
+
+            if not full_response:
+                raise ValueError("Could not extract JSON from response")
+
             result = extract_json(full_response)
             
             if not result:
@@ -841,22 +841,23 @@ def analyze_session(
         
         # Call AI with session prompt
         system_prompt = "You are a financial ethics analyzer. Return ONLY valid JSON with the exact fields specified."
-        
-        full_response = ""
-        for chunk in ollama.query_ollama(
+
+        full_response, model = collect_with_summary_model_chain(
+            ollama,
             prompt=prompt,
-            model=model,
+            requested_model=model,
             stream=True,
             system_prompt=system_prompt,
-            temperature=0.1
-        ):
-            full_response += chunk
-            if verbose:
-                try:
-                    print(chunk, end='', flush=True)
-                except:
-                    pass  # Ignore print errors
-        
+            temperature=0.1,
+            response_ok=lambda s: extract_json(s) is not None,
+        )
+        full_response = full_response or ""
+        if verbose and full_response:
+            try:
+                print(full_response)
+            except Exception:
+                pass
+
         if verbose:
             try:
                 print(f"\n{'='*80}\n")

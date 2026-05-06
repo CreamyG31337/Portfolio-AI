@@ -11,7 +11,7 @@ import logging
 from datetime import datetime, UTC
 from typing import Any
 
-from ollama_client import OllamaClient
+from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from settings import get_summarizing_model, is_meta_analysis_phase1_signal_fusion_enabled
 from supabase_client import SupabaseClient
@@ -392,16 +392,19 @@ class TickerMetaAnalysisService:
             "You are a skeptical editor. Return ONLY valid JSON with the exact fields specified. "
             "Do not add keys."
         )
-        full_response = ""
-        for chunk in self.ollama.query_ollama(
+        full_response, model = collect_with_summary_model_chain(
+            self.ollama,
             prompt=prompt,
-            model=model,
+            requested_model=model,
             stream=True,
             system_prompt=system_prompt,
             json_mode=True,
             temperature=0.15,
-        ):
-            full_response += chunk
+            response_ok=lambda s: extract_json(s) is not None,
+        )
+        if not full_response:
+            logger.error("Meta analysis LLM failed on all summarization models for %s", ticker_u)
+            return None
 
         response = extract_json(full_response)
         if not response:

@@ -9,7 +9,7 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from ollama_client import OllamaClient
+from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from settings import get_summarizing_model
 from supabase_client import SupabaseClient
@@ -102,16 +102,19 @@ def run_market_daily_brief(
         "You are a macro commentator. Return ONLY valid JSON with the exact keys requested. "
         "No stock picks or ticker symbols."
     )
-    full = ""
-    for chunk in ollama.query_ollama(
+    full, model = collect_with_summary_model_chain(
+        ollama,
         prompt=prompt,
-        model=model,
+        requested_model=model,
         stream=True,
         system_prompt=system_prompt,
         json_mode=True,
         temperature=0.2,
-    ):
-        full += chunk
+        response_ok=lambda s: extract_json(s) is not None,
+    )
+    if not full:
+        logger.error("market brief LLM failed on all summarization models")
+        return None
 
     parsed = extract_json(full)
     if not parsed:

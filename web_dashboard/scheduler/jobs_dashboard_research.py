@@ -203,7 +203,7 @@ def action_queue_ai_review_job() -> None:
     try:
         from ai_prompts import ACTION_QUEUE_AI_REVIEW_PROMPT
         from action_queue_service import attach_research_context, build_action_queue_items
-        from ollama_client import OllamaClient, get_ollama_client
+        from ollama_client import OllamaClient, collect_with_summary_model_chain, get_ollama_client
         from postgres_client import PostgresClient
         from settings import get_summarizing_model
         from supabase_client import SupabaseClient
@@ -271,16 +271,19 @@ def action_queue_ai_review_job() -> None:
                     queue_row=queue_row,
                     research_excerpt=excerpt or "(none)",
                 )
-                full = ""
-                for chunk in ollama.query_ollama(
+                full, model_used = collect_with_summary_model_chain(
+                    ollama,
                     prompt=prompt,
-                    model=model,
+                    requested_model=model,
                     stream=True,
                     system_prompt="Return ONLY valid JSON with verdict and one_liner.",
                     json_mode=True,
                     temperature=0.15,
-                ):
-                    full += chunk
+                    response_ok=lambda s: extract_json(s) is not None,
+                )
+                if not full:
+                    errors += 1
+                    continue
                 parsed = extract_json(full)
                 if not parsed:
                     errors += 1
@@ -299,7 +302,7 @@ def action_queue_ai_review_job() -> None:
                         model_used = EXCLUDED.model_used,
                         updated_at = NOW()
                     """,
-                    (fund, ticker, sig_d, verdict, one_liner, model),
+                    (fund, ticker, sig_d, verdict, one_liner, model_used),
                 )
                 processed += 1
 

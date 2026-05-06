@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 from dashboard_portfolio_digest import build_dashboard_portfolio_digest, digest_fingerprint
-from ollama_client import OllamaClient
+from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from settings import get_summarizing_model
 from supabase_client import SupabaseClient
@@ -109,16 +109,19 @@ def refresh_dashboard_portfolio_overview(
 
     model = (model_override or "").strip() or get_summarizing_model()
     prompt = DASHBOARD_PORTFOLIO_OVERVIEW_PROMPT.format(digest_json=json.dumps(digest, indent=2, default=str))
-    full = ""
-    for chunk in ollama.query_ollama(
+    full, model = collect_with_summary_model_chain(
+        ollama,
         prompt=prompt,
-        model=model,
+        requested_model=model,
         stream=True,
         system_prompt="Return ONLY valid JSON with headline, narrative, bullets.",
         json_mode=True,
         temperature=0.2,
-    ):
-        full += chunk
+        response_ok=lambda s: extract_json(s) is not None,
+    )
+    if not full:
+        logger.error("dashboard portfolio overview LLM failed on all summarization models")
+        return existing
     parsed = extract_json(full)
     if not parsed:
         logger.error("dashboard portfolio overview JSON parse failed")
@@ -147,18 +150,20 @@ def _run_llm_json_summary(
     *,
     model: str,
     prompt: str,
-) -> dict[str, Any] | None:
-    full = ""
-    for chunk in ollama.query_ollama(
+) -> tuple[dict[str, Any] | None, str]:
+    full, used = collect_with_summary_model_chain(
+        ollama,
         prompt=prompt,
-        model=model,
+        requested_model=model,
         stream=True,
         system_prompt="Return ONLY valid JSON with headline, narrative, bullets.",
         json_mode=True,
         temperature=0.2,
-    ):
-        full += chunk
-    return extract_json(full)
+        response_ok=lambda s: extract_json(s) is not None,
+    )
+    if not full:
+        return None, used
+    return extract_json(full), used
 
 
 def refresh_scope_summary(
@@ -183,7 +188,7 @@ def refresh_scope_summary(
 
     model = (model_override or "").strip() or get_summarizing_model()
     prompt = prompt_template.format(digest_json=json.dumps(digest, indent=2, default=str))
-    parsed = _run_llm_json_summary(ollama, model=model, prompt=prompt)
+    parsed, model = _run_llm_json_summary(ollama, model=model, prompt=prompt)
     if not parsed:
         logger.error("scope summary JSON parse failed scope=%s key=%s", scope, scope_key)
         return existing
@@ -421,16 +426,19 @@ def refresh_fund_cross_screen_rollup(
         market_backdrop=backdrop,
         portfolio_summary=port,
     )
-    full = ""
-    for chunk in ollama.query_ollama(
+    full, model = collect_with_summary_model_chain(
+        ollama,
         prompt=prompt,
-        model=model,
+        requested_model=model,
         stream=True,
         system_prompt="Return ONLY valid JSON with headline, narrative, sources_note.",
         json_mode=True,
         temperature=0.2,
-    ):
-        full += chunk
+        response_ok=lambda s: extract_json(s) is not None,
+    )
+    if not full:
+        logger.error("fund rollup LLM failed on all summarization models for %s", fund)
+        return existing
     parsed = extract_json(full)
     if not parsed:
         logger.error("fund rollup JSON parse failed for %s", fund)
