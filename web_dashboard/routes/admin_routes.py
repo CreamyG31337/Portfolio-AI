@@ -2128,6 +2128,58 @@ def api_job_steps(job_id):
         logger.error(f"Error fetching job steps: {e}", exc_info=True)
         return jsonify({"error": str(e), "steps": []}), 500
 
+
+@admin_bp.route("/api/admin/scheduler/ai-activity")
+@require_admin
+def api_scheduler_ai_activity():
+    """Global AI lock + recent LLM job rows (job_executions) for the Jobs admin UI."""
+    try:
+        from supabase_client import SupabaseClient
+        from utils.job_tracking import AI_JOB_NAMES, get_running_ai_job
+
+        names = sorted(AI_JOB_NAMES)
+        client = SupabaseClient(use_service_role=True)
+        lock_holder = get_running_ai_job()
+
+        running_resp = (
+            client.supabase.table("job_executions")
+            .select("id, job_name, started_at, target_date, fund_name")
+            .eq("status", "running")
+            .in_("job_name", names)
+            .execute()
+        )
+        running_rows = running_resp.data or []
+
+        recent_resp = (
+            client.supabase.table("job_executions")
+            .select(
+                "id, job_name, status, started_at, completed_at, duration_ms, error_message, target_date"
+            )
+            .in_("job_name", names)
+            .order("started_at", desc=True)
+            .limit(45)
+            .execute()
+        )
+        recent = recent_resp.data or []
+        for row in recent:
+            em = row.get("error_message")
+            if isinstance(em, str) and len(em) > 280:
+                row["error_message"] = em[:280] + "…"
+
+        return jsonify(
+            {
+                "success": True,
+                "global_ai_lock_job": lock_holder,
+                "running_ai": running_rows,
+                "recent_executions": recent,
+                "tracked_ai_job_names": names,
+            }
+        )
+    except Exception as e:
+        logger.error("Error fetching AI activity: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ==========================================
 # Trade Entry Routes
 # ==========================================

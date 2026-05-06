@@ -85,6 +85,15 @@ interface JobsApiResponse {
     message?: string;
 }
 
+interface AiActivityResponse {
+    success: boolean;
+    error?: string;
+    global_ai_lock_job?: string | null;
+    running_ai?: Array<Record<string, unknown>>;
+    recent_executions?: Array<Record<string, unknown>>;
+    tracked_ai_job_names?: string[];
+}
+
 interface JobActionRequest {
     job_id: string;
     parameters?: Record<string, any>;
@@ -307,6 +316,112 @@ function stopAutoRefresh(): void {
     }
 }
 
+function escapeHtml(s: string): string {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function formatTs(val: unknown): string {
+    if (val == null || val === '') {
+        return '—';
+    }
+    const d = new Date(String(val));
+    if (Number.isNaN(d.getTime())) {
+        return escapeHtml(String(val));
+    }
+    return escapeHtml(d.toLocaleString());
+}
+
+async function fetchAiActivity(): Promise<void> {
+    const root = document.getElementById('ai-activity-root');
+    if (!root) {
+        return;
+    }
+    try {
+        const r = await fetch('/api/admin/scheduler/ai-activity', { credentials: 'include' });
+        const data = (await r.json()) as AiActivityResponse;
+        if (!r.ok || !data.success) {
+            root.innerHTML = `<div class="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">${escapeHtml(
+                data.error || `HTTP ${r.status}`
+            )}</div>`;
+            return;
+        }
+        const lock = data.global_ai_lock_job
+            ? `<span class="text-amber-600 dark:text-amber-400 font-medium">${escapeHtml(
+                  data.global_ai_lock_job
+              )}</span> — other AI jobs will skip or retry until this finishes or the lock is cleared.`
+            : '<span class="text-emerald-600 dark:text-emerald-400 font-medium">Clear</span> — no active global AI lock.';
+        const running = (data.running_ai || []).length
+            ? `<ul class="list-disc list-inside text-sm text-text-primary space-y-1">${(data.running_ai || [])
+                  .map((row) => {
+                      const jn = escapeHtml(String(row.job_name ?? ''));
+                      const st = formatTs(row.started_at);
+                      return `<li><code class="text-xs">${jn}</code> since ${st}</li>`;
+                  })
+                  .join('')}</ul>`
+            : '<p class="text-sm text-text-secondary">None.</p>';
+        const rows = (data.recent_executions || [])
+            .map((row) => {
+                const status = escapeHtml(String(row.status ?? ''));
+                const jn = escapeHtml(String(row.job_name ?? ''));
+                const st = formatTs(row.started_at);
+                const comp = formatTs(row.completed_at);
+                const dur =
+                    row.duration_ms != null && row.duration_ms !== ''
+                        ? escapeHtml(String(row.duration_ms))
+                        : '—';
+                const err = row.error_message
+                    ? `<span class="text-red-600 dark:text-red-400 text-xs">${escapeHtml(String(row.error_message))}</span>`
+                    : '—';
+                return `<tr class="border-b border-border">
+                    <td class="py-2 pr-3"><code class="text-xs">${jn}</code></td>
+                    <td class="py-2 pr-3"><span class="text-xs">${status}</span></td>
+                    <td class="py-2 pr-3 text-xs text-text-secondary whitespace-nowrap">${st}</td>
+                    <td class="py-2 pr-3 text-xs text-text-secondary whitespace-nowrap">${comp}</td>
+                    <td class="py-2 pr-3 text-xs text-text-secondary">${dur}</td>
+                    <td class="py-2 text-xs max-w-md">${err}</td>
+                </tr>`;
+            })
+            .join('');
+        const nTracked = (data.tracked_ai_job_names || []).length;
+        root.innerHTML = `
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+                <h3 class="text-base font-bold text-text-primary mb-2"><i class="fas fa-lock mr-2 text-accent"></i>Global AI lock</h3>
+                <p class="text-sm text-text-primary">${lock}</p>
+            </div>
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+                <h3 class="text-base font-bold text-text-primary mb-2"><i class="fas fa-play-circle mr-2 text-accent"></i>Running AI jobs</h3>
+                ${running}
+            </div>
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4 overflow-x-auto">
+                <h3 class="text-base font-bold text-text-primary mb-3"><i class="fas fa-history mr-2 text-accent"></i>Recent runs (newest first)</h3>
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-border text-text-secondary text-xs">
+                            <th class="pb-2 pr-3">Job</th>
+                            <th class="pb-2 pr-3">Status</th>
+                            <th class="pb-2 pr-3">Started</th>
+                            <th class="pb-2 pr-3">Completed</th>
+                            <th class="pb-2 pr-3">Duration ms</th>
+                            <th class="pb-2">Error</th>
+                        </tr>
+                    </thead>
+                    <tbody>${
+                        rows ||
+                        '<tr><td colspan="6" class="py-4 text-text-secondary">No rows.</td></tr>'
+                    }</tbody>
+                </table>
+            </div>
+            <p class="text-xs text-text-secondary">${nTracked} job names classified as AI-heavy in <code class="text-xs">utils/job_tracking.py</code> (<code class="text-xs">AI_JOB_NAMES</code>).</p>
+        `;
+    } catch (e) {
+        root.innerHTML = `<div class="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">${escapeHtml(
+            e instanceof Error ? e.message : String(e)
+        )}</div>`;
+    }
+}
+
 // Fetch Status
 async function fetchStatus(): Promise<void> {
     const startTime = performance.now();
@@ -386,6 +501,7 @@ async function fetchStatus(): Promise<void> {
 
         updateStatusUI(data.scheduler_running, jobs);
         renderJobs(data.jobs);
+        void fetchAiActivity();
 
         // Success - reset error tracking
         if (consecutiveErrors > 0) {
