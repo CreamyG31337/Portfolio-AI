@@ -121,10 +121,19 @@ def market_daily_brief_job() -> None:
                 ollama = OllamaClient()
             postgres = PostgresClient()
             supabase = SupabaseClient(use_service_role=True)
+            from market_brief_service import _ny_today
+
+            ny_today = _ny_today()
+            weekend = ny_today.weekday() >= 5
             dates_to_fill = _compute_missing_brief_dates(postgres, lookback_days=5)
             if not dates_to_fill:
-                row = run_market_daily_brief(ollama, postgres, supabase)
-                msg = "ok" if row else "no row (benchmark or LLM failure)"
+                if weekend:
+                    # Do not write a Sat/Sun brief row; cron should be mon-fri only but lock-retry
+                    # or manual runs can still hit weekends.
+                    msg = "weekend: no missing weekday briefs to backfill"
+                else:
+                    row = run_market_daily_brief(ollama, postgres, supabase)
+                    msg = "ok" if row else "no row (benchmark or LLM failure)"
             else:
                 successes = 0
                 for brief_day in dates_to_fill:

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 try:
     from scheduler.scheduler_core import log_job_execution
@@ -18,6 +18,38 @@ logger = logging.getLogger(__name__)
 
 _JOB_ID = "ui_ai_summaries"
 _DEFAULT_CURRENCY = "CAD"
+_UI_AI_SUMMARIES_LOCK_RETRY_JOB_ID = "ui_ai_summaries_lock_retry"
+_UI_AI_SUMMARIES_LOCK_RETRY_DELAY_SEC = 90
+
+
+def _schedule_ui_ai_summaries_after_ai_lock(blocking_job: str) -> None:
+    """Re-run soon after the global AI lock clears (one-shot, debounced)."""
+    try:
+        from scheduler.scheduler_core import get_scheduler
+
+        sched = get_scheduler(create=False)
+        if not sched or not getattr(sched, "running", False):
+            return
+        run_date = datetime.now(UTC) + timedelta(seconds=_UI_AI_SUMMARIES_LOCK_RETRY_DELAY_SEC)
+        sched.add_job(
+            ui_ai_summaries_job,
+            trigger="date",
+            run_date=run_date,
+            id=_UI_AI_SUMMARIES_LOCK_RETRY_JOB_ID,
+            name="UI AI summaries (retry after AI lock)",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info(
+            "Scheduled ui_ai_summaries retry at %s UTC (%ss) while AI lock held by %s",
+            run_date.isoformat(),
+            _UI_AI_SUMMARIES_LOCK_RETRY_DELAY_SEC,
+            blocking_job,
+        )
+    except Exception as exc:
+        logger.warning("Could not schedule ui_ai_summaries lock retry: %s", exc)
 
 
 def ui_ai_summaries_job() -> None:
@@ -36,6 +68,7 @@ def ui_ai_summaries_job() -> None:
         running = get_running_ai_job(exclude_job_name=_JOB_ID)
         if running:
             logger.info("AI lock active (%s). Skipping %s.", running, _JOB_ID)
+            _schedule_ui_ai_summaries_after_ai_lock(running)
             return
     except Exception as exc:
         logger.warning("AI lock check failed: %s", exc)

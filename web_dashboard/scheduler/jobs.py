@@ -1299,8 +1299,23 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True,
             misfire_grace_time=3600,
         )
+        scheduler.add_job(
+            ui_ai_summaries_job,
+            trigger=CronTrigger(
+                day_of_week='sat-sun',
+                hour=10,
+                minute=10,
+                timezone='America/New_York',
+            ),
+            id='ui_ai_summaries_weekend',
+            name=f"{get_job_icon('ui_ai_summaries')} UI AI summaries (weekend)",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
         logger.info(
-            "Registered job: ui_ai_summaries (weekdays ~2h cadence 10/12/14/16/18 ET; digest skip when unchanged)"
+            "Registered job: ui_ai_summaries (weekdays 10/12/14/16/18 ET + Sat/Sun 10:10 ET; lock retry; digest skip when unchanged)"
         )
 
     # Social sentiment job - every 60 minutes (1 hour)
