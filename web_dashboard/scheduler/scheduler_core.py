@@ -743,6 +743,63 @@ def cleanup_stale_running_jobs() -> int:
         return 0
 
 
+def _schedule_startup_backfill_jobs(scheduler: BackgroundScheduler) -> None:
+    """Schedule startup backfill jobs with a safety pass for metrics gaps."""
+    try:
+        from scheduler.backfill import startup_backfill_check
+    except ModuleNotFoundError:
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+        from scheduler.backfill import startup_backfill_check
+
+    try:
+        scheduler.add_job(
+            startup_backfill_check,
+            trigger='date',
+            id='startup_backfill',
+            name='Startup Backfill Check',
+            replace_existing=True
+        )
+        logger.debug("  📋 Scheduled startup backfill check")
+    except Exception as e:
+        logger.warning(f"  ⚠️ Failed to schedule backfill check: {e}")
+
+    # Performance metrics gap detection gets two startup passes:
+    # - quick pass after startup (+90s)
+    # - safety pass (+10m) to catch dates populated later by position backfill
+    try:
+        from scheduler.backfill import startup_performance_metrics_backfill
+    except ModuleNotFoundError:
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+        from scheduler.backfill import startup_performance_metrics_backfill
+
+    try:
+        from datetime import datetime as dt_import, timedelta as td_import
+        now = dt_import.now()
+        scheduler.add_job(
+            startup_performance_metrics_backfill,
+            trigger='date',
+            run_date=now + td_import(seconds=90),
+            id='startup_performance_metrics_backfill',
+            name='Startup Performance Metrics Gap Detection',
+            replace_existing=True
+        )
+        logger.debug("  📋 Scheduled performance metrics gap detection (90s delay)")
+
+        scheduler.add_job(
+            startup_performance_metrics_backfill,
+            trigger='date',
+            run_date=now + td_import(minutes=10),
+            id='startup_performance_metrics_backfill_safety',
+            name='Startup Performance Metrics Gap Detection (Safety Pass)',
+            replace_existing=True
+        )
+        logger.debug("  📋 Scheduled performance metrics safety pass (10m delay)")
+    except Exception as e:
+        logger.warning(f"  ⚠️ Failed to schedule performance metrics backfill: {e}")
+
+
 def start_scheduler() -> bool:
     """Start the scheduler and register default jobs (thread-safe).
     
@@ -927,48 +984,8 @@ def start_scheduler() -> bool:
             logger.debug(f"   📋 {job.id}: {next_run}")
         logger.info("="*50)
         
-        # Add startup jobs (wrapped in try/catch - non-fatal if they fail)
-        try:
-            from scheduler.backfill import startup_backfill_check
-        except ModuleNotFoundError:
-            if str(project_root) not in sys.path:
-                sys.path.insert(0, str(project_root))
-            from scheduler.backfill import startup_backfill_check
-        
-        try:
-            scheduler.add_job(
-                startup_backfill_check,
-                trigger='date',
-                id='startup_backfill',
-                name='Startup Backfill Check',
-                replace_existing=True
-            )
-            logger.debug("  📋 Scheduled startup backfill check")
-        except Exception as e:
-            logger.warning(f"  ⚠️ Failed to schedule backfill check: {e}")
-        
-        # Performance metrics gap detection - runs 90 seconds after startup
-        # to give portfolio_positions backfill time to complete first
-        try:
-            from scheduler.backfill import startup_performance_metrics_backfill
-        except ModuleNotFoundError:
-            if str(project_root) not in sys.path:
-                sys.path.insert(0, str(project_root))
-            from scheduler.backfill import startup_performance_metrics_backfill
-        
-        try:
-            from datetime import datetime as dt_import, timedelta as td_import
-            scheduler.add_job(
-                startup_performance_metrics_backfill,
-                trigger='date',
-                run_date=dt_import.now() + td_import(seconds=90),
-                id='startup_performance_metrics_backfill',
-                name='Startup Performance Metrics Gap Detection',
-                replace_existing=True
-            )
-            logger.debug("  📋 Scheduled performance metrics gap detection (90s delay)")
-        except Exception as e:
-            logger.warning(f"  ⚠️ Failed to schedule performance metrics backfill: {e}")
+        # Add startup jobs (wrapped in helper; non-fatal if they fail)
+        _schedule_startup_backfill_jobs(scheduler)
         
         # Note: check_overdue_jobs() removed - no longer needed with SQLAlchemyJobStore
         # APScheduler handles misfires automatically via misfire_grace_time

@@ -51,6 +51,7 @@ def process_retry_queue_job() -> None:
             mark_resolved, mark_abandoned, mark_pending_retry
         )
         from scheduler.jobs_portfolio import backfill_portfolio_prices_range
+        from scheduler.jobs_metrics import populate_performance_metrics_job
         from supabase_client import SupabaseClient
         
         logger.info("🔄 Starting retry queue processor...")
@@ -138,7 +139,17 @@ def process_retry_queue_job() -> None:
                     mark_resolved(job_name, target_date, entity_id, entity_type)
                     resolved_count += 1
                     logger.info(f"  ✅ Retry succeeded: {job_name} {target_date} {entity_id or 'all_funds'}")
-                    
+                elif job_name == 'performance_metrics':
+                    # Retry metrics aggregation for the specific failed day
+                    populate_performance_metrics_job(
+                        target_date=target_date,
+                        fund_filter=entity_id or None,
+                        skip_existing=False,
+                    )
+
+                    mark_resolved(job_name, target_date, entity_id, entity_type)
+                    resolved_count += 1
+                    logger.info(f"  ✅ Retry succeeded: {job_name} {target_date} {entity_id or 'all_funds'}")
                 else:
                     # Unknown job type - mark as abandoned
                     logger.warning(f"  ⚠️  Unknown job type: {job_name} - marking as abandoned")

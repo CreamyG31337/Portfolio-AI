@@ -10,7 +10,7 @@ import logging
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import numpy as np
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 
 from supabase_client import SupabaseClient
 from flask_auth_utils import get_effective_user_id_flask, get_flask_cache_scope_id
@@ -605,6 +605,127 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
         if days is not None and days > 0:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         
+        def _detect_missing_trading_dates(series: pd.Series) -> list[date]:
+            """Find missing trading dates inside the known date range."""
+            if series.empty:
+                return []
+
+            normalized_dates = sorted({pd.to_datetime(item).date() for item in series.dropna()})
+            if len(normalized_dates) < 2:
+                return []
+
+            try:
+                from utils.market_holidays import MarketHolidays
+                market_holidays = MarketHolidays()
+                is_trading_day = lambda dt: market_holidays.is_trading_day(dt, market="any")
+            except Exception:
+                # Fallback keeps behavior deterministic if holidays helper import fails.
+                is_trading_day = lambda dt: dt.weekday() < 5
+
+            existing = set(normalized_dates)
+            missing: list[date] = []
+            current = normalized_dates[0]
+            end_date = normalized_dates[-1]
+
+            while current <= end_date:
+                if is_trading_day(current) and current not in existing:
+                    missing.append(current)
+                current += timedelta(days=1)
+
+            return missing
+
+        def _merge_missing_dates_from_positions(
+            base_daily_totals: pd.DataFrame,
+            missing_dates: list[date],
+        ) -> pd.DataFrame:
+            """Fetch and aggregate missing dates from portfolio_positions."""
+            if not missing_dates:
+                return base_daily_totals
+
+            missing_date_set = set(missing_dates)
+            range_start = min(missing_dates)
+            range_end = max(missing_dates)
+
+            all_rows = []
+            batch_size = 1000
+            offset = 0
+            while True:
+                query = client.supabase.table("portfolio_positions").select(
+                    "date, total_value, cost_basis, pnl, fund, currency, "
+                    "total_value_base, cost_basis_base, pnl_base, base_currency"
+                )
+                if fund and fund.lower() != "all":
+                    query = query.eq("fund", fund)
+
+                query = (
+                    query.gte("date", f"{range_start}T00:00:00")
+                    .lt("date", f"{range_end}T23:59:59.999999")
+                    .order("date")
+                    .order("id")
+                    .range(offset, offset + batch_size - 1)
+                )
+
+                result = query.execute()
+                rows = result.data or []
+                if not rows:
+                    break
+                all_rows.extend(rows)
+                if len(rows) < batch_size:
+                    break
+                offset += batch_size
+
+            if not all_rows:
+                return base_daily_totals
+
+            df = pd.DataFrame(all_rows)
+            df["date"] = pd.to_datetime(df["date"]).dt.date
+            df = df[df["date"].isin(missing_date_set)]
+            if df.empty:
+                return base_daily_totals
+
+            has_preconverted = False
+            if "total_value_base" in df.columns:
+                has_preconverted = df["total_value_base"].notna().mean() > 0.8
+
+            if has_preconverted:
+                value_col = "total_value_base"
+                cost_col = "cost_basis_base"
+                pnl_col = "pnl_base"
+            else:
+                value_col = "total_value"
+                cost_col = "cost_basis"
+                pnl_col = "pnl"
+
+            filled = (
+                df.groupby("date")
+                .agg({value_col: "sum", cost_col: "sum", pnl_col: "sum"})
+                .reset_index()
+                .rename(
+                    columns={
+                        "date": "date",
+                        value_col: "value",
+                        cost_col: "cost_basis",
+                        pnl_col: "pnl",
+                    }
+                )
+            )
+            filled["date"] = (
+                pd.to_datetime(filled["date"]).dt.normalize() + pd.Timedelta(hours=12)
+            )
+
+            merged = pd.concat([base_daily_totals, filled], ignore_index=True)
+            merged = (
+                merged.drop_duplicates(subset=["date"], keep="first")
+                .sort_values("date")
+                .reset_index(drop=True)
+            )
+            logger.info(
+                "Filled %s missing performance date(s) from portfolio_positions for %s",
+                len(filled),
+                fund,
+            )
+            return merged
+
         # OPTIMIZATION: Try fetching pre-aggregated metrics first
         # This reduces data transfer from ~50k rows (positions) to ~1k rows (daily summaries)
         try:
@@ -750,6 +871,13 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
 
                     # Sort ensuring date order
                     daily_totals = daily_totals.sort_values('date').reset_index(drop=True)
+
+                    missing_dates = _detect_missing_trading_dates(daily_totals["date"])
+                    if missing_dates:
+                        daily_totals = _merge_missing_dates_from_positions(
+                            daily_totals,
+                            missing_dates,
+                        )
 
             else:
                 # Fallback to granular calculation if metrics missing

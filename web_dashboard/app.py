@@ -833,15 +833,14 @@ def _start_scheduler_background():
                         log_both('info', "=" * 60)
                         break
                     else:
-                        # start_scheduler() returned False (already running or failed)
-                        log_both('warning', f"⚠️ start_scheduler() returned False on attempt {attempt + 1}")
-
-                        # Check if it's because another process has it running
+                        # start_scheduler() returned False — check why before deciding severity
                         if is_scheduler_running():
-                            log_both('info', "✅ Another process has scheduler running (detected via heartbeat)")
+                            # Another worker/process already owns the scheduler — this is normal
+                            log_both('info', "✅ Scheduler already running in another process — startup deferred")
                             break
 
-                        # Otherwise, it failed - retry if we have attempts left
+                        # Genuine failure: no process has the scheduler running
+                        log_both('warning', f"⚠️ start_scheduler() returned False on attempt {attempt + 1} and scheduler is not running anywhere")
                         if attempt < MAX_RETRIES - 1:
                             log_both('warning', f"Will retry in {RETRY_DELAYS[attempt + 1]}s...")
                         else:
@@ -914,6 +913,20 @@ if scheduler_runtime_mode == "embedded" and os.environ.get('DISABLE_SCHEDULER', 
     #
     # Relying on WERKZEUG_RUN_MAIN here can incorrectly suppress scheduler startup in
     # non-Werkzeug runtimes (or after restarts), leaving all jobs stale.
+    # Clear stale heartbeat so this fresh process doesn't incorrectly defer to a dead one.
+    # (Werkzeug reloader kills the child and spawns a new one — the old heartbeat can be
+    # up to _HEARTBEAT_TIMEOUT seconds "valid" even though the scheduler is gone.)
+    try:
+        from scheduler.scheduler_core import _HEARTBEAT_FILE, _HEARTBEAT_TIMEOUT
+        import time as _time
+        if _HEARTBEAT_FILE.exists():
+            _hb_age = _time.time() - float(_HEARTBEAT_FILE.read_text().strip())
+            if _hb_age > _HEARTBEAT_TIMEOUT:
+                _HEARTBEAT_FILE.unlink()
+                logger.info(f"Cleared stale scheduler heartbeat on startup (age: {_hb_age:.1f}s)")
+    except Exception:
+        pass
+
     _existing_threads = [t.name for t in threading.enumerate()]
     if "SchedulerInitThread" not in _existing_threads:
         _start_scheduler_background()
