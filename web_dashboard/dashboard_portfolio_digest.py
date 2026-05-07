@@ -70,12 +70,14 @@ def build_dashboard_portfolio_digest(
     if not positions_df.empty and "market_value" in positions_df.columns and "ticker" in positions_df.columns:
         mv = pd.to_numeric(positions_df["market_value"], errors="coerce").fillna(0.0)
         total_mv = float(mv.sum()) or 1.0
-        tmp = positions_df.assign(_mv=mv)
-        tmp = tmp.sort_values("_mv", ascending=False)
-        for _, row in tmp.head(8).iterrows():
-            t = str(row.get("ticker") or "").upper()
-            w = float(row["_mv"]) / total_mv * 100.0
-            sec = row.get("sector") or row.get("Sector")
+        # Performance optimization: use itertuples instead of iterrows
+        # Pandas namedtuples cannot handle columns starting with _, rename _mv to tmp_mv
+        tmp = positions_df.assign(tmp_mv=mv)
+        tmp = tmp.sort_values("tmp_mv", ascending=False)
+        for row in tmp.head(8).itertuples(index=False):
+            t = str(getattr(row, "ticker", "") or "").upper()
+            w = float(getattr(row, "tmp_mv", 0.0)) / total_mv * 100.0
+            sec = getattr(row, "sector", None) or getattr(row, "Sector", None)
             if hasattr(sec, "item"):
                 sec = sec.item() if pd.notna(sec) else None
             top_holdings.append(
@@ -87,7 +89,7 @@ def build_dashboard_portfolio_digest(
             )
         if "sector" in tmp.columns:
             for sec, grp in tmp.groupby(tmp["sector"].fillna("Unknown")):
-                sector_weights[str(sec)] = round(float(grp["_mv"].sum()) / total_mv * 100.0, 2)
+                sector_weights[str(sec)] = round(float(grp["tmp_mv"].sum()) / total_mv * 100.0, 2)
 
     return {
         "fund": raw_fund,
