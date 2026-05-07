@@ -214,18 +214,12 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
         for trading_day in all_dates:
             day_trades = trade_df[trade_df['Date'].dt.date == trading_day]
             
-            idx_ticker = day_trades.columns.get_loc('Ticker')
-            idx_shares = day_trades.columns.get_loc('Shares')
-            idx_price = day_trades.columns.get_loc('Price')
-            idx_action = day_trades.columns.get_loc('Action')
-            idx_reason = day_trades.columns.get_loc('Reason') if 'Reason' in day_trades.columns else -1
-
-            for trade in day_trades.itertuples(index=False, name=None):
-                ticker = trade[idx_ticker]
-                shares = Decimal(str(trade[idx_shares]))
-                price = Decimal(str(trade[idx_price]))
-                action = str(trade[idx_action]).upper()
-                reason = str(trade[idx_reason] if idx_reason != -1 else '').upper()
+            for _, trade in day_trades.iterrows():
+                ticker = trade['Ticker']
+                shares = Decimal(str(trade['Shares']))
+                price = Decimal(str(trade['Price']))
+                action = str(trade['Action']).upper()
+                reason = str(trade.get('Reason', '') or '').upper()
 
                 # Skip dividend events for cash-dividend funds.
                 if cash_dividend_fund and is_dividend_reason(reason):
@@ -289,10 +283,9 @@ def rebuild_fund_from_date(fund_name: str, start_date: date, job_id: str = None)
                 result = fetcher.fetch_price_data(ticker, start=start_dt, end=end_dt)
                 
                 if result.df is not None and not result.df.empty:
-                    idx_close = result.df.columns.get_loc('Close')
-                    for idx, row in zip(result.df.index, result.df.itertuples(index=False, name=None)):
+                    for idx, row in result.df.iterrows():
                         price_date = idx.date() if hasattr(idx, 'date') else idx
-                        price = Decimal(str(row[idx_close]))
+                        price = Decimal(str(row['Close']))
                         if price > 0:
                             price_cache[(ticker, price_date)] = price
             except Exception as e:

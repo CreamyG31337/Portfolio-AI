@@ -1341,12 +1341,10 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                                     filtered = df_with_dates.loc[mask]
                                     
                                     # Extract prices (already filtered, fast iteration)
-                                    idx_date = filtered.columns.get_loc('_date')
-                                    idx_close = filtered.columns.get_loc('Close')
-                                    for row in filtered.itertuples(index=False, name=None):
-                                        day = row[idx_date]
+                                    for _, row in filtered.iterrows():
+                                        day = row['_date']
                                         if day in valid_days_for_ticker:
-                                            ticker_prices[day] = Decimal(str(row[idx_close]))
+                                            ticker_prices[day] = Decimal(str(row['Close']))
                                 
                                 return (ticker, ticker_prices, True, None)
                             else:
