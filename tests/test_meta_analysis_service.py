@@ -1,6 +1,6 @@
 """Unit tests for TickerMetaAnalysisService (no Flask)."""
 
-from datetime import datetime, UTC
+from datetime import date, datetime, UTC
 from unittest.mock import MagicMock
 from uuid import UUID
 
@@ -218,6 +218,35 @@ def test_build_artifact_bundle_includes_signal_snapshot() -> None:
     bundle, _ = svc.build_artifact_bundle("ABC")
     assert "Technical signal snapshot (latest)" in bundle
     assert "overall_signal: BUY" in bundle
+
+
+def test_build_artifact_bundle_includes_normalized_market_regime() -> None:
+    mb = {
+        "brief_date": date(2026, 5, 10),
+        "headline": "Indices mixed",
+        "narrative": "Tests mixed tape.",
+        "regime_json": {
+            "risk_tone": "NEUTRAL",
+            "leadership_note": "Mega caps firm",
+            "caveats": ["light volume"],
+        },
+        "updated_at": datetime(2026, 5, 10, 22, 0, tzinfo=UTC),
+    }
+    pg = MagicMock()
+    pg.execute_query.side_effect = [[_STD_ROW], [mb], [], []]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    sb.supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[]
+    )
+    svc = _svc(pg, sb)
+    bundle, _ = svc.build_artifact_bundle("ABC")
+    assert "Latest market regime context" in bundle
+    assert "risk_regime: NEUTRAL" in bundle
+    assert "breadth_proxy: UNCLEAR" in bundle
+    assert "volatility_state: UNKNOWN" in bundle
+    assert "regime_as_of:" in bundle
+    assert "Mega caps firm" in bundle
 
 
 def test_save_meta_falls_back_to_stance_and_confidence() -> None:

@@ -11,6 +11,7 @@ import logging
 from datetime import datetime, UTC
 from typing import Any
 
+from market_regime_normalization import normalize_market_regime
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from settings import get_summarizing_model, is_meta_analysis_phase1_signal_fusion_enabled
@@ -276,21 +277,54 @@ class TickerMetaAnalysisService:
 
             market_brief = self._fetch_market_brief_snippet()
             if market_brief:
-                regime = market_brief.get("regime_json") or {}
-                caveats = regime.get("caveats") if isinstance(regime, dict) else []
-                caveat_txt = ", ".join(caveats[:3]) if isinstance(caveats, list) else ""
+                regime_raw = market_brief.get("regime_json") or {}
+                if isinstance(regime_raw, str):
+                    try:
+                        regime_raw = json.loads(regime_raw)
+                    except (json.JSONDecodeError, TypeError):
+                        regime_raw = {}
+                elif not isinstance(regime_raw, dict):
+                    regime_raw = {}
+                canon = normalize_market_regime(
+                    regime_raw,
+                    brief_date=market_brief.get("brief_date"),
+                    updated_at=market_brief.get("updated_at"),
+                )
+                caveats_lines = canon.get("caveats") or []
+                caveat_txt = ", ".join(
+                    _clip(str(c), 140) for c in caveats_lines[:4] if str(c).strip()
+                )
+                themes_txt = ", ".join(
+                    _clip(str(t), 140)
+                    for t in (canon.get("macro_themes") or [])[:8]
+                    if str(t).strip()
+                )
+                rc = canon.get("regime_confidence")
+                try:
+                    conf_f = float(rc) if rc is not None else 0.0
+                except (TypeError, ValueError):
+                    conf_f = 0.0
+                conf_txt = f"{conf_f:.2f}"
                 parts.append("### Latest market regime context")
                 parts.append(
-                    f"- brief_date: {market_brief.get('brief_date')} "
-                    f"(updated {market_brief.get('updated_at')})"
+                    f"- brief_date: {market_brief.get('brief_date')} | row_updated_at: "
+                    f"{market_brief.get('updated_at')} | regime_as_of: {canon.get('as_of')}"
                 )
                 parts.append(f"- headline: {_clip(market_brief.get('headline'), 180)}")
                 parts.append(
-                    f"- risk_tone: {(regime or {}).get('risk_tone')} | "
-                    f"leadership_note: {_clip((regime or {}).get('leadership_note'), 180)}"
+                    f"- risk_regime: {canon.get('risk_regime')} "
+                    f"(regime_confidence={conf_txt})"
                 )
+                parts.append(
+                    f"- breadth_proxy: {canon.get('breadth_proxy')} | "
+                    f"volatility_state: {canon.get('volatility_state')}"
+                )
+                if themes_txt:
+                    parts.append(f"- macro_themes: {_clip(themes_txt, 280)}")
+                ln = canon.get("leadership_note") or ""
+                parts.append(f"- leadership_note: {_clip(ln, 180)}")
                 if caveat_txt:
-                    parts.append(f"- caveats: {_clip(caveat_txt, 220)}")
+                    parts.append(f"- caveats: {_clip(caveat_txt, 240)}")
                 parts.append(f"- narrative: {_clip(market_brief.get('narrative'), 600)}")
                 parts.append("")
 

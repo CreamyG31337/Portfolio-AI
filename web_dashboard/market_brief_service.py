@@ -9,6 +9,7 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from market_regime_normalization import merge_regime_for_storage
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from settings import get_summarizing_model
@@ -50,16 +51,14 @@ def fetch_benchmark_snapshot(supabase: SupabaseClient) -> tuple[str, dict[str, A
             digest["tickers"][sym] = {"error": "insufficient_history"}
             continue
 
-        def _close(i: int) -> float:
-            return float(rows[i]["close"])
-
-        latest = _close(0)
-        prev = _close(1)
+        closes = [float(r["close"]) for r in rows]
+        latest = closes[0]
+        prev = closes[1]
         d1 = (latest - prev) / prev * 100.0 if prev else 0.0
 
         d5: float | None = None
-        if len(rows) >= 6:
-            old = _close(5)
+        if len(closes) >= 6:
+            old = closes[5]
             if old:
                 d5 = (latest - old) / old * 100.0
 
@@ -99,7 +98,9 @@ def run_market_daily_brief(
     prompt = MARKET_DAILY_BRIEF_PROMPT.format(benchmark_stats=stats_text)
     model = (model_override or "").strip() or get_summarizing_model("market_brief")
     system_prompt = (
-        "You are a macro commentator. Return ONLY valid JSON with the exact keys requested. "
+        "You are a macro commentator. Return ONLY valid JSON matching the headline, narrative, "
+        "and regime object schema (risk_regime, regime_confidence, breadth_proxy, "
+        "volatility_state, macro_themes array, leadership_note, caveats). "
         "No stock picks or ticker symbols."
     )
     full, model = collect_with_summary_model_chain(
@@ -123,7 +124,10 @@ def run_market_daily_brief(
 
     headline = (parsed.get("headline") or "")[:200]
     narrative = parsed.get("narrative") or ""
-    regime = parsed.get("regime") or {}
+    regime_raw = parsed.get("regime")
+    if not isinstance(regime_raw, dict):
+        regime_raw = {}
+    regime = merge_regime_for_storage(regime_raw, brief_date=bdate)
 
     q = """
         INSERT INTO market_daily_brief (

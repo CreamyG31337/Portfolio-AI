@@ -331,6 +331,7 @@ TICKER_META_ANALYSIS_PROMPT = """You are a senior research editor. Your inputs a
 3. Produce a single calibrated view: adjust conviction downward when sources conflict or evidence is thin.
 4. If two standard ticker analysis snapshots are present, explain what changed between them; otherwise set what_changed_vs_last_run to "N/A (no prior snapshot)".
 5. Do not invent prices, dates, or events not mentioned in the bundle. If the bundle is sparse, say so and lower confidence.
+6. When the bundle includes **market regime** lines (breadth_proxy, volatility_state, macro_themes), use them only to calibrate **relative** risk versus the broad market—not as ticker-specific catalysts; if those fields are UNCLEAR/UNKNOWN or themes are empty, do not overweight them.
 
 Return JSON only:
 {{
@@ -361,7 +362,11 @@ Return JSON only:
     "headline": "max 120 chars, plain English",
     "narrative": "2-3 short paragraphs, total under 800 chars",
     "regime": {{
-        "risk_tone": "RISK_ON|RISK_OFF|NEUTRAL|MIXED",
+        "risk_regime": "RISK_ON|RISK_OFF|NEUTRAL|MIXED",
+        "regime_confidence": 0.0,
+        "breadth_proxy": "LEADERSHIP_BROAD|LEADERSHIP_NARROW|UNCLEAR",
+        "volatility_state": "CALM|ELEVATED|STRESSED|UNKNOWN",
+        "macro_themes": ["short macro theme bullets, max 6 items", "..."],
         "leadership_note": "who is leading/lagging in one sentence",
         "caveats": ["data limitation or caution", "..."]
     }}
