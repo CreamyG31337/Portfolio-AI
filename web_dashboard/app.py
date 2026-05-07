@@ -892,32 +892,20 @@ def _start_scheduler_background():
 # - external: scheduler is expected to run in a dedicated worker process
 scheduler_runtime_mode = os.environ.get("SCHEDULER_RUNTIME_MODE", "embedded").lower()
 if scheduler_runtime_mode == "embedded" and os.environ.get('DISABLE_SCHEDULER', '').lower() != 'true':
-    # IMPORTANT: In Flask debug mode with reloader, there are TWO processes:
-    # - Parent process (PID 1): Monitors for file changes, restarts child
-    # - Child/reloader process: Actually runs the Flask app (WERKZEUG_RUN_MAIN=true)
-    # We should ONLY start the scheduler in ONE of them to avoid conflicts.
+    # Always attempt startup in embedded mode.
     #
-    # When debug mode is enabled (FLASK_DEBUG=true), only start in the child process.
-    # When debug mode is disabled, start normally.
-    flask_debug = os.environ.get('FLASK_DEBUG', '').lower() == 'true'
-    is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
-
-    should_start = True
-    reason = ""
-
-    if flask_debug and not is_reloader_process:
-        # This is the parent/monitor process in debug mode - don't start scheduler here
-        should_start = False
-        reason = "Flask debug mode: deferring scheduler to reloader child process"
-        logger.info(f"ℹ️ {reason}")
-
-    if should_start:
-        # Check if thread is already running to avoid duplicates
-        _existing_threads = [t.name for t in threading.enumerate()]
-        if "SchedulerInitThread" not in _existing_threads:
-            _start_scheduler_background()
-        else:
-            logger.debug("ℹ️ SchedulerInitThread already running, skipping duplicate start")
+    # Duplicate protection is handled in scheduler_core.start_scheduler() via:
+    # - process-local lock
+    # - cross-process startup lock
+    # - heartbeat detection
+    #
+    # Relying on WERKZEUG_RUN_MAIN here can incorrectly suppress scheduler startup in
+    # non-Werkzeug runtimes (or after restarts), leaving all jobs stale.
+    _existing_threads = [t.name for t in threading.enumerate()]
+    if "SchedulerInitThread" not in _existing_threads:
+        _start_scheduler_background()
+    else:
+        logger.debug("ℹ️ SchedulerInitThread already running, skipping duplicate start")
 else:
     if scheduler_runtime_mode != "embedded":
         logger.info(

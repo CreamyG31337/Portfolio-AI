@@ -872,7 +872,11 @@ def start_scheduler() -> bool:
                 logger.warning(f"  ⚠️ Failed to clear jobstore (non-fatal): {e}")
             
             logger.debug("  → Registering default jobs...")
-            register_default_jobs(scheduler)
+            try:
+                register_default_jobs(scheduler)
+            except Exception as e:
+                logger.error(f"  ❌ register_default_jobs failed: {e}", exc_info=True)
+                logger.warning("  ⚠️ Scheduler will start with heartbeat/health jobs only — jobs were not registered")
 
             
             # Start scheduler
