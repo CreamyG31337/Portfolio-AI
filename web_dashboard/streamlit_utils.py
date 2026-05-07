@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# NOTE: Historical name—production Flask still imports this module for shared Supabase/data
+# helpers. The Streamlit app is legacy; avoid drive-by perf-only edits without checking Flask
+# callers; prefer new shared logic in flask_data_utils where practical.
+
 """
 Streamlit utilities for fetching data from Supabase
 """
@@ -1082,10 +1086,9 @@ def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, d
                                 rates_dict[(date_key, from_curr, to_curr)] = rate_val
                         
                         # Now build rate_list using the bulk-fetched data
-                        # TODO(perf): Prefer itertuples over iterrows in tight loops (prototype Streamlit path).
-                        for _, row in unique_combos.iterrows():
-                            date_val = row['date_normalized']
-                            curr_val = row['currency_normalized']
+                        for row in unique_combos.itertuples(index=False):
+                            date_val = getattr(row, "date_normalized")
+                            curr_val = getattr(row, "currency_normalized")
                             
                             if curr_val == display_currency.upper():
                                 rate_list.append({'date_normalized': date_val, 'currency_normalized': curr_val, 'conversion_rate': 1.0})
@@ -1111,9 +1114,9 @@ def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, d
                                 rate_list.append({'date_normalized': date_val, 'currency_normalized': curr_val, 'conversion_rate': rate})
                     else:
                         # Fallback if client not available
-                        for _, row in unique_combos.iterrows():
-                            date_val = row['date_normalized']
-                            curr_val = row['currency_normalized']
+                        for row in unique_combos.itertuples(index=False):
+                            date_val = getattr(row, "date_normalized")
+                            curr_val = getattr(row, "currency_normalized")
                             if curr_val == display_currency.upper():
                                 rate = 1.0
                             elif curr_val == 'USD' and display_currency.upper() == 'CAD':
@@ -1129,9 +1132,9 @@ def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, d
                     logger = logging.getLogger(__name__)
                     logger.error(f"Error bulk fetching exchange rates: {e}")
                     # Fallback to defaults
-                    for _, row in unique_combos.iterrows():
-                        date_val = row['date_normalized']
-                        curr_val = row['currency_normalized']
+                    for row in unique_combos.itertuples(index=False):
+                        date_val = getattr(row, "date_normalized")
+                        curr_val = getattr(row, "currency_normalized")
                         if curr_val == display_currency.upper():
                             rate = 1.0
                         elif curr_val == 'USD' and display_currency.upper() == 'CAD':

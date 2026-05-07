@@ -480,7 +480,7 @@ class SupabaseClient:
             # Convert DataFrame to list of dictionaries
             # NOTE: total_value is a GENERATED COLUMN - do not include it in inserts
             positions = []
-            for _, row in positions_df.iterrows():
+            for row in positions_df.to_dict("records"):
                 positions.append({
                     "ticker": row["Ticker"],
                     "shares": float(row["Shares"]),
@@ -533,7 +533,7 @@ class SupabaseClient:
             trades = []
             from utils.trade_reason import infer_trade_action
 
-            for _, row in trades_df.iterrows():
+            for row in trades_df.to_dict("records"):
                 fund_value = str(row.get(fund_col) or "").strip()
                 if not fund_value:
                     raise ValueError("upsert_trade_log encountered row with missing/empty fund")
@@ -709,7 +709,7 @@ class SupabaseClient:
             
             # Return as list of dictionaries with the exact format the chart expects
             daily_data = []
-            for _, row in df.iterrows():
+            for row in df.to_dict("records"):
                 daily_data.append({
                     "date": row["date"].strftime('%Y-%m-%d'),  # Convert to string for JSON serialization
                     "performance_index": round(float(row["performance_index"]), 2),

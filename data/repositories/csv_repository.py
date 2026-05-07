@@ -148,8 +148,8 @@ class CSVRepository(BaseRepository):
                 positions = []
                 total_value = Decimal('0')
                 
-                for _, row in group.iterrows():
-                    position = Position.from_csv_dict(row.to_dict())
+                for row in group.to_dict("records"):
+                    position = Position.from_csv_dict(row)
                     positions.append(position)
                     if position.market_value:
                         total_value += position.market_value
@@ -249,9 +249,8 @@ class CSVRepository(BaseRepository):
 
                 if not today_data.empty:
                     # Check if any existing snapshot is at market close (16:00:00)
-                    market_close_exists = any(
-                        row['Date'].hour == 16 and row['Date'].minute == 0
-                        for _, row in today_data.iterrows()
+                    market_close_exists = bool(
+                        ((today_data["Date"].dt.hour == 16) & (today_data["Date"].dt.minute == 0)).any()
                     )
                     
                     # If we're trying to save a market close snapshot and one already exists
@@ -372,8 +371,8 @@ class CSVRepository(BaseRepository):
                     snapshot_positions_by_ticker = {pos.ticker: pos for pos in snapshot.positions}
 
                     # Update prices in today's existing rows
-                    for _, position_row in today_data.iterrows():
-                        ticker = position_row['Ticker']
+                    for position_row in today_data.to_dict("records"):
+                        ticker = position_row["Ticker"]
                         
                         # Find the updated position
                         updated_position = snapshot_positions_by_ticker.get(ticker)
@@ -501,8 +500,8 @@ class CSVRepository(BaseRepository):
             
             # Convert to Trade objects
             trades = []
-            for _, row in df.iterrows():
-                trade = Trade.from_csv_dict(row.to_dict(), timestamp=row['Date'])
+            for row in df.to_dict("records"):
+                trade = Trade.from_csv_dict(row, timestamp=row["Date"])
                 trades.append(trade)
             
             return sorted(trades, key=lambda x: x.timestamp)

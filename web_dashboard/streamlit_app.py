@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# LEGACY: Streamlit prototype UI only—Flask is production. Do not target this file (or
+# web_dashboard/pages/) for automated perf-only refactors; extend flask_data_utils / routes.
+
 """
 Streamlit Portfolio Performance Dashboard
 Displays historical performance graphs and current portfolio data
