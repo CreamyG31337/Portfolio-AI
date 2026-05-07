@@ -108,7 +108,7 @@ steps:
       event: pull_request
 
   build-and-deploy:
-    image: docker:24
+    image: docker:27
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/lance/ai-trading-www:/deploy_target

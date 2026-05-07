@@ -2048,18 +2048,36 @@ def get_all_jobs_status_batched() -> List[Dict[str, Any]]:
         # Merge and deduplicate
         for mem_log in in_memory_logs:
             mem_ts = mem_log.get('timestamp')
+            if isinstance(mem_ts, str):
+                try:
+                    mem_ts = datetime.fromisoformat(mem_ts.replace('Z', '+00:00'))
+                except (ValueError, AttributeError):
+                    mem_ts = None
             if mem_ts:
                 is_duplicate = False
                 for existing_log in existing_logs:
                     existing_ts = existing_log.get('timestamp')
+                    if isinstance(existing_ts, str):
+                        try:
+                            existing_ts = datetime.fromisoformat(existing_ts.replace('Z', '+00:00'))
+                        except (ValueError, AttributeError):
+                            existing_ts = None
                     if existing_ts and abs((mem_ts - existing_ts).total_seconds()) < 1:
                         is_duplicate = True
                         break
                 if not is_duplicate:
                     existing_logs.append(mem_log)
-        
+
+        def _coerce_ts(ts):
+            if isinstance(ts, str):
+                try:
+                    return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                except Exception:
+                    return datetime.min.replace(tzinfo=timezone.utc)
+            return ts or datetime.min.replace(tzinfo=timezone.utc)
+
         # Sort and limit
-        existing_logs.sort(key=lambda x: x.get('timestamp', datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+        existing_logs.sort(key=lambda x: _coerce_ts(x.get('timestamp')), reverse=True)
         job_statuses[job_id]['recent_logs'] = existing_logs[:5]
     
     elapsed_ms = (time.perf_counter() - start_time) * 1000

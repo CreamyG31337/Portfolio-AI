@@ -861,13 +861,26 @@ def _start_scheduler_background():
 
             log_both('info', f"[{thread_name}] Scheduler initialization complete")
 
-            # CRITICAL: Thread stays alive to execute scheduler jobs
-            # Sleep forever to keep thread alive and log heartbeat
+            # CRITICAL: Thread stays alive to execute scheduler jobs.
+            # Also watches for scheduler death and attempts recovery every 90s.
             sleep_count = 0
             while True:
                 sleep_count += 1
-                logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Keeping scheduler thread alive (cycle {sleep_count})")
-                time.sleep(60)
+                time.sleep(90)
+                if not is_scheduler_running():
+                    log_both('warning', f"⚠️ Scheduler not running (cycle {sleep_count}) — attempting recovery...")
+                    try:
+                        recovery_result = start_scheduler()
+                        if recovery_result:
+                            log_both('info', "✅ Scheduler recovered successfully")
+                        elif is_scheduler_running():
+                            log_both('info', "✅ Scheduler running (started by another process)")
+                        else:
+                            log_both('error', "❌ Recovery attempt failed — will retry next cycle")
+                    except Exception as rec_exc:
+                        log_both('error', f"❌ Recovery exception: {rec_exc}")
+                else:
+                    logger.debug(f"[PID:{process_id} TID:{thread_id}] [{thread_name}] Scheduler alive (cycle {sleep_count})")
 
         except Exception as e:
             # Catch-all for any unexpected errors
