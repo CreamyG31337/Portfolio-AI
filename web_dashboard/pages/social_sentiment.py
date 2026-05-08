@@ -765,7 +765,7 @@ try:
         analysis_df = pd.DataFrame(analysis_data)
         
         # Display with expandable details
-        for idx, row in analysis_df.iterrows():
+        for idx, row in enumerate(analysis_data):
             col1, col2, col3, col4, col5, col6 = st.columns([1,1,1,1,1,2])
             
             with col1:
