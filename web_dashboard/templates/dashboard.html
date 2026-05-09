@@ -178,12 +178,21 @@
         </div>
     </div>
 
-    <!-- Market brief (cached daily; not trade advice) -->
+    <!-- Market brief (cached daily) -->
     <div id="market-brief-card" class="p-4 card shadow-xs mb-6 hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
-            <div>
+            <div class="flex items-center gap-2 flex-wrap">
                 <h3 class="text-lg font-bold text-text-primary">📰 Market brief</h3>
-                <p class="text-xs text-text-secondary">Regime backdrop from benchmarks — research context only</p>
+                <button type="button" data-tooltip-target="market-brief-ai-help-tooltip"
+                    class="text-text-tertiary hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent rounded"
+                    aria-label="How this summary is generated">
+                    <i class="fas fa-circle-info" aria-hidden="true"></i>
+                </button>
+                <div id="market-brief-ai-help-tooltip" role="tooltip"
+                    class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-sm">
+                    Recent benchmark index stats go into one LLM call that returns headline, narrative, and a structured regime summary, cached per trading day.
+                    <div class="tooltip-arrow" data-popper-arrow></div>
+                </div>
             </div>
             <div class="text-xs text-text-tertiary" id="market-brief-asof"></div>
         </div>
@@ -193,6 +202,7 @@
             {% endwith %}
             <p id="market-brief-headline" class="text-sm font-semibold text-text-primary mb-2"></p>
             <p id="market-brief-narrative" class="text-sm text-text-secondary leading-relaxed"></p>
+            <p id="market-brief-model" class="text-xs text-text-tertiary mt-2 hidden" aria-live="polite"></p>
             <details class="mt-3 text-xs text-text-tertiary">
                 <summary class="cursor-pointer hover:text-accent">Inputs (benchmark tickers)</summary>
                 <pre id="market-brief-inputs" class="mt-2 p-2 rounded bg-dashboard-surface-alt overflow-x-auto whitespace-pre-wrap font-mono text-[11px]"></pre>
@@ -206,9 +216,18 @@
     <!-- Tier-1: portfolio metrics AI read (cached; scheduler ui_ai_summaries) -->
     <div id="portfolio-ai-summary-card" class="p-4 card shadow-xs mb-6 hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
-            <div>
+            <div class="flex items-center gap-2 flex-wrap">
                 <h3 class="text-lg font-bold text-text-primary">📊 Portfolio snapshot (AI)</h3>
-                <p class="text-xs text-text-secondary">From fund totals and weights — research only, not trade advice</p>
+                <button type="button" data-tooltip-target="portfolio-ai-summary-ai-help-tooltip"
+                    class="text-text-tertiary hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent rounded"
+                    aria-label="How this summary is generated">
+                    <i class="fas fa-circle-info" aria-hidden="true"></i>
+                </button>
+                <div id="portfolio-ai-summary-ai-help-tooltip" role="tooltip"
+                    class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-sm">
+                    Structured fund metrics (holdings, weights, totals) for your selected fund, range, and display currency go into one LLM call; the JSON is cached and refreshed on a schedule.
+                    <div class="tooltip-arrow" data-popper-arrow></div>
+                </div>
             </div>
             <div class="text-xs text-text-tertiary" id="portfolio-ai-summary-asof"></div>
         </div>
@@ -220,6 +239,7 @@
             <p id="portfolio-ai-summary-narrative" class="text-sm text-text-secondary leading-relaxed"></p>
             <ul id="portfolio-ai-summary-bullets" class="mt-3 list-disc list-inside text-sm text-text-secondary"></ul>
             <p id="portfolio-ai-summary-fallback" class="hidden mt-2 text-xs text-amber-600 dark:text-amber-400"></p>
+            <p id="portfolio-ai-summary-model" class="text-xs text-text-tertiary mt-2 hidden" aria-live="polite"></p>
         </div>
     </div>
     <div id="portfolio-ai-summary-unavailable" class="hidden mb-6 text-xs text-text-tertiary px-1">
@@ -229,9 +249,18 @@
     <!-- Tier-2: per-fund cross-screen digest -->
     <div id="fund-digest-card" class="p-4 card shadow-xs mb-6 hidden border border-accent/20">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
-            <div>
+            <div class="flex items-center gap-2 flex-wrap">
                 <h3 class="text-lg font-bold text-text-primary">🧠 Fund digest</h3>
-                <p class="text-xs text-text-secondary">Market backdrop + portfolio summary — reconciled read, not instructions</p>
+                <button type="button" data-tooltip-target="fund-digest-ai-help-tooltip"
+                    class="text-text-tertiary hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent rounded"
+                    aria-label="How this summary is generated">
+                    <i class="fas fa-circle-info" aria-hidden="true"></i>
+                </button>
+                <div id="fund-digest-ai-help-tooltip" role="tooltip"
+                    class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-sm">
+                    The latest market brief text and your fund’s portfolio AI summary are merged in one LLM pass into a single read, cached per fund.
+                    <div class="tooltip-arrow" data-popper-arrow></div>
+                </div>
             </div>
             <div class="text-xs text-text-tertiary" id="fund-digest-asof"></div>
         </div>
@@ -241,6 +270,7 @@
             {% endwith %}
             <p id="fund-digest-headline" class="text-sm font-semibold text-text-primary mb-2"></p>
             <p id="fund-digest-narrative" class="text-sm text-text-secondary leading-relaxed"></p>
+            <p id="fund-digest-model" class="text-xs text-text-tertiary mt-2 hidden" aria-live="polite"></p>
         </div>
     </div>
     <div id="fund-digest-unavailable" class="hidden mb-6 text-xs text-text-tertiary px-1">

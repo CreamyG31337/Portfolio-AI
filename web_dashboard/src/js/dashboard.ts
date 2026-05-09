@@ -228,6 +228,7 @@ interface PortfolioAiSummaryPayload {
     summary_json?: { headline?: string; narrative?: string; bullets?: string[] };
     updated_at?: string | null;
     currency_fallback_note?: string;
+    model_used?: string | null;
 }
 
 interface FundDigestPayload {
@@ -236,6 +237,7 @@ interface FundDigestPayload {
     narrative?: string | null;
     sources_used?: Record<string, unknown> | null;
     updated_at?: string | null;
+    model_used?: string | null;
 }
 
 interface ActionQueueData {
@@ -256,6 +258,25 @@ interface Fund {
     name: string;
 }
 
+/** Keep aligned with web_dashboard/market_brief_service.py BRIEF_BENCHMARK_TICKERS + common ETF prose aliases. */
+const DASHBOARD_AI_BENCHMARK_LINK_TICKERS: readonly string[] = ['^GSPC', 'QQQ', '^RUT', 'VTI', 'SPY', 'IWM', 'DIA'];
+
+interface AiCardMarketBrief {
+    headline: string;
+    narrative: string;
+}
+
+interface AiCardPortfolio {
+    headline: string;
+    narrative: string;
+    bullets: string[];
+}
+
+interface AiCardFundDigest {
+    headline: string;
+    narrative: string;
+}
+
 // Global state
 const state = {
     currentFund: typeof window !== 'undefined' && window.INITIAL_FUND ? window.INITIAL_FUND : '',
@@ -269,10 +290,128 @@ const state = {
     individualHoldingsDays: 7,
     individualHoldingsFilter: 'all',
     // Exchange rate state
-    inverseExchangeRate: false
+    inverseExchangeRate: false,
+    /** Uppercase tickers from last successful /api/dashboard/holdings for current fund. */
+    holdingsTickerSet: new Set<string>(),
+    /** Plaintext AI card payloads; DOM bodies are filled after refresh via linkify. */
+    aiCards: {
+        marketBrief: null as AiCardMarketBrief | null,
+        portfolio: null as AiCardPortfolio | null,
+        fundDigest: null as AiCardFundDigest | null,
+    },
 };
 
 const chartResizeObservers = new Map<string, ResizeObserver>();
+
+function setAiModelFootnote(el: HTMLElement | null, model: string | null | undefined): void {
+    if (!el) return;
+    const m = (model ?? '').trim();
+    if (!m) {
+        el.textContent = '';
+        el.classList.add('hidden');
+        return;
+    }
+    el.textContent = `Model: ${m}`;
+    el.classList.remove('hidden');
+}
+
+function escapeRegexMeta(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildTickerLinkWhitelist(): Set<string> {
+    const u = new Set<string>();
+    for (const t of DASHBOARD_AI_BENCHMARK_LINK_TICKERS) {
+        u.add(t.toUpperCase());
+    }
+    for (const t of state.holdingsTickerSet) {
+        u.add(t);
+    }
+    return u;
+}
+
+function buildTickerLinkRegex(whitelist: Set<string>): RegExp | null {
+    const syms = [...whitelist].filter((s) => s.length > 0).sort((a, b) => b.length - a.length);
+    if (syms.length === 0) return null;
+    const inner = syms.map(escapeRegexMeta).join('|');
+    return new RegExp(`(?<![A-Za-z0-9])(?:${inner})(?![A-Za-z0-9])`, 'gi');
+}
+
+function linkifyWhitelistedTickers(text: string, whitelist: Set<string>): DocumentFragment {
+    const frag = document.createDocumentFragment();
+    if (!text) {
+        return frag;
+    }
+    const re = buildTickerLinkRegex(whitelist);
+    if (!re) {
+        frag.appendChild(document.createTextNode(text));
+        return frag;
+    }
+    let lastIndex = 0;
+    let m: RegExpExecArray | null;
+    const r = new RegExp(re.source, re.flags);
+    while ((m = r.exec(text)) !== null) {
+        const full = m[0];
+        if (m.index > lastIndex) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex, m.index)));
+        }
+        const upper = full.toUpperCase();
+        if (whitelist.has(upper)) {
+            const a = document.createElement('a');
+            a.href = `/ticker?ticker=${encodeURIComponent(upper)}`;
+            a.className = 'text-accent underline hover:opacity-80';
+            a.textContent = full;
+            frag.appendChild(a);
+        } else {
+            frag.appendChild(document.createTextNode(full));
+        }
+        lastIndex = m.index + full.length;
+    }
+    if (lastIndex < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+    return frag;
+}
+
+function renderLinkifiedText(el: HTMLElement | null, text: string, whitelist: Set<string>): void {
+    if (!el) return;
+    el.textContent = '';
+    el.appendChild(linkifyWhitelistedTickers(text, whitelist));
+}
+
+function applyTickerLinksToDashboardAiCards(): void {
+    const wl = buildTickerLinkWhitelist();
+
+    const mb = state.aiCards.marketBrief;
+    const mbCard = document.getElementById('market-brief-card');
+    if (mb && mbCard && !mbCard.classList.contains('hidden')) {
+        renderLinkifiedText(document.getElementById('market-brief-headline'), mb.headline, wl);
+        renderLinkifiedText(document.getElementById('market-brief-narrative'), mb.narrative, wl);
+    }
+
+    const pf = state.aiCards.portfolio;
+    const pfCard = document.getElementById('portfolio-ai-summary-card');
+    if (pf && pfCard && !pfCard.classList.contains('hidden')) {
+        renderLinkifiedText(document.getElementById('portfolio-ai-summary-headline'), pf.headline, wl);
+        renderLinkifiedText(document.getElementById('portfolio-ai-summary-narrative'), pf.narrative, wl);
+        const ul = document.getElementById('portfolio-ai-summary-bullets');
+        if (ul) {
+            ul.textContent = '';
+            for (const b of pf.bullets) {
+                const li = document.createElement('li');
+                li.appendChild(linkifyWhitelistedTickers(String(b), wl));
+                ul.appendChild(li);
+            }
+        }
+    }
+
+    const fd = state.aiCards.fundDigest;
+    const fdCard = document.getElementById('fund-digest-card');
+    if (fd && fdCard && !fdCard.classList.contains('hidden')) {
+        renderLinkifiedText(document.getElementById('fund-digest-headline'), fd.headline, wl);
+        renderLinkifiedText(document.getElementById('fund-digest-narrative'), fd.narrative, wl);
+    }
+}
 
 // Helper to get effective theme
 function getEffectiveTheme(): string {
@@ -1078,6 +1217,8 @@ async function refreshDashboard(): Promise<void> {
             await fetchIndividualHoldingsChart();
         }
 
+        applyTickerLinksToDashboardAiCards();
+
         const duration = performance.now() - startTime;
         console.log('[Dashboard] Dashboard refresh completed successfully', {
             duration: `${duration.toFixed(2)}ms`,
@@ -1622,6 +1763,9 @@ async function fetchHoldings(): Promise<void> {
 
         const data: HoldingsData = await response.json();
         const rowCount = data.data ? data.data.length : 0;
+        state.holdingsTickerSet = new Set(
+            (data.data || []).map((r) => String(r.ticker || '').trim().toUpperCase()).filter(Boolean)
+        );
         console.log('[Dashboard] Holdings data received', {
             row_count: rowCount,
             has_grid_api: !!state.gridApi
@@ -1679,6 +1823,7 @@ async function fetchHoldings(): Promise<void> {
         hideSpinner('holdings-grid-spinner');
 
     } catch (error) {
+        state.holdingsTickerSet = new Set();
         hideSpinner('holdings-grid-spinner');
         const duration = performance.now() - startTime;
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1938,6 +2083,11 @@ async function fetchPortfolioAiSummary(): Promise<void> {
     const fund = state.currentFund;
     if (!fund || fund.toLowerCase() === 'all') {
         hideSpinner('portfolio-ai-summary-spinner');
+        state.aiCards.portfolio = null;
+        setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), null);
+        if (headlineEl) headlineEl.textContent = '';
+        if (narrativeEl) narrativeEl.textContent = '';
+        if (bulletsEl) bulletsEl.textContent = '';
         if (card) card.classList.add('hidden');
         if (unavail) unavail.classList.add('hidden');
         return;
@@ -1949,6 +2099,11 @@ async function fetchPortfolioAiSummary(): Promise<void> {
         hideSpinner('portfolio-ai-summary-spinner');
 
         if (response.status === 503) {
+            state.aiCards.portfolio = null;
+            setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), null);
+            if (headlineEl) headlineEl.textContent = '';
+            if (narrativeEl) narrativeEl.textContent = '';
+            if (bulletsEl) bulletsEl.textContent = '';
             if (card) card.classList.add('hidden');
             if (unavail) {
                 unavail.textContent = 'Portfolio AI summary table not installed on server.';
@@ -1959,6 +2114,11 @@ async function fetchPortfolioAiSummary(): Promise<void> {
 
         const data = (await response.json()) as { summary: PortfolioAiSummaryPayload | null; hint?: string };
         if (!data.summary) {
+            state.aiCards.portfolio = null;
+            setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), null);
+            if (headlineEl) headlineEl.textContent = '';
+            if (narrativeEl) narrativeEl.textContent = '';
+            if (bulletsEl) bulletsEl.textContent = '';
             if (card) card.classList.add('hidden');
             if (unavail) {
                 unavail.textContent = data.hint || 'No portfolio AI summary yet.';
@@ -1973,20 +2133,21 @@ async function fetchPortfolioAiSummary(): Promise<void> {
         const s = data.summary;
         const h = s.headline || (s.summary_json && s.summary_json.headline) || '';
         const n = s.narrative || (s.summary_json && s.summary_json.narrative) || '';
-        const bullets = s.bullets || (s.summary_json && s.summary_json.bullets) || [];
+        const bulletsRaw = s.bullets || (s.summary_json && s.summary_json.bullets) || [];
+        const bullets = Array.isArray(bulletsRaw) ? bulletsRaw.map((b) => String(b)) : [];
 
+        state.aiCards.portfolio = { headline: h, narrative: n, bullets };
         if (headlineEl) headlineEl.textContent = h;
         if (narrativeEl) narrativeEl.textContent = n;
         if (bulletsEl) {
-            bulletsEl.innerHTML = '';
-            if (Array.isArray(bullets)) {
-                for (const b of bullets) {
-                    const li = document.createElement('li');
-                    li.textContent = String(b);
-                    bulletsEl.appendChild(li);
-                }
+            bulletsEl.textContent = '';
+            for (const b of bullets) {
+                const li = document.createElement('li');
+                li.textContent = b;
+                bulletsEl.appendChild(li);
             }
         }
+        setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), s.model_used);
         if (asofEl) {
             const d = s.updated_at || '';
             const formatted = formatSummaryUpdatedAt(d);
@@ -2003,6 +2164,11 @@ async function fetchPortfolioAiSummary(): Promise<void> {
         }
     } catch {
         hideSpinner('portfolio-ai-summary-spinner');
+        state.aiCards.portfolio = null;
+        setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), null);
+        if (headlineEl) headlineEl.textContent = '';
+        if (narrativeEl) narrativeEl.textContent = '';
+        if (bulletsEl) bulletsEl.textContent = '';
         if (card) card.classList.add('hidden');
         if (unavail) unavail.classList.remove('hidden');
     }
@@ -2019,6 +2185,10 @@ async function fetchFundDigest(): Promise<void> {
     const fund = state.currentFund;
     if (!fund || fund.toLowerCase() === 'all') {
         hideSpinner('fund-digest-spinner');
+        state.aiCards.fundDigest = null;
+        setAiModelFootnote(document.getElementById('fund-digest-model'), null);
+        if (headlineEl) headlineEl.textContent = '';
+        if (narrativeEl) narrativeEl.textContent = '';
         if (card) card.classList.add('hidden');
         if (unavail) unavail.classList.add('hidden');
         return;
@@ -2030,6 +2200,10 @@ async function fetchFundDigest(): Promise<void> {
         hideSpinner('fund-digest-spinner');
 
         if (response.status === 503) {
+            state.aiCards.fundDigest = null;
+            setAiModelFootnote(document.getElementById('fund-digest-model'), null);
+            if (headlineEl) headlineEl.textContent = '';
+            if (narrativeEl) narrativeEl.textContent = '';
             if (card) card.classList.add('hidden');
             if (unavail) {
                 unavail.textContent = 'Fund digest table not installed on server.';
@@ -2040,6 +2214,10 @@ async function fetchFundDigest(): Promise<void> {
 
         const data = (await response.json()) as { digest: FundDigestPayload | null; hint?: string };
         if (!data.digest) {
+            state.aiCards.fundDigest = null;
+            setAiModelFootnote(document.getElementById('fund-digest-model'), null);
+            if (headlineEl) headlineEl.textContent = '';
+            if (narrativeEl) narrativeEl.textContent = '';
             if (card) card.classList.add('hidden');
             if (unavail) {
                 unavail.textContent = data.hint || 'No fund digest yet.';
@@ -2052,8 +2230,12 @@ async function fetchFundDigest(): Promise<void> {
         if (card) card.classList.remove('hidden');
 
         const d = data.digest;
-        if (headlineEl) headlineEl.textContent = d.headline || '';
-        if (narrativeEl) narrativeEl.textContent = d.narrative || '';
+        const h = d.headline || '';
+        const n = d.narrative || '';
+        state.aiCards.fundDigest = { headline: h, narrative: n };
+        if (headlineEl) headlineEl.textContent = h;
+        if (narrativeEl) narrativeEl.textContent = n;
+        setAiModelFootnote(document.getElementById('fund-digest-model'), d.model_used);
         if (asofEl) {
             const t = d.updated_at || '';
             const formatted = formatSummaryUpdatedAt(t);
@@ -2061,6 +2243,10 @@ async function fetchFundDigest(): Promise<void> {
         }
     } catch {
         hideSpinner('fund-digest-spinner');
+        state.aiCards.fundDigest = null;
+        setAiModelFootnote(document.getElementById('fund-digest-model'), null);
+        if (headlineEl) headlineEl.textContent = '';
+        if (narrativeEl) narrativeEl.textContent = '';
         if (card) card.classList.add('hidden');
         if (unavail) unavail.classList.remove('hidden');
     }
@@ -2080,11 +2266,19 @@ async function fetchMarketBrief(): Promise<void> {
         hideSpinner('market-brief-spinner');
 
         if (response.status === 404) {
+            state.aiCards.marketBrief = null;
+            setAiModelFootnote(document.getElementById('market-brief-model'), null);
+            if (headlineEl) headlineEl.textContent = '';
+            if (narrativeEl) narrativeEl.textContent = '';
             if (card) card.classList.add('hidden');
             if (unavail) unavail.classList.remove('hidden');
             return;
         }
         if (!response.ok) {
+            state.aiCards.marketBrief = null;
+            setAiModelFootnote(document.getElementById('market-brief-model'), null);
+            if (headlineEl) headlineEl.textContent = '';
+            if (narrativeEl) narrativeEl.textContent = '';
             if (card) card.classList.add('hidden');
             if (unavail) unavail.classList.remove('hidden');
             return;
@@ -2094,8 +2288,12 @@ async function fetchMarketBrief(): Promise<void> {
         if (unavail) unavail.classList.add('hidden');
         if (card) card.classList.remove('hidden');
 
-        if (headlineEl) headlineEl.textContent = data.headline || '';
-        if (narrativeEl) narrativeEl.textContent = data.narrative || '';
+        const h = data.headline || '';
+        const n = data.narrative || '';
+        state.aiCards.marketBrief = { headline: h, narrative: n };
+        if (headlineEl) headlineEl.textContent = h;
+        if (narrativeEl) narrativeEl.textContent = n;
+        setAiModelFootnote(document.getElementById('market-brief-model'), data.model_used);
         if (asofEl) {
             const line = formatMarketBriefAsOfLine(data.brief_date ?? null, data.updated_at ?? null);
             asofEl.textContent = line ? `As of ${line}` : '';
@@ -2112,6 +2310,10 @@ async function fetchMarketBrief(): Promise<void> {
         }
     } catch {
         hideSpinner('market-brief-spinner');
+        state.aiCards.marketBrief = null;
+        setAiModelFootnote(document.getElementById('market-brief-model'), null);
+        if (headlineEl) headlineEl.textContent = '';
+        if (narrativeEl) narrativeEl.textContent = '';
         if (card) card.classList.add('hidden');
         if (unavail) unavail.classList.remove('hidden');
     }
