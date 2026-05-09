@@ -1069,7 +1069,7 @@ def create_pnl_chart(
         ))
     
     # Add text labels showing total P&L
-    for _, row in df.iterrows():
+    for row in df.to_dict('records'):
         # For positions with negative unrealized but positive total, show label at top of dividend bar
         if row['total_pnl'] >= 0 and row[pnl_col] < 0:
             # Label goes at top of dividend bar (above axis)
@@ -1273,7 +1273,7 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
         logger.debug(f"[Sector Chart] Sample row: {positions_df.iloc[0].to_dict()}")
     
     sector_data = []
-    for idx, row in positions_df.iterrows():
+    for idx, row in enumerate(positions_df.to_dict('records')):
         ticker = row['ticker']
         raw_market_value = row['market_value']
         market_value = float(raw_market_value or 0)
@@ -1522,7 +1522,7 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
     # Get industry data for color variations within same sector (using normalized sectors)
     sector_industry_map = {}
     if 'industry' in sector_df.columns:
-        for _, row in sector_df.iterrows():
+        for row in sector_df.to_dict('records'):
             # Use normalized sector name
             sector_key = (row.get('sector_normalized') or row.get('sector') or '').lower()
             industry = row.get('industry')
