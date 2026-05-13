@@ -8,7 +8,7 @@ web_dashboard = Path(__file__).resolve().parent.parent / "web_dashboard"
 if str(web_dashboard) not in sys.path:
     sys.path.insert(0, str(web_dashboard))
 
-from market_regime_normalization import merge_regime_for_storage, normalize_market_regime  # noqa: E402
+from market_regime_normalization import invalid_regime_enum_fields, merge_regime_for_storage, normalize_market_regime  # noqa: E402
 
 
 def test_normalize_legacy_risk_tone_aliases_to_risk_regime():
@@ -76,4 +76,17 @@ def test_merge_regime_keeps_unknown_llm_keys():
     assert merged["custom_note_from_model"] == "x"
     assert merged["risk_regime"] == "RISK_ON"
     assert "as_of" in merged
+
+
+def test_invalid_regime_enum_fields_detects_drift():
+    issues = invalid_regime_enum_fields(
+        {"risk_regime": "BANANA", "breadth_proxy": "LEADERSHIP_BROAD", "volatility_state": "ZZZ"}
+    )
+    assert any("risk_regime" in x for x in issues)
+    assert any("volatility_state" in x for x in issues)
+    assert not any("breadth_proxy" in x for x in issues)
+
+
+def test_invalid_regime_enum_fields_empty_when_clean():
+    assert invalid_regime_enum_fields({"risk_regime": "NEUTRAL", "breadth_proxy": "UNCLEAR"}) == []
 

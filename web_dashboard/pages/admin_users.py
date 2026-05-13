@@ -84,11 +84,11 @@ with tab_users:
                     st.caption(f"{len(users_df)} registered users")
                     
                     # Table with actions for each user
-                    for idx, row in users_df.iterrows():
-                        email = row.get('email', '')
-                        full_name = row.get('full_name', 'N/A')
-                        role = row.get('role', 'user')
-                        funds_list = row.get('funds', [])
+                    for idx, row in enumerate(users_df.itertuples(index=False)):
+                        email = getattr(row, 'email', '') or ''
+                        full_name = getattr(row, 'full_name', 'N/A') or 'N/A'
+                        role = getattr(row, 'role', 'user')
+                        funds_list = getattr(row, 'funds', [])
                         
                         # User info and role badge
                         col_info, col_role, col_funds, col_actions = st.columns([3, 1, 2, 2])
@@ -518,10 +518,10 @@ with tab_users:
                             st.warning(f"Could not load contributors from fund_contributions: {e}")
                         
                         # 3. Also add registered users who might not be contributors yet
-                        for _, row in users_df.iterrows():
-                            user_id = row['user_id']
-                            full_name = row.get('full_name') or ""
-                            email = row.get('email') or ""
+                        for row in users_df.itertuples(index=False):
+                            user_id = getattr(row, 'user_id', None)
+                            full_name = getattr(row, 'full_name', '') or ""
+                            email = getattr(row, 'email', '') or ""
                             
                             # Check if this user is already in the list as a contributor
                             already_listed = any(
@@ -707,23 +707,28 @@ with tab_users:
                 contrib_df = pd.DataFrame(contrib_result.data)
                 
                 # Display contributors with invite buttons
-                for idx, row in contrib_df.iterrows():
+                for idx, row in enumerate(contrib_df.itertuples(index=False)):
                     with st.container():
                         col_info, col_action = st.columns([3, 1])
                         
+                        row_email = getattr(row, 'email', '')
+                        row_contributor = getattr(row, 'contributor', '')
+                        row_funds = getattr(row, 'funds', [])
+                        row_total_contribution = getattr(row, 'total_contribution', 0)
+
                         # Handle missing email
-                        email_display = row['email'] if row.get('email') else "No Email"
-                        has_email = bool(row.get('email'))
+                        email_display = row_email if row_email else "No Email"
+                        has_email = bool(row_email)
                         
                         with col_info:
-                            funds_str = ", ".join(row['funds']) if row['funds'] else "None"
-                            st.markdown(f"**{row['contributor']}** ({email_display})")
-                            st.caption(f"Funds: {funds_str} | Contribution: ${row['total_contribution']:,.2f}")
+                            funds_str = ", ".join(row_funds) if row_funds else "None"
+                            st.markdown(f"**{row_contributor}** ({email_display})")
+                            st.caption(f"Funds: {funds_str} | Contribution: ${row_total_contribution:,.2f}")
                         
                         with col_action:
                             if has_email:
                                 # Allow readonly_admin to send invite to themselves
-                                invite_email = row['email']
+                                invite_email = row_email
                                 can_send_invite = can_modify_data() or (invite_email == get_user_email())
                                 if st.button("📧 Send Invite", key=f"invite_{idx}", disabled=not can_send_invite):
                                     if not can_send_invite:

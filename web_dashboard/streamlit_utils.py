@@ -1862,7 +1862,7 @@ def get_historical_fund_values(fund: str, dates: List[datetime], _cache_version:
                 print(f"   Run debug/clean_duplicate_positions_v2.py to fix.")
                 
                 # Show first few duplicates
-                for _, dup in duplicates.head(5).iterrows():
+                for dup in duplicates.head(5).to_dict('records'):
                     print(f"   - {dup['date_key']} | {dup['ticker']}: {dup['count']} records")
         
         # Get exchange rates for each date we need (use historical rates for accuracy)

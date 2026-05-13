@@ -107,6 +107,20 @@ steps:
     when:
       event: pull_request
 
+  # Ensure Node deps match committed pnpm lockfiles (no silent registry drift).
+  # See docs/frontend_dependencies.md for why --frozen-lockfile is used.
+  pr-frontend-pnpm-lockfile:
+    image: node:20-alpine
+    commands:
+      - |
+        set -e
+        corepack enable
+        pnpm install --frozen-lockfile
+        (cd web_dashboard && pnpm install --frozen-lockfile)
+        pnpm run test:ts
+    when:
+      event: pull_request
+
   build-and-deploy:
     image: docker:27
     volumes:

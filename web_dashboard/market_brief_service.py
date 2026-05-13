@@ -9,7 +9,7 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from market_regime_normalization import merge_regime_for_storage
+from market_regime_normalization import invalid_regime_enum_fields, merge_regime_for_storage
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from settings import get_summarizing_model
@@ -127,6 +127,13 @@ def run_market_daily_brief(
     regime_raw = parsed.get("regime")
     if not isinstance(regime_raw, dict):
         regime_raw = {}
+    drift = invalid_regime_enum_fields(regime_raw)
+    if drift:
+        logger.warning(
+            "market_daily_brief regime enum drift for %s: %s",
+            bdate,
+            "; ".join(drift),
+        )
     regime = merge_regime_for_storage(regime_raw, brief_date=bdate)
 
     q = """

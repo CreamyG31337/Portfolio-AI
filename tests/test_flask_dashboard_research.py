@@ -65,6 +65,11 @@ def test_market_brief_returns_json(client, auth_ok):
     data = resp.get_json()
     assert data["headline"] == "Stocks firm"
     assert "2026-04-01" in (data.get("brief_date") or "")
+    rc = data.get("regime_canonical")
+    assert isinstance(rc, dict)
+    assert rc.get("risk_regime") == "NEUTRAL"
+    assert isinstance(rc.get("as_of"), str) and rc["as_of"]
+    assert "breadth_proxy" in rc and "volatility_state" in rc
 
 
 @skip_without_plotly

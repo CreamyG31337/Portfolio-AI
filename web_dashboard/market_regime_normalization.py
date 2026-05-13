@@ -27,6 +27,31 @@ _ALLOWED_VOL = frozenset({"CALM", "ELEVATED", "STRESSED", "UNKNOWN"})
 _MAX_THEMES_STORE = 8
 
 
+def invalid_regime_enum_fields(raw: dict[str, Any] | None) -> list[str]:
+    """Return ``key=value`` strings for non-empty enum fields not in the allowed set (LLM drift).
+
+    Used for warning logs before merge; normalization still clamps to defaults on write.
+    """
+    if not isinstance(raw, dict) or not raw:
+        return []
+    checks: tuple[tuple[str, frozenset[str]], ...] = (
+        ("risk_regime", _ALLOWED_RISK),
+        ("risk_tone", _ALLOWED_RISK),
+        ("breadth_proxy", _ALLOWED_BREADTH),
+        ("volatility_state", _ALLOWED_VOL),
+    )
+    out: list[str] = []
+    for key, allowed in checks:
+        v = raw.get(key)
+        s = _clean_str(v)
+        if s is None:
+            continue
+        up = s.upper().replace("-", "_")
+        if up not in allowed:
+            out.append(f"{key}={v!r}")
+    return out
+
+
 def _coerce_date(brief_date: date | datetime | str | None) -> date | None:
     if brief_date is None:
         return None
