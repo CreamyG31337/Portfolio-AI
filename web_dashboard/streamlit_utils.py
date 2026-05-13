@@ -664,6 +664,7 @@ def get_realized_pnl(fund: Optional[str] = None, display_currency: Optional[str]
         
         # Only process trades that have P&L (realized P&L should be non-zero for closed positions)
         # Filter out trades with None or zero P&L if they shouldn't be counted
+        # OPTIMIZATION: Replaced iterrows() with to_dict('records') for O(1) bulk conversion and faster iteration
         for trade in sell_trades.to_dict('records'):
             pnl_val = trade.get('pnl', 0)
             pnl = 0.0 if pd.isna(pnl_val) else float(pnl_val)
