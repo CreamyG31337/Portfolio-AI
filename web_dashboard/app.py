@@ -525,7 +525,9 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
 
         # Get navigation links
         links = get_navigation_links()
-        is_v2_enabled = get_user_preference('v2_enabled', default=False)
+        # Default True: Flask is the primary UI; migrated sidebar links should appear unless
+        # the user explicitly opted out (v2_enabled stored as false).
+        is_v2_enabled = get_user_preference('v2_enabled', default=True)
 
         # If we're on a v2 page (current_page is migrated), assume v2 is enabled for navigation
         # This ensures menu is populated when viewing v2 pages

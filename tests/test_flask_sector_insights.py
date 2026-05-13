@@ -6,6 +6,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+def test_shared_navigation_includes_sector_insights():
+    """Sector insights must be listed for Flask/Streamlit shared nav (sidebar source of truth)."""
+    from shared_navigation import get_navigation_links
+
+    pages = [link["page"] for link in get_navigation_links()]
+    assert "sector_insights" in pages
+
+
 def _has_plotly() -> bool:
     try:
         import plotly.graph_objs  # noqa: F401

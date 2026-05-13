@@ -26,6 +26,8 @@ MIGRATED_PAGES = {
     'admin_contributions': '/admin/contributions',
     'admin_contributors': '/admin/contributors',
     'admin_ai_settings': '/admin/ai-settings',
+    'admin_ai_audit': '/admin/ai-audit',
+    'admin_security_metadata': '/admin/security-metadata',
     'admin_system': '/admin/system',
 }
 

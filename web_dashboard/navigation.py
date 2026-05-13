@@ -215,6 +215,20 @@ def render_navigation(show_ai_assistant: bool = True, show_settings: bool = True
             except ImportError:
                 # Fallback if shared_navigation not available
                 st.sidebar.page_link("pages/etf_holdings.py", label="ETF Holdings", icon="💼")
+
+            # Sector insights — Flask-only preview (no Streamlit page); mirror ETF Holdings v2 routing
+            try:
+                from shared_navigation import is_page_migrated, get_page_url
+                if is_v2_enabled and is_page_migrated('sector_insights'):
+                    sector_url = get_page_url('sector_insights')
+                    st.sidebar.markdown(f'''
+                        <a href="{sector_url}" target="_self" class="v2-nav-link">
+                            <span class="v2-nav-icon">🧭</span>
+                            <span class="v2-nav-label">Sector insights</span>
+                        </a>
+                    ''', unsafe_allow_html=True)
+            except ImportError:
+                pass
     except Exception:
         pass  # Silently fail if Postgres not available
     

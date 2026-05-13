@@ -41,7 +41,7 @@ def test_get_current_positions_flattens_all_fundamentals():
     mock_eq.range.return_value.execute.return_value = mock_result
     
     with patch('flask_data_utils.get_supabase_client_flask', return_value=mock_client), \
-         patch('flask_data_utils.get_user_id_flask', return_value='test-user-123'), \
+         patch('flask_data_utils.get_flask_cache_scope_id', return_value='test-user-123'), \
          patch('cache_version.get_cache_version', return_value="v1"):
 
         df = get_current_positions_flask(fund="TestFund")
@@ -96,7 +96,7 @@ def test_fetch_dividend_log_flask_includes_securities_join():
     mock_gte.order.return_value.range.return_value.execute.return_value = mock_result
 
     with patch('flask_data_utils.get_supabase_client_flask', return_value=mock_client), \
-         patch('flask_data_utils.get_user_id_flask', return_value='test-user-123'), \
+         patch('flask_data_utils.get_flask_cache_scope_id', return_value='test-user-123'), \
          patch('cache_version.get_cache_version', return_value="v1"):
         
         # Call without user_id to test automatic retrieval
