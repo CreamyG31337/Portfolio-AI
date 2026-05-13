@@ -11,7 +11,7 @@ This document tracks the multi-layer meta-analysis program and keeps the next ph
 ## Phase Status
 
 - Phase 1 (Signal + News Fusion into Ticker Meta): `shipped — monitor output quality and lock/runtime behavior`
-- Phase 2 (Market Meta Regime Normalization): `Phase 2a shipped — regime_json + bundle; 2b planned (UI/API rollups)`
+- Phase 2 (Market Meta Regime Normalization): `Phase 2a + 2b shipped — regime_json, regime_canonical API, dashboard panel, enum drift warnings`
 - Phase 3 (Sector Meta Layer): `planned`
 - Phase 4+ (Adaptive weights, scheduling, and UI explainability): `planned`
 
@@ -133,7 +133,13 @@ Convert market brief output into a reusable regime prior consumed by ticker synt
 - **`web_dashboard/market_regime_normalization.py`** merges LLM output with canonical keys before UPSERT (`merge_regime_for_storage`) and normalizes on read for ticker meta bundles (`normalize_market_regime`). Legacy rows that only had `risk_tone` still work; **`as_of`** prefers row `updated_at` (UTC ISO), otherwise **16:00 America/New_York** on `brief_date` converted to UTC.
 - **`market_brief_service.run_market_daily_brief`** persists merged `regime_json`; **`TickerMetaAnalysisService`** Phase 1 market block emits all canonical regime lines into the artifact bundle.
 
-**Deferred (Phase 2b+):** dedicated regime-only API/UI, rollups consuming normalized fields everywhere, deterministic validation against benchmark-derived volatility proxies.
+### Phase 2b (implemented)
+
+- **`GET /api/dashboard/market-brief`** adds **`regime_canonical`**: same stable contract as `normalize_market_regime` so TypeScript and other clients do not duplicate normalization. **`regime_json`** remains the stored row (merged raw + canonical from 2a) for debugging.
+- **Dashboard** market brief card: collapsible **Regime (structured)** section fed from `regime_canonical`.
+- **Validation:** `invalid_regime_enum_fields` in `market_regime_normalization.py`; `run_market_daily_brief` logs **`logger.warning`** when the LLM returns out-of-set `risk_regime` / `risk_tone` / `breadth_proxy` / `volatility_state` before UPSERT (normalization still clamps; the job does not fail on drift alone).
+
+**Deferred (Phase 2c+):** rollups (fund digest, digests, newsletters) consuming `regime_canonical` everywhere; contrast model-reported `volatility_state` with realized vol from benchmark series when we want fewer `UNKNOWN`s.
 
 ### Structured object contract
 
@@ -218,7 +224,7 @@ This ordering ensures ticker synthesis consumes both global and sector priors.
 
 Near term (recommended order):
 
-1. **Phase 2b:** Extend normalized regime consumption to UI summaries / APIs where helpful; optional tight schema validation for brief LLM output; contrast model-reported volatility with realized vol from benchmark series when we want fewer `UNKNOWN`s.
+1. **Phase 2c+ prep:** See **Phase 2** → *Deferred (Phase 2c+)* for rollups and realized-vol enrichment (single source of truth; avoid duplicating here).
 2. **Phase 3:** Add `sector_meta_analysis` job and sector prior block in the ticker meta prompt; keep ETF/sentiment sources read-only until the contract is stable.
 3. **Quality loop:** Light-weight eval set (10–20 tickers) with expected fields (`stance`, `contradictions`, `risk_flags`) and regression checks after prompt or model changes.
 4. **Lock-aware scheduling:** If meta runtime grows, consider splitting meta by fund or batching with backoff instead of parallel AI jobs (global lock will serialize anyway).

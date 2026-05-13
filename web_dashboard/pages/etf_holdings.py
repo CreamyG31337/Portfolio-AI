@@ -251,9 +251,9 @@ def get_holdings_changes(
             date_groups = latest_prev.groupby('date')['etf_ticker'].apply(list).reset_index()
             
             prev_holdings_list = []
-            for _, date_row in date_groups.iterrows():
-                batch_date = date_row['date']
-                batch_etfs = date_row['etf_ticker']
+            for date_row in date_groups.itertuples(index=False):
+                batch_date = getattr(date_row, 'date')
+                batch_etfs = getattr(date_row, 'etf_ticker')
                 
                 # Single query for all ETFs with this date
                 p_res = _db_client.supabase.table("etf_holdings_log").select(

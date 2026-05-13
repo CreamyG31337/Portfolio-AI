@@ -2,11 +2,12 @@
   "name": "llm-micro-cap-trading-bot",
   "version": "1.0.0",
   "description": "Trading bot web dashboard with Tailwind CSS",
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "build:css": "postcss web_dashboard/static/css/input.css -o web_dashboard/static/css/tailwind.css",
     "watch:css": "postcss web_dashboard/static/css/input.css -o web_dashboard/static/css/tailwind.css --watch",
     "build:ts": "tsc -p web_dashboard/tsconfig.json --pretty --listFiles --diagnostics",
-    "build": "npm run build:css && npm run build:ts",
+    "build": "pnpm run build:css && pnpm run build:ts",
     "test:ts": "tsc -p web_dashboard/tsconfig.json --noEmit"
   },
   "devDependencies": {
