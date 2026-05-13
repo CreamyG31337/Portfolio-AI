@@ -1,3 +1,4 @@
+# TODO(PR #316): Jules one-off git-log dump only; skipped wiring to CI or docs pipeline—delete or move under scripts/ when a real review automation exists.
 import sys
 import subprocess
 

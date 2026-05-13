@@ -1,3 +1,4 @@
+# TODO(PR #316): Companion scratch script from same Jules report as code_review.py—no production use; remove with that TODO when cleaned up.
 import sys
 import subprocess
 
