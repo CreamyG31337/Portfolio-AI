@@ -214,6 +214,7 @@ interface MarketBriefPayload {
     headline?: string | null;
     narrative?: string | null;
     regime_json?: Record<string, unknown> | null;
+    regime_canonical?: Record<string, unknown> | null;
     inputs_digest?: unknown;
     model_used?: string | null;
     updated_at?: string | null;
@@ -853,6 +854,57 @@ function escapeHtml(text: string | null | undefined): string {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+}
+
+function appendRegimeDlRow(dl: HTMLElement, label: string, value: string): void {
+    const dt = document.createElement('dt');
+    dt.className = 'font-medium text-text-tertiary';
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.className = 'break-words';
+    dd.textContent = value;
+    dl.appendChild(dt);
+    dl.appendChild(dd);
+}
+
+/** Populate structured regime from ``regime_canonical`` (API); uses text nodes only. */
+function renderMarketBriefRegime(
+    container: HTMLElement | null,
+    canon: Record<string, unknown> | null | undefined,
+): void {
+    if (!container) return;
+    container.innerHTML = '';
+    if (!canon || typeof canon !== 'object') {
+        const p = document.createElement('p');
+        p.className = 'text-text-tertiary';
+        p.textContent = 'No structured regime data.';
+        container.appendChild(p);
+        return;
+    }
+    const str = (k: string): string => {
+        const v = canon[k];
+        return typeof v === 'string' ? v : '';
+    };
+    const conf = canon.regime_confidence;
+    const confStr =
+        typeof conf === 'number' && Number.isFinite(conf) ? String(conf) : '—';
+    const themes = Array.isArray(canon.macro_themes)
+        ? (canon.macro_themes as unknown[]).filter((t): t is string => typeof t === 'string').join(', ')
+        : '';
+    const caveats = Array.isArray(canon.caveats)
+        ? (canon.caveats as unknown[]).filter((c): c is string => typeof c === 'string')
+        : [];
+
+    appendRegimeDlRow(container, 'Risk regime', str('risk_regime') || '—');
+    appendRegimeDlRow(container, 'Breadth', str('breadth_proxy') || '—');
+    appendRegimeDlRow(container, 'Volatility', str('volatility_state') || '—');
+    appendRegimeDlRow(container, 'Confidence', confStr);
+    appendRegimeDlRow(container, 'Macro themes', themes || '—');
+    appendRegimeDlRow(container, 'Leadership', str('leadership_note') || '—');
+    appendRegimeDlRow(container, 'As of (regime)', str('as_of') || '—');
+    if (caveats.length) {
+        appendRegimeDlRow(container, 'Caveats', caveats.join(' · '));
+    }
 }
 
 /**
@@ -2260,6 +2312,7 @@ async function fetchMarketBrief(): Promise<void> {
     const narrativeEl = document.getElementById('market-brief-narrative');
     const asofEl = document.getElementById('market-brief-asof');
     const inputsEl = document.getElementById('market-brief-inputs');
+    const regimeEl = document.getElementById('market-brief-regime');
 
     try {
         const response = await fetch('/api/dashboard/market-brief', { credentials: 'include' });
@@ -2270,6 +2323,7 @@ async function fetchMarketBrief(): Promise<void> {
             setAiModelFootnote(document.getElementById('market-brief-model'), null);
             if (headlineEl) headlineEl.textContent = '';
             if (narrativeEl) narrativeEl.textContent = '';
+            if (regimeEl) regimeEl.innerHTML = '';
             if (card) card.classList.add('hidden');
             if (unavail) unavail.classList.remove('hidden');
             return;
@@ -2279,6 +2333,7 @@ async function fetchMarketBrief(): Promise<void> {
             setAiModelFootnote(document.getElementById('market-brief-model'), null);
             if (headlineEl) headlineEl.textContent = '';
             if (narrativeEl) narrativeEl.textContent = '';
+            if (regimeEl) regimeEl.innerHTML = '';
             if (card) card.classList.add('hidden');
             if (unavail) unavail.classList.remove('hidden');
             return;
@@ -2308,12 +2363,15 @@ async function fetchMarketBrief(): Promise<void> {
                 inputsEl.textContent = '';
             }
         }
+        renderMarketBriefRegime(regimeEl, data.regime_canonical ?? null);
     } catch {
         hideSpinner('market-brief-spinner');
         state.aiCards.marketBrief = null;
         setAiModelFootnote(document.getElementById('market-brief-model'), null);
         if (headlineEl) headlineEl.textContent = '';
         if (narrativeEl) narrativeEl.textContent = '';
+        const regimeCatch = document.getElementById('market-brief-regime');
+        if (regimeCatch) regimeCatch.innerHTML = '';
         if (card) card.classList.add('hidden');
         if (unavail) unavail.classList.remove('hidden');
     }
