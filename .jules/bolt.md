@@ -36,6 +36,10 @@
 **Learning:** `df.iterrows()` is a significant performance bottleneck in large data processing pipelines within scheduler jobs (e.g., `jobs_etf_watchtower.py`, `jobs_portfolio.py`). It instantiates a Pandas Series object for every row, making it notoriously slow (O(n) with high overhead).
 **Action:** Replace `df.iterrows()` with vectorized operations (e.g., `.abs().round().tolist()`, boolean vectorization `.all()`) wherever possible. When iteration is absolutely necessary, prefer `.to_dict('records')` (for bulk dictionary creation) or `.itertuples(index=False)` (which yields standard Python tuples and avoids the high overhead of Series instantiation).
 
+## 2026-05-09 - Pandas DataFrame Iteration Bottleneck
+**Learning:** The `.iterrows()` method is a significant performance bottleneck in Pandas when iterating over rows, as it yields a `pd.Series` object for every row, incurring heavy object instantiation overhead (O(n) overhead).
+**Action:** Replace `.iterrows()` with `.to_dict('records')` when iteration logic expects dictionary-like access. This converts the dataframe to native Python dictionaries upfront, preserving structure while increasing iteration speed by 10x-100x and casting numpy datatypes directly to Python natives for safer serialization.
+
 ## 2024-05-18 - Streamlit Render Loop Iterrows Overhead
 **Learning:** Found several `iterrows()` usages inside Streamlit render loops in `admin_users.py`, `etf_holdings.py`, `social_sentiment.py` and `chart_utils.py`. Using `iterrows()` inside display and charting loops creates significant overhead due to Pandas instantiating a new Series object per row, turning an O(N) loop into a slow O(N) with massive constant factors.
 **Action:** Replace `iterrows()` with `itertuples(index=False)` and use `getattr(row, 'colname')` for row access. This yields standard Python namedtuples, avoiding the Series instantiation overhead and providing a 10-100x speedup for dashboard rendering loops.
