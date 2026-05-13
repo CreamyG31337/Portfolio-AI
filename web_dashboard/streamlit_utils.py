@@ -664,7 +664,7 @@ def get_realized_pnl(fund: Optional[str] = None, display_currency: Optional[str]
         
         # Only process trades that have P&L (realized P&L should be non-zero for closed positions)
         # Filter out trades with None or zero P&L if they shouldn't be counted
-        for _, trade in sell_trades.iterrows():
+        for trade in sell_trades.to_dict('records'):
             pnl_val = trade.get('pnl', 0)
             pnl = 0.0 if pd.isna(pnl_val) else float(pnl_val)
             
@@ -1861,7 +1861,7 @@ def get_historical_fund_values(fund: str, dates: List[datetime], _cache_version:
                 print(f"   Run debug/clean_duplicate_positions_v2.py to fix.")
                 
                 # Show first few duplicates
-                for _, dup in duplicates.head(5).iterrows():
+                for dup in duplicates.head(5).to_dict('records'):
                     print(f"   - {dup['date_key']} | {dup['ticker']}: {dup['count']} records")
         
         # Get exchange rates for each date we need (use historical rates for accuracy)

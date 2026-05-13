@@ -2,6 +2,7 @@
   "name": "web-dashboard",
   "version": "1.0.0",
   "description": "TypeScript build configuration for web dashboard",
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "build": "tsc --pretty --listFiles --diagnostics",
     "watch": "tsc --watch",

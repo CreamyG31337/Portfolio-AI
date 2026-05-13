@@ -12,6 +12,8 @@ from auth import require_auth
 from flask_auth_utils import get_effective_user_email_flask, get_effective_user_id_flask
 from user_preferences import get_user_theme, get_user_currency, get_user_selected_fund
 
+from market_regime_normalization import normalize_market_regime
+
 from flask_data_utils import (
     fetch_dividend_log_flask, 
     get_supabase_client_flask,
@@ -499,6 +501,28 @@ def _serialize_brief_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _serialize_market_brief_response(row: Dict[str, Any]) -> Dict[str, Any]:
+    """JSON for market-brief API: row fields plus ``regime_canonical`` for stable clients."""
+    out = _serialize_brief_row(row)
+    rj = out.get("regime_json")
+    if isinstance(rj, str):
+        try:
+            loaded = json.loads(rj)
+            parsed: Dict[str, Any] = loaded if isinstance(loaded, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            parsed = {}
+    elif isinstance(rj, dict):
+        parsed = rj
+    else:
+        parsed = {}
+    out["regime_canonical"] = normalize_market_regime(
+        parsed,
+        brief_date=out.get("brief_date"),
+        updated_at=out.get("updated_at"),
+    )
+    return out
+
+
 @dashboard_bp.route('/api/dashboard/market-brief', methods=['GET'])
 @require_auth
 def get_market_brief():
@@ -511,7 +535,7 @@ def get_market_brief():
         row = fetch_latest_brief(pg)
         if not row:
             return jsonify({"error": "No brief generated yet"}), 404
-        return jsonify(_serialize_brief_row(dict(row)))
+        return jsonify(_serialize_market_brief_response(dict(row)))
     except Exception as e:
         logger.error("[Dashboard API] market-brief: %s", e, exc_info=True)
         return jsonify({"error": str(e)}), 500

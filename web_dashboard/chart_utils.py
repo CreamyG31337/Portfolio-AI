@@ -1069,21 +1069,26 @@ def create_pnl_chart(
         ))
     
     # Add text labels showing total P&L
-    for _, row in df.iterrows():
+    for row in df.itertuples(index=False):
+        row_total_pnl = getattr(row, 'total_pnl', 0)
+        row_pnl = getattr(row, pnl_col, 0)
+        row_dividends = getattr(row, 'dividends', 0)
+        row_ticker = getattr(row, 'ticker', '')
+
         # For positions with negative unrealized but positive total, show label at top of dividend bar
-        if row['total_pnl'] >= 0 and row[pnl_col] < 0:
+        if row_total_pnl >= 0 and row_pnl < 0:
             # Label goes at top of dividend bar (above axis)
-            label_y = row['dividends']
+            label_y = row_dividends
             yshift = 10
         else:
             # For other positions, label at top/bottom of total bar
-            label_y = row['total_pnl']
-            yshift = 10 if row['total_pnl'] >= 0 else -15
+            label_y = row_total_pnl
+            yshift = 10 if row_total_pnl >= 0 else -15
         
         fig.add_annotation(
-            x=row['ticker'],
+            x=row_ticker,
             y=label_y,
-            text=f"${row['total_pnl']:,.2f}",
+            text=f"${row_total_pnl:,.2f}",
             showarrow=False,
             yshift=yshift,
             font=dict(size=10, color='#374151')
@@ -1273,9 +1278,9 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
         logger.debug(f"[Sector Chart] Sample row: {positions_df.iloc[0].to_dict()}")
     
     sector_data = []
-    for idx, row in positions_df.iterrows():
-        ticker = row['ticker']
-        raw_market_value = row['market_value']
+    for idx, row in enumerate(positions_df.itertuples(index=False)):
+        ticker = getattr(row, 'ticker', '')
+        raw_market_value = getattr(row, 'market_value', 0)
         market_value = float(raw_market_value or 0)
         
         # Log first few rows to debug
@@ -1283,15 +1288,16 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
             logger.info(f"[Sector Chart] Row {idx}: ticker={ticker}, raw_market_value={raw_market_value} (type={type(raw_market_value)}), market_value={market_value}")
         
         # Convert market_value to display currency
-        if 'currency' in row and rate_map:
-            currency = row.get('currency')
+        # Since itertuples yields namedtuples, we check hasattr instead of 'in row'
+        if hasattr(row, 'currency') and rate_map:
+            currency = getattr(row, 'currency', None)
             if not currency or pd.isna(currency):
                 logger.warning(f"[Sector Chart] Missing currency for {ticker}, skipping currency conversion")
             else:
                 rate = get_rate(currency)
                 market_value = market_value * rate
         
-        logger.debug(f"[Sector Chart] {ticker}: market_value={market_value}, currency={row.get('currency', 'N/A')}")
+        logger.debug(f"[Sector Chart] {ticker}: market_value={market_value}, currency={getattr(row, 'currency', 'N/A') if hasattr(row, 'currency') else 'N/A'}")
         
         # First, try to use sector and industry from database (faster and more reliable)
         # Handle nested securities dict (from Supabase join)
@@ -1299,14 +1305,15 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
         industry = None
         has_industry_column = 'industry' in positions_df.columns
         
-        if has_securities_column and isinstance(row.get('securities'), dict):
-            sector = row['securities'].get('sector')
-            industry = row['securities'].get('industry')
+        securities_dict = getattr(row, 'securities', None)
+        if has_securities_column and isinstance(securities_dict, dict):
+            sector = securities_dict.get('sector')
+            industry = securities_dict.get('industry')
             logger.debug(f"[Sector Chart] {ticker}: sector from nested securities={sector}, industry={industry}")
         elif has_sector_column:
-            sector = row.get('sector')
+            sector = getattr(row, 'sector', None)
             if has_industry_column:
-                industry = row.get('industry')
+                industry = getattr(row, 'industry', None)
             logger.debug(f"[Sector Chart] {ticker}: sector from flat column={sector}, industry={industry}")
         
         # Check if sector is valid (not None, not empty string, not NaN)
@@ -1522,10 +1529,12 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
     # Get industry data for color variations within same sector (using normalized sectors)
     sector_industry_map = {}
     if 'industry' in sector_df.columns:
-        for _, row in sector_df.iterrows():
+        for row in sector_df.itertuples(index=False):
             # Use normalized sector name
-            sector_key = (row.get('sector_normalized') or row.get('sector') or '').lower()
-            industry = row.get('industry')
+            row_sector_normalized = getattr(row, 'sector_normalized', None)
+            row_sector = getattr(row, 'sector', None)
+            sector_key = (row_sector_normalized or row_sector or '').lower()
+            industry = getattr(row, 'industry', None)
             if sector_key and industry and pd.notna(industry):
                 if sector_key not in sector_industry_map:
                     sector_industry_map[sector_key] = {}

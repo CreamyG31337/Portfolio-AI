@@ -1,32 +1,35 @@
 # Shared Frontend Builder for Tailwind CSS and TypeScript
 # Built once, used by both Streamlit and Flask containers
+#
+# Uses pnpm with committed lockfiles (pnpm-lock.yaml) and --frozen-lockfile so
+# installs match the repo and do not float on the registry.
+# Plain-language rationale: docs/frontend_dependencies.md
 
 FROM node:20-alpine
 WORKDIR /app
 
-# Copy package files for dependency installation
-COPY package.json ./
+RUN corepack enable
+
+# Root toolchain (Tailwind 4, tsc for web_dashboard/tsconfig)
+COPY package.json pnpm-lock.yaml ./
 COPY postcss.config.mjs ./
 COPY tailwind.config.js ./
-COPY web_dashboard/package.json ./web_dashboard/package.json
-COPY web_dashboard/tsconfig.json ./web_dashboard/tsconfig.json
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
-# Install root npm dependencies (Tailwind)
-RUN --mount=type=cache,target=/root/.npm npm install
-
-# Install web_dashboard npm dependencies (TypeScript)
+# web_dashboard package (Vitest, etc.) — separate lockfile
+COPY web_dashboard/package.json web_dashboard/pnpm-lock.yaml ./web_dashboard/
 WORKDIR /app/web_dashboard
-RUN --mount=type=cache,target=/root/.npm npm install
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
-# Copy source files
 WORKDIR /app
 COPY web_dashboard/static/css/input.css ./web_dashboard/static/css/input.css
 COPY web_dashboard/templates ./web_dashboard/templates
 COPY web_dashboard/src ./web_dashboard/src
 
-# Build Tailwind CSS and TypeScript
 RUN mkdir -p web_dashboard/static/css web_dashboard/static/js && \
-    npm run build:css && \
-    npm run build:ts && \
+    pnpm run build:css && \
+    pnpm run build:ts && \
     test -f web_dashboard/static/css/tailwind.css && \
     test -f web_dashboard/static/js/dashboard.js
