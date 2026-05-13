@@ -166,20 +166,29 @@ python dev_run.py --data-dir "trading_data/funds/TEST"
 
 - **✅ DO**: Edit files in `web_dashboard/src/js/*.ts` (TypeScript source)
 - **❌ DON'T**: Edit files in `web_dashboard/static/js/*.js` (compiled output - will be overwritten)
-- **Build Process**: `npm run build:ts` compiles TypeScript → JavaScript
+- **Build Process**: `pnpm run build:ts` compiles TypeScript → JavaScript
 - **Served At**: `/assets/js/*.js` (via Flask's static file handler)
+- **Lockfiles / pnpm**: We use **pnpm** and commit **`pnpm-lock.yaml`** at the **repo root** and under **`web_dashboard/`** (two separate Node projects). **CI and Docker** use **`pnpm install --frozen-lockfile`** so installs match the lockfile and do not drift silently. **Plain-language guide:** [`docs/frontend_dependencies.md`](docs/frontend_dependencies.md).
 
 #### TypeScript Build Commands
 
 ```bash
+# Install JS deps (repo root — Tailwind / root tsc)
+pnpm install --frozen-lockfile
+
+# web_dashboard-only deps (Vitest, etc.)
+cd web_dashboard
+pnpm install --frozen-lockfile
+cd ..
+
 # Compile TypeScript to JavaScript
-npm run build:ts
+pnpm run build:ts
 
 # Build both CSS and TypeScript
-npm run build
+pnpm run build
 
 # Watch mode (if needed)
-npm run watch:css
+pnpm run watch:css
 ```
 
 #### File Structure
@@ -206,7 +215,7 @@ web_dashboard/
 
 1. **Tailwind CSS** (v4.x) - **PRIMARY CSS FRAMEWORK**
  - Utility-first CSS framework for all styling
- - Built from source: `npm run build:css` (PostCSS + `@tailwindcss/postcss`)
+ - Built from source: `pnpm run build:css` (PostCSS + `@tailwindcss/postcss`)
  - Output: `web_dashboard/static/css/tailwind.css`
  - **✅ DO**: Use Tailwind utility classes for all styling
  - **❌ DON'T**: Write custom CSS unless absolutely necessary (use Tailwind classes instead)
@@ -265,13 +274,13 @@ web_dashboard/
 **Build Process:**
 ```powershell
 # Build Tailwind CSS (required before deploying)
-npm run build:css
+pnpm run build:css
 
 # Watch mode for development
-npm run watch:css
+pnpm run watch:css
 
 # Build both CSS and TypeScript
-npm run build
+pnpm run build
 ```
 
 **File Locations:**
