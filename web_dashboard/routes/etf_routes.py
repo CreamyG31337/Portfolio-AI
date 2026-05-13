@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify, current_app
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 import pandas as pd
 import logging
 from typing import Optional, Dict, Any, List
@@ -14,6 +14,7 @@ from auth import require_auth
 # Better to use the one from app context or creating a fresh one
 from supabase_client import SupabaseClient
 from postgres_client import PostgresClient
+from research_repository import ResearchRepository
 
 # Module-level PostgresClient for Research DB queries (etf_holdings_log)
 _postgres_client: Optional[PostgresClient] = None
@@ -619,6 +620,48 @@ def get_holdings_changes(
         logger.error(f"Error fetching holdings changes: {e}", exc_info=True)
         return pd.DataFrame(), None
 
+
+def _format_article_dt(value: Any) -> str:
+    """Format research article timestamps for HTML display."""
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.strftime("%Y-%m-%d %H:%M UTC")
+    return str(value)[:48]
+
+
+def _sector_insights_preview_rows(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Light rows for sector insights list (truncate body; keep id for research links)."""
+    rows: List[Dict[str, Any]] = []
+    for article in articles:
+        summary = article.get("summary") or ""
+        if len(summary) > 480:
+            summary = summary[:477].rstrip() + "…"
+        tickers = article.get("tickers")
+        if isinstance(tickers, list):
+            tickers_preview = ", ".join(str(t) for t in tickers[:12] if t)
+            if len(tickers) > 12:
+                tickers_preview += "…"
+        else:
+            tickers_preview = str(tickers or "")[:120]
+        rows.append(
+            {
+                "id": article.get("id"),
+                "title": article.get("title") or "(untitled)",
+                "summary": summary,
+                "published_at_display": _format_article_dt(article.get("published_at")),
+                "fetched_at_display": _format_article_dt(article.get("fetched_at")),
+                "sentiment": article.get("sentiment"),
+                "source": article.get("source"),
+                "tickers_preview": tickers_preview,
+            }
+        )
+    return rows
+
+
 # --- Route ---
 
 @etf_bp.route('/etf_holdings', methods=['GET'])
@@ -904,4 +947,40 @@ def etf_holdings():
         stats=stats,
         
         **nav_context_clean # Explode nav_context (without available_funds) for template
+    )
+
+
+@etf_bp.route("/sector_insights", methods=["GET"])
+@require_auth
+def sector_insights():
+    """Phase 3 preview: read-only rotation context from existing ETF group AI articles (research DB)."""
+    from app import get_navigation_context
+
+    nav_context = get_navigation_context(current_page="sector_insights")
+    user_email = get_user_email_flask()
+    nav_context_clean = {k: v for k, v in nav_context.items() if k != "available_funds"}
+
+    articles_raw: List[Dict[str, Any]] = []
+    load_error: Optional[str] = None
+    try:
+        repo = ResearchRepository()
+        articles_raw = repo.get_recent_articles(
+            limit=48,
+            days=730,
+            article_type="ETF Analysis",
+        )
+    except Exception as exc:
+        logger.warning("sector_insights: could not load ETF Analysis articles: %s", exc)
+        load_error = "Could not load research articles (research database unavailable or misconfigured)."
+
+    preview_rows = _sector_insights_preview_rows(articles_raw)
+
+    return render_template(
+        "sector_insights.html",
+        nav_context=nav_context,
+        user_email=user_email,
+        preview_rows=preview_rows,
+        load_error=load_error,
+        article_count=len(preview_rows),
+        **nav_context_clean,
     )

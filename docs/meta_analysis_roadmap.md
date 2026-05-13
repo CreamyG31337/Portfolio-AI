@@ -11,8 +11,8 @@ This document tracks the multi-layer meta-analysis program and keeps the next ph
 ## Phase Status
 
 - Phase 1 (Signal + News Fusion into Ticker Meta): `shipped — monitor output quality and lock/runtime behavior`
-- Phase 2 (Market Meta Regime Normalization): `Phase 2a + 2b shipped — regime_json, regime_canonical API, dashboard panel, enum drift warnings`
-- Phase 3 (Sector Meta Layer): `planned`
+- Phase 2 (Market Meta Regime Normalization): `Phase 2a + 2b shipped — regime_json, regime_canonical API, dashboard panel, enum drift warnings — Phase 2c deferred (see below)`
+- Phase 3 (Sector Meta Layer): `in progress — read-only sector context UI shipped; sector_meta job + ticker prior not yet`
 - Phase 4+ (Adaptive weights, scheduling, and UI explainability): `planned`
 
 ---
@@ -139,7 +139,13 @@ Convert market brief output into a reusable regime prior consumed by ticker synt
 - **Dashboard** market brief card: collapsible **Regime (structured)** section fed from `regime_canonical`.
 - **Validation:** `invalid_regime_enum_fields` in `market_regime_normalization.py`; `run_market_daily_brief` logs **`logger.warning`** when the LLM returns out-of-set `risk_regime` / `risk_tone` / `breadth_proxy` / `volatility_state` before UPSERT (normalization still clamps; the job does not fail on drift alone).
 
-**Deferred (Phase 2c+):** rollups (fund digest, digests, newsletters) consuming `regime_canonical` everywhere; contrast model-reported `volatility_state` with realized vol from benchmark series when we want fewer `UNKNOWN`s.
+### Phase 2c — **explicitly deferred** (newsletters and digest rollups later)
+
+**Not in scope until Phase 2c is scheduled for implementation:** wiring **fund digests**, **email digests**, **newsletters**, and similar rollup surfaces so they **read and embed `regime_canonical`** (or otherwise depend on the normalized regime as a single source of truth). The dashboard and **`GET /api/dashboard/market-brief`** already expose `regime_canonical` for interactive use; batch narrative products stay on legacy paths until we intentionally ship 2c.
+
+**Rationale:** keep Phase 2b stable in production, avoid duplicate normalization in long-form generators, and **defer newsletter work** to a dedicated pass (copy, truncation, and send-time freshness differ from the dashboard card).
+
+**Still deferred after 2c ships (Phase 2c+):** contrast model-reported `volatility_state` with realized vol from benchmark series when we want fewer `UNKNOWN`s; any other rollup not listed in the Phase 2c bullet above remains out of scope until called out in a future checklist.
 
 ### Structured object contract
 
@@ -218,13 +224,26 @@ This ordering ensures ticker synthesis consumes both global and sector priors.
 - Ticker meta prompt/input includes sector prior when available.
 - Sector output is inspectable independently for debugging and QA.
 
+### Phase 3 rollout checklist (incremental)
+
+- [x] **Read-only sector context (preview):** Flask page **`/sector_insights`** lists recent **ETF Analysis** research articles produced by the existing **`etf_group_analysis`** / watchtower pipeline. Labeled honestly in the UI: **not** the future `sector_meta` JSON contract and **not** merged into ticker meta yet.
+- [ ] **`sector_meta_analysis`** scheduler job, persistence, and stable sector output contract (see *Proposed sector output contract* above).
+- [ ] Ticker meta bundle + prompt consume **sector prior** when rows exist (ordering per *Scheduler sequencing*).
+- [ ] Optional: sector-level aggregation beyond ETF group AI (e.g. research DB sector tags, benchmark-relative ETF snapshots) once the core job is stable.
+
+### Next session (suggested)
+
+1. Sketch `sector_meta_analysis` job module (mirror `TickerMetaAnalysisService` patterns: `collect_with_summary_model_chain`, feature flag, research persistence).
+2. Add research table or document storage for sector rows; link from **`/sector_insights`** when data exists (replace or supplement the ETF Analysis list).
+3. Run Flask tests under `tests/test_flask_*.py` after route/template changes.
+
 ---
 
 ## Later Phases (Iterative)
 
 Near term (recommended order):
 
-1. **Phase 2c+ prep:** See **Phase 2** → *Deferred (Phase 2c+)* for rollups and realized-vol enrichment (single source of truth; avoid duplicating here).
+1. **Phase 2c (when scheduled):** Newsletters, fund digests, and email digests consuming **`regime_canonical`** — see **Phase 2c — explicitly deferred** above. **Phase 2c+** remains realized-vol enrichment and other items called out there.
 2. **Phase 3:** Add `sector_meta_analysis` job and sector prior block in the ticker meta prompt; keep ETF/sentiment sources read-only until the contract is stable.
 3. **Quality loop:** Light-weight eval set (10–20 tickers) with expected fields (`stance`, `contradictions`, `risk_flags`) and regression checks after prompt or model changes.
 4. **Lock-aware scheduling:** If meta runtime grows, consider splitting meta by fund or batching with backoff instead of parallel AI jobs (global lock will serialize anyway).

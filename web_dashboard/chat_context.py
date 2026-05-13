@@ -7,7 +7,10 @@ Manages selected context items for AI chat interface.
 Handles click-to-add selections and intelligent prompt generation.
 """
 
-import streamlit as st
+try:
+    import streamlit as st
+except ImportError:  # Flask-only installs: ai_routes only needs ContextItemType enum
+    st = None  # type: ignore[assignment]
 from typing import List, Dict, Optional, Set, Any
 from dataclasses import dataclass, field
 from enum import Enum

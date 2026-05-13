@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Sector insights (preview) - Portfolio Dashboard{% endblock %}
+{% block page_title %}Sector insights{% endblock %}
+{% block page_subtitle %}Phase 3 preview — read-only context from ETF group AI (not sector_meta yet){% endblock %}
+
+{% block content %}
+<div id="main-content" class="container mx-auto px-4 py-6 max-w-5xl">
+
+    <div class="bg-theme-warning-bg border border-theme-warning-text/40 rounded-lg p-4 mb-6" role="status">
+        <p class="text-sm text-theme-warning-text font-semibold mb-1">Honest labeling</p>
+        <p class="text-sm text-text-primary">
+            This page is a <strong>Phase 3 stepping stone</strong>. It lists recent <strong>ETF Analysis</strong>
+            articles from the existing <code class="text-xs bg-dashboard-surface px-1 rounded">etf_group_analysis</code>
+            / watchtower pipeline. That is <strong>not</strong> the planned <code class="text-xs bg-dashboard-surface px-1 rounded">sector_meta</code>
+            JSON contract and is <strong>not</strong> fed into ticker meta yet. Use it as qualitative rotation context only.
+        </p>
+    </div>
+
+    <div class="bg-theme-info-bg border border-theme-info-text rounded-lg p-4 mb-6">
+        <p class="text-sm text-theme-info-text">
+            <strong>Roadmap:</strong> Phase 3 checklist and next steps live in
+            <code class="text-xs bg-dashboard-surface px-1 rounded">docs/meta_analysis_roadmap.md</code>
+            (repository). Related holdings data: <a href="{{ url_for('etf_bp.etf_holdings') }}"
+                class="font-semibold underline text-theme-info-text">ETF Holdings Watchtower</a>.
+        </p>
+    </div>
+
+    {% if load_error %}
+    <div class="bg-theme-error-bg border border-theme-error-text rounded-lg p-4 mb-6">
+        <p class="text-sm text-theme-error-text">{{ load_error }}</p>
+    </div>
+    {% endif %}
+
+    {% if not load_error and article_count == 0 %}
+    <div class="bg-dashboard-surface border border-border rounded-lg p-8 text-center">
+        <i class="fas fa-layer-group text-4xl text-text-secondary mb-3" aria-hidden="true"></i>
+        <p class="text-text-primary font-medium mb-2">No ETF Analysis articles in the last window</p>
+        <p class="text-sm text-text-secondary mb-4">
+            When <code class="text-xs bg-dashboard-background px-1 rounded">etf_group_analysis</code> runs and
+            persists articles, they will appear here. Holdings diffs are available on the watchtower page.
+        </p>
+        <a href="{{ url_for('etf_bp.etf_holdings') }}"
+            class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-accent rounded-lg hover:opacity-90 focus:ring-4 focus:ring-accent/30">
+            <i class="fas fa-chart-pie mr-2" aria-hidden="true"></i>Open ETF Holdings
+        </a>
+    </div>
+    {% elif preview_rows %}
+    <p class="text-sm text-text-secondary mb-4">{{ article_count }} article(s) — newest first (research DB, type ETF Analysis).</p>
+    <div class="space-y-4">
+        {% for row in preview_rows %}
+        <article
+            class="bg-dashboard-surface border border-border rounded-lg shadow-xs p-4 hover:border-accent/40 transition-colors">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                <h2 class="text-lg font-semibold text-text-primary">{{ row.title }}</h2>
+                {% if row.id %}
+                <a href="/research"
+                    class="text-xs font-medium text-accent hover:underline shrink-0">Open in Research →</a>
+                {% endif %}
+            </div>
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-secondary mb-2">
+                {% if row.published_at_display %}
+                <span><i class="far fa-calendar mr-1" aria-hidden="true"></i>Published {{ row.published_at_display }}</span>
+                {% endif %}
+                {% if row.fetched_at_display %}
+                <span><i class="far fa-clock mr-1" aria-hidden="true"></i>Fetched {{ row.fetched_at_display }}</span>
+                {% endif %}
+                {% if row.sentiment %}
+                <span><i class="fas fa-balance-scale mr-1" aria-hidden="true"></i>{{ row.sentiment }}</span>
+                {% endif %}
+                {% if row.source %}
+                <span><i class="fas fa-robot mr-1" aria-hidden="true"></i>{{ row.source }}</span>
+                {% endif %}
+            </div>
+            {% if row.tickers_preview %}
+            <p class="text-xs text-text-secondary mb-2"><span class="font-semibold">Tickers (sample):</span> {{ row.tickers_preview }}</p>
+            {% endif %}
+            {% if row.summary %}
+            <p class="text-sm text-text-primary leading-relaxed whitespace-pre-line">{{ row.summary }}</p>
+            {% else %}
+            <p class="text-sm text-text-secondary italic">No summary stored for this row.</p>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

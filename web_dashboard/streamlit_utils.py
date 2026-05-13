@@ -31,6 +31,18 @@ except ImportError:
     reload_exchange_rate_for_date = None
     st = None
 
+
+def _streamlit_cache_data(ttl: Optional[int] = 3600):
+    """Use Streamlit cache when available; no-op decorator when Streamlit is not installed."""
+    if st is not None and hasattr(st, "cache_data"):
+        return st.cache_data(ttl=ttl)
+
+    def _noop_decorator(func):
+        return func
+
+    return _noop_decorator
+
+
 # ============================================================
 # CACHE VERSION - Auto-derived from BUILD_TIMESTAMP (set by Woodpecker CI)
 # Every deployment gets a new cache version, automatically invalidating stale data
@@ -161,7 +173,7 @@ def convert_to_display_currency(value: float, from_currency: str, date: Optional
     return value * float(rate)
 
 
-@st.cache_data(ttl=3600)  # Cache for 1 hour - exchange rates are relatively stable
+@_streamlit_cache_data(ttl=3600)  # Cache for 1 hour - exchange rates are relatively stable
 def fetch_latest_rates_bulk(currencies: List[str], target_currency: str) -> Dict[str, float]:
     """
     Fetch latest exchange rates for a list of currencies to the target currency in one go.
@@ -474,7 +486,7 @@ def get_available_funds() -> List[str]:
 
 
 @log_execution_time()
-@st.cache_data(ttl=300)
+@_streamlit_cache_data(ttl=300)
 def get_current_positions(fund: Optional[str] = None, _cache_version: str = CACHE_VERSION) -> pd.DataFrame:
     """Get current portfolio positions as DataFrame.
     
@@ -532,7 +544,7 @@ def get_current_positions(fund: Optional[str] = None, _cache_version: str = CACH
 
 
 @log_execution_time()
-@st.cache_data(ttl=None)  # Cache forever - historical trades don't change
+@_streamlit_cache_data(ttl=None)  # Cache forever - historical trades don't change
 def get_trade_log(limit: int = 1000, fund: Optional[str] = None, _cache_version: str = CACHE_VERSION) -> pd.DataFrame:
     """Get trade log entries as DataFrame with company names from securities table.
     
@@ -566,7 +578,7 @@ def get_trade_log(limit: int = 1000, fund: Optional[str] = None, _cache_version:
 
 
 @log_execution_time()
-@st.cache_data(ttl=300)
+@_streamlit_cache_data(ttl=300)
 def get_realized_pnl(fund: Optional[str] = None, display_currency: Optional[str] = None, _cache_version: str = CACHE_VERSION) -> Dict[str, Any]:
     """Calculate realized P&L from closed positions (SELL trades).
     
@@ -748,7 +760,7 @@ def get_realized_pnl(fund: Optional[str] = None, display_currency: Optional[str]
 
 
 @log_execution_time()
-@st.cache_data(ttl=300)
+@_streamlit_cache_data(ttl=300)
 def get_first_trade_dates(fund: Optional[str] = None) -> Dict[str, datetime]:
     """Get the first trade date for each ticker.
     
@@ -842,7 +854,7 @@ def get_first_trade_dates(fund: Optional[str] = None) -> Dict[str, datetime]:
 
 
 @log_execution_time()
-@st.cache_data(ttl=300)
+@_streamlit_cache_data(ttl=300)
 def get_cash_balances(fund: Optional[str] = None) -> Dict[str, float]:
     """Get cash balances by currency"""
     import logging
@@ -901,7 +913,7 @@ def get_cash_balances(fund: Optional[str] = None) -> Dict[str, float]:
 
 
 @log_execution_time()
-@st.cache_data(ttl=300)
+@_streamlit_cache_data(ttl=300)
 def calculate_portfolio_value_over_time(fund: str, days: Optional[int] = None, display_currency: Optional[str] = None) -> pd.DataFrame:
     """Calculate portfolio value over time from portfolio_positions table.
     
@@ -1511,7 +1523,7 @@ def get_investor_count(fund: str) -> int:
         return 0
 
 
-@st.cache_data(ttl=3600)  # 1 hour - contributor list changes infrequently
+@_streamlit_cache_data(ttl=3600)  # 1 hour - contributor list changes infrequently
 def get_investor_allocations(fund: str, user_email: Optional[str] = None, is_admin: bool = False, _cache_version: str = CACHE_VERSION) -> pd.DataFrame:
     """Get investor allocation data with privacy masking
     
@@ -1774,7 +1786,7 @@ def get_investor_allocations(fund: str, user_email: Optional[str] = None, is_adm
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=None)  # Cache forever - historical data doesn't change
+@_streamlit_cache_data(ttl=None)  # Cache forever - historical data doesn't change
 def get_historical_fund_values(fund: str, dates: List[datetime], _cache_version: str = CACHE_VERSION) -> Dict[str, float]:
     """Get historical fund values for specific dates.
     
@@ -2022,7 +2034,7 @@ def _get_supabase_client_for_nav_contribution_ledger(session_id: str = "unknown"
     return get_supabase_client()
 
 
-@st.cache_data(ttl=300)
+@_streamlit_cache_data(ttl=300)
 def get_user_investment_metrics(
     fund: str,
     total_portfolio_value: float,
@@ -2582,7 +2594,7 @@ def get_user_investment_metrics(
 
 
 @log_execution_time()
-@st.cache_data(ttl=3600)  # Cache for 1 hour - thesis doesn't change frequently
+@_streamlit_cache_data(ttl=3600)  # Cache for 1 hour - thesis doesn't change frequently
 def get_fund_thesis_data(fund_name: str) -> Optional[Dict[str, Any]]:
     """Get thesis data for a fund from the database view.
     
