@@ -909,7 +909,7 @@ The Supabase MCP server is configured in `C:\Users\cream\.cursor\mcp.json`:
         "-y",
         "@supabase/mcp-server-supabase@latest",
         "--access-token",
-        "sbp_50532c868f4e84b74d4c9aebc6d8db5f645d6600"
+        "<YOUR_SUPABASE_PERSONAL_ACCESS_TOKEN>"
       ],
       "env": {}
     }
