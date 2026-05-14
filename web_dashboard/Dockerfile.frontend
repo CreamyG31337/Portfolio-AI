@@ -24,6 +24,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
 WORKDIR /app
+COPY web_dashboard/tsconfig.json ./web_dashboard/tsconfig.json
 COPY web_dashboard/static/css/input.css ./web_dashboard/static/css/input.css
 COPY web_dashboard/templates ./web_dashboard/templates
 COPY web_dashboard/src ./web_dashboard/src
