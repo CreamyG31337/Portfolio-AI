@@ -41,7 +41,8 @@ def render_navigation(show_ai_assistant: bool = True, show_settings: bool = True
         import logging
         nav_logger = logging.getLogger(__name__)
         if is_authenticated():
-            is_v2_enabled = get_user_preference('v2_enabled', default=False)
+            # Match Flask (app.get_navigation_context): default True so migrated links show unless user opted out.
+            is_v2_enabled = get_user_preference('v2_enabled', default=True)
             nav_logger.debug(f"[NAV DEBUG] v2_enabled loaded = {is_v2_enabled} (type: {type(is_v2_enabled).__name__})")
         else:
             is_v2_enabled = False
@@ -215,23 +216,24 @@ def render_navigation(show_ai_assistant: bool = True, show_settings: bool = True
             except ImportError:
                 # Fallback if shared_navigation not available
                 st.sidebar.page_link("pages/etf_holdings.py", label="ETF Holdings", icon="💼")
+    except Exception:
+        pass  # Silently fail if Postgres not available
 
-            # Sector insights — Flask-only preview (no Streamlit page); mirror ETF Holdings v2 routing
-            try:
-                from shared_navigation import is_page_migrated, get_page_url
-                if is_v2_enabled and is_page_migrated('sector_insights'):
-                    sector_url = get_page_url('sector_insights')
-                    st.sidebar.markdown(f'''
+    # Sector insights — Flask-only (no Streamlit page). Outside Postgres block: route does not depend on research DB.
+    try:
+        from shared_navigation import is_page_migrated, get_page_url
+
+        if is_v2_enabled and is_page_migrated("sector_insights"):
+            sector_url = get_page_url("sector_insights")
+            st.sidebar.markdown(f'''
                         <a href="{sector_url}" target="_self" class="v2-nav-link">
                             <span class="v2-nav-icon">🧭</span>
                             <span class="v2-nav-label">Sector insights</span>
                         </a>
                     ''', unsafe_allow_html=True)
-            except ImportError:
-                pass
-    except Exception:
-        pass  # Silently fail if Postgres not available
-    
+    except ImportError:
+        pass
+
     # Congress Trades link (if Supabase is available)
     try:
         client = get_supabase_client()

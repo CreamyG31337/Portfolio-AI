@@ -519,12 +519,16 @@ def fmt_date_filter(value):
 def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
     """Get navigation context for Flask templates"""
     try:
-        from shared_navigation import get_navigation_links, is_page_migrated
+        from shared_navigation import (
+            ensure_flask_sidebar_navigation_links,
+            get_navigation_links,
+            is_page_migrated,
+        )
         from user_preferences import get_user_preference
         from flask_auth_utils import get_user_email_flask
 
-        # Get navigation links
-        links = get_navigation_links()
+        # Get navigation links (defensive merge for Flask-only migrated pages)
+        links = ensure_flask_sidebar_navigation_links(get_navigation_links())
         # Default True: Flask is the primary UI; migrated sidebar links should appear unless
         # the user explicitly opted out (v2_enabled stored as false).
         is_v2_enabled = get_user_preference('v2_enabled', default=True)
@@ -553,10 +557,11 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
 
             nav_links.append({
                 'name': link['name'],
+                'page': link['page'],
                 'url': url,
                 'icon': link['icon'],
                 'show': show,
-                'active': current_page == link['page']
+                'active': current_page == link['page'],
             })
 
         # Get available funds for the sidebar selector (Flask-compatible)

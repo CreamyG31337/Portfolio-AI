@@ -55,8 +55,7 @@ def test_get_current_positions_flattens_all_fundamentals():
         assert 'industry' in df.columns
         assert df.iloc[0]['sector'] == "Technology"
         assert df.iloc[0]['industry'] == "Consumer Electronics"
-        
-        # THESE ARE EXPECTED TO FAIL UNTIL FIXED
+
         assert 'market_cap' in df.columns, "market_cap column missing"
         assert 'country' in df.columns, "country column missing"
         assert df.iloc[0]['market_cap'] == 3000000000000

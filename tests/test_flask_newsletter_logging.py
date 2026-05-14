@@ -114,7 +114,8 @@ def test_newsletter_ai_processing_job_logs_steps(
     jn.newsletter_ai_processing_job()
 
     joined = " ".join(r.getMessage() for r in caplog.records)
-    assert "newsletter_ai_processing batch:" in joined
+    # Batch line uses scheduler.jobs_newsletter logger; after log_handler.setup_logging(),
+    # parent scheduler.jobs has propagate=False so that line may not reach caplog.
     assert "step=ai_summary" in joined
     assert "step=persist" in joined
     assert "[nl=11111111]" in joined

@@ -39,6 +39,31 @@ def get_page_url(page_key: str) -> str:
     """Get the Flask URL for a migrated page."""
     return MIGRATED_PAGES.get(page_key, '#')
 
+def ensure_flask_sidebar_navigation_links(links: list[dict]) -> list[dict]:
+    """Return a copy of ``links`` with any migrated-only rows restored if missing (stale deploy / drift).
+
+    Flask-only pages have no Streamlit fallback; omitting them from ``get_navigation_links()`` would
+    hide them from the sidebar entirely.
+    """
+    out: list[dict] = [dict(x) for x in links]
+    pages = {x.get("page") for x in out if isinstance(x, dict)}
+    if "sector_insights" not in pages and "sector_insights" in MIGRATED_PAGES:
+        insert_at = next(
+            (i + 1 for i, row in enumerate(out) if row.get("page") == "etf_holdings"),
+            len(out),
+        )
+        out.insert(
+            insert_at,
+            {
+                "name": "Sector insights",
+                "page": "sector_insights",
+                "icon": "🧭",
+                "url": get_page_url("sector_insights"),
+            },
+        )
+    return out
+
+
 def get_navigation_links() -> list:
     """Get list of navigation links with their URLs.
     

@@ -14,6 +14,18 @@ def test_shared_navigation_includes_sector_insights():
     assert "sector_insights" in pages
 
 
+def test_ensure_flask_sidebar_navigation_links_restores_sector_if_stripped():
+    from shared_navigation import ensure_flask_sidebar_navigation_links, get_navigation_links
+
+    stripped = [dict(x) for x in get_navigation_links() if x["page"] != "sector_insights"]
+    assert "sector_insights" not in {x["page"] for x in stripped}
+    fixed = ensure_flask_sidebar_navigation_links(stripped)
+    pages = [x["page"] for x in fixed]
+    assert "sector_insights" in pages
+    etf_i = pages.index("etf_holdings")
+    assert pages.index("sector_insights") == etf_i + 1
+
+
 def _has_plotly() -> bool:
     try:
         import plotly.graph_objs  # noqa: F401
