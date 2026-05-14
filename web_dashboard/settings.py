@@ -27,6 +27,20 @@ def is_meta_analysis_phase1_signal_fusion_enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
+def is_meta_analysis_phase3_sector_enabled() -> bool:
+    """Gate Phase 3b ``sector_meta_analysis`` job and sector-first ``/sector_insights`` data path.
+
+    Set ``META_ANALYSIS_PHASE3_SECTOR`` to ``true``, ``1``, ``yes``, or ``on`` to enable synthesis
+    and nightly persistence. Default **off** until production proves stable (see roadmap).
+
+    ``false``, ``0``, ``no``, ``off``, or unset → disabled.
+    """
+    raw = os.getenv("META_ANALYSIS_PHASE3_SECTOR", "false").strip().lower()
+    if not raw or raw in ("0", "false", "no", "off"):
+        return False
+    return raw in ("1", "true", "yes", "on")
+
+
 DEFAULT_FUND_PROFILE_SETTINGS: dict[str, dict[str, Any]] = {
     "DEFAULT": {
         "signal_alert_min_confidence": 0.72,

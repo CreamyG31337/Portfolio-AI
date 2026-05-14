@@ -81,6 +81,7 @@ def apply_research_db_schema():
 
         for rel in (
             "database/schema/research/tables/market_daily_brief.sql",
+            "database/schema/research/tables/sector_meta_analysis.sql",
             "database/schema/research/tables/ui_ai_summary.sql",
             "database/schema/research/tables/ui_ai_rollup_fund.sql",
             "database/schema/research/tables/action_queue_ai_review.sql",

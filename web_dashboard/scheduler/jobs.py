@@ -176,6 +176,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '📰',
     },
+    'sector_meta_analysis': {
+        'name': '🧭 Sector Meta Analysis',
+        'description': 'Sector rotation synthesis from ETF Analysis articles (Phase 3b, research DB)',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '🧭',
+        'cron_triggers': [
+            {'hour': 23, 'minute': 30, 'timezone': 'America/Los_Angeles'}
+        ],
+    },
     'action_queue_ai_review': {
         'name': 'Action Queue AI Review',
         'description': 'Nightly cached LLM cross-check of top action-queue rows vs saved ticker research',
@@ -1177,7 +1187,33 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: alpha_research_collect (daily at 11:15 PM PT)")
-    
+
+    if AVAILABLE_JOBS.get('sector_meta_analysis', {}).get('enabled_by_default', True):
+        from scheduler.jobs_sector_meta_analysis import sector_meta_analysis_job
+
+        sec_cfg = AVAILABLE_JOBS['sector_meta_analysis']
+        sec_triggers = sec_cfg.get(
+            'cron_triggers', [{'hour': 23, 'minute': 30, 'timezone': 'America/Los_Angeles'}]
+        )
+        sec_trig = sec_triggers[0]
+        scheduler.add_job(
+            sector_meta_analysis_job,
+            trigger=CronTrigger(
+                hour=sec_trig['hour'],
+                minute=sec_trig['minute'],
+                timezone=sec_trig.get('timezone', 'America/Los_Angeles'),
+            ),
+            id='sector_meta_analysis',
+            name=f"{get_job_icon('sector_meta_analysis')} Sector Meta Analysis",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info(
+            "Registered job: sector_meta_analysis (daily 11:30 PM PT; after alpha_research, before ticker_meta)"
+        )
+
     # Symbol Article Scraper: Daily at 2:10 AM EST.
     # Staggered to reduce overlap with other 2:00 AM jobs.
     if AVAILABLE_JOBS.get('symbol_article_scraper', {}).get('enabled_by_default'):

@@ -1,6 +1,6 @@
-"""Flask: Phase 3 preview sector_insights page (ETF Analysis read-only list)."""
+"""Flask: Phase 3 sector_insights (sector_meta primary + ETF Analysis fallback)."""
 
-from datetime import datetime, UTC
+from datetime import date, datetime, UTC
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -90,13 +90,14 @@ def test_sector_insights_lists_etf_analysis_rows(client, auth_ok):
     with patch(
         "routes.etf_routes.ResearchRepository",
         return_value=MagicMock(
+            list_recent_sector_meta_analysis=MagicMock(return_value=[]),
             get_recent_articles=MagicMock(return_value=[mock_article]),
         ),
     ):
         resp = client.get("/sector_insights")
     assert resp.status_code == 200
     body = resp.data.decode("utf-8")
-    assert "Phase 3 stepping stone" in body
+    assert "experimental" in body
     assert "ARKK Holdings Analysis" in body
     assert "Test summary for rotation context." in body
 
@@ -106,12 +107,47 @@ def test_sector_insights_empty_state(client, auth_ok):
     client.set_cookie("auth_token", "test.jwt.token")
     with patch(
         "routes.etf_routes.ResearchRepository",
-        return_value=MagicMock(get_recent_articles=MagicMock(return_value=[])),
+        return_value=MagicMock(
+            list_recent_sector_meta_analysis=MagicMock(return_value=[]),
+            get_recent_articles=MagicMock(return_value=[]),
+        ),
     ):
         resp = client.get("/sector_insights")
     assert resp.status_code == 200
     body = resp.data.decode("utf-8")
-    assert "No ETF Analysis articles" in body
+    assert "No sector meta rows or ETF Analysis articles" in body
+
+
+@skip_without_plotly
+def test_sector_insights_primary_sector_meta_rows(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    mock_repo = MagicMock()
+    mock_repo.list_recent_sector_meta_analysis.return_value = [
+        {
+            "id": "660e8400-e29b-41d4-a716-446655440001",
+            "sector": "Technology",
+            "run_date": date(2026, 5, 10),
+            "sector_stance": "BULLISH",
+            "momentum_state": "STABLE",
+            "news_pressure": "POSITIVE",
+            "rotation_rank": 2,
+            "confidence": 0.72,
+            "key_drivers": ["ETF flows skew constructive"],
+            "risk_flags": ["sample risk"],
+            "as_of": datetime(2026, 5, 10, 8, 0, tzinfo=UTC),
+            "model_used": "qwen3.6:27b",
+            "updated_at": datetime(2026, 5, 10, 8, 5, tzinfo=UTC),
+            "full_result": {},
+        }
+    ]
+    with patch("routes.etf_routes.ResearchRepository", return_value=mock_repo):
+        resp = client.get("/sector_insights")
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    assert "Technology" in body
+    assert "BULLISH" in body
+    assert "sector meta row" in body.lower()
+    mock_repo.get_recent_articles.assert_not_called()
 
 
 @skip_without_plotly

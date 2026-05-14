@@ -32,6 +32,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/social_sentiment_analysis.sql
 \i tables/ticker_analysis.sql
 \i tables/ticker_meta_analysis.sql
+\i tables/sector_meta_analysis.sql
 \i tables/market_daily_brief.sql
 \i tables/ui_ai_summary.sql
 \i tables/ui_ai_rollup_fund.sql

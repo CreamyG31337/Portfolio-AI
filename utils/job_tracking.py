@@ -53,6 +53,7 @@ AI_JOB_NAMES = {
     'social_sentiment_ai',
     'signal_scan',
     'ticker_meta_analysis',
+    'sector_meta_analysis',
     'market_daily_brief',
     'action_queue_ai_review',
     'ui_ai_summaries',
@@ -62,6 +63,7 @@ AI_JOB_MAX_AGE_HOURS: Dict[str, int] = {
     # Longer-running heavy jobs.
     'ticker_analysis': 3,
     'etf_group_analysis': 2,
+    'sector_meta_analysis': 2,
     'ticker_research': 2,
     'market_research': 2,
     # Most other AI jobs should finish well within an hour.

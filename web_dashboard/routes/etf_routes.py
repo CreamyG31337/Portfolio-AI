@@ -662,6 +662,39 @@ def _sector_insights_preview_rows(articles: List[Dict[str, Any]]) -> List[Dict[s
     return rows
 
 
+def _sector_meta_insights_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Normalize sector_meta_analysis rows for sector_insights.html."""
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        kd = r.get("key_drivers") or []
+        rf = r.get("risk_flags") or []
+        if not isinstance(kd, list):
+            kd = [str(kd)] if kd is not None else []
+        if not isinstance(rf, list):
+            rf = [str(rf)] if rf is not None else []
+        sector = r.get("sector") or ""
+        display = "Uncategorized (ETF articles without sector tag)" if sector == "__UNTAGGED__" else str(sector)
+        out.append(
+            {
+                "id": r.get("id"),
+                "sector": sector,
+                "sector_display": display,
+                "sector_stance": r.get("sector_stance"),
+                "momentum_state": r.get("momentum_state"),
+                "news_pressure": r.get("news_pressure"),
+                "rotation_rank": r.get("rotation_rank"),
+                "confidence": r.get("confidence"),
+                "key_drivers": [str(x) for x in kd if str(x).strip()],
+                "risk_flags": [str(x) for x in rf if str(x).strip()],
+                "as_of_display": _format_article_dt(r.get("as_of")),
+                "updated_at_display": _format_article_dt(r.get("updated_at")),
+                "model_used": r.get("model_used") or "",
+                "run_date": r.get("run_date"),
+            }
+        )
+    return out
+
+
 # --- Route ---
 
 @etf_bp.route('/etf_holdings', methods=['GET'])
@@ -960,25 +993,34 @@ def sector_insights():
     user_email = get_user_email_flask()
     nav_context_clean = {k: v for k, v in nav_context.items() if k != "available_funds"}
 
+    sector_meta_raw: List[Dict[str, Any]] = []
     articles_raw: List[Dict[str, Any]] = []
     load_error: Optional[str] = None
     try:
         repo = ResearchRepository()
-        articles_raw = repo.get_recent_articles(
-            limit=48,
-            days=730,
-            article_type="ETF Analysis",
-        )
+        sector_meta_raw = repo.list_recent_sector_meta_analysis(48)
+        if not sector_meta_raw:
+            articles_raw = repo.get_recent_articles(
+                limit=48,
+                days=730,
+                article_type="ETF Analysis",
+            )
     except Exception as exc:
-        logger.warning("sector_insights: could not load ETF Analysis articles: %s", exc)
-        load_error = "Could not load research articles (research database unavailable or misconfigured)."
+        logger.warning("sector_insights: could not load research data: %s", exc)
+        load_error = "Could not load research database (sector meta or ETF Analysis articles)."
 
+    show_sector_meta_primary = bool(sector_meta_raw)
+
+    sector_meta_rows = _sector_meta_insights_rows(sector_meta_raw)
     preview_rows = _sector_insights_preview_rows(articles_raw)
 
     return render_template(
         "sector_insights.html",
         nav_context=nav_context,
         user_email=user_email,
+        sector_meta_rows=sector_meta_rows,
+        sector_meta_count=len(sector_meta_rows),
+        show_sector_meta_primary=show_sector_meta_primary,
         preview_rows=preview_rows,
         load_error=load_error,
         article_count=len(preview_rows),

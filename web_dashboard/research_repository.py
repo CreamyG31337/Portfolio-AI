@@ -612,6 +612,25 @@ class ResearchRepository:
             logger.error(f"❌ Error getting recent articles: {e}")
             return []
     
+    def list_recent_sector_meta_analysis(self, limit: int = 48) -> List[Dict[str, Any]]:
+        """Latest ``sector_meta_analysis`` rows (Phase 3b). Empty list if table missing or error."""
+        try:
+            rows = self.client.execute_query(
+                """
+                SELECT id, sector, run_date, sector_stance, momentum_state, news_pressure,
+                       rotation_rank, confidence, key_drivers, risk_flags, as_of, model_used,
+                       updated_at, full_result
+                FROM sector_meta_analysis
+                ORDER BY updated_at DESC NULLS LAST, as_of DESC NULLS LAST
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return list(rows or [])
+        except Exception as e:
+            logger.debug("list_recent_sector_meta_analysis: %s", e)
+            return []
+
     def delete_old_articles(self, days_to_keep: int = 30) -> int:
         """Delete articles older than specified days
         

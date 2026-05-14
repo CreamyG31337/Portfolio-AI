@@ -13,6 +13,7 @@ import logging
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
 
+from etf_article_sector_infer import dominant_sector_for_holdings
 from supabase_client import SupabaseClient
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from research_repository import ResearchRepository
@@ -228,7 +229,12 @@ class ETFGroupAnalysisService:
             if not response:
                 logger.error(f"Failed to parse JSON response for {etf_ticker}")
                 return None
-            
+
+            hold_tickers = [c.get("holding_ticker") for c in changes[:10] if c.get("holding_ticker")]
+            inferred_sector = dominant_sector_for_holdings(
+                self.repo.client, self.supabase, hold_tickers
+            )
+
             # Save as research article
             article_id = self.repo.save_article(
                 title=f"{etf_ticker} Holdings Analysis - {date.strftime('%Y-%m-%d')}",
@@ -237,7 +243,8 @@ class ETFGroupAnalysisService:
                 summary=response.get('summary', ''),
                 source="ETF AI Analysis",
                 article_type="ETF Analysis",
-                tickers=[c.get('holding_ticker') for c in changes[:10] if c.get('holding_ticker')],
+                tickers=hold_tickers,
+                sector=inferred_sector,
                 sentiment=response.get('sentiment'),
                 sentiment_score=response.get('sentiment_score'),
                 published_at=date.replace(tzinfo=timezone.utc)

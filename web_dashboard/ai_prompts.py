@@ -347,6 +347,39 @@ Return JSON only:
     "narrative": "2-4 tight paragraphs synthesizing the reconciled story for this ticker"
 }}"""
 
+# Sector rotation synthesis from ETF group AI articles only (Phase 3b).
+SECTOR_META_ANALYSIS_PROMPT = """You are a senior sector strategist. Inputs are ONLY short excerpts from existing
+**ETF Analysis** research articles (already-generated AI summaries of ETF holdings changes). Treat them as soft
+signals about institutional rotation themes—not verified facts.
+
+## Sector bucket
+{sector}
+
+## Artifact bundle (ETF Analysis excerpts)
+{artifact_bundle}
+
+## Task
+1. Infer sector-level rotation **stance** and **news_pressure** from article tone, sentiment labels, and themes.
+2. **momentum_state**: infer whether incremental ETF-flow narratives suggest acceleration, stability, or deceleration;
+   use UNKNOWN when articles disagree or lack tradeable flow detail.
+3. **rotation_rank**: integer rank for *relative* rotation strength **within this sector bucket only** compared to
+   a hypothetical neutral baseline (0 = weakest / no clear bid, higher = stronger rotation evidence in the excerpts).
+4. If excerpts are empty, contradictory, or off-topic, use INSUFFICIENT_DATA / UNKNOWN enums and keep confidence low.
+5. Do not invent tickers, prices, or dates not present in the bundle.
+
+Return JSON only:
+{{
+    "sector": "{sector}",
+    "sector_stance": "BULLISH|NEUTRAL|BEARISH|MIXED|INSUFFICIENT_DATA",
+    "momentum_state": "ACCELERATING|STABLE|DECELERATING|UNKNOWN",
+    "news_pressure": "POSITIVE|NEUTRAL|NEGATIVE|MIXED|UNKNOWN",
+    "rotation_rank": 0,
+    "confidence": 0.0,
+    "key_drivers": ["short bullet tied to excerpts", "..."],
+    "risk_flags": ["specific monitoring item", "..."],
+    "as_of": "ISO-8601 timestamp in UTC (Z suffix preferred)"
+}}"""
+
 # Daily market backdrop from index stats only — no stock picks.
 MARKET_DAILY_BRIEF_PROMPT = """You are a concise macro strategist. Input is ONLY recent benchmark percentage moves (1d and optional 5d).
 

@@ -52,6 +52,7 @@ def main() -> int:
             "ui_ai_summaries",
             "market_daily_brief",
             "ticker_meta_analysis",
+            "sector_meta_analysis",
             "benchmark_refresh",
         ),
         help="Job id / function to invoke",
@@ -79,6 +80,10 @@ def main() -> int:
             from scheduler.jobs_ticker_meta_analysis import ticker_meta_analysis_job
 
             ticker_meta_analysis_job()
+        elif args.job == "sector_meta_analysis":
+            from scheduler.jobs_sector_meta_analysis import sector_meta_analysis_job
+
+            sector_meta_analysis_job()
         else:
             from scheduler.jobs_metrics import benchmark_refresh_job
 

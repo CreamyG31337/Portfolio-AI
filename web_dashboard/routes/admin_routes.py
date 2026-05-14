@@ -105,7 +105,7 @@ def _ollama_per_model_health() -> list[dict[str, object]]:
     try:
         from settings import get_summarizing_model
 
-        for scope in (None, "meta_analysis", "market_brief", "ticker_meta"):
+        for scope in (None, "meta_analysis", "market_brief", "ticker_meta", "sector_meta"):
             try:
                 m = get_summarizing_model(scope)
                 if m:

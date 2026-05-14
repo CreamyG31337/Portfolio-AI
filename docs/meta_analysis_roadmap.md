@@ -12,7 +12,7 @@ This document tracks the multi-layer meta-analysis program and keeps the next ph
 
 - Phase 1 (Signal + News Fusion into Ticker Meta): `shipped — monitor output quality and lock/runtime behavior`
 - Phase 2 (Market Meta Regime Normalization): `Phase 2a + 2b shipped — regime_json, regime_canonical API, dashboard panel, enum drift warnings — Phase 2c deferred (see below)`
-- Phase 3 (Sector Meta Layer): `in progress — read-only sector context UI shipped; sector_meta job + ticker prior not yet`
+- Phase 3 (Sector Meta Layer): `3a shipped (deploy fix landed 2026-05-14, awaiting frontend image rebuild); 3b sector_meta_analysis job is next; 3c/3d not started`
 - Phase 4+ (Adaptive weights, scheduling, and UI explainability): `planned`
 
 ---
@@ -183,11 +183,24 @@ Proposed normalized market regime object:
 
 ## Phase 3: Sector Meta Layer
 
+### Status (as of 2026-05-14)
+
+| Sub-phase | What | Status |
+|-----------|------|--------|
+| **3a** | Read-only `/sector_insights` Flask page listing recent ETF Analysis articles | **Shipped.** Deploy was silently broken 2026-05-12 → 2026-05-14: `web_dashboard/Dockerfile.frontend` dropped `COPY web_dashboard/tsconfig.json` during the npm→pnpm refactor (commit `4b6d9ad5`), so the frontend image build failed with `TS5058: The specified path does not exist: 'web_dashboard/tsconfig.json'` and stale assets shipped. Fixed in this session; the next frontend rebuild ships the page and sidebar link. |
+| **3b** | `sector_meta_analysis` service + scheduler job + persistence + prompt (the actual sector synthesis) | **Not started — start here.** Detailed scope below. |
+| **3c** | Ticker meta bundle and prompt consume the sector prior when rows exist | **Not started.** Depends on 3b. |
+| **3d** | Optional polish: sector-tagged research aggregation, benchmark-relative ETF snapshots, swap `/sector_insights` UI to render rows from 3b | **Not started.** Optional after 3c. |
+
+> **Fresh agent: start at Phase 3b.** Do not modify 3a code unless something is demonstrably broken — the page is intentionally a passive list of pre-existing `etf_group_analysis` articles with an honest "stepping stone" banner. The real synthesis is what 3b builds.
+>
+> **Anti-pattern to avoid:** the 3a deploy bug was misdiagnosed by an earlier agent as a Python/template bug, which led to three commits (`b4c2f04d`, `9e179e14`, `a1dcd644`) adding defensive band-aids (`ensure_flask_sidebar_navigation_links`, sector-specific `show=True` overrides, template `url_for` hacks). The real fault was one missing `COPY` line. Root-cause first; do not stack workarounds.
+
 ### Goal
 
 Add sector-level rotation context that conditions ticker conviction.
 
-### Proposed sector output contract
+### Sector output contract (locked target shape — do not rename or add fields in 3b)
 
 ```json
 {
@@ -212,30 +225,116 @@ Add sector-level rotation context that conditions ticker conviction.
 ### Scheduler sequencing (target)
 
 Nightly AI sequencing target:
+
 1. `market_daily_brief`
-2. `sector_meta_analysis` (new)
+2. `sector_meta_analysis` (new — 3b)
 3. `ticker_analysis`
 4. `ticker_meta_analysis`
 
-This ordering ensures ticker synthesis consumes both global and sector priors.
+This ordering ensures ticker synthesis consumes both global and sector priors. The global AI lock (`utils/job_tracking.py`) serializes anyway; pick a slot that does not collide with the existing 21:00 / 23:15 / 23:45 PT chain in the heavy-job staggering table at the top of this doc.
 
-### Exit criteria
+### Overall exit criteria for Phase 3
 
-- Ticker meta prompt/input includes sector prior when available.
-- Sector output is inspectable independently for debugging and QA.
+- Ticker meta prompt/input includes a sector prior when fresh rows exist; runs deterministically when they don't.
+- Sector output is inspectable in research DB (and eventually, via 3d, in `/sector_insights` UI) for debugging and QA.
 
-### Phase 3 rollout checklist (incremental)
+---
 
-- [x] **Read-only sector context (preview):** Flask page **`/sector_insights`** lists recent **ETF Analysis** research articles produced by the existing **`etf_group_analysis`** / watchtower pipeline. Labeled honestly in the UI: **not** the future `sector_meta` JSON contract and **not** merged into ticker meta yet.
-- [ ] **`sector_meta_analysis`** scheduler job, persistence, and stable sector output contract (see *Proposed sector output contract* above).
-- [ ] Ticker meta bundle + prompt consume **sector prior** when rows exist (ordering per *Scheduler sequencing*).
-- [ ] Optional: sector-level aggregation beyond ETF group AI (e.g. research DB sector tags, benchmark-relative ETF snapshots) once the core job is stable.
+### Phase 3a — Read-only preview UI (shipped)
 
-### Next session (suggested)
+What exists today:
 
-1. Sketch `sector_meta_analysis` job module (mirror `TickerMetaAnalysisService` patterns: `collect_with_summary_model_chain`, feature flag, research persistence).
-2. Add research table or document storage for sector rows; link from **`/sector_insights`** when data exists (replace or supplement the ETF Analysis list).
-3. Run Flask tests under `tests/test_flask_*.py` after route/template changes.
+- Route: `web_dashboard/routes/etf_routes.py::sector_insights` (`/sector_insights`).
+- Template: `web_dashboard/templates/sector_insights.html`.
+- Behavior: queries `ResearchRepository.get_recent_articles(limit=48, days=730, article_type="ETF Analysis")` and renders cards.
+- Sidebar link: emitted via `get_navigation_links()` in `web_dashboard/shared_navigation.py`; `get_navigation_context()` in `web_dashboard/app.py` forces `show=True` for `sector_insights` regardless of `v2_enabled` (Flask-only page, no Streamlit fallback).
+- UI is **intentionally honest**: a banner labels the page a "Phase 3 stepping stone" and explicitly states this is *not* the `sector_meta` contract and *not* fed into ticker meta yet.
+
+What 3a is **not**:
+
+- Not a synthesis. The page does no LLM work, no sector grouping, no rotation ranking. It is a different lens onto `etf_group_analysis` output that already existed under `/research`.
+
+**Operational note:** the Dockerfile.frontend fix from 2026-05-14 must ship via a frontend image rebuild before the navigation link and any template changes appear in production. Trigger the rebuild as part of any Phase 3b deploy.
+
+---
+
+### Phase 3b — Build `sector_meta_analysis` (start here)
+
+Treat this as one self-contained chunk. Acceptance is binary: either the job runs nightly and persists conformant rows, or it doesn't.
+
+**Scope (must do):**
+
+1. **New service:** `web_dashboard/sector_meta_analysis_service.py`.
+   - Mirror `web_dashboard/meta_analysis_service.py` (`TickerMetaAnalysisService`) patterns: artifact bundle → prompt → `collect_with_summary_model_chain` → parse → persist.
+   - Output **must** match the "Sector output contract" above. No renames, no extra fields.
+   - Sparse/empty input: persist a row with `sector_stance: "INSUFFICIENT_DATA"`; downstream consumers must accept this without crashing.
+
+2. **New scheduler job module:** `web_dashboard/scheduler/jobs_sector_meta_analysis.py`.
+   - Mirror `web_dashboard/scheduler/jobs_ticker_meta_analysis.py` (shape, lock usage, error handling).
+   - Register in `web_dashboard/scheduler/jobs.py`. Time slot: between `market_daily_brief` (17:45 ET weekdays) and `ticker_meta_analysis` (23:45 PT). Suggested ~23:30 PT, but confirm against the staggering table at the top of this doc and current `apscheduler_jobs` so you don't collide with `alpha_research` at 23:15 PT.
+
+3. **Persistence:** new research DB table `sector_meta_analysis`.
+   - Suggested columns: `id (uuid)`, `sector (text)`, `sector_stance`, `momentum_state`, `news_pressure`, `rotation_rank (int)`, `confidence (float)`, `key_drivers (jsonb)`, `risk_flags (jsonb)`, `as_of (timestamptz)`, `full_result (jsonb)`, `model_used (text)`, `created_at`, `updated_at`.
+   - One row per sector per run. UPSERT on `(sector, as_of::date)` is acceptable; do not dedupe more aggressively than the contract's `as_of`.
+   - Match the migration pattern used by `ticker_meta_analysis` (find that table's migration and copy the structure / index choices).
+
+4. **Feature flag:** `META_ANALYSIS_PHASE3_SECTOR`.
+   - Add accessor in `web_dashboard/settings.py`: `is_meta_analysis_phase3_sector_enabled()` (mirror `is_meta_analysis_phase1_signal_fusion_enabled`).
+   - Default **off** until 3 successful nightly runs prove stability in prod. Flip default to on in a follow-up commit only.
+   - When off: job is a no-op, table stays empty, 3c sees no rows and skips the sector block — ticker meta must remain deterministic.
+
+5. **Prompt:** add `SECTOR_META_ANALYSIS_PROMPT` to `web_dashboard/ai_prompts.py`. Ask explicitly for every field in the contract. Reuse the `INSUFFICIENT_DATA` / `UNKNOWN` enum vocabulary the market regime prompt already uses.
+
+6. **Provenance:** persist `model_used` on every successful row (mirrors Phase 1 item 7 / Phase 2a). Diagnosing stale UI and wrong-host incidents from the DB matters more than another nice-to-have output field.
+
+7. **Enum-drift validation:** mirror `invalid_regime_enum_fields` in `web_dashboard/market_regime_normalization.py`. `logger.warning` on out-of-set enums before UPSERT, clamp to `UNKNOWN` / `MIXED` / `INSUFFICIENT_DATA`, do **not** crash the job on drift alone.
+
+**Inputs (read-only — do not mutate these stores):**
+
+- `etf_group_analysis` articles from research DB (same source `/sector_insights` already reads).
+- If available: sector ETF return / relative-strength snapshots from benchmark stores. If absent, degrade to article-only input, not a crash.
+
+**Out of scope for 3b (these are 3c/3d):**
+
+- Wiring `sector_meta_analysis` rows into the ticker meta bundle (3c).
+- Replacing `/sector_insights` UI to render rows (3d).
+- New input sources beyond ETF group AI + benchmark snapshots (3d).
+
+**Exit criteria for 3b:**
+
+- `job_executions` rows for `sector_meta_analysis` show `succeeded` 3 consecutive nights.
+- Every successful row has non-null `sector_stance`, `confidence`, `as_of`, `model_used`.
+- Sparse-input rows carry `INSUFFICIENT_DATA` without crashing the job.
+- No regression in `ticker_meta_analysis` success rate or runtime (AI lock not starved).
+- `web_dashboard/scripts/run_scheduler_job_once.py sector_meta_analysis` triggers a manual run end-to-end.
+- Rollback drill: setting `META_ANALYSIS_PHASE3_SECTOR=false` and restarting the container produces a clean no-op next run.
+
+---
+
+### Phase 3c — Ticker meta consumes the sector prior (after 3b)
+
+**Scope:**
+
+1. Extend the artifact bundle in `web_dashboard/meta_analysis_service.py` with a sector block, parallel to the existing market regime block, when a fresh `sector_meta_analysis` row exists for the ticker's primary sector.
+2. Resolve ticker → sector via the same mapping `etf_group_analysis` / the ticker UI already use; do not invent a new mapping.
+3. Update `TICKER_META_ANALYSIS_PROMPT` in `web_dashboard/ai_prompts.py` to treat `sector_stance` / `rotation_rank` / `news_pressure` as a first-class prior alongside the existing market regime block.
+4. Reuse the `META_ANALYSIS_PHASE3_SECTOR` flag so 3b and 3c roll out and roll back together.
+
+**Exit criteria for 3c:**
+
+- Ticker meta still runs deterministically when no sector row is available (Phase 1 contract preserved).
+- When rows exist, spot-check 5–10 QA tickers show the sector prior surfacing in `key_drivers` or `contradictions` where appropriate.
+- No regression in `ticker_meta_analysis` success rate over 3 nights.
+
+---
+
+### Phase 3d — Optional polish (after 3c)
+
+Optional; do these only when 3b + 3c are producing useful output:
+
+- Sector-tagged research aggregation (research DB sector tags) as an additional input to `sector_meta_analysis`.
+- Benchmark-relative ETF snapshots as a structured input vs. extracting them from articles.
+- Replace `/sector_insights` UI to render `sector_meta_analysis` rows (with the existing article list as a fallback when rows are missing); drop the "stepping stone" banner once rows are the primary source.
 
 ---
 
