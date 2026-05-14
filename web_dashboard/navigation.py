@@ -219,11 +219,11 @@ def render_navigation(show_ai_assistant: bool = True, show_settings: bool = True
     except Exception:
         pass  # Silently fail if Postgres not available
 
-    # Sector insights — Flask-only (no Streamlit page). Outside Postgres block: route does not depend on research DB.
+    # Sector insights — Flask-only (no Streamlit page). Always list when migrated (not gated on v2).
     try:
         from shared_navigation import is_page_migrated, get_page_url
 
-        if is_v2_enabled and is_page_migrated("sector_insights"):
+        if is_page_migrated("sector_insights"):
             sector_url = get_page_url("sector_insights")
             st.sidebar.markdown(f'''
                         <a href="{sector_url}" target="_self" class="v2-nav-link">

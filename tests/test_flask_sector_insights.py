@@ -40,6 +40,25 @@ skip_without_plotly = pytest.mark.skipif(
 )
 
 
+@skip_without_plotly
+def test_sector_insights_nav_link_visible_when_v2_enabled_false(app):
+    """Flask-only Sector insights must stay in the sidebar even when v2_enabled is false."""
+    with app.test_request_context("/"):
+        with patch("user_preferences._is_authenticated", return_value=True), patch(
+            "user_preferences.get_user_preference",
+            side_effect=lambda key, default=None: False if key == "v2_enabled" else default,
+        ), patch("user_preferences.get_user_selected_fund", return_value=None), patch(
+            "user_preferences.get_user_theme", return_value="system"
+        ), patch("flask_data_utils.get_available_funds_flask", return_value=[]):
+            from app import get_navigation_context
+
+            ctx = get_navigation_context(current_page=None)
+    sector = next((l for l in ctx["navigation_links"] if l.get("page") == "sector_insights"), None)
+    assert sector is not None
+    assert sector["show"] is True
+    assert sector["url"] == "/sector_insights"
+
+
 @pytest.fixture
 def auth_ok():
     uid = "550e8400-e29b-41d4-a716-446655440000"

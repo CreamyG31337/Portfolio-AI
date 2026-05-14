@@ -539,21 +539,19 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             is_v2_enabled = True
 
         # Build navigation context
-        # Only check: is v2 enabled AND is page migrated? If yes, show link.
-        # Don't hide links for any other reason - let pages handle errors and authorization
+        # Migrated pages follow v2_enabled (Streamlit vs Flask routing), except sector_insights:
+        # that page is Flask-only with no Streamlit fallback — always show when migrated.
         nav_links = []
         for link in links:
-            # Only check: if page is migrated, show it only if v2 is enabled
-            # Otherwise, show it (it's a Streamlit page)
             show = True
-            if is_page_migrated(link['page']):
-                # Only show migrated pages if v2 is enabled
+            if is_page_migrated(link["page"]):
                 show = is_v2_enabled
+                if link["page"] == "sector_insights":
+                    show = True
 
-            # Determine URL (use Flask route if migrated and v2 enabled)
-            url = link['url']
-            if is_page_migrated(link['page']) and is_v2_enabled:
-                url = link['url']  # Already points to Flask route
+            url = link["url"]
+            if is_page_migrated(link["page"]) and (is_v2_enabled or link["page"] == "sector_insights"):
+                url = link["url"]
 
             nav_links.append({
                 'name': link['name'],
