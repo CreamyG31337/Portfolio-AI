@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Sector-level meta synthesis over ETF Analysis articles (Phase 3b, research DB)."""
+"""Sector-level meta synthesis over ETF Analysis articles (Phase 3b, research DB).
+
+Buckets articles by ``research_articles.sector``; quality depends on **tagging** and URL
+discipline upstream (see ``etf_article_sector_infer`` and roadmap *Data foundation*).
+
+TODO(meta-foundation): add benchmark / time-series snippets to the artifact bundle when Phase 3d
+inputs exist; until then article text is the main signal (noisy by design).
+"""
 
 from __future__ import annotations
 

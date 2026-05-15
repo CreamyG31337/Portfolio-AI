@@ -13,7 +13,7 @@ import logging
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
 
-from etf_article_sector_infer import dominant_sector_for_holdings
+from etf_article_sector_infer import resolve_sector_for_etf_analysis_article
 from supabase_client import SupabaseClient
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from research_repository import ResearchRepository
@@ -231,8 +231,12 @@ class ETFGroupAnalysisService:
                 return None
 
             hold_tickers = [c.get("holding_ticker") for c in changes[:10] if c.get("holding_ticker")]
-            inferred_sector = dominant_sector_for_holdings(
-                self.repo.client, self.supabase, hold_tickers
+            article_row = {
+                "tickers": hold_tickers,
+                "url": f"etf-analysis://{etf_ticker}/{date.strftime('%Y-%m-%d')}",
+            }
+            inferred_sector, sector_src = resolve_sector_for_etf_analysis_article(
+                self.repo.client, self.supabase, article_row
             )
 
             # Save as research article
@@ -251,7 +255,13 @@ class ETFGroupAnalysisService:
             )
             
             if article_id:
-                logger.info(f"Saved ETF analysis article for {etf_ticker} on {date.strftime('%Y-%m-%d')}")
+                logger.info(
+                    "Saved ETF analysis article for %s on %s (sector=%r, sector_src=%s)",
+                    etf_ticker,
+                    date.strftime("%Y-%m-%d"),
+                    inferred_sector,
+                    sector_src,
+                )
             else:
                 logger.warning(f"Failed to save article for {etf_ticker}")
             

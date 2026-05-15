@@ -188,11 +188,11 @@ Proposed normalized market regime object:
 | Sub-phase | What | Status |
 |-----------|------|--------|
 | **3a** | Read-only `/sector_insights` Flask page listing recent ETF Analysis articles | **Shipped.** Deploy was silently broken 2026-05-12 → 2026-05-14: `web_dashboard/Dockerfile.frontend` dropped `COPY web_dashboard/tsconfig.json` during the npm→pnpm refactor (commit `4b6d9ad5`), so the frontend image build failed with `TS5058: The specified path does not exist: 'web_dashboard/tsconfig.json'` and stale assets shipped. Fixed in this session; the next frontend rebuild ships the page and sidebar link. |
-| **3b** | `sector_meta_analysis` service + scheduler job + persistence + prompt (the actual sector synthesis) | **Not started — start here.** Detailed scope below. |
+| **3b** | `sector_meta_analysis` service + scheduler job + persistence + prompt (the actual sector synthesis) | **Shipped (2026-05-14).** Code: `web_dashboard/sector_meta_analysis_service.py`, `scheduler/jobs_sector_meta_analysis.py`, `sector_meta_normalization.py`, `ai_prompts.py` (`SECTOR_META_ANALYSIS_PROMPT`), research table `sector_meta_analysis`. ETF article **sector tagging** + backfill: `etf_article_sector_infer.py`, `scripts/backfill_etf_analysis_article_sectors.py`, `etf_group_analysis` save path. |
 | **3c** | Ticker meta bundle and prompt consume the sector prior when rows exist | **Not started.** Depends on 3b. |
 | **3d** | Optional polish: sector-tagged research aggregation, benchmark-relative ETF snapshots, swap `/sector_insights` UI to render rows from 3b | **Not started.** Optional after 3c. |
 
-> **Fresh agent: start at Phase 3b.** Do not modify 3a code unless something is demonstrably broken — the page is intentionally a passive list of pre-existing `etf_group_analysis` articles with an honest "stepping stone" banner. The real synthesis is what 3b builds.
+> **Fresh agent: start at Phase 3c** (ticker meta consumes sector prior) unless fixing 3b regressions. Phase 3a/3b code paths are live; extend deliberately.
 >
 > **Anti-pattern to avoid:** the 3a deploy bug was misdiagnosed by an earlier agent as a Python/template bug, which led to three commits (`b4c2f04d`, `9e179e14`, `a1dcd644`) adding defensive band-aids (`ensure_flask_sidebar_navigation_links`, sector-specific `show=True` overrides, template `url_for` hacks). The real fault was one missing `COPY` line. Root-cause first; do not stack workarounds.
 
@@ -238,6 +238,36 @@ This ordering ensures ticker synthesis consumes both global and sector priors. T
 - Ticker meta prompt/input includes a sector prior when fresh rows exist; runs deterministically when they don't.
 - Sector output is inspectable in research DB (and eventually, via 3d, in `/sector_insights` UI) for debugging and QA.
 
+### Data foundation (ETF Analysis → sector meta) — incremental, noisy inputs
+
+Meta layers only work if **upstream artifacts are consistently tagged and identifiable** without ad-hoc archaeology. We are building this **slowly on purpose**: each phase adds signal, measures quality, then tightens—not “vibe code” the whole stack in one pass.
+
+**What broke in practice (2026-05):**
+
+- `research_articles.sector` was often **empty** for `article_type = 'ETF Analysis'` because `etf_group_analysis` did not set it and **`securities.sector` is frequently null for ETF tickers** (and sometimes the saved `tickers` list collapsed to a single symbol with no sector).
+- Downstream **`sector_meta_analysis`** groups articles by `sector`; empty tags → everything lands in **`__UNTAGGED__`**, which weakens prompts and hides silent degradation.
+
+**What we standardized:**
+
+1. **`resolve_sector_for_etf_analysis_article`** in `web_dashboard/etf_article_sector_infer.py`: holdings (mode of `securities` sectors) → ETF from canonical **`etf-analysis://{TICKER}/{date}` URL** → **`KNOWN_ETF_IMPUTED_SECTOR`** for known watchlist ETFs + **`Multi-sector`** for broad index ETFs. **Same resolver** on **new saves** (`etf_group_analysis`) and **backfill** (`scripts/backfill_etf_analysis_article_sectors.py`).
+2. **Operational check** (research DB): count rows that should never accumulate if the daily save path stays healthy:
+
+```sql
+SELECT count(*) AS etf_analysis_missing_sector
+FROM research_articles
+WHERE article_type = 'ETF Analysis'
+  AND (sector IS NULL OR TRIM(sector) = '');
+```
+
+Target: **0** in steady state after `etf_group_analysis` runs with the resolver. If this grows, fix **securities coverage**, extend the **imputation map**, or add structured fields—**not** more LLM prompt text alone.
+
+**What to do when scaling (new ETFs, new jobs):**
+
+- When adding symbols to the ETF watchtower / `ETF_NAMES` list, **update `KNOWN_ETF_IMPUTED_SECTOR`** in the same change (or accept `Multi-sector` / unresolved until securities has a sector).
+- Prefer **small, observable increments** (new column, new job metric, SQL invariant) over prompt-only “summarize everything” leaps—the latter hides missing structure.
+
+**Known ceiling:** article-only sector meta cannot replace **time series**, **cross-sectional ranks**, or **ticker-level trends**; Phase 3d and benchmark inputs exist to widen the foundation. Until then, treat outputs as **rotation-flavored context**, not omniscient rollup.
+
 ---
 
 ### Phase 3a — Read-only preview UI (shipped)
@@ -259,6 +289,8 @@ What 3a is **not**:
 ---
 
 ### Phase 3b — Build `sector_meta_analysis` (start here)
+
+**Implemented in repo (2026-05-14).** The checklist below is the **contract reference** for behavior and rollout; change code and this section together.
 
 Treat this as one self-contained chunk. Acceptance is binary: either the job runs nightly and persists conformant rows, or it doesn't.
 
@@ -355,6 +387,7 @@ Longer horizon:
 
 ## Operating Guardrails
 
+- **ETF Analysis sector invariant:** keep `research_articles.sector` populated for `article_type = 'ETF Analysis'` (resolver + optional backfill); see **Data foundation (ETF Analysis → sector meta)** under Phase 3. Nightly `sector_meta_analysis` quality tracks this.
 - Keep additions additive with fallback defaults.
 - Avoid increasing lock contention while introducing new jobs.
 - Prefer phased rollout with observable metrics at each layer.

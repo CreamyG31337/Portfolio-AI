@@ -5,6 +5,10 @@ Sector meta analysis job (Phase 3b)
 
 Nightly sector-level synthesis from ETF Analysis articles into ``sector_meta_analysis``.
 Respects ``META_ANALYSIS_PHASE3_SECTOR`` (default off: no-op). Uses the global AI lock.
+
+Upstream coupling: ``SectorMetaAnalysisService`` groups by ``research_articles.sector``. If that
+column is empty for many rows, the job still runs but ``__UNTAGGED__`` dominates—monitor the SQL
+invariant in ``docs/meta_analysis_roadmap.md`` (*Data foundation*).
 """
 
 from __future__ import annotations

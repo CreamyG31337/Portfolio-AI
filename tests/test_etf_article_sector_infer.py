@@ -13,6 +13,8 @@ if str(web_dashboard) not in sys.path:
 from etf_article_sector_infer import (  # noqa: E402
     article_row_tickers,
     dominant_sector_for_holdings,
+    parse_etf_ticker_from_analysis_url,
+    resolve_sector_for_etf_analysis_article,
 )
 
 
@@ -48,3 +50,26 @@ def test_dominant_sector_none_when_empty() -> None:
     pg = MagicMock()
     pg.execute_query.return_value = []
     assert dominant_sector_for_holdings(pg, None, ["ZZZZ"]) is None
+
+
+def test_parse_etf_ticker_from_analysis_url() -> None:
+    assert parse_etf_ticker_from_analysis_url("etf-analysis://ARKG/2026-01-24") == "ARKG"
+    assert parse_etf_ticker_from_analysis_url(None) is None
+
+
+def test_resolve_uses_imputed_when_holdings_and_etf_have_no_sector() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    row = {"tickers": ["ARKW"], "url": "etf-analysis://ARKW/2026-01-24"}
+    sector, src = resolve_sector_for_etf_analysis_article(pg, None, row)
+    assert sector == "Information Technology"
+    assert src == "imputed_map"
+
+
+def test_resolve_url_only_no_tickers() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    row = {"tickers": [], "url": "etf-analysis://IWC/2026-01-02"}
+    sector, src = resolve_sector_for_etf_analysis_article(pg, None, row)
+    assert sector == "Multi-sector"
+    assert src == "imputed_map"

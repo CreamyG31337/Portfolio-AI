@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """One-time backfill: set ``research_articles.sector`` for ETF Analysis rows from holding sectors.
 
-Uses ``etf_article_sector_infer`` (research ``securities`` first, then Supabase ``securities``).
+Uses ``etf_article_sector_infer.resolve_sector_for_etf_analysis_article``: holdings mode from
+``securities``, then ETF from ``etf-analysis://`` URL, then a small known-ETF map when the ETF
+has no ``securities.sector``.
+
+**Health check (research DB):** ``SELECT count(*) FROM research_articles WHERE article_type =
+'ETF Analysis' AND (sector IS NULL OR trim(sector) = '');`` — expect 0 after nightly
+``etf_group_analysis`` with the resolver. See ``docs/meta_analysis_roadmap.md`` (*Data foundation*).
 
 Examples (repo root, venv activated)::
 
@@ -67,7 +73,7 @@ def main() -> int:
     web_root = _configure_paths()
     _load_env(web_root)
 
-    from etf_article_sector_infer import article_row_tickers, dominant_sector_for_holdings
+    from etf_article_sector_infer import resolve_sector_for_etf_analysis_article
     from postgres_client import PostgresClient
     from supabase_client import SupabaseClient
 
@@ -83,7 +89,7 @@ def main() -> int:
         log.warning("Supabase client unavailable; using research securities only: %s", exc)
 
     base_q = """
-        SELECT id, ticker, tickers, title, sector
+        SELECT id, ticker, tickers, title, sector, url
         FROM research_articles
         WHERE article_type = 'ETF Analysis'
           AND (sector IS NULL OR TRIM(sector) = '')
@@ -97,24 +103,22 @@ def main() -> int:
     log.info("Found %s ETF Analysis article(s) with empty sector.", len(articles))
 
     updated = 0
-    skipped_no_tickers = 0
-    skipped_no_sector = 0
+    skipped_unresolved = 0
     errors = 0
 
     for row in articles:
         aid = row.get("id")
-        tickers = article_row_tickers(row)
-        if not tickers:
-            skipped_no_tickers += 1
-            log.debug("skip %s: no tickers", aid)
-            continue
-        sector = dominant_sector_for_holdings(pg, supabase, tickers)
+        sector, src = resolve_sector_for_etf_analysis_article(pg, supabase, row)
         if not sector:
-            skipped_no_sector += 1
-            log.info("skip %s (%s): no sector in securities for tickers %s", aid, row.get("title"), tickers[:5])
+            skipped_unresolved += 1
+            log.info(
+                "skip %s (%s): could not resolve sector (source would be none)",
+                aid,
+                row.get("title"),
+            )
             continue
         if args.dry_run:
-            log.info("[dry-run] would set sector=%r for %s (%s)", sector, aid, row.get("title"))
+            log.info("[dry-run] would set sector=%r (source=%s) for %s (%s)", sector, src, aid, row.get("title"))
             updated += 1
             continue
         try:
@@ -123,16 +127,15 @@ def main() -> int:
                 (sector, aid),
             )
             updated += 1
-            log.info("updated %s -> sector=%r", aid, sector)
+            log.info("updated %s -> sector=%r (source=%s)", aid, sector, src)
         except Exception as exc:
             errors += 1
             log.error("failed to update %s: %s", aid, exc)
 
     log.info(
-        "Done. updated=%s skipped_no_tickers=%s skipped_no_sector=%s errors=%s dry_run=%s",
+        "Done. updated=%s skipped_unresolved=%s errors=%s dry_run=%s",
         updated,
-        skipped_no_tickers,
-        skipped_no_sector,
+        skipped_unresolved,
         errors,
         args.dry_run,
     )
