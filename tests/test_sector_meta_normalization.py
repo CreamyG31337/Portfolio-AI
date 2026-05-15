@@ -65,6 +65,8 @@ def test_phase3_sector_feature_flag_env(monkeypatch: pytest.MonkeyPatch) -> None
     import settings as settings_mod
 
     monkeypatch.delenv("META_ANALYSIS_PHASE3_SECTOR", raising=False)
+    assert settings_mod.is_meta_analysis_phase3_sector_enabled() is True  # default on
+    monkeypatch.setenv("META_ANALYSIS_PHASE3_SECTOR", "false")
     assert settings_mod.is_meta_analysis_phase3_sector_enabled() is False
     monkeypatch.setenv("META_ANALYSIS_PHASE3_SECTOR", "true")
     assert settings_mod.is_meta_analysis_phase3_sector_enabled() is True

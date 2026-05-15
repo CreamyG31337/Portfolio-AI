@@ -311,9 +311,9 @@ Treat this as one self-contained chunk. Acceptance is binary: either the job run
    - Match the migration pattern used by `ticker_meta_analysis` (find that table's migration and copy the structure / index choices).
 
 4. **Feature flag:** `META_ANALYSIS_PHASE3_SECTOR`.
-   - Add accessor in `web_dashboard/settings.py`: `is_meta_analysis_phase3_sector_enabled()` (mirror `is_meta_analysis_phase1_signal_fusion_enabled`).
-   - Default **off** until 3 successful nightly runs prove stability in prod. Flip default to on in a follow-up commit only.
-   - When off: job is a no-op, table stays empty, 3c sees no rows and skips the sector block — ticker meta must remain deterministic.
+   - Accessor: `web_dashboard/settings.py` → `is_meta_analysis_phase3_sector_enabled()`. Default **on**.
+   - Emergency off: set env var `META_ANALYSIS_PHASE3_SECTOR=false` on the container and restart — no code change needed.
+   - When off: job is a no-op, table stays empty, `/sector_insights` falls back to ETF Analysis articles, ticker meta skips sector block.
 
 5. **Prompt:** add `SECTOR_META_ANALYSIS_PROMPT` to `web_dashboard/ai_prompts.py`. Ask explicitly for every field in the contract. Reuse the `INSUFFICIENT_DATA` / `UNKNOWN` enum vocabulary the market regime prompt already uses.
 
