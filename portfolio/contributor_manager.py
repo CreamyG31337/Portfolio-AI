@@ -236,7 +236,7 @@ class ContributorUI:
         if contributors.empty:
             print("  No contributors found")
         else:
-            for i, row in contributors.iterrows():
+            for i, row in enumerate(contributors.to_dict('records')):
                 idx = i + 1
                 name = row['Contributor']
                 email = row['Email'] if row['Email'] and pd.notna(row['Email']) else "Not provided"
@@ -257,7 +257,7 @@ class ContributorUI:
         print(f"{'#':<3} {'Name':<25} {'Email':<30}")
         print("─" * 60)
         
-        for i, row in contributors.iterrows():
+        for i, row in enumerate(contributors.to_dict('records')):
             idx = i + 1
             name = row['Contributor']
             email = row['Email'] if row['Email'] and pd.notna(row['Email']) else "Not provided"
