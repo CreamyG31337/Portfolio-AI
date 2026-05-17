@@ -439,9 +439,10 @@ def get_company_name(ticker: str, currency: str = None) -> str:
                 try:
                     df = pd.read_csv(file_path)
                     if 'Ticker' in df.columns and 'Currency' in df.columns:
-                        latest_entries = df.groupby('Ticker').last()
-                        for ticker, row in latest_entries.iterrows():
-                            currency_cache[ticker] = row['Currency']
+                        # OPTIMIZATION: Replaced slow .iterrows() with .to_dict('records')
+                        latest_entries = df.groupby('Ticker').last().reset_index()
+                        for row in latest_entries.to_dict('records'):
+                            currency_cache[row['Ticker']] = row['Currency']
                 except Exception:
                     continue
             

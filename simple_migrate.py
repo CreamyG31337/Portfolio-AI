@@ -79,7 +79,8 @@ def migrate_portfolio_data(client, portfolio_df, fund_name="Project Chimera"):
         unique_tickers = set()
         ticker_currencies = {}
         
-        for _, row in portfolio_df.iterrows():
+        # OPTIMIZATION: Replaced slow .iterrows() with .to_dict('records')
+        for row in portfolio_df.to_dict('records'):
             # Handle missing or NaN values
             ticker = str(row.get("Ticker", ""))
             currency = str(row.get("Currency", "USD"))
@@ -141,7 +142,8 @@ def migrate_trade_data(client, trade_log_df, fund_name="Project Chimera"):
         unique_tickers = set()
         ticker_currencies = {}
         
-        for _, row in trade_log_df.iterrows():
+        # OPTIMIZATION: Replaced slow .iterrows() with .to_dict('records')
+        for row in trade_log_df.to_dict('records'):
             # Handle missing or NaN values
             ticker = str(row.get("Ticker", ""))
             currency = str(row.get("Currency", "USD"))
