@@ -25,13 +25,15 @@ from ollama_client import get_ollama_client
 from postgres_client import PostgresClient
 from research_repository import ResearchRepository
 from etf_group_analysis import ETFGroupAnalysisService
+from etf_meta_pipeline import get_etf_queue_lookback_days
 
 logger = logging.getLogger(__name__)
 
 # Finish within one deploy window; queue resumes next run.
 MAX_JOB_DURATION = 35 * 60  # 35 minutes total
 MAX_ITEMS_PER_RUN = 6  # ~5–6 LLM calls per night; avoids 1h+ runs killed on deploy
-QUEUE_LOOKBACK_DAYS = 7  # queue missing articles for recent trading days only
+# Default queue window; auto-expands up to ETF_GROUP_QUEUE_MAX_LOOKBACK_DAYS when behind.
+QUEUE_LOOKBACK_DAYS = 14
 
 
 def reset_stale_in_progress_queue(max_age_hours: float = 2.0) -> int:
@@ -97,11 +99,13 @@ def _article_exists(repo: ResearchRepository, etf_ticker: str, day_str: str) -> 
 
 def queue_recent_missing_etf_analysis(
     repo: ResearchRepository,
-    lookback_days: int = QUEUE_LOOKBACK_DAYS,
+    lookback_days: int | None = None,
 ) -> int:
     """Queue ETF/date pairs with holdings changes but no saved ETF Analysis article yet."""
     try:
         pc = repo.client
+        if lookback_days is None:
+            lookback_days = get_etf_queue_lookback_days(pc)
         today = datetime.now(UTC).date()
         queued = 0
         for offset in range(lookback_days):
