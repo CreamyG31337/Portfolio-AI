@@ -10,10 +10,9 @@ Data sources (Supabase):
   - securities        (raw fundamental metrics)
   - congress_trades_enriched (politician trades)
   - insider_trades    (corporate insider activity)
-  - etf_holdings_log  (ETF exposure)
-
 Data sources (Research DB / Postgres):
   - social_metrics    (social sentiment)
+  - etf_holdings_log  (ETF exposure)
 """
 
 from __future__ import annotations
@@ -94,8 +93,9 @@ def build_ticker_state(
     # 5. Insider trades ----------------------------------------------------
     state["insider"] = _fetch_insider(sb, ticker, cutoff)
 
-    # 6. ETF exposure ------------------------------------------------------
-    state["etf_exposure"] = _fetch_etf_exposure(sb, ticker)
+    # 6. ETF exposure (Research DB) ----------------------------------------
+    if postgres_client:
+        state["etf_exposure"] = _fetch_etf_exposure(postgres_client, ticker)
 
     # 7. Conflict detection ------------------------------------------------
     state["conflicts"] = _detect_conflicts(state)
@@ -346,23 +346,26 @@ def _fetch_insider(sb: Any, ticker: str, cutoff_iso: str) -> List[Dict[str, Any]
     return []
 
 
-def _fetch_etf_exposure(sb: Any, ticker: str) -> Dict[str, Any]:
-    """Get ETF exposure -- which ETFs hold *ticker* and at what weight."""
+def _fetch_etf_exposure(pc: Any, ticker: str) -> Dict[str, Any]:
+    """Get ETF exposure -- which ETFs hold *ticker* and at what weight (Research DB)."""
     try:
-        # Get the latest date per ETF that holds this ticker
-        result = sb.table("etf_holdings_log") \
-            .select("etf_ticker, weight_percent, date") \
-            .eq("holding_ticker", ticker) \
-            .order("date", desc=True) \
-            .limit(50) \
-            .execute()
+        rows = pc.execute_query(
+            """
+            SELECT etf_ticker, weight_percent, date
+            FROM etf_holdings_log
+            WHERE holding_ticker = %s
+            ORDER BY date DESC
+            LIMIT 50
+            """,
+            (ticker.upper(),),
+        )
 
-        if not result.data:
+        if not rows:
             return {"etf_count": 0, "top_etfs": []}
 
         # Deduplicate: keep latest entry per ETF
         seen: dict[str, dict] = {}
-        for r in result.data:
+        for r in rows:
             etf = r.get("etf_ticker", "")
             if etf and etf not in seen:
                 seen[etf] = {

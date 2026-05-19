@@ -204,15 +204,26 @@ class TickerAnalysisService:
             List of ETF change dictionaries
         """
         try:
-            start_str = start_date.strftime('%Y-%m-%d')
-            result = self.supabase.supabase.from_('etf_holdings_changes') \
-                .select('*') \
-                .eq('holding_ticker', ticker.upper()) \
-                .gte('date', start_str) \
-                .order('date', desc=True) \
-                .limit(self.MAX_ETF_CHANGES) \
-                .execute()
-            return result.data or []
+            start_str = start_date.strftime("%Y-%m-%d")
+            rows = self.postgres.execute_query(
+                """
+                SELECT
+                    date,
+                    etf_ticker,
+                    holding_ticker,
+                    share_change,
+                    percent_change,
+                    action,
+                    shares_before,
+                    shares_after
+                FROM etf_holdings_changes
+                WHERE holding_ticker = %s AND date >= %s
+                ORDER BY date DESC
+                LIMIT %s
+                """,
+                (ticker.upper(), start_str, self.MAX_ETF_CHANGES),
+            )
+            return list(rows or [])
         except Exception as e:
             logger.warning(f"Error fetching ETF changes for {ticker}: {e}")
             return []
