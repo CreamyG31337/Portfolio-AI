@@ -71,25 +71,33 @@ class ETFGroupAnalysisService:
         self.repo = repo
     
     def get_changes_for_date(self, etf_ticker: str, date: datetime) -> List[Dict]:
-        """Query the view to get changes for a specific ETF/date.
-        
-        Args:
-            etf_ticker: ETF ticker symbol
-            date: Date to analyze
-            
-        Returns:
-            List of change dictionaries
+        """Query Research DB ``etf_holdings_changes`` for a specific ETF/date.
+
+        Holdings snapshots are written to Research Postgres by ETF Watchtower.
+        Supabase ``etf_holdings_log`` may lag after migration — do not read changes from there.
         """
+        date_str = date.strftime("%Y-%m-%d")
         try:
-            date_str = date.strftime('%Y-%m-%d')
-            result = self.supabase.supabase.from_('etf_holdings_changes') \
-                .select('*') \
-                .eq('etf_ticker', etf_ticker) \
-                .eq('date', date_str) \
-                .execute()
-            return result.data or []
+            rows = self.repo.client.execute_query(
+                """
+                SELECT
+                    date,
+                    etf_ticker,
+                    holding_ticker,
+                    share_change,
+                    percent_change,
+                    action,
+                    shares_before,
+                    shares_after
+                FROM etf_holdings_changes
+                WHERE etf_ticker = %s AND date = %s
+                ORDER BY ABS(share_change) DESC
+                """,
+                (etf_ticker.upper(), date_str),
+            )
+            return list(rows or [])
         except Exception as e:
-            logger.error(f"Error querying ETF changes for {etf_ticker} on {date_str}: {e}")
+            logger.error("Error querying ETF changes for %s on %s: %s", etf_ticker, date_str, e)
             return []
     
     def format_changes_for_llm(self, changes: List[Dict]) -> str:

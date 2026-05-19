@@ -101,25 +101,29 @@ def queue_recent_missing_etf_analysis(
 ) -> int:
     """Queue ETF/date pairs with holdings changes but no saved ETF Analysis article yet."""
     try:
-        db = SupabaseClient(use_service_role=True)
+        pc = repo.client
         today = datetime.now(UTC).date()
         queued = 0
         for offset in range(lookback_days):
             day = today - timedelta(days=offset)
             day_str = day.strftime("%Y-%m-%d")
-            result = (
-                db.supabase.from_("etf_holdings_changes")
-                .select("etf_ticker")
-                .eq("date", day_str)
-                .execute()
+            rows = pc.execute_query(
+                """
+                SELECT DISTINCT etf_ticker
+                FROM etf_holdings_changes
+                WHERE date = %s
+                """,
+                (day_str,),
             )
-            etf_tickers = sorted({row["etf_ticker"] for row in (result.data or []) if row.get("etf_ticker")})
+            etf_tickers = sorted(
+                {str(row["etf_ticker"]).upper() for row in (rows or []) if row.get("etf_ticker")}
+            )
             for etf_ticker in etf_tickers:
                 if _article_exists(repo, etf_ticker, day_str):
                     continue
                 target_key = f"{etf_ticker}_{day_str}"
                 try:
-                    db.supabase.table("ai_analysis_queue").insert(
+                    SupabaseClient(use_service_role=True).supabase.table("ai_analysis_queue").insert(
                         {
                             "analysis_type": "etf_group",
                             "target_key": target_key,
