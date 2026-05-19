@@ -105,7 +105,9 @@ def mark_job_started(
             'target_date': target_date.isoformat(),
             'fund_name': effective_fund_name,
             'status': 'running',
-            'started_at': datetime.now(timezone.utc).isoformat()
+            'started_at': datetime.now(timezone.utc).isoformat(),
+            'completed_at': None,
+            'error_message': None,
         }, on_conflict='job_name,target_date,fund_name').execute()
         
         logger.debug(f"Marked job '{job_name}' as started for {target_date}")
@@ -408,7 +410,7 @@ def get_running_ai_job(
         from supabase_client import SupabaseClient
         client = SupabaseClient(use_service_role=True)
         result = client.supabase.table("job_executions") \
-            .select("id, job_name, started_at") \
+            .select("id, job_name, started_at, completed_at") \
             .eq("status", "running") \
             .in_("job_name", list(AI_JOB_NAMES)) \
             .execute()
@@ -431,6 +433,35 @@ def get_running_ai_job(
 
             stale_after_hours = AI_JOB_MAX_AGE_HOURS.get(job_name, max_age_hours)
             started_at = row.get("started_at")
+            completed_at = row.get("completed_at")
+            row_id = row.get("id")
+
+            # Zombie: terminal timestamp set but status never flipped (blocks all AI jobs).
+            if completed_at and row_id:
+                try:
+                    client.supabase.table("job_executions") \
+                        .update({
+                            "status": "success",
+                            "completed_at": completed_at,
+                            "error_message": "Auto-cleared zombie AI lock (completed_at set while running)",
+                        }) \
+                        .eq("id", row_id) \
+                        .eq("status", "running") \
+                        .execute()
+                    logger.warning(
+                        "Auto-cleared zombie AI lock id=%s job=%s (had completed_at)",
+                        row_id,
+                        job_name,
+                    )
+                except Exception as clear_err:
+                    logger.warning(
+                        "Failed to clear zombie AI lock id=%s (%s): %s",
+                        row_id,
+                        job_name,
+                        clear_err,
+                    )
+                continue
+
             if not started_at:
                 return job_name
 

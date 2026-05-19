@@ -10,8 +10,8 @@ Resumable via ai_analysis_queue table.
 
 import logging
 import time
-from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any
+from datetime import datetime, timedelta, UTC
+from typing import Any
 
 # Import log_job_execution if available (optional for standalone testing)
 try:
@@ -28,70 +28,116 @@ from etf_group_analysis import ETFGroupAnalysisService
 
 logger = logging.getLogger(__name__)
 
-# Safety timeout (was missing entirely - bug fix)
-MAX_JOB_DURATION = 40 * 60  # 40 minutes total
+# Finish within one deploy window; queue resumes next run.
+MAX_JOB_DURATION = 35 * 60  # 35 minutes total
+MAX_ITEMS_PER_RUN = 6  # ~5–6 LLM calls per night; avoids 1h+ runs killed on deploy
+QUEUE_LOOKBACK_DAYS = 7  # queue missing articles for recent trading days only
 
-def get_pending_etf_analysis() -> List[Dict]:
-    """Get pending ETF group analysis items from queue.
 
-    Returns:
-        List of queue items
-    """
+def reset_stale_in_progress_queue(max_age_hours: float = 2.0) -> int:
+    """Reset ``in_progress`` rows left by container restart so the job can resume."""
     try:
         db = SupabaseClient(use_service_role=True)
-        result = db.supabase.table('ai_analysis_queue') \
-            .select('*') \
-            .eq('analysis_type', 'etf_group') \
-            .in_('status', ['pending', 'failed']) \
-            .order('priority', desc=True) \
-            .order('created_at', desc=False) \
-            .limit(100) \
+        cutoff = (datetime.now(UTC) - timedelta(hours=max_age_hours)).isoformat()
+        result = (
+            db.supabase.table("ai_analysis_queue")
+            .update({"status": "pending", "started_at": None})
+            .eq("analysis_type", "etf_group")
+            .eq("status", "in_progress")
+            .lt("started_at", cutoff)
             .execute()
-        return result.data or []
+        )
+        n = len(result.data or [])
+        if n:
+            logger.info("Reset %s stale in_progress etf_group queue item(s) to pending", n)
+        return n
+    except Exception as e:
+        logger.warning("Could not reset stale in_progress queue rows: %s", e)
+        return 0
+
+
+def get_pending_etf_analysis(limit: int = MAX_ITEMS_PER_RUN) -> list[dict]:
+    """Pending/failed ETF group work, newest ``target_key`` dates first (bounded per run)."""
+    try:
+        db = SupabaseClient(use_service_role=True)
+        result = (
+            db.supabase.table("ai_analysis_queue")
+            .select("*")
+            .eq("analysis_type", "etf_group")
+            .in_("status", ["pending", "failed"])
+            .order("created_at", desc=True)
+            .limit(max(limit * 3, limit))
+            .execute()
+        )
+        rows = list(result.data or [])
+
+        def _sort_key(item: dict[str, Any]) -> str:
+            key = str(item.get("target_key") or "")
+            parts = key.split("_", 1)
+            return parts[1] if len(parts) > 1 else ""
+
+        rows.sort(key=_sort_key, reverse=True)
+        return rows[:limit]
     except Exception as e:
         logger.error(f"Error fetching pending ETF analysis: {e}")
         return []
 
-def queue_todays_etf_analysis():
-    """Queue today's ETF analysis for all ETFs with changes."""
+
+def _article_exists(repo: ResearchRepository, etf_ticker: str, day_str: str) -> bool:
+    url = f"etf-analysis://{etf_ticker.upper()}/{day_str}"
+    try:
+        rows = repo.client.execute_query(
+            "SELECT 1 FROM research_articles WHERE url = %s LIMIT 1",
+            (url,),
+        )
+        return bool(rows)
+    except Exception:
+        return False
+
+
+def queue_recent_missing_etf_analysis(
+    repo: ResearchRepository,
+    lookback_days: int = QUEUE_LOOKBACK_DAYS,
+) -> int:
+    """Queue ETF/date pairs with holdings changes but no saved ETF Analysis article yet."""
     try:
         db = SupabaseClient(use_service_role=True)
-        today = datetime.now(timezone.utc).date()
-        today_str = today.strftime('%Y-%m-%d')
-
-        # Get all ETFs with changes today
-        result = db.supabase.from_('etf_holdings_changes') \
-            .select('etf_ticker') \
-            .eq('date', today_str) \
-            .execute()
-
-        # Get distinct tickers
-        etf_tickers = list(set([row['etf_ticker'] for row in result.data or []]))
-
-        if not etf_tickers:
-            logger.info("No ETF changes found for today")
-            return
-
-        # Queue each ETF
-        queue_items = []
-        for etf_ticker in etf_tickers:
-            target_key = f"{etf_ticker}_{today_str}"
-            queue_items.append({
-                'analysis_type': 'etf_group',
-                'target_key': target_key,
-                'priority': 0,  # Default priority
-                'status': 'pending'
-            })
-
-        # Insert in batch
-        if queue_items:
-            db.supabase.table('ai_analysis_queue') \
-                .insert(queue_items) \
+        today = datetime.now(UTC).date()
+        queued = 0
+        for offset in range(lookback_days):
+            day = today - timedelta(days=offset)
+            day_str = day.strftime("%Y-%m-%d")
+            result = (
+                db.supabase.from_("etf_holdings_changes")
+                .select("etf_ticker")
+                .eq("date", day_str)
                 .execute()
-            logger.info(f"Queued {len(queue_items)} ETF groups for analysis")
-
+            )
+            etf_tickers = sorted({row["etf_ticker"] for row in (result.data or []) if row.get("etf_ticker")})
+            for etf_ticker in etf_tickers:
+                if _article_exists(repo, etf_ticker, day_str):
+                    continue
+                target_key = f"{etf_ticker}_{day_str}"
+                try:
+                    db.supabase.table("ai_analysis_queue").insert(
+                        {
+                            "analysis_type": "etf_group",
+                            "target_key": target_key,
+                            "priority": 0,
+                            "status": "pending",
+                        }
+                    ).execute()
+                    queued += 1
+                except Exception as exc:
+                    # unique_pending_analysis: duplicate pending row is fine
+                    if "duplicate" not in str(exc).lower() and "unique" not in str(exc).lower():
+                        logger.debug("Queue insert skip %s: %s", target_key, exc)
+        if queued:
+            logger.info("Queued %s ETF group analysis item(s) for last %s day(s)", queued, lookback_days)
+        return queued
     except Exception as e:
         logger.error(f"Error queueing ETF analysis: {e}", exc_info=True)
+        return 0
 
 def mark_analysis_started(queue_id: str):
     """Mark analysis as started in queue."""
@@ -100,7 +146,7 @@ def mark_analysis_started(queue_id: str):
         db.supabase.table('ai_analysis_queue') \
             .update({
                 'status': 'in_progress',
-                'started_at': datetime.now(timezone.utc).isoformat()
+                'started_at': datetime.now(UTC).isoformat()
             }) \
             .eq('id', queue_id) \
             .execute()
@@ -114,7 +160,7 @@ def mark_analysis_completed(queue_id: str):
         db.supabase.table('ai_analysis_queue') \
             .update({
                 'status': 'completed',
-                'completed_at': datetime.now(timezone.utc).isoformat()
+                'completed_at': datetime.now(UTC).isoformat()
             }) \
             .eq('id', queue_id) \
             .execute()
@@ -125,21 +171,23 @@ def mark_analysis_failed(queue_id: str, error: str):
     """Mark analysis as failed in queue."""
     try:
         db = SupabaseClient(use_service_role=True)
-        db.supabase.table('ai_analysis_queue') \
-            .update({
-                'status': 'failed',
-                'error_message': error[:500],  # Truncate long errors
-                'retry_count': db.supabase.table('ai_analysis_queue')
-                    .select('retry_count')
-                    .eq('id', queue_id)
-                    .execute()
-                    .data[0].get('retry_count', 0) + 1 if db.supabase.table('ai_analysis_queue')
-                    .select('retry_count')
-                    .eq('id', queue_id)
-                    .execute().data else 1
-            }) \
-            .eq('id', queue_id) \
+        cur = (
+            db.supabase.table("ai_analysis_queue")
+            .select("retry_count")
+            .eq("id", queue_id)
+            .limit(1)
             .execute()
+        )
+        prev = 0
+        if cur.data:
+            prev = int(cur.data[0].get("retry_count") or 0)
+        db.supabase.table("ai_analysis_queue").update(
+            {
+                "status": "failed",
+                "error_message": (error or "")[:500],
+                "retry_count": prev + 1,
+            }
+        ).eq("id", queue_id).execute()
     except Exception as e:
         logger.warning(f"Error marking analysis failed: {e}")
 
@@ -147,6 +195,7 @@ def etf_group_analysis_job() -> None:
     """Analyze ETF changes as groups. Resumable via queue."""
     job_id = 'etf_group_analysis'
     start_time = time.time()
+    target_date = datetime.now(UTC).date()
 
     from utils.job_tracking import log_job_step
 
@@ -177,8 +226,8 @@ def etf_group_analysis_job() -> None:
         # Continue anyway - better to run twice than fail silently
 
     try:
-        from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
-        target_date = datetime.now(timezone.utc).date()
+        from utils.job_tracking import mark_job_started, mark_job_completed
+
         mark_job_started(job_id, target_date)
     except Exception as e:
         logger.warning(f"Could not mark job started: {e}")
@@ -210,15 +259,12 @@ def etf_group_analysis_job() -> None:
         logger.error(f"❌ {message}")
         return
 
-    # Check queue for pending work
-    log_job_step(job_id, "queue_check", "Checking analysis queue for pending work...")
-    pending = get_pending_etf_analysis()
+    reset_stale_in_progress_queue()
 
-    if not pending:
-        # Queue today's analysis
-        log_job_step(job_id, "queue_check", "No pending items, queueing today's ETF changes...")
-        queue_todays_etf_analysis()
-        pending = get_pending_etf_analysis()
+    # Check queue for pending work (bounded so deploy restarts do not kill 1h+ runs)
+    log_job_step(job_id, "queue_check", "Checking analysis queue for pending work...")
+    queue_recent_missing_etf_analysis(repo)
+    pending = get_pending_etf_analysis()
 
     if not pending:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -258,7 +304,7 @@ def etf_group_analysis_job() -> None:
             etf_ticker = parts[0]
             date_str = '_'.join(parts[1:])  # Handle dates with underscores if needed
             try:
-                analysis_date = datetime.strptime(date_str, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                analysis_date = datetime.strptime(date_str, '%Y-%m-%d').replace(tzinfo=UTC)
             except ValueError:
                 logger.warning(f"Invalid date format in target_key: {target_key}")
                 mark_analysis_failed(queue_id, f"Invalid date format: {date_str}")
@@ -291,7 +337,16 @@ def etf_group_analysis_job() -> None:
             failed += 1
 
     duration_ms = int((time.time() - start_time) * 1000)
+    remaining = max(total - processed - failed, 0)
     message = f"Processed {processed} ETF groups, {failed} failed"
+    if remaining:
+        message += f", {remaining} left in queue (next run)"
     log_job_step(job_id, "complete", message, status="success")
     log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+    try:
+        from utils.job_tracking import mark_job_completed
+
+        mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+    except Exception:
+        pass
     logger.info(f"✅ ETF Group Analysis complete: {message}")

@@ -4,7 +4,7 @@ Sector meta analysis job (Phase 3b)
 ===================================
 
 Nightly sector-level synthesis from ETF Analysis articles into ``sector_meta_analysis``.
-Respects ``META_ANALYSIS_PHASE3_SECTOR`` (default off: no-op). Uses the global AI lock.
+Respects ``META_ANALYSIS_PHASE3_SECTOR`` (default on). Uses the global AI lock with a one-shot retry when blocked.
 
 Upstream coupling: ``SectorMetaAnalysisService`` groups by ``research_articles.sector``. If that
 column is empty for many rows, the job still runs but ``__UNTAGGED__`` dominates—monitor the SQL
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 try:
     from scheduler.scheduler_core import log_job_execution
@@ -34,6 +34,38 @@ from supabase_client import SupabaseClient
 logger = logging.getLogger(__name__)
 
 _MAX_SECONDS = 40 * 60
+_LOCK_RETRY_DELAY_SEC = 90
+_LOCK_RETRY_JOB_ID = "sector_meta_analysis_lock_retry"
+
+
+def _schedule_sector_meta_after_ai_lock(blocking_job: str) -> None:
+    """Re-run sector meta soon after the global AI lock clears (one-shot, debounced)."""
+    try:
+        from scheduler.scheduler_core import get_scheduler
+
+        sched = get_scheduler(create=False)
+        if not sched or not getattr(sched, "running", False):
+            return
+        run_date = datetime.now(UTC) + timedelta(seconds=_LOCK_RETRY_DELAY_SEC)
+        sched.add_job(
+            sector_meta_analysis_job,
+            trigger="date",
+            run_date=run_date,
+            id=_LOCK_RETRY_JOB_ID,
+            name="Sector meta (retry after AI lock)",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info(
+            "Scheduled sector_meta_analysis retry at %s UTC (%ss) while AI lock held by %s",
+            run_date.isoformat(),
+            _LOCK_RETRY_DELAY_SEC,
+            blocking_job,
+        )
+    except Exception as exc:
+        logger.warning("Could not schedule sector_meta lock retry: %s", exc)
 
 
 def sector_meta_analysis_job() -> None:
@@ -54,15 +86,29 @@ def sector_meta_analysis_job() -> None:
         log_job_execution(job_id, success=True, message=msg, duration_ms=0)
         return
 
-    try:
-        from utils.job_tracking import get_running_ai_job
+    import os
 
-        running = get_running_ai_job(exclude_job_name=job_id)
+    if os.getenv("SECTOR_META_IGNORE_AI_LOCK", "").strip().lower() in ("1", "true", "yes"):
+        logger.warning("%s: SECTOR_META_IGNORE_AI_LOCK set — skipping global AI lock check", job_id)
+    else:
+        try:
+            from utils.job_tracking import get_running_ai_job
+
+            running = get_running_ai_job(exclude_job_name=job_id)
+        except Exception as exc:
+            logger.warning("AI lock check failed (continuing): %s", exc)
+            running = None
+
         if running:
             logger.info("AI lock active (%s). Skipping %s.", running, job_id)
+            _schedule_sector_meta_after_ai_lock(running)
+            log_job_execution(
+                job_id,
+                success=True,
+                message=f"Skipped — AI lock held by {running}",
+                duration_ms=0,
+            )
             return
-    except Exception as exc:
-        logger.warning("AI lock check failed (continuing): %s", exc)
 
     try:
         supabase_check = SupabaseClient(use_service_role=True)

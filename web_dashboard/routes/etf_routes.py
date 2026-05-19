@@ -1002,7 +1002,7 @@ def sector_insights():
         if not sector_meta_raw:
             articles_raw = repo.get_recent_articles(
                 limit=48,
-                days=730,
+                days=90,
                 article_type="ETF Analysis",
             )
     except Exception as exc:

@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
+import time
 from pathlib import Path
 
 
@@ -32,6 +34,23 @@ def _configure_paths() -> Path:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     return web_dashboard_root
+
+
+def _wait_for_ai_lock(max_wait_sec: int, log: logging.Logger) -> bool:
+    """Poll until no AI job is running, or timeout. Returns True if lock cleared."""
+    if max_wait_sec <= 0:
+        return True
+    from utils.job_tracking import get_running_ai_job
+
+    deadline = time.time() + max_wait_sec
+    while time.time() < deadline:
+        running = get_running_ai_job()
+        if not running:
+            return True
+        remaining = int(deadline - time.time())
+        log.info("Waiting for AI lock (%s), up to %ss left...", running, remaining)
+        time.sleep(min(30, max(5, remaining)))
+    return get_running_ai_job() is None
 
 
 def _load_env(web_dashboard_root: Path) -> None:
@@ -53,9 +72,22 @@ def main() -> int:
             "market_daily_brief",
             "ticker_meta_analysis",
             "sector_meta_analysis",
+            "etf_group_analysis",
             "benchmark_refresh",
         ),
         help="Job id / function to invoke",
+    )
+    parser.add_argument(
+        "--wait-ai-lock",
+        type=int,
+        default=0,
+        metavar="SECONDS",
+        help="Wait up to N seconds for the global AI lock to clear before running",
+    )
+    parser.add_argument(
+        "--ignore-ai-lock",
+        action="store_true",
+        help="Run even if another AI job is marked running (use when multiple LLM backends are free)",
     )
     args = parser.parse_args()
 
@@ -66,6 +98,22 @@ def main() -> int:
     _load_env(web_root)
 
     log.info("Starting manual run: %s", args.job)
+
+    if not args.ignore_ai_lock:
+        if args.wait_ai_lock and not _wait_for_ai_lock(args.wait_ai_lock, log):
+            log.error("Timed out waiting for AI lock after %ss", args.wait_ai_lock)
+            return 1
+        from utils.job_tracking import get_running_ai_job
+
+        blocking = get_running_ai_job()
+        if blocking:
+            log.error(
+                "AI lock held by %s. Use --wait-ai-lock SECONDS or --ignore-ai-lock if another LLM is free.",
+                blocking,
+            )
+            return 1
+    else:
+        log.warning("Ignoring global AI lock (--ignore-ai-lock)")
 
     try:
         if args.job == "ui_ai_summaries":
@@ -81,9 +129,15 @@ def main() -> int:
 
             ticker_meta_analysis_job()
         elif args.job == "sector_meta_analysis":
+            if args.ignore_ai_lock:
+                os.environ["SECTOR_META_IGNORE_AI_LOCK"] = "1"
             from scheduler.jobs_sector_meta_analysis import sector_meta_analysis_job
 
             sector_meta_analysis_job()
+        elif args.job == "etf_group_analysis":
+            from scheduler.jobs_etf_analysis import etf_group_analysis_job
+
+            etf_group_analysis_job()
         else:
             from scheduler.jobs_metrics import benchmark_refresh_job
 

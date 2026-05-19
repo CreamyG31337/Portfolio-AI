@@ -406,125 +406,90 @@ def get_user_funds():
         return []
     return auth_manager.get_user_funds(request.user_id)
 
-def require_admin(f):
-    """Decorator to require admin privileges (also requires authentication)"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # First, authenticate the user (similar to require_auth)
-        token = (request.cookies.get('auth_token') or
-                 request.cookies.get('session_token') or
-                 request.headers.get('Authorization', '').replace('Bearer ', ''))
+def _user_has_admin_access() -> tuple[bool, str | None]:
+    """Return (is_admin, error_detail) for the current request (requires request.user_id)."""
+    if not getattr(request, "user_id", None):
+        return False, "no user_id on request"
 
-        if not token:
-            # For HTML pages, redirect to login; for API, return JSON error
-            if request.path.startswith('/api/'):
-                return jsonify({"error": "Authentication required"}), 401
-            else:
-                return redirect('/auth')
+    token = (
+        getattr(request, "_new_auth_token", None)
+        or request.cookies.get("auth_token")
+        or request.cookies.get("session_token")
+        or request.headers.get("Authorization", "").replace("Bearer ", "")
+    )
 
-        # Try to verify with auth_manager (for session_token format)
-        user_data = auth_manager.verify_session(token)
+    is_user_admin = False
+    admin_check_error: str | None = None
+    try:
+        if token and len(token.split(".")) == 3:
+            try:
+                from supabase_client import SupabaseClient
+                from flask_auth_utils import get_supabase_access_token
 
-        # If that fails, try verifying as Supabase token (securely)
-        if not user_data:
-            user_data = auth_manager.verify_supabase_token(token)
-
-            # If verification successful but format needs adjusting
-            if user_data and ("user_id" not in user_data):
-                user_data["user_id"] = user_data.get("sub")
-
-        if not user_data:
-            # For HTML pages, redirect to login; for API, return JSON error
-            if request.path.startswith('/api/'):
-                return jsonify({"error": "Invalid or expired session"}), 401
-            else:
-                return redirect('/auth')
-
-        # Add user data to request context
-        request.user_id = user_data.get("user_id") or user_data.get("sub")
-        request.user_email = user_data.get("email")
-
-        from flask_auth_utils import ensure_impersonation_session_valid
-        ensure_impersonation_session_valid()
-
-        # Now check admin status - try using Supabase client (like Streamlit does)
-        is_user_admin = False
-        admin_check_error = None
-        try:
-            # Try using Supabase client with user's token (same approach as Streamlit)
-            if token and len(token.split('.')) == 3:
-                try:
-                    from supabase_client import SupabaseClient
-                    from flask_auth_utils import get_supabase_access_token
-                    # Create Supabase client with Supabase access token (handles auth header properly)
-                    supabase_token = get_supabase_access_token()
-                    client = SupabaseClient(user_token=supabase_token) if supabase_token else None
-                    # Call RPC function (same way Streamlit does it)
-                    if client:
-                        result = client.supabase.rpc('is_admin', {'user_uuid': request.user_id}).execute()
-                    else:
-                        result = None
-
-                    logger.debug(f"Admin check RPC result: {result.data}, type: {type(result.data)}")
-
+                supabase_token = get_supabase_access_token()
+                client = SupabaseClient(user_token=supabase_token) if supabase_token else None
+                if client:
+                    result = client.supabase.rpc("is_admin", {"user_uuid": request.user_id}).execute()
                     if result and result.data is not None:
                         if isinstance(result.data, bool):
                             is_user_admin = result.data
                         elif isinstance(result.data, list) and len(result.data) > 0:
                             is_user_admin = bool(result.data[0])
-                        else:
-                            logger.warning(f"Unexpected is_admin response format: {result.data} (type: {type(result.data)})")
-                except Exception as e:
-                    admin_check_error = str(e)
-                    logger.debug(f"Error checking admin with Supabase client: {e}", exc_info=True)
-
-            # Fallback to HTTP request method
-            if not is_user_admin:
-                logger.debug(f"Trying HTTP request admin check for user_id: {request.user_id}")
-                try:
-                    import requests
-                    response = requests.post(
-                        f"{auth_manager.supabase_url}/rest/v1/rpc/is_admin",
-                        headers={
-                            "apikey": auth_manager.supabase_anon_key,
-                            "Authorization": f"Bearer {token}" if token else f"Bearer {auth_manager.supabase_anon_key}",
-                            "Content-Type": "application/json"
-                        },
-                        json={"user_uuid": request.user_id}
-                    )
-
-                    logger.debug(f"Admin check HTTP response: status={response.status_code}, body={response.text[:200]}")
-
-                    if response.status_code == 200:
-                        result = response.json()
-                        if isinstance(result, bool):
-                            is_user_admin = result
-                        elif isinstance(result, list) and len(result) > 0:
-                            is_user_admin = bool(result[0])
-                except Exception as e:
-                    admin_check_error = str(e)
-                    logger.debug(f"Error checking admin with HTTP request: {e}")
-
-            # Final fallback to auth_manager method
-            if not is_user_admin:
-                logger.debug(f"Trying final fallback admin check for user_id: {request.user_id}")
-                is_user_admin = auth_manager.is_admin(request.user_id)
-                logger.debug(f"Final fallback admin check result: {is_user_admin}")
-        except Exception as e:
-            admin_check_error = str(e)
-            logger.error(f"Error checking admin status: {e}", exc_info=True)
+            except Exception as e:
+                admin_check_error = str(e)
+                logger.debug("Admin check via Supabase client failed: %s", e, exc_info=True)
 
         if not is_user_admin:
-            error_msg = f"Admin check failed for user_id: {request.user_id}, email: {request.user_email}"
+            try:
+                response = requests.post(
+                    f"{auth_manager.supabase_url}/rest/v1/rpc/is_admin",
+                    headers={
+                        "apikey": auth_manager.supabase_anon_key,
+                        "Authorization": f"Bearer {token}" if token else f"Bearer {auth_manager.supabase_anon_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"user_uuid": request.user_id},
+                    timeout=10,
+                )
+                if response.status_code == 200:
+                    result = response.json()
+                    if isinstance(result, bool):
+                        is_user_admin = result
+                    elif isinstance(result, list) and len(result) > 0:
+                        is_user_admin = bool(result[0])
+            except Exception as e:
+                admin_check_error = str(e)
+                logger.debug("Admin check via HTTP failed: %s", e)
+
+        if not is_user_admin:
+            is_user_admin = auth_manager.is_admin(request.user_id)
+    except Exception as e:
+        admin_check_error = str(e)
+        logger.error("Error checking admin status: %s", e, exc_info=True)
+
+    return is_user_admin, admin_check_error
+
+
+def require_admin(f):
+    """Decorator: same session refresh as require_auth, then admin role check."""
+
+    @wraps(f)
+    @require_auth
+    def decorated_function(*args, **kwargs):
+        is_user_admin, admin_check_error = _user_has_admin_access()
+        if not is_user_admin:
+            error_msg = (
+                f"Admin check failed for user_id: {getattr(request, 'user_id', None)}, "
+                f"email: {getattr(request, 'user_email', None)}"
+            )
             if admin_check_error:
                 error_msg += f", error: {admin_check_error}"
             logger.warning(error_msg)
-            if request.path.startswith('/api/'):
+            if request.path.startswith("/api/"):
                 return jsonify({"error": "Admin privileges required", "details": admin_check_error}), 403
-            else:
-                return redirect('/auth')
-
+            return redirect("/auth")
         return f(*args, **kwargs)
+
     return decorated_function
 
 def is_admin():

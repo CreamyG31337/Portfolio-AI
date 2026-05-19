@@ -279,94 +279,84 @@ function showConfirmationToast(message: string, onConfirm: () => void, onCancel?
     }, 10);
 }
 
+/** Status dot beside each card — HTML uses bg-text-tertiary initially, not bg-gray-200. */
+function setStatusIndicator(
+    el: HTMLElement | null,
+    state: 'pending' | 'ok' | 'error',
+): void {
+    if (!el) {
+        return;
+    }
+    el.classList.remove('bg-text-tertiary', 'bg-gray-200', 'bg-green-500', 'bg-red-500');
+    if (state === 'ok') {
+        el.classList.add('bg-green-500');
+    } else if (state === 'error') {
+        el.classList.add('bg-red-500');
+    } else {
+        el.classList.add('bg-text-tertiary');
+    }
+}
+
 // Status Check Function
 async function checkStatus() {
     if (ollamaMessage) ollamaMessage.textContent = 'Checking...';
     if (postgresMessage) postgresMessage.textContent = 'Checking...';
     if (webaiMessage) webaiMessage.textContent = 'Checking...';
     if (glmMessage) glmMessage.textContent = 'Checking...';
+    setStatusIndicator(ollamaIndicator, 'pending');
+    setStatusIndicator(postgresIndicator, 'pending');
+    setStatusIndicator(webaiIndicator, 'pending');
+    setStatusIndicator(glmIndicator, 'pending');
 
     try {
-        const response = await fetch('/api/admin/ai/status');
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+        const response = await fetch('/api/admin/ai/status', {
+            credentials: 'include',
+            signal: controller.signal,
+        });
+        window.clearTimeout(timeoutId);
         const data: StatusResponse = await response.json();
 
         // Update Ollama Status
-        if (ollamaIndicator && ollamaMessage) {
-            if (data.ollama.status) {
-                ollamaIndicator.classList.remove('bg-gray-200', 'bg-red-500');
-                ollamaIndicator.classList.add('bg-green-500');
-                ollamaMessage.textContent = 'Online';
-                ollamaMessage.classList.remove('text-red-500');
-                ollamaMessage.classList.add('text-green-500');
-            } else {
-                ollamaIndicator.classList.remove('bg-gray-200', 'bg-green-500');
-                ollamaIndicator.classList.add('bg-red-500');
-                ollamaMessage.textContent = data.ollama.message || 'Offline';
-                ollamaMessage.classList.remove('text-green-500');
-                ollamaMessage.classList.add('text-red-500');
-            }
+        if (ollamaMessage) {
+            const ollamaOk = Boolean(data.ollama?.status);
+            setStatusIndicator(ollamaIndicator, ollamaOk ? 'ok' : 'error');
+            ollamaMessage.textContent = ollamaOk ? 'Online' : (data.ollama?.message || 'Offline');
+            ollamaMessage.classList.toggle('text-green-500', ollamaOk);
+            ollamaMessage.classList.toggle('text-red-500', !ollamaOk);
         }
 
         // Update Postgres Status
-        if (postgresIndicator && postgresMessage) {
-            if (data.postgres.status === 'healthy') {
-                postgresIndicator.classList.remove('bg-gray-200', 'bg-red-500');
-                postgresIndicator.classList.add('bg-green-500');
-                postgresMessage.textContent = 'Connected';
-                postgresMessage.classList.remove('text-red-500');
-                postgresMessage.classList.add('text-green-500');
-            } else {
-                postgresIndicator.classList.remove('bg-gray-200', 'bg-green-500');
-                postgresIndicator.classList.add('bg-red-500');
-                postgresMessage.textContent = data.postgres.message || 'Error';
-                postgresMessage.classList.remove('text-green-500');
-                postgresMessage.classList.add('text-red-500');
-            }
+        if (postgresMessage) {
+            const pgOk = data.postgres?.status === 'healthy';
+            setStatusIndicator(postgresIndicator, pgOk ? 'ok' : 'error');
+            postgresMessage.textContent = pgOk ? 'Connected' : (data.postgres?.message || 'Error');
+            postgresMessage.classList.toggle('text-green-500', pgOk);
+            postgresMessage.classList.toggle('text-red-500', !pgOk);
         }
 
         // Update WebAI Cookie Status
-        if (webaiIndicator && webaiMessage && data.webai) {
-            if (data.webai.status) {
-                webaiIndicator.classList.remove('bg-gray-200', 'bg-red-500');
-                webaiIndicator.classList.add('bg-green-500');
-                webaiMessage.textContent = 'Configured';
-                webaiMessage.classList.remove('text-red-500');
-                webaiMessage.classList.add('text-green-500');
-                if (webaiSource && data.webai.source) {
-                    webaiSource.textContent = `Source: ${data.webai.source}`;
-                }
-            } else {
-                webaiIndicator.classList.remove('bg-gray-200', 'bg-green-500');
-                webaiIndicator.classList.add('bg-red-500');
-                webaiMessage.textContent = data.webai.message || 'Not configured';
-                webaiMessage.classList.remove('text-green-500');
-                webaiMessage.classList.add('text-red-500');
-                if (webaiSource) {
-                    webaiSource.textContent = '';
-                }
+        if (webaiMessage && data.webai) {
+            const webaiOk = Boolean(data.webai.status);
+            setStatusIndicator(webaiIndicator, webaiOk ? 'ok' : 'error');
+            webaiMessage.textContent = webaiOk ? 'Configured' : (data.webai.message || 'Not configured');
+            webaiMessage.classList.toggle('text-green-500', webaiOk);
+            webaiMessage.classList.toggle('text-red-500', !webaiOk);
+            if (webaiSource) {
+                webaiSource.textContent = webaiOk && data.webai.source ? `Source: ${data.webai.source}` : '';
             }
         }
 
         // Update GLM 4.7 (Zhipu) API Key Status
-        if (glmIndicator && glmMessage && data.glm) {
-            if (data.glm.status) {
-                glmIndicator.classList.remove('bg-gray-200', 'bg-red-500');
-                glmIndicator.classList.add('bg-green-500');
-                glmMessage.textContent = data.glm.message || 'Set';
-                glmMessage.classList.remove('text-red-500');
-                glmMessage.classList.add('text-green-500');
-                if (glmSource && data.glm.source) {
-                    glmSource.textContent = `Source: ${data.glm.source}`;
-                }
-            } else {
-                glmIndicator.classList.remove('bg-gray-200', 'bg-green-500');
-                glmIndicator.classList.add('bg-red-500');
-                glmMessage.textContent = data.glm.message || 'Not set';
-                glmMessage.classList.remove('text-green-500');
-                glmMessage.classList.add('text-red-500');
-                if (glmSource) {
-                    glmSource.textContent = '';
-                }
+        if (glmMessage && data.glm) {
+            const glmOk = Boolean(data.glm.status);
+            setStatusIndicator(glmIndicator, glmOk ? 'ok' : 'error');
+            glmMessage.textContent = glmOk ? (data.glm.message || 'Set') : (data.glm.message || 'Not set');
+            glmMessage.classList.toggle('text-green-500', glmOk);
+            glmMessage.classList.toggle('text-red-500', !glmOk);
+            if (glmSource) {
+                glmSource.textContent = glmOk && data.glm.source ? `Source: ${data.glm.source}` : '';
             }
         }
     } catch (error) {
@@ -375,6 +365,10 @@ async function checkStatus() {
         if (postgresMessage) postgresMessage.textContent = 'Error checking status';
         if (webaiMessage) webaiMessage.textContent = 'Error checking status';
         if (glmMessage) glmMessage.textContent = 'Error checking status';
+        setStatusIndicator(ollamaIndicator, 'error');
+        setStatusIndicator(postgresIndicator, 'error');
+        setStatusIndicator(webaiIndicator, 'error');
+        setStatusIndicator(glmIndicator, 'error');
     }
 }
 
@@ -1287,17 +1281,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         settingsForm: !!settingsForm
     });
 
-    // Check initial status
+    // Initial load: status + settings + cookies in parallel (status was blocking ~30s
+    // when the API probed every model_config Ollama host sequentially).
     console.log('[DEBUG] Checking initial status...');
-    await checkStatus();
-
-    // Load settings
-    console.log('[DEBUG] Loading settings...');
-    await loadSettings();
-
-    // Load current cookies
-    console.log('[DEBUG] Loading current cookies...');
-    await loadCurrentCookies();
+    await Promise.all([
+        checkStatus(),
+        loadSettings(),
+        loadCurrentCookies(),
+    ]);
 
     // Load cookie refresher logs
     if (cookieLogLinesInput) {
