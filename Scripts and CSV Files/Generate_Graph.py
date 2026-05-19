@@ -414,7 +414,7 @@ def load_portfolio_totals() -> pd.DataFrame:
     
     if not today_data.empty:
         has_real_prices = False
-        for _, row in today_data.iterrows():
+        for row in today_data.to_dict('records'):
             if 'Current Price' in row and 'Average Price' in row:
                 if pd.notna(row['Current Price']) and pd.notna(row['Average Price']):
                     diff = abs(row['Current Price'] - row['Average Price'])
@@ -468,10 +468,10 @@ def load_portfolio_totals() -> pd.DataFrame:
         day_df = llm_df[llm_df['Date'].dt.date == current_date.date()]
 
         # Update portfolio with the latest info from the day
-        for _, row in day_df.iterrows():
+        for row in day_df.to_dict('records'):
             ticker = row['Ticker']
             # We take the last update for any given ticker on a given day
-            portfolio[ticker] = row.to_dict()
+            portfolio[ticker] = row
 
         # Remove sold positions
         portfolio = {ticker: pos for ticker, pos in portfolio.items() if pos['Total Value'] > 0}
@@ -638,19 +638,10 @@ def create_continuous_timeline(df: pd.DataFrame) -> pd.DataFrame:
     # For weekends, use market close time of the weekend day to keep lines flat
     from datetime import timedelta
     
-    for idx, row in merged.iterrows():
-        date_only = row['Date'].date()
-        weekday = pd.to_datetime(date_only).weekday()
-        
-        if weekday < 5:  # Trading day (Mon-Fri = 0-4)
-            # Set to market close time: 1:00 PM PST (13:00)
-            market_close_time = pd.to_datetime(date_only) + timedelta(hours=13)
-            merged.at[idx, 'Date'] = market_close_time
-        else:  # Weekend (Sat-Sun = 5-6)
-            # Also use market close time for weekend days to keep lines flat
-            # This prevents diagonal lines from weekend midnight to Monday market close
-            weekend_market_close = pd.to_datetime(date_only) + timedelta(hours=13)
-            merged.at[idx, 'Date'] = weekend_market_close
+    # Vectorized market timing calculation
+    # For both trading days and weekends, set to market close time: 1:00 PM PST (13:00)
+    # This prevents diagonal lines from weekend midnight to Monday market close
+    merged['Date'] = merged['Date'].dt.normalize() + pd.Timedelta(hours=13)
     
     # Drop the helper column
     merged = merged.drop('Date_Only', axis=1)
@@ -796,19 +787,10 @@ def download_benchmark(benchmark_name: str, start_date: pd.Timestamp, end_date: 
         
         # Apply market timing: trading days at market close (13:00 PST), weekends at midnight
         from datetime import timedelta
-        for idx, row in merged.iterrows():
-            date_only = row['Date'].date()
-            weekday = pd.to_datetime(date_only).weekday()
-            
-            if weekday < 5:  # Trading day (Mon-Fri = 0-4)
-                # Set to market close time: 1:00 PM PST (13:00) to match portfolio timing
-                market_close_time = pd.to_datetime(date_only) + timedelta(hours=13)
-                merged.at[idx, 'Date'] = market_close_time
-            else:  # Weekend (Sat-Sun = 5-6)
-                # Also use market close time for weekend days to match portfolio timing
-                # This prevents misaligned dots and keeps both series consistent
-                weekend_market_close = pd.to_datetime(date_only) + timedelta(hours=13)
-                merged.at[idx, 'Date'] = weekend_market_close
+        # Vectorized market timing calculation
+        # Set to market close time: 1:00 PM PST (13:00) to match portfolio timing
+        # For both trading days and weekends, this prevents misaligned dots
+        merged['Date'] = merged['Date'].dt.normalize() + pd.Timedelta(hours=13)
         
         print(f"{_safe_emoji('📈')} {display_name} data: {len(benchmark_clean)} trading days -> {len(merged)} total days (with weekends)")
         return merged[["Date", column_name]]
