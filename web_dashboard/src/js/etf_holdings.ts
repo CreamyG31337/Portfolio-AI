@@ -566,7 +566,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 spinner.classList.remove("hidden");
                 spinner.classList.add("flex");
             }
-            const config = JSON.parse(configElement.textContent || '{}');
+            const raw = configElement.textContent || '{}';
+            // Guard against legacy server payloads with NaN (invalid JSON)
+            const safeJson = raw
+                .replace(/\bNaN\b/g, 'null')
+                .replace(/\b-Infinity\b/g, 'null')
+                .replace(/\bInfinity\b/g, 'null');
+            const config = JSON.parse(safeJson);
             if (config.holdingsData) {
                 initializeEtfGrid(config.holdingsData, config.viewMode || 'holdings');
             }

@@ -19,6 +19,38 @@ from research_repository import ResearchRepository
 # Module-level PostgresClient for Research DB queries (etf_holdings_log)
 _postgres_client: Optional[PostgresClient] = None
 
+def _logo_url_for_ticker(ticker: Any, logo_map: Dict[str, Optional[str]]) -> Optional[str]:
+    """Resolve logo URL; never return NaN (breaks JSON.parse in the browser)."""
+    if ticker is None:
+        return None
+    try:
+        if pd.isna(ticker):
+            return None
+    except (TypeError, ValueError):
+        pass
+    key = str(ticker).strip()
+    if not key:
+        return None
+    return logo_map.get(key) or logo_map.get(ticker)
+
+
+def _holdings_records_for_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """DataFrame → list[dict] safe for Jinja ``|tojson`` (no NaN tokens)."""
+    from plotly_utils import convert_numpy_to_list
+
+    if df.empty:
+        return []
+    out = df.copy()
+    for col in ("_holding_logo_url", "_etf_logo_url"):
+        if col in out.columns:
+            out[col] = out[col].map(
+                lambda v: None if v is None or (isinstance(v, float) and pd.isna(v)) else v,
+                na_action=None,
+            )
+    out = out.where(pd.notna(out), None)
+    return convert_numpy_to_list(out.to_dict(orient="records"))
+
+
 def _get_postgres_client() -> PostgresClient:
     """Get or create PostgresClient for Research DB queries."""
     global _postgres_client
@@ -910,13 +942,19 @@ def etf_holdings():
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
         
-        # Add logo URLs to DataFrame
-        if 'holding_ticker' in changes_df.columns:
-            changes_df['_holding_logo_url'] = changes_df['holding_ticker'].map(lambda x: logo_urls_map.get(x) if x else None)
-        if 'etf_ticker' in changes_df.columns:
-            changes_df['_etf_logo_url'] = changes_df['etf_ticker'].map(lambda x: logo_urls_map.get(x) if x else None)
-            
-        data_json = changes_df.to_dict(orient='records')
+        # Add logo URLs (object column — float column would serialize as NaN in JSON)
+        if "holding_ticker" in changes_df.columns:
+            changes_df["_holding_logo_url"] = changes_df["holding_ticker"].map(
+                lambda t: _logo_url_for_ticker(t, logo_urls_map),
+                na_action=None,
+            )
+        if "etf_ticker" in changes_df.columns:
+            changes_df["_etf_logo_url"] = changes_df["etf_ticker"].map(
+                lambda t: _logo_url_for_ticker(t, logo_urls_map),
+                na_action=None,
+            )
+
+        data_json = _holdings_records_for_json(changes_df)
     else:
         data_json = []
 
