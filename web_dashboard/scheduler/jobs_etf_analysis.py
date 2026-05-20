@@ -58,27 +58,46 @@ def reset_stale_in_progress_queue(max_age_hours: float = 2.0) -> int:
         return 0
 
 
-def get_pending_etf_analysis(limit: int = MAX_ITEMS_PER_RUN) -> list[dict]:
-    """Pending/failed ETF group work, newest ``target_key`` dates first (bounded per run)."""
+def _etf_queue_target_date(item: dict[str, Any]) -> str:
+    key = str(item.get("target_key") or "")
+    parts = key.split("_", 1)
+    return parts[1] if len(parts) > 1 else ""
+
+
+def get_pending_etf_analysis(
+    limit: int = MAX_ITEMS_PER_RUN,
+    lookback_days: int | None = None,
+) -> list[dict]:
+    """Pending/failed ETF group work, newest holdings dates first within lookback."""
     try:
+        if lookback_days is None:
+            lookback_days = get_etf_queue_lookback_days()
+        cutoff = (datetime.now(UTC).date() - timedelta(days=max(1, lookback_days) - 1)).isoformat()
+
         db = SupabaseClient(use_service_role=True)
-        result = (
-            db.supabase.table("ai_analysis_queue")
-            .select("*")
-            .eq("analysis_type", "etf_group")
-            .in_("status", ["pending", "failed"])
-            .order("created_at", desc=True)
-            .limit(max(limit * 3, limit))
-            .execute()
-        )
-        rows = list(result.data or [])
+        rows: list[dict[str, Any]] = []
+        page_size = 500
+        offset = 0
+        while True:
+            result = (
+                db.supabase.table("ai_analysis_queue")
+                .select("*")
+                .eq("analysis_type", "etf_group")
+                .in_("status", ["pending", "failed"])
+                .order("created_at", desc=True)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = list(result.data or [])
+            if not batch:
+                break
+            rows.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
 
-        def _sort_key(item: dict[str, Any]) -> str:
-            key = str(item.get("target_key") or "")
-            parts = key.split("_", 1)
-            return parts[1] if len(parts) > 1 else ""
-
-        rows.sort(key=_sort_key, reverse=True)
+        rows = [r for r in rows if _etf_queue_target_date(r) >= cutoff]
+        rows.sort(key=_etf_queue_target_date, reverse=True)
         return rows[:limit]
     except Exception as e:
         logger.error(f"Error fetching pending ETF analysis: {e}")

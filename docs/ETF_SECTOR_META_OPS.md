@@ -37,8 +37,11 @@ python web_dashboard\scripts\backfill_etf_sector_meta.py
 That script:
 
 1. Prints which days are missing ETF Analysis articles.
-2. Runs `etf_group_analysis` repeatedly (6 ETFs per run) until gaps in the lookback window are filled or `--max-runs` is hit.
-3. Runs `sector_meta_analysis` once to refresh Sector Insights.
+2. Purges stale `ai_analysis_queue` rows outside the lookback window (old pending rows used to starve May work).
+3. Runs `etf_group_analysis` repeatedly (6 ETFs per run) until gaps are filled, `--max-runs` is hit, or **two consecutive runs fill zero pairs**.
+4. Runs `sector_meta_analysis` once to refresh Sector Insights.
+
+**Progress detection:** each run compares missing `(etf, date)` snapshots. Filling 6 pairs while watchtower adds 8 new same-day gaps is still progress; the script only stalls when **zero** pairs were filled for `--max-stall-runs` consecutive runs (default 2).
 
 Options:
 
@@ -48,6 +51,9 @@ python web_dashboard\scripts\backfill_etf_sector_meta.py --lookback-days 30 --ma
 
 # See gaps only
 python web_dashboard\scripts\backfill_etf_sector_meta.py --report-only
+
+# Allow more empty runs before giving up (e.g. AI lock contention)
+python web_dashboard\scripts\backfill_etf_sector_meta.py --max-stall-runs 4
 ```
 
 ## Automatic catch-up (nightly)

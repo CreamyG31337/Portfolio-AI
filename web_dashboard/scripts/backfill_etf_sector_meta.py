@@ -23,7 +23,6 @@ import logging
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 _script = Path(__file__).resolve()
@@ -38,7 +37,10 @@ load_dotenv(_web_root / ".env")
 
 from etf_meta_pipeline import (  # noqa: E402
     count_missing_etf_article_pairs,
+    fetch_missing_etf_article_pair_keys,
+    measure_backfill_progress,
     print_gap_table,
+    purge_stale_etf_group_queue,
 )
 from postgres_client import PostgresClient  # noqa: E402
 
@@ -101,6 +103,12 @@ def main() -> int:
         action="store_true",
         help="Print gap table and exit",
     )
+    parser.add_argument(
+        "--max-stall-runs",
+        type=int,
+        default=2,
+        help="Stop after this many consecutive etf_group runs with zero pairs filled (default 2)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -127,29 +135,55 @@ def main() -> int:
         # Widen queue window for this process
         os.environ["ETF_GROUP_QUEUE_LOOKBACK_DAYS"] = str(lookback)
         os.environ["ETF_GROUP_QUEUE_MAX_LOOKBACK_DAYS"] = str(max(lookback, 30))
+        purged = purge_stale_etf_group_queue(lookback)
+        if purged:
+            log.info("Removed %s stale queue row(s) outside %s-day window.", purged, lookback)
 
+        stall_runs = 0
         for run_idx in range(1, args.max_runs + 1):
-            missing_before = count_missing_etf_article_pairs(pc, lookback)
-            if missing_before == 0:
+            before_keys = fetch_missing_etf_article_pair_keys(pc, lookback)
+            if not before_keys:
                 log.info("All gaps filled after %s run(s).", run_idx - 1)
                 break
             log.info(
                 "=== etf_group_analysis run %s/%s (%s pairs remaining) ===",
                 run_idx,
                 args.max_runs,
-                missing_before,
+                len(before_keys),
             )
             rc = _run_scheduler_job("etf_group_analysis", args.wait_ai_lock, args.ignore_ai_lock)
             if rc != 0:
                 return rc
-            missing_after = count_missing_etf_article_pairs(pc, lookback)
-            if missing_after >= missing_before:
-                log.warning(
-                    "No progress this run (%s → %s). Stopping.",
-                    missing_before,
-                    missing_after,
+            after_keys = fetch_missing_etf_article_pair_keys(pc, lookback)
+            progress = measure_backfill_progress(before_keys, after_keys)
+            if progress.filled > 0:
+                stall_runs = 0
+                sample = ", ".join(f"{etf}/{d}" for etf, d in sorted(progress.filled_pairs)[:4])
+                extra = f" (+{progress.filled - 4} more)" if progress.filled > 4 else ""
+                log.info(
+                    "Filled %s pair(s)%s; %s new gap(s) appeared (net %s).",
+                    progress.filled,
+                    f" e.g. {sample}{extra}" if sample else "",
+                    progress.new_gaps,
+                    progress.net_delta,
                 )
-                break
+            else:
+                stall_runs += 1
+                log.warning(
+                    "No pairs filled this run (%s missing → %s; %s new gap(s)). "
+                    "Stall %s/%s.",
+                    len(before_keys),
+                    len(after_keys),
+                    progress.new_gaps,
+                    stall_runs,
+                    args.max_stall_runs,
+                )
+                if stall_runs >= max(1, args.max_stall_runs):
+                    log.warning(
+                        "Stopping after %s consecutive run(s) with no fills.",
+                        stall_runs,
+                    )
+                    break
         else:
             log.warning(
                 "Stopped at --max-runs=%s; %s pairs still missing. Re-run this script or wait for nightly jobs.",
