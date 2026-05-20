@@ -464,7 +464,7 @@
 
 <!-- Ticker Autocomplete -->
 <script type="module">
-    import { setupTickerAutocomplete } from '/assets/js/ticker_autocomplete.js';
+    import { setupTickerAutocomplete } from '/assets/js/ticker_autocomplete.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}';
     
     document.addEventListener('DOMContentLoaded', function() {
         const currentTicker = document.getElementById('congress-ticker-filter-hidden')?.value || 'All';
@@ -480,5 +480,5 @@
     });
 </script>
 
-<script type="module" src="/assets/js/congress_trades.js"></script>
+<script type="module" src="/assets/js/congress_trades.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 {% endblock %}

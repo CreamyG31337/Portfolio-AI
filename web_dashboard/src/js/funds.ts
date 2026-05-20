@@ -529,17 +529,6 @@ async function loadCashBalancesForFund(fundName: string): Promise<void> {
     }
 }
 
-function loadCashBalancesForSelectedFund(): void {
-    if (!isSingleFundSelected()) {
-        showToastForFunds('Select a specific fund from the navigation menu', 'error');
-        const elements = getElements();
-        if (elements.cashCadInput) elements.cashCadInput.value = '';
-        if (elements.cashUsdInput) elements.cashUsdInput.value = '';
-        return;
-    }
-    void loadCashBalancesForFund(getSelectedFund());
-}
-
 async function saveCashBalances(): Promise<void> {
     const elements = getElements();
     const cadEl = elements.cashCadInput;
@@ -661,5 +650,4 @@ window.showDeleteConfirm = showDeleteConfirm;
 window.confirmDeleteFund = confirmDeleteFund;
 window.refreshTickerMetadata = refreshTickerMetadata;
 window.rebuildPortfolio = rebuildPortfolio;
-window.loadCashBalancesForSelectedFund = loadCashBalancesForSelectedFund;
 window.saveCashBalances = saveCashBalances;

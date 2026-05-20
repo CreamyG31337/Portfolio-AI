@@ -18,5 +18,5 @@
 <!-- Flowbite component styles and theme variables are built into tailwind.css (Tailwind v4 + Flowbite v4) -->
 
 <!-- Theme Management Scripts -->
-<script type="module" src="/assets/js/theme.js"></script>
-<script type="module" src="/assets/js/chart_theme_utils.js"></script>
+<script type="module" src="/assets/js/theme.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+<script type="module" src="/assets/js/chart_theme_utils.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>

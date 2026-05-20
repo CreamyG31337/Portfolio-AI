@@ -334,5 +334,5 @@
     }
 </script>
 
-<script type="module" src="/assets/js/etf_holdings.js"></script>
+<script type="module" src="/assets/js/etf_holdings.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 {% endblock %}

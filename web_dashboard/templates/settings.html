@@ -210,5 +210,5 @@
 }
 </script>
 
-<script type="module" src="/assets/js/settings.js" data-cfasync="false"></script>
+<script type="module" src="/assets/js/settings.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}" data-cfasync="false"></script>
 {% endblock %}

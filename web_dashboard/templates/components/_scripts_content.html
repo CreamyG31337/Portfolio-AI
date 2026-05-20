@@ -1,11 +1,11 @@
 <!-- Global 401 interceptor: redirects to /auth when any API call returns 401 -->
-<script type="module" src="/assets/js/session_guard.js"></script>
+<script type="module" src="/assets/js/session_guard.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 
 <!-- Flowbite JavaScript (required for interactive components) -->
 <script src="https://cdn.jsdelivr.net/npm/flowbite@4.0.1/dist/flowbite.min.js"></script>
 
 <!-- UI Utilities Module (sidebar, header, scheduler badge, fund selector) -->
-<script type="module" src="/assets/js/ui.js"></script>
+<script type="module" src="/assets/js/ui.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 
 <!-- Logo Switcher -->
-<script src="/assets/js/logo_switcher.js"></script>
+<script src="/assets/js/logo_switcher.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>

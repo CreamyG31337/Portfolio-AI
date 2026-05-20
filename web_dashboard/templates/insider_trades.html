@@ -213,7 +213,7 @@
 <script id="insider-trades-config" type="application/json">
 {{ config | tojson }}
 </script>
-<script type="module" src="/assets/js/insider_trades.js"></script>
+<script type="module" src="/assets/js/insider_trades.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 
 {% endif %}
 {% endblock %}

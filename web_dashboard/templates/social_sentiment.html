@@ -239,5 +239,5 @@
 }
 </script>
 
-<script type="module" src="/assets/js/social_sentiment.js"></script>
+<script type="module" src="/assets/js/social_sentiment.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 {% endblock %}

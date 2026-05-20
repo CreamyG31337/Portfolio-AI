@@ -876,5 +876,5 @@
                 modelConfig: {{ model_config | tojson | safe if model_config else '{}' }}
             };
         </script>
-        <script type="module" src="/assets/js/ticker_details.js"></script>
+        <script type="module" src="/assets/js/ticker_details.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
         {% endblock %}

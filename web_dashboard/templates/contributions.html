@@ -199,5 +199,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script type="module" src="/assets/js/contributions.js"></script>
+<script type="module" src="/assets/js/contributions.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 {% endblock %}

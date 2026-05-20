@@ -1248,7 +1248,7 @@
 
 <!-- Ticker Autocomplete -->
 <script type="module">
-    import { setupTickerAutocomplete } from '/assets/js/ticker_autocomplete.js';
+    import { setupTickerAutocomplete } from '/assets/js/ticker_autocomplete.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}';
     
     document.addEventListener('DOMContentLoaded', function() {
         const currentTicker = document.getElementById('ticker-filter-hidden')?.value || 'All';

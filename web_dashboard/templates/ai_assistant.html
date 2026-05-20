@@ -383,5 +383,5 @@
 </script>
 
 <!-- AI Assistant JavaScript (ES module - uses import) -->
-<script type="module" src="/assets/js/ai_assistant.js"></script>
+<script type="module" src="/assets/js/ai_assistant.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 {% endblock %}

@@ -217,8 +217,8 @@
     <script src="https://cdn.jsdelivr.net/npm/flowbite@4.0.1/dist/flowbite.min.js"></script>
 
     <!-- Theme Manager Script -->
-    <script type="module" src="/assets/js/theme.js"></script>
-    <script type="module" src="/assets/js/ui.js"></script>
+    <script type="module" src="/assets/js/theme.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+    <script type="module" src="/assets/js/ui.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
 
     <script>
         // Wait for theme manager to be ready
