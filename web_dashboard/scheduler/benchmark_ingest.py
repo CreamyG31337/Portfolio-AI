@@ -243,9 +243,11 @@ def reconcile_benchmark_cache_to_yahoo(
         return
 
     processed["Date"] = pd.to_datetime(processed["Date"]).dt.normalize()
+    # Bolt Performance Optimization:
+    # Replacing slow iterrows() with to_dict('records') for faster processing (10-100x speedup)
     y_map = {
         r["Date"].date().isoformat(): float(r["Close"])
-        for _, r in processed.iterrows()
+        for r in processed.to_dict('records')
     }
 
     db_pairs: list[tuple[str, float]] = []
