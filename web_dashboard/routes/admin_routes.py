@@ -2149,10 +2149,29 @@ def api_job_steps(job_id):
 @admin_bp.route("/api/admin/scheduler/ai-activity")
 @require_admin
 def api_scheduler_ai_activity():
-    """Global AI lock + recent LLM job rows (job_executions) for the Jobs admin UI."""
+    """Global AI lock + recent LLM job rows (job_executions) for the Jobs admin UI.
+
+    Query params (optional):
+        limit: max recent rows to return (default 45, capped at 500).
+        hours: only include rows whose ``started_at`` is within the last N hours.
+    """
     try:
+        from datetime import datetime, timedelta, timezone
+
         from supabase_client import SupabaseClient
         from utils.job_tracking import AI_JOB_NAMES, get_running_ai_job
+
+        try:
+            limit_raw = int(request.args.get("limit", 45))
+        except (TypeError, ValueError):
+            limit_raw = 45
+        limit = max(1, min(limit_raw, 500))
+
+        hours_param: int | None
+        try:
+            hours_param = int(request.args.get("hours", "0")) or None
+        except (TypeError, ValueError):
+            hours_param = None
 
         names = sorted(AI_JOB_NAMES)
         client = SupabaseClient(use_service_role=True)
@@ -2167,16 +2186,19 @@ def api_scheduler_ai_activity():
         )
         running_rows = running_resp.data or []
 
-        recent_resp = (
+        recent_query = (
             client.supabase.table("job_executions")
             .select(
                 "id, job_name, status, started_at, completed_at, duration_ms, error_message, target_date"
             )
             .in_("job_name", names)
             .order("started_at", desc=True)
-            .limit(45)
-            .execute()
+            .limit(limit)
         )
+        if hours_param and hours_param > 0:
+            since = datetime.now(timezone.utc) - timedelta(hours=hours_param)
+            recent_query = recent_query.gte("started_at", since.isoformat())
+        recent_resp = recent_query.execute()
         recent = recent_resp.data or []
         for row in recent:
             em = row.get("error_message")
@@ -2190,6 +2212,7 @@ def api_scheduler_ai_activity():
                 "running_ai": running_rows,
                 "recent_executions": recent,
                 "tracked_ai_job_names": names,
+                "filters": {"limit": limit, "hours": hours_param},
             }
         )
     except Exception as e:

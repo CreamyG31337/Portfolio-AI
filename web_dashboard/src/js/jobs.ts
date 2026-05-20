@@ -135,6 +135,21 @@ let currentBackoffDelay = 5000; // Start with 5 seconds
 let isRecovering = false;
 let errorToastId: string | null = null; // Track persistent error toast
 
+// AI activity panel state (separate from main jobs refresh so the user can pause
+// the Recent runs table while copying without freezing the rest of the page).
+type AiActivityWindow = '1h' | '24h' | '7d' | '30d' | 'all';
+const AI_ACTIVITY_WINDOWS: Record<AiActivityWindow, { hours: number; limit: number; label: string }> = {
+    '1h': { hours: 1, limit: 60, label: 'Last 1 hour' },
+    '24h': { hours: 24, limit: 100, label: 'Last 24 hours' },
+    '7d': { hours: 24 * 7, limit: 300, label: 'Last 7 days' },
+    '30d': { hours: 24 * 30, limit: 500, label: 'Last 30 days' },
+    all: { hours: 0, limit: 500, label: 'All recent (max 500)' },
+};
+let aiActivityWindow: AiActivityWindow = '24h';
+let aiActivityPaused = false;
+let lastAiActivitySig = '';
+let lastAiActivityRecent: Array<Record<string, unknown>> = [];
+
 // DOM Elements - Note: These may be null if called before DOM is ready
 const elements: JobsDOMElements = {
     statusContainer: null, // Will be set in DOMContentLoaded
@@ -333,20 +348,123 @@ function formatTs(val: unknown): string {
     return escapeHtml(d.toLocaleString());
 }
 
+function buildAiActivityTsv(rows: Array<Record<string, unknown>>): string {
+    const header = ['Job', 'Status', 'Started', 'Completed', 'Duration ms', 'Error'].join('\t');
+    const lines = rows.map((row) => {
+        const cell = (v: unknown): string => {
+            if (v == null || v === '') return '';
+            return String(v).replace(/[\t\r\n]+/g, ' ').trim();
+        };
+        return [
+            cell(row.job_name),
+            cell(row.status),
+            cell(row.started_at),
+            cell(row.completed_at),
+            cell(row.duration_ms),
+            cell(row.error_message),
+        ].join('\t');
+    });
+    return [header, ...lines].join('\n');
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        // Fallback for non-HTTPS / older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    } catch (e) {
+        console.error('[Jobs] Clipboard copy failed:', e);
+        return false;
+    }
+}
+
+function flashButtonText(btn: HTMLButtonElement, transient: string, restore: string, ms = 1500): void {
+    btn.textContent = transient;
+    window.setTimeout(() => {
+        btn.textContent = restore;
+    }, ms);
+}
+
+function wireAiActivityControls(): void {
+    const sel = document.getElementById('ai-activity-window') as HTMLSelectElement | null;
+    if (sel) {
+        sel.value = aiActivityWindow;
+        sel.addEventListener('change', () => {
+            const next = sel.value as AiActivityWindow;
+            if (next in AI_ACTIVITY_WINDOWS) {
+                aiActivityWindow = next;
+                lastAiActivitySig = ''; // force re-render with new window
+                void fetchAiActivity();
+            }
+        });
+    }
+    const pauseBtn = document.getElementById('ai-activity-pause-btn') as HTMLButtonElement | null;
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+            aiActivityPaused = !aiActivityPaused;
+            pauseBtn.dataset.paused = String(aiActivityPaused);
+            pauseBtn.textContent = aiActivityPaused ? 'Resume refresh' : 'Pause refresh';
+            pauseBtn.classList.toggle('bg-theme-warning-bg', aiActivityPaused);
+            pauseBtn.classList.toggle('text-theme-warning-text', aiActivityPaused);
+            if (!aiActivityPaused) {
+                void fetchAiActivity();
+            }
+        });
+    }
+    const copyBtn = document.getElementById('ai-activity-copy-btn') as HTMLButtonElement | null;
+    if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+            const tsv = buildAiActivityTsv(lastAiActivityRecent);
+            const ok = await copyTextToClipboard(tsv);
+            flashButtonText(
+                copyBtn,
+                ok ? `Copied ${lastAiActivityRecent.length} row(s)` : 'Copy failed',
+                'Copy table',
+            );
+        });
+    }
+}
+
 async function fetchAiActivity(): Promise<void> {
     const root = document.getElementById('ai-activity-root');
     if (!root) {
         return;
     }
+    if (aiActivityPaused) {
+        // Frozen: do not refetch / re-render while user is copying.
+        return;
+    }
     try {
-        const r = await fetch('/api/admin/scheduler/ai-activity', { credentials: 'include' });
+        const windowSpec = AI_ACTIVITY_WINDOWS[aiActivityWindow];
+        const params = new URLSearchParams({ limit: String(windowSpec.limit) });
+        if (windowSpec.hours > 0) {
+            params.set('hours', String(windowSpec.hours));
+        }
+        const r = await fetch(`/api/admin/scheduler/ai-activity?${params.toString()}`, {
+            credentials: 'include',
+        });
         const data = (await r.json()) as AiActivityResponse;
         if (!r.ok || !data.success) {
             root.innerHTML = `<div class="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">${escapeHtml(
                 data.error || `HTTP ${r.status}`
             )}</div>`;
+            lastAiActivitySig = '';
             return;
         }
+        const recent = data.recent_executions || [];
+        lastAiActivityRecent = recent;
+
         const lock = data.global_ai_lock_job
             ? `<span class="text-amber-600 dark:text-amber-400 font-medium">${escapeHtml(
                   data.global_ai_lock_job
@@ -361,7 +479,7 @@ async function fetchAiActivity(): Promise<void> {
                   })
                   .join('')}</ul>`
             : '<p class="text-sm text-text-secondary">None.</p>';
-        const rows = (data.recent_executions || [])
+        const rowsHtml = recent
             .map((row) => {
                 const status = escapeHtml(String(row.status ?? ''));
                 const jn = escapeHtml(String(row.job_name ?? ''));
@@ -385,7 +503,20 @@ async function fetchAiActivity(): Promise<void> {
             })
             .join('');
         const nTracked = (data.tracked_ai_job_names || []).length;
-        root.innerHTML = `
+        const windowOptions = (Object.keys(AI_ACTIVITY_WINDOWS) as AiActivityWindow[])
+            .map(
+                (key) =>
+                    `<option value="${key}"${
+                        key === aiActivityWindow ? ' selected' : ''
+                    }>${escapeHtml(AI_ACTIVITY_WINDOWS[key].label)}</option>`,
+            )
+            .join('');
+        const pauseLabel = aiActivityPaused ? 'Resume refresh' : 'Pause refresh';
+        const pauseClasses = aiActivityPaused
+            ? 'bg-theme-warning-bg text-theme-warning-text'
+            : 'bg-transparent text-text-secondary';
+
+        const html = `
             <div class="bg-dashboard-surface rounded-lg border border-border p-4">
                 <h3 class="text-base font-bold text-text-primary mb-2"><i class="fas fa-lock mr-2 text-accent"></i>Global AI lock</h3>
                 <p class="text-sm text-text-primary">${lock}</p>
@@ -395,7 +526,28 @@ async function fetchAiActivity(): Promise<void> {
                 ${running}
             </div>
             <div class="bg-dashboard-surface rounded-lg border border-border p-4 overflow-x-auto">
-                <h3 class="text-base font-bold text-text-primary mb-3"><i class="fas fa-history mr-2 text-accent"></i>Recent runs (newest first)</h3>
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <h3 class="text-base font-bold text-text-primary"><i class="fas fa-history mr-2 text-accent"></i>Recent runs (newest first)</h3>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <label class="text-xs text-text-secondary" for="ai-activity-window">Range</label>
+                        <select id="ai-activity-window"
+                            class="text-xs bg-dashboard-bg border border-border rounded-md px-2 py-1 text-text-primary focus:ring-2 focus:ring-accent/30">
+                            ${windowOptions}
+                        </select>
+                        <button id="ai-activity-pause-btn" type="button"
+                            data-paused="${aiActivityPaused ? 'true' : 'false'}"
+                            class="text-xs px-3 py-1 border border-border rounded-md hover:bg-accent/10 transition-colors ${pauseClasses}">
+                            ${escapeHtml(pauseLabel)}
+                        </button>
+                        <button id="ai-activity-copy-btn" type="button"
+                            class="text-xs px-3 py-1 border border-accent text-accent rounded-md hover:bg-accent/10 transition-colors">
+                            Copy table
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-text-secondary mb-2">Showing ${recent.length} row(s).${
+                    aiActivityPaused ? ' <span class="text-theme-warning-text">Auto-refresh paused.</span>' : ''
+                }</p>
                 <table class="w-full text-left text-sm">
                     <thead>
                         <tr class="border-b border-border text-text-secondary text-xs">
@@ -408,17 +560,27 @@ async function fetchAiActivity(): Promise<void> {
                         </tr>
                     </thead>
                     <tbody>${
-                        rows ||
-                        '<tr><td colspan="6" class="py-4 text-text-secondary">No rows.</td></tr>'
+                        rowsHtml ||
+                        '<tr><td colspan="6" class="py-4 text-text-secondary">No rows in this window.</td></tr>'
                     }</tbody>
                 </table>
             </div>
             <p class="text-xs text-text-secondary">${nTracked} job names classified as AI-heavy in <code class="text-xs">utils/job_tracking.py</code> (<code class="text-xs">AI_JOB_NAMES</code>).</p>
         `;
+
+        // Render only when content changes so text selection survives 5s polling.
+        const sig = `${aiActivityWindow}|${aiActivityPaused}|${html.length}|${html}`;
+        if (sig === lastAiActivitySig) {
+            return;
+        }
+        lastAiActivitySig = sig;
+        root.innerHTML = html;
+        wireAiActivityControls();
     } catch (e) {
         root.innerHTML = `<div class="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">${escapeHtml(
             e instanceof Error ? e.message : String(e)
         )}</div>`;
+        lastAiActivitySig = '';
     }
 }
 
