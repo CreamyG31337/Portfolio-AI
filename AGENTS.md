@@ -556,6 +556,24 @@ python scheduler/social_sentiment_ai_job.py
 2. Run social sentiment collection to generate data
 3. Execute AI analysis job
 4. Check web dashboard for AI analysis results
+
+## Meta Analysis (market → sector → ticker)
+
+**North star:** Human-in-the-loop buy/sell *ideas* from layered evidence (not auto-trading). Implementation is phased; see **`docs/meta_analysis_roadmap.md`**.
+
+**ETF / sector pipeline (Research DB for holdings):**
+
+```text
+etf_watchtower → etf_holdings_log (Research)
+etf_group_analysis → research_articles ("ETF Analysis")
+sector_meta_analysis → sector_meta_analysis table → /sector_insights
+ticker_meta_analysis → ticker_meta_analysis (Phase 3c: add sector prior — not shipped)
+```
+
+- **Do not** read Supabase `etf_holdings_log` (dropped May 2026).
+- **Catch-up after outage:** `python web_dashboard/scripts/backfill_etf_sector_meta.py` — see **`docs/ETF_SECTOR_META_OPS.md`**.
+- **ETF job details:** **`docs/ETF_AI_ANALYSIS_SYSTEM.md`**.
+
 ## Database Schema Documentation
 
 ### Schema Documentation Files

@@ -2,18 +2,60 @@
 
 This document tracks the multi-layer meta-analysis program and keeps the next phases explicit.
 
-## Program Goals
+**Related docs (keep in sync when the pipeline changes):**
 
-- Build a coherent stack across market, sector, and ticker layers.
-- Treat technical signals and curated research/news as first-class synthesis inputs.
-- Standardize outputs for downstream UI, scheduling, and evaluation loops.
+| Doc | Purpose |
+|-----|---------|
+| [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md) | Ops cheat sheet: catch-up after outage, one-command backfill |
+| [`docs/ETF_AI_ANALYSIS_SYSTEM.md`](ETF_AI_ANALYSIS_SYSTEM.md) | ETF group + ticker analysis jobs, prompts, storage |
+| [`docs/ETF_WATCHTOWER.md`](ETF_WATCHTOWER.md) | Holdings ingestion into Research |
 
-## Phase Status
+## Program goals (stable intent)
 
-- Phase 1 (Signal + News Fusion into Ticker Meta): `shipped — monitor output quality and lock/runtime behavior`
-- Phase 2 (Market Meta Regime Normalization): `Phase 2a + 2b shipped — regime_json, regime_canonical API, dashboard panel, enum drift warnings — Phase 2c deferred (see below)`
-- Phase 3 (Sector Meta Layer): `3a shipped (deploy fix landed 2026-05-14, awaiting frontend image rebuild); 3b sector_meta_analysis job is next; 3c/3d not started`
-- Phase 4+ (Adaptive weights, scheduling, and UI explainability): `planned`
+The program is **incremental by design**: we add one layer of structure, measure quality in production, then wire the next consumer. Prompt-only leaps are avoided when SQL invariants or job metrics can catch silent failure.
+
+**Long-term north star (moving target):** help answer *what to buy or sell* (or lean long/short/avoid) using:
+
+- **Market** regime (risk on/off, breadth, vol)
+- **Sector** rotation (ETF flow themes, sector stance)
+- **Ticker** evidence (signals, congress, insider, fundamentals, research, social)
+- **Portfolio** constraints (positions, fund rules, cash) — mostly **not** wired yet
+
+We are **not** building autonomous execution. Outputs should be **inspectable** (stance, drivers, contradictions, freshness) so a human can agree or override. The exact contract evolves as we learn what the data actually supports.
+
+## What exists today vs north star
+
+| Capability | Today | North star |
+|------------|-------|------------|
+| Market regime prior | Shipped (`market_daily_brief` → ticker meta) | Same |
+| Sector rotation view | Shipped (`sector_meta_analysis`, Sector Insights UI) | Fed into ticker meta (3c) |
+| Per-ticker conviction | Shipped (`ticker_meta_analysis` + Phase 1 signal fusion) | Sector prior + ETF flow context (3c+) |
+| Action queue | **Rules-based** from technical `signal_analysis`; meta attached as context | Ranked ideas aligned with meta + portfolio |
+| Explicit BUY/SELL/HOLD with size | **Ticker analysis** JSON has stance fields; **not** portfolio-level picks | Fund-aware recommendation list with explainability |
+| Outcome feedback | Planned (Phase 4) | Calibrate which inputs predict good trades |
+
+## Phase status (2026-05-19)
+
+- Phase 1 (Signal + News Fusion into Ticker Meta): **shipped** — monitor output quality and lock/runtime
+- Phase 2 (Market Meta Regime): **2a + 2b shipped** — Phase 2c (digests/newsletters) deferred
+- Phase 3 (Sector Meta Layer): **3a + 3b shipped** — ETF holdings on **Research only** (Supabase copy dropped 2026-05); **3c/3d not started**
+- Phase 4–6 (feedback, scheduling, explainability): **planned**
+- Phase 7 (portfolio-aware recommendations): **aspirational** — see [Later phases](#later-phases-iterative)
+
+---
+
+## ETF holdings data layer (2026-05 migration)
+
+**Source of truth:** Research Postgres `etf_holdings_log` + view `etf_holdings_changes`.
+
+| Store | Role |
+|-------|------|
+| **Research** | Watchtower writes here; Flask ETF Holdings UI reads here; `etf_group_analysis` reads changes here |
+| **Supabase** `etf_holdings_log` | **Removed** (legacy Jan 2026 snapshot only). Migration: `database/schema/supabase/migrations/drop_legacy_etf_holdings_supabase.sql` |
+
+If Sector Insights or ETF articles look months old while holdings look current, the gap is almost always **missing ETF Analysis articles**, not missing holdings. See [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md).
+
+**Auto catch-up:** `etf_group_analysis` queues missing (ETF, date) pairs for **14 days**, expanding to **30** when behind (`web_dashboard/etf_meta_pipeline.py`). **Manual catch-up:** `web_dashboard/scripts/backfill_etf_sector_meta.py`.
 
 ---
 
@@ -117,7 +159,8 @@ Meta-analysis freshness depends on the same stack as other cached LLM artifacts 
 
 ### Manual verification
 
-- `web_dashboard/scripts/run_scheduler_job_once.py` can trigger `ticker_meta_analysis`, `market_daily_brief`, `ui_ai_summaries`, etc., without waiting for cron.
+- `web_dashboard/scripts/run_scheduler_job_once.py` can trigger `ticker_meta_analysis`, `market_daily_brief`, `sector_meta_analysis`, `etf_group_analysis`, etc., without waiting for cron.
+- **ETF + sector catch-up:** `web_dashboard/scripts/backfill_etf_sector_meta.py` (see [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md)).
 
 ---
 
@@ -183,16 +226,29 @@ Proposed normalized market regime object:
 
 ## Phase 3: Sector Meta Layer
 
-### Status (as of 2026-05-14)
+### Status (as of 2026-05-19)
 
 | Sub-phase | What | Status |
 |-----------|------|--------|
-| **3a** | Read-only `/sector_insights` Flask page listing recent ETF Analysis articles | **Shipped.** Deploy was silently broken 2026-05-12 → 2026-05-14: `web_dashboard/Dockerfile.frontend` dropped `COPY web_dashboard/tsconfig.json` during the npm→pnpm refactor (commit `4b6d9ad5`), so the frontend image build failed with `TS5058: The specified path does not exist: 'web_dashboard/tsconfig.json'` and stale assets shipped. Fixed in this session; the next frontend rebuild ships the page and sidebar link. |
-| **3b** | `sector_meta_analysis` service + scheduler job + persistence + prompt (the actual sector synthesis) | **Shipped (2026-05-14).** Code: `web_dashboard/sector_meta_analysis_service.py`, `scheduler/jobs_sector_meta_analysis.py`, `sector_meta_normalization.py`, `ai_prompts.py` (`SECTOR_META_ANALYSIS_PROMPT`), research table `sector_meta_analysis`. ETF article **sector tagging** + backfill: `etf_article_sector_infer.py`, `scripts/backfill_etf_analysis_article_sectors.py`, `etf_group_analysis` save path. |
-| **3c** | Ticker meta bundle and prompt consume the sector prior when rows exist | **Not started.** Depends on 3b. |
-| **3d** | Optional polish: sector-tagged research aggregation, benchmark-relative ETF snapshots, swap `/sector_insights` UI to render rows from 3b | **Not started.** Optional after 3c. |
+| **3a** | `/sector_insights` Flask page | **Shipped.** Lists ETF Analysis articles; when `sector_meta_analysis` rows exist, UI prefers synthesized sector cards (see `etf_routes.py`). |
+| **3b** | `sector_meta_analysis` job + Research table | **Shipped.** Service, scheduler, prompt, `sector_meta_normalization.py`, ETF article sector tagging (`etf_article_sector_infer.py`). |
+| **3b-data** | Holdings → articles pipeline on Research | **Shipped (2026-05).** `etf_group_analysis` reads Research `etf_holdings_changes`; Supabase holdings table dropped. Ops: [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md). |
+| **3c** | Ticker meta consumes sector prior | **Not started** — **next engineering priority** for connecting ETF flows to per-ticker conviction. |
+| **3d** | Richer sector inputs + UI polish | **Not started.** Optional after 3c. |
 
-> **Fresh agent: start at Phase 3c** (ticker meta consumes sector prior) unless fixing 3b regressions. Phase 3a/3b code paths are live; extend deliberately.
+> **Fresh agent: start at Phase 3c** unless fixing pipeline freshness (ETF articles) or 3b job failures. Do not reintroduce Supabase `etf_holdings_log` reads in production paths.
+
+### End-to-end pipeline (target mental model)
+
+```text
+etf_watchtower          →  Research.etf_holdings_log
+etf_group_analysis      →  research_articles ("ETF Analysis", sector-tagged)
+sector_meta_analysis    →  sector_meta_analysis (sector stance, rotation_rank, …)
+ticker_meta_analysis    →  ticker_meta_analysis (unified_conviction, action_items, …)  [+ sector prior when 3c ships]
+action_queue (signals)  →  human-facing queue; meta as context today
+```
+
+**Theoretical link to buy/sell:** ETF flows → sector rotation → ticker stance is the intended reasoning chain. Today only the **middle two layers** are reliably fresh once the backfill catches up; ticker meta does **not** yet read sector meta (3c).
 >
 > **Anti-pattern to avoid:** the 3a deploy bug was misdiagnosed by an earlier agent as a Python/template bug, which led to three commits (`b4c2f04d`, `9e179e14`, `a1dcd644`) adding defensive band-aids (`ensure_flask_sidebar_navigation_links`, sector-specific `show=True` overrides, template `url_for` hacks). The real fault was one missing `COPY` line. Root-cause first; do not stack workarounds.
 
@@ -244,8 +300,9 @@ Meta layers only work if **upstream artifacts are consistently tagged and identi
 
 **What broke in practice (2026-05):**
 
-- `research_articles.sector` was often **empty** for `article_type = 'ETF Analysis'` because `etf_group_analysis` did not set it and **`securities.sector` is frequently null for ETF tickers** (and sometimes the saved `tickers` list collapsed to a single symbol with no sector).
-- Downstream **`sector_meta_analysis`** groups articles by `sector`; empty tags → everything lands in **`__UNTAGGED__`**, which weakens prompts and hides silent degradation.
+- **Split database:** `etf_group_analysis` read Supabase `etf_holdings_changes` (frozen ~Jan 2026) while Watchtower wrote Research (through May 2026) → no new ETF articles → sector meta summarized stale January content. **Fixed:** all production readers/writers use Research; Supabase holdings dropped.
+- `research_articles.sector` was often **empty** for `article_type = 'ETF Analysis'` because `etf_group_analysis` did not set it and **`securities.sector` is frequently null for ETF tickers**. **Mitigated:** `etf_article_sector_infer.py` on save + backfill script.
+- Downstream **`sector_meta_analysis`** groups articles by `sector`; empty tags → **`__UNTAGGED__`**, which weakens prompts.
 
 **What we standardized:**
 
@@ -278,7 +335,7 @@ What exists today:
 - Template: `web_dashboard/templates/sector_insights.html`.
 - Behavior: queries `ResearchRepository.get_recent_articles(limit=48, days=730, article_type="ETF Analysis")` and renders cards.
 - Sidebar link: emitted via `get_navigation_links()` in `web_dashboard/shared_navigation.py`; `get_navigation_context()` in `web_dashboard/app.py` forces `show=True` for `sector_insights` regardless of `v2_enabled` (Flask-only page, no Streamlit fallback).
-- UI is **intentionally honest**: a banner labels the page a "Phase 3 stepping stone" and explicitly states this is *not* the `sector_meta` contract and *not* fed into ticker meta yet.
+- When `sector_meta_analysis` rows exist for the latest `run_date`, the page shows synthesized sector cards; article list remains as drill-down. Banner may still note that **ticker meta does not consume sector prior until 3c**.
 
 What 3a is **not**:
 
@@ -370,25 +427,51 @@ Optional; do these only when 3b + 3c are producing useful output:
 
 ---
 
-## Later Phases (Iterative)
+## Later phases (iterative)
 
 Near term (recommended order):
 
-1. **Phase 2c (when scheduled):** Newsletters, fund digests, and email digests consuming **`regime_canonical`** — see **Phase 2c — explicitly deferred** above. **Phase 2c+** remains realized-vol enrichment and other items called out there.
-2. **Phase 3:** Add `sector_meta_analysis` job and sector prior block in the ticker meta prompt; keep ETF/sentiment sources read-only until the contract is stable.
-3. **Quality loop:** Light-weight eval set (10–20 tickers) with expected fields (`stance`, `contradictions`, `risk_flags`) and regression checks after prompt or model changes.
-4. **Lock-aware scheduling:** If meta runtime grows, consider splitting meta by fund or batching with backoff instead of parallel AI jobs (global lock will serialize anyway).
+1. **Phase 3c:** Sector prior in `ticker_meta_analysis` bundle + prompt (ETF flow → sector → ticker conviction).
+2. **ETF article freshness:** Keep gap at zero via nightly queue + occasional `backfill_etf_sector_meta.py` after outages ([`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md)).
+3. **Phase 2c (when scheduled):** Newsletters / digests consuming **`regime_canonical`** — deferred; see Phase 2c above.
+4. **Quality loop:** 10–20 ticker eval set; regression on `stance`, `contradictions`, `risk_flags` after prompt/model changes.
+5. **Lock-aware scheduling:** Batch or stagger meta jobs if AI lock wait grows (global lock serializes anyway).
 
-Longer horizon:
+### Phase 4 — Outcome feedback
 
-- Phase 4: Outcome feedback loop and per-source weighting calibration (trades/outcomes ↔ meta stance).
-- Phase 5: Adaptive scheduling by backlog, runtime telemetry, and lock wait time (not only wall-clock cron).
-- Phase 6: Layered explainability in UI surfaces (why this stance, which inputs conflicted).
+- Compare `ticker_meta_analysis` / `ticker_analysis` stances to realized P&amp;L and trade outcomes.
+- Down-weight sources that add noise; document in this roadmap when weights change.
 
-## Operating Guardrails
+### Phase 5 — Adaptive scheduling
 
-- **ETF Analysis sector invariant:** keep `research_articles.sector` populated for `article_type = 'ETF Analysis'` (resolver + optional backfill); see **Data foundation (ETF Analysis → sector meta)** under Phase 3. Nightly `sector_meta_analysis` quality tracks this.
-- Keep additions additive with fallback defaults.
+- Schedule by backlog (missing ETF articles, stale meta age) not only wall-clock cron.
+- Partially addressed for ETF group queue lookback auto-expansion (`etf_meta_pipeline.py`).
+
+### Phase 6 — Explainability in UI
+
+- Surfaces show *why* this stance: which inputs agreed, which conflicted (`contradictions`, `risk_flags`, `key_drivers`).
+- Sector Insights and ticker details already expose structured fields; unify copy and freshness badges.
+
+### Phase 7 — Portfolio-aware recommendations (north star slice)
+
+**Not started.** Prerequisites: 3c stable, fresh ETF articles, trustworthy sector tags.
+
+| Piece | Description |
+|-------|-------------|
+| **Contract** | e.g. `recommendation: BUY\|SELL\|HOLD\|AVOID`, `horizon`, `confidence`, `rationale[]`, `invalidation` — aligned with existing `ticker_analysis` JSON where possible |
+| **Inputs** | Ticker meta + signal queue + positions + fund policy (`settings` / fund profiles) |
+| **Output surface** | Extend action queue or new “Ideas” panel — **human approves**; no auto-trade |
+| **Mapping gap** | ETF holdings are mostly large-cap/index names; micro-cap book may need explicit “similar theme” or watchlist overlap, not raw ETF constituents |
+
+Treat Phase 7 as a **product slice** once 3c proves sector prior improves ticker meta in spot checks — not a single prompt change.
+
+## Operating guardrails
+
+- **ETF holdings:** Research only — never read Supabase `etf_holdings_log` in production (dropped).
+- **ETF Analysis sector invariant:** keep `research_articles.sector` populated for `article_type = 'ETF Analysis'`; see **Data foundation** under Phase 3.
+- **Freshness:** after deploy/outage, run `backfill_etf_sector_meta.py` before judging Sector Insights quality.
+- Keep additions additive with fallback defaults (`INSUFFICIENT_DATA`, empty bundles).
 - Avoid increasing lock contention while introducing new jobs.
-- Prefer phased rollout with observable metrics at each layer.
-- **New AI call sites:** route through `collect_with_summary_model_chain` (or a thin wrapper with a documented exception) so host failover and model ordering stay consistent with meta and dashboard jobs.
+- Prefer phased rollout with observable metrics (SQL invariants, `job_executions`, gap scripts) at each layer.
+- **New AI call sites:** route through `collect_with_summary_model_chain` unless documented otherwise.
+- **Doc hygiene:** when changing pipeline stores or job order, update this file + [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md) + [`docs/ETF_AI_ANALYSIS_SYSTEM.md`](ETF_AI_ANALYSIS_SYSTEM.md) in the same PR when practical.

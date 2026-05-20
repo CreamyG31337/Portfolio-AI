@@ -4,6 +4,20 @@
 
 This system uses LLMs to analyze ETF holdings changes and individual tickers, generating structured insights that are stored in the database for retrieval and semantic search.
 
+**Roadmap / buy-sell north star:** [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md)  
+**Ops catch-up (holdings → articles → sector meta):** [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md)
+
+---
+
+## Holdings storage (2026-05)
+
+| Data | Database | Notes |
+|------|----------|--------|
+| `etf_holdings_log` | **Research Postgres** | Written by `etf_watchtower`; read by Flask ETF Holdings UI |
+| `etf_holdings_changes` | **Research** (view) | Used by `etf_group_analysis` |
+| `ai_analysis_queue` | **Supabase** | Resumable queue for `etf_group` jobs only |
+| Supabase `etf_holdings_log` | **Removed** | Legacy snapshot; do not use |
+
 ---
 
 ## System Architecture
@@ -31,7 +45,7 @@ This system uses LLMs to analyze ETF holdings changes and individual tickers, ge
 The ticker analysis gathers data from:
 
 1. **Price Data** (via yfinance): OHLCV, 52-week range, volume metrics, recent price action
-2. **ETF Changes** (max 50): All ETFs that bought/sold this ticker
+2. **ETF Changes** (max 50): All ETFs that bought/sold this ticker (Research `etf_holdings_changes` via `PostgresClient`)
 3. **Congress Trades** (max 30): Politician transactions
 4. **Technical Signals**: Buy/sell signals from signal analysis
 5. **Fundamentals**: Company financials from `securities` table
@@ -188,8 +202,8 @@ The ticker analysis gathers data from:
 1. Check queue for pending ETF analyses
 2. If empty, queue today's ETFs with changes
 3. For each ETF/date:
-   - Fetch changes from `etf_holdings_changes` view
-   - Get ETF metadata (fund description) from `securities` table
+   - Fetch changes from **Research** `etf_holdings_changes` view (`etf_group_analysis.get_changes_for_date`)
+   - Get ETF metadata (fund description) from Supabase `securities` table
    - Format changes as table (max 200)
    - Send to LLM with ETF context
    - Save as research article
@@ -293,44 +307,49 @@ The ticker analysis gathers data from:
 
 ---
 
-## Data Flow Summary
+## Data flow summary
 
-```
-ETF Watchtower (8 PM)
+```text
+ETF Watchtower (evening)
   ↓
-Store holdings → etf_holdings_log
+Research.etf_holdings_log
   ↓
-ETF Group Analysis (9 PM)
+ETF Group Analysis (~9 PM ET, bounded batches)
   ↓
-Query etf_holdings_changes view
+Research.etf_holdings_changes  →  LLM  →  research_articles ("ETF Analysis", sector-tagged)
   ↓
-For each (ETF, date):
-  - Get fund description from securities
-  - Format changes table (max 200)
-  - LLM analysis → research_articles
+sector_meta_analysis (after articles exist)
+  ↓
+Research.sector_meta_analysis  →  /sector_insights UI
 
-Ticker Analysis (10 PM)
+Ticker Analysis (~10 PM)
   ↓
-Get priority list: manual > holdings > watched
+Priority: manual > holdings > watched
   ↓
-For each ticker (2 hour limit):
-  - Skip if < 24 hours old
-  - Skip if in skip_list
-  - Gather 3 months: ETF changes, congress, signals, fundamentals, articles, sentiment
-  - Format as context string
-  - LLM analysis → ticker_analysis
-  - Generate embedding from summary → ticker_analysis.embedding
+Per ticker: ETF changes (Research), congress, signals, fundamentals, articles, sentiment
+  ↓
+ticker_analysis (+ optional ticker_meta_analysis — see meta roadmap)
 ```
+
+**Catch-up after outage:** [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md) — `backfill_etf_sector_meta.py`.
 
 ---
 
-## Future Opportunities
+## Link to meta analysis (sector + ticker layers)
 
-1. **Vector Search**: Use embeddings to find similar tickers by theme/sentiment
-2. **AI Assistant Integration**: Include similar tickers in context when user asks about a ticker
-3. **Portfolio Recommendations**: Suggest tickers similar to current holdings
-4. **Theme Discovery**: Search for tickers by investment theme (e.g., "AI", "semiconductors")
-5. **Comparative Analysis**: Show similar tickers on ticker details page
+ETF group articles are the **primary input** to `sector_meta_analysis` (Phase 3b). Ticker-level **second-order** synthesis is `ticker_meta_analysis` (Phase 1 market + signals). Connecting sector prior → ticker meta is **Phase 3c** ([roadmap](meta_analysis_roadmap.md)).
+
+**Toward buy/sell recommendations:** `ticker_analysis` already requests `stance: BUY|SELL|HOLD|AVOID` in JSON; `ticker_meta_analysis` produces conviction + `action_items` text; the dashboard **action queue** is still **signal-rule-driven**. Portfolio-aware ranked ideas are **Phase 7** on the roadmap — not automatic from this file’s jobs alone.
+
+---
+
+## Future opportunities
+
+1. **Vector search**: Embeddings for similar tickers / themes
+2. **Phase 3c**: Sector prior in ticker meta (ETF flow → sector → ticker)
+3. **Phase 7**: Portfolio-aware idea list with explainability (roadmap)
+4. **Theme discovery**: Search research by sector/theme
+5. **Comparative analysis**: Similar tickers on ticker details
 
 ---
 
@@ -349,11 +368,13 @@ For each ticker (2 hour limit):
 - `web_dashboard/ai_prompts.py` - Contains `ETF_GROUP_ANALYSIS_PROMPT` and `TICKER_ANALYSIS_PROMPT`
 
 **Database**:
+- `database/schema/research/tables/etf_holdings_log.sql` - Holdings (source of truth)
+- `database/schema/research/views/etf_holdings_changes.sql` - Changes view
+- `database/schema/research/tables/sector_meta_analysis.sql` - Sector synthesis (Phase 3b)
 - `database/schema/research/tables/ticker_analysis.sql` - Ticker analysis table
-- `database/schema/supabase/tables/ai_analysis_queue.sql` - Job queue
+- `database/schema/supabase/tables/ai_analysis_queue.sql` - ETF group job queue
 - `database/schema/supabase/tables/ai_analysis_skip_list.sql` - Skip list
-- `database/schema/supabase/views/etf_holdings_changes_view.sql` - ETF changes view
-- `database/schema/supabase/migrations/add_etf_metadata_to_securities.sql` - ETF metadata column
+- `database/schema/supabase/migrations/drop_legacy_etf_holdings_supabase.sql` - Dropped legacy Supabase holdings
 
 **UI**:
 - `web_dashboard/templates/ticker_details.html` - Ticker details page
