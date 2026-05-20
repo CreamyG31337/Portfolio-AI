@@ -86,12 +86,10 @@
             </h3>
             <p class="text-sm text-text-secondary mb-4">Regenerates portfolio positions from the trade log.</p>
             <div class="space-y-4">
-                <label for="rebuild-fund-select" class="block mb-2 text-sm font-medium text-text-primary">Select
-                    Fund</label>
-                <select id="rebuild-fund-select"
-                    class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
-                    <!-- Populated by JS -->
-                </select>
+                <p class="text-sm text-text-secondary">
+                    Operating on: <span id="rebuild-fund-indicator" class="font-medium text-text-primary">(no fund selected)</span>
+                    <span class="block text-xs text-text-secondary mt-1">Change the fund using the navigation menu.</span>
+                </p>
                 <button onclick="rebuildPortfolio()"
                     class="w-full text-theme-warning-text bg-transparent border border-theme-warning-text hover:bg-theme-warning-bg/10 focus:ring-4 focus:ring-theme-warning-bg/30 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-hidden transition-colors duration-200">
                     Start Rebuild Job
@@ -112,13 +110,10 @@
             <p class="text-sm text-theme-warning-text mb-4">Read-only admin: you can load values but cannot save changes.</p>
             {% endif %}
             <div class="space-y-4 max-w-2xl">
-                <div>
-                    <label for="cash-fund-select" class="block mb-2 text-sm font-medium text-text-primary">Fund</label>
-                    <select id="cash-fund-select"
-                        class="bg-dashboard-background border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5">
-                        <option value="">Select fund...</option>
-                    </select>
-                </div>
+                <p class="text-sm text-text-secondary">
+                    Operating on: <span id="cash-fund-indicator" class="font-medium text-text-primary">(no fund selected)</span>
+                    <span class="block text-xs text-text-secondary mt-1">Change the fund using the navigation menu.</span>
+                </p>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="cash-cad-input" class="block mb-2 text-sm font-medium text-text-primary">CAD</label>

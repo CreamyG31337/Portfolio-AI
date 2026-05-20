@@ -43,7 +43,6 @@ let allFunds: Fund[] = [];
 // DOM Elements
 const getElements = () => ({
     tableBody: document.getElementById('funds-table-body'),
-    rebuildSelect: document.getElementById('rebuild-fund-select') as HTMLSelectElement | null,
     statsCards: document.getElementById('fund-stats-cards'),
     deleteArea: document.getElementById('delete-confirm-area'),
     editOriginalName: document.getElementById('edit-fund-original-name') as HTMLInputElement | null,
@@ -56,10 +55,11 @@ const getElements = () => ({
     refreshTicker: document.getElementById('refresh-ticker') as HTMLInputElement | null,
     refreshCurrency: document.getElementById('refresh-currency') as HTMLSelectElement | null,
     refreshResult: document.getElementById('refresh-result'),
-    cashFundSelect: document.getElementById('cash-fund-select') as HTMLSelectElement | null,
     cashCadInput: document.getElementById('cash-cad-input') as HTMLInputElement | null,
     cashUsdInput: document.getElementById('cash-usd-input') as HTMLInputElement | null,
     cashSaveBtn: document.getElementById('cash-save-btn') as HTMLButtonElement | null,
+    rebuildIndicator: document.getElementById('rebuild-fund-indicator'),
+    cashIndicator: document.getElementById('cash-fund-indicator'),
 });
 
 // Utility functions (scoped to funds.ts to avoid conflicts with other files)
@@ -83,6 +83,28 @@ function showToastForFunds(message: string, type: 'success' | 'error' = 'success
     }, 3000);
 }
 
+function getSelectedFund(): string {
+    const sel = document.getElementById('global-fund-select') as HTMLSelectElement | null;
+    return (sel?.value || '').trim();
+}
+
+function isSingleFundSelected(): boolean {
+    const v = getSelectedFund();
+    return v !== '' && v !== 'all';
+}
+
+function updateFundIndicators(): void {
+    const v = getSelectedFund();
+    const label = !v
+        ? '(no fund selected)'
+        : v === 'all'
+            ? 'All Funds (select a specific fund to use these actions)'
+            : v;
+    const elements = getElements();
+    if (elements.rebuildIndicator) elements.rebuildIndicator.textContent = label;
+    if (elements.cashIndicator) elements.cashIndicator.textContent = label;
+}
+
 // Close edit modal by clicking Flowbite's hide trigger (modal must be initialized via data-modal-target)
 function closeEditModal(): void {
     document.querySelector<HTMLElement>('[data-modal-hide="edit-fund-modal"]')?.click();
@@ -97,7 +119,6 @@ function closeCreateModal(): void {
 async function loadFunds(): Promise<void> {
     const elements = getElements();
     const tableBody = elements.tableBody;
-    const rebuildSelect = elements.rebuildSelect;
     const statsCards = elements.statsCards;
 
     try {
@@ -144,41 +165,6 @@ async function loadFunds(): Promise<void> {
                     </tr>
                 `).join('');
             }
-        }
-
-        // Populate rebuild select
-        if (rebuildSelect) {
-            rebuildSelect.innerHTML = '<option value="">Select fund...</option>';
-            allFunds.forEach(fund => {
-                const opt = document.createElement('option');
-                opt.value = fund.name;
-                opt.textContent = fund.name;
-                rebuildSelect.appendChild(opt);
-            });
-        }
-
-        const cashSelect = elements.cashFundSelect;
-        if (cashSelect) {
-            const prev = cashSelect.value;
-            cashSelect.innerHTML = '<option value="">Select fund...</option>';
-            allFunds.forEach(fund => {
-                const opt = document.createElement('option');
-                opt.value = fund.name;
-                opt.textContent = fund.name;
-                cashSelect.appendChild(opt);
-            });
-            if (prev && allFunds.some(f => f.name === prev)) {
-                cashSelect.value = prev;
-            }
-            cashSelect.onchange = () => {
-                const v = cashSelect.value;
-                if (v) {
-                    void loadCashBalancesForFund(v);
-                } else {
-                    if (elements.cashCadInput) elements.cashCadInput.value = '';
-                    if (elements.cashUsdInput) elements.cashUsdInput.value = '';
-                }
-            };
         }
 
         // Populate stats cards
@@ -544,15 +530,18 @@ async function loadCashBalancesForFund(fundName: string): Promise<void> {
 }
 
 function loadCashBalancesForSelectedFund(): void {
-    const sel = getElements().cashFundSelect;
-    const fundName = sel?.value || '';
-    void loadCashBalancesForFund(fundName);
+    if (!isSingleFundSelected()) {
+        showToastForFunds('Select a specific fund from the navigation menu', 'error');
+        const elements = getElements();
+        if (elements.cashCadInput) elements.cashCadInput.value = '';
+        if (elements.cashUsdInput) elements.cashUsdInput.value = '';
+        return;
+    }
+    void loadCashBalancesForFund(getSelectedFund());
 }
 
 async function saveCashBalances(): Promise<void> {
     const elements = getElements();
-    const sel = elements.cashFundSelect;
-    const fundName = sel?.value || '';
     const cadEl = elements.cashCadInput;
     const usdEl = elements.cashUsdInput;
     const saveBtn = elements.cashSaveBtn;
@@ -561,10 +550,11 @@ async function saveCashBalances(): Promise<void> {
         return;
     }
 
-    if (!fundName) {
-        showToastForFunds('❌ Please select a fund', 'error');
+    if (!isSingleFundSelected()) {
+        showToastForFunds('Select a specific fund from the navigation menu', 'error');
         return;
     }
+    const fundName = getSelectedFund();
     const cad = parseFloat((cadEl?.value ?? '').trim());
     const usd = parseFloat((usdEl?.value ?? '').trim());
     if (!Number.isFinite(cad) || !Number.isFinite(usd)) {
@@ -601,14 +591,11 @@ async function saveCashBalances(): Promise<void> {
 
 // Rebuild portfolio
 async function rebuildPortfolio(): Promise<void> {
-    const elements = getElements();
-    const fundSelect = elements.rebuildSelect;
-    const fundName = fundSelect?.value || '';
-
-    if (!fundName) {
-        showToastForFunds('❌ Please select a fund', 'error');
+    if (!isSingleFundSelected()) {
+        showToastForFunds('Select a specific fund from the navigation menu', 'error');
         return;
     }
+    const fundName = getSelectedFund();
 
     (window as any).showConfirmModal({
         title: 'Rebuild portfolio',
@@ -638,10 +625,31 @@ async function rebuildPortfolio(): Promise<void> {
 }
 
 // Initialize on page load (Flowbite modals are initialized via data-modal-target in template)
+async function init(): Promise<void> {
+    await loadFunds();
+    updateFundIndicators();
+    if (isSingleFundSelected()) {
+        void loadCashBalancesForFund(getSelectedFund());
+    }
+}
+
+window.addEventListener('fundChanged', (e: Event) => {
+    updateFundIndicators();
+    const detail = (e as CustomEvent<{ fund: string }>).detail;
+    const fund = detail?.fund || '';
+    const elements = getElements();
+    if (fund && fund !== 'all') {
+        void loadCashBalancesForFund(fund);
+    } else {
+        if (elements.cashCadInput) elements.cashCadInput.value = '';
+        if (elements.cashUsdInput) elements.cashUsdInput.value = '';
+    }
+});
+
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadFunds);
+    document.addEventListener('DOMContentLoaded', () => { void init(); });
 } else {
-    loadFunds();
+    void init();
 }
 
 // Make functions globally available for onclick handlers
