@@ -161,8 +161,9 @@
         <div id="view-ai-activity" role="tabpanel" aria-labelledby="tab-ai-activity" class="hidden animate-fade-in">
             <p class="text-sm text-text-secondary mb-4 max-w-3xl">
                 LLM-heavy jobs tracked in <code class="text-xs">job_executions</code> (same global AI lock as the workers).
-                Updates when you refresh this page or when auto-refresh runs (~5s). For per-job detail, use <strong>Jobs List</strong>
-                → expand a job → recent logs / run now. Step traces: <code class="text-xs">/api/admin/scheduler/jobs/&lt;id&gt;/steps</code> where supported.
+                Auto-refreshes every ~5s, but re-renders only when the data changes so selections are preserved.
+                Use <strong>Pause refresh</strong> to freeze the Recent runs table while copying, <strong>Copy table</strong> to grab it as TSV, and <strong>Range</strong> to widen the history window.
+                For per-job detail, use <strong>Jobs List</strong> → expand a job → recent logs / run now. Step traces: <code class="text-xs">/api/admin/scheduler/jobs/&lt;id&gt;/steps</code> where supported.
             </p>
             <div id="ai-activity-root" class="space-y-4">
                 <div class="animate-pulse h-28 bg-dashboard-surface rounded-lg border border-border"></div>
