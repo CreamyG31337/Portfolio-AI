@@ -4,12 +4,19 @@ from datetime import date, datetime, UTC
 from unittest.mock import MagicMock
 from uuid import UUID
 
+import pytest
 import sys
 from pathlib import Path
 
 web_dashboard = Path(__file__).resolve().parent.parent / "web_dashboard"
 if str(web_dashboard) not in sys.path:
     sys.path.insert(0, str(web_dashboard))
+
+
+@pytest.fixture(autouse=True)
+def _disable_phase3_sector_prior(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Phase 3c bundle block is tested explicitly; keep legacy tests stable."""
+    monkeypatch.setenv("META_ANALYSIS_PHASE3_SECTOR", "false")
 
 from meta_analysis_service import (  # noqa: E402
     TickerMetaAnalysisService,
@@ -272,3 +279,51 @@ def test_artifact_bundle_digest_stable() -> None:
     assert len(d) == 64
     assert d == artifact_bundle_digest("hello")
     assert d != artifact_bundle_digest("hello!")
+
+
+def test_build_artifact_bundle_includes_sector_prior(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("META_ANALYSIS_PHASE3_SECTOR", "true")
+    sector_row = {
+        "sector": "Health Care",
+        "run_date": date(2026, 5, 19),
+        "sector_stance": "MIXED",
+        "momentum_state": "UNKNOWN",
+        "news_pressure": "MIXED",
+        "rotation_rank": 2,
+        "confidence": 0.55,
+        "key_drivers": ["ETF flows mixed"],
+        "risk_flags": ["policy headline risk"],
+        "as_of": "2026-05-19T20:00:00Z",
+        "updated_at": datetime(2026, 5, 19, 20, 0, tzinfo=UTC),
+    }
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [_STD_ROW],  # standard analyses
+        [],  # market brief (phase1)
+        [sector_row],  # sector_meta prior (phase3c)
+        [],  # social
+        [],  # articles
+    ]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+
+    def _table(name: str) -> MagicMock:
+        chain = MagicMock()
+        if name == "securities":
+            chain.select.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+                data=[{"sector": "Health Care"}]
+            )
+        else:
+            chain.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+                data=[]
+            )
+        return chain
+
+    sb.supabase.table.side_effect = _table
+    svc = _svc(pg, sb)
+    bundle, _ = svc.build_artifact_bundle("ABC")
+    assert "Sector rotation prior" in bundle
+    assert "mapped_sector: Health Care" in bundle
+    assert "sector_stance: MIXED" in bundle
+    assert "rotation_rank: 2" in bundle
+    assert "ETF flows mixed" in bundle

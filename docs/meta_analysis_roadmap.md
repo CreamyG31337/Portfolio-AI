@@ -38,7 +38,7 @@ We are **not** building autonomous execution. Outputs should be **inspectable** 
 
 - Phase 1 (Signal + News Fusion into Ticker Meta): **shipped** — monitor output quality and lock/runtime
 - Phase 2 (Market Meta Regime): **2a + 2b shipped** — Phase 2c (digests/newsletters) deferred
-- Phase 3 (Sector Meta Layer): **3a + 3b shipped** — ETF holdings on **Research only** (Supabase copy dropped 2026-05); **3c/3d not started**
+- Phase 3 (Sector Meta Layer): **3a + 3b + 3c shipped** — ETF holdings on Research only; ticker meta bundle includes sector prior when `META_ANALYSIS_PHASE3_SECTOR` on; **3d not started**
 - Phase 4–6 (feedback, scheduling, explainability): **planned**
 - Phase 7 (portfolio-aware recommendations): **aspirational** — see [Later phases](#later-phases-iterative)
 
@@ -233,10 +233,10 @@ Proposed normalized market regime object:
 | **3a** | `/sector_insights` Flask page | **Shipped.** Lists ETF Analysis articles; when `sector_meta_analysis` rows exist, UI prefers synthesized sector cards (see `etf_routes.py`). |
 | **3b** | `sector_meta_analysis` job + Research table | **Shipped.** Service, scheduler, prompt, `sector_meta_normalization.py`, ETF article sector tagging (`etf_article_sector_infer.py`). |
 | **3b-data** | Holdings → articles pipeline on Research | **Shipped (2026-05).** `etf_group_analysis` reads Research `etf_holdings_changes`; Supabase holdings table dropped. Ops: [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md). |
-| **3c** | Ticker meta consumes sector prior | **Not started** — **next engineering priority** for connecting ETF flows to per-ticker conviction. |
+| **3c** | Ticker meta consumes sector prior | **Shipped (2026-05-19).** `meta_analysis_service._append_sector_prior_block`, `TICKER_META_ANALYSIS_PROMPT` item 7; gated by `META_ANALYSIS_PHASE3_SECTOR`. |
 | **3d** | Richer sector inputs + UI polish | **Not started.** Optional after 3c. |
 
-> **Fresh agent: start at Phase 3c** unless fixing pipeline freshness (ETF articles) or 3b job failures. Do not reintroduce Supabase `etf_holdings_log` reads in production paths.
+> **Fresh agent:** Phase 3c is shipped — prioritize **3d** UI polish, ETF article freshness ops, or **Phase 7** recommendation slice. Do not reintroduce Supabase `etf_holdings_log` reads.
 
 ### End-to-end pipeline (target mental model)
 
@@ -244,11 +244,11 @@ Proposed normalized market regime object:
 etf_watchtower          →  Research.etf_holdings_log
 etf_group_analysis      →  research_articles ("ETF Analysis", sector-tagged)
 sector_meta_analysis    →  sector_meta_analysis (sector stance, rotation_rank, …)
-ticker_meta_analysis    →  ticker_meta_analysis (unified_conviction, action_items, …)  [+ sector prior when 3c ships]
+ticker_meta_analysis    →  ticker_meta_analysis (unified_conviction + sector prior when 3c on)
 action_queue (signals)  →  human-facing queue; meta as context today
 ```
 
-**Theoretical link to buy/sell:** ETF flows → sector rotation → ticker stance is the intended reasoning chain. Today only the **middle two layers** are reliably fresh once the backfill catches up; ticker meta does **not** yet read sector meta (3c).
+**Theoretical link to buy/sell:** ETF flows → sector rotation → ticker stance is the intended reasoning chain. After backfill, all three layers can be fresh; **3c** passes sector prior into ticker meta LLM input (deploy + run `ticker_meta_analysis` to refresh rows).
 >
 > **Anti-pattern to avoid:** the 3a deploy bug was misdiagnosed by an earlier agent as a Python/template bug, which led to three commits (`b4c2f04d`, `9e179e14`, `a1dcd644`) adding defensive band-aids (`ensure_flask_sidebar_navigation_links`, sector-specific `show=True` overrides, template `url_for` hacks). The real fault was one missing `COPY` line. Root-cause first; do not stack workarounds.
 
@@ -400,20 +400,21 @@ Treat this as one self-contained chunk. Acceptance is binary: either the job run
 
 ---
 
-### Phase 3c — Ticker meta consumes the sector prior (after 3b)
+### Phase 3c — Ticker meta consumes the sector prior (shipped 2026-05-19)
 
-**Scope:**
+**Implemented:**
 
-1. Extend the artifact bundle in `web_dashboard/meta_analysis_service.py` with a sector block, parallel to the existing market regime block, when a fresh `sector_meta_analysis` row exists for the ticker's primary sector.
-2. Resolve ticker → sector via the same mapping `etf_group_analysis` / the ticker UI already use; do not invent a new mapping.
-3. Update `TICKER_META_ANALYSIS_PROMPT` in `web_dashboard/ai_prompts.py` to treat `sector_stance` / `rotation_rank` / `news_pressure` as a first-class prior alongside the existing market regime block.
-4. Reuse the `META_ANALYSIS_PHASE3_SECTOR` flag so 3b and 3c roll out and roll back together.
+1. `TickerMetaAnalysisService._append_sector_prior_block` — maps ticker → `securities.sector`, loads latest `sector_meta_analysis` row for that sector.
+2. `TICKER_META_ANALYSIS_PROMPT` — item 7 instructs the model to reconcile sector prior vs ticker evidence.
+3. Gated by `META_ANALYSIS_PHASE3_SECTOR` (same flag as sector meta job).
 
-**Exit criteria for 3c:**
+**After deploy:** run `ticker_meta_analysis` (nightly or `run_scheduler_job_once.py ticker_meta_analysis`) so existing meta rows pick up the new bundle digest.
 
-- Ticker meta still runs deterministically when no sector row is available (Phase 1 contract preserved).
-- When rows exist, spot-check 5–10 QA tickers show the sector prior surfacing in `key_drivers` or `contradictions` where appropriate.
-- No regression in `ticker_meta_analysis` success rate over 3 nights.
+**Exit criteria (verify in prod):**
+
+- Ticker meta runs when sector row missing (bundle notes MISSING; no crash).
+- Tickers with sector + fresh sector meta show prior lines in logs/bundle digest refresh.
+- No regression in `ticker_meta_analysis` job success rate.
 
 ---
 
@@ -431,8 +432,7 @@ Optional; do these only when 3b + 3c are producing useful output:
 
 Near term (recommended order):
 
-1. **Phase 3c:** Sector prior in `ticker_meta_analysis` bundle + prompt (ETF flow → sector → ticker conviction).
-2. **ETF article freshness:** Keep gap at zero via nightly queue + occasional `backfill_etf_sector_meta.py` after outages ([`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md)).
+1. **ETF article freshness:** Keep gap at zero via nightly queue + occasional `backfill_etf_sector_meta.py` after outages ([`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md)).
 3. **Phase 2c (when scheduled):** Newsletters / digests consuming **`regime_canonical`** — deferred; see Phase 2c above.
 4. **Quality loop:** 10–20 ticker eval set; regression on `stance`, `contradictions`, `risk_flags` after prompt/model changes.
 5. **Lock-aware scheduling:** Batch or stagger meta jobs if AI lock wait grows (global lock serializes anyway).

@@ -14,7 +14,11 @@ from typing import Any
 from market_regime_normalization import normalize_market_regime
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
-from settings import get_summarizing_model, is_meta_analysis_phase1_signal_fusion_enabled
+from settings import (
+    get_summarizing_model,
+    is_meta_analysis_phase1_signal_fusion_enabled,
+    is_meta_analysis_phase3_sector_enabled,
+)
 from supabase_client import SupabaseClient
 from ticker_analysis_service import extract_json
 
@@ -225,6 +229,98 @@ class TickerMetaAnalysisService:
 
         return trade_rows, session_summaries
 
+    def _fetch_ticker_sector(self, ticker: str) -> str | None:
+        """GICS-style sector from Supabase ``securities`` (same source as ticker UI)."""
+        try:
+            result = (
+                self.supabase.supabase.table("securities")
+                .select("sector")
+                .eq("ticker", ticker.upper())
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                raw = result.data[0].get("sector")
+                label = str(raw).strip() if raw is not None else ""
+                return label or None
+        except Exception as exc:
+            logger.debug("Sector lookup failed for %s: %s", ticker, exc)
+        return None
+
+    def _fetch_sector_meta_prior(self, sector_label: str) -> dict[str, Any] | None:
+        """Latest ``sector_meta_analysis`` row for a sector label (Phase 3b)."""
+        try:
+            rows = self.postgres.execute_query(
+                """
+                SELECT sector, run_date, sector_stance, momentum_state, news_pressure,
+                       rotation_rank, confidence, key_drivers, risk_flags, as_of, updated_at
+                FROM sector_meta_analysis
+                WHERE TRIM(sector) = %s
+                ORDER BY run_date DESC NULLS LAST, updated_at DESC NULLS LAST
+                LIMIT 1
+                """,
+                (sector_label.strip(),),
+            )
+            return rows[0] if rows else None
+        except Exception as exc:
+            logger.debug("sector_meta fetch failed for %s: %s", sector_label, exc)
+            return None
+
+    def _append_sector_prior_block(self, parts: list[str], ticker: str) -> None:
+        """Add ETF-flow sector synthesis prior when Phase 3c is enabled."""
+        parts.append("### Sector rotation prior (ETF flow synthesis)")
+        sector_label = self._fetch_ticker_sector(ticker)
+        if not sector_label:
+            parts.append("- mapped_sector: MISSING (no sector on securities row)")
+            parts.append("- sector_meta: unavailable")
+            parts.append("")
+            return
+
+        parts.append(f"- mapped_sector: {sector_label}")
+        row = self._fetch_sector_meta_prior(sector_label)
+        if not row:
+            parts.append("- sector_meta: MISSING (no sector_meta_analysis row for mapped_sector)")
+            parts.append("")
+            return
+
+        drivers = row.get("key_drivers") or []
+        if isinstance(drivers, str):
+            try:
+                drivers = json.loads(drivers)
+            except (json.JSONDecodeError, TypeError):
+                drivers = [drivers]
+        risks = row.get("risk_flags") or []
+        if isinstance(risks, str):
+            try:
+                risks = json.loads(risks)
+            except (json.JSONDecodeError, TypeError):
+                risks = [risks]
+        driver_txt = ", ".join(_clip(str(d), 120) for d in drivers[:5] if str(d).strip())
+        risk_txt = ", ".join(_clip(str(r), 120) for r in risks[:4] if str(r).strip())
+        conf = row.get("confidence")
+        try:
+            conf_f = float(conf) if conf is not None else 0.0
+        except (TypeError, ValueError):
+            conf_f = 0.0
+        parts.append(
+            f"- run_date: {row.get('run_date')} | row_updated_at: {row.get('updated_at')} | "
+            f"as_of: {row.get('as_of')}"
+        )
+        parts.append(
+            f"- sector_stance: {row.get('sector_stance')} | momentum_state: {row.get('momentum_state')} | "
+            f"news_pressure: {row.get('news_pressure')}"
+        )
+        parts.append(f"- rotation_rank: {row.get('rotation_rank')} | confidence: {conf_f:.2f}")
+        if driver_txt:
+            parts.append(f"- key_drivers: {_clip(driver_txt, 320)}")
+        if risk_txt:
+            parts.append(f"- risk_flags: {_clip(risk_txt, 240)}")
+        parts.append(
+            "- usage: calibrate ticker stance vs institutional sector rotation; "
+            "do not treat as ticker-specific catalyst"
+        )
+        parts.append("")
+
     def build_artifact_bundle(self, ticker: str) -> tuple[str, dict[str, Any] | None]:
         """Return (formatted bundle text, primary standard analysis row)."""
         std_rows = self.fetch_latest_standard_analyses(ticker)
@@ -327,6 +423,9 @@ class TickerMetaAnalysisService:
                     parts.append(f"- caveats: {_clip(caveat_txt, 240)}")
                 parts.append(f"- narrative: {_clip(market_brief.get('narrative'), 600)}")
                 parts.append("")
+
+        if is_meta_analysis_phase3_sector_enabled():
+            self._append_sector_prior_block(parts, ticker)
 
         social = self._fetch_social_snippets(ticker)
         if social:

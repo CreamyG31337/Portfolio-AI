@@ -567,7 +567,7 @@ python scheduler/social_sentiment_ai_job.py
 etf_watchtower → etf_holdings_log (Research)
 etf_group_analysis → research_articles ("ETF Analysis")
 sector_meta_analysis → sector_meta_analysis table → /sector_insights
-ticker_meta_analysis → ticker_meta_analysis (Phase 3c: add sector prior — not shipped)
+ticker_meta_analysis → ticker_meta_analysis (Phase 3c: sector prior in bundle when `META_ANALYSIS_PHASE3_SECTOR` on)
 ```
 
 - **Do not** read Supabase `etf_holdings_log` (dropped May 2026).
