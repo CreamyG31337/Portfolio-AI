@@ -222,8 +222,22 @@ def action_queue_ai_review_job() -> None:
             funds_res = supabase.supabase.table("funds").select("name").limit(5).execute()
             fund_names = [r["name"] for r in (funds_res.data or []) if r.get("name")]
 
+        # Load positions per fund via service-role Supabase. build_action_queue_items
+        # falls back to Flask-scoped get_current_positions when positions_df is None,
+        # which raises "Working outside of request context" inside the scheduler thread.
+        import pandas as pd  # local import to avoid widening module-level imports
+
         for fund in fund_names:
-            items = build_action_queue_items(supabase, fund, 12)
+            try:
+                positions_df = pd.DataFrame(supabase.get_current_positions(fund) or [])
+            except Exception as pos_exc:
+                logger.warning(
+                    "action_queue_ai_review_job: failed to load positions for %s: %s",
+                    fund,
+                    pos_exc,
+                )
+                positions_df = pd.DataFrame()
+            items = build_action_queue_items(supabase, fund, 12, positions_df=positions_df)
             attach_research_context(postgres, items)
             for it in items[:5]:
                 ticker = it.get("ticker")
