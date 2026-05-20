@@ -42,6 +42,25 @@ def _clip(text: str | None, max_len: int = _MAX_TEXT) -> str:
     return t[: max_len - 3].rsplit(" ", 1)[0] + "..."
 
 
+def _extract_ticker_meta_audit_fields(raw_response: str) -> dict:
+    """Extract stance + horizon for the AI Audit row.
+
+    Used as ``extract_audit_fields`` for ``collect_with_summary_model_chain``
+    so successful ticker_meta_analysis attempts surface their stance in
+    ``/admin/ai-audit`` (closest analogue to the ``sentiment`` column).
+    """
+    fields: dict = {}
+    try:
+        parsed = extract_json(raw_response or "")
+    except Exception:
+        parsed = None
+    if isinstance(parsed, dict):
+        stance = parsed.get("stance")
+        if stance:
+            fields["sentiment"] = str(stance)
+    return fields
+
+
 class TickerMetaAnalysisService:
     """Build artifact bundles and run meta synthesis for one ticker."""
 
@@ -90,6 +109,38 @@ class TickerMetaAnalysisService:
             (ticker,),
         )
         return rows[0] if rows else None
+
+    def fetch_standard_ticker_candidates(self, limit: int = 250) -> list[str]:
+        """Latest standard-analysis tickers that can feed meta synthesis.
+
+        This intentionally does not reuse ``TickerAnalysisService.get_tickers_to_analyze``:
+        that selector filters out tickers analyzed within 24 hours, which is exactly
+        the fresh standard analysis output this meta pass should consume.
+        """
+        rows = self.postgres.execute_query(
+            """
+            SELECT ticker
+            FROM (
+                SELECT DISTINCT ON (ticker)
+                       ticker, updated_at, analysis_date
+                FROM ticker_analysis
+                WHERE analysis_type = 'standard'
+                  AND ticker IS NOT NULL
+                ORDER BY ticker, updated_at DESC NULLS LAST, analysis_date DESC NULLS LAST
+            ) latest
+            ORDER BY updated_at DESC NULLS LAST, analysis_date DESC NULLS LAST, ticker
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        tickers: list[str] = []
+        seen: set[str] = set()
+        for row in rows or []:
+            ticker = str(row.get("ticker") or "").upper().strip()
+            if ticker and ticker not in seen:
+                tickers.append(ticker)
+                seen.add(ticker)
+        return tickers
 
     def needs_refresh(self, ticker: str) -> tuple[bool, dict[str, Any] | None]:
         """Return (needs_run, primary_standard_row_or_none).
@@ -534,6 +585,9 @@ class TickerMetaAnalysisService:
             json_mode=True,
             temperature=0.15,
             response_ok=lambda s: extract_json(s) is not None,
+            function_name="ticker_meta_analysis",
+            audit_extra={"tickers_extracted": [ticker_u]},
+            extract_audit_fields=_extract_ticker_meta_audit_fields,
         )
         if not full_response:
             logger.error("Meta analysis LLM failed on all summarization models for %s", ticker_u)

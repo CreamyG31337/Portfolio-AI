@@ -562,6 +562,11 @@ def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, ver
                 system_prompt=system_prompt,
                 temperature=0.1,
                 response_ok=lambda s: extract_json(s) is not None,
+                function_name="analyze_congress_trades",
+                audit_extra={
+                    "politician": context.get("politician"),
+                    "tickers_extracted": [context.get("ticker")] if context.get("ticker") else None,
+                },
             )
             model = model_used
             if verbose and full_response:
@@ -850,6 +855,8 @@ def analyze_session(
             system_prompt=system_prompt,
             temperature=0.1,
             response_ok=lambda s: extract_json(s) is not None,
+            function_name="rescore_congress_sessions",
+            audit_extra={"politician": politician_name, "trade_count": trade_count},
         )
         full_response = full_response or ""
         if verbose and full_response:

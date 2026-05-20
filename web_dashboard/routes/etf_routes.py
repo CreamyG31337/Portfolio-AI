@@ -694,9 +694,88 @@ def _sector_insights_preview_rows(articles: List[Dict[str, Any]]) -> List[Dict[s
     return rows
 
 
+# Tailwind chip classes for sector_meta_analysis enum fields.
+# Mirrors the Phase 3b contract in ai_prompts.py::SECTOR_META_ANALYSIS_PROMPT.
+_SECTOR_STANCE_CLASSES: Dict[str, str] = {
+    "BULLISH": "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+    "NEUTRAL": "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
+    "BEARISH": "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+    "MIXED": "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+    "INSUFFICIENT_DATA": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
+}
+_MOMENTUM_CLASSES: Dict[str, str] = {
+    "ACCELERATING": "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+    "STABLE": "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+    "DECELERATING": "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+    "UNKNOWN": "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+}
+_NEWS_PRESSURE_CLASSES: Dict[str, str] = {
+    "POSITIVE": "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+    "NEUTRAL": "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
+    "NEGATIVE": "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+    "MIXED": "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+    "UNKNOWN": "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+}
+_CHIP_BASE = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold"
+
+
+def _enum_chip_class(value: Any, lookup: Dict[str, str]) -> str:
+    key = (str(value).upper().strip()) if value else ""
+    return f"{_CHIP_BASE} {lookup.get(key, lookup.get('UNKNOWN', 'bg-gray-100 text-gray-700'))}"
+
+
+def _sector_freshness(as_of: Any, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Return ``{'hours': float|None, 'label': str, 'class': str}`` for a sector row.
+
+    Buckets: Fresh (<24h), Recent (<72h), Aging (<7d), Stale (>=7d).
+    """
+    if as_of is None:
+        return {"hours": None, "label": "Unknown freshness", "class": f"{_CHIP_BASE} bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}
+    dt: Optional[datetime] = None
+    if isinstance(as_of, datetime):
+        dt = as_of
+    else:
+        try:
+            dt = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            dt = None
+    if dt is None:
+        return {"hours": None, "label": "Unknown freshness", "class": f"{_CHIP_BASE} bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    ref = now or datetime.now(timezone.utc)
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=timezone.utc)
+    hours = max(0.0, (ref - dt).total_seconds() / 3600.0)
+    if hours < 24:
+        return {"hours": hours, "label": "Fresh (<24h)", "class": f"{_CHIP_BASE} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"}
+    if hours < 72:
+        return {"hours": hours, "label": f"Recent ({hours / 24:.1f}d)", "class": f"{_CHIP_BASE} bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"}
+    if hours < 24 * 7:
+        return {"hours": hours, "label": f"Aging ({hours / 24:.1f}d)", "class": f"{_CHIP_BASE} bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}
+    return {"hours": hours, "label": f"Stale ({hours / 24:.0f}d)", "class": f"{_CHIP_BASE} bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}
+
+
+def _coerce_confidence_pct(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f"{max(0.0, min(1.0, f)) * 100:.0f}%"
+
+
 def _sector_meta_insights_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Normalize sector_meta_analysis rows for sector_insights.html."""
+    """Normalize sector_meta_analysis rows for sector_insights.html.
+
+    Phase 3d polish (2026-05-20): adds Tailwind chip classes for ``sector_stance``,
+    ``momentum_state``, ``news_pressure``; computes a freshness chip from ``as_of``;
+    formats confidence as a percent; sorts by ``rotation_rank`` then ``confidence``
+    descending so the strongest sectors lead the list.
+    """
     out: List[Dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
     for r in rows:
         kd = r.get("key_drivers") or []
         rf = r.get("risk_flags") or []
@@ -706,24 +785,54 @@ def _sector_meta_insights_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any
             rf = [str(rf)] if rf is not None else []
         sector = r.get("sector") or ""
         display = "Uncategorized (ETF articles without sector tag)" if sector == "__UNTAGGED__" else str(sector)
+        sector_stance = r.get("sector_stance")
+        momentum_state = r.get("momentum_state")
+        news_pressure = r.get("news_pressure")
+        freshness = _sector_freshness(r.get("as_of"), now=now)
+        try:
+            rotation_rank_num = int(r.get("rotation_rank")) if r.get("rotation_rank") is not None else None
+        except (TypeError, ValueError):
+            rotation_rank_num = None
+        try:
+            confidence_num = float(r.get("confidence")) if r.get("confidence") is not None else None
+        except (TypeError, ValueError):
+            confidence_num = None
         out.append(
             {
                 "id": r.get("id"),
                 "sector": sector,
                 "sector_display": display,
-                "sector_stance": r.get("sector_stance"),
-                "momentum_state": r.get("momentum_state"),
-                "news_pressure": r.get("news_pressure"),
+                "sector_stance": sector_stance,
+                "sector_stance_class": _enum_chip_class(sector_stance, _SECTOR_STANCE_CLASSES),
+                "momentum_state": momentum_state,
+                "momentum_state_class": _enum_chip_class(momentum_state, _MOMENTUM_CLASSES),
+                "news_pressure": news_pressure,
+                "news_pressure_class": _enum_chip_class(news_pressure, _NEWS_PRESSURE_CLASSES),
                 "rotation_rank": r.get("rotation_rank"),
+                "rotation_rank_num": rotation_rank_num,
                 "confidence": r.get("confidence"),
+                "confidence_num": confidence_num,
+                "confidence_pct": _coerce_confidence_pct(r.get("confidence")),
                 "key_drivers": [str(x) for x in kd if str(x).strip()],
                 "risk_flags": [str(x) for x in rf if str(x).strip()],
                 "as_of_display": _format_article_dt(r.get("as_of")),
                 "updated_at_display": _format_article_dt(r.get("updated_at")),
+                "freshness_label": freshness["label"],
+                "freshness_class": freshness["class"],
                 "model_used": r.get("model_used") or "",
                 "run_date": r.get("run_date"),
             }
         )
+    # Sort: strongest rotation first, then highest confidence; "Uncategorized"
+    # sector and missing ranks fall to the bottom so real sector takes lead.
+    out.sort(
+        key=lambda row: (
+            row["sector"] == "__UNTAGGED__",
+            -(row["rotation_rank_num"] if row["rotation_rank_num"] is not None else -1),
+            -(row["confidence_num"] if row["confidence_num"] is not None else -1.0),
+            str(row.get("sector") or ""),
+        )
+    )
     return out
 
 

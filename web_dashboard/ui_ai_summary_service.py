@@ -118,6 +118,8 @@ def refresh_dashboard_portfolio_overview(
         json_mode=True,
         temperature=0.2,
         response_ok=lambda s: extract_json(s) is not None,
+        function_name="ui_ai_summaries",
+        audit_extra={"scope": scope, "fund": fund},
     )
     if not full:
         logger.error("dashboard portfolio overview LLM failed on all summarization models")
@@ -160,6 +162,7 @@ def _run_llm_json_summary(
         json_mode=True,
         temperature=0.2,
         response_ok=lambda s: extract_json(s) is not None,
+        function_name="ui_ai_summaries",
     )
     if not full:
         return None, used
@@ -435,6 +438,8 @@ def refresh_fund_cross_screen_rollup(
         json_mode=True,
         temperature=0.2,
         response_ok=lambda s: extract_json(s) is not None,
+        function_name="ui_ai_summaries",
+        audit_extra={"fund": fund, "scope": "rollup_fund"},
     )
     if not full:
         logger.error("fund rollup LLM failed on all summarization models for %s", fund)

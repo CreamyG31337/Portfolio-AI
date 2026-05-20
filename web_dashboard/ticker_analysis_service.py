@@ -18,6 +18,7 @@ Formats data like AI context builder and sends to LLM for analysis.
 import json
 import re
 import logging
+import time
 from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime, timedelta, timezone
 import pandas as pd
@@ -123,6 +124,27 @@ def _normalize_stance(value: Any) -> Optional[str]:
         if known in upper.split():
             return known
     return None
+
+
+def _extract_ticker_analysis_audit_fields(raw_response: str) -> Dict[str, Any]:
+    """Pull ``sentiment`` out of a ticker-analysis JSON response for AI Audit.
+
+    Passed to ``collect_with_summary_model_chain`` so the central audit row for
+    a successful ticker_analysis attempt carries the ``sentiment`` field used by
+    the ``/admin/ai-audit`` UI column (the raw output stub already shows the
+    summary text). Failures and parse errors degrade gracefully.
+    """
+    fields: Dict[str, Any] = {}
+    try:
+        parsed = extract_json(raw_response or "")
+    except Exception:
+        parsed = None
+    if isinstance(parsed, dict):
+        sentiment = parsed.get("sentiment")
+        if sentiment:
+            fields["sentiment"] = sentiment
+    return fields
+
 
 class TickerAnalysisService:
     """Analyze a ticker with 3 months of multi-source data."""
@@ -1063,6 +1085,12 @@ class TickerAnalysisService:
                 json_mode=True,
                 temperature=0.1,
                 response_ok=lambda s: extract_json(s) is not None,
+                function_name="ticker_analysis",
+                audit_extra={
+                    "tickers_extracted": [ticker_upper],
+                    "analysis_type": "standard",
+                },
+                extract_audit_fields=_extract_ticker_analysis_audit_fields,
             )
             if not full_response:
                 logger.error("LLM failed on all summarization models for %s", ticker_upper)
@@ -1072,7 +1100,7 @@ class TickerAnalysisService:
             if not response:
                 logger.error(f"Failed to parse JSON response for {ticker_upper}")
                 return None
-            
+
             # Save analysis
             self._save_analysis(ticker_upper, data, context, response, requested_by, model)
             

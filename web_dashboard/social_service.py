@@ -860,6 +860,8 @@ OUTPUT JSON ONLY:
                         temperature=0.1,
                         stream=True,
                         response_ok=lambda s: _extract_json_object(s) is not None,
+                        function_name="opportunity_discovery",
+                        audit_extra={"subreddit": subreddit, "post_id": post_id},
                     )
                     if not response_text:
                         logger.warning(

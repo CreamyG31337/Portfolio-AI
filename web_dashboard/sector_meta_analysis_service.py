@@ -201,6 +201,8 @@ class SectorMetaAnalysisService:
             json_mode=True,
             temperature=0.15,
             response_ok=lambda s: extract_json(s) is not None,
+            function_name="sector_meta_analysis",
+            audit_extra={"sector": sector_key},
         )
         if not full_response:
             logger.error("Sector meta LLM failed on all summarization models for %s", sector_key)

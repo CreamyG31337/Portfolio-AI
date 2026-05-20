@@ -2,29 +2,10 @@
 
 {% block title %}Sector insights - Portfolio Dashboard{% endblock %}
 {% block page_title %}Sector insights{% endblock %}
-{% block page_subtitle %}Phase 3 — sector meta when populated; otherwise ETF Analysis preview{% endblock %}
+{% block page_subtitle %}Sector rotation synthesis from ETF flows — sorted by rotation strength{% endblock %}
 
 {% block content %}
 <div id="main-content" class="container mx-auto px-4 py-6 max-w-5xl">
-
-    <div class="bg-theme-warning-bg border border-theme-warning-text/40 rounded-lg p-4 mb-6" role="status">
-        <p class="text-sm text-theme-warning-text font-semibold mb-1">Honest labeling</p>
-        <p class="text-sm text-text-primary">
-            The <code class="text-xs bg-dashboard-surface px-1 rounded">sector_meta_analysis</code> JSON contract is
-            <strong>new</strong> and may evolve until Phase 3c wires it into ticker meta. Treat outputs as
-            <strong>experimental</strong> synthesis, not trade advice. When no sector-meta rows exist yet, this page
-            falls back to recent <strong>ETF Analysis</strong> articles from <code class="text-xs bg-dashboard-surface px-1 rounded">etf_group_analysis</code>.
-        </p>
-    </div>
-
-    <div class="bg-theme-info-bg border border-theme-info-text rounded-lg p-4 mb-6">
-        <p class="text-sm text-theme-info-text">
-            <strong>Roadmap:</strong> Phase 3 checklist and next steps live in
-            <code class="text-xs bg-dashboard-surface px-1 rounded">docs/meta_analysis_roadmap.md</code>
-            (repository). Related holdings data: <a href="{{ url_for('etf_bp.etf_holdings') }}"
-                class="font-semibold underline text-theme-info-text">ETF Holdings Watchtower</a>.
-        </p>
-    </div>
 
     {% if load_error %}
     <div class="bg-theme-error-bg border border-theme-error-text rounded-lg p-4 mb-6">
@@ -47,19 +28,45 @@
         </a>
     </div>
     {% elif show_sector_meta_primary and sector_meta_rows %}
-    <p class="text-sm text-text-secondary mb-4">{{ sector_meta_count }} sector meta row(s) — newest first (research DB,
-        <code class="text-xs bg-dashboard-background px-1 rounded">sector_meta_analysis</code>).</p>
-    <p class="text-sm text-text-secondary mb-4">
-        ETF write-ups remain in <a href="/research" class="text-accent font-medium underline">Research</a> (ETF Analysis).
-    </p>
+    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+        <p class="text-sm text-text-secondary">
+            {{ sector_meta_count }} sector meta row(s) — sorted by rotation strength.
+            Source: <code class="text-xs bg-dashboard-background px-1 rounded">sector_meta_analysis</code> (research DB).
+        </p>
+        <a href="/research" class="text-xs font-medium text-accent hover:underline">ETF Analysis articles →</a>
+    </div>
     <div class="space-y-4">
         {% for row in sector_meta_rows %}
         <article
             class="bg-dashboard-surface border border-border rounded-lg shadow-xs p-4 hover:border-accent/40 transition-colors">
-            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-                <h2 class="text-lg font-semibold text-text-primary">{{ row.sector_display }}</h2>
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div class="flex items-center gap-3">
+                    {% if row.rotation_rank_num is not none %}
+                    <span
+                        class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-accent/10 text-accent font-bold text-base border border-accent/40"
+                        title="Rotation rank within sector bucket (higher = stronger ETF-flow rotation evidence)">
+                        {{ row.rotation_rank_num }}
+                    </span>
+                    {% endif %}
+                    <h2 class="text-lg font-semibold text-text-primary">{{ row.sector_display }}</h2>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    {% if row.sector_stance %}
+                    <span class="{{ row.sector_stance_class }}" title="Sector stance (Phase 3b enum)">{{ row.sector_stance }}</span>
+                    {% endif %}
+                    {% if row.momentum_state %}
+                    <span class="{{ row.momentum_state_class }}" title="Momentum from ETF-flow narratives">{{ row.momentum_state }}</span>
+                    {% endif %}
+                    {% if row.news_pressure %}
+                    <span class="{{ row.news_pressure_class }}" title="News pressure from article tone">{{ row.news_pressure }}</span>
+                    {% endif %}
+                </div>
             </div>
-            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-secondary mb-2">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary mb-3">
+                <span class="{{ row.freshness_class }}" title="Time since the as_of timestamp">{{ row.freshness_label }}</span>
+                {% if row.confidence_pct %}
+                <span><i class="fas fa-gauge-high mr-1" aria-hidden="true"></i>Confidence {{ row.confidence_pct }}</span>
+                {% endif %}
                 {% if row.as_of_display %}
                 <span><i class="far fa-clock mr-1" aria-hidden="true"></i>As of {{ row.as_of_display }}</span>
                 {% endif %}
@@ -70,15 +77,8 @@
                 <span><i class="fas fa-microchip mr-1" aria-hidden="true"></i>{{ row.model_used }}</span>
                 {% endif %}
             </div>
-            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-text-primary mb-3">
-                <div><span class="text-text-secondary font-medium">Stance</span> {{ row.sector_stance }}</div>
-                <div><span class="text-text-secondary font-medium">Momentum</span> {{ row.momentum_state }}</div>
-                <div><span class="text-text-secondary font-medium">News pressure</span> {{ row.news_pressure }}</div>
-                <div><span class="text-text-secondary font-medium">Rotation rank</span> {{ row.rotation_rank }}</div>
-                <div class="sm:col-span-2"><span class="text-text-secondary font-medium">Confidence</span> {{ row.confidence }}</div>
-            </dl>
             {% if row.key_drivers %}
-            <p class="text-xs font-semibold text-text-secondary mb-1">Key drivers</p>
+            <p class="text-xs font-semibold text-text-secondary mb-1"><i class="fas fa-bolt mr-1 text-accent" aria-hidden="true"></i>Key drivers</p>
             <ul class="list-disc list-inside text-sm text-text-primary mb-2">
                 {% for d in row.key_drivers %}
                 <li>{{ d }}</li>
@@ -86,7 +86,7 @@
             </ul>
             {% endif %}
             {% if row.risk_flags %}
-            <p class="text-xs font-semibold text-text-secondary mb-1">Risk flags</p>
+            <p class="text-xs font-semibold text-text-secondary mb-1"><i class="fas fa-triangle-exclamation mr-1 text-amber-500" aria-hidden="true"></i>Risk flags</p>
             <ul class="list-disc list-inside text-sm text-text-primary">
                 {% for f in row.risk_flags %}
                 <li>{{ f }}</li>
@@ -96,6 +96,10 @@
         </article>
         {% endfor %}
     </div>
+    <p class="text-xs text-text-tertiary mt-6">
+        Roadmap and contract: <code class="text-xs bg-dashboard-background px-1 rounded">docs/meta_analysis_roadmap.md</code>.
+        Holdings detail: <a href="{{ url_for('etf_bp.etf_holdings') }}" class="text-accent hover:underline">ETF Holdings Watchtower</a>.
+    </p>
     {% elif preview_rows %}
     <p class="text-sm text-text-secondary mb-4">{{ article_count }} article(s) — newest first (research DB, type ETF Analysis).</p>
     <div class="space-y-4">

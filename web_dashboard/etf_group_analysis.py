@@ -228,6 +228,8 @@ class ETFGroupAnalysisService:
                 json_mode=True,
                 temperature=0.1,
                 response_ok=lambda s: extract_json(s) is not None,
+                function_name="etf_group_analysis",
+                audit_extra={"tickers_extracted": [etf_ticker]},
             )
             if not full_response:
                 logger.error("ETF group LLM failed on all summarization models for %s", etf_ticker)

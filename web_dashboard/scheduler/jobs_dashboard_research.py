@@ -280,6 +280,10 @@ def action_queue_ai_review_job() -> None:
                     json_mode=True,
                     temperature=0.15,
                     response_ok=lambda s: extract_json(s) is not None,
+                    function_name="action_queue_ai_review",
+                    audit_extra={
+                        "tickers_extracted": [it.get("ticker")] if it.get("ticker") else None,
+                    },
                 )
                 if not full:
                     errors += 1

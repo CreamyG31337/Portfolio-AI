@@ -1,0 +1,1 @@
+2328|logs\ticker_analysis_20260520-121307.log|logs\ticker_analysis_20260520-121307.err.log

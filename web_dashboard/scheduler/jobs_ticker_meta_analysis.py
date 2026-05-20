@@ -19,13 +19,11 @@ except ImportError:
         logger.info("Job %s: %s - %s (%sms)", job_id, "OK" if success else "FAIL", message, duration_ms)
 
 
-from ai_skip_list_manager import AISkipListManager
 from meta_analysis_service import TickerMetaAnalysisService
 from ollama_client import OllamaClient, get_ollama_client
 from postgres_client import PostgresClient
 from settings import get_summarizing_model
 from supabase_client import SupabaseClient
-from ticker_analysis_service import TickerAnalysisService
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +31,7 @@ logger = logging.getLogger(__name__)
 _MAX_SECONDS = 45 * 60
 # Digest-based refresh can increase nightly work; cap per run (tune if backlog grows).
 _MAX_TICKERS_PER_RUN = 100
+_MAX_CANDIDATE_TICKERS = 300
 
 
 def ticker_meta_analysis_job() -> None:
@@ -93,17 +92,15 @@ def ticker_meta_analysis_job() -> None:
         if not ollama:
             ollama = OllamaClient()
 
-        skip_list = AISkipListManager(supabase)
-        ticker_service = TickerAnalysisService(ollama, supabase, postgres, skip_list)
         meta_service = TickerMetaAnalysisService(ollama, supabase, postgres)
 
-        tickers: list[tuple[str, int]] = ticker_service.get_tickers_to_analyze()
+        tickers = meta_service.fetch_standard_ticker_candidates(limit=_MAX_CANDIDATE_TICKERS)
         processed = 0
         skipped_fresh = 0
         skipped_no_standard = 0
         failed = 0
 
-        for ticker, _prio in tickers:
+        for ticker in tickers:
             if time.time() - start > _MAX_SECONDS:
                 logger.info("Meta job time budget reached (%ss).", _MAX_SECONDS)
                 break

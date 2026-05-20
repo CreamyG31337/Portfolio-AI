@@ -1259,12 +1259,17 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             return result
         finally:
             try:
-                from ai_audit import _compute_input_hash, _detect_caller, log_inference
+                from ai_audit import (
+                    _compute_input_hash,
+                    _detect_caller,
+                    _detect_provider,
+                    log_inference,
+                )
 
                 log_inference(
                     function="analyze_crowd_sentiment",
                     model=model_used,
-                    provider="ollama",
+                    provider=_detect_provider(model_used),
                     input_chars=len(combined_text),
                     input_hash=_compute_input_hash(combined_text),
                     output_summary=json.dumps(result, default=str) if result else "",
@@ -2191,6 +2196,68 @@ def _looks_like_query_ollama_user_facing_error(text: str) -> bool:
     return any(m in low for m in markers)
 
 
+def _maybe_log_chain_audit(
+    *,
+    function_name: Optional[str],
+    model: str,
+    prompt: str,
+    output: Optional[str],
+    duration_ms: int,
+    success: bool,
+    error: Optional[str],
+    audit_extra: Optional[Dict[str, Any]],
+    extract_audit_fields: Optional[Callable[[str], Dict[str, Any]]] = None,
+) -> None:
+    """Write one AI audit row per ``collect_with_summary_model_chain`` attempt.
+
+    Provider is detected from the model name so GLM fallback attempts surface in
+    ``/admin/ai-audit`` with ``provider=glm`` (previously the only audited GLM
+    path was ``_generate_summary_once``, missing every chain-based caller).
+    Auditing is opt-in via ``function_name``; passing ``None`` keeps the legacy
+    behaviour for call sites (like ``analyze_crowd_sentiment``) that already
+    wrap the chain with their own audit record.
+
+    ``extract_audit_fields`` (optional) is invoked with the raw response text on
+    successful attempts to enrich the row with caller-specific fields such as
+    ``sentiment`` and ``tickers_extracted``. Failures don't call the extractor.
+    """
+    if not function_name:
+        return
+    try:
+        from ai_audit import (
+            _compute_input_hash,
+            _detect_caller,
+            _detect_provider,
+            log_inference,
+        )
+
+        extra: Dict[str, Any] = {}
+        if isinstance(audit_extra, dict):
+            extra.update(audit_extra)
+        if success and output and extract_audit_fields is not None:
+            try:
+                dynamic = extract_audit_fields(output) or {}
+                if isinstance(dynamic, dict):
+                    extra.update(dynamic)
+            except Exception as exc:
+                logger.debug("extract_audit_fields raised; ignoring: %s", exc)
+        extra.setdefault("provider", _detect_provider(model))
+        log_inference(
+            function=function_name,
+            model=model,
+            input_chars=len(prompt or ""),
+            input_hash=_compute_input_hash(prompt or ""),
+            output_summary=(output or "")[:1000] if success else "",
+            duration_ms=duration_ms,
+            success=success,
+            error=error,
+            caller=_detect_caller(),
+            **extra,
+        )
+    except Exception as exc:
+        logger.debug("Failed to write summary-chain audit entry: %s", exc)
+
+
 def collect_with_summary_model_chain(
     ollama: OllamaClient,
     *,
@@ -2206,12 +2273,23 @@ def collect_with_summary_model_chain(
     streaming_timeout: int = 90,
     include_thinking: bool = False,
     response_ok: Optional[Callable[[str], bool]] = None,
+    function_name: Optional[str] = None,
+    audit_extra: Optional[Dict[str, Any]] = None,
+    extract_audit_fields: Optional[Callable[[str], Dict[str, Any]]] = None,
 ) -> Tuple[Optional[str], str]:
     """Run :meth:`OllamaClient.query_ollama` across the summarization model chain until success.
 
     Uses :func:`_get_summary_model_chain` (primary + configured fallbacks, including GLM when listed).
     On each candidate, tries the next model when the body is empty, matches
     :func:`_looks_like_query_ollama_user_facing_error`, or ``response_ok`` returns False.
+
+    AI Audit integration:
+        Pass ``function_name`` (e.g. ``"ticker_analysis"``, ``"ticker_meta_analysis"``,
+        ``"market_daily_brief"``) to write one ``/admin/ai-audit`` row **per attempt**
+        with the correct provider (so GLM fallback hits show up explicitly).
+        Use ``audit_extra`` to attach optional fields like ``tickers_extracted`` or
+        ``sentiment``. Omitting ``function_name`` preserves the legacy quiet mode for
+        callers that audit at their own boundary.
 
     Returns:
         ``(full_text, model_used)`` on success, or ``(None, last_model_tried)`` if every candidate fails.
@@ -2231,6 +2309,9 @@ def collect_with_summary_model_chain(
     for idx, candidate in enumerate(chain, start=1):
         last_model = candidate
         full = ""
+        attempt_started_at = time.time()
+        audit_error: Optional[str] = None
+        attempt_success = False
         try:
             for chunk in ollama.query_ollama(
                 prompt=prompt,
@@ -2246,15 +2327,28 @@ def collect_with_summary_model_chain(
                 include_thinking=include_thinking,
             ):
                 full += chunk
-        except OllamaHostBusyError:
+        except OllamaHostBusyError as exc:
+            audit_error = f"hosts busy: {exc}"
             logger.warning(
                 "collect_with_summary_model_chain: hosts busy for model=%s (%s/%s); trying next",
                 candidate,
                 idx,
                 len(chain),
             )
+            _maybe_log_chain_audit(
+                function_name=function_name,
+                model=candidate,
+                prompt=prompt,
+                output=None,
+                duration_ms=int((time.time() - attempt_started_at) * 1000),
+                success=False,
+                error=audit_error,
+                audit_extra=audit_extra,
+                extract_audit_fields=extract_audit_fields,
+            )
             continue
         except Exception as exc:
+            audit_error = str(exc)
             logger.warning(
                 "collect_with_summary_model_chain: error for model=%s (%s/%s): %s",
                 candidate,
@@ -2262,9 +2356,21 @@ def collect_with_summary_model_chain(
                 len(chain),
                 exc,
             )
+            _maybe_log_chain_audit(
+                function_name=function_name,
+                model=candidate,
+                prompt=prompt,
+                output=None,
+                duration_ms=int((time.time() - attempt_started_at) * 1000),
+                success=False,
+                error=audit_error,
+                audit_extra=audit_extra,
+                extract_audit_fields=extract_audit_fields,
+            )
             continue
 
         if ok_fn(full):
+            attempt_success = True
             if idx > 1:
                 logger.info(
                     "collect_with_summary_model_chain: success with model=%s (attempt %s/%s)",
@@ -2272,13 +2378,36 @@ def collect_with_summary_model_chain(
                     idx,
                     len(chain),
                 )
+            _maybe_log_chain_audit(
+                function_name=function_name,
+                model=candidate,
+                prompt=prompt,
+                output=full,
+                duration_ms=int((time.time() - attempt_started_at) * 1000),
+                success=True,
+                error=None,
+                audit_extra=audit_extra,
+                extract_audit_fields=extract_audit_fields,
+            )
             return full, candidate
 
+        audit_error = "response not acceptable (response_ok rejected)"
         logger.warning(
             "collect_with_summary_model_chain: response not acceptable for model=%s (%s/%s)",
             candidate,
             idx,
             len(chain),
+        )
+        _maybe_log_chain_audit(
+            function_name=function_name,
+            model=candidate,
+            prompt=prompt,
+            output=None,
+            duration_ms=int((time.time() - attempt_started_at) * 1000),
+            success=False,
+            error=audit_error,
+            audit_extra=audit_extra,
+            extract_audit_fields=extract_audit_fields,
         )
 
     return None, last_model

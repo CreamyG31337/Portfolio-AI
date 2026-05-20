@@ -181,6 +181,13 @@ interface TickerMetaAnalysisRow {
     what_changed_vs_last_run?: string;
     action_items?: string[];
     narrative?: string;
+    /**
+     * Raw JSONB payload returned by the meta LLM. Holds the full Phase 1 contract
+     * fields (``stance``, ``horizon``, ``key_drivers``, ``risk_flags``,
+     * ``actionability_score``, ``confidence``) that aren't promoted to top-level
+     * columns. ``renderTickerMetaAnalysisContent`` reads from ``full_result`` to
+     * surface the entire stance package, not just the legacy promoted fields.
+     */
     full_result?: Record<string, unknown>;
     model_used?: string;
     requested_by?: string;
@@ -2923,27 +2930,140 @@ function setupMetaRebuildHandler(ticker: string): void {
     }
 }
 
+/**
+ * Tailwind chip classes for ticker meta ``stance`` enum values.
+ * Mirrors the Phase 1 contract in ``ai_prompts.py::TICKER_META_ANALYSIS_PROMPT``:
+ *   STRONG_BULLISH | BULLISH | NEUTRAL | BEARISH | STRONG_BEARISH | INSUFFICIENT_DATA
+ */
+function stanceChipClasses(stance: string | undefined): string {
+    const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold';
+    switch ((stance || '').toUpperCase()) {
+        case 'STRONG_BULLISH':
+            return `${base} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300`;
+        case 'BULLISH':
+            return `${base} bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300`;
+        case 'NEUTRAL':
+            return `${base} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        case 'BEARISH':
+            return `${base} bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300`;
+        case 'STRONG_BEARISH':
+            return `${base} bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300`;
+        case 'INSUFFICIENT_DATA':
+            return `${base} bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300`;
+        default:
+            return `${base} bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300`;
+    }
+}
+
+/** Tailwind chip classes for the ``horizon`` enum (INTRADAY/SWING/POSITION/UNKNOWN). */
+function horizonChipClasses(horizon: string | undefined): string {
+    const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold';
+    switch ((horizon || '').toUpperCase()) {
+        case 'INTRADAY':
+            return `${base} bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300`;
+        case 'SWING':
+            return `${base} bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300`;
+        case 'POSITION':
+            return `${base} bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300`;
+        default:
+            return `${base} bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300`;
+    }
+}
+
+/** Read a string field from the meta row, falling back to ``full_result``. */
+function metaStringField(meta: TickerMetaAnalysisRow, key: string): string {
+    const top = (meta as unknown as Record<string, unknown>)[key];
+    if (typeof top === 'string' && top.trim()) return top;
+    const fr = meta.full_result;
+    if (fr && typeof fr[key] === 'string') {
+        const val = fr[key] as string;
+        if (val.trim()) return val;
+    }
+    return '';
+}
+
+/** Read a number-ish field from the meta row, falling back to ``full_result``. */
+function metaNumberField(meta: TickerMetaAnalysisRow, key: string): number | null {
+    const top = (meta as unknown as Record<string, unknown>)[key];
+    if (typeof top === 'number' && Number.isFinite(top)) return top;
+    if (typeof top === 'string' && top.trim() !== '') {
+        const n = Number(top);
+        if (Number.isFinite(n)) return n;
+    }
+    const fr = meta.full_result;
+    if (fr && fr[key] !== undefined && fr[key] !== null) {
+        if (typeof fr[key] === 'number' && Number.isFinite(fr[key] as number)) return fr[key] as number;
+        if (typeof fr[key] === 'string') {
+            const n = Number(fr[key]);
+            if (Number.isFinite(n)) return n;
+        }
+    }
+    return null;
+}
+
+/** Read a string[] field from the meta row, falling back to ``full_result``. */
+function metaListField(meta: TickerMetaAnalysisRow, key: string): string[] {
+    const top = (meta as unknown as Record<string, unknown>)[key];
+    if (Array.isArray(top)) return top.map((v) => String(v)).filter((s) => s.trim());
+    const fr = meta.full_result;
+    if (fr && Array.isArray(fr[key])) {
+        return (fr[key] as unknown[]).map((v) => String(v)).filter((s) => s.trim());
+    }
+    return [];
+}
+
 function renderTickerMetaAnalysisContent(meta: TickerMetaAnalysisRow): void {
     const el = document.getElementById('meta-analysis-content');
     if (!el) return;
 
-    const conv = meta.unified_conviction || 'N/A';
-    const conf =
-        meta.confidence_adjusted !== null && meta.confidence_adjusted !== undefined
-            ? `${(Number(meta.confidence_adjusted) * 100).toFixed(0)}%`
-            : 'N/A';
-    const rawContra = meta.contradictions;
-    const contra: string[] = Array.isArray(rawContra)
-        ? rawContra.map((c) => String(c))
-        : [];
-    const actions = meta.action_items || [];
+    // Phase 1 contract: prefer `stance` from full_result; fall back to legacy
+    // `unified_conviction` column. Same idea for `confidence` vs `confidence_adjusted`.
+    const stance =
+        metaStringField(meta, 'stance') ||
+        meta.unified_conviction ||
+        'N/A';
+    const stanceClass = stanceChipClasses(stance);
+
+    const horizon = metaStringField(meta, 'horizon');
+    const horizonClass = horizonChipClasses(horizon);
+
+    const confidenceRaw =
+        metaNumberField(meta, 'confidence') ??
+        (meta.confidence_adjusted !== null && meta.confidence_adjusted !== undefined
+            ? Number(meta.confidence_adjusted)
+            : null);
+    const confidenceText =
+        confidenceRaw === null ? 'N/A' : `${(confidenceRaw * 100).toFixed(0)}%`;
+
+    const actionabilityRaw = metaNumberField(meta, 'actionability_score');
+    const actionabilityPct =
+        actionabilityRaw === null ? null : Math.max(0, Math.min(100, actionabilityRaw));
+
+    const keyDrivers = metaListField(meta, 'key_drivers');
+    const riskFlags = metaListField(meta, 'risk_flags');
+    const contradictions = metaListField(meta, 'contradictions');
+    const actions = metaListField(meta, 'action_items');
+
+    const driversHtml =
+        keyDrivers.length > 0
+            ? `<ul class="list-disc list-inside text-sm text-text-primary space-y-1">${keyDrivers
+                .map((d) => `<li>${escapeHtml(d)}</li>`)
+                .join('')}</ul>`
+            : '<p class="text-sm text-text-secondary">No key drivers reported.</p>';
+
+    const risksHtml =
+        riskFlags.length > 0
+            ? `<ul class="list-disc list-inside text-sm text-text-primary space-y-1">${riskFlags
+                .map((r) => `<li>${escapeHtml(r)}</li>`)
+                .join('')}</ul>`
+            : '<p class="text-sm text-text-secondary">None flagged.</p>';
 
     const contraHtml =
-        contra.length > 0
-            ? `<ul class="list-disc list-inside text-sm text-text-primary space-y-1">${contra
+        contradictions.length > 0
+            ? `<ul class="list-disc list-inside text-sm text-text-primary space-y-1">${contradictions
                 .map((c) => `<li>${escapeHtml(c)}</li>`)
                 .join('')}</ul>`
-            : '<p class="text-sm text-text-secondary">None flagged</p>';
+            : '<p class="text-sm text-text-secondary">None flagged.</p>';
 
     const actionsHtml =
         actions.length > 0
@@ -2952,26 +3072,52 @@ function renderTickerMetaAnalysisContent(meta: TickerMetaAnalysisRow): void {
                 .join('')}</ul>`
             : '';
 
+    const actionabilityHtml =
+        actionabilityPct === null
+            ? ''
+            : `
+            <div class="min-w-[160px]">
+                <span class="text-text-secondary text-xs uppercase tracking-wide">Actionability</span>
+                <div class="flex items-center gap-2 mt-1">
+                    <div class="font-medium text-text-primary text-sm">${actionabilityPct.toFixed(0)}/100</div>
+                    <div class="flex-1 h-1.5 bg-dashboard-background rounded overflow-hidden border border-border" aria-hidden="true">
+                        <div class="h-full bg-accent" style="width: ${actionabilityPct}%"></div>
+                    </div>
+                </div>
+            </div>`;
+
     el.innerHTML = `
         <div class="space-y-4">
-            <div class="flex flex-wrap gap-4 text-sm">
-                <div>
-                    <span class="text-text-secondary">Conviction</span>
-                    <div class="font-medium text-text-primary mt-0.5">${escapeHtml(conv)}</div>
-                </div>
-                <div>
-                    <span class="text-text-secondary">Adjusted confidence</span>
-                    <div class="font-medium text-text-primary mt-0.5">${escapeHtml(conf)}</div>
-                </div>
-                ${meta.updated_at ? `<div><span class="text-text-secondary">Updated</span><div class="font-medium text-text-primary mt-0.5">${escapeHtml(formatDate(meta.updated_at))}</div></div>` : ''}
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span class="${stanceClass}" title="Phase 1 stance enum">${escapeHtml(stance)}</span>
+                ${horizon ? `<span class="${horizonClass}" title="Recommended trading horizon">${escapeHtml(horizon)}</span>` : ''}
+                <span class="text-sm text-text-secondary">Confidence <span class="font-semibold text-text-primary">${escapeHtml(confidenceText)}</span></span>
+                ${meta.updated_at ? `<span class="text-xs text-text-tertiary">Updated ${escapeHtml(formatDate(meta.updated_at))}</span>` : ''}
             </div>
+            ${actionabilityHtml}
             ${meta.narrative ? `
             <div class="bg-dashboard-background p-4 rounded-lg border border-border">
                 <h4 class="font-semibold text-text-primary mb-2">Narrative</h4>
                 <div class="text-text-primary whitespace-pre-wrap text-sm">${escapeHtml(meta.narrative)}</div>
             </div>` : ''}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <h4 class="font-semibold text-text-primary mb-2">
+                        <i class="fas fa-bolt mr-1 text-accent"></i>Key drivers
+                    </h4>
+                    ${driversHtml}
+                </div>
+                <div>
+                    <h4 class="font-semibold text-text-primary mb-2">
+                        <i class="fas fa-triangle-exclamation mr-1 text-amber-500"></i>Risk flags
+                    </h4>
+                    ${risksHtml}
+                </div>
+            </div>
             <div>
-                <h4 class="font-semibold text-text-primary mb-2">Contradictions / tensions</h4>
+                <h4 class="font-semibold text-text-primary mb-2">
+                    <i class="fas fa-scale-balanced mr-1 text-text-secondary"></i>Contradictions / tensions
+                </h4>
                 ${contraHtml}
             </div>
             ${meta.what_changed_vs_last_run ? `
@@ -2980,7 +3126,7 @@ function renderTickerMetaAnalysisContent(meta: TickerMetaAnalysisRow): void {
                 <p class="text-sm text-text-primary whitespace-pre-wrap">${escapeHtml(meta.what_changed_vs_last_run)}</p>
             </div>` : ''}
             ${actionsHtml ? `<div><h4 class="font-semibold text-text-primary mb-2">Action items</h4>${actionsHtml}</div>` : ''}
-            ${meta.model_used ? `<p class="text-xs text-text-tertiary">Model: ${escapeHtml(meta.model_used)}</p>` : ''}
+            ${meta.model_used ? `<p class="text-xs text-text-tertiary">Model: ${escapeHtml(meta.model_used)}${meta.artifact_bundle_digest ? ` · bundle ${escapeHtml(String(meta.artifact_bundle_digest).slice(0, 12))}` : ''}</p>` : ''}
         </div>
     `;
 }

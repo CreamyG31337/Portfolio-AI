@@ -281,6 +281,27 @@ def test_artifact_bundle_digest_stable() -> None:
     assert d != artifact_bundle_digest("hello!")
 
 
+def test_fetch_standard_ticker_candidates_reads_standard_rows_only() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = [
+        {"ticker": "tsla"},
+        {"ticker": "AAPL"},
+        {"ticker": None},
+        {"ticker": " "},
+        {"ticker": "TSLA"},
+    ]
+    svc = _svc(pg)
+
+    tickers = svc.fetch_standard_ticker_candidates(limit=10)
+
+    assert tickers == ["TSLA", "AAPL"]
+    query, params = pg.execute_query.call_args[0]
+    assert "FROM ticker_analysis" in query
+    assert "analysis_type = 'standard'" in query
+    assert "updated_at DESC" in query
+    assert params == (10,)
+
+
 def test_build_artifact_bundle_includes_sector_prior(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("META_ANALYSIS_PHASE3_SECTOR", "true")
     sector_row = {

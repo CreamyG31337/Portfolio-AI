@@ -112,6 +112,7 @@ def run_market_daily_brief(
         json_mode=True,
         temperature=0.2,
         response_ok=lambda s: extract_json(s) is not None,
+        function_name="market_daily_brief",
     )
     if not full:
         logger.error("market brief LLM failed on all summarization models")

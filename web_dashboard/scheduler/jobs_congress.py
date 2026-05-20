@@ -607,6 +607,7 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
                                         stream=True,
                                         temperature=0.1,
                                         response_ok=lambda s: _parse_ai_conflict_json(s)[0] is not None,
+                                        function_name="analyze_congress_trades",
                                     )
                                     full_response = full_response or ""
 

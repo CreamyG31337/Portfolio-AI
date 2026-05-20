@@ -1,9 +1,109 @@
 """Flask: Phase 3 sector_insights (sector_meta primary + ETF Analysis fallback)."""
 
-from datetime import date, datetime, UTC
+from datetime import date, datetime, timedelta, timezone, UTC
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+def _sector_row(**overrides):
+    """Build a sector_meta_analysis row with sensible defaults; override per test."""
+    base = {
+        "id": "row-id",
+        "sector": "Technology",
+        "run_date": date(2026, 5, 10),
+        "sector_stance": "BULLISH",
+        "momentum_state": "STABLE",
+        "news_pressure": "POSITIVE",
+        "rotation_rank": 1,
+        "confidence": 0.5,
+        "key_drivers": ["a"],
+        "risk_flags": ["r"],
+        "as_of": datetime(2026, 5, 10, 8, 0, tzinfo=UTC),
+        "updated_at": datetime(2026, 5, 10, 8, 5, tzinfo=UTC),
+        "model_used": "qwen3.6:27b",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_sector_freshness_buckets():
+    """``_sector_freshness`` returns expected bucket label and css class."""
+    from routes.etf_routes import _sector_freshness
+
+    now = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
+
+    fresh = _sector_freshness(now - timedelta(hours=2), now=now)
+    assert fresh["label"].startswith("Fresh")
+    assert "emerald" in fresh["class"]
+
+    recent = _sector_freshness(now - timedelta(hours=36), now=now)
+    assert recent["label"].startswith("Recent")
+    assert "blue" in recent["class"]
+
+    aging = _sector_freshness(now - timedelta(days=4), now=now)
+    assert aging["label"].startswith("Aging")
+    assert "amber" in aging["class"]
+
+    stale = _sector_freshness(now - timedelta(days=10), now=now)
+    assert stale["label"].startswith("Stale")
+    assert "red" in stale["class"]
+
+    none_val = _sector_freshness(None, now=now)
+    assert none_val["label"] == "Unknown freshness"
+
+
+def test_sector_meta_insights_rows_attach_chip_classes_and_freshness():
+    from routes.etf_routes import _sector_meta_insights_rows
+
+    rows = _sector_meta_insights_rows([_sector_row()])
+    assert len(rows) == 1
+    row = rows[0]
+
+    assert "green" in row["sector_stance_class"]  # BULLISH -> green chip
+    assert "blue" in row["momentum_state_class"]  # STABLE -> blue chip
+    assert "green" in row["news_pressure_class"]  # POSITIVE -> green chip
+    assert row["confidence_pct"] == "50%"
+    assert row["freshness_label"]  # populated
+    assert row["sector_display"] == "Technology"
+
+
+def test_sector_meta_insights_rows_sorted_by_rotation_then_confidence():
+    """Rotation rank descending wins over recency; __UNTAGGED__ sinks to bottom."""
+    from routes.etf_routes import _sector_meta_insights_rows
+
+    rows = _sector_meta_insights_rows([
+        _sector_row(sector="Energy", rotation_rank=1, confidence=0.9, sector_stance="BULLISH"),
+        _sector_row(sector="__UNTAGGED__", rotation_rank=99, confidence=0.99),
+        _sector_row(sector="Health Care", rotation_rank=5, confidence=0.4, sector_stance="MIXED"),
+        _sector_row(sector="Financials", rotation_rank=5, confidence=0.8, sector_stance="NEUTRAL"),
+        _sector_row(sector="Materials", rotation_rank=None, confidence=0.95),
+    ])
+    sectors = [r["sector"] for r in rows]
+    # Highest rotation_rank first; ties broken by confidence; missing rank falls
+    # below numeric ranks; __UNTAGGED__ always last.
+    assert sectors == [
+        "Financials",   # rank=5, conf=0.80
+        "Health Care",  # rank=5, conf=0.40
+        "Energy",       # rank=1, conf=0.90
+        "Materials",    # rank=None, conf=0.95
+        "__UNTAGGED__", # forced last
+    ]
+
+
+def test_sector_meta_insights_rows_handles_unknown_enums():
+    """Unknown enum values fall back to a neutral chip class instead of crashing."""
+    from routes.etf_routes import _sector_meta_insights_rows
+
+    rows = _sector_meta_insights_rows([
+        _sector_row(sector_stance="GIBBERISH", momentum_state=None, news_pressure="UNKNOWN", confidence=None, rotation_rank="bad"),
+    ])
+    row = rows[0]
+    assert row["sector_stance_class"]
+    assert row["momentum_state_class"]
+    assert "gray" in row["news_pressure_class"]
+    assert row["confidence_pct"] is None
+    assert row["rotation_rank_num"] is None
 
 
 def test_shared_navigation_includes_sector_insights():
@@ -97,7 +197,9 @@ def test_sector_insights_lists_etf_analysis_rows(client, auth_ok):
         resp = client.get("/sector_insights")
     assert resp.status_code == 200
     body = resp.data.decode("utf-8")
-    assert "experimental" in body
+    # Phase 3d (2026-05): the legacy "experimental" / "honest labeling" banner
+    # was removed once sector_meta_analysis became the primary surface. We now
+    # just confirm the ETF Analysis fallback content actually renders.
     assert "ARKK Holdings Analysis" in body
     assert "Test summary for rotation context." in body
 

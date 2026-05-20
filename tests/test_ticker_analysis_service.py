@@ -228,6 +228,30 @@ def test_get_tickers_to_analyze_reports_skip_list_filtering(monkeypatch):
     assert stats["selected"] == 1
 
 
+def test_extract_ticker_analysis_audit_fields_pulls_sentiment_from_json():
+    """The audit-field extractor passed to the chain must surface sentiment.
+
+    Replaces the old ``_log_ticker_analysis_audit`` test; that helper was
+    removed once ``collect_with_summary_model_chain`` started writing the
+    audit row centrally (so GLM fallback attempts get audited too).
+    """
+    from ticker_analysis_service import _extract_ticker_analysis_audit_fields
+
+    fields = _extract_ticker_analysis_audit_fields(
+        '{"sentiment": "BULLISH", "summary": "Constructive setup"}'
+    )
+    assert fields == {"sentiment": "BULLISH"}
+
+
+def test_extract_ticker_analysis_audit_fields_handles_garbage_input():
+    """Non-JSON / empty responses must return an empty enrichment dict, not raise."""
+    from ticker_analysis_service import _extract_ticker_analysis_audit_fields
+
+    assert _extract_ticker_analysis_audit_fields("not json at all") == {}
+    assert _extract_ticker_analysis_audit_fields("") == {}
+    assert _extract_ticker_analysis_audit_fields('{"unrelated": "field"}') == {}
+
+
 @pytest.mark.parametrize(
     "raw,expected",
     [
