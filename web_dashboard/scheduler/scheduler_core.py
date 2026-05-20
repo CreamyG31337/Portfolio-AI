@@ -1022,6 +1022,21 @@ def start_scheduler() -> bool:
             logger.debug(f"  💓 Heartbeat job registered (every {_HEARTBEAT_INTERVAL}s)")
         except Exception as e:
             logger.warning(f"  ⚠️ Failed to schedule heartbeat: {e}")
+
+        # Phase 1 AI task queue plumbing is feature-flagged and dormant until
+        # explicitly enabled jobs register concrete handlers.
+        try:
+            from scheduler.ai_task_workers import AIQueueConfig, build_task_handlers, start_ai_task_workers
+
+            ai_queue_config = AIQueueConfig.from_env()
+            started_workers = start_ai_task_workers(
+                config=ai_queue_config,
+                handlers=build_task_handlers(ai_queue_config.enabled_jobs),
+            )
+            if started_workers:
+                logger.info("  🤖 AI task queue workers started")
+        except Exception as e:
+            logger.warning(f"  ⚠️ Failed to start AI task queue workers: {e}")
         
         total_time = time.time() - start_time
         logger.info(f"✅ SCHEDULER STARTUP COMPLETE in {total_time:.2f}s")
@@ -1111,6 +1126,13 @@ def get_scheduler_status() -> Dict[str, Any]:
 def shutdown_scheduler() -> None:
     """Gracefully shutdown the scheduler."""
     global _scheduler, _scheduler_intentional_shutdown
+
+    try:
+        from scheduler.ai_task_workers import stop_ai_task_workers
+
+        stop_ai_task_workers(wait=True)
+    except Exception as e:
+        logger.debug(f"Failed to stop AI task workers: {e}")
     
     if _scheduler and _scheduler.running:
         _scheduler_intentional_shutdown = True

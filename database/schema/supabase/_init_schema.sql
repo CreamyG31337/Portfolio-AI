@@ -19,6 +19,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- TABLES
 \i tables/ai_analysis_queue.sql
 \i tables/ai_analysis_skip_list.sql
+\i tables/ai_task_queue.sql
 \i tables/apscheduler_jobs.sql
 \i tables/benchmark_data.sql
 \i tables/cash_balances.sql
@@ -63,6 +64,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/can_modify_data.sql
 \i functions/create_user_profile.sql
 \i functions/delete_user_safe.sql
+\i functions/complete_ai_task.sql
+\i functions/enqueue_ai_task.sql
+\i functions/fail_ai_task.sql
 \i functions/get_etf_holding_trades.sql
 \i functions/get_etf_holding_trades_batch.sql
 \i functions/get_exchange_rate_for_date.sql
@@ -75,13 +79,16 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/get_user_preferences.sql
 \i functions/grant_admin_role.sql
 \i functions/grant_contributor_access.sql
+\i functions/heartbeat_ai_task.sql
 \i functions/is_admin.sql
+\i functions/lease_ai_task.sql
 \i functions/list_unregistered_contributors.sql
 \i functions/list_users_with_funds.sql
 \i functions/normalize_email.sql
 \i functions/remove_fund_from_user.sql
 \i functions/revoke_admin_role.sql
 \i functions/revoke_contributor_access.sql
+\i functions/release_ai_task.sql
 \i functions/set_portfolio_position_date_only.sql
 \i functions/set_user_preference.sql
 \i functions/set_user_role.sql
@@ -112,6 +119,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/benchmark_data_Allow service role to insert benchmark data.sql
 \i policies/benchmark_data_Allow service role to manage benchmark data.sql
 \i policies/benchmark_data_Allow service role to update benchmark data.sql
+\i policies/ai_task_queue_Allow authenticated users to read ai task queue.sql
+\i policies/ai_task_queue_Allow service role full access.sql
 \i policies/cash_balances_Admins can view all cash balances.sql
 \i policies/cash_balances_Service role full access to cash_balances.sql
 \i policies/cash_balances_Users can view cash balances for their funds.sql

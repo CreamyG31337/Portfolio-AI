@@ -70,6 +70,7 @@ def main() -> int:
         choices=(
             "ui_ai_summaries",
             "market_daily_brief",
+            "ticker_analysis",
             "ticker_meta_analysis",
             "sector_meta_analysis",
             "etf_group_analysis",
@@ -99,7 +100,18 @@ def main() -> int:
 
     log.info("Starting manual run: %s", args.job)
 
-    if not args.ignore_ai_lock:
+    queue_managed = False
+    try:
+        from scheduler.ai_task_workers import is_ai_queue_job_enabled
+
+        queue_managed = is_ai_queue_job_enabled(args.job)
+    except Exception:
+        queue_managed = False
+
+    if queue_managed:
+        os.environ["AI_QUEUE_ENQUEUED_BY"] = "manual"
+        log.info("Job %s is AI queue-managed; skipping global AI lock wait/check", args.job)
+    elif not args.ignore_ai_lock:
         if args.wait_ai_lock and not _wait_for_ai_lock(args.wait_ai_lock, log):
             log.error("Timed out waiting for AI lock after %ss", args.wait_ai_lock)
             return 1
@@ -124,6 +136,10 @@ def main() -> int:
             from scheduler.jobs_dashboard_research import market_daily_brief_job
 
             market_daily_brief_job()
+        elif args.job == "ticker_analysis":
+            from scheduler.jobs_ticker_analysis import ticker_analysis_job
+
+            ticker_analysis_job()
         elif args.job == "ticker_meta_analysis":
             from scheduler.jobs_ticker_meta_analysis import ticker_meta_analysis_job
 

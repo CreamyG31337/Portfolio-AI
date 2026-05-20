@@ -155,6 +155,9 @@ class AuditLogger:
         try:
             _run_daily_cleanup_once()
             _AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+            context = get_audit_context()
+            if context:
+                kwargs = {**context, **kwargs}
             record = self._build_record(**kwargs)
             line = json.dumps(record, ensure_ascii=False, default=str)
             output_file = _AUDIT_DIR / f"{date.today().isoformat()}.jsonl"

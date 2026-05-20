@@ -253,7 +253,12 @@ def _pop_env_url(settings: Dict[str, Any], env_attr: str, url_attr: str) -> None
 class OllamaClient:
     """Client for interacting with Ollama API."""
     
-    def __init__(self, base_url: Optional[str] = None, timeout: Optional[int] = None):
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        timeout: Optional[int] = None,
+        force_base_url_only: bool = False,
+    ):
         """Initialize Ollama client.
         
         Args:
@@ -275,6 +280,7 @@ class OllamaClient:
         
         self.base_url = candidate_url
         self.timeout = timeout or OLLAMA_TIMEOUT
+        self.force_base_url_only = force_base_url_only
         self.enabled = OLLAMA_ENABLED
         
         logger.info(f"Ollama client initialized: base_url={self.base_url}, timeout={self.timeout}s, enabled={self.enabled}")
@@ -378,6 +384,9 @@ class OllamaClient:
 
     def _resolve_urls(self, model: str) -> Tuple[str, Optional[str]]:
         """Return ``(primary_base_url, fallback_base_url_or_none)`` for Ollama HTTP calls."""
+        if self.force_base_url_only:
+            return self.base_url.rstrip("/"), None
+
         s = self.get_model_settings(model)
         raw_primary = s.get("base_url")
         primary = (str(raw_primary).strip() if raw_primary else "") or self.base_url
@@ -2276,6 +2285,7 @@ def collect_with_summary_model_chain(
     function_name: Optional[str] = None,
     audit_extra: Optional[Dict[str, Any]] = None,
     extract_audit_fields: Optional[Callable[[str], Dict[str, Any]]] = None,
+    model_chain_override: Optional[Sequence[str]] = None,
 ) -> Tuple[Optional[str], str]:
     """Run :meth:`OllamaClient.query_ollama` across the summarization model chain until success.
 
@@ -2294,7 +2304,10 @@ def collect_with_summary_model_chain(
     Returns:
         ``(full_text, model_used)`` on success, or ``(None, last_model_tried)`` if every candidate fails.
     """
-    chain = _get_summary_model_chain(requested_model)
+    if model_chain_override is not None:
+        chain = [str(m).strip() for m in model_chain_override if str(m).strip()]
+    else:
+        chain = _get_summary_model_chain(requested_model)
     if not chain:
         logger.error("collect_with_summary_model_chain: empty model chain")
         return None, ""

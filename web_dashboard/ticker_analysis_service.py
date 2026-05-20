@@ -1038,7 +1038,8 @@ class TickerAnalysisService:
         self,
         ticker: str,
         requested_by: Optional[str] = None,
-        model_override: Optional[str] = None
+        model_override: Optional[str] = None,
+        model_chain_override: Optional[List[str]] = None,
     ) -> Optional[Dict]:
         """Run full analysis on a ticker.
         
@@ -1091,6 +1092,7 @@ class TickerAnalysisService:
                     "analysis_type": "standard",
                 },
                 extract_audit_fields=_extract_ticker_analysis_audit_fields,
+                model_chain_override=model_chain_override,
             )
             if not full_response:
                 logger.error("LLM failed on all summarization models for %s", ticker_upper)
