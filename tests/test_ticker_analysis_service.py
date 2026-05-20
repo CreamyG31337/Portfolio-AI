@@ -5,8 +5,11 @@ from web_dashboard.ticker_analysis_service import TickerAnalysisService
 
 
 class DummySkipList:
-    def should_skip(self, _ticker: str) -> bool:
-        return False
+    def __init__(self, banned: set[str] | None = None) -> None:
+        self.banned = set(banned or ())
+
+    def should_skip(self, ticker: str) -> bool:
+        return ticker.upper() in self.banned
 
     def record_failure(self, _ticker: str, _error: str) -> None:
         return None
@@ -127,3 +130,92 @@ def test_get_fundamentals_refreshes_missing_fields(monkeypatch):
     assert fundamentals["fifty_two_week_high"] == 498.83
     assert supabase.supabase.updated is not None
     assert supabase.supabase.updated["trailing_pe"] == 303.8
+
+
+class _RangeQuery:
+    """Minimal Supabase-style query that supports .select().range().execute()."""
+
+    def __init__(self, rows):
+        self._rows = rows
+        self._start = 0
+        self._end = None
+
+    def select(self, *_a, **_k):
+        return self
+
+    def eq(self, *_a, **_k):
+        return self
+
+    def gte(self, *_a, **_k):
+        return self
+
+    def range(self, start, end):
+        self._start = start
+        self._end = end
+        return self
+
+    def execute(self):
+        if self._end is None:
+            return types.SimpleNamespace(data=self._rows)
+        return types.SimpleNamespace(data=self._rows[self._start:self._end + 1])
+
+
+class _RangeSupabaseRaw:
+    def __init__(self, holdings_rows, manual_rows=None):
+        self._holdings = holdings_rows
+        self._manual = manual_rows or []
+
+    def table(self, name):
+        if name == "portfolio_positions":
+            return _RangeQuery(self._holdings)
+        if name == "ai_analysis_queue":
+            return _RangeQuery(self._manual)
+        return _RangeQuery([])
+
+
+class _RangeSupabaseWrapper:
+    def __init__(self, holdings_rows, manual_rows=None):
+        self.supabase = _RangeSupabaseRaw(holdings_rows, manual_rows)
+
+
+class _StubPostgres:
+    def execute_query(self, *_a, **_k):
+        return []
+
+
+def _make_service(holdings_rows, skip_list, monkeypatch):
+    monkeypatch.setattr(
+        ticker_analysis_service,
+        "get_active_watchlist_tickers",
+        lambda *_a, **_k: [],
+    )
+    return TickerAnalysisService(
+        ollama=None,
+        supabase=_RangeSupabaseWrapper(holdings_rows),
+        postgres=_StubPostgres(),
+        skip_list=skip_list,
+    )
+
+
+def test_get_tickers_to_analyze_paginates_beyond_1000(monkeypatch):
+    holdings = [{"ticker": f"T{i:05d}"} for i in range(2500)]
+    service = _make_service(holdings, DummySkipList(), monkeypatch)
+
+    tickers = service.get_tickers_to_analyze()
+
+    assert len(tickers) == 2500, "must paginate past Supabase's 1000-row default"
+    assert service.last_selection_stats["holdings_candidates"] == 2500
+    assert service.last_selection_stats["selected"] == 2500
+
+
+def test_get_tickers_to_analyze_reports_skip_list_filtering(monkeypatch):
+    holdings = [{"ticker": "AAA"}, {"ticker": "BBB"}, {"ticker": "CCC"}]
+    service = _make_service(holdings, DummySkipList(banned={"AAA", "BBB"}), monkeypatch)
+
+    tickers = service.get_tickers_to_analyze()
+
+    assert [t for t, _ in tickers] == ["CCC"]
+    stats = service.last_selection_stats
+    assert stats["holdings_candidates"] == 3
+    assert stats["filtered_by_skip_list"] == 2
+    assert stats["selected"] == 1

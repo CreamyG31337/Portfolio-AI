@@ -34,13 +34,33 @@ We are **not** building autonomous execution. Outputs should be **inspectable** 
 | Explicit BUY/SELL/HOLD with size | **Ticker analysis** JSON has stance fields; **not** portfolio-level picks | Fund-aware recommendation list with explainability |
 | Outcome feedback | Planned (Phase 4) | Calibrate which inputs predict good trades |
 
-## Phase status (2026-05-19)
+## Phase status (2026-05-20)
 
-- Phase 1 (Signal + News Fusion into Ticker Meta): **shipped** — monitor output quality and lock/runtime
+- Phase 1 (Signal + News Fusion into Ticker Meta): **shipped** — see [Ticker analysis recovery](#ticker-analysis-pipeline-recovery-2026-05-20) for the May 2026 unblock
 - Phase 2 (Market Meta Regime): **2a + 2b shipped** — Phase 2c (digests/newsletters) deferred
 - Phase 3 (Sector Meta Layer): **3a + 3b + 3c shipped** — ETF holdings on Research only; ticker meta bundle includes sector prior when `META_ANALYSIS_PHASE3_SECTOR` on; **3d not started**
 - Phase 4–6 (feedback, scheduling, explainability): **planned**
 - Phase 7 (portfolio-aware recommendations): **aspirational** — see [Later phases](#later-phases-iterative)
+
+### Ticker analysis pipeline recovery (2026-05-20)
+
+While verifying Phase 3c we discovered the entire ticker pipeline had been **silently dead since 2026-01-23**:
+
+- A single `NoneType.__format__` crash in the ticker analysis save path failed once for every holding in one nightly run.
+- The old `AISkipListManager.record_failure` insert path left `skip_until` NULL on the first failure, and `should_skip` treated NULL as **permanent ban**. Result: **84 holdings were permanently banned after one failure each**, despite `MAX_FAILURES_BEFORE_SKIP = 3`.
+- A second silent bug: `get_tickers_to_analyze` called `supabase.table('portfolio_positions').select('ticker').execute()` without pagination, capping at the Supabase Python client's default 1000 rows. Even without the skip list, only a tiny subset of holdings was ever considered.
+- Net effect for 4 months: `ticker_analysis` cron ran but processed **zero tickers**, so `ticker_analysis` and `ticker_meta_analysis` tables stayed at 0 rows. Phase 3c was shipped but had no consumer.
+
+**Fixes (commit landing 2026-05-20):**
+
+1. `AISkipListManager.record_failure` now inserts a finite `skip_until` (~1h) on first failure; only permanent markers (`delisted`, `no such ticker`, etc.) ever set `skip_until=NULL` after `MAX_FAILURES_BEFORE_SKIP`.
+2. Transient failures (format crashes, timeouts, JSON errors) now get exponential 24h/48h/96h backoff, capped at 7 days.
+3. `get_tickers_to_analyze` paginates `portfolio_positions` explicitly and reports a structured `last_selection_stats` breakdown.
+4. `jobs_ticker_analysis` now surfaces the breakdown (manual/holdings/watchlist counts vs. skipped/recently_analyzed) when the picker returns 0 — so a polluted skip list cannot ever again look like a healthy quiet day.
+5. New helper `web_dashboard/scripts/clear_format_polluted_skip_list.py` cleared the 84 historical rows in one shot (kept the 11 legitimate skip entries).
+6. New tests: `tests/test_ai_skip_list_manager.py` and pagination/breakdown coverage in `tests/test_ticker_analysis_service.py`.
+
+**Verification next step:** wait one nightly cycle (`ticker_analysis` 4 AM UTC, `ticker_meta_analysis` 6:45 AM UTC), then run `python web_dashboard/scripts/verify_sector_prior.py` to confirm the Phase 3c sector prior block lands in real bundles.
 
 ---
 

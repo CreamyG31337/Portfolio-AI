@@ -103,16 +103,33 @@ def ticker_analysis_job() -> None:
     
     # Get priority-sorted tickers (holdings first, then watched)
     tickers = service.get_tickers_to_analyze()
-    
+
     if not tickers:
         duration_ms = int((time.time() - start_time) * 1000)
-        message = "No tickers to analyze"
+        stats = getattr(service, "last_selection_stats", {}) or {}
+        manual = stats.get("manual_candidates", 0)
+        holdings = stats.get("holdings_candidates", 0)
+        watchlist = stats.get("watchlist_candidates", 0)
+        skipped = stats.get("filtered_by_skip_list", 0)
+        recent = stats.get("filtered_by_recently_analyzed", 0)
+        total_candidates = manual + holdings + watchlist
+        if total_candidates == 0:
+            message = (
+                "No tickers to analyze (no candidates: manual=0, holdings=0, watchlist=0)"
+            )
+        else:
+            message = (
+                f"No tickers to analyze — all {total_candidates} candidates filtered "
+                f"(skip_list={skipped}, recently_analyzed={recent}; "
+                f"manual={manual}, holdings={holdings}, watchlist={watchlist}). "
+                "Check ai_analysis_skip_list if this persists."
+            )
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         try:
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
         except Exception:
             pass
-        logger.info(f"ℹ️ {message}")
+        logger.info("ℹ️ %s", message)
         return
     
     logger.info(f"Found {len(tickers)} tickers to analyze (prioritized)")

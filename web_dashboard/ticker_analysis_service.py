@@ -1147,13 +1147,26 @@ class TickerAnalysisService:
     
     def get_tickers_to_analyze(self) -> List[Tuple[str, int]]:
         """Get prioritized list of tickers needing analysis.
-        
+
         Returns:
             List of (ticker, priority) tuples.
             Priority: manual=1000, holdings=100, watched=10
+
+        Also stores a structured selection report on ``self.last_selection_stats``
+        so the scheduler can surface *why* zero tickers were picked (so a
+        polluted skip list never again looks like a healthy quiet day).
         """
         seen: set[str] = set()
         tickers: List[Tuple[str, int]] = []
+        stats: Dict[str, int] = {
+            "manual_candidates": 0,
+            "holdings_candidates": 0,
+            "watchlist_candidates": 0,
+            "filtered_by_skip_list": 0,
+            "filtered_by_recently_analyzed": 0,
+            "selected": 0,
+        }
+        self.last_selection_stats = stats
         
         # 1. Manual requests (highest priority) - from queue
         # Store queue IDs so we can mark them complete after processing
@@ -1171,19 +1184,36 @@ class TickerAnalysisService:
                     seen.add(ticker)
                     tickers.append((ticker, 1000))
                     self._pending_manual_queue_ids.append(row['id'])
+                    stats["manual_candidates"] += 1
         except Exception as e:
             logger.warning(f"Error fetching manual requests: {e}")
         
-        # 2. Holdings (high priority) - all funds
+        # 2. Holdings (high priority) - all funds.
+        # `portfolio_positions` has tens of thousands of rows (one per fund/date),
+        # but `select('ticker').execute()` is silently capped at 1000 by the
+        # Supabase client. Paginate explicitly so we see every holding.
         try:
-            holdings_result = self.supabase.supabase.table('portfolio_positions') \
-                .select('ticker') \
-                .execute()
-            for row in holdings_result.data or []:
-                ticker = row.get('ticker')
-                if ticker and ticker not in seen:
-                    seen.add(ticker)
-                    tickers.append((ticker, 100))
+            page_size = 1000
+            offset = 0
+            while True:
+                holdings_result = (
+                    self.supabase.supabase.table('portfolio_positions')
+                    .select('ticker')
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+                batch = holdings_result.data or []
+                if not batch:
+                    break
+                for row in batch:
+                    ticker = row.get('ticker')
+                    if ticker and ticker not in seen:
+                        seen.add(ticker)
+                        tickers.append((ticker, 100))
+                        stats["holdings_candidates"] += 1
+                if len(batch) < page_size:
+                    break
+                offset += page_size
         except Exception as e:
             logger.warning(f"Error fetching holdings: {e}")
         
@@ -1194,16 +1224,22 @@ class TickerAnalysisService:
                 if ticker and ticker not in seen:
                     seen.add(ticker)
                     tickers.append((ticker, 10))
+                    stats["watchlist_candidates"] += 1
         except Exception as e:
             logger.warning(f"Error fetching watched tickers: {e}")
-        
+
         # Filter out skip list and recently analyzed
-        filtered = []
+        filtered: List[Tuple[str, int]] = []
         for ticker, priority in tickers:
-            if not self.skip_list.should_skip(ticker) and not self._recently_analyzed(ticker):
-                filtered.append((ticker, priority))
-        
-        # Sort by priority descending
+            if self.skip_list.should_skip(ticker):
+                stats["filtered_by_skip_list"] += 1
+                continue
+            if self._recently_analyzed(ticker):
+                stats["filtered_by_recently_analyzed"] += 1
+                continue
+            filtered.append((ticker, priority))
+
+        stats["selected"] = len(filtered)
         return sorted(filtered, key=lambda x: -x[1])
     
     def mark_manual_request_complete(self, ticker: str, success: bool = True, error_message: Optional[str] = None) -> None:
