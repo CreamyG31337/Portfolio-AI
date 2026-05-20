@@ -1,7 +1,14 @@
 import types
 
+import pytest
+
 import web_dashboard.ticker_analysis_service as ticker_analysis_service
-from web_dashboard.ticker_analysis_service import TickerAnalysisService
+from web_dashboard.ticker_analysis_service import (
+    TickerAnalysisService,
+    _normalize_score,
+    _normalize_stance,
+    _truncate_text,
+)
 
 
 class DummySkipList:
@@ -219,3 +226,59 @@ def test_get_tickers_to_analyze_reports_skip_list_filtering(monkeypatch):
     assert stats["holdings_candidates"] == 3
     assert stats["filtered_by_skip_list"] == 2
     assert stats["selected"] == 1
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (None, None),
+        ("", None),
+        ("not a number", None),
+        (0.42, 0.42),
+        (-0.7, -0.7),
+        (1.0, 1.0),
+        (-1.0, -1.0),
+        (50, 0.5),
+        (-30, -0.3),
+        (250, 1.0),
+        (-250, -1.0),
+        ("0.85", 0.85),
+        (1.5, 1.0),
+    ],
+)
+def test_normalize_score_handles_llm_output_shapes(raw, expected):
+    result = _normalize_score(raw)
+    if expected is None:
+        assert result is None
+    else:
+        assert pytest.approx(expected, rel=1e-6) == result
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (None, None),
+        ("", None),
+        ("BUY", "BUY"),
+        ("sell", "SELL"),
+        ("Hold", "HOLD"),
+        ("AVOID", "AVOID"),
+        ("strong BUY recommendation", "BUY"),
+        ("watch", None),
+        ("BUY THE DIP NOW", "BUY"),
+    ],
+)
+def test_normalize_stance(raw, expected):
+    assert _normalize_stance(raw) == expected
+
+
+def test_truncate_text_clips_long_values():
+    assert _truncate_text(None, 10) is None
+    assert _truncate_text("", 10) is None
+    assert _truncate_text("  hi  ", 10) == "hi"
+    assert _truncate_text("short", 10) == "short"
+    long_str = "a" * 200
+    assert _truncate_text(long_str, 60) == "a" * 60
+    assert _truncate_text(
+        "1-2 weeks short-term swing trade horizon waiting for breakout", 20
+    ) == "1-2 weeks short-term"

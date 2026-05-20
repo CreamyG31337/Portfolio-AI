@@ -60,6 +60,70 @@ def extract_json(text: str) -> Optional[Dict[str, Any]]:
             pass
     return None
 
+
+# Defensive normalizers for LLM output ----------------------------------------
+# In Jan 2026 the ticker_analysis insert raised three distinct errors that
+# permanently banned tickers under the old skip-list policy:
+#   - VARCHAR(20) overflow on verbose ``timeframe`` / ``sentiment`` strings.
+#   - NUMERIC(3,2) overflow on score values returned in percent (50 vs 0.5).
+#   - btree index size overflow on the embedding (fixed via DB migration).
+# The DB column widths are now larger (see
+# database/migrations/2026-05_fix_ticker_analysis_index_and_widths.sql) but we
+# still defensively normalize at write time so a misbehaving model can't push
+# bad data into the table.
+
+_VALID_STANCES = {"BUY", "SELL", "HOLD", "AVOID"}
+
+
+def _truncate_text(value: Any, max_len: int) -> Optional[str]:
+    """Return ``value`` as ``str`` truncated to ``max_len`` characters.
+
+    Returns ``None`` for None/empty so the DB stores NULL rather than ``"None"``.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) <= max_len:
+        return text
+    return text[:max_len]
+
+
+def _normalize_score(value: Any) -> Optional[float]:
+    """Normalize an LLM-returned score to ``[-1.0, 1.0]``.
+
+    Handles three observed shapes:
+      * Already in range: ``0.42`` → ``0.42``.
+      * Percent scale (|x| > 10): ``50`` → ``0.5``, ``-30`` → ``-0.3``.
+      * Just over range (1 < |x| <= 10): clamped, no scale guess.
+    Strings and non-numeric values return ``None``.
+    """
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if abs(f) > 10.0:
+        f = f / 100.0
+    return max(-1.0, min(1.0, f))
+
+
+def _normalize_stance(value: Any) -> Optional[str]:
+    """Normalize stance to one of BUY/SELL/HOLD/AVOID, or None if no match."""
+    if value is None:
+        return None
+    upper = str(value).strip().upper()
+    if not upper:
+        return None
+    if upper in _VALID_STANCES:
+        return upper
+    for known in _VALID_STANCES:
+        if known in upper.split():
+            return known
+    return None
+
 class TickerAnalysisService:
     """Analyze a ticker with 3 months of multi-source data."""
     
@@ -1114,19 +1178,19 @@ class TickerAnalysisService:
                 analysis_date,
                 start_date,
                 end_date,
-                response.get('sentiment'),
-                response.get('sentiment_score'),
-                response.get('confidence_score'),
+                _truncate_text(response.get('sentiment'), 40),
+                _normalize_score(response.get('sentiment_score')),
+                _normalize_score(response.get('confidence_score')),
                 response.get('themes', []),
                 response.get('summary'),
                 response.get('analysis_text'),
                 response.get('reasoning'),
-                context,  # input_context for debug panel
-                response.get('stance'),
-                response.get('timeframe'),
-                response.get('entry_zone'),
-                response.get('target_price'),
-                response.get('stop_loss'),
+                context,
+                _normalize_stance(response.get('stance')),
+                _truncate_text(response.get('timeframe'), 60),
+                _truncate_text(response.get('entry_zone'), 100),
+                _truncate_text(response.get('target_price'), 60),
+                _truncate_text(response.get('stop_loss'), 60),
                 key_levels_json,
                 response.get('catalysts', []),
                 response.get('risks', []),
@@ -1136,7 +1200,7 @@ class TickerAnalysisService:
                 articles_count,
                 embedding,
                 model_used,
-                requested_by
+                requested_by,
             ))
             
             logger.info(f"Saved ticker analysis for {ticker}")

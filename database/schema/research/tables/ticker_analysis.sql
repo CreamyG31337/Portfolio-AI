@@ -8,9 +8,9 @@ CREATE TABLE ticker_analysis (
     analysis_date DATE NOT NULL,
     data_start_date DATE NOT NULL,
     data_end_date DATE NOT NULL,
-    sentiment VARCHAR(20),
-    sentiment_score NUMERIC(3, 2),
-    confidence_score NUMERIC(3, 2),
+    sentiment VARCHAR(40),
+    sentiment_score NUMERIC(5, 4),
+    confidence_score NUMERIC(5, 4),
     themes TEXT[],
     summary TEXT,
     analysis_text TEXT,
@@ -25,11 +25,11 @@ CREATE TABLE ticker_analysis (
     model_used VARCHAR(50) DEFAULT 'granite3.3:8b'::character varying,
     analysis_version INTEGER DEFAULT 1,
     requested_by VARCHAR(100),
-    stance VARCHAR(10),
-    timeframe VARCHAR(20),
-    entry_zone VARCHAR(50),
-    target_price VARCHAR(20),
-    stop_loss VARCHAR(20),
+    stance VARCHAR(20),
+    timeframe VARCHAR(60),
+    entry_zone VARCHAR(100),
+    target_price VARCHAR(60),
+    stop_loss VARCHAR(60),
     key_levels JSONB,
     catalysts TEXT[],
     risks TEXT[],
@@ -39,7 +39,12 @@ CREATE TABLE ticker_analysis (
 
 -- Indexes
 CREATE INDEX idx_ticker_analysis_date ON ticker_analysis (analysis_date);
-CREATE INDEX idx_ticker_analysis_embedding ON ticker_analysis (embedding);
+-- HNSW on the embedding (vector(768)); a plain btree on this column overflows
+-- the 2704-byte btree max row size. See
+-- database/migrations/2026-05_fix_ticker_analysis_index_and_widths.sql
+CREATE INDEX idx_ticker_analysis_embedding
+    ON ticker_analysis
+    USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX idx_ticker_analysis_stance ON ticker_analysis (stance);
 CREATE INDEX idx_ticker_analysis_ticker ON ticker_analysis (ticker);
 CREATE INDEX idx_ticker_analysis_updated ON ticker_analysis (updated_at);
