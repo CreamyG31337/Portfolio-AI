@@ -290,8 +290,9 @@ def etf_group_analysis_job() -> None:
 
     # Check queue for pending work (bounded so deploy restarts do not kill 1h+ runs)
     log_job_step(job_id, "queue_check", "Checking analysis queue for pending work...")
-    queue_recent_missing_etf_analysis(repo)
-    pending = get_pending_etf_analysis()
+    active_lookback = get_etf_queue_lookback_days()
+    queue_recent_missing_etf_analysis(repo, lookback_days=active_lookback)
+    pending = get_pending_etf_analysis(lookback_days=active_lookback)
 
     if not pending:
         duration_ms = int((time.time() - start_time) * 1000)
