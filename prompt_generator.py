@@ -184,10 +184,11 @@ class PromptGenerator:
         """
         rows: List[List[str]] = []
         
-        # Create a lookup for portfolio data fallback
+        # OPTIMIZATION: Replaced slow .iterrows() loop with faster .to_dict('records') mapping
         portfolio_lookup = {}
         if portfolio_df is not None and not portfolio_df.empty:
-            for _, row in portfolio_df.iterrows():
+            # We use dict(row) from records instead of Series to create the lookup
+            for row in portfolio_df.to_dict('records'):
                 t = row.get('ticker')
                 if t:
                     portfolio_lookup[t] = row
@@ -596,8 +597,9 @@ class PromptGenerator:
         lines.append("-" * _sep_len)
         
         # Prepare data for sorting
+        # OPTIMIZATION: Replaced slow .iterrows() with .to_dict('records') for faster iteration
         portfolio_rows = []
-        for _, row in portfolio_df.iterrows():
+        for row in portfolio_df.to_dict('records'):
             ticker = str(row.get('ticker', ''))
             # Use company name from enhanced data (correct field name)
             company_name = row.get('company', ticker) or ticker
@@ -850,9 +852,10 @@ class PromptGenerator:
             return "No holdings to display fundamentals"
         
         # Cache currency lookup for performance - build once, use for all tickers
+        # OPTIMIZATION: Replaced slow .iterrows() loop with faster .to_dict('records') mapping
         currency_lookup = {}
         if portfolio_df is not None and not portfolio_df.empty:
-            for _, row in portfolio_df.iterrows():
+            for row in portfolio_df.to_dict('records'):
                 ticker = row.get('ticker')
                 currency = row.get('currency', 'USD')
                 if ticker:
