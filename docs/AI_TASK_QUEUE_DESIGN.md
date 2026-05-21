@@ -276,6 +276,26 @@ Instead, `ai_task_queue` rows become the source of truth for what is pending, le
 4. Should finished queue rows be retained forever, archived after N days, or compacted into aggregate task history?
 5. Once the lease RPC uses `FOR UPDATE SKIP LOCKED`, can we safely run more than one scheduler process, or do we still want an explicit singleton scheduler?
 
+## Future Model Candidates
+
+Models worth evaluating as we add more queue-managed jobs. Not committed to a phase yet — track here so we don't lose them.
+
+| Model          | Pull name       | Size  | Good for                           | Installed on  |
+| -------------- | --------------- | ----- | ---------------------------------- | ------------- |
+| Magistral Small | `magistral:24b` | 14 GB | Financial reasoning, deep analysis | ts-desktop    |
+| GPT-OSS         | `gpt-oss:20b`   | 13 GB | JSON output, fast tool/agent calls | ts-desktop    |
+
+When evaluating each, decide whether it slots in as:
+
+- A drop-in replacement for an existing backend's model (e.g. `AI_QUEUE_MODEL_OLLAMA_SECONDARY`), or
+- A new backend binding with its own worker pool entry (e.g. a `magistral` or `gptoss` backend), which would also require updating `model_for_backend` / `ollama_base_url_for_backend` and the worker count flags.
+
+Practical checks before promoting either to a real backend:
+
+- VRAM headroom on the host that will run it (24 GB 3090 fits both, but not concurrently with qwen3.6:27b).
+- JSON-mode reliability against our ticker / sector / ETF schemas (run the audit comparison harness).
+- Latency under realistic prompt sizes — Magistral's reasoning traces can be long; GPT-OSS is usually fast but verify on agent-style prompts.
+
 ## Phase 1 Plumbing Acceptance Criteria
 
 Phase 1 plumbing is done when:

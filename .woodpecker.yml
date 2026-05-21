@@ -57,7 +57,8 @@
 #   /home/lance/trading-dashboard-optional.env  e.g. MAILGUN_SEND_DOMAIN=mg.example.com
 #   MAILGUN_FROM="Portfolio <noreply@mg.example.com>"
 # Outbound digest also needs PUBLIC_BASE_URL (see deploy step: derived from APP_DOMAIN when possible)
-# Ollama (NOT passed via from_secret — avoids Woodpecker errors when unset). Set on the deploy host:
+# Ollama: most vars are NOT passed via from_secret (Woodpecker errors when a secret name is missing).
+# Configure them on the deploy host instead:
 #   - Export before the agent runs, OR
 #   - Put in /home/lance/trading-dashboard-optional.env (sourced for BOTH Streamlit + Flask deploy steps)
 # Recommended dual-GPU (see web_dashboard/model_config.json + ollama_client semantic aliases):
@@ -66,6 +67,12 @@
 # Optional explicit names (override without swapping the legacy pair):
 #   OLLAMA_BASE_URL_AMD=...   OLLAMA_BASE_URL_NVIDIA=...
 # Also supported: OLLAMA_MODEL, OLLAMA_ENABLED, OLLAMA_SUMMARIZING_MODEL, etc.
+#
+# Exception — OLLAMA_BASE_URL_2 IS pulled from a Woodpecker secret because the secondary GPU host
+# lives on Tailscale and isn't reachable from the Docker bridge by hostname. We bake the Tailscale
+# IP into a secret rather than a host file so secrets stay in one place. Secret name:
+#   - ollama_base_url_2  (e.g. http://100.69.126.9:11434  -- update if the Tailscale IP ever changes)
+# To rotate: edit the secret in Woodpecker → redeploy. No code change needed.
 #
 # Note: Secrets are loaded using from_secret in the environment section
 # Note: Repository must be marked as "Trusted" in Woodpecker settings to use volumes
@@ -160,6 +167,10 @@ steps:
         from_secret: mailgun_webhook_signing_key
       NEWSLETTER_EMAIL:
         from_secret: newsletter_email
+      # Secondary Ollama host (Tailscale IP of the NVIDIA 3090 box, e.g. http://100.69.126.9:11434).
+      # Must exist as a Woodpecker secret named "ollama_base_url_2" — Woodpecker errors out if missing.
+      OLLAMA_BASE_URL_2:
+        from_secret: ollama_base_url_2
     commands:
       # Set timezone (Pacific Time - handles PST/PDT automatically)
       - ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
