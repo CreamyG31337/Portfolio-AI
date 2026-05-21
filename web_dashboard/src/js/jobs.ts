@@ -349,7 +349,7 @@ function formatTs(val: unknown): string {
 }
 
 function buildAiActivityTsv(rows: Array<Record<string, unknown>>): string {
-    const header = ['Job', 'Status', 'Started', 'Completed', 'Duration ms', 'Error'].join('\t');
+    const header = ['Job', 'Status', 'Started', 'Completed', 'Duration ms', 'Message'].join('\t');
     const lines = rows.map((row) => {
         const cell = (v: unknown): string => {
             if (v == null || v === '') return '';
@@ -556,7 +556,7 @@ async function fetchAiActivity(): Promise<void> {
                             <th class="pb-2 pr-3">Started</th>
                             <th class="pb-2 pr-3">Completed</th>
                             <th class="pb-2 pr-3">Duration ms</th>
-                            <th class="pb-2">Error</th>
+                            <th class="pb-2">Message</th>
                         </tr>
                     </thead>
                     <tbody>${
