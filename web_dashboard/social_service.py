@@ -24,6 +24,67 @@ load_project_dotenv()
 logger = logging.getLogger(__name__)
 
 
+STOCK_SUBREDDITS = [
+    "wallstreetbets",
+    "stocks",
+    "investing",
+    "StockMarket",
+    "pennystocks",
+    "Shortsqueeze",
+    "options",
+    "robinhood",
+    "stock_picks",
+    "investments",
+    "RobinHoodPennyStocks",
+    "microcap",
+    "biotechplays",
+    "securityanalysis",
+    "valueinvesting",
+    "CanadianPennyStocks",
+    "Undervalued",
+    "BayStreetBets",
+    "SPACs",
+    "dividends",
+    "weedstocks",
+    "CryptoCurrency",
+]
+
+STOCK_SUBREDDIT_SET = {subreddit.lower() for subreddit in STOCK_SUBREDDITS}
+
+COMMON_TICKER_WORDS = {
+    "AI",
+    "CAT",
+    "GOOD",
+    "FOR",
+    "ARE",
+    "ALL",
+    "CAN",
+    "NEW",
+    "ONE",
+    "OUT",
+    "RUN",
+    "SEE",
+    "TWO",
+    "NOW",
+    "BIT",
+    "KEY",
+    "USA",
+    "EAT",
+    "BIG",
+    "LOW",
+    "FAT",
+    "HOT",
+    "FUN",
+    "PLAY",
+    "LOVE",
+    "GET",
+    "SET",
+    "GO",
+    "CAR",
+    "DOG",
+}
+
+
 def _strip_json_markdown_fence(text: str) -> str:
     """Remove optional ```json ... ``` wrapping from model output."""
     s = text.strip()
@@ -156,6 +217,92 @@ class SocialSentimentService:
             time.sleep(min_interval - elapsed)
         self.last_reddit_request_time = time.time()
 
+    def _reddit_search_queries(self, ticker: str) -> List[str]:
+        """Build high-signal Reddit search queries for a ticker."""
+
+        queries = [f"${ticker}"]
+        if ticker not in COMMON_TICKER_WORDS and len(ticker) >= 3:
+            queries.append(ticker)
+        return queries
+
+    def _parse_reddit_search_posts(
+        self,
+        payload: Dict[str, Any],
+        ticker: str,
+        cutoff_time: datetime,
+        *,
+        restrict_to_stock_subreddits: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Parse Reddit search JSON and retain recent, whitelisted, ticker-relevant posts."""
+
+        posts: List[Dict[str, Any]] = []
+        children = (payload.get("data") or {}).get("children") if isinstance(payload, dict) else None
+        if not isinstance(children, list):
+            return posts
+
+        for child in children:
+            post_data = child.get("data") if isinstance(child, dict) else None
+            if not isinstance(post_data, dict):
+                continue
+
+            subreddit = str(post_data.get("subreddit", ""))
+            if restrict_to_stock_subreddits and subreddit.lower() not in STOCK_SUBREDDIT_SET:
+                continue
+
+            title = post_data.get("title", "")
+            selftext = post_data.get("selftext", "")
+            created_utc = post_data.get("created_utc", 0)
+            if not created_utc:
+                continue
+
+            try:
+                post_dt = datetime.fromtimestamp(float(created_utc), tz=timezone.utc)
+            except (TypeError, ValueError, OSError):
+                continue
+            if post_dt < cutoff_time:
+                continue
+
+            full_text = (str(title) + " " + str(selftext)).upper()
+            cashtag_pattern = r"\$" + re.escape(ticker) + r"\b"
+            ticker_pattern = r"\b" + re.escape(ticker) + r"\b"
+            has_cashtag = bool(re.search(cashtag_pattern, full_text, re.IGNORECASE))
+            has_ticker = bool(re.search(ticker_pattern, full_text, re.IGNORECASE))
+            if not (has_cashtag or has_ticker):
+                logger.debug(
+                    "Filtered out Reddit post for %s in r/%s: '%s...' (no ticker mention)",
+                    ticker,
+                    subreddit,
+                    str(title)[:50],
+                )
+                continue
+
+            posts.append(
+                {
+                    "title": str(title),
+                    "selftext": str(selftext),
+                    "score": post_data.get("ups", 0),
+                    "num_comments": post_data.get("num_comments", 0),
+                    "created_utc": created_utc,
+                    "url": post_data.get("url", ""),
+                    "subreddit": subreddit,
+                }
+            )
+
+        return posts
+
+    def _dedupe_reddit_posts(self, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Deduplicate Reddit posts by URL while preserving first occurrence."""
+
+        seen_urls = set()
+        unique_posts = []
+        for post in posts:
+            url = post.get("url")
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            unique_posts.append(post)
+        return unique_posts
+
     def make_flaresolverr_request(self, url: str) -> Optional[Dict[str, Any]]:
         """Make a request through FlareSolverr to bypass Cloudflare protection.
         
@@ -232,14 +379,14 @@ class SocialSentimentService:
                     try:
                         json_str = json_match.group(0)
                         data = json.loads(json_str)
-                        logger.debug(f"Successfully extracted JSON from HTML response via FlareSolverr")
+                        logger.debug("Successfully extracted JSON from HTML response via FlareSolverr")
                         return data
                     except json.JSONDecodeError as e:
                         logger.warning(f"Failed to parse extracted JSON from FlareSolverr response: {e}")
                 else:
                     # Log first 500 chars to help debug what we got
                     preview = response_body[:500] if len(response_body) > 500 else response_body
-                    logger.warning(f"Failed to find JSON in FlareSolverr response")
+                    logger.warning("Failed to find JSON in FlareSolverr response")
                     logger.debug(f"Response preview (first 500 chars): {preview}")
                     # Check if it looks like HTML (Cloudflare challenge page)
                     if response_body.strip().startswith('<') or 'cloudflare' in response_body.lower():
@@ -250,7 +397,7 @@ class SocialSentimentService:
             logger.debug(f"FlareSolverr unavailable at {self.flaresolverr_url} - will fallback to direct request")
             return None
         except requests.exceptions.Timeout:
-            logger.warning(f"FlareSolverr request timed out - will fallback to direct request")
+            logger.warning("FlareSolverr request timed out - will fallback to direct request")
             return None
         except requests.exceptions.RequestException as e:
             logger.warning(f"FlareSolverr request failed: {e} - will fallback to direct request")
@@ -273,6 +420,34 @@ class SocialSentimentService:
         except Exception as e:
             logger.error(f"Error fetching watched tickers: {e}")
             return []
+
+    def get_last_processed_at(self, tickers: List[str]) -> Dict[str, Optional[datetime]]:
+        """Return latest social_metrics timestamp for each ticker.
+
+        Missing tickers are returned with ``None`` so callers can sort never-seen symbols first.
+        """
+
+        result: Dict[str, Optional[datetime]] = {ticker: None for ticker in tickers}
+        if not tickers:
+            return result
+
+        query = """
+            SELECT ticker, MAX(created_at) AS last_processed
+            FROM social_metrics
+            WHERE ticker = ANY(%s)
+            GROUP BY ticker
+        """
+        try:
+            rows = self.postgres.execute_query(query, (tickers,))
+        except Exception as exc:
+            logger.warning("Failed to load last social sentiment timestamps: %s", exc)
+            return result
+
+        for row in rows:
+            ticker = row.get("ticker")
+            if ticker in result:
+                result[ticker] = row.get("last_processed")
+        return result
     
     def fetch_stocktwits_sentiment(self, ticker: str) -> Dict[str, Any]:
         """Fetch sentiment data from StockTwits API
@@ -446,156 +621,60 @@ class SocialSentimentService:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
             
-            # Whitelist of stock-related subreddits (prioritize most active ones first)
-            STOCK_SUBREDDITS = [
-                'wallstreetbets',  # Most active, check first
-                'stocks',
-                'investing',
-                'StockMarket',
-                'pennystocks',
-                'Shortsqueeze',
-                'options',
-                'robinhood',
-                'stock_picks',
-                'investments',
-                'RobinHoodPennyStocks',
-                'microcap',
-                'biotechplays',
-                'securityanalysis',
-                'valueinvesting',
-                'CanadianPennyStocks',
-                'Undervalued',
-                'BayStreetBets',
-                'SPACs',
-                'dividends',
-                'weedstocks',
-                'CryptoCurrency'  # Sometimes discusses stock tickers
-            ]
-            
-            # Define common words that are also tickers (noisy plain text search)
-            common_words = {
-                'AI', 'CAT', 'GOOD', 'FOR', 'ARE', 'ALL', 'CAN', 'NEW', 'ONE', 'OUT', 
-                'RUN', 'SEE', 'TWO', 'NOW', 'BIT', 'KEY', 'USA', 'EAT', 'BIG', 'LOW', 
-                'FAT', 'HOT', 'FUN', 'PLAY', 'LOVE', 'GET', 'SET', 'GO', 'CAR', 'DOG'
-            }
-            
-            # Determine search queries
-            # Always search for cashtag ($TICKER) - High signal
-            search_queries = [f"${ticker}"]
-            
-            # Only search plain text (TICKER) if safe
-            if ticker not in common_words:
-                # For 1-2 letter tickers, NEVER search plain text (too noisy)
-                if len(ticker) >= 3:
-                     search_queries.append(ticker)
-            
+            search_queries = self._reddit_search_queries(ticker)
             all_posts = []
             cutoff_time = datetime.now(timezone.utc) - timedelta(days=7)  # Last week
-            ENOUGH_POSTS = 10  # Early termination if we have enough posts
             
-            # Search each whitelisted subreddit
-            for subreddit_name in STOCK_SUBREDDITS:
-                # Check timeout before processing each subreddit
+            # One global search per query is much faster than scanning every subreddit.
+            # We still filter to stock-related subreddits below to preserve data quality.
+            for query in search_queries:
                 if max_duration:
                     elapsed = time.time() - fetch_start
                     if elapsed > max_duration:
-                        logger.debug(f"Reddit fetch timeout for {ticker} after {elapsed:.1f}s (found {len(all_posts)} posts)")
+                        logger.debug(
+                            "Reddit fetch timeout for %s after %.1fs (found %s posts)",
+                            ticker,
+                            elapsed,
+                            len(all_posts),
+                        )
                         break
-                
-                # Early termination if we have enough posts
-                if len(all_posts) >= ENOUGH_POSTS:
-                    logger.debug(f"Early termination for {ticker}: found {len(all_posts)} posts (enough for analysis)")
-                    break
-                for query in search_queries:
-                    try:
-                        # Search within specific subreddit using relevance sort and last week
-                        # Format: /r/subreddit/search.json?q=query&sort=relevance&t=week&limit=25&restrict_sr=1
-                        url = f"https://www.reddit.com/r/{subreddit_name}/search.json?q={query}&sort=relevance&t=week&limit=25&restrict_sr=1"
-                        
-                        # Rate limiting before request
-                        self._wait_for_reddit_rate_limit()
 
-                        response = requests.get(url, headers=headers, timeout=10)
-                        
-                        # Handle rate limiting
-                        if response.status_code == 429:
-                            logger.warning(f"Reddit rate limit hit for {ticker} in r/{subreddit_name}. Waiting longer...")
-                            time.sleep(5)  # Wait longer if rate limited
-                            continue
-                        
-                        response.raise_for_status()
-                        data = response.json()
-                        
-                        # Parse nested JSON structure: response['data']['children'][i]['data']
-                        if 'data' in data and 'children' in data['data']:
-                            for child in data['data']['children']:
-                                if 'data' not in child:
-                                    continue
-                                
-                                post_data = child['data']
-                                
-                                # Extract fields
-                                title = post_data.get('title', '')
-                                selftext = post_data.get('selftext', '')
-                                ups = post_data.get('ups', 0)  # upvotes
-                                num_comments = post_data.get('num_comments', 0)
-                                created_utc = post_data.get('created_utc', 0)
-                                url = post_data.get('url', '')
-                                subreddit = post_data.get('subreddit', '')
-                                
-                                # Convert created_utc (Unix timestamp) to datetime
-                                if created_utc:
-                                    post_dt = datetime.fromtimestamp(created_utc, tz=timezone.utc)
-                                    
-                                    # Filter posts from last week
-                                    if post_dt >= cutoff_time:
-                                        
-                                        # CRITICAL: Validate that post actually mentions the ticker
-                                        # Combine title and text for validation
-                                        full_text = (title + " " + selftext).upper()
-                                        
-                                        # Check for cashtag mention ($TICKER)
-                                        cashtag_pattern = r'\$' + re.escape(ticker) + r'\b'
-                                        has_cashtag = bool(re.search(cashtag_pattern, full_text, re.IGNORECASE))
-                                        
-                                        # Check for plain ticker mention with word boundaries
-                                        # Only accept if it's clearly a stock ticker (not part of another word)
-                                        ticker_pattern = r'\b' + re.escape(ticker) + r'\b'
-                                        has_ticker = bool(re.search(ticker_pattern, full_text, re.IGNORECASE))
-                                        
-                                        # Only accept posts that actually mention the ticker
-                                        if has_cashtag or has_ticker:
-                                            all_posts.append({
-                                                'title': title,
-                                                'selftext': selftext,
-                                                'score': ups,  # Use upvotes as score
-                                                'num_comments': num_comments,
-                                                'created_utc': created_utc,
-                                                'url': url,
-                                                'subreddit': subreddit
-                                            })
-                                        else:
-                                            # Log filtered posts for debugging
-                                            logger.debug(f"Filtered out post for {ticker} in r/{subreddit_name}: '{title[:50]}...' (no ticker mention)")
-                        
-                    except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 429:
-                            logger.warning(f"Reddit rate limit for {ticker} in r/{subreddit_name}. Skipping.")
-                            time.sleep(5)
-                        else:
-                            logger.debug(f"HTTP error searching r/{subreddit_name} for {query}: {e}")
+                try:
+                    self._wait_for_reddit_rate_limit()
+                    response = requests.get(
+                        "https://www.reddit.com/search.json",
+                        headers=headers,
+                        params={"q": query, "sort": "relevance", "t": "week", "limit": 100},
+                        timeout=10,
+                    )
+
+                    if response.status_code == 429:
+                        logger.warning("Reddit rate limit hit for %s query=%s. Waiting longer...", ticker, query)
+                        time.sleep(5)
                         continue
-                    except Exception as e:
-                        logger.debug(f"Error searching r/{subreddit_name} for {query}: {e}")
-                        continue
+
+                    response.raise_for_status()
+                    all_posts.extend(
+                        self._parse_reddit_search_posts(
+                            response.json(),
+                            ticker,
+                            cutoff_time,
+                            restrict_to_stock_subreddits=True,
+                        )
+                    )
+                except requests.exceptions.HTTPError as e:
+                    if e.response is not None and e.response.status_code == 429:
+                        logger.warning("Reddit rate limit for %s query=%s. Skipping.", ticker, query)
+                        time.sleep(5)
+                    else:
+                        logger.debug("HTTP error searching Reddit for %s query=%s: %s", ticker, query, e)
+                    continue
+                except Exception as e:
+                    logger.debug("Error searching Reddit for %s query=%s: %s", ticker, query, e)
+                    continue
             
             # Deduplicate by URL
-            seen_urls = set()
-            unique_posts = []
-            for post in all_posts:
-                if post['url'] not in seen_urls:
-                    seen_urls.add(post['url'])
-                    unique_posts.append(post)
+            unique_posts = self._dedupe_reddit_posts(all_posts)
             
             # Sort by score (upvotes) and take top 5 for AI analysis
             unique_posts.sort(key=lambda x: x['score'], reverse=True)
@@ -612,7 +691,6 @@ class SocialSentimentService:
             # Analyze sentiment with Ollama
             sentiment_label = 'NEUTRAL'
             sentiment_score = 0.0
-            reasoning = ""
             
             if texts_for_ai and self.ollama:
                 try:
@@ -631,7 +709,6 @@ class SocialSentimentService:
 
                     result = self.ollama.analyze_crowd_sentiment(texts_for_ai, ticker)
                     sentiment_label = result.get('sentiment', 'NEUTRAL')
-                    reasoning = result.get('reasoning', '')
                     sentiment_score = self.map_sentiment_label_to_score(sentiment_label)
                 except Exception as e:
                     logger.warning(f"Ollama sentiment analysis failed for {ticker}: {e}")

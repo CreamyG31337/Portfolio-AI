@@ -8,7 +8,7 @@ Jobs for fetching and managing social sentiment data from StockTwits and Reddit.
 import logging
 import time
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Add parent directory to path if needed (standard boilerplate for these jobs)
@@ -41,6 +41,61 @@ from scheduler.scheduler_core import log_job_execution
 # Initialize logger
 logger = logging.getLogger(__name__)
 
+
+def _format_ticker_sample(tickers: list[str], limit: int = 10) -> str:
+    """Format a bounded ticker list for operator logs."""
+
+    sample = ", ".join(tickers[:limit])
+    if len(tickers) > limit:
+        sample = f"{sample}..."
+    return sample
+
+
+def _sort_tickers_oldest_first(
+    tickers: list[str],
+    last_processed_at: dict[str, datetime | None],
+) -> tuple[list[str], int, datetime | None]:
+    """Sort tickers so never/oldest-processed symbols run first."""
+
+    never = datetime.min.replace(tzinfo=UTC)
+
+    def sort_value(ticker: str) -> datetime:
+        value = last_processed_at.get(ticker)
+        if value is None:
+            return never
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
+
+    sorted_tickers = sorted(tickers, key=lambda ticker: (sort_value(ticker), ticker))
+    never_count = sum(1 for ticker in tickers if last_processed_at.get(ticker) is None)
+    known_dates = [sort_value(ticker) for ticker in tickers if last_processed_at.get(ticker) is not None]
+    oldest_existing = min(known_dates) if known_dates else None
+    return sorted_tickers, never_count, oldest_existing
+
+
+def _build_social_sentiment_summary(
+    *,
+    total_tickers: int,
+    attempted_count: int,
+    success_count: int,
+    error_count: int,
+    no_data_count: int,
+    per_ticker_timeout_count: int,
+    skipped_count: int,
+    duration_min: float,
+) -> str:
+    """Build a precise social sentiment completion message."""
+
+    message = (
+        f"Social sentiment: {attempted_count}/{total_tickers} attempted in {duration_min:.1f}m "
+        f"({success_count} ok, {error_count} errors, {no_data_count} no-data, "
+        f"{per_ticker_timeout_count} per-ticker-timeouts)"
+    )
+    if skipped_count:
+        message = f"{message}. Job cap reached - {skipped_count} tickers deferred to next run"
+    return message
+
 def fetch_social_sentiment_job() -> None:
     """Fetch social sentiment data from StockTwits and Reddit for watched tickers.
     
@@ -57,7 +112,7 @@ def fetch_social_sentiment_job() -> None:
     start_time = time.time()
     job_started = False
     job_finalized = False
-    target_date = datetime.now(timezone.utc).date()
+    target_date = datetime.now(UTC).date()
 
     def _finalize_success(message: str) -> None:
         nonlocal job_finalized
@@ -99,7 +154,7 @@ def fetch_social_sentiment_job() -> None:
     
     try:
         # Import job tracking
-        from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
+        from utils.job_tracking import mark_job_started
         
         logger.info("Starting social sentiment job...")
         
@@ -159,12 +214,27 @@ def fetch_social_sentiment_job() -> None:
             logger.info(f"ℹ️ {message}")
             _finalize_success(message)
             return
+
+        last_processed_at = service.get_last_processed_at(all_tickers)
+        all_tickers, never_count, oldest_existing = _sort_tickers_oldest_first(
+            all_tickers,
+            last_processed_at,
+        )
+        oldest_label = oldest_existing.isoformat() if oldest_existing else "none"
+        logger.info(
+            "Sorted %s tickers oldest-first: %s never processed, oldest existing data = %s",
+            len(all_tickers),
+            never_count,
+            oldest_label,
+        )
         
         # 4. Process each ticker with timeouts and progress logging
         success_count = 0
-        error_count = 0
-        failed_tickers = []
-        timeout_tickers = []
+        no_data_tickers: list[str] = []
+        error_tickers: list[str] = []
+        ticker_timeout_tickers: list[str] = []
+        skipped_tickers: list[str] = []
+        attempted_count = 0
         
         # Overall job timeout: 50 minutes (leave 10 min buffer before next run)
         MAX_JOB_DURATION = 50 * 60  # 50 minutes in seconds
@@ -179,11 +249,15 @@ def fetch_social_sentiment_job() -> None:
             elapsed = time.time() - start_time
             if elapsed > MAX_JOB_DURATION:
                 remaining = total_tickers - idx + 1
-                logger.warning(f"⏱️  Job timeout reached ({elapsed/60:.1f}m). Skipping {remaining} remaining tickers")
-                timeout_tickers.extend(all_tickers[idx-1:])
+                logger.warning(
+                    f"⏱️  Job cap reached ({elapsed/60:.1f}m). "
+                    f"Deferring {remaining} remaining tickers to the next run"
+                )
+                skipped_tickers.extend(all_tickers[idx-1:])
                 break
             
             ticker_start = time.time()
+            attempted_count += 1
             logger.info(f"📈 Processing ticker {idx}/{total_tickers}: {ticker}")
             
             try:
@@ -205,11 +279,11 @@ def fetch_social_sentiment_job() -> None:
                 ticker_elapsed = time.time() - ticker_start
                 if ticker_elapsed > MAX_TICKER_DURATION:
                     logger.warning(f"⏱️  Ticker {ticker} timeout ({ticker_elapsed:.1f}s) - skipping Reddit fetch")
-                    timeout_tickers.append(ticker)
+                    ticker_timeout_tickers.append(ticker)
                     if stocktwits_data:
                         success_count += 1
                     else:
-                        error_count += 1
+                        no_data_tickers.append(ticker)
                     continue
                 
                 # Fetch Reddit sentiment with timeout protection
@@ -237,12 +311,11 @@ def fetch_social_sentiment_job() -> None:
                     success_count += 1
                     logger.info(f"✅ Completed {ticker} in {ticker_duration:.1f}s")
                 else:
-                    error_count += 1
+                    no_data_tickers.append(ticker)
                     logger.warning(f"⚠️  No data saved for {ticker} (completed in {ticker_duration:.1f}s)")
                 
             except Exception as e:
-                error_count += 1
-                failed_tickers.append(ticker)
+                error_tickers.append(ticker)
                 ticker_duration = time.time() - ticker_start
                 logger.warning(f"❌ Failed to process {ticker} after {ticker_duration:.1f}s: {e}")
                 continue
@@ -251,30 +324,45 @@ def fetch_social_sentiment_job() -> None:
         duration_ms = int((time.time() - start_time) * 1000)
         duration_min = duration_ms / 60000
         
-        # Build completion message
-        parts = [f"{success_count} successful", f"{error_count} errors"]
-        if timeout_tickers:
-            parts.append(f"{len(timeout_tickers)} timeouts")
-        message = f"Processed {success_count + error_count + len(timeout_tickers)}/{len(all_tickers)} tickers: {', '.join(parts)}"
-        timed_out = len(timeout_tickers) > 0
-        if timed_out:
-            message = (
-                f"{message}. Timed out before full batch completion "
-                f"({success_count + error_count}/{len(all_tickers)} finished)"
-            )
+        error_count = len(error_tickers)
+        no_data_count = len(no_data_tickers)
+        per_ticker_timeout_count = len(ticker_timeout_tickers)
+        skipped_count = len(skipped_tickers)
+        message = _build_social_sentiment_summary(
+            total_tickers=len(all_tickers),
+            attempted_count=attempted_count,
+            success_count=success_count,
+            error_count=error_count,
+            no_data_count=no_data_count,
+            per_ticker_timeout_count=per_ticker_timeout_count,
+            skipped_count=skipped_count,
+            duration_min=duration_min,
+        )
 
-        if timed_out and success_count == 0:
+        if success_count == 0 and (error_count > 0 or per_ticker_timeout_count > 0):
             _finalize_failure(message)
             logger.warning(f"⚠️ Social sentiment timed out with no successful ticker processing in {duration_min:.1f} minutes")
         else:
             _finalize_success(message)
             logger.info(f"✅ Social sentiment job completed: {message} in {duration_min:.1f} minutes")
         
-        # Log failed tickers if any
-        if failed_tickers:
-            logger.warning(f"❌ Failed tickers ({len(failed_tickers)}): {', '.join(failed_tickers[:10])}{'...' if len(failed_tickers) > 10 else ''}")
-        if timeout_tickers:
-            logger.warning(f"⏱️  Timeout tickers ({len(timeout_tickers)}): {', '.join(timeout_tickers[:10])}{'...' if len(timeout_tickers) > 10 else ''}")
+        # Log ticker buckets if any so operator-visible issues are easy to grep.
+        if error_tickers:
+            logger.warning("❌ Error tickers (%s): %s", len(error_tickers), _format_ticker_sample(error_tickers))
+        if no_data_tickers:
+            logger.warning("⚠️  No-data tickers (%s): %s", len(no_data_tickers), _format_ticker_sample(no_data_tickers))
+        if ticker_timeout_tickers:
+            logger.warning(
+                "⏱️  Per-ticker timeout tickers (%s): %s",
+                len(ticker_timeout_tickers),
+                _format_ticker_sample(ticker_timeout_tickers),
+            )
+        if skipped_tickers:
+            logger.info(
+                "Deferred to next social sentiment run (%s): %s",
+                len(skipped_tickers),
+                _format_ticker_sample(skipped_tickers),
+            )
         
     except Exception as e:
         message = f"Error: {str(e)}"
@@ -302,7 +390,7 @@ def cleanup_social_metrics_job() -> None:
         logger.info("Starting social metrics cleanup job...")
         
         # Mark job as started
-        target_date = datetime.now(timezone.utc).date()
+        target_date = datetime.now(UTC).date()
         mark_job_started('social_metrics_cleanup', target_date)
         
         # Import dependencies (lazy imports)
@@ -374,7 +462,7 @@ def social_sentiment_ai_job() -> None:
         logger.info("🤖 Starting Social Sentiment AI Analysis job...")
 
         # Mark job as started
-        target_date = datetime.now(timezone.utc).date()
+        target_date = datetime.now(UTC).date()
         mark_job_started('social_sentiment_ai', target_date)
 
         # Import dependencies (lazy imports)
