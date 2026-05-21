@@ -9,5 +9,7 @@ CREATE TABLE apscheduler_jobs (
     PRIMARY KEY (id)
 );
 
+ALTER TABLE apscheduler_jobs ENABLE ROW LEVEL SECURITY;
+
 -- Indexes
 CREATE INDEX ix_apscheduler_jobs_next_run_time ON apscheduler_jobs (next_run_time);

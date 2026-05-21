@@ -194,3 +194,21 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/watched_tickers_Service role can manage watched_tickers.sql
 \i policies/watched_tickers_v2_Service role can manage watched_tickers_v2.sql
 \i policies/watched_tickers_v2_Users can view watchlist for their funds.sql
+
+-- RLS tightening (2026-05-20): see docs/RLS_AUDIT_PHASE0.md
+\i policies/ai_analysis_queue_Allow service role full access.sql
+\i policies/ai_analysis_skip_list_Allow service role full access.sql
+\i policies/apscheduler_jobs_Allow service role full access.sql
+\i policies/congress_positions_Allow authenticated users to read congress positions.sql
+\i policies/congress_positions_Allow service role full access.sql
+\i policies/congress_trade_returns_Allow service role full access.sql
+\i policies/insider_trades_Allow authenticated users to read insider trades.sql
+\i policies/insider_trades_Allow service role full access.sql
+\i policies/job_retry_queue_Allow service role full access.sql
+
+-- GRANTS (2026-05-20): close view + SECURITY DEFINER function bypasses.
+-- See docs/RLS_AUDIT_PHASE0.md and
+-- database/schema/supabase/migrations/harden_get_distinct_column_values.sql
+REVOKE SELECT ON public.congress_trades_enriched FROM anon;
+-- NOTE: Revoke from PUBLIC, not anon — anon inherits EXECUTE via PUBLIC.
+REVOKE EXECUTE ON FUNCTION public.get_distinct_column_values(text, text) FROM PUBLIC;

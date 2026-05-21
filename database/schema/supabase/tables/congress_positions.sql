@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS congress_positions (
     UNIQUE(politician_id, ticker)
 );
 
+ALTER TABLE congress_positions ENABLE ROW LEVEL SECURITY;
+
 CREATE INDEX idx_cp_politician ON congress_positions(politician_id);
 CREATE INDEX idx_cp_status ON congress_positions(status);
 CREATE INDEX idx_cp_pct_return ON congress_positions(pct_return);

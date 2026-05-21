@@ -8,18 +8,27 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
 BEGIN
-    -- Restrict to known public relations to avoid arbitrary SQL access.
-    IF to_regclass(format('public.%I', p_table)) IS NULL THEN
-        RAISE EXCEPTION 'Table % does not exist in public schema', p_table;
+    -- Whitelist of allowed tables
+    IF p_table NOT IN (
+        'securities',
+        'watched_tickers',
+        'congress_trades',
+        'congress_trades_enriched',
+        'insider_trades',
+        'portfolio_positions',
+        'trade_log'
+    ) THEN
+        RAISE EXCEPTION 'Table "%" is not in the allowed whitelist', p_table;
+    END IF;
+
+    -- Validate column name (alphanumeric + underscore only)
+    IF p_column !~ '^[a-zA-Z_][a-zA-Z0-9_]*$' THEN
+        RAISE EXCEPTION 'Invalid column name: %', p_column;
     END IF;
 
     RETURN QUERY EXECUTE format(
-        'SELECT DISTINCT %1$I::text AS value
-         FROM public.%2$I
-         WHERE %1$I IS NOT NULL
-         ORDER BY %1$I::text',
-        p_column,
-        p_table
+        'SELECT DISTINCT %I::TEXT AS value FROM %I WHERE %I IS NOT NULL ORDER BY 1',
+        p_column, p_table, p_column
     );
 END;
 $function$;

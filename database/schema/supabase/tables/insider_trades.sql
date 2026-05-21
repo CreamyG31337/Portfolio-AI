@@ -21,6 +21,8 @@ CREATE TABLE insider_trades (
     PRIMARY KEY (id)
 );
 
+ALTER TABLE insider_trades ENABLE ROW LEVEL SECURITY;
+
 -- Indexes
 CREATE INDEX idx_insider_disclosure_date ON insider_trades (disclosure_date);
 CREATE INDEX idx_insider_name ON insider_trades (insider_name);

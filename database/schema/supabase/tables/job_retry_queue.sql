@@ -20,6 +20,8 @@ CREATE TABLE job_retry_queue (
     PRIMARY KEY (id)
 );
 
+ALTER TABLE job_retry_queue ENABLE ROW LEVEL SECURITY;
+
 -- Indexes
 CREATE INDEX idx_retry_queue_created ON job_retry_queue (created_at);
 CREATE INDEX idx_retry_queue_job_entity ON job_retry_queue (job_name, entity_type, status);

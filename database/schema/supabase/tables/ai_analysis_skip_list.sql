@@ -15,6 +15,8 @@ CREATE TABLE ai_analysis_skip_list (
     PRIMARY KEY (id)
 );
 
+ALTER TABLE ai_analysis_skip_list ENABLE ROW LEVEL SECURITY;
+
 -- Indexes
 CREATE UNIQUE INDEX ai_analysis_skip_list_ticker_key ON ai_analysis_skip_list (ticker);
 CREATE INDEX idx_skip_list_last_failed ON ai_analysis_skip_list (last_failed_at);

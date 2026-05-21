@@ -16,6 +16,8 @@ CREATE TABLE ai_analysis_queue (
     PRIMARY KEY (id)
 );
 
+ALTER TABLE ai_analysis_queue ENABLE ROW LEVEL SECURITY;
+
 -- Indexes
 CREATE INDEX idx_analysis_queue_pending ON ai_analysis_queue (status, priority, created_at);
 CREATE INDEX idx_analysis_queue_recent ON ai_analysis_queue (completed_at);
