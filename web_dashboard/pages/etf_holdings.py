@@ -10,9 +10,10 @@ Displays daily snapshots, calculates changes between dates, and shows institutio
 import streamlit as st
 import sys
 from pathlib import Path
-from typing import List, Dict, Optional, Any
-from datetime import datetime, timedelta, timezone, date
+from typing import Any
+from datetime import datetime, date
 import pandas as pd
+import numpy as np
 import logging
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
@@ -32,9 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from auth_utils import is_authenticated, get_user_email, redirect_to_login
 from navigation import render_navigation
-from supabase_client import SupabaseClient
-from user_preferences import get_user_timezone
-from aggrid_utils import TICKER_CELL_RENDERER_JS, TICKER_CLICK_HANDLER_JS_TEMPLATE
+from aggrid_utils import TICKER_CELL_RENDERER_JS
 from streamlit_utils import get_supabase_client, CACHE_VERSION
 
 logger = logging.getLogger(__name__)
@@ -93,7 +92,7 @@ if 'refresh_key' not in st.session_state:
 
 # Query functions
 @st.cache_data(ttl=300, show_spinner=False)
-def get_latest_date(_db_client, _refresh_key: int, _cache_version: str = "") -> Optional[date]:
+def get_latest_date(_db_client, _refresh_key: int, _cache_version: str = "") -> date | None:
     """Get latest available date from etf_holdings_log"""
     if _db_client is None:
         return None
@@ -107,14 +106,14 @@ def get_latest_date(_db_client, _refresh_key: int, _cache_version: str = "") -> 
         return None
 
 @st.cache_data(ttl=300, show_spinner=False)
-def check_etf_ownership(_db_client, etf_ticker: str, _refresh_key: int, _cache_version: str = "") -> Optional[Dict[str, Any]]:
+def check_etf_ownership(_db_client, etf_ticker: str, _refresh_key: int, _cache_version: str = "") -> dict[str, Any] | None:
     """Check if user owns shares of the ETF itself"""
     if _db_client is None or not etf_ticker:
         return None
     try:
         # Use latest_positions view like the rest of the dashboard
         result = _db_client.supabase.table("latest_positions").select("shares, fund").eq("ticker", etf_ticker).gt("shares", 0).execute()
-        
+
         if result.data:
             total_shares = sum(row['shares'] for row in result.data)
             funds = ", ".join(set(row['fund'] for row in result.data))
@@ -128,7 +127,7 @@ def check_etf_ownership(_db_client, etf_ticker: str, _refresh_key: int, _cache_v
         return None
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_available_etfs(_db_client, _refresh_key: int, _cache_version: str = "") -> List[Dict[str, str]]:
+def get_available_etfs(_db_client, _refresh_key: int, _cache_version: str = "") -> list[dict[str, str]]:
     """Get all available ETF tickers with names from Supabase"""
     if _db_client is None:
         return []
@@ -139,13 +138,13 @@ def get_available_etfs(_db_client, _refresh_key: int, _cache_version: str = "") 
         holdings_res = _db_client.supabase.table("etf_holdings_log").select("etf_ticker").execute()
         if not holdings_res.data:
             return []
-        
+
         tickers = sorted(list(set(row['etf_ticker'] for row in holdings_res.data)))
-        
+
         # Get names from securities table
         securities_res = _db_client.supabase.table("securities").select("ticker, company_name").in_("ticker", tickers).execute()
         names_map = {row['ticker']: row['company_name'] for row in securities_res.data}
-        
+
         return [{'ticker': t, 'name': names_map.get(t, t)} for t in tickers]
     except Exception as e:
         logger.error(f"Error fetching available ETFs: {e}")
@@ -163,40 +162,40 @@ def get_all_holdings(
     """Get ALL current holdings for a specific ETF on a specific date with user portfolio overlap"""
     if _db_client is None:
         return pd.DataFrame()
-    
+
     try:
         # 1. Fetch ETF holdings
         target_date_str = target_date.isoformat()
         holdings_res = _db_client.supabase.table("etf_holdings_log").select(
             "date, etf_ticker, holding_ticker, holding_name, shares_held, weight_percent"
         ).eq("date", target_date_str).eq("etf_ticker", etf_ticker).gt("shares_held", 0).execute()
-        
+
         if not holdings_res.data:
             return pd.DataFrame()
-        
+
         holdings_df = pd.DataFrame(holdings_res.data)
         # Rename to match expected UI columns
         holdings_df = holdings_df.rename(columns={
             'shares_held': 'current_shares'
         })
-        
+
         # 2. Fetch user's latest portfolio positions for overlap using latest_positions view
         user_pos_res = _db_client.supabase.table("latest_positions").select("ticker, shares").gt("shares", 0).execute()
-        
+
         if user_pos_res.data:
             user_df = pd.DataFrame(user_pos_res.data)
             # Aggregate by ticker (sum shares across funds)
             user_agg = user_df.groupby('ticker')['shares'].sum().reset_index()
             user_agg = user_agg.rename(columns={'shares': 'user_shares'})
-            
+
             # Merge with holdings
             holdings_df = holdings_df.merge(user_agg, left_on='holding_ticker', right_on='ticker', how='left').drop(columns=['ticker'])
             holdings_df['user_shares'] = holdings_df['user_shares'].fillna(0)
         else:
             holdings_df['user_shares'] = 0
-            
+
         return holdings_df.sort_values(by=['weight_percent', 'current_shares'], ascending=[False, False])
-        
+
     except Exception as e:
         logger.error(f"Error fetching all holdings: {e}", exc_info=True)
         return pd.DataFrame()
@@ -205,37 +204,37 @@ def get_all_holdings(
 def get_holdings_changes(
     _db_client,
     target_date: date,
-    etf_ticker: Optional[str] = None,
+    etf_ticker: str | None = None,
     _refresh_key: int = 0,
     _cache_version: str = ""
 ) -> pd.DataFrame:
     """Calculate holdings changes for a specific date compared to previous date"""
     if _db_client is None:
         return pd.DataFrame()
-    
+
     try:
         target_date_str = target_date.isoformat()
-        
+
         # 1. Fetch current holdings
         curr_query = _db_client.supabase.table("etf_holdings_log").select(
             "date, etf_ticker, holding_ticker, holding_name, shares_held"
         ).eq("date", target_date_str)
-        
+
         if etf_ticker and etf_ticker != "All ETFs":
             curr_query = curr_query.eq("etf_ticker", etf_ticker)
-            
+
         curr_res = curr_query.execute()
         if not curr_res.data:
             return pd.DataFrame()
-        
+
         curr_df = pd.DataFrame(curr_res.data)
-        
+
         # 2. Fetch previous holdings for the same ETFs
         tickers_to_check = curr_df['etf_ticker'].unique().tolist()
-        
+
         # Find latest previous date for each ETF
         hist_res = _db_client.supabase.table("etf_holdings_log").select("etf_ticker, date").lt("date", target_date_str).in_("etf_ticker", tickers_to_check).order("date", desc=True).execute()
-        
+
         if not hist_res.data:
             # First snapshot
             curr_df['previous_shares'] = 0
@@ -245,84 +244,84 @@ def get_holdings_changes(
         else:
             hist_df = pd.DataFrame(hist_res.data)
             latest_prev = hist_df.groupby('etf_ticker')['date'].max().reset_index()
-            
+
             # Optimize: Instead of N queries (one per ETF), batch by date
             # Group ETFs by their latest previous date to reduce queries
             date_groups = latest_prev.groupby('date')['etf_ticker'].apply(list).reset_index()
-            
+
             prev_holdings_list = []
             for date_row in date_groups.itertuples(index=False):
-                batch_date = getattr(date_row, 'date')
-                batch_etfs = getattr(date_row, 'etf_ticker')
-                
+                batch_date = date_row.date
+                batch_etfs = date_row.etf_ticker
+
                 # Single query for all ETFs with this date
                 p_res = _db_client.supabase.table("etf_holdings_log").select(
                     "etf_ticker, holding_ticker, shares_held"
                 ).eq("date", batch_date).in_("etf_ticker", batch_etfs).execute()
-                
+
                 if p_res.data:
                     prev_holdings_list.extend(p_res.data)
-            
+
             if prev_holdings_list:
 
                 prev_df = pd.DataFrame(prev_holdings_list)
                 prev_df = prev_df.rename(columns={'shares_held': 'previous_shares'})
-                
+
                 merged_df = curr_df.merge(
-                    prev_df, 
-                    on=['etf_ticker', 'holding_ticker'], 
+                    prev_df,
+                    on=['etf_ticker', 'holding_ticker'],
                     how='outer'
                 )
-                
+
                 merged_df['shares_held'] = merged_df['shares_held'].fillna(0)
                 merged_df['previous_shares'] = merged_df['previous_shares'].fillna(0)
-                
+
                 merged_df['share_change'] = merged_df['shares_held'] - merged_df['previous_shares']
-                
-                def calc_pct(row):
-                    if row['previous_shares'] > 0:
-                        return (row['share_change'] / row['previous_shares']) * 100
-                    return 0
-                
-                merged_df['percent_change'] = merged_df.apply(calc_pct, axis=1)
-                
-                def determine_action(row):
-                    if row['previous_shares'] == 0 and row['shares_held'] > 0: return 'BUY'
-                    if row['shares_held'] > row['previous_shares']: return 'BUY'
-                    if row['shares_held'] < row['previous_shares']: return 'SELL'
-                    return 'HOLD'
-                
-                merged_df['action'] = merged_df.apply(determine_action, axis=1)
+
+                # OPTIMIZATION: Replaced slow df.apply(axis=1) with vectorized operations to avoid O(N) Python loop overhead.
+                # Using np.where and safe division (replace 0 with 1 to avoid ZeroDivisionError before masking)
+                safe_prev_shares = np.where(merged_df['previous_shares'] == 0, 1, merged_df['previous_shares'])
+                merged_df['percent_change'] = np.where(
+                    merged_df['previous_shares'] > 0,
+                    (merged_df['share_change'] / safe_prev_shares) * 100.0,
+                    0.0
+                )
+
+                conditions = [
+                    (merged_df['shares_held'] > merged_df['previous_shares']),
+                    (merged_df['shares_held'] < merged_df['previous_shares'])
+                ]
+                merged_df['action'] = np.select(conditions, ['BUY', 'SELL'], default='HOLD')
                 curr_df = merged_df
             else:
                 curr_df['previous_shares'] = 0
                 curr_df['share_change'] = 0
                 curr_df['percent_change'] = 0
                 curr_df['action'] = 'HOLD'
-        
+
         # Final cleanup and overlap check
         curr_df = curr_df.rename(columns={'shares_held': 'current_shares'})
-        
+
         # 3. Fetch user portfolio positions for overlap
         max_date_res = _db_client.supabase.table("portfolio_positions").select("date").order("date", desc=True).limit(1).execute()
         if max_date_res.data:
             max_date = max_date_res.data[0]['date']
             user_pos_res = _db_client.supabase.table("portfolio_positions").select("ticker, quantity").eq("date", max_date).gt("quantity", 0).execute()
-            
+
             if user_pos_res.data:
                 user_df = pd.DataFrame(user_pos_res.data)
                 user_agg = user_df.groupby('ticker')['quantity'].sum().reset_index()
                 user_agg = user_agg.rename(columns={'quantity': 'user_shares'})
-                
+
                 curr_df = curr_df.merge(user_agg, left_on='holding_ticker', right_on='ticker', how='left').drop(columns=['ticker'])
                 curr_df['user_shares'] = curr_df['user_shares'].fillna(0)
             else:
                 curr_df['user_shares'] = 0
         else:
             curr_df['user_shares'] = 0
-            
+
         return curr_df
-        
+
     except Exception as e:
         logger.error(f"Error fetching holdings changes: {e}", exc_info=True)
         return pd.DataFrame()
@@ -331,17 +330,17 @@ def get_holdings_changes(
 def get_summary_stats(
     _db_client,
     target_date: date,
-    etf_ticker: Optional[str] = None,
+    etf_ticker: str | None = None,
     _refresh_key: int = 0,
     _cache_version: str = ""
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get summary statistics for a specific date"""
     if _db_client is None:
         return {}
-    
+
     try:
         changes_df = get_holdings_changes(_db_client, target_date, etf_ticker, _refresh_key, _cache_version)
-        
+
         if changes_df.empty:
             return {
                 'total_changes': 0,
@@ -351,17 +350,17 @@ def get_summary_stats(
                 'largest_sell': None,
                 'total_etfs': 0
             }
-        
+
         # Filter out HOLD actions for change counts
         significant_changes = changes_df[changes_df['action'] != 'HOLD'].copy()
-        
+
         bullish = significant_changes[significant_changes['action'] == 'BUY']
         bearish = significant_changes[significant_changes['action'] == 'SELL']
-        
+
         # Find largest buy and sell
         largest_buy = None
         largest_sell = None
-        
+
         if not bullish.empty:
             largest_buy_row = bullish.loc[bullish['share_change'].idxmax()]
             largest_buy = {
@@ -369,7 +368,7 @@ def get_summary_stats(
                 'ticker': largest_buy_row['holding_ticker'],
                 'change': largest_buy_row['share_change']
             }
-        
+
         if not bearish.empty:
             largest_sell_row = bearish.loc[bearish['share_change'].idxmin()]
             largest_sell = {
@@ -377,10 +376,10 @@ def get_summary_stats(
                 'ticker': largest_sell_row['holding_ticker'],
                 'change': largest_sell_row['share_change']
             }
-        
+
         # Count unique ETFs
         total_etfs = changes_df['etf_ticker'].nunique() if 'etf_ticker' in changes_df.columns else 0
-        
+
         return {
             'total_changes': len(significant_changes),
             'bullish_count': len(bullish),
@@ -479,7 +478,7 @@ else:
 if not changes_df.empty:
     if holding_ticker_filter:
         changes_df = changes_df[changes_df['holding_ticker'].str.contains(holding_ticker_filter.upper(), case=False, na=False)]
-    
+
     # Only apply action filter in changes view (holdings view doesn't have 'action' column)
     if view_mode == "changes" and action_filter != "All":
         changes_df = changes_df[changes_df['action'] == action_filter]
@@ -487,17 +486,17 @@ if not changes_df.empty:
 # Summary Statistics (only for changes view)
 if view_mode == "changes":
     st.subheader("Summary Statistics")
-    
+
     if not changes_df.empty:
         # Calculate stats from filtered dataframe
         significant_changes = changes_df[changes_df['action'] != 'HOLD'].copy()
         bullish = significant_changes[significant_changes['action'] == 'BUY']
         bearish = significant_changes[significant_changes['action'] == 'SELL']
-        
+
         # Find largest buy and sell from filtered data
         largest_buy = None
         largest_sell = None
-        
+
         if not bullish.empty:
             largest_buy_idx = bullish['share_change'].idxmax()
             largest_buy_row = bullish.loc[largest_buy_idx]
@@ -506,7 +505,7 @@ if view_mode == "changes":
                 'ticker': largest_buy_row['holding_ticker'],
                 'change': largest_buy_row['share_change']
             }
-        
+
         if not bearish.empty:
             largest_sell_idx = bearish['share_change'].idxmin()
             largest_sell_row = bearish.loc[largest_sell_idx]
@@ -515,25 +514,25 @@ if view_mode == "changes":
                 'ticker': largest_sell_row['holding_ticker'],
                 'change': largest_sell_row['share_change']
             }
-        
+
         col1, col2, col3, col4, col5 = st.columns(5)
-        
+
         with col1:
             st.metric("Latest Update", selected_date.strftime("%Y-%m-%d") if selected_date else "N/A")
-        
+
         with col2:
             st.metric("Total Changes", len(significant_changes))
-        
+
         with col3:
             st.metric("🟢 Bullish (BUY)", len(bullish), delta=None)
-        
+
         with col4:
             st.metric("🔴 Bearish (SELL)", len(bearish), delta=None)
-        
+
         with col5:
             total_etfs = changes_df['etf_ticker'].nunique() if 'etf_ticker' in changes_df.columns else 0
             st.metric("ETFs Tracked", total_etfs)
-        
+
         # Largest moves
         if largest_buy or largest_sell:
             st.caption("**Largest Moves:**")
@@ -556,11 +555,11 @@ else:
 if not changes_df.empty:
     # Prepare DataFrame for display - keep numeric columns for sorting, add formatted columns
     display_df = changes_df.copy()
-    
+
     # Format date
     if 'date' in display_df.columns:
         display_df['date'] = pd.to_datetime(display_df['date']).dt.strftime('%Y-%m-%d')
-    
+
     # Add "We Hold" indicator based on user_shares
     if 'user_shares' in display_df.columns:
         display_df['we_hold'] = display_df['user_shares'].apply(
@@ -569,7 +568,7 @@ if not changes_df.empty:
         display_df['user_shares_formatted'] = display_df['user_shares'].apply(
             lambda x: f"{int(x):,}" if x > 0 else "—"
         )
-    
+
     # Format columns based on view mode
     if view_mode == "holdings":
         # Holdings view - format shares and weight
@@ -577,12 +576,12 @@ if not changes_df.empty:
             display_df['current_shares_formatted'] = display_df['current_shares'].apply(
                 lambda x: f"{x:,.0f}" if pd.notna(x) else "N/A"
             )
-        
+
         if 'weight_percent' in display_df.columns:
             display_df['weight_percent_formatted'] = display_df['weight_percent'].apply(
                 lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A"
             )
-        
+
         # Rename columns for display
         display_df = display_df.rename(columns={
             'date': 'Date',
@@ -594,7 +593,7 @@ if not changes_df.empty:
             'current_shares_formatted': 'Shares',
             'weight_percent_formatted': 'Weight %'
         })
-        
+
         # Column order for holdings view
         column_order = ['Date', 'Ticker', 'Name', 'We Hold', 'Our Shares', 'Shares', 'Weight %']
         if 'ETF' in display_df.columns:
@@ -605,22 +604,22 @@ if not changes_df.empty:
             display_df['share_change_formatted'] = display_df['share_change'].apply(
                 lambda x: f"{x:+,.0f}" if pd.notna(x) and x != 0 else "0"
             )
-        
+
         if 'percent_change' in display_df.columns:
             display_df['percent_change_formatted'] = display_df['percent_change'].apply(
                 lambda x: f"{x:+.2f}%" if pd.notna(x) else "N/A"
             )
-        
+
         if 'current_shares' in display_df.columns:
             display_df['current_shares_formatted'] = display_df['current_shares'].apply(
                 lambda x: f"{x:,.0f}" if pd.notna(x) else "N/A"
             )
-        
+
         if 'previous_shares' in display_df.columns:
             display_df['previous_shares_formatted'] = display_df['previous_shares'].apply(
                 lambda x: f"{x:,.0f}" if pd.notna(x) else "N/A"
             )
-        
+
         # Rename columns for display
         display_df = display_df.rename(columns={
             'date': 'Date',
@@ -635,19 +634,19 @@ if not changes_df.empty:
             'previous_shares_formatted': 'Previous Shares',
             'current_shares_formatted': 'Current Shares'
         })
-        
+
         # Column order for changes view
         column_order = ['Date', 'ETF', 'Holding Ticker', 'Holding Name', 'We Hold', 'Our Shares', 'Action', 'Share Change', '% Change', 'Previous Shares', 'Current Shares']
-    
+
     available_columns = [col for col in column_order if col in display_df.columns]
     display_df = display_df[available_columns]
-    
+
     # Build AgGrid with color coding
     gb = GridOptionsBuilder.from_dataframe(display_df)
     gb.configure_pagination(paginationPageSize=50)
     gb.configure_side_bar()
     gb.configure_default_column(groupable=True, value=True, enableRowGroup=True, aggFunc='sum', editable=False)
-    
+
     # Highlight entire rows where we hold the stock
     if 'We Hold' in display_df.columns:
         gb.configure_grid_options(
@@ -660,7 +659,7 @@ if not changes_df.empty:
             }
             """)
         )
-    
+
     # Configure Share Change column with color coding
     if 'Share Change' in display_df.columns:
         gb.configure_column(
@@ -681,7 +680,7 @@ if not changes_df.empty:
             }
             """)
         )
-    
+
     # Configure Action column with icons
     if 'Action' in display_df.columns:
         gb.configure_column(
@@ -697,7 +696,7 @@ if not changes_df.empty:
             }
             """)
         )
-    
+
     # Configure Ticker column with clickable cells (works for both "Ticker" and "Holding Ticker")
     ticker_col_name = 'Ticker' if view_mode == "holdings" else 'Holding Ticker'
     if ticker_col_name in display_df.columns:
@@ -705,9 +704,9 @@ if not changes_df.empty:
             ticker_col_name,
             cellRenderer=JsCode(TICKER_CELL_RENDERER_JS)
         )
-    
+
     grid_options = gb.build()
-    
+
     # Display grid
     grid_response = AgGrid(
         display_df,
@@ -717,7 +716,7 @@ if not changes_df.empty:
         allow_unsafe_jscode=True,
         theme='streamlit'
     )
-    
+
     # Handle ticker navigation
     selected_rows = grid_response.get('selected_rows')
     if selected_rows is not None and len(selected_rows) > 0:
@@ -734,7 +733,7 @@ if not changes_df.empty:
                 if ticker and ticker != 'N/A':
                     st.query_params["ticker"] = ticker
                     st.switch_page("pages/ticker_details.py")
-    
+
     # Export button
     st.download_button(
         label="📥 Download CSV",
