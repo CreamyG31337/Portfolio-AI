@@ -6537,70 +6537,116 @@ def api_insider_trades_data():
 # Newsletter API Routes
 # ============================================================================
 
+# ---------------------------------------------------------------------------
+# Inbound newsletter webhook
+#
+# This project originally received inbound mail from Mailgun's Routes feature,
+# which POSTs pre-parsed form-data (sender, recipient, subject, body-plain,
+# body-html, Message-Id, ...) plus an HMAC-SHA256 signature. We migrated to a
+# Cloudflare Email Worker that forwards a small JSON envelope containing the
+# raw RFC 5322 message, and the route below parses that envelope.
+#
+# If you are forking this project and want to use Mailgun instead, swap the
+# parsing block below for something along these lines:
+#
+#     form_data = request.form
+#     signature = form_data.get('signature')
+#     timestamp = form_data.get('timestamp')
+#     token     = form_data.get('token')
+#     if not service.verify_webhook_signature(token, timestamp, signature):
+#         return jsonify({'error': 'Invalid signature'}), 403
+#
+#     sender     = form_data.get('sender') or form_data.get('From')
+#     recipient  = form_data.get('recipient')
+#     subject    = form_data.get('subject')
+#     body_plain = form_data.get('body-plain')
+#     body_html  = form_data.get('body-html')
+#     message_id = form_data.get('Message-Id')
+#
+#     # "Name <email>" -> sender_name + sender
+#     from_field = form_data.get('from') or form_data.get('From')
+#     sender_name, parsed_addr = email.utils.parseaddr(from_field or '')
+#     if parsed_addr and not sender:
+#         sender = parsed_addr
+#
+# Everything from `service.process_newsletter(...)` onward is provider-agnostic
+# — only the parsing step above needs to change per provider.
+# ---------------------------------------------------------------------------
 @app.route('/api/webhooks/newsletter', methods=['POST'])
 def webhook_newsletter():
-    """Mailgun webhook endpoint for receiving newsletters
-    
-    Expected POST data from Mailgun:
-    - signature: HMAC-SHA256 signature for verification
-    - timestamp: Unix timestamp
-    - token: Random token
-    - sender: From email address  
-    - recipient: To email address
+    """Cloudflare Email Worker webhook for receiving newsletters.
+
+    Expected JSON payload:
+    - from: Sender email address
+    - to: Recipient email address
     - subject: Email subject
-    - body-plain: Plain text body (optional)
-    - body-html: HTML body (optional)
-    - from: Sender name and email
-    - Message-Id: Mailgun message ID
+    - raw_eml: Full RFC 5322 raw email string
+
+    Note: this endpoint used to receive Mailgun's pre-parsed form-data plus
+    an HMAC signature; see the comment block above the route for a Mailgun
+    drop-in replacement of the parsing block.
     """
     try:
         logger.info(f"Newsletter webhook received: content_type={request.content_type}, content_length={request.content_length}")
-        
-        # Extract webhook data
-        form_data = request.form
-        
-        logger.info(f"Newsletter webhook form keys: {list(form_data.keys())[:20]}")
-        
-        # Verify Mailgun signature
-        signature = form_data.get('signature')
-        timestamp = form_data.get('timestamp')
-        token = form_data.get('token')
-        
-        if not all([signature, timestamp, token]):
-            logger.warning(f"Missing signature fields in Mailgun webhook: signature={bool(signature)}, timestamp={bool(timestamp)}, token={bool(token)}")
-            return jsonify({'error': 'Missing signature fields'}), 400
-        
-        # Initialize newsletter service
+
+        payload = request.get_json(silent=True) or {}
+        logger.info(f"Newsletter webhook JSON keys: {list(payload.keys())}")
+
+        sender = (payload.get('from') or '').strip()
+        recipient = (payload.get('to') or '').strip()
+        subject = (payload.get('subject') or '').strip()
+        raw_eml = payload.get('raw_eml') or ''
+
+        if not all([sender, recipient, subject, raw_eml]):
+            logger.warning(
+                f"Missing required fields in newsletter webhook: "
+                f"from={bool(sender)}, to={bool(recipient)}, "
+                f"subject={bool(subject)}, raw_eml={bool(raw_eml)}"
+            )
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        import email as email_lib
+        from email.utils import parseaddr
+
+        try:
+            msg = email_lib.message_from_string(raw_eml)
+        except Exception as parse_err:
+            logger.error(f"Failed to parse raw_eml: {parse_err}", exc_info=True)
+            return jsonify({'error': 'Failed to parse raw email'}), 400
+
+        # Walk MIME parts to pull out the plain-text body; skip HTML and attachments.
+        body_plain = None
+        for part in msg.walk():
+            if part.is_multipart():
+                continue
+            if part.get_content_type() != 'text/plain':
+                continue
+            if 'attachment' in (part.get('Content-Disposition') or '').lower():
+                continue
+            payload_bytes = part.get_payload(decode=True)
+            if payload_bytes is None:
+                continue
+            charset = part.get_content_charset() or 'utf-8'
+            try:
+                body_plain = payload_bytes.decode(charset, errors='replace')
+            except (LookupError, UnicodeDecodeError):
+                body_plain = payload_bytes.decode('utf-8', errors='replace')
+            break
+
+        # Prefer the From header's display name + address; fall back to the JSON `from`.
+        sender_name = None
+        parsed_name, parsed_addr = parseaddr(msg.get('From') or sender)
+        if parsed_name:
+            sender_name = parsed_name.strip() or None
+        if parsed_addr:
+            sender = parsed_addr.strip()
+
+        message_id = (msg.get('Message-ID') or msg.get('Message-Id') or '').strip() or None
+        timestamp = None
+        body_html = None
+
         from newsletter_service import NewsletterService
         service = NewsletterService()
-        
-        # Verify signature
-        if not service.verify_webhook_signature(token, timestamp, signature):
-            logger.error("Invalid Mailgun webhook signature")
-            return jsonify({'error': 'Invalid signature'}), 403
-        
-        # Extract email data
-        sender = form_data.get('sender') or form_data.get('From')
-        recipient = form_data.get('recipient')
-        subject = form_data.get('subject')
-        body_plain = form_data.get('body-plain')
-        body_html = form_data.get('body-html')
-        message_id = form_data.get('Message-Id')
-        
-        # Extract sender name (from "Name <email>" format)
-        sender_name = None
-        from_field = form_data.get('from') or form_data.get('From')
-        if from_field:
-            import re
-            match = re.match(r'^([^<]+)<([^>]+)>$', from_field.strip())
-            if match:
-                sender_name = match.group(1).strip()
-                if not sender:
-                    sender = match.group(2).strip()
-        
-        if not all([sender, recipient, subject]):
-            logger.warning(f"Missing required fields in newsletter webhook: sender={sender}, recipient={recipient}, subject={subject}")
-            return jsonify({'error': 'Missing required fields'}), 400
         
         # Process newsletter (without embedding first to avoid timeout)
         logger.info(f"Processing newsletter from {sender}: {subject}")
