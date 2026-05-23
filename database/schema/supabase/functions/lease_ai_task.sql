@@ -25,6 +25,14 @@ BEGIN
                 OR cardinality(p_analysis_types) = 0
                 OR analysis_type = ANY(p_analysis_types)
             )
+          -- Cross-backend retry: a backend that has already failed on this
+          -- task cannot re-lease it while any other backend has not yet
+          -- tried. Escape hatch when every known backend (3 in our setup)
+          -- has tried, so the task can still retry within max_attempts.
+          AND (
+                NOT (p_backend = ANY(attempted_backends))
+                OR cardinality(attempted_backends) >= 3
+            )
         ORDER BY priority DESC, created_at ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED

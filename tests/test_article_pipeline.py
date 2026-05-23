@@ -101,3 +101,45 @@ def test_run_article_pipeline_respects_job_deadline() -> None:
         max_job_duration_sec=0.01,
     )
     assert agg.saved < 5
+
+
+def test_run_article_pipeline_returns_when_a_worker_hangs() -> None:
+    """Regression: a single hung worker must not block the runner past its deadline.
+
+    A prior bug (root cause of the 1h ``alpha_research`` watchdog kills on
+    2026-05-20 and 2026-05-22) was that ``wait(pending, ...)`` had no timeout, so
+    one stuck article worker pinned the entire job until the global stale-AI-lock
+    watchdog fired at 1h. The runner now caps its wait by the remaining job
+    deadline and returns even when in-flight work is abandoned.
+    """
+
+    started = []
+    finished = []
+
+    def worker(i: int) -> ArticleCounters:
+        started.append(i)
+        if i == 0:
+            # Simulate a hung HTTP call / slow upstream: never returns within the test budget.
+            time.sleep(60)
+            finished.append(i)
+            return ArticleCounters(saved=1)
+        finished.append(i)
+        return ArticleCounters(saved=1)
+
+    start = time.time()
+    agg = run_article_pipeline_parallel(
+        worker,
+        [0, 1, 2],
+        max_workers=2,
+        job_start_time=start,
+        max_job_duration_sec=0.5,
+    )
+    elapsed = time.time() - start
+
+    assert elapsed < 5.0, (
+        f"Runner blocked for {elapsed:.2f}s; expected to return within job deadline "
+        "even when a worker hangs."
+    )
+    # Item 1 (or 2) should have completed; item 0 is the hung one and may be abandoned.
+    assert agg.saved >= 1
+    assert 0 in started

@@ -21,6 +21,16 @@ BEGIN
                 THEN 'failed'
             ELSE 'pending'
         END,
+        -- Track which backends have failed on this task (deduped). Only
+        -- record when the failure counts against max_attempts; transient
+        -- host_busy releases (p_increment_attempts=false) should not lock a
+        -- backend out of retrying.
+        attempted_backends = CASE
+            WHEN p_increment_attempts AND leased_backend IS NOT NULL
+                 AND NOT (leased_backend = ANY(attempted_backends))
+                THEN array_append(attempted_backends, leased_backend)
+            ELSE attempted_backends
+        END,
         leased_by = NULL,
         leased_backend = NULL,
         leased_until = NULL,

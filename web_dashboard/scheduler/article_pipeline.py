@@ -85,8 +85,17 @@ def run_article_pipeline_parallel(
 ) -> ArticleCounters:
     """Run ``worker`` over ``items`` with up to ``max_workers`` threads.
 
-    Stops submitting new work after ``job_start_time + max_job_duration_sec``.
-    In-flight tasks are allowed to finish.
+    Hard deadline: returns within ``max_job_duration_sec`` of ``job_start_time``
+    even if some worker threads are still blocked on slow I/O. Pending in-flight
+    futures are cancelled where possible; already-running threads cannot be
+    killed in CPython, but the runner returns regardless so the calling job can
+    finish and release any global lock it was holding.
+
+    Background: prior versions used ``wait(pending, return_when=FIRST_COMPLETED)``
+    with no timeout. A single hung worker (e.g. a slow URL fetch inside
+    trafilatura, or an Ollama call without its own timeout) blocked the runner
+    indefinitely, which is what caused ``alpha_research`` to be auto-cleared by
+    the stale-AI-lock watchdog at 1h on 2026-05-20 and 2026-05-22.
     """
     deadline = job_start_time + float(max_job_duration_sec)
     if max_workers <= 1:
@@ -105,7 +114,8 @@ def run_article_pipeline_parallel(
     it = iter(items)
     pending: set = set()
 
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+    ex = ThreadPoolExecutor(max_workers=max_workers)
+    try:
 
         def refill() -> None:
             nonlocal pending
@@ -120,7 +130,24 @@ def run_article_pipeline_parallel(
 
         refill()
         while pending:
-            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                logger.warning(
+                    "Article pipeline deadline reached; %d in-flight task(s) "
+                    "remain and will be abandoned",
+                    len(pending),
+                )
+                break
+            done, pending = wait(
+                pending, timeout=remaining, return_when=FIRST_COMPLETED
+            )
+            if not done:
+                logger.warning(
+                    "Article pipeline deadline reached while waiting on "
+                    "%d in-flight task(s); abandoning",
+                    len(pending),
+                )
+                break
             for fut in done:
                 try:
                     agg += fut.result()
@@ -128,5 +155,10 @@ def run_article_pipeline_parallel(
                     logger.exception("Article worker failed (parallel mode)")
                     agg.failed += 1
             refill()
+    finally:
+        try:
+            ex.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            ex.shutdown(wait=False)
 
     return agg

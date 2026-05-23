@@ -17,6 +17,7 @@ CREATE TABLE ai_task_queue (
     leased_until TIMESTAMP WITH TIME ZONE,
     available_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     enqueued_by VARCHAR(40),
+    attempted_backends VARCHAR(40)[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     completed_at TIMESTAMP WITH TIME ZONE,
