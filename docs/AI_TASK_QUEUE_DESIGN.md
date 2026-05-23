@@ -1,8 +1,23 @@
 # AI Task Queue Design
 
-Phase 0 design for replacing the coarse global AI lock with a backend-bound AI task queue and worker pool.
+Backend-bound AI task queue and worker pool — replaces the coarse global AI lock for AI jobs that opt in via `AI_QUEUE_ENABLED=true` + `AI_QUEUE_JOBS=...`. The legacy inline path remains the default for any job not listed.
 
-This started as a Phase 0 design contract. Phase 1 queue plumbing now exists, and Phase 2 has migrated `ticker_analysis` behind feature flags. The legacy inline path remains the default until `AI_QUEUE_ENABLED=true` and `AI_QUEUE_JOBS=ticker_analysis`.
+## Status (2026-05-23)
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| Phase 0 | Design contract (this document) | ✅ |
+| **Q1** | `ai_task_queue` schema + lease/finalize RPCs + embedded worker pool gated by `AI_QUEUE_ENABLED` | ✅ shipped |
+| **Q2** | Migrate `ticker_analysis` to per-ticker queue tasks | ✅ shipped 2026-05-20; verified end-to-end across `ollama_primary`, `ollama_secondary`, and `glm` workers on 2026-05-21 |
+| **Q3** | Retire global mutex for queue-managed jobs (other AI jobs no longer block them) | ⏳ open — would have prevented `alpha_research`'s 1h hang from skipping the `ticker_meta_analysis` cron on 2026-05-22 |
+| **Q4** | Migrate more AI jobs to the queue: `ticker_meta_analysis`, `sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ open — each migration is its own observable rollout |
+
+Phases here used to be numbered "Phase 1–4". Renamed to **Q1–Q4** so cross-doc discussion is unambiguous (e.g. "queue Q3" vs `meta_analysis_roadmap.md`'s "Phase 3").
+
+## Related docs
+
+- [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md) — product layers (market → sector → ticker meta) that the queue powers. Q4 migrations directly reduce AI-lock contention seen by meta jobs.
+- [`AGENTS.md`](../AGENTS.md) — "Meta Analysis (market → sector → ticker)" pointer block.
 
 ## Why
 
@@ -118,7 +133,7 @@ Expected statuses:
 - `failed`: terminal failure.
 - `cancelled`: intentionally removed from work.
 
-Phase 1 should add a Postgres RPC for atomic leasing. The RPC should use `FOR UPDATE SKIP LOCKED` or an equivalent single-statement update so multiple workers cannot lease the same row.
+Q1 added a Postgres RPC for atomic leasing (`lease_ai_task`). The RPC uses `FOR UPDATE SKIP LOCKED` so multiple workers cannot lease the same row.
 
 ## Worker Lifecycle
 
@@ -197,8 +212,8 @@ The classifier should live in code, not config, so it can be unit tested and cha
 
 Feature flags:
 
-- `AI_QUEUE_ENABLED=false` by default in Phase 1.
-- `AI_QUEUE_JOBS=ticker_analysis` controls which jobs use the queue once the queue exists.
+- `AI_QUEUE_ENABLED=false` was the default during Q1 plumbing. CI now sets `AI_QUEUE_ENABLED=true` + `AI_QUEUE_JOBS=ticker_analysis` for the Flask deploy (see `web_dashboard/.woodpecker.yml`).
+- `AI_QUEUE_JOBS=ticker_analysis,...` controls which jobs route through the queue. Add a job here only after its handler is registered in `build_task_handlers()` (otherwise workers refuse to start for that job).
 
 Worker and lease settings:
 
@@ -215,28 +230,29 @@ Existing model settings remain in the existing model configuration and settings 
 
 ## Migration Plan
 
-### Phase 1: Queue Plumbing
+### Q1: Queue Plumbing — ✅ shipped
 
-- Add `ai_task_queue` schema and lease/finalize RPCs.
-- Add a worker module, likely `web_dashboard/scheduler/ai_task_workers.py`.
-- Start workers only when `AI_QUEUE_ENABLED=true`.
-- Keep all current jobs on their existing path.
-- Add unit tests for leasing, heartbeat extension, expired lease recovery, and failure classification.
+- `ai_task_queue` schema and lease/finalize RPCs in place (`database/schema/supabase/functions/lease_ai_task.sql` etc.).
+- Worker module: `web_dashboard/scheduler/ai_task_workers.py`.
+- Workers start only when `AI_QUEUE_ENABLED=true` AND a registered handler exists for at least one entry in `AI_QUEUE_JOBS`.
+- Legacy inline path remains for jobs not listed in `AI_QUEUE_JOBS`.
+- Unit tests cover config parsing, start gating, lease RPC payloads, and fallback error classification (`tests/test_ai_task_workers.py`).
 
-### Phase 2: Migrate `ticker_analysis` (implemented behind flags)
+### Q2: Migrate `ticker_analysis` — ✅ shipped 2026-05-20
 
-- Change `web_dashboard/scheduler/jobs_ticker_analysis.py` so queue mode enqueues per-ticker tasks instead of processing tickers inline.
-- Preserve the legacy inline path when `AI_QUEUE_ENABLED=false` or `ticker_analysis` is absent from `AI_QUEUE_JOBS`.
-- Make manual `ticker_analysis` runs enqueue work rather than skip because a job is already running.
-- Ensure one audit row is written per LLM attempt and includes enough context to join to the queue task.
+- `web_dashboard/scheduler/jobs_ticker_analysis.py` enqueues per-ticker tasks when queue mode is on; legacy inline loop still runs when off.
+- Manual `ticker_analysis` runs enqueue work rather than skipping due to a global AI lock.
+- Each LLM attempt writes one audit row that joins back to the queue task.
+- Verified 2026-05-21: 5 freshly-reset tasks were leased and completed by all three backends (`ollama_primary`, `ollama_secondary`, `glm`) within ~2 minutes; the 04:00 UTC cron the next night enqueued 101/101 with 99 done / 2 model-level failures.
 
-### Phase 3: Retire Global Mutex For Queue-Managed Jobs
+### Q3: Retire Global Mutex For Queue-Managed Jobs — ⏳ open
 
 - Update global lock checks so queue-managed jobs are not blocked by unrelated running AI jobs.
 - Keep `get_running_ai_job()` for legacy jobs until they migrate.
 - Change job status wording from "running AI lock owner" to "enqueued / workers active / completed / failed".
+- **Why this matters now:** on 2026-05-22 `alpha_research` hung for ~1h, holding the global AI lock; the 06:45 UTC `ticker_meta_analysis` cron saw the stale lock and skipped without writing a `job_executions` row. Q3 + Q4 together close that failure mode for meta jobs.
 
-### Phase 4: Migrate More AI Jobs
+### Q4: Migrate More AI Jobs — ⏳ open
 
 Candidates after `ticker_analysis`:
 
@@ -247,7 +263,7 @@ Candidates after `ticker_analysis`:
 - `ui_ai_summaries`
 - `action_queue_ai_review`
 
-Each migration should be separate so queue behavior can be observed in production.
+Each migration is a separate rollout so queue behavior can be observed in production. Coordinate with `meta_analysis_roadmap.md`: migrating `ticker_meta_analysis` and `sector_meta_analysis` is the queue side of the same work the meta roadmap calls "lock-aware scheduling" under Later phases.
 
 ## What We Keep
 
@@ -296,12 +312,12 @@ Practical checks before promoting either to a real backend:
 - JSON-mode reliability against our ticker / sector / ETF schemas (run the audit comparison harness).
 - Latency under realistic prompt sizes — Magistral's reasoning traces can be long; GPT-OSS is usually fast but verify on agent-style prompts.
 
-## Phase 1 Plumbing Acceptance Criteria
+## Q1 Plumbing Acceptance Criteria (historical — all met)
 
-Phase 1 plumbing is done when:
+Q1 plumbing was considered done when all of the following held; left here as a record so future migrations (Q4) can mirror the same bar:
 
 - `ai_task_queue` schema and lease/finalize RPCs exist in the clean Supabase schema and an idempotent migration.
 - Embedded worker pool code exists behind `AI_QUEUE_ENABLED`.
 - Workers do not start unless both queue jobs and concrete handlers are registered.
-- `ticker_analysis` and other AI jobs still use their legacy execution path until a later migration phase changes them.
+- `ticker_analysis` and other AI jobs still use their legacy execution path until a later migration phase changes them (now changed for `ticker_analysis` in Q2).
 - Focused tests cover config parsing, start gating, lease RPC payloads, and fallback error classification.

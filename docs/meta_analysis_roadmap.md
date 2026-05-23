@@ -34,13 +34,23 @@ We are **not** building autonomous execution. Outputs should be **inspectable** 
 | Explicit BUY/SELL/HOLD with size | **Ticker analysis** JSON has stance fields; **not** portfolio-level picks | Fund-aware recommendation list with explainability |
 | Outcome feedback | Planned (Phase 4) | Calibrate which inputs predict good trades |
 
-## Phase status (2026-05-20)
+## Phase status (2026-05-23)
 
 - Phase 1 (Signal + News Fusion into Ticker Meta): **shipped** — see [Ticker analysis recovery](#ticker-analysis-pipeline-recovery-2026-05-20) for the May 2026 unblock
 - Phase 2 (Market Meta Regime): **2a + 2b shipped** — Phase 2c (digests/newsletters) deferred
-- Phase 3 (Sector Meta Layer): **3a + 3b + 3c shipped** — ETF holdings on Research only; ticker meta bundle includes sector prior when `META_ANALYSIS_PHASE3_SECTOR` on; **3d not started**
+- Phase 3 (Sector Meta Layer): **3a + 3b + 3c shipped** — ETF holdings on Research only; ticker meta bundle includes sector prior when `META_ANALYSIS_PHASE3_SECTOR` on; verified end-to-end 2026-05-21 / 2026-05-22; **3d not started**
 - Phase 4–6 (feedback, scheduling, explainability): **planned**
 - Phase 7 (portfolio-aware recommendations): **aspirational** — see [Later phases](#later-phases-iterative)
+
+### See also: AI Task Queue ([`docs/AI_TASK_QUEUE_DESIGN.md`](AI_TASK_QUEUE_DESIGN.md))
+
+The queue and meta roadmaps share infrastructure even though they cover different concerns:
+
+- **Queue Q2** (`ticker_analysis` migration, ✅) is what now feeds fresh `ticker_analysis` rows into the meta bundle on a reliable nightly cadence — without it, Phase 3c had no consumer (see the May 2026 unblock note below).
+- **Queue Q3** (retire global mutex for queue-managed jobs, ⏳) is the real fix for "an unrelated AI job hung and `ticker_meta_analysis` skipped its cron" failures.
+- **Queue Q4** (migrate `ticker_meta_analysis`, `sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review`, ⏳) is the queue-side framing of what this doc later calls "lock-aware scheduling" under Later phases.
+
+When in doubt, treat the queue doc as **infra status** for the meta program; treat this doc as the **product layers** the AI is actually for.
 
 ### Ticker analysis pipeline recovery (2026-05-20)
 
@@ -172,7 +182,7 @@ Meta-analysis freshness depends on the same stack as other cached LLM artifacts 
 | Standard LLM entry | `collect_with_summary_model_chain` in `web_dashboard/ollama_client.py` | Prefer this for any new scheduler job or service that summarizes with the “summary model” chain. |
 | Model/host config | `web_dashboard/model_config.json` | Single place to bind a model name to AMD vs NVIDIA host env vars and fallbacks. |
 | Feature flag (Phase 1 bundle) | `META_ANALYSIS_PHASE1_SIGNAL_FUSION` | `web_dashboard/settings.py` → `is_meta_analysis_phase1_signal_fusion_enabled()`. |
-| Global AI lock | `utils/job_tracking.py` | One AI-heavy job at a time today; planned replacement is the backend-bound [`AI task queue`](AI_TASK_QUEUE_DESIGN.md) design. Stale `running` rows are cleaned by watchdog / lock helpers until queue-managed jobs migrate. |
+| Global AI lock | `utils/job_tracking.py` | One AI-heavy job at a time **for legacy (non-queue) jobs**. `ticker_analysis` already runs on the [`AI task queue`](AI_TASK_QUEUE_DESIGN.md) (Q2 ✅ 2026-05-20). Meta jobs (`ticker_meta_analysis`, `sector_meta_analysis`, `etf_group_analysis`, etc.) still respect this lock and are tracked under queue Q4. Stale `running` rows are cleaned by watchdog / lock helpers until those jobs migrate. |
 | Embedded scheduler | `web_dashboard/app.py` + `web_dashboard/scheduler/scheduler_core.py` | Scheduler must start with the Flask process unless `DISABLE_SCHEDULER=true` or a separate scheduler mode is intentionally used. Duplicate starts are suppressed via locks/heartbeat inside `start_scheduler()`, not by skipping startup on `WERKZEUG_RUN_MAIN`. |
 | Admin “Next run” | `get_all_jobs_status_batched()` in `scheduler_core.py` | When the web worker has no in-process scheduler, next run times are read from the `apscheduler_jobs` table so the Jobs UI stays truthful under multi-worker Gunicorn. |
 | Heavy job staggering | `web_dashboard/scheduler/jobs.py` | Example nightly PT order: **ticker_analysis** ~21:00 → **alpha_research** 23:15 → **ticker_meta_analysis** 23:45 — reduces collisions with the global AI lock. **market_daily_brief** runs weekdays 17:45 ET after benchmark refresh cadence. |
@@ -484,6 +494,64 @@ Near term (recommended order):
 | **Mapping gap** | ETF holdings are mostly large-cap/index names; micro-cap book may need explicit “similar theme” or watchlist overlap, not raw ETF constituents |
 
 Treat Phase 7 as a **product slice** once 3c proves sector prior improves ticker meta in spot checks — not a single prompt change.
+
+---
+
+## Exploratory — LLM-driven research selection
+
+**Status:** parked, not on the numbered phase track. Captured here so the brainstorm isn't lost while we focus on Q3/Q4 + Phase 4.
+
+### Gap this would fill
+
+Today every "research" job uses **static selection** — a fixed query list, a fixed domain list, or round-robin through the watchlist. None of them use LLM judgment to pick *what* to research, and none of them read `ticker_meta_analysis` / `sector_meta_analysis` outputs to decide where a second pass is warranted. So the meta layer's signals (`contradictions`, `confidence`, `risk_flags`, `rotation_rank`) are produced but never consumed by a follow-up research step.
+
+### Candidate shapes
+
+Five distinct flavors. They are **not** interchangeable — different inputs, different outputs, different evaluation methods.
+
+| ID | Shape | Picks | Output | Builds on |
+|----|-------|-------|--------|-----------|
+| A | **Smart Prioritizer** | A ticker | Ranked next-to-research queue + per-pick rationale | Q2 queue + `ticker_meta_analysis` + `signal_analysis` |
+| B | **Topic / Theme Research** | A theme (e.g. "AI capex sustainability") | Topic memo + `theme` artifact + exposed-tickers list | New artifact; feeds `ticker_meta_analysis` bundle like sector prior |
+| C | **Contradiction Drill-Down** | A ticker where `contradictions ≥ N` or `confidence < 0.5` | Deeper "why is this confusing" memo + updated stance | Closes the meta loop; second pass over richer inputs |
+| D | **Hypothesis Loop** | A testable claim ("if X, then Y by Z") | `hypothesis` rows with falsification criteria | Foundation for Phase 4 outcome calibration |
+| E | **Discovery Scout** | Tickers *outside* the watchlist that fit current themes | "Consider adding" candidates with rationale | Different from `opportunity_discovery` (static queries) — uses live regime + rotation rankings |
+
+A and C are the lowest novelty / fastest to ship. B and D are the highest novelty but depend on input quality the most. E is the most product-facing.
+
+### Why this is parked: input-data-quality is the actual gate
+
+We can't pick a shape responsibly until we know whether the input corpus is rich enough to support it. **What we already know:**
+
+- **Structured inputs are good.** `signal_analysis` (11k rows), `congress_trades` (29k), `insider_trades` (130k), Research `etf_holdings_log`, `social_metrics` / `social_posts`, plus the meta tables — these are well-typed, fresh, and reliable. Any shape that synthesizes from structured inputs (A, C, parts of D, E) starts on solid ground.
+- **Text inputs are mixed.** `research_articles` is fed by SearXNG + RSS + scraping + email ingest. SearXNG result diversity is bounded by the engines it queries; scraping is bounded by `research_domain_health` auto-blacklisting; email is bounded by which newsletters subscribe. Article *coverage* of any specific theme/ticker on a given day can range from rich (mega-caps, hot themes) to empty (micro-caps, off-cycle weeks).
+- **Existing AI synthesis works on this.** `ticker_meta_analysis` and `sector_meta_analysis` already consume this corpus and produce stances. So the corpus is "good enough" for synthesis-style jobs (C, A) — the open question is whether it's good enough for **theme tracking** (B), **discovery** (E), and **hypothesis verification** (D).
+
+### Cheap learns before committing to a shape
+
+These are SQL/log-only investigations, no new code. None should take more than ~30 minutes. **Do these before picking A–E**, not as part of building it:
+
+1. **Article supply audit:** `research_articles` by `article_type`, `source domain`, and age — how many distinct domains per day, what's the age distribution, what fraction of `ETF Analysis` rows have null `sector`, what's the median articles-per-ticker over 30 days.
+2. **Domain health snapshot:** `research_domain_health` — which domains are auto-blacklisted, which are flaky. Indicates what extra work scraping reliability needs before themes can rely on broad domain coverage.
+3. **Theme-coverage stress test:** pick 5 *known* themes (rate cuts, AI capex, lithium, geopolitics, retail consumer) and grep `research_articles.title + content` for each over the last 30 days. If any theme returns < ~20 distinct articles from < ~5 distinct domains, shape B is premature.
+4. **Contradiction supply check:** count `ticker_meta_analysis` rows where `contradictions ≥ 2` and `confidence < 0.5` over the last 14 days. If that bucket is consistently < ~10/day, shape C runs out of inputs fast and may not justify a dedicated job.
+5. **Hypothesis-evaluable check:** for D, sample 10 hypotheses we *would* write today ("if Fed cuts 50bp, regional banks outperform XLF by 3% in 30d"). Do we have the data — benchmark series, rate decision dates — to actually score them in 30 days? If not, D is a writing exercise, not a feedback loop.
+6. **Discovery target check:** for E, the Watchtower ETFs hold mostly large-caps; check how many holdings are *not* in our watchlist already. If the answer is "all the interesting ones already are," E becomes a watchlist-rotation feature, not a discovery feature.
+
+### Decision rule
+
+After the cheap learns:
+
+- If structured inputs alone suffice → start with **A (Smart Prioritizer)** — lowest risk, immediate feedback loop with the queue.
+- If theme-coverage stress test (#3) passes → **B (Theme Research)** is the bigger leverage; output also feeds the existing `ticker_meta_analysis` bundle.
+- If contradiction supply (#4) is healthy → **C (Contradiction Drill-Down)** is the cleanest "closes the loop with what meta produces."
+- D and E require additional infra investment beyond the picker job itself; defer until A/B/C produce real wins.
+
+### Anti-patterns to avoid
+
+- **Shipping a "smarter research" job whose output is another article corpus.** That's already what `market_research` / `alpha_research` do. The new value has to be a *new artifact type* (theme rows, hypothesis rows, drill-down memos) or a *queue rerouting decision*, not "more articles."
+- **Promising LLM-driven discovery on text inputs we know are thin.** If the cheap learns show theme coverage is sparse for half our themes of interest, B will hallucinate confidently — worse than no job.
+- **Building D before Phase 4.** Phase 4 (outcome calibration) is the natural home for hypothesis scoring; D without Phase 4 is hypotheses-with-no-grader.
 
 ## Operating guardrails
 
