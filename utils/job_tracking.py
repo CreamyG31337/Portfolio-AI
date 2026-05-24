@@ -70,6 +70,62 @@ AI_JOB_MAX_AGE_HOURS: Dict[str, int] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Queue-managed job detection (Q3, 2026-05-23)
+# ---------------------------------------------------------------------------
+#
+# `is_queue_managed_job(job_id)` is the single source of truth for "does this
+# job route through the AI task queue?". Scheduler-side callers use it to skip
+# the global AI mutex check (`get_running_ai_job`) for jobs whose work is
+# actually executed by the embedded worker pool in
+# ``web_dashboard/scheduler/ai_task_workers.py``.
+#
+# The parsing here MUST stay byte-for-byte equivalent to
+# ``AIQueueConfig.from_env`` in ``ai_task_workers.py`` so that a single env
+# var (`AI_QUEUE_JOBS`) controls both worker activation and global-lock
+# bypass. ``tests/test_job_tracking_queue_managed.py`` asserts that the two
+# implementations agree across whitespace / casing / boolean variants.
+_QUEUE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _parse_ai_queue_enabled(value: str | None) -> bool:
+    """Mirror ``AIQueueConfig.from_env`` boolean parsing for AI_QUEUE_ENABLED."""
+    if value is None:
+        return False
+    return value.strip().lower() in _QUEUE_TRUE_VALUES
+
+
+def _parse_ai_queue_jobs(value: str | None) -> tuple[str, ...]:
+    """Mirror ``AIQueueConfig.from_env`` CSV parsing for AI_QUEUE_JOBS."""
+    if not value:
+        return ()
+    return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
+def is_queue_managed_job(job_id: str | None) -> bool:
+    """Return True when ``job_id`` opted into the AI task queue.
+
+    A job is "queue-managed" when both:
+
+    - ``AI_QUEUE_ENABLED`` is truthy ("1"/"true"/"yes"/"on", case-insensitive)
+    - ``job_id`` (after stripping) appears in the ``AI_QUEUE_JOBS`` CSV list
+
+    Queue-managed jobs do not respect the global AI mutex
+    (``get_running_ai_job``) because their actual LLM work runs in the
+    backend-bound worker pool, which leases tasks atomically.
+
+    Returns False on empty/None ``job_id``.
+    """
+    if not job_id:
+        return False
+    normalized = job_id.strip()
+    if not normalized:
+        return False
+    if not _parse_ai_queue_enabled(os.environ.get("AI_QUEUE_ENABLED")):
+        return False
+    return normalized in _parse_ai_queue_jobs(os.environ.get("AI_QUEUE_JOBS"))
+
+
 def mark_job_started(
     job_name: str,
     target_date: date,
@@ -394,7 +450,9 @@ def cleanup_stale_running_jobs(max_age_hours: int = 24) -> int:
 
 def get_running_ai_job(
     exclude_job_name: Optional[str] = None,
-    max_age_hours: int = 1
+    max_age_hours: int = 1,
+    *,
+    ignore_for_queue_managed: bool = True,
 ) -> Optional[str]:
     """
     Check if any AI job is currently running (global lock).
@@ -402,10 +460,32 @@ def get_running_ai_job(
     Args:
         exclude_job_name: Job name to ignore (typically current job)
         max_age_hours: Ignore running jobs older than this window
+        ignore_for_queue_managed: When True (default), return None immediately
+            if ``exclude_job_name`` is a queue-managed job (per
+            ``AI_QUEUE_ENABLED`` + ``AI_QUEUE_JOBS``). This implements Q3 of
+            the AI task queue roadmap: queue-managed jobs no longer block on
+            unrelated long-running AI jobs because their LLM work is leased
+            atomically by the embedded worker pool, not gated by the global
+            mutex. Set to False to inspect raw lock state (e.g. for admin UI).
 
     Returns:
         Running job name if lock is active, otherwise None
     """
+    # Q3 (2026-05-23): queue-managed jobs bypass the global AI mutex entirely.
+    # The cron-side body still writes `job_executions` (audit trail), but it
+    # no longer waits on `alpha_research`/etc. to release the lock before
+    # enqueueing per-task work.
+    if (
+        ignore_for_queue_managed
+        and exclude_job_name
+        and is_queue_managed_job(exclude_job_name)
+    ):
+        logger.debug(
+            "Bypassing global AI lock for queue-managed job '%s'",
+            exclude_job_name,
+        )
+        return None
+
     try:
         from supabase_client import SupabaseClient
         client = SupabaseClient(use_service_role=True)

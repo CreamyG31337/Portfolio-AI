@@ -102,15 +102,35 @@ def main() -> int:
 
     queue_managed = False
     try:
-        from scheduler.ai_task_workers import is_ai_queue_job_enabled
+        from utils.job_tracking import is_queue_managed_job
 
-        queue_managed = is_ai_queue_job_enabled(args.job)
+        queue_managed = is_queue_managed_job(args.job)
     except Exception:
-        queue_managed = False
+        # Fall back to the worker-pool helper so this script still works if
+        # utils/job_tracking is unavailable (e.g. partial sys.path setup).
+        try:
+            from scheduler.ai_task_workers import is_ai_queue_job_enabled
+
+            queue_managed = is_ai_queue_job_enabled(args.job)
+        except Exception:
+            queue_managed = False
 
     if queue_managed:
         os.environ["AI_QUEUE_ENQUEUED_BY"] = "manual"
         log.info("Job %s is AI queue-managed; skipping global AI lock wait/check", args.job)
+        # Don't silently drop the flags — record exactly what was ignored so
+        # ops can see why the wait/skip behavior changed.
+        if args.wait_ai_lock:
+            log.info(
+                "Ignoring --wait-ai-lock=%ss for queue-managed job %s",
+                args.wait_ai_lock,
+                args.job,
+            )
+        if args.ignore_ai_lock:
+            log.info(
+                "Ignoring --ignore-ai-lock for queue-managed job %s (already not gated)",
+                args.job,
+            )
     elif not args.ignore_ai_lock:
         if args.wait_ai_lock and not _wait_for_ai_lock(args.wait_ai_lock, log):
             log.error("Timed out waiting for AI lock after %ss", args.wait_ai_lock)

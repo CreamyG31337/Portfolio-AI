@@ -9,8 +9,8 @@ Backend-bound AI task queue and worker pool — replaces the coarse global AI lo
 | Phase 0 | Design contract (this document) | ✅ |
 | **Q1** | `ai_task_queue` schema + lease/finalize RPCs + embedded worker pool gated by `AI_QUEUE_ENABLED` | ✅ shipped |
 | **Q2** | Migrate `ticker_analysis` to per-ticker queue tasks | ✅ shipped 2026-05-20; verified end-to-end across `ollama_primary`, `ollama_secondary`, and `glm` workers on 2026-05-21 |
-| **Q3** | Retire global mutex for queue-managed jobs (other AI jobs no longer block them) | ⏳ open — would have prevented `alpha_research`'s 1h hang from skipping the `ticker_meta_analysis` cron on 2026-05-22 |
-| **Q4** | Migrate more AI jobs to the queue: `ticker_meta_analysis`, `sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ open — each migration is its own observable rollout |
+| **Q3** | Retire global mutex for queue-managed jobs (other AI jobs no longer block them) | ✅ shipped 2026-05-23 — `is_queue_managed_job()` helper in `utils/job_tracking.py`; `get_running_ai_job()` short-circuits to None for queue-managed jobs; `run_scheduler_job_once.py` logs ignored `--wait-ai-lock` / `--ignore-ai-lock` flags for queue-managed jobs |
+| **Q4** | Migrate more AI jobs to the queue: `ticker_meta_analysis`, `sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ open — each migration is its own observable rollout. **Now Q3 has shipped, each Q4 migration is a one-env-var change** (`AI_QUEUE_JOBS=ticker_analysis,<new_job>`) — no scheduler-side call-site changes needed; the queue-managed bypass auto-applies. |
 
 Phases here used to be numbered "Phase 1–4". Renamed to **Q1–Q4** so cross-doc discussion is unambiguous (e.g. "queue Q3" vs `meta_analysis_roadmap.md`'s "Phase 3").
 
@@ -245,12 +245,14 @@ Existing model settings remain in the existing model configuration and settings 
 - Each LLM attempt writes one audit row that joins back to the queue task.
 - Verified 2026-05-21: 5 freshly-reset tasks were leased and completed by all three backends (`ollama_primary`, `ollama_secondary`, `glm`) within ~2 minutes; the 04:00 UTC cron the next night enqueued 101/101 with 99 done / 2 model-level failures.
 
-### Q3: Retire Global Mutex For Queue-Managed Jobs — ⏳ open
+### Q3: Retire Global Mutex For Queue-Managed Jobs — ✅ shipped 2026-05-23
 
-- Update global lock checks so queue-managed jobs are not blocked by unrelated running AI jobs.
-- Keep `get_running_ai_job()` for legacy jobs until they migrate.
-- Change job status wording from "running AI lock owner" to "enqueued / workers active / completed / failed".
-- **Why this matters now:** on 2026-05-22 `alpha_research` hung for ~1h, holding the global AI lock; the 06:45 UTC `ticker_meta_analysis` cron saw the stale lock and skipped without writing a `job_executions` row. Q3 + Q4 together close that failure mode for meta jobs.
+- Added `is_queue_managed_job(job_id)` in `utils/job_tracking.py`. It reads the same `AI_QUEUE_ENABLED` / `AI_QUEUE_JOBS` env vars the worker pool reads (`AIQueueConfig.from_env`), with byte-for-byte equivalent parsing enforced by `tests/test_job_tracking_queue_managed.py::test_is_queue_managed_job_matches_ai_queue_config`. This makes a single env var the only switch needed to opt a job into queue mode.
+- `get_running_ai_job(exclude_job_name=...)` now short-circuits to `None` whenever `exclude_job_name` is queue-managed (Q3 bypass). The function gained an `ignore_for_queue_managed=True` keyword for callers that need raw lock state (admin UI). Every scheduler call site that already passes `exclude_job_name=job_id` (`jobs_ticker_analysis`, `jobs_alpha`, `jobs_research`, `jobs_social`, `jobs_signals`, `jobs_opportunity`, `jobs_congress`, `jobs_etf_analysis`, `jobs_newsletter`, `jobs_ticker_meta_analysis`, `jobs_sector_meta_analysis`, `jobs_dashboard_research`, `jobs_ui_ai_summaries`) inherits the bypass automatically when the matching job name is added to `AI_QUEUE_JOBS`.
+- `web_dashboard/scripts/run_scheduler_job_once.py` now uses `is_queue_managed_job` as the primary detection path and logs an explicit "Ignoring `--wait-ai-lock`/`--ignore-ai-lock` for queue-managed job X" line when those flags are dropped, instead of silently no-op'ing them.
+- Watchdog (`scheduler/jobs_watchdog.py`) is unaffected: it still clears stale `status='running'` rows in `job_executions` for non-queue jobs. Queue-managed jobs now finish their scheduler-side row in seconds (just enqueueing), so the stale-clear window is effectively never hit for them.
+- Keep `get_running_ai_job()` (and `AI_JOB_NAMES`, `mark_job_started`, `mark_job_completed`) for legacy jobs until they migrate; the bypass is opt-in via env config.
+- **Why this matters now:** on 2026-05-22 `alpha_research` hung for ~1h, holding the global AI lock; the 06:45 UTC `ticker_meta_analysis` cron saw the stale lock and skipped without writing a `job_executions` row. Q3 ensures that as soon as `ticker_meta_analysis` is added to `AI_QUEUE_JOBS` in Q4, that failure mode disappears for it. With only `ticker_analysis` currently in `AI_QUEUE_JOBS`, no production behavior changes for other jobs — the bypass becomes live for each job the moment its name is added to the env list.
 
 ### Q4: Migrate More AI Jobs — ⏳ open
 
@@ -276,11 +278,11 @@ Each migration is a separate rollout so queue behavior can be observed in produc
 
 ## What We Retire
 
-For queue-managed jobs only:
+For queue-managed jobs only (live since Q3, 2026-05-23):
 
-- The global AI mutex semantics from `get_running_ai_job()`.
-- The top-of-job "already running, skip" guard in `ticker_analysis`.
-- Long-running job rows as the source of truth for active AI work.
+- The global AI mutex semantics from `get_running_ai_job()`. The function returns `None` immediately when `exclude_job_name` is in `AI_QUEUE_JOBS` and `AI_QUEUE_ENABLED=true`. Pass `ignore_for_queue_managed=False` only when you intentionally want raw lock state (admin UI).
+- The top-of-job "already running, skip" guard in `ticker_analysis` (handled by the queue's `ai_task_queue_active_dedupe_idx`).
+- Long-running job rows as the source of truth for active AI work. `job_executions` is still written by the scheduler-side wrapper as an audit trail; for queue-managed jobs that row reflects only "enqueued N tasks" and completes in seconds.
 
 Instead, `ai_task_queue` rows become the source of truth for what is pending, leased, failed, or complete.
 
