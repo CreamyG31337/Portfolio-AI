@@ -187,8 +187,8 @@ class PromptGenerator:
         # Create a lookup for portfolio data fallback
         portfolio_lookup = {}
         if portfolio_df is not None and not portfolio_df.empty:
-            for _, row in portfolio_df.iterrows():
-                t = row.get('ticker')
+            for row in portfolio_df.itertuples(index=False):
+                t = getattr(row, 'ticker', None)
                 if t:
                     portfolio_lookup[t] = row
         
@@ -597,15 +597,15 @@ class PromptGenerator:
         
         # Prepare data for sorting
         portfolio_rows = []
-        for _, row in portfolio_df.iterrows():
-            ticker = str(row.get('ticker', ''))
+        for row in portfolio_df.itertuples(index=False):
+            ticker = str(getattr(row, 'ticker', ''))
             # Use company name from enhanced data (correct field name)
-            company_name = row.get('company', ticker) or ticker
+            company_name = getattr(row, 'company', ticker) or ticker
             # Truncate long company names
             display_name = company_name[:22] + "..." if len(company_name) > 25 else company_name
 
             # Use open date from enhanced data and ensure mm-dd-yy format
-            open_date = row.get('opened_date', 'N/A')
+            open_date = getattr(row, 'opened_date', 'N/A')
             if open_date != 'N/A':
                 # Ensure mm-dd-yy format
                 try:
@@ -852,9 +852,9 @@ class PromptGenerator:
         # Cache currency lookup for performance - build once, use for all tickers
         currency_lookup = {}
         if portfolio_df is not None and not portfolio_df.empty:
-            for _, row in portfolio_df.iterrows():
-                ticker = row.get('ticker')
-                currency = row.get('currency', 'USD')
+            for row in portfolio_df.itertuples(index=False):
+                ticker = getattr(row, 'ticker', None)
+                currency = getattr(row, 'currency', 'USD')
                 if ticker:
                     currency_lookup[ticker] = currency
             

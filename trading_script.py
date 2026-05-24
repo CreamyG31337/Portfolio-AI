@@ -624,17 +624,8 @@ def generate_benchmark_graph(settings: Settings) -> None:
                 # Convert back to datetime and apply market timing
                 merged['Date'] = pd.to_datetime(merged['Date'])
 
-                # Apply market close timing (1:00 PM PST) for consistency
-                for idx, row in merged.iterrows():
-                    date_only = row['Date'].date()
-                    weekday = pd.to_datetime(date_only).weekday()
-
-                    if weekday < 5:  # Trading day
-                        market_close_time = pd.to_datetime(date_only) + timedelta(hours=13)
-                        merged.at[idx, 'Date'] = market_close_time
-                    else:  # Weekend
-                        weekend_market_close = pd.to_datetime(date_only) + timedelta(hours=13)
-                        merged.at[idx, 'Date'] = weekend_market_close
+                # Apply market close timing (1:00 PM PST) for consistency using vectorized operations
+                merged['Date'] = pd.to_datetime(merged['Date']).dt.normalize() + timedelta(hours=13)
 
                 benchmark_data[key] = merged[['Date', 'Normalized_Value']].copy()
                 print_success(f"Processed {config['name']} data: {len(merged)} days")

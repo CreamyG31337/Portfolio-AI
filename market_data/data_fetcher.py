@@ -147,10 +147,11 @@ class MarketDataFetcher:
                     if 'Ticker' in df.columns and 'Currency' in df.columns:
                         # Get the latest entry for each ticker
                         latest_entries = df.groupby('Ticker').last()
-                        for ticker, row in latest_entries.iterrows():
-                            currency = row['Currency']
-                            self._portfolio_currency_cache[ticker] = currency
-                            
+                        # Bulk cache update using vectorized to_dict() instead of iterrows()
+                        currency_dict = latest_entries['Currency'].to_dict()
+                        self._portfolio_currency_cache.update(currency_dict)
+
+                        for ticker, currency in currency_dict.items():
                             # Handle ticker variants for smart lookup
                             # If ticker has .TO/.V suffix, also cache the base ticker
                             if ticker.endswith('.TO'):
@@ -192,10 +193,11 @@ class MarketDataFetcher:
                     if 'Ticker' in df.columns and 'Currency' in df.columns:
                         # Get the latest entry for each ticker
                         latest_entries = df.groupby('Ticker').last()
-                        for ticker, row in latest_entries.iterrows():
+                        # Bulk cache update using vectorized to_dict() instead of iterrows()
+                        currency_dict = latest_entries['Currency'].to_dict()
+                        for ticker, currency in currency_dict.items():
                             # Only add if not already present (trade log takes precedence)
                             if ticker not in self._portfolio_currency_cache:
-                                currency = row['Currency']
                                 self._portfolio_currency_cache[ticker] = currency
                                 
                                 # Handle ticker variants for smart lookup
