@@ -2,7 +2,7 @@
 
 Backend-bound AI task queue and worker pool — replaces the coarse global AI lock for AI jobs that opt in via `AI_QUEUE_ENABLED=true` + `AI_QUEUE_JOBS=...`. The legacy inline path remains the default for any job not listed.
 
-## Status (2026-05-23)
+## Status (2026-05-24)
 
 | Phase | Scope | Status |
 |-------|-------|--------|
@@ -10,7 +10,8 @@ Backend-bound AI task queue and worker pool — replaces the coarse global AI lo
 | **Q1** | `ai_task_queue` schema + lease/finalize RPCs + embedded worker pool gated by `AI_QUEUE_ENABLED` | ✅ shipped |
 | **Q2** | Migrate `ticker_analysis` to per-ticker queue tasks | ✅ shipped 2026-05-20; verified end-to-end across `ollama_primary`, `ollama_secondary`, and `glm` workers on 2026-05-21 |
 | **Q3** | Retire global mutex for queue-managed jobs (other AI jobs no longer block them) | ✅ shipped 2026-05-23 — `is_queue_managed_job()` helper in `utils/job_tracking.py`; `get_running_ai_job()` short-circuits to None for queue-managed jobs; `run_scheduler_job_once.py` logs ignored `--wait-ai-lock` / `--ignore-ai-lock` flags for queue-managed jobs |
-| **Q4** | Migrate more AI jobs to the queue: `ticker_meta_analysis`, `sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ in progress — **`ticker_meta_analysis` code migrated 2026-05-23** (handler + enqueue helper + scheduler queue-mode path; legacy inline path preserved when not listed). Awaiting `AI_QUEUE_JOBS=ticker_analysis,ticker_meta_analysis` flip in `web_dashboard/.woodpecker.yml` and one cron observation to mark shipped. Remaining candidates (`sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review`) still open. |
+| **Q4a** | Migrate `ticker_meta_analysis` to per-ticker queue tasks | ✅ shipped 2026-05-23 — handler + enqueue helper + scheduler queue-mode path (legacy inline path preserved when not listed). `AI_QUEUE_JOBS` default in `.woodpecker.yml` flipped to `ticker_analysis,ticker_meta_analysis`. Verified end-to-end on 2026-05-24 manual trigger: 62/62 tasks done, 0 failed, **22m 57s total elapsed** (vs ~45m sequential), all three backends (`ollama_primary`, `ollama_secondary`, `glm`) leasing concurrently. |
+| **Q4b–f** | Migrate remaining AI jobs to the queue: `sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ open. Each migration is a small refactor (enqueue helper + backend-bound handler + queue-mode short-circuit in the scheduler job) plus appending the job name to `AI_QUEUE_JOBS` in `.woodpecker.yml`. |
 
 Phases here used to be numbered "Phase 1–4". Renamed to **Q1–Q4** so cross-doc discussion is unambiguous (e.g. "queue Q3" vs `meta_analysis_roadmap.md`'s "Phase 3").
 

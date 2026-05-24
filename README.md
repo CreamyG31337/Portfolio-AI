@@ -32,6 +32,18 @@ The dashboard includes a dedicated **AI Assistant** and **Research Hub**:
 *   **Smart Summaries**: AI-generated summaries of complex financial news, automatically tagged by sector and ticker.
 *   **AI Audit Trail**: Every AI inference call (summaries, sentiment analysis, embeddings) is written to daily JSONL audit logs in `web_dashboard/logs/ai_audit/` with model, caller, latency, success/error state, and input/output metadata.
 
+### AI Task Queue ⚙️
+Long-running AI jobs (per-ticker analysis, meta-analysis, etc.) run through a **backend-bound task queue** that distributes work across multiple LLM backends concurrently — replacing the previous coarse global mutex.
+
+*   **Concurrent backends**: Workers are bound 1:1 to specific backends (`ollama_primary`, `ollama_secondary`, `glm`). A failure on one backend never blocks the others.
+*   **Atomic per-task leasing**: Tasks are leased through a Postgres RPC with `FOR UPDATE SKIP LOCKED`, so multiple workers can drain the queue without races.
+*   **Cross-backend retry policy**: A task that fails on backend X cannot be re-leased by X until the other backends have tried — `attempted_backends` is tracked per task. An escape hatch kicks in once every backend has tried.
+*   **Queue-managed jobs bypass the global AI mutex**: A long-running non-queue job (e.g. `alpha_research`) can no longer skip a queue-managed cron like `ticker_meta_analysis`.
+*   **Real-world impact**: `ticker_meta_analysis` runtime dropped from ~45m sequential to ~23m with three concurrent backends (62/62 tasks, 0 failures on 2026-05-24).
+*   **Opt-in per job**: A job becomes queue-managed by adding it to `AI_QUEUE_JOBS` (env var). Anything not listed keeps its legacy inline path.
+
+> Design and migration phases: [docs/AI_TASK_QUEUE_DESIGN.md](docs/AI_TASK_QUEUE_DESIGN.md).
+
 ### Markdown-Based Analysis Skills (New)
 The AI layer now supports a **Dexter-inspired markdown skills system** that injects domain-specific guidance into prompts at runtime, without changing response formats.
 
@@ -163,6 +175,8 @@ python simple_repository_switch.py csv
 *   [ETF Watchtower](docs/ETF_WATCHTOWER.md)
 *   [Webull Import](docs/WEBULL_IMPORT.md)
 *   [Email Ingest](docs/EMAIL_INGEST.md)
+*   [AI Task Queue Design](docs/AI_TASK_QUEUE_DESIGN.md)
+*   [Meta Analysis Roadmap](docs/meta_analysis_roadmap.md)
 
 **Web Dashboard**
 *   [Dashboard Setup & Config](web_dashboard/README.md)
