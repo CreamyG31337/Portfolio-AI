@@ -4,6 +4,7 @@ from web_dashboard.scheduler.ai_task_workers import (
     AIQueueConfig,
     AIQueueWorkerPool,
     QUEUE_JOB_TICKER_ANALYSIS,
+    QUEUE_JOB_TICKER_META_ANALYSIS,
     ERROR_HOST_BUSY,
     ERROR_RATE_LIMITED,
     ERROR_TIMEOUT_GLM,
@@ -12,10 +13,12 @@ from web_dashboard.scheduler.ai_task_workers import (
     build_task_handlers,
     classify_error,
     enqueue_ticker_analysis_tasks,
+    enqueue_ticker_meta_analysis_tasks,
     model_for_backend,
     ollama_base_url_for_backend,
     retry_delay_seconds,
     should_increment_attempts,
+    ticker_meta_analysis_task_handler,
 )
 
 
@@ -115,6 +118,25 @@ def test_build_task_handlers_registers_ticker_analysis_only_when_enabled():
     assert list(handlers) == [QUEUE_JOB_TICKER_ANALYSIS]
 
 
+def test_build_task_handlers_registers_ticker_meta_analysis_when_enabled():
+    handlers = build_task_handlers([QUEUE_JOB_TICKER_META_ANALYSIS])
+
+    assert list(handlers) == [QUEUE_JOB_TICKER_META_ANALYSIS]
+    assert handlers[QUEUE_JOB_TICKER_META_ANALYSIS] is ticker_meta_analysis_task_handler
+
+
+def test_build_task_handlers_registers_both_when_both_enabled():
+    handlers = build_task_handlers(
+        [QUEUE_JOB_TICKER_ANALYSIS, QUEUE_JOB_TICKER_META_ANALYSIS]
+    )
+
+    assert set(handlers) == {
+        QUEUE_JOB_TICKER_ANALYSIS,
+        QUEUE_JOB_TICKER_META_ANALYSIS,
+    }
+    assert handlers[QUEUE_JOB_TICKER_META_ANALYSIS] is ticker_meta_analysis_task_handler
+
+
 def test_enqueue_ticker_analysis_tasks_uses_enqueue_rpc_payload():
     fake = SimpleNamespace(supabase=FakeSupabase())
 
@@ -137,6 +159,54 @@ def test_enqueue_ticker_analysis_tasks_uses_enqueue_rpc_payload():
     }
 
 
+def test_enqueue_ticker_meta_analysis_tasks_uses_enqueue_rpc_payload():
+    fake = SimpleNamespace(supabase=FakeSupabase())
+
+    stats = enqueue_ticker_meta_analysis_tasks(
+        fake,
+        [("nvda", 10), ("amat", 1000)],
+        enqueued_by="cron",
+        max_attempts=3,
+    )
+
+    assert stats == {"attempted": 2, "enqueued": 2, "failed": 0}
+    assert [call[0] for call in fake.supabase.calls] == [
+        "enqueue_ai_task",
+        "enqueue_ai_task",
+    ]
+    assert fake.supabase.calls[0][1] == {
+        "p_analysis_type": "ticker_meta_analysis",
+        "p_target_key": "NVDA",
+        "p_payload": {"ticker": "NVDA", "priority": 10, "manual_request": False},
+        "p_priority": 10,
+        "p_enqueued_by": "cron",
+        "p_max_attempts": 3,
+    }
+    assert fake.supabase.calls[1][1] == {
+        "p_analysis_type": "ticker_meta_analysis",
+        "p_target_key": "AMAT",
+        "p_payload": {"ticker": "AMAT", "priority": 1000, "manual_request": True},
+        "p_priority": 1000,
+        "p_enqueued_by": "cron",
+        "p_max_attempts": 3,
+    }
+
+
+def test_enqueue_ticker_meta_analysis_tasks_skips_blank_targets():
+    fake = SimpleNamespace(supabase=FakeSupabase())
+
+    stats = enqueue_ticker_meta_analysis_tasks(
+        fake,
+        [("", 10), ("aapl", 100)],
+        enqueued_by="cron",
+        max_attempts=3,
+    )
+
+    assert stats == {"attempted": 2, "enqueued": 1, "failed": 1}
+    assert len(fake.supabase.calls) == 1
+    assert fake.supabase.calls[0][1]["p_target_key"] == "AAPL"
+
+
 def test_backend_model_and_host_mapping(monkeypatch):
     monkeypatch.setenv("AI_QUEUE_MODEL_GLM", "glm-5.1")
     monkeypatch.setenv("AI_QUEUE_OLLAMA_PRIMARY_BASE_URL", "http://amd:11434")
@@ -145,3 +215,157 @@ def test_backend_model_and_host_mapping(monkeypatch):
     assert model_for_backend("glm") == "glm-5.1"
     assert ollama_base_url_for_backend("ollama_primary") == "http://amd:11434"
     assert ollama_base_url_for_backend("ollama_secondary") == "http://nvidia:11434"
+
+
+def test_ticker_meta_analysis_task_handler_uses_backend_bound_model(monkeypatch):
+    """Handler should construct the GLM-bound Ollama client and pin the
+    chain to a single backend model so cross-backend fallback happens via
+    the queue, not inline."""
+    import sys
+    import types
+
+    monkeypatch.setenv("AI_QUEUE_MODEL_GLM", "glm-5.1")
+
+    captured: dict[str, object] = {}
+
+    class _FakeMetaService:
+        def __init__(self, ollama, supabase, postgres):
+            captured["service_ollama"] = ollama
+
+        def run_meta_analysis(self, ticker, **kwargs):
+            captured["ticker"] = ticker
+            captured["kwargs"] = kwargs
+            return {"ticker": ticker, "stance": "BUY"}
+
+    class _FakeOllamaClient:
+        def __init__(self, base_url=None, force_base_url_only=False):
+            captured["ollama_base_url"] = base_url
+            captured["ollama_force_base_url_only"] = force_base_url_only
+
+    class _FakeSupabaseClient:
+        def __init__(self, use_service_role=False):
+            captured["supabase_service_role"] = use_service_role
+
+    class _FakePostgresClient:
+        def __init__(self):
+            captured["postgres_created"] = True
+
+    fake_meta = types.ModuleType("meta_analysis_service")
+    fake_meta.TickerMetaAnalysisService = _FakeMetaService
+    fake_ollama_mod = types.ModuleType("ollama_client")
+    fake_ollama_mod.OllamaClient = _FakeOllamaClient
+    fake_supabase_mod = types.ModuleType("supabase_client")
+    fake_supabase_mod.SupabaseClient = _FakeSupabaseClient
+    fake_postgres_mod = types.ModuleType("postgres_client")
+    fake_postgres_mod.PostgresClient = _FakePostgresClient
+
+    monkeypatch.setitem(sys.modules, "meta_analysis_service", fake_meta)
+    monkeypatch.setitem(sys.modules, "ollama_client", fake_ollama_mod)
+    monkeypatch.setitem(sys.modules, "supabase_client", fake_supabase_mod)
+    monkeypatch.setitem(sys.modules, "postgres_client", fake_postgres_mod)
+
+    task = {
+        "id": "task-1",
+        "analysis_type": QUEUE_JOB_TICKER_META_ANALYSIS,
+        "target_key": "aapl",
+        "payload": {"ticker": "AAPL", "priority": 10, "manual_request": False},
+    }
+
+    ticker_meta_analysis_task_handler(task, "glm")
+
+    assert captured["ticker"] == "AAPL"
+    # Backend-bound model: chain pinned to the single GLM model so worker
+    # never falls back inline to Ollama (cross-backend retry is queue-level).
+    assert captured["kwargs"]["model_override"] == "glm-5.1"
+    assert captured["kwargs"]["model_chain_override"] == ["glm-5.1"]
+    assert captured["kwargs"]["force"] is True
+    assert captured["kwargs"]["requested_by"] is None
+    # GLM backend uses force_base_url_only=True with no base_url override
+    # (matches ticker_analysis handler).
+    assert captured["ollama_force_base_url_only"] is True
+    assert captured["ollama_base_url"] is None
+    assert captured["supabase_service_role"] is True
+
+
+def test_ticker_meta_analysis_task_handler_raises_on_none_result(monkeypatch):
+    """A None result from run_meta_analysis must propagate as a failure so
+    the queue records the attempt and the worker can release the task."""
+    import sys
+    import types
+
+    monkeypatch.setenv("AI_QUEUE_MODEL_GLM", "glm-5.1")
+
+    class _FakeMetaService:
+        def __init__(self, ollama, supabase, postgres):
+            pass
+
+        def run_meta_analysis(self, ticker, **kwargs):
+            return None
+
+    fake_meta = types.ModuleType("meta_analysis_service")
+    fake_meta.TickerMetaAnalysisService = _FakeMetaService
+    fake_ollama_mod = types.ModuleType("ollama_client")
+    fake_ollama_mod.OllamaClient = lambda **kwargs: None
+    fake_supabase_mod = types.ModuleType("supabase_client")
+    fake_supabase_mod.SupabaseClient = lambda **kwargs: None
+    fake_postgres_mod = types.ModuleType("postgres_client")
+    fake_postgres_mod.PostgresClient = lambda: None
+
+    monkeypatch.setitem(sys.modules, "meta_analysis_service", fake_meta)
+    monkeypatch.setitem(sys.modules, "ollama_client", fake_ollama_mod)
+    monkeypatch.setitem(sys.modules, "supabase_client", fake_supabase_mod)
+    monkeypatch.setitem(sys.modules, "postgres_client", fake_postgres_mod)
+
+    import pytest
+
+    task = {
+        "id": "task-2",
+        "analysis_type": QUEUE_JOB_TICKER_META_ANALYSIS,
+        "target_key": "MSFT",
+        "payload": {},
+    }
+    with pytest.raises(RuntimeError, match="ticker_meta_analysis returned no result"):
+        ticker_meta_analysis_task_handler(task, "glm")
+
+
+def test_ticker_meta_analysis_task_handler_requires_ollama_base_url(monkeypatch):
+    """Non-GLM backends must error if no Ollama base URL is configured for the
+    backend; this prevents a worker from silently using the default host."""
+    import sys
+    import types
+
+    monkeypatch.delenv("AI_QUEUE_OLLAMA_PRIMARY_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+
+    class _FakeMetaService:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Service should not be constructed when base URL missing")
+
+        def run_meta_analysis(self, *args, **kwargs):
+            raise AssertionError
+
+    fake_meta = types.ModuleType("meta_analysis_service")
+    fake_meta.TickerMetaAnalysisService = _FakeMetaService
+    fake_ollama_mod = types.ModuleType("ollama_client")
+    fake_ollama_mod.OllamaClient = lambda **kwargs: None
+    fake_supabase_mod = types.ModuleType("supabase_client")
+    fake_supabase_mod.SupabaseClient = lambda **kwargs: None
+    fake_postgres_mod = types.ModuleType("postgres_client")
+    fake_postgres_mod.PostgresClient = lambda: None
+
+    monkeypatch.setitem(sys.modules, "meta_analysis_service", fake_meta)
+    monkeypatch.setitem(sys.modules, "ollama_client", fake_ollama_mod)
+    monkeypatch.setitem(sys.modules, "supabase_client", fake_supabase_mod)
+    monkeypatch.setitem(sys.modules, "postgres_client", fake_postgres_mod)
+
+    import pytest
+
+    task = {
+        "id": "task-3",
+        "analysis_type": QUEUE_JOB_TICKER_META_ANALYSIS,
+        "target_key": "MSFT",
+        "payload": {},
+    }
+    with pytest.raises(RuntimeError, match="No Ollama base URL configured"):
+        ticker_meta_analysis_task_handler(task, "ollama_primary")

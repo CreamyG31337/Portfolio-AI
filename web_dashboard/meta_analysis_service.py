@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from collections.abc import Sequence
 from datetime import datetime, UTC
 from typing import Any
 
@@ -535,6 +536,7 @@ class TickerMetaAnalysisService:
         requested_by: str | None = None,
         model_override: str | None = None,
         force: bool = False,
+        model_chain_override: Sequence[str] | None = None,
     ) -> dict[str, Any] | None:
         ticker_u = ticker.upper().strip()
         bundle, primary = self.build_artifact_bundle(ticker_u)
@@ -588,6 +590,7 @@ class TickerMetaAnalysisService:
             function_name="ticker_meta_analysis",
             audit_extra={"tickers_extracted": [ticker_u]},
             extract_audit_fields=_extract_ticker_meta_audit_fields,
+            model_chain_override=model_chain_override,
         )
         if not full_response:
             logger.error("Meta analysis LLM failed on all summarization models for %s", ticker_u)

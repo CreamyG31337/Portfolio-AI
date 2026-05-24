@@ -10,7 +10,7 @@ Backend-bound AI task queue and worker pool — replaces the coarse global AI lo
 | **Q1** | `ai_task_queue` schema + lease/finalize RPCs + embedded worker pool gated by `AI_QUEUE_ENABLED` | ✅ shipped |
 | **Q2** | Migrate `ticker_analysis` to per-ticker queue tasks | ✅ shipped 2026-05-20; verified end-to-end across `ollama_primary`, `ollama_secondary`, and `glm` workers on 2026-05-21 |
 | **Q3** | Retire global mutex for queue-managed jobs (other AI jobs no longer block them) | ✅ shipped 2026-05-23 — `is_queue_managed_job()` helper in `utils/job_tracking.py`; `get_running_ai_job()` short-circuits to None for queue-managed jobs; `run_scheduler_job_once.py` logs ignored `--wait-ai-lock` / `--ignore-ai-lock` flags for queue-managed jobs |
-| **Q4** | Migrate more AI jobs to the queue: `ticker_meta_analysis`, `sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ open — each migration is its own observable rollout. **Now Q3 has shipped, each Q4 migration is a one-env-var change** (`AI_QUEUE_JOBS=ticker_analysis,<new_job>`) — no scheduler-side call-site changes needed; the queue-managed bypass auto-applies. |
+| **Q4** | Migrate more AI jobs to the queue: `ticker_meta_analysis`, `sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ in progress — **`ticker_meta_analysis` code migrated 2026-05-23** (handler + enqueue helper + scheduler queue-mode path; legacy inline path preserved when not listed). Awaiting `AI_QUEUE_JOBS=ticker_analysis,ticker_meta_analysis` flip in `web_dashboard/.woodpecker.yml` and one cron observation to mark shipped. Remaining candidates (`sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review`) still open. |
 
 Phases here used to be numbered "Phase 1–4". Renamed to **Q1–Q4** so cross-doc discussion is unambiguous (e.g. "queue Q3" vs `meta_analysis_roadmap.md`'s "Phase 3").
 
@@ -254,11 +254,11 @@ Existing model settings remain in the existing model configuration and settings 
 - Keep `get_running_ai_job()` (and `AI_JOB_NAMES`, `mark_job_started`, `mark_job_completed`) for legacy jobs until they migrate; the bypass is opt-in via env config.
 - **Why this matters now:** on 2026-05-22 `alpha_research` hung for ~1h, holding the global AI lock; the 06:45 UTC `ticker_meta_analysis` cron saw the stale lock and skipped without writing a `job_executions` row. Q3 ensures that as soon as `ticker_meta_analysis` is added to `AI_QUEUE_JOBS` in Q4, that failure mode disappears for it. With only `ticker_analysis` currently in `AI_QUEUE_JOBS`, no production behavior changes for other jobs — the bypass becomes live for each job the moment its name is added to the env list.
 
-### Q4: Migrate More AI Jobs — ⏳ open
+### Q4: Migrate More AI Jobs — ⏳ in progress
 
 Candidates after `ticker_analysis`:
 
-- `ticker_meta_analysis`
+- `ticker_meta_analysis` — **code migrated 2026-05-23**, awaiting env flip + production observation.
 - `sector_meta_analysis`
 - `etf_group_analysis`
 - `market_daily_brief`
@@ -266,6 +266,36 @@ Candidates after `ticker_analysis`:
 - `action_queue_ai_review`
 
 Each migration is a separate rollout so queue behavior can be observed in production. Coordinate with `meta_analysis_roadmap.md`: migrating `ticker_meta_analysis` and `sector_meta_analysis` is the queue side of the same work the meta roadmap calls "lock-aware scheduling" under Later phases.
+
+#### Q4a: `ticker_meta_analysis` — code migrated 2026-05-23
+
+What changed (mirrors the Q2 `ticker_analysis` shape exactly so future Q4 migrations have a copy-pattern):
+
+- `web_dashboard/scheduler/ai_task_workers.py`:
+  - New `QUEUE_JOB_TICKER_META_ANALYSIS = "ticker_meta_analysis"` constant.
+  - `enqueue_ticker_meta_analysis_tasks()` helper — same `(ticker, priority)` shape as `enqueue_ticker_analysis_tasks`, encodes `manual_request=True` for `priority >= 1000` so manual UI requests can later route through the queue without payload-shape changes.
+  - `ticker_meta_analysis_task_handler()` — backend-bound: builds a single-backend `OllamaClient` (GLM uses `force_base_url_only=True`, Ollama backends read `AI_QUEUE_OLLAMA_*_BASE_URL`), then calls `TickerMetaAnalysisService.run_meta_analysis(ticker, model_override=model, model_chain_override=[model], force=True)`. Cross-backend fallback happens via re-leasing, not an inline chain.
+  - `build_task_handlers()` registers the meta handler only when `ticker_meta_analysis` is in `AI_QUEUE_JOBS` (same gate as `ticker_analysis`).
+- `web_dashboard/meta_analysis_service.py`: `run_meta_analysis()` now accepts an optional `model_chain_override: Sequence[str] | None` and forwards it to `collect_with_summary_model_chain`, matching `TickerAnalysisService.analyze_ticker`. Default `None` preserves the legacy multi-model fallback chain for non-queue callers (scheduler legacy path, `app.py` manual rebuild route).
+- `web_dashboard/scheduler/jobs_ticker_meta_analysis.py`:
+  - Adds `_ticker_meta_analysis_queue_mode_enabled()` (delegates to `is_ai_queue_job_enabled`).
+  - When queue mode is on, takes the `_run_ticker_meta_analysis_enqueue_mode` branch: fetches candidates via `fetch_standard_ticker_candidates`, filters by `needs_refresh` (so cron does not enqueue immediate no-ops), enqueues up to `_MAX_TICKERS_PER_RUN` tasks at `_META_ENQUEUE_PRIORITY = 10`, and marks the scheduler-side `job_executions` row as `"Enqueued N/M ticker_meta_analysis task(s)…"`.
+  - Legacy inline path is unchanged when the job is not in `AI_QUEUE_JOBS`.
+
+Operational rollout (single env-var flip, mirroring Q2):
+
+1. Verify in CI: `AI_QUEUE_JOBS=ticker_analysis,ticker_meta_analysis` lets `build_task_handlers` register both handlers and the worker pool starts.
+2. Flip the deploy env var in `web_dashboard/.woodpecker.yml` from `AI_QUEUE_JOBS=ticker_analysis` to `AI_QUEUE_JOBS=ticker_analysis,ticker_meta_analysis`.
+3. Observe one nightly cron + one manual rebuild request:
+   - Scheduler row should complete in seconds with `"Enqueued N/M ticker_meta_analysis task(s); failed=0 …"`.
+   - `ai_task_queue` rows should appear with `analysis_type='ticker_meta_analysis'` and reach `status='done'` across all three backends.
+   - `/admin/ai-audit` should show per-attempt rows tagged `function='ticker_meta_analysis'` with the backend-bound model used.
+4. If anything regresses, the rollback is the same env flip in reverse — the legacy inline path is preserved verbatim in `ticker_meta_analysis_job()`.
+
+Tests (focused, run with `.\venv\Scripts\python.exe -m pytest -v`):
+
+- `tests/test_ai_task_workers.py` — handler/enqueue registration, payload shape, backend-bound model binding, missing-Ollama-base-URL guard, blank-target skipping.
+- `tests/test_ticker_meta_analysis_queue_mode.py` — scheduler queue-mode enqueues only tickers that `needs_refresh`, bypasses `get_running_ai_job` entirely (Q3 contract), does NOT invoke `run_meta_analysis` inline; legacy non-queue path remains covered.
 
 ## What We Keep
 
