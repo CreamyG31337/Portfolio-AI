@@ -535,6 +535,30 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'cron_triggers': [
             {'hour': 6, 'minute': 30, 'timezone': 'America/New_York'}  # 6:30 AM ET (after trade returns job)
         ]
+    },
+    'daily_critical_data_backup': {
+        'name': 'Daily Critical Data Backup',
+        'description': (
+            'Daily CSV snapshot of trade_log (per fund) and irreplaceable '
+            'app/config tables (user_profiles, user_funds, funds, fund_thesis, '
+            'fund_thesis_pillars, fund_contributions, system_settings, '
+            'watched_tickers_v2, ai_analysis_skip_list, contributors, '
+            'contributor_access) to host volume and Supabase Storage bucket '
+            '"daily-backups". Operational/rebuildable tables are NOT backed up.'
+        ),
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '\U0001f4be',
+        'cron_triggers': [
+            # 12:00 UTC daily. Verified clean against every other registered
+            # cron trigger across both PDT/PST and EDT/EST. Sits well after the
+            # overnight AI pipeline (alpha_research 23:15 PT, sector_meta
+            # 23:30 PT, ticker_meta 23:45 PT -- all in UTC ~06:15-07:45) and
+            # well before market-hours work begins. Intentionally NOT 04:30 UTC
+            # because that overlaps ticker_analysis (21:00 PT = 04:00 UTC PDT,
+            # runs up to 2h).
+            {'hour': 12, 'minute': 0, 'timezone': 'UTC'}
+        ]
     }
 }
 
@@ -680,6 +704,9 @@ from scheduler.jobs_newsletter import newsletter_ai_processing_job
 # Outbound portfolio digest (Mailgun)
 from scheduler.jobs_outbound_newsletter import outbound_portfolio_digest_job
 
+# Import daily critical data backup job (trade_log + irreplaceable app tables)
+from scheduler.jobs_daily_backup import daily_critical_data_backup_job
+
 # Import shared utilities
 from scheduler.jobs_common import calculate_relevance_score
 
@@ -741,6 +768,8 @@ __all__ = [
     'newsletter_ai_processing_job',
     # Outbound portfolio digest
     'outbound_portfolio_digest_job',
+    # Daily critical data backup (trade_log + critical app tables)
+    'daily_critical_data_backup_job',
     # Shared utilities
     'calculate_relevance_score',
     # Registry functions (defined in this file)
@@ -1921,6 +1950,34 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: newsletter_ai_processing (every 30 minutes safety net)")
+
+    # Daily Critical Data Backup -- 12:00 UTC. Captures trade_log per fund AND
+    # the irreplaceable app/config tables (user_profiles, user_funds, funds,
+    # fund_thesis, fund_thesis_pillars, fund_contributions, system_settings,
+    # watched_tickers_v2, ai_analysis_skip_list, contributors, contributor_access)
+    # to a host volume AND a private Supabase Storage bucket. See
+    # scheduler/jobs_daily_backup.py for scope and the explicit non-goals.
+    if AVAILABLE_JOBS.get('daily_critical_data_backup', {}).get('enabled_by_default', True):
+        dcb_cfg = AVAILABLE_JOBS['daily_critical_data_backup']
+        dcb_triggers = dcb_cfg.get(
+            'cron_triggers', [{'hour': 12, 'minute': 0, 'timezone': 'UTC'}]
+        )
+        dcb_trigger = dcb_triggers[0]
+        scheduler.add_job(
+            daily_critical_data_backup_job,
+            trigger=CronTrigger(
+                hour=dcb_trigger.get('hour', 12),
+                minute=dcb_trigger.get('minute', 0),
+                timezone=dcb_trigger.get('timezone', 'UTC'),
+            ),
+            id='daily_critical_data_backup',
+            name=f"{get_job_icon('daily_critical_data_backup')} Daily Critical Data Backup",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=60 * 60 * 6,  # 6h grace -- run on next start if missed
+        )
+        logger.info("Registered job: daily_critical_data_backup (daily at 12:00 UTC)")
 
     if AVAILABLE_JOBS.get("outbound_portfolio_digest", {}).get("enabled_by_default", False):
         ot = AVAILABLE_JOBS["outbound_portfolio_digest"].get(

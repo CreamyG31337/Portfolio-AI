@@ -557,6 +557,42 @@ python scheduler/social_sentiment_ai_job.py
 3. Execute AI analysis job
 4. Check web dashboard for AI analysis results
 
+## Daily Critical Data Backup
+
+**What:** `daily_critical_data_backup_job` in
+`web_dashboard/scheduler/jobs_daily_backup.py`. Runs daily at **12:00 UTC**
+and snapshots irreplaceable Supabase data to two destinations:
+* host volume `/app/web_dashboard/backups/daily/<YYYY-MM-DD>/...`
+  (production host path `/home/lance/trading-dashboard-backups`)
+* private Supabase Storage bucket `daily-backups` under
+  `daily/<YYYY-MM-DD>/...`
+
+**Scope:**
+* `trade_log/<fund_slug>_trades.csv` per fund (full trade history)
+* `tables/<table>.csv` for: `user_profiles`, `user_funds`, `funds`,
+  `fund_thesis`, `fund_thesis_pillars`, `fund_contributions`,
+  `system_settings`, `watched_tickers_v2`, `ai_analysis_skip_list`,
+  `contributors`, `contributor_access`
+
+**Intentionally skipped:** AI / scheduler plumbing tables, derived portfolio
+state (rebuildable from `trade_log`), market/research feeds, public scraped
+data, Supabase Auth internals. If you add a new irreplaceable table, append
+it to `CRITICAL_APP_TABLES` in `jobs_daily_backup.py` and bump the
+focused-test fixture in `tests/test_jobs_daily_backup.py`.
+
+**One-time bucket provisioning:**
+```powershell
+$env:SUPABASE_URL = "<prod URL>"; $env:SUPABASE_SECRET_KEY = "<service-role>"
+python web_dashboard\scripts\setup_daily_backup_bucket.py
+```
+The Supabase MCP available to agents does NOT expose Storage admin tools, so
+the bucket must be created via this script (or the Supabase Dashboard) once
+per environment before the first scheduled run.
+
+**Tests:** `tests/test_jobs_daily_backup.py` (21 focused tests).
+**CI/CD:** the `daily-backups` host directory mount lives in
+`.woodpecker.yml` (`/home/lance/trading-dashboard-backups:/app/web_dashboard/backups`).
+
 ## Meta Analysis (market → sector → ticker)
 
 **North star:** Human-in-the-loop buy/sell *ideas* from layered evidence (not auto-trading). Implementation is phased; see **`docs/meta_analysis_roadmap.md`**.

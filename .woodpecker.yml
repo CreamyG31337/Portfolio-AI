@@ -76,6 +76,10 @@
 #
 # Note: Secrets are loaded using from_secret in the environment section
 # Note: Repository must be marked as "Trusted" in Woodpecker settings to use volumes
+#       Active host mounts: /home/lance/trading-dashboard-logs (app logs),
+#       /home/lance/ollama-logs/server.log (Ollama log), /shared/cookies (cookie refresher),
+#       and /home/lance/trading-dashboard-backups (Flask daily_critical_data_backup_job CSV snapshots:
+#       trade_log per fund + irreplaceable app/config tables).
 # Note: For PR validation to work, ensure "Pull Request" events are enabled in Woodpecker repo settings
 
 steps:
@@ -206,8 +210,8 @@ steps:
         echo "=== end BUILD_TIMESTAMP diagnostics ==="
       
       # Create all required directories once at the start
-      - mkdir -p /home/lance/trading-dashboard-logs /home/lance/ollama-logs /shared/cookies /deploy_target/frontend
-      - chmod 777 /home/lance/trading-dashboard-logs /home/lance/ollama-logs /shared/cookies
+      - mkdir -p /home/lance/trading-dashboard-logs /home/lance/ollama-logs /shared/cookies /deploy_target/frontend /home/lance/trading-dashboard-backups
+      - chmod 777 /home/lance/trading-dashboard-logs /home/lance/ollama-logs /shared/cookies /home/lance/trading-dashboard-backups
       
       # Build shared base image first (required by Streamlit and Flask images)
       # Using BuildKit for better caching and --cache-from for cross-build cache sharing
@@ -520,6 +524,9 @@ steps:
         FLASK_CMD="$FLASK_CMD -v /home/lance/ollama-logs/server.log:/app/web_dashboard/logs/server.log"
         # Mount shared cookies directory
         FLASK_CMD="$FLASK_CMD -v /shared/cookies:/shared/cookies"
+        # Mount daily backup directory (daily_critical_data_backup_job writes trade_log + critical
+        # app/config table CSV snapshots here under daily/<YYYY-MM-DD>/{trade_log,tables}/...)
+        FLASK_CMD="$FLASK_CMD -v /home/lance/trading-dashboard-backups:/app/web_dashboard/backups"
         FLASK_CMD="$FLASK_CMD -e SUPABASE_URL=\"$SUPABASE_URL\""
         FLASK_CMD="$FLASK_CMD -e SUPABASE_PUBLISHABLE_KEY=\"$SUPABASE_PUBLISHABLE_KEY\""
         FLASK_CMD="$FLASK_CMD -e SUPABASE_SECRET_KEY=\"$SUPABASE_SECRET_KEY\""

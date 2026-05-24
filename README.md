@@ -147,6 +147,87 @@ Optional Git hook setup:
 git config core.hooksPath .githooks
 ```
 
+## 💾 Daily Critical Data Backup
+
+A scheduled job (`daily_critical_data_backup_job`) runs at **12:00 UTC every day** and
+snapshots the project's irreplaceable Supabase data to two destinations in parallel:
+
+1. **Host volume**
+   `/app/web_dashboard/backups/daily/<YYYY-MM-DD>/...`
+   (production host path: `/home/lance/trading-dashboard-backups`).
+2. **Private Supabase Storage bucket** `daily-backups`, under the same
+   `daily/<YYYY-MM-DD>/...` prefix.
+
+### What gets backed up
+
+* **Per-fund trade history:** `trade_log/<fund_slug>_trades.csv` — one CSV per
+  fund containing the full canonical `trade_log` Supabase table.
+* **Irreplaceable app / user / config tables:**
+  `tables/<table>.csv` — one CSV each for `user_profiles`, `user_funds`,
+  `funds`, `fund_thesis`, `fund_thesis_pillars`, `fund_contributions`,
+  `system_settings`, `watched_tickers_v2`, `ai_analysis_skip_list`,
+  `contributors`, `contributor_access`.
+
+### What is **not** backed up
+
+The job intentionally skips operational, rebuildable, and feed tables:
+* AI / scheduler plumbing (`ai_task_queue`, `ai_analysis_queue`,
+  `apscheduler_jobs`, `job_executions`, `job_retry_queue`)
+* Derived portfolio state (`portfolio_positions`, `cash_balances`) — these
+  can be replayed from `trade_log` + `fund_contributions`.
+* Market/research feeds (news, articles, social, sentiment, RSS).
+* Public scraped datasets (congress/insider trades, benchmark closes,
+  securities metadata, signals).
+* Supabase Auth internals — not exposed via the REST API and out of scope.
+
+### Failure handling
+
+* Empty trade history still writes a header-only CSV so downstream tools
+  always see a valid file.
+* Empty config tables write a 0-byte CSV and emit a loud warning — Supabase
+  REST does not expose column metadata when a query returns zero rows.
+* Host volume missing → job continues with the Storage upload (and vice
+  versa). Only when **both** destinations miss is a row counted as a
+  failure in the summary.
+* Each failing fund or table is recorded in the run summary so operators
+  can spot partial outages quickly.
+
+### One-time setup
+
+The Supabase MCP tools available in this repo do not expose Storage
+administration, so the bucket is provisioned by a small admin script. Run
+this once after deploy (Windows / PowerShell):
+
+```powershell
+.\venv\Scripts\activate
+$env:SUPABASE_URL = "<prod URL>"
+$env:SUPABASE_SECRET_KEY = "<service-role key>"
+python web_dashboard\scripts\setup_daily_backup_bucket.py
+```
+
+The script is idempotent — re-running after the bucket exists is a no-op.
+
+### Restoring from a backup
+
+The daily job is **write-only**. Restore is a separate, deliberately
+high-friction admin script: [`web_dashboard/scripts/restore_daily_backup.py`](web_dashboard/scripts/restore_daily_backup.py).
+
+It is **read-only by default** (just prints a diff against the current
+table). Writing to production requires three explicit flags:
+`--apply --confirm-restore PROD` plus `--allow-truncate` for the destructive
+strategy. Restores are always **table-at-a-time** — there is no
+"restore everything" verb.
+
+Before running it, read the runbook: [docs/DAILY_BACKUP_RESTORE_RUNBOOK.md](docs/DAILY_BACKUP_RESTORE_RUNBOOK.md). The runbook covers when to use which strategy
+(`upsert` vs `truncate-and-replace`), failure modes, and what *not* to do
+(notably: `trade_log` is not restorable by this script — use the snapshot
+CSV as evidence and re-enter trades through the admin UI).
+
+> **Note:** the restore script has not been executed in this project — there
+> is no safe environment to test it against (production is the only Supabase
+> project the codebase talks to). The first real-world use should be a small,
+> low-blast-radius table like `system_settings`, in `--strategy upsert` mode.
+
 ## 🔄 Data Storage Modes
 
 **Portfolio-AI** supports a hybrid data model:
@@ -177,6 +258,7 @@ python simple_repository_switch.py csv
 *   [Email Ingest](docs/EMAIL_INGEST.md)
 *   [AI Task Queue Design](docs/AI_TASK_QUEUE_DESIGN.md)
 *   [Meta Analysis Roadmap](docs/meta_analysis_roadmap.md)
+*   [Daily Backup Restore Runbook](docs/DAILY_BACKUP_RESTORE_RUNBOOK.md)
 
 **Web Dashboard**
 *   [Dashboard Setup & Config](web_dashboard/README.md)
