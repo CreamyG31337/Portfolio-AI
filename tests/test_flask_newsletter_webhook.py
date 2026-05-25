@@ -38,6 +38,34 @@ def _webhook_payload(**overrides: Any) -> dict[str, Any]:
     return payload
 
 
+def _raw_email_with_attachments(*attached_messages: str) -> str:
+    boundary = "gmail-forwarded-newsletters"
+    lines = [
+        "From: Lance Colton <lance.colton@gmail.com>",
+        "To: inbound@example.com",
+        "Subject: Fwd: newsletters as attachments",
+        "MIME-Version: 1.0",
+        f'Content-Type: multipart/mixed; boundary="{boundary}"',
+        "",
+        f"--{boundary}",
+        'Content-Type: text/plain; charset="utf-8"',
+        "",
+        "Forwarded newsletters attached.",
+    ]
+    for idx, attached in enumerate(attached_messages, start=1):
+        lines.extend(
+            [
+                f"--{boundary}",
+                "Content-Type: message/rfc822",
+                f'Content-Disposition: attachment; filename="newsletter-{idx}.eml"',
+                "",
+                attached,
+            ]
+        )
+    lines.append(f"--{boundary}--")
+    return "\n".join(lines)
+
+
 def _patch_service_side_effects(monkeypatch) -> None:
     monkeypatch.setattr(
         NewsletterService,
@@ -100,6 +128,161 @@ def test_newsletter_webhook_saves_cloudflare_raw_email_and_starts_ai(
     assert saved["tickers"] == ["AAPL", "NVDA"]
     assert threads[0]["args"] == ("11111111-1111-1111-1111-111111111111",)
     assert threads[0]["daemon"] is True
+    assert threads[0]["started"] is True
+
+
+def test_newsletter_webhook_saves_gmail_forwarded_rfc822_attachments(
+    client,
+    monkeypatch,
+) -> None:
+    _patch_service_side_effects(monkeypatch)
+    saved_rows: list[dict[str, Any]] = []
+    threads: list[dict[str, Any]] = []
+
+    class FakeRepo:
+        def find_recent_duplicate_by_body(self, body_plain, days=30):
+            return None
+
+        def save_newsletter(self, **kwargs):
+            saved_rows.append(kwargs)
+            return f"newsletter-{len(saved_rows)}"
+
+    class FakeThread:
+        def __init__(self, *, target, args, daemon, name):
+            threads.append(
+                {
+                    "target": target,
+                    "args": args,
+                    "daemon": daemon,
+                    "name": name,
+                    "started": False,
+                }
+            )
+
+        def start(self):
+            threads[-1]["started"] = True
+
+    monkeypatch.setattr("newsletter_repository.NewsletterRepository", FakeRepo)
+    monkeypatch.setattr("threading.Thread", FakeThread)
+
+    raw_eml = _raw_email_with_attachments(
+        _raw_email(
+            from_header="Morning Brief <brief@example.com>",
+            subject="Fwd: Morning Brief AAPL",
+            message_id="<batch-1@example.com>",
+            body="AAPL and NVDA batch item one.",
+        ),
+        _raw_email(
+            from_header="Opening Bell <bell@example.com>",
+            subject="Opening Bell NVDA",
+            message_id="<batch-2@example.com>",
+            body="NVDA batch item two.",
+        ),
+        _raw_email(
+            from_header="Market Desk <market@example.com>",
+            subject="Market Desk AAPL",
+            message_id="<batch-3@example.com>",
+            body="AAPL batch item three.",
+        ),
+    )
+
+    response = client.post(
+        "/api/webhooks/newsletter",
+        json=_webhook_payload(subject="Fwd: newsletters as attachments", raw_eml=raw_eml),
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "batch"
+    assert payload["count"] == 3
+    assert payload["saved"] == 3
+    assert payload["duplicates"] == 0
+    assert payload["errors"] == 0
+    assert [item["id"] for item in payload["items"]] == [
+        "newsletter-1",
+        "newsletter-2",
+        "newsletter-3",
+    ]
+    assert [row["sender"] for row in saved_rows] == [
+        "brief@example.com",
+        "bell@example.com",
+        "market@example.com",
+    ]
+    assert [row["subject"] for row in saved_rows] == [
+        "Morning Brief AAPL",
+        "Opening Bell NVDA",
+        "Market Desk AAPL",
+    ]
+    assert [row["message_id"] for row in saved_rows] == [
+        "<batch-1@example.com>",
+        "<batch-2@example.com>",
+        "<batch-3@example.com>",
+    ]
+    assert len(threads) == 3
+    assert all(thread["started"] for thread in threads)
+
+
+def test_newsletter_webhook_batch_deduplicates_each_attached_email(
+    client,
+    monkeypatch,
+) -> None:
+    _patch_service_side_effects(monkeypatch)
+    saved_rows: list[dict[str, Any]] = []
+    threads: list[dict[str, Any]] = []
+
+    class FakeRepo:
+        def find_recent_duplicate_by_body(self, body_plain, days=30):
+            if body_plain and "already saved" in body_plain:
+                return "existing-newsletter-id"
+            return None
+
+        def save_newsletter(self, **kwargs):
+            saved_rows.append(kwargs)
+            return "new-newsletter-id"
+
+    class FakeThread:
+        def __init__(self, *, target, args, daemon, name):
+            threads.append({"args": args, "daemon": daemon, "name": name, "started": False})
+
+        def start(self):
+            threads[-1]["started"] = True
+
+    monkeypatch.setattr("newsletter_repository.NewsletterRepository", FakeRepo)
+    monkeypatch.setattr("threading.Thread", FakeThread)
+
+    raw_eml = _raw_email_with_attachments(
+        _raw_email(
+            subject="Already Saved AAPL",
+            message_id="<duplicate@example.com>",
+            body="AAPL already saved.",
+        ),
+        _raw_email(
+            subject="Fresh NVDA",
+            message_id="<fresh@example.com>",
+            body="Fresh NVDA newsletter.",
+        ),
+    )
+
+    response = client.post(
+        "/api/webhooks/newsletter",
+        json=_webhook_payload(subject="Fwd: newsletters as attachments", raw_eml=raw_eml),
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "batch"
+    assert payload["count"] == 2
+    assert payload["saved"] == 1
+    assert payload["duplicates"] == 1
+    assert payload["errors"] == 0
+    assert payload["items"][0]["status"] == "duplicate"
+    assert payload["items"][0]["duplicate_of"] == "existing-newsletter-id"
+    assert payload["items"][1]["status"] == "success"
+    assert payload["items"][1]["id"] == "new-newsletter-id"
+    assert len(saved_rows) == 1
+    assert saved_rows[0]["subject"] == "Fresh NVDA"
+    assert len(threads) == 1
+    assert threads[0]["args"] == ("new-newsletter-id",)
     assert threads[0]["started"] is True
 
 

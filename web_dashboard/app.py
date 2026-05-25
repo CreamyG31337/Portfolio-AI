@@ -6663,98 +6663,55 @@ def webhook_newsletter():
             logger.error(f"Failed to parse raw_eml: {parse_err}", exc_info=True)
             return jsonify({'error': 'Failed to parse raw email'}), 400
 
-        # Walk MIME parts to pull out the plain-text body; skip HTML and attachments.
-        body_plain = None
-        for part in msg.walk():
-            if part.is_multipart():
-                continue
-            if part.get_content_type() != 'text/plain':
-                continue
-            if 'attachment' in (part.get('Content-Disposition') or '').lower():
-                continue
-            payload_bytes = part.get_payload(decode=True)
-            if payload_bytes is None:
-                continue
-            charset = part.get_content_charset() or 'utf-8'
-            try:
-                body_plain = payload_bytes.decode(charset, errors='replace')
-            except (LookupError, UnicodeDecodeError):
-                body_plain = payload_bytes.decode('utf-8', errors='replace')
-            break
+        def _extract_body_plain(parsed_msg):
+            """Walk MIME parts to pull out the plain-text body; skip HTML and attachments."""
+            for part in parsed_msg.walk():
+                if part.is_multipart():
+                    continue
+                if part.get_content_type() != 'text/plain':
+                    continue
+                if 'attachment' in (part.get('Content-Disposition') or '').lower():
+                    continue
+                payload_bytes = part.get_payload(decode=True)
+                if payload_bytes is None:
+                    continue
+                charset = part.get_content_charset() or 'utf-8'
+                try:
+                    return payload_bytes.decode(charset, errors='replace')
+                except (LookupError, UnicodeDecodeError):
+                    return payload_bytes.decode('utf-8', errors='replace')
+            return None
 
-        # Prefer the From header's display name + address; fall back to the JSON `from`.
-        sender_name = None
-        parsed_name, parsed_addr = parseaddr(_decode_email_header(msg.get('From') or sender))
-        if parsed_name:
-            sender_name = parsed_name.strip() or None
-        if parsed_addr:
-            sender = parsed_addr.strip()
+        def _extract_rfc822_attachments(parsed_msg):
+            """Return attached original emails from Gmail's "forward as attachments" format."""
+            attached = []
+            for part in parsed_msg.walk():
+                if part.get_content_type() != 'message/rfc822':
+                    continue
+                payload = part.get_payload()
+                if isinstance(payload, list):
+                    attached.extend(item for item in payload if item is not None)
+                    continue
+                if isinstance(payload, bytes):
+                    attached.append(email_lib.message_from_bytes(payload))
+                    continue
+                if isinstance(payload, str) and payload.strip():
+                    attached.append(email_lib.message_from_string(payload))
+            return attached
 
-        message_id = (msg.get('Message-ID') or msg.get('Message-Id') or '').strip() or None
-        subject = _decode_email_header(msg.get('Subject') or subject)
-        timestamp = None
-        body_html = None
+        def _start_newsletter_ai_thread(newsletter_id: str) -> None:
+            # Kick off AI processing in a background thread so Cloudflare gets a fast response.
+            # The scheduled newsletter_ai_processing job acts as a safety net for any that fail here.
+            import threading
 
-        from newsletter_service import NewsletterService
-        service = NewsletterService()
-        
-        # Process newsletter (without embedding first to avoid timeout)
-        logger.info(f"Processing newsletter from {sender}: {subject}")
-        processed_data = service.process_newsletter(
-            sender=sender,
-            recipient=recipient,
-            subject=subject,
-            body_plain=body_plain,
-            body_html=body_html,
-            sender_name=sender_name,
-            message_id=message_id,
-            timestamp=timestamp,
-            skip_embedding=True
-        )
-
-        if dry_run:
-            logger.info(f"Newsletter webhook dry_run parsed from {sender}: {subject}")
-            return jsonify({
-                'status': 'dry_run',
-                'parsed': {
-                    'sender': sender,
-                    'sender_name': sender_name,
-                    'recipient': recipient,
-                    'subject': processed_data.get('subject'),
-                    'message_id': message_id,
-                    'body_plain_chars': len(processed_data.get('body_plain') or ''),
-                    'has_body_plain': bool(processed_data.get('body_plain')),
-                },
-                'tickers': processed_data.get('tickers') or [],
-                'article_url': processed_data.get('article_url'),
-            }), 200
-        
-        from newsletter_repository import NewsletterRepository
-        repo = NewsletterRepository()
-
-        dup_id = repo.find_recent_duplicate_by_body(processed_data.get('body_plain'))
-        if dup_id:
-            logger.info(
-                f"⏭️ Newsletter duplicate detected — dropping forward of "
-                f"{dup_id} (subject={subject[:80]!r})"
+            thread = threading.Thread(
+                target=_process_newsletter_ai,
+                args=(newsletter_id,),
+                daemon=True,
+                name=f"newsletter-ai-{newsletter_id[:8]}",
             )
-            return jsonify({
-                'status': 'duplicate',
-                'duplicate_of': dup_id,
-                'subject': processed_data.get('subject'),
-            }), 200
-
-        newsletter_id = repo.save_newsletter(**processed_data)
-        
-        if not newsletter_id:
-            logger.error("Failed to save newsletter to database")
-            return jsonify({'error': 'Failed to save newsletter'}), 500
-        
-        logger.info(f"✅ Newsletter saved: {newsletter_id}")
-        
-        # Kick off AI processing in a background thread so Mailgun gets a fast response.
-        # The scheduled newsletter_ai_processing job acts as a safety net for any that fail here.
-        import threading
+            thread.start()
+            logger.info(f"🧵 Background AI processing started for newsletter {newsletter_id}")
 
         def _process_newsletter_ai(nl_id: str) -> None:
             """Background thread: generate AI summary, tickers, and embedding."""
@@ -6848,20 +6805,128 @@ def webhook_newsletter():
                     pipeline_source="webhook_bg",
                 )
 
-        thread = threading.Thread(
-            target=_process_newsletter_ai,
-            args=(newsletter_id,),
-            daemon=True,
-            name=f"newsletter-ai-{newsletter_id[:8]}",
-        )
-        thread.start()
-        logger.info(f"🧵 Background AI processing started for newsletter {newsletter_id}")
-        
-        return jsonify({
-            'status': 'success',
-            'id': newsletter_id,
-            'tickers': processed_data.get('tickers', []),
-        }), 200
+        def _ingest_message(parsed_msg, fallback_sender: str, fallback_subject: str) -> tuple[dict, int]:
+            # Prefer the inner From header's display name + address; fall back to the JSON `from`.
+            item_sender = fallback_sender
+            sender_name = None
+            parsed_name, parsed_addr = parseaddr(
+                _decode_email_header(parsed_msg.get('From') or fallback_sender)
+            )
+            if parsed_name:
+                sender_name = parsed_name.strip() or None
+            if parsed_addr:
+                item_sender = parsed_addr.strip()
+
+            message_id = (
+                parsed_msg.get('Message-ID') or parsed_msg.get('Message-Id') or ''
+            ).strip() or None
+            item_subject = _decode_email_header(parsed_msg.get('Subject') or fallback_subject)
+            body_plain = _extract_body_plain(parsed_msg)
+            timestamp = None
+            body_html = None
+
+            from newsletter_service import NewsletterService
+
+            service = NewsletterService()
+
+            # Process newsletter (without embedding first to avoid timeout)
+            logger.info(f"Processing newsletter from {item_sender}: {item_subject}")
+            processed_data = service.process_newsletter(
+                sender=item_sender,
+                recipient=recipient,
+                subject=item_subject,
+                body_plain=body_plain,
+                body_html=body_html,
+                sender_name=sender_name,
+                message_id=message_id,
+                timestamp=timestamp,
+                skip_embedding=True
+            )
+
+            if dry_run:
+                logger.info(f"Newsletter webhook dry_run parsed from {item_sender}: {item_subject}")
+                return {
+                    'status': 'dry_run',
+                    'parsed': {
+                        'sender': item_sender,
+                        'sender_name': sender_name,
+                        'recipient': recipient,
+                        'subject': processed_data.get('subject'),
+                        'message_id': message_id,
+                        'body_plain_chars': len(processed_data.get('body_plain') or ''),
+                        'has_body_plain': bool(processed_data.get('body_plain')),
+                    },
+                    'tickers': processed_data.get('tickers') or [],
+                    'article_url': processed_data.get('article_url'),
+                }, 200
+
+            from newsletter_repository import NewsletterRepository
+
+            repo = NewsletterRepository()
+            dup_id = repo.find_recent_duplicate_by_body(processed_data.get('body_plain'))
+            if dup_id:
+                logger.info(
+                    f"⏭️ Newsletter duplicate detected — dropping forward of "
+                    f"{dup_id} (subject={item_subject[:80]!r})"
+                )
+                return {
+                    'status': 'duplicate',
+                    'duplicate_of': dup_id,
+                    'subject': processed_data.get('subject'),
+                }, 200
+
+            newsletter_id = repo.save_newsletter(**processed_data)
+            if not newsletter_id:
+                logger.error("Failed to save newsletter to database")
+                return {'status': 'error', 'error': 'Failed to save newsletter'}, 500
+
+            logger.info(f"✅ Newsletter saved: {newsletter_id}")
+            _start_newsletter_ai_thread(newsletter_id)
+
+            return {
+                'status': 'success',
+                'id': newsletter_id,
+                'tickers': processed_data.get('tickers', []),
+                'subject': processed_data.get('subject'),
+            }, 200
+
+        attached_messages = _extract_rfc822_attachments(msg)
+        if attached_messages:
+            logger.info(
+                f"Newsletter webhook detected {len(attached_messages)} attached RFC822 messages"
+            )
+            items = []
+            status_code = 200
+            for idx, attached_msg in enumerate(attached_messages, start=1):
+                try:
+                    item, item_status = _ingest_message(attached_msg, sender, subject)
+                except Exception as item_err:
+                    logger.error(
+                        f"Failed to process attached newsletter #{idx}: {item_err}",
+                        exc_info=True,
+                    )
+                    item = {'status': 'error', 'error': str(item_err)}
+                    item_status = 500
+                item['index'] = idx
+                items.append(item)
+                if item_status >= 500:
+                    status_code = 207
+
+            return jsonify({
+                'status': 'batch',
+                'count': len(items),
+                'saved': sum(1 for item in items if item.get('status') == 'success'),
+                'duplicates': sum(1 for item in items if item.get('status') == 'duplicate'),
+                'errors': sum(1 for item in items if item.get('status') == 'error'),
+                'items': items,
+            }), status_code
+
+        result, status_code = _ingest_message(msg, sender, subject)
+        if status_code >= 500:
+            return jsonify({'error': result.get('error', 'Failed to save newsletter')}), status_code
+        if result.get('status') == 'success':
+            result.pop('subject', None)
+        return jsonify(result), status_code
             
     except Exception as e:
         logger.error(f"Error processing newsletter webhook: {e}", exc_info=True)
