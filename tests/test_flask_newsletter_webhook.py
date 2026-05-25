@@ -44,6 +44,40 @@ def _webhook_payload(**overrides: Any) -> dict[str, Any]:
     return payload
 
 
+def _raw_multipart_email(
+    *,
+    from_header: str = "Research Desk <research@example.com>",
+    subject: str = "Fwd: Multipart newsletter AAPL",
+    message_id: str = "<cf-webhook-multipart-1@example.com>",
+    plain_body: str = "AAPL plain text body.",
+    html_body: str = "<html><body><p>AAPL <b>HTML</b> body.</p></body></html>",
+) -> str:
+    """Build a multipart/alternative email with both text/plain and text/html parts."""
+    boundary = "newsletter-multipart-alt"
+    return "\n".join(
+        [
+            f"From: {from_header}",
+            "To: inbound@example.com",
+            f"Subject: {subject}",
+            f"Message-ID: {message_id}",
+            "MIME-Version: 1.0",
+            f'Content-Type: multipart/alternative; boundary="{boundary}"',
+            "",
+            f"--{boundary}",
+            'Content-Type: text/plain; charset="utf-8"',
+            "Content-Transfer-Encoding: 7bit",
+            "",
+            plain_body,
+            f"--{boundary}",
+            'Content-Type: text/html; charset="utf-8"',
+            "Content-Transfer-Encoding: 7bit",
+            "",
+            html_body,
+            f"--{boundary}--",
+        ]
+    )
+
+
 def _raw_email_with_attachments(*attached_messages: str) -> str:
     boundary = "gmail-forwarded-newsletters"
     lines = [
@@ -135,6 +169,55 @@ def test_newsletter_webhook_saves_cloudflare_raw_email_and_starts_ai(
     assert threads[0]["args"] == ("11111111-1111-1111-1111-111111111111",)
     assert threads[0]["daemon"] is True
     assert threads[0]["started"] is True
+
+
+def test_newsletter_webhook_extracts_both_html_and_plain_from_multipart(
+    client,
+    monkeypatch,
+) -> None:
+    """Multipart/alternative emails must populate both body_plain and body_html.
+
+    Regression test: prior to this fix the webhook hard-coded body_html=None,
+    which meant the dashboard could only show plain text even when the original
+    email had a rich HTML part.
+    """
+    _patch_service_side_effects(monkeypatch)
+    saved_rows: list[dict[str, Any]] = []
+
+    class FakeRepo:
+        def find_recent_duplicate_by_body(self, body_plain, days=30):
+            return None
+
+        def save_newsletter(self, **kwargs):
+            saved_rows.append(kwargs)
+            return "22222222-2222-2222-2222-222222222222"
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr("newsletter_repository.NewsletterRepository", FakeRepo)
+    monkeypatch.setattr("threading.Thread", FakeThread)
+
+    raw_eml = _raw_multipart_email(
+        plain_body="AAPL plain-text body.",
+        html_body="<html><body><p>AAPL <b>HTML</b> body.</p></body></html>",
+    )
+    response = client.post(
+        "/api/webhooks/newsletter",
+        json=_webhook_payload(raw_eml=raw_eml),
+    )
+
+    assert response.status_code == 200
+    assert len(saved_rows) == 1
+    saved = saved_rows[0]
+    assert "AAPL plain-text body." in (saved.get("body_plain") or "")
+    body_html = saved.get("body_html") or ""
+    assert "<b>HTML</b>" in body_html
+    assert "<p>AAPL" in body_html
 
 
 def test_newsletter_webhook_saves_gmail_forwarded_rfc822_attachments(

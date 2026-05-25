@@ -6702,12 +6702,12 @@ def webhook_newsletter():
             logger.error(f"Failed to parse raw_eml: {parse_err}", exc_info=True)
             return jsonify({'error': 'Failed to parse raw email'}), 400
 
-        def _extract_body_plain(parsed_msg):
-            """Walk MIME parts to pull out the plain-text body; skip HTML and attachments."""
+        def _extract_body_part(parsed_msg, target_mime: str):
+            """Walk MIME parts to pull out the first non-attachment body of the given mime type."""
             for part in parsed_msg.walk():
                 if part.is_multipart():
                     continue
-                if part.get_content_type() != 'text/plain':
+                if part.get_content_type() != target_mime:
                     continue
                 if 'attachment' in (part.get('Content-Disposition') or '').lower():
                     continue
@@ -6720,6 +6720,12 @@ def webhook_newsletter():
                 except (LookupError, UnicodeDecodeError):
                     return payload_bytes.decode('utf-8', errors='replace')
             return None
+
+        def _extract_body_plain(parsed_msg):
+            return _extract_body_part(parsed_msg, 'text/plain')
+
+        def _extract_body_html(parsed_msg):
+            return _extract_body_part(parsed_msg, 'text/html')
 
         def _extract_rfc822_attachments(parsed_msg):
             """Return attached original emails from Gmail's "forward as attachments" format."""
@@ -6861,11 +6867,11 @@ def webhook_newsletter():
             ).strip() or None
             item_subject = _decode_email_header(parsed_msg.get('Subject') or fallback_subject)
             body_plain = _extract_body_plain(parsed_msg)
+            body_html = _extract_body_html(parsed_msg)
             # Use the original newsletter's Date header (when it was sent to the
             # user's inbox) instead of the forward-to-AI time. Falls back to
             # "now" inside process_newsletter when the header is missing.
             timestamp = _parse_email_date_to_unix(parsed_msg.get('Date'))
-            body_html = None
 
             from newsletter_service import NewsletterService
 
