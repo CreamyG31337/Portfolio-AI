@@ -37,6 +37,133 @@ _MAX_SECONDS = 40 * 60
 _LOCK_RETRY_DELAY_SEC = 90
 _LOCK_RETRY_JOB_ID = "sector_meta_analysis_lock_retry"
 
+# Queue-mode constants — mirror the Q4a (ticker_meta_analysis) pattern.
+# ``list_sector_keys()`` already caps the result at the service-level
+# ``_MAX_SECTORS_PER_RUN = 18``; we mirror that here so the scheduler-side
+# cap is explicit and easy to tune independently if needed.
+_MAX_SECTORS_PER_RUN = 18
+# Cron-enqueued sector meta tasks use a low priority so any future manual UI
+# requests (priority >= 1000) can jump ahead, matching the convention
+# established for ticker_analysis / ticker_meta_analysis.
+_SECTOR_META_ENQUEUE_PRIORITY = 10
+
+
+def _sector_meta_analysis_queue_mode_enabled() -> bool:
+    try:
+        from scheduler.ai_task_workers import is_ai_queue_job_enabled
+
+        return is_ai_queue_job_enabled("sector_meta_analysis")
+    except Exception as exc:
+        logger.warning(
+            "AI queue mode check failed for sector_meta_analysis (using legacy path): %s",
+            exc,
+        )
+        return False
+
+
+def _run_sector_meta_analysis_enqueue_mode(job_id: str, start_time: float) -> None:
+    """Queue-mode sector meta analysis: select sectors and enqueue per-sector tasks.
+
+    Mirrors :func:`_run_ticker_meta_analysis_enqueue_mode`. Notes:
+
+    - The phase flag (``META_ANALYSIS_PHASE3_SECTOR``) is honored identically
+      to the legacy inline path — when off, the cron is a no-op.
+    - There is **no per-sector freshness gate** in the inline path (sector
+      meta upserts on ``(sector, run_date)`` so re-running is idempotent), so
+      queue mode does not synthesize one either. ``list_sector_keys()``
+      already caps the candidate set; we re-apply ``_MAX_SECTORS_PER_RUN``
+      defensively so the cron never enqueues an unbounded amount of work.
+    """
+
+    import os
+
+    target_date = datetime.now(UTC).date()
+    try:
+        from scheduler.ai_task_workers import (
+            AIQueueConfig,
+            enqueue_sector_meta_analysis_tasks,
+        )
+        from utils.job_tracking import (
+            mark_job_completed,
+            mark_job_failed,
+            mark_job_started,
+        )
+
+        mark_job_started(job_id, target_date)
+    except Exception as exc:
+        logger.warning("Could not initialize queue-mode job tracking: %s", exc)
+        mark_job_completed = None
+        mark_job_failed = None
+        AIQueueConfig = None
+        enqueue_sector_meta_analysis_tasks = None
+
+    logger.info("Starting %s enqueue job (AI task queue mode)...", job_id)
+
+    try:
+        if enqueue_sector_meta_analysis_tasks is None or AIQueueConfig is None:
+            raise RuntimeError("AI task queue helpers unavailable")
+
+        supabase = SupabaseClient(use_service_role=True)
+        postgres = PostgresClient()
+        svc = SectorMetaAnalysisService(None, supabase, postgres)
+
+        sector_keys = svc.list_sector_keys()
+
+        selected: list[tuple[str, int]] = []
+        for sk in sector_keys:
+            if len(selected) >= _MAX_SECTORS_PER_RUN:
+                break
+            if not sk:
+                continue
+            selected.append((sk, _SECTOR_META_ENQUEUE_PRIORITY))
+
+        if not selected:
+            duration_ms = int((time.time() - start_time) * 1000)
+            message = f"No sector meta tasks to enqueue (candidates={len(sector_keys)})"
+            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            if mark_job_completed:
+                mark_job_completed(
+                    job_id, target_date, None, [], duration_ms=duration_ms, message=message
+                )
+            logger.info("ℹ️ %s", message)
+            return
+
+        config = AIQueueConfig.from_env()
+        enqueued_by = os.getenv("AI_QUEUE_ENQUEUED_BY", "cron").strip() or "cron"
+        enqueue_stats = enqueue_sector_meta_analysis_tasks(
+            supabase,
+            selected,
+            enqueued_by=enqueued_by,
+            max_attempts=config.max_attempts,
+        )
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = (
+            f"Enqueued {enqueue_stats['enqueued']}/{enqueue_stats['attempted']} "
+            f"sector_meta_analysis task(s); failed={enqueue_stats['failed']} "
+            f"(candidates={len(sector_keys)})."
+        )
+        log_job_execution(
+            job_id,
+            success=enqueue_stats["failed"] == 0,
+            message=message,
+            duration_ms=duration_ms,
+        )
+        if enqueue_stats["failed"] == 0:
+            if mark_job_completed:
+                mark_job_completed(
+                    job_id, target_date, None, [], duration_ms=duration_ms, message=message
+                )
+        elif mark_job_failed:
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        logger.info("✅ Sector meta analysis enqueue complete: %s", message)
+    except Exception as exc:
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = f"Sector meta analysis enqueue failed: {exc}"
+        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        if mark_job_failed:
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        logger.error("❌ %s", message, exc_info=True)
+
 
 def _schedule_sector_meta_after_ai_lock(blocking_job: str) -> None:
     """Re-run sector meta soon after the global AI lock clears (one-shot, debounced)."""
@@ -84,6 +211,10 @@ def sector_meta_analysis_job() -> None:
         except Exception as exc:
             logger.warning("job_tracking skip: %s", exc)
         log_job_execution(job_id, success=True, message=msg, duration_ms=0)
+        return
+
+    if _sector_meta_analysis_queue_mode_enabled():
+        _run_sector_meta_analysis_enqueue_mode(job_id, start)
         return
 
     import os

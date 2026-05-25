@@ -38,6 +38,7 @@ ERROR_UNKNOWN = "unknown"
 
 QUEUE_JOB_TICKER_ANALYSIS = "ticker_analysis"
 QUEUE_JOB_TICKER_META_ANALYSIS = "ticker_meta_analysis"
+QUEUE_JOB_SECTOR_META_ANALYSIS = "sector_meta_analysis"
 
 TERMINAL_ERROR_CLASSES = {
     ERROR_SCHEMA_VIOLATION,
@@ -689,6 +690,102 @@ def ticker_meta_analysis_task_handler(task: Mapping[str, Any], backend: str) -> 
         )
 
 
+def enqueue_sector_meta_analysis_tasks(
+    supabase_client: Any,
+    sectors: Sequence[tuple[str, int]],
+    *,
+    enqueued_by: str = "cron",
+    max_attempts: int = 3,
+) -> Dict[str, int]:
+    """Enqueue one ``sector_meta_analysis`` task per selected sector key.
+
+    Mirrors :func:`enqueue_ticker_meta_analysis_tasks` but the
+    ``target_key`` is the sector label (or ``__UNTAGGED__`` for the catch-all
+    bucket emitted by :meth:`SectorMetaAnalysisService.list_sector_keys`).
+
+    TODO: manual route to be added if/when a manual rebuild UI exists for
+    sectors. Today only the nightly cron path enqueues these tasks, so the
+    ``priority >= 1000`` "manual_request" branch from the ticker-side
+    helpers is intentionally omitted — callers can add it later without a
+    payload-shape change because ``payload`` is already free-form JSON.
+    """
+
+    stats = {"attempted": 0, "enqueued": 0, "failed": 0}
+    for sector_key, priority in sectors:
+        stats["attempted"] += 1
+        key = str(sector_key).strip()
+        if not key:
+            stats["failed"] += 1
+            continue
+        try:
+            payload = {
+                "sector": key,
+                "priority": int(priority),
+            }
+            enqueue_ai_task(
+                supabase_client,
+                analysis_type=QUEUE_JOB_SECTOR_META_ANALYSIS,
+                target_key=key,
+                payload=payload,
+                priority=int(priority),
+                enqueued_by=enqueued_by,
+                max_attempts=max_attempts,
+            )
+            stats["enqueued"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logger.warning(
+                "Failed to enqueue sector_meta_analysis task for %s: %s",
+                key,
+                exc,
+            )
+    return stats
+
+
+def sector_meta_analysis_task_handler(task: Mapping[str, Any], backend: str) -> None:
+    """Run one sector meta analysis task on the assigned backend.
+
+    Mirrors :func:`ticker_meta_analysis_task_handler`: the worker is bound to a
+    single backend / model so cross-backend fallback happens via re-leasing
+    instead of an inline chain. The scheduler queue-mode path is responsible
+    for candidate selection (today: every sector returned by
+    :meth:`SectorMetaAnalysisService.list_sector_keys`), so the worker just
+    synthesizes the requested sector and persists the result.
+    """
+
+    sector_key = str(task.get("target_key") or "").strip()
+    if not sector_key:
+        raise ValueError("sector_meta_analysis task missing target_key")
+
+    model = model_for_backend(backend)
+
+    from ollama_client import OllamaClient
+    from postgres_client import PostgresClient
+    from sector_meta_analysis_service import SectorMetaAnalysisService
+    from supabase_client import SupabaseClient
+
+    supabase = SupabaseClient(use_service_role=True)
+    postgres = PostgresClient()
+    if backend == BACKEND_GLM:
+        ollama = OllamaClient(force_base_url_only=True)
+    else:
+        base_url = ollama_base_url_for_backend(backend)
+        if not base_url:
+            raise RuntimeError(f"No Ollama base URL configured for backend={backend}")
+        ollama = OllamaClient(base_url=base_url, force_base_url_only=True)
+
+    service = SectorMetaAnalysisService(ollama, supabase, postgres)
+    result = service.run_sector_meta(
+        sector_key,
+        model_override=model,
+        model_chain_override=[model],
+    )
+    if not result:
+        raise RuntimeError(
+            f"sector_meta_analysis returned no result for {sector_key} on {backend}"
+        )
+
+
 _worker_pool: Optional[AIQueueWorkerPool] = None
 
 
@@ -732,6 +829,8 @@ def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandl
         handlers[QUEUE_JOB_TICKER_ANALYSIS] = ticker_analysis_task_handler
     if QUEUE_JOB_TICKER_META_ANALYSIS in jobs:
         handlers[QUEUE_JOB_TICKER_META_ANALYSIS] = ticker_meta_analysis_task_handler
+    if QUEUE_JOB_SECTOR_META_ANALYSIS in jobs:
+        handlers[QUEUE_JOB_SECTOR_META_ANALYSIS] = sector_meta_analysis_task_handler
     return handlers
 
 

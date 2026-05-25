@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -143,8 +144,16 @@ class SectorMetaAnalysisService:
         self,
         sector_key: str,
         model_override: str | None = None,
+        model_chain_override: Sequence[str] | None = None,
     ) -> dict[str, Any] | None:
-        """Synthesize one sector row for today's ``run_date`` (UTC)."""
+        """Synthesize one sector row for today's ``run_date`` (UTC).
+
+        ``model_chain_override`` lets queue-bound workers pin the fallback chain
+        to a single backend model (so cross-backend fallback happens via
+        re-leasing the task, not inline). Default ``None`` preserves the legacy
+        multi-model fallback used by the inline scheduler path. Matches the
+        ``run_meta_analysis`` extension introduced in Q4a.
+        """
         if not is_meta_analysis_phase3_sector_enabled():
             logger.info("Sector meta skipped (META_ANALYSIS_PHASE3_SECTOR off)")
             return None
@@ -203,6 +212,7 @@ class SectorMetaAnalysisService:
             response_ok=lambda s: extract_json(s) is not None,
             function_name="sector_meta_analysis",
             audit_extra={"sector": sector_key},
+            model_chain_override=model_chain_override,
         )
         if not full_response:
             logger.error("Sector meta LLM failed on all summarization models for %s", sector_key)

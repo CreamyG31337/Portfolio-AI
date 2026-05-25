@@ -11,7 +11,8 @@ Backend-bound AI task queue and worker pool — replaces the coarse global AI lo
 | **Q2** | Migrate `ticker_analysis` to per-ticker queue tasks | ✅ shipped 2026-05-20; verified end-to-end across `ollama_primary`, `ollama_secondary`, and `glm` workers on 2026-05-21 |
 | **Q3** | Retire global mutex for queue-managed jobs (other AI jobs no longer block them) | ✅ shipped 2026-05-23 — `is_queue_managed_job()` helper in `utils/job_tracking.py`; `get_running_ai_job()` short-circuits to None for queue-managed jobs; `run_scheduler_job_once.py` logs ignored `--wait-ai-lock` / `--ignore-ai-lock` flags for queue-managed jobs |
 | **Q4a** | Migrate `ticker_meta_analysis` to per-ticker queue tasks | ✅ shipped 2026-05-23 — handler + enqueue helper + scheduler queue-mode path (legacy inline path preserved when not listed). `AI_QUEUE_JOBS` default in `.woodpecker.yml` flipped to `ticker_analysis,ticker_meta_analysis`. Verified end-to-end on 2026-05-24 manual trigger: 62/62 tasks done, 0 failed, **22m 57s total elapsed** (vs ~45m sequential), all three backends (`ollama_primary`, `ollama_secondary`, `glm`) leasing concurrently. |
-| **Q4b–f** | Migrate remaining AI jobs to the queue: `sector_meta_analysis`, `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ open. Each migration is a small refactor (enqueue helper + backend-bound handler + queue-mode short-circuit in the scheduler job) plus appending the job name to `AI_QUEUE_JOBS` in `.woodpecker.yml`. |
+| **Q4b** | Migrate `sector_meta_analysis` to per-sector queue tasks | ✅ shipped 2026-05-24 — handler + enqueue helper + scheduler queue-mode path (legacy inline path preserved when not listed). `AI_QUEUE_JOBS` default in `.woodpecker.yml` flipped to `ticker_analysis,ticker_meta_analysis,sector_meta_analysis`. Awaiting first production cron for end-to-end verification. |
+| **Q4c–f** | Migrate remaining AI jobs to the queue: `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ open. Each migration is a small refactor (enqueue helper + backend-bound handler + queue-mode short-circuit in the scheduler job) plus appending the job name to `AI_QUEUE_JOBS` in `.woodpecker.yml`. |
 
 Phases here used to be numbered "Phase 1–4". Renamed to **Q1–Q4** so cross-doc discussion is unambiguous (e.g. "queue Q3" vs `meta_analysis_roadmap.md`'s "Phase 3").
 
@@ -259,8 +260,8 @@ Existing model settings remain in the existing model configuration and settings 
 
 Candidates after `ticker_analysis`:
 
-- `ticker_meta_analysis` — **code migrated 2026-05-23**, awaiting env flip + production observation.
-- `sector_meta_analysis`
+- `ticker_meta_analysis` — **code migrated 2026-05-23**, ✅ verified end-to-end 2026-05-24.
+- `sector_meta_analysis` — **code migrated 2026-05-23**, awaiting env flip + production observation.
 - `etf_group_analysis`
 - `market_daily_brief`
 - `ui_ai_summaries`
@@ -297,6 +298,38 @@ Tests (focused, run with `.\venv\Scripts\python.exe -m pytest -v`):
 
 - `tests/test_ai_task_workers.py` — handler/enqueue registration, payload shape, backend-bound model binding, missing-Ollama-base-URL guard, blank-target skipping.
 - `tests/test_ticker_meta_analysis_queue_mode.py` — scheduler queue-mode enqueues only tickers that `needs_refresh`, bypasses `get_running_ai_job` entirely (Q3 contract), does NOT invoke `run_meta_analysis` inline; legacy non-queue path remains covered.
+
+#### Q4b: `sector_meta_analysis` — code migrated 2026-05-23
+
+What changed (mirrors Q4a exactly so the next Q4 migrations have an even tighter copy-pattern):
+
+- `web_dashboard/scheduler/ai_task_workers.py`:
+  - New `QUEUE_JOB_SECTOR_META_ANALYSIS = "sector_meta_analysis"` constant.
+  - `enqueue_sector_meta_analysis_tasks()` helper — same `(target_key, priority)` shape as the ticker-side helpers, but `target_key` is the sector label returned by `SectorMetaAnalysisService.list_sector_keys()` (e.g. `"Technology"`, `"Energy"`, or `"__UNTAGGED__"` for the catch-all bucket). Sector labels are not uppercased — they round-trip the original casing from `research_articles.sector`. The `manual_request` branch (priority ≥ 1000) is intentionally **omitted** because there is no manual-rebuild UI route for sector meta today; the helper docstring carries a `TODO` noting where to add it without a payload-shape change.
+  - `sector_meta_analysis_task_handler()` — backend-bound, identical to the ticker_meta handler shape: builds a single-backend `OllamaClient` (GLM uses `force_base_url_only=True`, Ollama backends read `AI_QUEUE_OLLAMA_*_BASE_URL`), then calls `SectorMetaAnalysisService.run_sector_meta(sector_key, model_override=model, model_chain_override=[model])`. Cross-backend fallback happens via re-leasing, not an inline chain. The service has no `force=` parameter (no per-sector freshness gate exists), so the handler does not pass one.
+  - `build_task_handlers()` registers the sector handler only when `sector_meta_analysis` is in `AI_QUEUE_JOBS` (same gate as the other queue jobs).
+- `web_dashboard/sector_meta_analysis_service.py`: `run_sector_meta()` now accepts an optional `model_chain_override: Sequence[str] | None` and forwards it to `collect_with_summary_model_chain`, matching the Q4a extension on `TickerMetaAnalysisService.run_meta_analysis`. Default `None` preserves the legacy multi-model fallback chain for non-queue callers (scheduler legacy path). **No other behavior changed** — no prompt changes, no contract changes, no normalization changes.
+- `web_dashboard/scheduler/jobs_sector_meta_analysis.py`:
+  - Adds `_sector_meta_analysis_queue_mode_enabled()` (delegates to `is_ai_queue_job_enabled`).
+  - When queue mode is on (and the `META_ANALYSIS_PHASE3_SECTOR` phase flag is on), takes the `_run_sector_meta_analysis_enqueue_mode` branch: fetches candidates via `SectorMetaAnalysisService.list_sector_keys()`, enqueues up to `_MAX_SECTORS_PER_RUN = 18` tasks at `_SECTOR_META_ENQUEUE_PRIORITY = 10`, and marks the scheduler-side `job_executions` row as `"Enqueued N/M sector_meta_analysis task(s); failed=… (candidates=K)."`.
+  - There is **no per-sector freshness filter** because the inline path does not have one — sector meta upserts on `(sector, run_date)` so re-running is idempotent. The queue's `(analysis_type, target_key)` dedupe index prevents double-enqueue while a task is active.
+  - Legacy inline path (including the `SECTOR_META_IGNORE_AI_LOCK` escape hatch and the `_schedule_sector_meta_after_ai_lock` one-shot retry) is unchanged when the job is not in `AI_QUEUE_JOBS`.
+
+Operational rollout (mirroring Q2/Q4a — code default, no Woodpecker secret):
+
+1. Verify in CI: `AI_QUEUE_JOBS=ticker_analysis,ticker_meta_analysis,sector_meta_analysis` lets `build_task_handlers` register all three handlers and the worker pool starts.
+2. ✅ `.woodpecker.yml` default for `AI_QUEUE_JOBS` is now `ticker_analysis,ticker_meta_analysis,sector_meta_analysis` (changed 2026-05-24). Activates on the next deploy. The host-side `trading-dashboard-optional.env` can still override with a different value, but the in-repo default is the source of truth going forward.
+3. Observe one nightly cron:
+   - Scheduler row should complete in seconds with `"Enqueued N/M sector_meta_analysis task(s); failed=0 (candidates=K)."`.
+   - `ai_task_queue` rows should appear with `analysis_type='sector_meta_analysis'` and reach `status='done'` across all three backends.
+   - `/admin/ai-audit` should show per-attempt rows tagged `function='sector_meta_analysis'` with the backend-bound model used.
+   - `/sector_insights` should continue to render today's `sector_meta_analysis` rows — the queue path writes through the same service and the same upsert, so the contract is byte-identical.
+4. If anything regresses, the rollback is the same env flip in reverse — the legacy inline path is preserved verbatim in `sector_meta_analysis_job()`.
+
+Tests (focused, run with `.\venv\Scripts\python.exe -m pytest -v`):
+
+- `tests/test_ai_task_workers.py` — extended with sector_meta_analysis cases: handler/enqueue registration (alone and alongside the ticker handlers), payload shape (sector labels preserve original casing including `__UNTAGGED__`), backend-bound model binding parametrized across all three backends, missing-Ollama-base-URL guard, blank-target skipping, and a `None`-result-raises check so retry/failure classification is exercised.
+- `tests/test_sector_meta_analysis_queue_mode.py` — scheduler queue-mode enqueues every sector returned by `list_sector_keys()` (no per-sector freshness gate), caps at `_MAX_SECTORS_PER_RUN`, bypasses `get_running_ai_job` entirely (Q3 contract), does NOT invoke `run_sector_meta` inline; legacy non-queue path remains covered; `META_ANALYSIS_PHASE3_SECTOR=off` continues to short-circuit before either path.
 
 ## What We Keep
 
