@@ -27,6 +27,7 @@ import json
 import math
 import os
 import re
+import secrets
 import sys
 from datetime import datetime, timedelta, date
 from pathlib import Path
@@ -6572,6 +6573,51 @@ def api_insider_trades_data():
 # Everything from `service.process_newsletter(...)` onward is provider-agnostic
 # — only the parsing step above needs to change per provider.
 # ---------------------------------------------------------------------------
+_NEWSLETTER_WEBHOOK_TEST_TOKEN_HEADER = "X-Newsletter-Webhook-Test-Token"
+
+
+def _newsletter_webhook_dry_run_requested(payload: dict[str, Any]) -> bool:
+    """Return true when a Cloudflare webhook probe asks to avoid writes/AI work."""
+    raw = payload.get("dry_run", False)
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return False
+
+
+def _newsletter_webhook_test_token_valid() -> bool:
+    """Validate the shared secret required for newsletter webhook dry-runs."""
+    expected = (os.getenv("NEWSLETTER_WEBHOOK_TEST_TOKEN") or "").strip()
+    supplied = (
+        request.headers.get(_NEWSLETTER_WEBHOOK_TEST_TOKEN_HEADER)
+        or request.headers.get("X-Test-Token")
+        or ""
+    ).strip()
+    if not expected:
+        logger.warning("Newsletter webhook dry_run rejected: NEWSLETTER_WEBHOOK_TEST_TOKEN not set")
+        return False
+    if not supplied:
+        logger.warning("Newsletter webhook dry_run rejected: missing test token header")
+        return False
+    if not secrets.compare_digest(supplied, expected):
+        logger.warning("Newsletter webhook dry_run rejected: invalid test token")
+        return False
+    return True
+
+
+def _decode_email_header(value: Optional[str]) -> str:
+    """Decode RFC 2047 email headers such as Gmail's encoded forwarded subjects."""
+    if not value:
+        return ""
+    try:
+        from email.header import decode_header, make_header
+
+        return str(make_header(decode_header(value))).strip()
+    except Exception:
+        return str(value).strip()
+
+
 @app.route('/api/webhooks/newsletter', methods=['POST'])
 def webhook_newsletter():
     """Cloudflare Email Worker webhook for receiving newsletters.
@@ -6591,10 +6637,13 @@ def webhook_newsletter():
 
         payload = request.get_json(silent=True) or {}
         logger.info(f"Newsletter webhook JSON keys: {list(payload.keys())}")
+        dry_run = _newsletter_webhook_dry_run_requested(payload)
+        if dry_run and not _newsletter_webhook_test_token_valid():
+            return jsonify({'error': 'Invalid test token'}), 403
 
-        sender = (payload.get('from') or '').strip()
-        recipient = (payload.get('to') or '').strip()
-        subject = (payload.get('subject') or '').strip()
+        sender = _decode_email_header(payload.get('from'))
+        recipient = _decode_email_header(payload.get('to'))
+        subject = _decode_email_header(payload.get('subject'))
         raw_eml = payload.get('raw_eml') or ''
 
         if not all([sender, recipient, subject, raw_eml]):
@@ -6635,13 +6684,14 @@ def webhook_newsletter():
 
         # Prefer the From header's display name + address; fall back to the JSON `from`.
         sender_name = None
-        parsed_name, parsed_addr = parseaddr(msg.get('From') or sender)
+        parsed_name, parsed_addr = parseaddr(_decode_email_header(msg.get('From') or sender))
         if parsed_name:
             sender_name = parsed_name.strip() or None
         if parsed_addr:
             sender = parsed_addr.strip()
 
         message_id = (msg.get('Message-ID') or msg.get('Message-Id') or '').strip() or None
+        subject = _decode_email_header(msg.get('Subject') or subject)
         timestamp = None
         body_html = None
 
@@ -6661,11 +6711,39 @@ def webhook_newsletter():
             timestamp=timestamp,
             skip_embedding=True
         )
+
+        if dry_run:
+            logger.info(f"Newsletter webhook dry_run parsed from {sender}: {subject}")
+            return jsonify({
+                'status': 'dry_run',
+                'parsed': {
+                    'sender': sender,
+                    'sender_name': sender_name,
+                    'recipient': recipient,
+                    'subject': processed_data.get('subject'),
+                    'message_id': message_id,
+                    'body_plain_chars': len(processed_data.get('body_plain') or ''),
+                    'has_body_plain': bool(processed_data.get('body_plain')),
+                },
+                'tickers': processed_data.get('tickers') or [],
+                'article_url': processed_data.get('article_url'),
+            }), 200
         
-        # Save to database immediately (so we never lose emails)
         from newsletter_repository import NewsletterRepository
         repo = NewsletterRepository()
-        
+
+        dup_id = repo.find_recent_duplicate_by_body(processed_data.get('body_plain'))
+        if dup_id:
+            logger.info(
+                f"⏭️ Newsletter duplicate detected — dropping forward of "
+                f"{dup_id} (subject={subject[:80]!r})"
+            )
+            return jsonify({
+                'status': 'duplicate',
+                'duplicate_of': dup_id,
+                'subject': processed_data.get('subject'),
+            }), 200
+
         newsletter_id = repo.save_newsletter(**processed_data)
         
         if not newsletter_id:

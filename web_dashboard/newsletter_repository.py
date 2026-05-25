@@ -347,6 +347,41 @@ class NewsletterRepository:
             logger.error(f"❌ Error updating embedding for newsletter {newsletter_id}: {e}")
             return False
     
+    def find_recent_duplicate_by_body(
+        self,
+        body_plain: Optional[str],
+        days: int = 30,
+    ) -> Optional[str]:
+        """Return the id of an existing newsletter with the same normalized body, if any.
+
+        Compares md5(lower(collapsed-whitespace(body_plain))) so manual re-forwards
+        (which get fresh ``Message-ID`` headers from Gmail) still dedup. Window
+        bounded by ``days`` to keep the scan small.
+        """
+        if not body_plain or not body_plain.strip():
+            return None
+        try:
+            import hashlib
+            import re
+
+            normalized = re.sub(r"\s+", " ", body_plain).strip().lower()
+            target_hash = hashlib.md5(normalized.encode("utf-8")).hexdigest()
+            query = (
+                "SELECT id FROM newsletters "
+                "WHERE body_plain IS NOT NULL "
+                "AND md5(lower(regexp_replace(body_plain, '\\s+', ' ', 'g'))) = %s "
+                "AND received_at > NOW() - (%s::int * INTERVAL '1 day') "
+                "ORDER BY received_at DESC "
+                "LIMIT 1"
+            )
+            results = self.client.execute_query(query, (target_hash, int(days)))
+            if results:
+                return str(results[0]["id"])
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error checking newsletter duplicate: {e}")
+            return None
+
     def delete_newsletter(self, newsletter_id: str) -> bool:
         """Delete a newsletter by ID
         

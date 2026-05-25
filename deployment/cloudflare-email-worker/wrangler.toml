@@ -1,0 +1,16 @@
+# Cloudflare Email Routing Worker for newsletter ingestion.
+#
+# Deploy with:
+#   cd deployment/cloudflare-email-worker
+#   wrangler deploy
+#
+# Email routing rule wiring lives in the Cloudflare dashboard:
+#   Zone drifting.space -> Email Routing -> Routing Rules
+#   Match: literal `to == ai-research@drifting.space`
+#   Action: send to Worker `ai-trading`
+name = "ai-trading"
+main = "worker.js"
+compatibility_date = "2026-05-22"
+
+# No bindings (KV/D1/secrets) required: the Worker only does fetch() to the
+# public dashboard webhook. Keep secrets/tokens out of this file.
