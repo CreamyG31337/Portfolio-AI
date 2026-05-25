@@ -494,9 +494,11 @@ function hasRenderablePlain(value) {
     return value.trim().length > 0;
 }
 
-// Strip <script>...</script> so the sandboxed iframe doesn't log a
+// Strip <script>...<\/script> so the sandboxed iframe doesn't log a
 // "Blocked script execution" warning for every newsletter. The sandbox
 // (no allow-scripts) is the real security control; this is cosmetic.
+// Note: the "<\/script>" above is intentionally escaped so the HTML parser
+// does not terminate this <script> block prematurely.
 function sanitizeEmailHtml(html) {
     if (!hasRenderableHtml(html)) return '';
     return html
