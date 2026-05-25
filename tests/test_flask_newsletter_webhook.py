@@ -11,13 +11,18 @@ def _raw_email(
     subject: str = "Fwd: Cloudflare webhook test AAPL",
     message_id: str = "<cf-webhook-test-1@example.com>",
     body: str = "AAPL and NVDA are mentioned in this test newsletter.",
+    date_header: str | None = None,
 ) -> str:
-    return "\n".join(
+    headers = [
+        f"From: {from_header}",
+        "To: inbound@example.com",
+        f"Subject: {subject}",
+        f"Message-ID: {message_id}",
+    ]
+    if date_header:
+        headers.append(f"Date: {date_header}")
+    headers.extend(
         [
-            f"From: {from_header}",
-            "To: inbound@example.com",
-            f"Subject: {subject}",
-            f"Message-ID: {message_id}",
             "MIME-Version: 1.0",
             'Content-Type: text/plain; charset="utf-8"',
             "Content-Transfer-Encoding: 7bit",
@@ -25,6 +30,7 @@ def _raw_email(
             body,
         ]
     )
+    return "\n".join(headers)
 
 
 def _webhook_payload(**overrides: Any) -> dict[str, Any]:
@@ -370,6 +376,104 @@ def test_newsletter_webhook_rejects_missing_raw_eml(client) -> None:
 
     assert response.status_code == 400
     assert response.get_json() == {"error": "Missing required field: raw_eml"}
+
+
+def test_newsletter_webhook_uses_original_email_date_for_received_at(
+    client,
+    monkeypatch,
+) -> None:
+    """The original newsletter's Date header should land in received_at, not
+    the time we processed the forwarded webhook payload."""
+    _patch_service_side_effects(monkeypatch)
+    saved_rows: list[dict[str, Any]] = []
+
+    class FakeRepo:
+        def find_recent_duplicate_by_body(self, body_plain, days=30):
+            return None
+
+        def save_newsletter(self, **kwargs):
+            saved_rows.append(kwargs)
+            return "11111111-1111-1111-1111-111111111111"
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr("newsletter_repository.NewsletterRepository", FakeRepo)
+    monkeypatch.setattr("threading.Thread", FakeThread)
+
+    raw_eml = _raw_email(date_header="Fri, 23 May 2026 14:05:11 -0700")
+    response = client.post(
+        "/api/webhooks/newsletter",
+        json=_webhook_payload(raw_eml=raw_eml),
+    )
+
+    assert response.status_code == 200
+    from datetime import datetime, timezone
+
+    received_at = saved_rows[0]["received_at"]
+    assert isinstance(received_at, datetime)
+    expected = datetime(2026, 5, 23, 21, 5, 11, tzinfo=timezone.utc)
+    assert received_at.astimezone(timezone.utc) == expected
+
+
+def test_newsletter_webhook_batch_uses_each_attached_email_date(
+    client,
+    monkeypatch,
+) -> None:
+    """Each attached email in a Gmail batch keeps its own original Date."""
+    _patch_service_side_effects(monkeypatch)
+    saved_rows: list[dict[str, Any]] = []
+
+    class FakeRepo:
+        def find_recent_duplicate_by_body(self, body_plain, days=30):
+            return None
+
+        def save_newsletter(self, **kwargs):
+            saved_rows.append(kwargs)
+            return f"newsletter-{len(saved_rows)}"
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr("newsletter_repository.NewsletterRepository", FakeRepo)
+    monkeypatch.setattr("threading.Thread", FakeThread)
+
+    raw_eml = _raw_email_with_attachments(
+        _raw_email(
+            message_id="<batch-a@example.com>",
+            body="AAPL batch a",
+            date_header="Mon, 18 May 2026 09:30:00 -0400",
+        ),
+        _raw_email(
+            message_id="<batch-b@example.com>",
+            body="NVDA batch b",
+            date_header="Tue, 19 May 2026 16:45:00 +0000",
+        ),
+    )
+
+    response = client.post(
+        "/api/webhooks/newsletter",
+        json=_webhook_payload(raw_eml=raw_eml),
+    )
+
+    assert response.status_code == 200
+    from datetime import datetime, timezone
+
+    assert len(saved_rows) == 2
+    assert saved_rows[0]["received_at"].astimezone(timezone.utc) == datetime(
+        2026, 5, 18, 13, 30, 0, tzinfo=timezone.utc
+    )
+    assert saved_rows[1]["received_at"].astimezone(timezone.utc) == datetime(
+        2026, 5, 19, 16, 45, 0, tzinfo=timezone.utc
+    )
 
 
 def test_newsletter_webhook_accepts_payload_with_empty_subject(

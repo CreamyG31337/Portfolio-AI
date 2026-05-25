@@ -6618,6 +6618,28 @@ def _decode_email_header(value: Optional[str]) -> str:
         return str(value).strip()
 
 
+def _parse_email_date_to_unix(date_header: Optional[str]) -> Optional[int]:
+    """Parse an RFC 2822 ``Date:`` header into a Unix timestamp (seconds).
+
+    Returns ``None`` if the header is missing or unparseable so the caller can
+    fall back to "now". Used to preserve the original newsletter's send date
+    when an email is forwarded to us (instead of stamping it with the forward
+    arrival time).
+    """
+    if not date_header:
+        return None
+    try:
+        from email.utils import parsedate_to_datetime
+
+        dt = parsedate_to_datetime(date_header)
+        if dt is None:
+            return None
+        return int(dt.timestamp())
+    except (TypeError, ValueError, OverflowError) as parse_err:
+        logger.warning(f"Failed to parse newsletter Date header {date_header!r}: {parse_err}")
+        return None
+
+
 @app.route('/api/webhooks/newsletter', methods=['POST'])
 def webhook_newsletter():
     """Cloudflare Email Worker webhook for receiving newsletters.
@@ -6835,7 +6857,10 @@ def webhook_newsletter():
             ).strip() or None
             item_subject = _decode_email_header(parsed_msg.get('Subject') or fallback_subject)
             body_plain = _extract_body_plain(parsed_msg)
-            timestamp = None
+            # Use the original newsletter's Date header (when it was sent to the
+            # user's inbox) instead of the forward-to-AI time. Falls back to
+            # "now" inside process_newsletter when the header is missing.
+            timestamp = _parse_email_date_to_unix(parsed_msg.get('Date'))
             body_html = None
 
             from newsletter_service import NewsletterService
