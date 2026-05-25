@@ -254,7 +254,11 @@ def add_security_headers(response):
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://static.cloudflareinsights.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
         "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
-        "img-src 'self' data: https://assets.parqet.com https://s.yimg.com https://unavatar.io; "
+        # img-src is intentionally permissive (https: + data:) so the newsletter inbox iframe
+        # can render images from arbitrary sender CDNs (Substack, Mailchimp, sendgrid, etc.).
+        # Images are passive resources -- worst case is a tracking pixel, which is already
+        # part of the email anyway. Scripts are still tightly restricted via script-src.
+        "img-src 'self' data: https: blob:; "
         f"connect-src {connect_src}; "
         "frame-ancestors 'self';"
     )
