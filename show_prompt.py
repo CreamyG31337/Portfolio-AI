@@ -45,7 +45,8 @@ def calculate_position_metrics(portfolio_df, cash_balance):
 
     total_portfolio_value = 0
 
-    for _, row in portfolio_df.iterrows():
+    # ⚡ Bolt: Replaced slow O(N) df.iterrows() with bulk conversion to_dict('records')
+    for row in portfolio_df.to_dict('records') if portfolio_df is not None and not portfolio_df.empty else []:
         ticker = str(row.get('ticker', ''))
 
         # Get current price from the row data
@@ -114,7 +115,8 @@ def format_enhanced_portfolio_display(enhanced_df):
     lines.append("                                              $      %            $      %          $      %")
     lines.append("-" * 104)
     
-    for _, row in enhanced_df.iterrows():
+    # ⚡ Bolt: Replaced slow O(N) df.iterrows() with bulk conversion to_dict('records')
+    for row in enhanced_df.to_dict('records') if enhanced_df is not None and not enhanced_df.empty else []:
         # Color ticker based on currency (same as Rich table formatter)
         ticker_raw = str(row.get('ticker', ''))
         currency = row.get('currency', 'CAD')  # Default to CAD if not specified

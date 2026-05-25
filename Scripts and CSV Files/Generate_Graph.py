@@ -413,14 +413,13 @@ def load_portfolio_totals() -> pd.DataFrame:
     today_data = llm_df[llm_df['Date'].dt.date == today_date]
     
     if not today_data.empty:
-        has_real_prices = False
-        for _, row in today_data.iterrows():
-            if 'Current Price' in row and 'Average Price' in row:
-                if pd.notna(row['Current Price']) and pd.notna(row['Average Price']):
-                    diff = abs(row['Current Price'] - row['Average Price'])
-                    if diff > 0.01:  # Real market data should have price differences
-                        has_real_prices = True
-                        break
+        # ⚡ Bolt: Replaced O(N) df.iterrows() loop with vectorized boolean mask
+        if 'Current Price' in today_data.columns and 'Average Price' in today_data.columns:
+            # Check if any absolute difference is > 0.01
+            diffs = (today_data['Current Price'] - today_data['Average Price']).abs()
+            has_real_prices = (diffs > 0.01).any()
+        else:
+            has_real_prices = False
         
         if has_real_prices:
             print(f"INFO: Today ({today_date}) has real market data - will be included in graph")
@@ -468,10 +467,11 @@ def load_portfolio_totals() -> pd.DataFrame:
         day_df = llm_df[llm_df['Date'].dt.date == current_date.date()]
 
         # Update portfolio with the latest info from the day
-        for _, row in day_df.iterrows():
+        # ⚡ Bolt: Replaced slow O(N) df.iterrows() with bulk conversion to_dict('records')
+        for row in day_df.to_dict('records') if day_df is not None and not day_df.empty else []:
             ticker = row['Ticker']
             # We take the last update for any given ticker on a given day
-            portfolio[ticker] = row.to_dict()
+            portfolio[ticker] = row
 
         # Remove sold positions
         portfolio = {ticker: pos for ticker, pos in portfolio.items() if pos['Total Value'] > 0}
@@ -636,21 +636,10 @@ def create_continuous_timeline(df: pd.DataFrame) -> pd.DataFrame:
     
     # Adjust timestamps to represent market close time for trading days
     # For weekends, use market close time of the weekend day to keep lines flat
-    from datetime import timedelta
     
-    for idx, row in merged.iterrows():
-        date_only = row['Date'].date()
-        weekday = pd.to_datetime(date_only).weekday()
-        
-        if weekday < 5:  # Trading day (Mon-Fri = 0-4)
-            # Set to market close time: 1:00 PM PST (13:00)
-            market_close_time = pd.to_datetime(date_only) + timedelta(hours=13)
-            merged.at[idx, 'Date'] = market_close_time
-        else:  # Weekend (Sat-Sun = 5-6)
-            # Also use market close time for weekend days to keep lines flat
-            # This prevents diagonal lines from weekend midnight to Monday market close
-            weekend_market_close = pd.to_datetime(date_only) + timedelta(hours=13)
-            merged.at[idx, 'Date'] = weekend_market_close
+    # ⚡ Bolt: Replaced slow O(N) df.iterrows() loop with vectorized operation
+    # Since both weekday and weekend branches simply add 13 hours, we can vectorize it completely
+    merged['Date'] = pd.to_datetime(merged['Date'].dt.date) + pd.Timedelta(hours=13)
     
     # Drop the helper column
     merged = merged.drop('Date_Only', axis=1)
@@ -795,20 +784,9 @@ def download_benchmark(benchmark_name: str, start_date: pd.Timestamp, end_date: 
         merged['Date'] = pd.to_datetime(merged['Date'])
         
         # Apply market timing: trading days at market close (13:00 PST), weekends at midnight
-        from datetime import timedelta
-        for idx, row in merged.iterrows():
-            date_only = row['Date'].date()
-            weekday = pd.to_datetime(date_only).weekday()
-            
-            if weekday < 5:  # Trading day (Mon-Fri = 0-4)
-                # Set to market close time: 1:00 PM PST (13:00) to match portfolio timing
-                market_close_time = pd.to_datetime(date_only) + timedelta(hours=13)
-                merged.at[idx, 'Date'] = market_close_time
-            else:  # Weekend (Sat-Sun = 5-6)
-                # Also use market close time for weekend days to match portfolio timing
-                # This prevents misaligned dots and keeps both series consistent
-                weekend_market_close = pd.to_datetime(date_only) + timedelta(hours=13)
-                merged.at[idx, 'Date'] = weekend_market_close
+        # ⚡ Bolt: Replaced slow O(N) df.iterrows() loop with vectorized operation
+        # Since both weekday and weekend branches simply add 13 hours, we can vectorize it completely
+        merged['Date'] = pd.to_datetime(merged['Date'].dt.date) + pd.Timedelta(hours=13)
         
         print(f"{_safe_emoji('📈')} {display_name} data: {len(benchmark_clean)} trading days -> {len(merged)} total days (with weekends)")
         return merged[["Date", column_name]]
