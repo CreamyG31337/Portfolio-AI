@@ -358,7 +358,7 @@ def test_newsletter_webhook_drops_duplicate_body_without_saving_or_starting_ai(
     assert body["duplicate_of"] == "existing-newsletter-id"
 
 
-def test_newsletter_webhook_rejects_missing_cloudflare_fields(client) -> None:
+def test_newsletter_webhook_rejects_missing_raw_eml(client) -> None:
     response = client.post(
         "/api/webhooks/newsletter",
         json={
@@ -369,7 +369,47 @@ def test_newsletter_webhook_rejects_missing_cloudflare_fields(client) -> None:
     )
 
     assert response.status_code == 400
-    assert response.get_json() == {"error": "Missing required fields"}
+    assert response.get_json() == {"error": "Missing required field: raw_eml"}
+
+
+def test_newsletter_webhook_accepts_payload_with_empty_subject(
+    client,
+    monkeypatch,
+) -> None:
+    """Gmail's 'Forward as attachments' often omits the outer Subject header.
+
+    The webhook must still process such payloads using the inner MIME headers
+    (or defaults) instead of returning 400.
+    """
+    _patch_service_side_effects(monkeypatch)
+    saved_rows: list[dict[str, Any]] = []
+    threads: list[dict[str, Any]] = []
+
+    class FakeRepo:
+        def find_recent_duplicate_by_body(self, body_plain, days=30):
+            return None
+
+        def save_newsletter(self, **kwargs):
+            saved_rows.append(kwargs)
+            return "11111111-1111-1111-1111-111111111111"
+
+    class FakeThread:
+        def __init__(self, *, target, args, daemon, name):
+            threads.append({"args": args, "daemon": daemon, "name": name, "started": False})
+
+        def start(self):
+            threads[-1]["started"] = True
+
+    monkeypatch.setattr("newsletter_repository.NewsletterRepository", FakeRepo)
+    monkeypatch.setattr("threading.Thread", FakeThread)
+
+    payload = _webhook_payload(subject="")
+    response = client.post("/api/webhooks/newsletter", json=payload)
+
+    assert response.status_code == 200
+    assert saved_rows
+    assert saved_rows[0]["subject"] == "Cloudflare webhook test AAPL"
+    assert threads[0]["started"] is True
 
 
 def test_newsletter_webhook_dry_run_requires_test_token(client, monkeypatch) -> None:

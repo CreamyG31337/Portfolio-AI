@@ -6646,13 +6646,26 @@ def webhook_newsletter():
         subject = _decode_email_header(payload.get('subject'))
         raw_eml = payload.get('raw_eml') or ''
 
-        if not all([sender, recipient, subject, raw_eml]):
+        # Only raw_eml is strictly required; from/to/subject can be parsed from
+        # the MIME or filled with sensible defaults. Gmail's "forward as
+        # attachments" path is known to omit Subject on the outer envelope.
+        if not raw_eml:
             logger.warning(
-                f"Missing required fields in newsletter webhook: "
+                f"Missing raw_eml in newsletter webhook: "
                 f"from={bool(sender)}, to={bool(recipient)}, "
-                f"subject={bool(subject)}, raw_eml={bool(raw_eml)}"
+                f"subject={bool(subject)}, raw_eml=False"
             )
-            return jsonify({'error': 'Missing required fields'}), 400
+            return jsonify({'error': 'Missing required field: raw_eml'}), 400
+        if not all([sender, recipient, subject]):
+            logger.info(
+                f"Newsletter webhook envelope partially populated; will fall back "
+                f"to MIME headers: from={bool(sender)}, to={bool(recipient)}, "
+                f"subject={bool(subject)}"
+            )
+        if not recipient:
+            recipient = "unknown@unknown"
+        if not subject:
+            subject = "(no subject)"
 
         import email as email_lib
         from email.utils import parseaddr
