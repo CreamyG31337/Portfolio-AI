@@ -121,6 +121,41 @@ def test_newsletter_ai_processing_job_logs_steps(
     assert "[nl=11111111]" in joined
 
 
+def test_newsletter_ai_processing_job_query_picks_up_empty_string_summaries(
+    monkeypatch: pytest.MonkeyPatch,
+    jobs_newsletter_module,
+) -> None:
+    """Regression: rows with summary='' (not NULL) used to be skipped forever.
+
+    The safety-net job must include them in its pending query so they get
+    re-summarized and promoted from the UI's "Embedded" badge to "Processed".
+    """
+    jn = jobs_newsletter_module
+    captured: list[str] = []
+
+    class FakeRepo:
+        def __init__(self) -> None:
+            self.client = MagicMock()
+            def _capture(query: str, params=()):
+                captured.append(query)
+                return []
+            self.client.execute_query = _capture
+            self.client.execute_update = MagicMock()
+
+        def update_embedding(self, _nid: str, _emb: list) -> bool:
+            return True
+
+    monkeypatch.setattr("newsletter_repository.NewsletterRepository", FakeRepo)
+
+    jn.newsletter_ai_processing_job()
+
+    assert captured, "expected the pending query to run"
+    pending_sql = captured[0]
+    assert "summary IS NULL" in pending_sql
+    assert "TRIM(COALESCE(summary, '')) = ''" in pending_sql
+    assert "embedding IS NULL" in pending_sql
+
+
 def test_newsletter_ai_processing_job_ai_summary_fail_logs(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,

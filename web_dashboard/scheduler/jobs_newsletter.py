@@ -46,8 +46,11 @@ def newsletter_ai_processing_job() -> None:
     4. Generate a vector embedding for semantic search
     5. Update the database record
 
-    The job is idempotent — it only touches rows where ``summary IS NULL``
-    or ``embedding IS NULL`` (UI Pending = no embedding).
+    The job is idempotent — it touches rows where the summary is missing
+    (``NULL`` or empty string) or the embedding is missing. Treating an empty
+    summary as missing is important: a prior pipeline failure can leave
+    ``summary = ''`` on a row that already has an embedding, which the UI
+    surfaces as a permanent "Embedded" badge instead of "Processed".
     """
     job_id = "newsletter_ai_processing"
     start_time = time.time()
@@ -79,12 +82,17 @@ def newsletter_ai_processing_job() -> None:
         service = NewsletterService()
 
         # Fetch newsletters that are not fully processed yet (limit batch size).
-        # UI "Pending" means no embedding, so include those rows too.
+        # A row is "pending" if its summary is missing/empty OR its embedding
+        # is missing. The empty-string case matters: prior runs sometimes saved
+        # `summary = ''` after a failed Ollama call, which `summary IS NULL`
+        # alone would skip forever.
         pending_query = """
             SELECT id, subject, body_plain, body_html, received_at, summary,
                    (embedding IS NULL) AS embedding_is_null
             FROM newsletters
-            WHERE summary IS NULL OR embedding IS NULL
+            WHERE summary IS NULL
+               OR TRIM(COALESCE(summary, '')) = ''
+               OR embedding IS NULL
             ORDER BY received_at ASC
             LIMIT 10
         """
