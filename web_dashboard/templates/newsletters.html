@@ -473,6 +473,7 @@ function prevPage() {
 /* ── Email View Modal ── */
 let currentEmailData = null;
 let currentEmailView = 'html';
+let previousEmailModalFocus = null;
 
 // Returns true only if the value looks like real HTML body content.
 // Guards against the literal string "null"/"None"/"undefined", empty strings,
@@ -519,13 +520,16 @@ async function viewEmail(id) {
     plainView.classList.add('hidden');
     errorView.classList.add('hidden');
     currentEmailData = null;
+    previousEmailModalFocus = document.activeElement;
 
     // Show modal
     modal.classList.remove('hidden');
     modal.classList.add('flex'); // Flowbite modals use flex for centering
+    modal.removeAttribute('aria-hidden');
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('role', 'dialog');
     document.body.style.overflow = 'hidden';
+    modal.focus();
 
     try {
         const response = await fetch('/api/newsletters/' + id, { credentials: 'include' });
@@ -656,8 +660,14 @@ function toggleEmailView(view) {
 
 function closeEmailModal() {
     const modal = document.getElementById('email-view-modal');
+
+    if (modal.contains(document.activeElement)) {
+        document.activeElement.blur();
+    }
+
     modal.classList.add('hidden');
     modal.classList.remove('flex');
+    modal.setAttribute('aria-hidden', 'true');
     modal.removeAttribute('aria-modal');
     modal.removeAttribute('role');
     document.body.style.overflow = '';
@@ -671,6 +681,11 @@ function closeEmailModal() {
         doc.write('');
         doc.close();
     } catch(e) {}
+
+    if (previousEmailModalFocus && typeof previousEmailModalFocus.focus === 'function') {
+        previousEmailModalFocus.focus();
+    }
+    previousEmailModalFocus = null;
 }
 
 // Close modal on Escape key
