@@ -5,6 +5,7 @@ import pytest
 from web_dashboard.scheduler.ai_task_workers import (
     AIQueueConfig,
     AIQueueWorkerPool,
+    QUEUE_JOB_ETF_GROUP_ANALYSIS,
     QUEUE_JOB_SECTOR_META_ANALYSIS,
     QUEUE_JOB_TICKER_ANALYSIS,
     QUEUE_JOB_TICKER_META_ANALYSIS,
@@ -15,9 +16,11 @@ from web_dashboard.scheduler.ai_task_workers import (
     UnsupportedTaskError,
     build_task_handlers,
     classify_error,
+    enqueue_etf_group_analysis_tasks,
     enqueue_sector_meta_analysis_tasks,
     enqueue_ticker_analysis_tasks,
     enqueue_ticker_meta_analysis_tasks,
+    etf_group_analysis_task_handler,
     model_for_backend,
     ollama_base_url_for_backend,
     retry_delay_seconds,
@@ -620,3 +623,295 @@ def test_sector_meta_analysis_task_handler_blank_target_raises(monkeypatch):
     }
     with pytest.raises(ValueError, match="missing target_key"):
         sector_meta_analysis_task_handler(task, "glm")
+
+
+# ---------------------------------------------------------------------------
+# Q4c: etf_group_analysis on the AI task queue
+# ---------------------------------------------------------------------------
+
+
+def test_build_task_handlers_registers_etf_group_analysis_when_enabled():
+    handlers = build_task_handlers([QUEUE_JOB_ETF_GROUP_ANALYSIS])
+
+    assert list(handlers) == [QUEUE_JOB_ETF_GROUP_ANALYSIS]
+    assert handlers[QUEUE_JOB_ETF_GROUP_ANALYSIS] is etf_group_analysis_task_handler
+
+
+def test_build_task_handlers_registers_all_four_when_all_enabled():
+    handlers = build_task_handlers(
+        [
+            QUEUE_JOB_TICKER_ANALYSIS,
+            QUEUE_JOB_TICKER_META_ANALYSIS,
+            QUEUE_JOB_SECTOR_META_ANALYSIS,
+            QUEUE_JOB_ETF_GROUP_ANALYSIS,
+        ]
+    )
+
+    assert set(handlers) == {
+        QUEUE_JOB_TICKER_ANALYSIS,
+        QUEUE_JOB_TICKER_META_ANALYSIS,
+        QUEUE_JOB_SECTOR_META_ANALYSIS,
+        QUEUE_JOB_ETF_GROUP_ANALYSIS,
+    }
+    assert handlers[QUEUE_JOB_ETF_GROUP_ANALYSIS] is etf_group_analysis_task_handler
+
+
+def test_enqueue_etf_group_analysis_tasks_uses_enqueue_rpc_payload():
+    fake = SimpleNamespace(supabase=FakeSupabase())
+
+    stats = enqueue_etf_group_analysis_tasks(
+        fake,
+        [("iwc", "2026-05-23", 10), ("ARKK", "2026-05-22", 10)],
+        enqueued_by="cron",
+        max_attempts=3,
+        queue_ids={"IWC_2026-05-23": "queue-id-1"},
+    )
+
+    assert stats == {"attempted": 2, "enqueued": 2, "failed": 0}
+    assert [call[0] for call in fake.supabase.calls] == [
+        "enqueue_ai_task",
+        "enqueue_ai_task",
+    ]
+    # ETF tickers are uppercased; the date string round-trips verbatim. The
+    # legacy ai_analysis_queue id is forwarded via payload so the worker can
+    # keep that row's status in sync.
+    assert fake.supabase.calls[0][1] == {
+        "p_analysis_type": "etf_group_analysis",
+        "p_target_key": "IWC_2026-05-23",
+        "p_payload": {
+            "etf_ticker": "IWC",
+            "date": "2026-05-23",
+            "priority": 10,
+            "legacy_queue_id": "queue-id-1",
+        },
+        "p_priority": 10,
+        "p_enqueued_by": "cron",
+        "p_max_attempts": 3,
+    }
+    # When no legacy queue id is mapped for the target, the payload omits
+    # ``legacy_queue_id`` entirely (no None marker that would confuse the
+    # handler's optional-update check).
+    assert fake.supabase.calls[1][1] == {
+        "p_analysis_type": "etf_group_analysis",
+        "p_target_key": "ARKK_2026-05-22",
+        "p_payload": {
+            "etf_ticker": "ARKK",
+            "date": "2026-05-22",
+            "priority": 10,
+        },
+        "p_priority": 10,
+        "p_enqueued_by": "cron",
+        "p_max_attempts": 3,
+    }
+
+
+def test_enqueue_etf_group_analysis_tasks_skips_blank_targets():
+    fake = SimpleNamespace(supabase=FakeSupabase())
+
+    stats = enqueue_etf_group_analysis_tasks(
+        fake,
+        [("", "2026-05-23", 10), ("IWC", "", 10), ("IWC", "2026-05-22", 10)],
+        enqueued_by="cron",
+        max_attempts=3,
+    )
+
+    assert stats == {"attempted": 3, "enqueued": 1, "failed": 2}
+    assert len(fake.supabase.calls) == 1
+    assert fake.supabase.calls[0][1]["p_target_key"] == "IWC_2026-05-22"
+
+
+def _install_etf_group_handler_fakes(monkeypatch, *, captured, return_value=None):
+    """Install module stubs needed by ``etf_group_analysis_task_handler``."""
+    import sys
+    import types
+
+    sentinel = return_value if return_value is not None else {"summary": "ok"}
+
+    class _FakeETFGroupService:
+        def __init__(self, ollama, supabase, repo):
+            captured["service_ollama"] = ollama
+            captured["service_supabase"] = supabase
+            captured["service_repo"] = repo
+
+        def analyze_group(self, etf_ticker, date, **kwargs):
+            captured["etf_ticker"] = etf_ticker
+            captured["date"] = date
+            captured["kwargs"] = kwargs
+            return sentinel
+
+    class _FakeOllamaClient:
+        def __init__(self, base_url=None, force_base_url_only=False):
+            captured["ollama_base_url"] = base_url
+            captured["ollama_force_base_url_only"] = force_base_url_only
+
+    class _FakeSupabaseClient:
+        def __init__(self, use_service_role=False):
+            captured["supabase_service_role"] = use_service_role
+            self.supabase = SimpleNamespace()
+
+    class _FakePostgresClient:
+        def __init__(self):
+            captured["postgres_created"] = True
+
+    class _FakeResearchRepository:
+        def __init__(self, postgres_client=None):
+            captured["repo_postgres"] = postgres_client
+
+    fake_etf = types.ModuleType("etf_group_analysis")
+    fake_etf.ETFGroupAnalysisService = _FakeETFGroupService
+    fake_ollama_mod = types.ModuleType("ollama_client")
+    fake_ollama_mod.OllamaClient = _FakeOllamaClient
+    fake_supabase_mod = types.ModuleType("supabase_client")
+    fake_supabase_mod.SupabaseClient = _FakeSupabaseClient
+    fake_postgres_mod = types.ModuleType("postgres_client")
+    fake_postgres_mod.PostgresClient = _FakePostgresClient
+    fake_repo_mod = types.ModuleType("research_repository")
+    fake_repo_mod.ResearchRepository = _FakeResearchRepository
+
+    monkeypatch.setitem(sys.modules, "etf_group_analysis", fake_etf)
+    monkeypatch.setitem(sys.modules, "ollama_client", fake_ollama_mod)
+    monkeypatch.setitem(sys.modules, "supabase_client", fake_supabase_mod)
+    monkeypatch.setitem(sys.modules, "postgres_client", fake_postgres_mod)
+    monkeypatch.setitem(sys.modules, "research_repository", fake_repo_mod)
+
+
+@pytest.mark.parametrize(
+    "backend, model_env_var, model_default, base_url_env_vars, expected_base_url",
+    [
+        ("glm", "AI_QUEUE_MODEL_GLM", "glm-5.1", [], None),
+        (
+            "ollama_primary",
+            "AI_QUEUE_MODEL_OLLAMA_PRIMARY",
+            "granite3.3:8b",
+            [("AI_QUEUE_OLLAMA_PRIMARY_BASE_URL", "http://amd:11434")],
+            "http://amd:11434",
+        ),
+        (
+            "ollama_secondary",
+            "AI_QUEUE_MODEL_OLLAMA_SECONDARY",
+            "qwen3.6:27b",
+            [("AI_QUEUE_OLLAMA_SECONDARY_BASE_URL", "http://nvidia:11434")],
+            "http://nvidia:11434",
+        ),
+    ],
+)
+def test_etf_group_analysis_task_handler_backend_bound_model(
+    monkeypatch, backend, model_env_var, model_default, base_url_env_vars, expected_base_url
+):
+    """Handler must bind the LLM call to a single backend / model so cross-backend
+    fallback happens via re-leasing, not inline."""
+    monkeypatch.setenv(model_env_var, model_default)
+    for var, value in base_url_env_vars:
+        monkeypatch.setenv(var, value)
+
+    captured: dict[str, object] = {}
+    _install_etf_group_handler_fakes(monkeypatch, captured=captured)
+
+    task = {
+        "id": "task-etf-1",
+        "analysis_type": QUEUE_JOB_ETF_GROUP_ANALYSIS,
+        "target_key": "IWC_2026-05-23",
+        "payload": {
+            "etf_ticker": "IWC",
+            "date": "2026-05-23",
+            "priority": 10,
+        },
+    }
+
+    etf_group_analysis_task_handler(task, backend)
+
+    assert captured["etf_ticker"] == "IWC"
+    # Date is parsed into a UTC-aware datetime so the service can format it.
+    from datetime import UTC as _UTC
+
+    assert captured["date"].tzinfo is _UTC
+    assert captured["date"].strftime("%Y-%m-%d") == "2026-05-23"
+    assert captured["kwargs"]["model_override"] == model_default
+    # Backend-bound: chain pinned to a single model so cross-backend fallback
+    # happens via re-leasing.
+    assert captured["kwargs"]["model_chain_override"] == [model_default]
+    assert captured["supabase_service_role"] is True
+    if backend == "glm":
+        assert captured["ollama_base_url"] is None
+    else:
+        assert captured["ollama_base_url"] == expected_base_url
+    assert captured["ollama_force_base_url_only"] is True
+
+
+def test_etf_group_analysis_task_handler_raises_on_none_result(monkeypatch):
+    """A None result must propagate so the queue can release / fail the task."""
+    monkeypatch.setenv("AI_QUEUE_MODEL_GLM", "glm-5.1")
+
+    captured: dict[str, object] = {}
+    _install_etf_group_handler_fakes(monkeypatch, captured=captured)
+
+    import sys
+
+    class _NoneService:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def analyze_group(self, *args, **kwargs):
+            return None
+
+    sys.modules["etf_group_analysis"].ETFGroupAnalysisService = _NoneService  # type: ignore[attr-defined]
+
+    task = {
+        "id": "task-etf-2",
+        "analysis_type": QUEUE_JOB_ETF_GROUP_ANALYSIS,
+        "target_key": "ARKK_2026-05-22",
+        "payload": {"etf_ticker": "ARKK", "date": "2026-05-22"},
+    }
+    with pytest.raises(RuntimeError, match="etf_group_analysis returned no result"):
+        etf_group_analysis_task_handler(task, "glm")
+
+
+def test_etf_group_analysis_task_handler_requires_ollama_base_url(monkeypatch):
+    """Non-GLM backends must error if no Ollama base URL is configured."""
+    monkeypatch.delenv("AI_QUEUE_OLLAMA_PRIMARY_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+
+    captured: dict[str, object] = {}
+    _install_etf_group_handler_fakes(monkeypatch, captured=captured)
+
+    task = {
+        "id": "task-etf-3",
+        "analysis_type": QUEUE_JOB_ETF_GROUP_ANALYSIS,
+        "target_key": "ARKK_2026-05-22",
+        "payload": {"etf_ticker": "ARKK", "date": "2026-05-22"},
+    }
+    with pytest.raises(RuntimeError, match="No Ollama base URL configured"):
+        etf_group_analysis_task_handler(task, "ollama_primary")
+
+
+def test_etf_group_analysis_task_handler_blank_target_raises(monkeypatch):
+    """Missing/blank target_key must raise ValueError, not silently succeed."""
+    captured: dict[str, object] = {}
+    _install_etf_group_handler_fakes(monkeypatch, captured=captured)
+
+    task = {
+        "id": "task-etf-4",
+        "analysis_type": QUEUE_JOB_ETF_GROUP_ANALYSIS,
+        "target_key": "   ",
+        "payload": {},
+    }
+    with pytest.raises(ValueError, match="missing target_key"):
+        etf_group_analysis_task_handler(task, "glm")
+
+
+def test_etf_group_analysis_task_handler_invalid_date_raises(monkeypatch):
+    """An unparseable date in payload (or target_key) must raise ValueError."""
+    monkeypatch.setenv("AI_QUEUE_MODEL_GLM", "glm-5.1")
+
+    captured: dict[str, object] = {}
+    _install_etf_group_handler_fakes(monkeypatch, captured=captured)
+
+    task = {
+        "id": "task-etf-5",
+        "analysis_type": QUEUE_JOB_ETF_GROUP_ANALYSIS,
+        "target_key": "ARKK_not-a-date",
+        "payload": {"etf_ticker": "ARKK", "date": "not-a-date"},
+    }
+    with pytest.raises(ValueError, match="invalid date"):
+        etf_group_analysis_task_handler(task, "glm")

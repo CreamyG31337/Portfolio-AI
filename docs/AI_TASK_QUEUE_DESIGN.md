@@ -12,7 +12,10 @@ Backend-bound AI task queue and worker pool — replaces the coarse global AI lo
 | **Q3** | Retire global mutex for queue-managed jobs (other AI jobs no longer block them) | ✅ shipped 2026-05-23 — `is_queue_managed_job()` helper in `utils/job_tracking.py`; `get_running_ai_job()` short-circuits to None for queue-managed jobs; `run_scheduler_job_once.py` logs ignored `--wait-ai-lock` / `--ignore-ai-lock` flags for queue-managed jobs |
 | **Q4a** | Migrate `ticker_meta_analysis` to per-ticker queue tasks | ✅ shipped 2026-05-23 — handler + enqueue helper + scheduler queue-mode path (legacy inline path preserved when not listed). `AI_QUEUE_JOBS` default in `.woodpecker.yml` flipped to `ticker_analysis,ticker_meta_analysis`. Verified end-to-end on 2026-05-24 manual trigger: 62/62 tasks done, 0 failed, **22m 57s total elapsed** (vs ~45m sequential), all three backends (`ollama_primary`, `ollama_secondary`, `glm`) leasing concurrently. |
 | **Q4b** | Migrate `sector_meta_analysis` to per-sector queue tasks | ✅ shipped 2026-05-24 — handler + enqueue helper + scheduler queue-mode path (legacy inline path preserved when not listed). `AI_QUEUE_JOBS` default in `.woodpecker.yml` flipped to `ticker_analysis,ticker_meta_analysis,sector_meta_analysis`. Awaiting first production cron for end-to-end verification. |
-| **Q4c–f** | Migrate remaining AI jobs to the queue: `etf_group_analysis`, `market_daily_brief`, `ui_ai_summaries`, `action_queue_ai_review` | ⏳ open. Each migration is a small refactor (enqueue helper + backend-bound handler + queue-mode short-circuit in the scheduler job) plus appending the job name to `AI_QUEUE_JOBS` in `.woodpecker.yml`. |
+| **Q4c** | Migrate `etf_group_analysis` to per-(ETF, date) queue tasks | ✅ shipped 2026-05-24 — handler + enqueue helper + scheduler queue-mode path (legacy inline path preserved when not listed). Worker keeps the legacy `ai_analysis_queue` row's status in sync via `payload.legacy_queue_id`. `AI_QUEUE_JOBS` default in `.woodpecker.yml` flipped to `ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis`. Awaiting first production cron for end-to-end verification. |
+| **Q4d** | `market_daily_brief` | ⏭ skipped — see Q4d subsection. Single-LLM-call-per-day in steady state; queue parallelism gives no win and the existing lock-retry mechanism is sufficient as upstream queue-managed jobs no longer hold the global AI mutex. |
+| **Q4e** | `ui_ai_summaries` | ⏭ skipped — see Q4e subsection. Heterogeneous unit of work (multiple distinct scopes per cron, each with its own digest-skip optimization that already short-circuits the LLM); a single-shaped queue handler doesn't fit without a service-level refactor. |
+| **Q4f** | `action_queue_ai_review` | ⏭ skipped — see Q4f subsection. Per-item prompt construction needs service-side prep that doesn't cleanly split into "enqueuer prep + worker LLM call"; would require a moderate refactor of `action_queue_service` before the queue handler can be a thin wrapper. |
 
 Phases here used to be numbered "Phase 1–4". Renamed to **Q1–Q4** so cross-doc discussion is unambiguous (e.g. "queue Q3" vs `meta_analysis_roadmap.md`'s "Phase 3").
 
@@ -262,10 +265,10 @@ Candidates after `ticker_analysis`:
 
 - `ticker_meta_analysis` — **code migrated 2026-05-23**, ✅ verified end-to-end 2026-05-24.
 - `sector_meta_analysis` — **code migrated 2026-05-23**, awaiting env flip + production observation.
-- `etf_group_analysis`
-- `market_daily_brief`
-- `ui_ai_summaries`
-- `action_queue_ai_review`
+- `etf_group_analysis` — **code migrated 2026-05-24** (Q4c).
+- `market_daily_brief` — ⏭ skipped, see Q4d.
+- `ui_ai_summaries` — ⏭ skipped, see Q4e.
+- `action_queue_ai_review` — ⏭ skipped, see Q4f.
 
 Each migration is a separate rollout so queue behavior can be observed in production. Coordinate with `meta_analysis_roadmap.md`: migrating `ticker_meta_analysis` and `sector_meta_analysis` is the queue side of the same work the meta roadmap calls "lock-aware scheduling" under Later phases.
 
@@ -330,6 +333,92 @@ Tests (focused, run with `.\venv\Scripts\python.exe -m pytest -v`):
 
 - `tests/test_ai_task_workers.py` — extended with sector_meta_analysis cases: handler/enqueue registration (alone and alongside the ticker handlers), payload shape (sector labels preserve original casing including `__UNTAGGED__`), backend-bound model binding parametrized across all three backends, missing-Ollama-base-URL guard, blank-target skipping, and a `None`-result-raises check so retry/failure classification is exercised.
 - `tests/test_sector_meta_analysis_queue_mode.py` — scheduler queue-mode enqueues every sector returned by `list_sector_keys()` (no per-sector freshness gate), caps at `_MAX_SECTORS_PER_RUN`, bypasses `get_running_ai_job` entirely (Q3 contract), does NOT invoke `run_sector_meta` inline; legacy non-queue path remains covered; `META_ANALYSIS_PHASE3_SECTOR=off` continues to short-circuit before either path.
+
+#### Q4c: `etf_group_analysis` — code migrated 2026-05-24
+
+What changed (mirrors Q4b exactly so the next Q4 migrations have a tight copy-pattern):
+
+- `web_dashboard/scheduler/ai_task_workers.py`:
+  - New `QUEUE_JOB_ETF_GROUP_ANALYSIS = "etf_group_analysis"` constant.
+  - `enqueue_etf_group_analysis_tasks()` helper — accepts `(etf_ticker, date_str, priority)` tuples plus an optional `queue_ids: Mapping[target_key, ai_analysis_queue_id]`. The composite `target_key` is the legacy `ai_analysis_queue` shape `f"{ETF}_{date_str}"` (uppercased ETF, ISO `YYYY-MM-DD` date) so cross-checking the per-day legacy rows is trivial and the dedupe index `(analysis_type, target_key) WHERE status IN ('pending','leased')` keeps a re-enqueue from doubling up while a task is active. The `manual_request` branch (priority ≥ 1000) is intentionally **omitted** because there is no manual-rebuild UI route for ETF group analysis today; the helper docstring carries a `TODO` noting the addition is a payload-shape no-op when needed.
+  - `etf_group_analysis_task_handler()` — backend-bound, identical to the sector_meta handler shape: builds a single-backend `OllamaClient` (GLM uses `force_base_url_only=True`, Ollama backends read `AI_QUEUE_OLLAMA_*_BASE_URL`), parses the `target_key` / payload back into `(etf_ticker, datetime)`, then calls `ETFGroupAnalysisService.analyze_group(etf_ticker, analysis_date, model_override=model, model_chain_override=[model])`. Cross-backend fallback happens via re-leasing, not an inline chain. The handler keeps the **legacy `ai_analysis_queue` row's status in sync** via `payload.legacy_queue_id` (`completed` on success, `failed`+`retry_count++` on raise) using a best-effort helper (`_mark_legacy_etf_queue_outcome`); failures to update the legacy row are logged and swallowed so the `ai_task_queue` outcome remains the source of truth.
+  - `build_task_handlers()` registers the handler only when `etf_group_analysis` is in `AI_QUEUE_JOBS` (same gate as the other queue jobs).
+- `web_dashboard/etf_group_analysis.py`: `ETFGroupAnalysisService.analyze_group()` now accepts optional `model_override: str | None` and `model_chain_override: Sequence[str] | None` kwargs and forwards them to `collect_with_summary_model_chain`, matching the Q4a / Q4b extensions on `TickerMetaAnalysisService.run_meta_analysis` and `SectorMetaAnalysisService.run_sector_meta`. Default `None` preserves the legacy multi-model fallback chain for non-queue callers (scheduler legacy path). **No other behavior changed** — no prompt changes, no contract changes, no normalization changes; the article URL stays `etf-analysis://{ETF}/{date}` so the existing `ON CONFLICT` upsert continues to dedupe.
+- `web_dashboard/scheduler/jobs_etf_analysis.py`:
+  - Adds `_etf_group_analysis_queue_mode_enabled()` (delegates to `is_ai_queue_job_enabled`).
+  - When queue mode is on, takes the `_run_etf_group_analysis_enqueue_mode` branch: re-uses the existing legacy discovery path (`reset_stale_in_progress_queue` → `queue_recent_missing_etf_analysis` → `get_pending_etf_analysis`) so candidate selection is byte-identical to the inline job, parses each pending row's `target_key` into `(etf_ticker, date_str)`, enqueues up to `_MAX_ETF_GROUPS_PER_RUN = MAX_ITEMS_PER_RUN = 6` tasks at `_ETF_GROUP_ENQUEUE_PRIORITY = 10`, and forwards the legacy queue id via the helper's `queue_ids=` map so the worker can keep that row's status in sync. The scheduler-side `job_executions` row completes with `"Enqueued N/M etf_group_analysis task(s); failed=… (candidates=K)."` in seconds.
+  - There is **no separate per-(ETF, date) freshness gate** because the legacy discovery step already filters out pairs whose `etf-analysis://` article exists. Queue mode mirrors that behavior. Rows with malformed `target_key` (no `_` separator) are logged + dropped, not enqueued.
+  - Legacy inline path (including the global AI lock check, the `mark_analysis_started`/`mark_analysis_completed`/`mark_analysis_failed` lifecycle on `ai_analysis_queue`, and the per-item `MAX_JOB_DURATION` time budget) is unchanged when the job is not in `AI_QUEUE_JOBS`.
+
+Operational rollout (mirroring Q2/Q4a/Q4b — code default, no Woodpecker secret):
+
+1. Verify in CI: `AI_QUEUE_JOBS=ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis` lets `build_task_handlers` register all four handlers and the worker pool starts.
+2. ✅ `.woodpecker.yml` default for `AI_QUEUE_JOBS` is now `ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis` (changed 2026-05-24). Activates on the next deploy. The host-side `trading-dashboard-optional.env` can still override with a different value.
+3. Observe one nightly cron:
+   - Scheduler row should complete in seconds with `"Enqueued N/M etf_group_analysis task(s); failed=0 (candidates=K)."`.
+   - `ai_task_queue` rows should appear with `analysis_type='etf_group_analysis'` and reach `status='done'` across all three backends.
+   - `ai_analysis_queue` rows for the same `(ETF, date)` should flip from `pending`/`failed` → `completed` as workers finish (or stay `failed` with `retry_count` incremented + `error_message` populated when a task terminally fails).
+   - `/admin/ai-audit` should show per-attempt rows tagged `function='etf_group_analysis'` with the backend-bound model used.
+   - `research_articles.url='etf-analysis://{ETF}/{date}'` rows should continue to render in the ETF analysis UI — the queue path writes through the same service and the same `repo.save_article` upsert, so the contract is byte-identical.
+4. If anything regresses, the rollback is the same env flip in reverse — the legacy inline path is preserved verbatim in `etf_group_analysis_job()`.
+
+Tests (focused, run with `.\venv\Scripts\python.exe -m pytest -v`):
+
+- `tests/test_ai_task_workers.py` — extended with etf_group_analysis cases: handler/enqueue registration (alone and alongside the other three handlers), payload shape (composite `IWC_2026-05-23` target_key with optional `legacy_queue_id` only when mapped), backend-bound model binding parametrized across all three backends, missing-Ollama-base-URL guard, blank-target raises, invalid-date raises, and a `None`-result-raises check so retry/failure classification is exercised.
+- `tests/test_etf_group_analysis_queue_mode.py` — scheduler queue-mode enqueues every pending row returned by `get_pending_etf_analysis` (no per-target freshness gate), caps at `_MAX_ETF_GROUPS_PER_RUN`, forwards each row's `id` as `legacy_queue_id`, bypasses `get_running_ai_job` entirely (Q3 contract), drops malformed `target_key` rows, does NOT invoke `analyze_group` inline; legacy non-queue path remains covered.
+
+#### Q4d: `market_daily_brief` — skipped
+
+**Why skipped:** the unit of work is a single `brief_date` and the steady-state cron runs **one LLM call per day**. The job already accepts a `model_override`, so its service signature is queue-friendly, but the queue's central value proposition — distributing N independent tasks across `ollama_primary` + `ollama_secondary` + `glm` workers — gives no win when N ≈ 1. Even the worst case (`_compute_missing_brief_dates` after a multi-day outage) tops out at ~5 weekday backfill calls; one cron's-worth of parallelism on five short calls is not worth a separate handler/payload contract.
+
+**What blocks migration today:** nothing structural — `run_market_daily_brief()` is the same shape as `run_meta_analysis` / `run_sector_meta` (single primary call, idempotent `ON CONFLICT (brief_date)` upsert). The migration would be a near-mechanical mirror of Q4b.
+
+**What would need to be true to migrate later:** any of (a) the brief becomes per-region or per-asset-class so N grows beyond ~1 per cron, (b) backfill becomes a regular pattern rather than an exception, or (c) we want every AI job on the queue for operational consistency (e.g. a single `/admin/ai-queue` page that shows every active LLM task without a legacy fallback). At that point the migration is: add `QUEUE_JOB_MARKET_DAILY_BRIEF`, an `enqueue_market_daily_brief_tasks([(brief_date_str, priority), ...])` helper with `target_key=YYYY-MM-DD`, a backend-bound handler that calls `run_market_daily_brief(..., model_override=model, model_chain_override=[model], brief_date=parsed_date)`, plus the standard scheduler queue-mode branch. The `_schedule_market_daily_brief_after_ai_lock` lock-retry one-shot can stay as the legacy fallback.
+
+**Mitigation while skipped:** Q3 already removes the global AI mutex contention market_daily_brief used to lose to. As more upstream jobs migrate to the queue, fewer hold the legacy AI lock at all — so `market_daily_brief`'s inline AI-lock check is increasingly a no-op. The lock-retry one-shot remains in place as a safety net.
+
+#### Q4e: `ui_ai_summaries` — skipped
+
+**Why skipped:** the cron is heterogeneous — within a single run it touches **multiple distinct scopes** with different prompts, digest shapes, and persistence targets:
+
+- 3 global tier-1 scopes (`signals.overview`, `research.feed`, `dashboard.commodities`) — each calls a different `refresh_*` function with a different digest builder + prompt template + scope key.
+- Per fund × `display_currency=CAD`: tier-1 portfolio overview (`refresh_dashboard_portfolio_overview`), tier-1 currency (`refresh_dashboard_currency`), tier-2 cross-screen rollup (`refresh_fund_cross_screen_rollup`).
+
+Each `refresh_*` function ALSO computes its own `inputs_digest` and **skips the LLM entirely when the digest is unchanged** (`existing.inputs_digest == d_hash`). The cron is intentionally cheap: in steady state most of the ~3 + 3·N_funds candidate calls are no-ops, and the actual LLM work happens only when underlying data has changed since the last refresh. Migrating to the queue would require either (a) a dispatch-on-`scope` handler with a different payload shape per scope, or (b) running each refresh function speculatively in a worker (paying the digest computation cost in N separate worker leases) — the second variant pays for queue overhead on what are already inline no-ops.
+
+**What blocks migration today:**
+- The handler can't be one-shaped: each scope has a different signature (`fund` vs. global, with/without `display_currency`, different digest builders / prompt templates). A queue task payload would need to carry both a `scope_id` discriminator and the scope-specific args.
+- The digest-skip optimization is computed inside each `refresh_*` against the postgres state at call time. To preserve it, either the enqueuer pre-computes digests + skip-decisions before enqueuing (fetches that should ideally happen close to the LLM call), or the worker re-computes them and frequently exits without doing any LLM work — wasting a queue lease per no-op.
+- Cron cadence is "every ~2h on US market weekdays" — high frequency. A failure in queue plumbing would amplify error rates per day far more than once-nightly jobs do.
+
+**What would need to be true to migrate later:**
+- Refactor `ui_ai_summary_service` so each scope exposes a uniform `(scope_id, scope_args) -> result` shape that a single queue handler can dispatch on, OR
+- Split the cron into per-scope sub-jobs (one job-id per scope), each of which is a thin queue migration mirroring Q4b. This is more code surface but each migration would be a clean copy of the Q4b pattern.
+- Cron cadence drops (e.g. only on data-change events) so the digest-skip optimization is no longer the dominant code path.
+
+Until one of those is true, the inline path is genuinely the simpler / cheaper shape for this job and Q3 already handles the AI-lock contention concern.
+
+#### Q4f: `action_queue_ai_review` — skipped
+
+**Why skipped:** the unit of work is per-`(fund, ticker, signal_analysis_date)` row, but the **prompt construction requires service-side prep that does not cleanly split into "enqueuer prep + worker LLM call":**
+
+1. The cron loads positions per fund (`supabase.get_current_positions(fund)`).
+2. `build_action_queue_items(supabase, fund, 12, positions_df=...)` builds the action queue list, which depends on current price/signal data — a snapshot that may shift between cron and worker execution.
+3. `attach_research_context(postgres, items)` enriches each item with research context.
+4. For each top-5 item per fund, the cron queries `ticker_analysis.summary` and `ticker_meta_analysis.narrative` from postgres to build an excerpt, then formats `queue_row` JSON, then formats the final prompt, then runs the LLM, then upserts a `(fund_key, ticker, signal_analysis_date)` row.
+
+The natural target_key would be `f"{fund}|{ticker}|{signal_date}"`, but reconstructing the full prompt from that key requires re-running steps (1)-(3) inside the worker — meaning the worker would need full access to positions data, the action queue service, and the `attach_research_context` plumbing. That's a service-shape change, not a Q4-pattern migration.
+
+**What blocks migration today:**
+- The "pick top 5" step is dynamic based on cron-time market state; an enqueuer that snapshots top-5 at cron time and stores the prep'd prompt in `payload` would be enqueuing pre-computed text that may go stale before the worker runs.
+- If the worker re-runs `build_action_queue_items` at lease time it would see a different snapshot than the enqueuer, breaking the "enqueuer chose top 5" intent.
+- The current job's failure mode is graceful per-item (`errors += 1, continue`); a queue migration that fails an entire task on a single item failure would change semantics.
+
+**What would need to be true to migrate later:**
+- Refactor `action_queue_service` to separate (a) `build_action_queue_review_payload(fund, ticker, signal_date) -> {prompt, audit_extras, upsert_args}` from (b) `run_action_queue_review_for_payload(payload) -> {verdict, one_liner}`. Then the queue enqueuer iterates funds × top-N and stores prep'd payloads; the queue handler is a thin wrapper around (b) that does the upsert.
+- OR collapse the multi-step prep into a single `compute_for_target(fund, ticker, signal_date)` call where the worker fetches everything itself at lease time — accepting the small drift between cron-snapshot and lease-time state.
+
+Until one of those refactors lands, the inline path is genuinely the right shape for this job and Q3 already handles the AI-lock contention concern.
 
 ## What We Keep
 

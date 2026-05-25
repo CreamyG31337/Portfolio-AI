@@ -35,6 +35,179 @@ MAX_ITEMS_PER_RUN = 6  # ~5–6 LLM calls per night; avoids 1h+ runs killed on d
 # Default queue window; auto-expands up to ETF_GROUP_QUEUE_MAX_LOOKBACK_DAYS when behind.
 QUEUE_LOOKBACK_DAYS = 14
 
+# Queue-mode constants — mirror the Q4a/Q4b pattern. Cron-enqueued ETF group
+# tasks use a low priority so any future manual rebuild route (priority >= 1000)
+# can jump ahead in the queue, matching the convention established for
+# ticker_analysis / ticker_meta_analysis.
+_ETF_GROUP_ENQUEUE_PRIORITY = 10
+# Mirror MAX_ITEMS_PER_RUN so cron does not enqueue more than the legacy path
+# would have processed in one window. The worker pool runs all enqueued tasks
+# concurrently, so this stays modest to keep a steady cadence per cron.
+_MAX_ETF_GROUPS_PER_RUN = MAX_ITEMS_PER_RUN
+
+
+def _etf_group_analysis_queue_mode_enabled() -> bool:
+    try:
+        from scheduler.ai_task_workers import is_ai_queue_job_enabled
+
+        return bool(is_ai_queue_job_enabled("etf_group_analysis"))
+    except Exception as exc:
+        logger.warning(
+            "AI queue mode check failed for etf_group_analysis (using legacy path): %s",
+            exc,
+        )
+        return False
+
+
+def _run_etf_group_analysis_enqueue_mode(job_id: str, start_time: float) -> None:
+    """Queue-mode ETF group analysis: select pending items and enqueue per-group tasks.
+
+    Mirrors :func:`_run_sector_meta_analysis_enqueue_mode` (Q4b) and
+    :func:`_run_ticker_meta_analysis_enqueue_mode` (Q4a). Notes:
+
+    - Candidate selection re-uses the legacy ``ai_analysis_queue`` discovery
+      path (``queue_recent_missing_etf_analysis`` + ``get_pending_etf_analysis``)
+      so the queue mode does not invent a new selection policy. Each pending
+      row's ``id`` is forwarded to the worker via ``payload.legacy_queue_id``
+      so the worker can keep that row's ``status`` in sync (``completed`` on
+      success / ``failed`` on raise) — preserving the legacy resumability log.
+    - There is no separate per-(ETF, date) freshness gate because the legacy
+      queue discovery step already filters out (ETF, date) pairs whose
+      ``etf-analysis://`` article exists. The ``ai_task_queue`` dedupe index
+      ``(analysis_type, target_key) WHERE status IN ('pending','leased')``
+      prevents double-enqueue while a task is active.
+    - ``reset_stale_in_progress_queue()`` still runs so legacy rows left
+      ``in_progress`` by a prior container restart get reset to ``pending`` and
+      become candidates again. The queue's own ``leased`` lifecycle is
+      independent and reclaimed via ``leased_until``.
+    """
+
+    import os
+    from typing import Any as _Any
+
+    target_date = datetime.now(UTC).date()
+    mark_job_completed: _Any = None
+    mark_job_failed: _Any = None
+    AIQueueConfig: _Any = None
+    enqueue_etf_group_analysis_tasks: _Any = None
+    try:
+        from scheduler.ai_task_workers import (
+            AIQueueConfig as _AIQueueConfig,
+        )
+        from scheduler.ai_task_workers import (
+            enqueue_etf_group_analysis_tasks as _enqueue_etf_group_analysis_tasks,
+        )
+        from utils.job_tracking import (
+            mark_job_completed as _mark_job_completed,
+        )
+        from utils.job_tracking import (
+            mark_job_failed as _mark_job_failed,
+        )
+        from utils.job_tracking import (
+            mark_job_started as _mark_job_started,
+        )
+
+        AIQueueConfig = _AIQueueConfig
+        enqueue_etf_group_analysis_tasks = _enqueue_etf_group_analysis_tasks
+        mark_job_completed = _mark_job_completed
+        mark_job_failed = _mark_job_failed
+        _mark_job_started(job_id, target_date)
+    except Exception as exc:
+        logger.warning("Could not initialize queue-mode job tracking: %s", exc)
+
+    logger.info("Starting %s enqueue job (AI task queue mode)...", job_id)
+
+    try:
+        if enqueue_etf_group_analysis_tasks is None or AIQueueConfig is None:
+            raise RuntimeError("AI task queue helpers unavailable")
+
+        postgres = PostgresClient()
+        repo = ResearchRepository(postgres_client=postgres)
+
+        # Reset legacy stale in_progress rows so they re-appear as candidates.
+        # The queue's own lease lifecycle is unaffected by this.
+        reset_stale_in_progress_queue()
+
+        active_lookback = get_etf_queue_lookback_days()
+        queue_recent_missing_etf_analysis(repo, lookback_days=active_lookback)
+        pending = get_pending_etf_analysis(
+            limit=_MAX_ETF_GROUPS_PER_RUN,
+            lookback_days=active_lookback,
+        )
+
+        selected: list[tuple[str, str, int]] = []
+        queue_id_map: dict[str, str] = {}
+        for item in pending:
+            if len(selected) >= _MAX_ETF_GROUPS_PER_RUN:
+                break
+            target_key = str(item.get("target_key") or "")
+            parts = target_key.split("_", 1)
+            if len(parts) != 2:
+                logger.warning(
+                    "etf_group_analysis: skipping invalid target_key=%r in queue mode",
+                    target_key,
+                )
+                continue
+            etf_ticker = parts[0].upper().strip()
+            date_str = parts[1].strip()
+            if not etf_ticker or not date_str:
+                continue
+            queue_id = item.get("id")
+            selected.append((etf_ticker, date_str, _ETF_GROUP_ENQUEUE_PRIORITY))
+            if queue_id:
+                queue_id_map[f"{etf_ticker}_{date_str}"] = str(queue_id)
+
+        if not selected:
+            duration_ms = int((time.time() - start_time) * 1000)
+            message = (
+                f"No etf_group_analysis tasks to enqueue (candidates={len(pending)})"
+            )
+            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            if mark_job_completed is not None:
+                mark_job_completed(
+                    job_id, target_date, None, [], duration_ms=duration_ms, message=message
+                )
+            logger.info("ℹ️ %s", message)
+            return
+
+        supabase = SupabaseClient(use_service_role=True)
+        config = AIQueueConfig.from_env()
+        enqueued_by = os.getenv("AI_QUEUE_ENQUEUED_BY", "cron").strip() or "cron"
+        enqueue_stats = enqueue_etf_group_analysis_tasks(
+            supabase,
+            selected,
+            enqueued_by=enqueued_by,
+            max_attempts=config.max_attempts,
+            queue_ids=queue_id_map,
+        )
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = (
+            f"Enqueued {enqueue_stats['enqueued']}/{enqueue_stats['attempted']} "
+            f"etf_group_analysis task(s); failed={enqueue_stats['failed']} "
+            f"(candidates={len(pending)})."
+        )
+        log_job_execution(
+            job_id,
+            success=enqueue_stats["failed"] == 0,
+            message=message,
+            duration_ms=duration_ms,
+        )
+        if enqueue_stats["failed"] == 0:
+            if mark_job_completed is not None:
+                mark_job_completed(
+                    job_id, target_date, None, [], duration_ms=duration_ms, message=message
+                )
+        elif mark_job_failed is not None:
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        logger.info("✅ ETF group analysis enqueue complete: %s", message)
+    except Exception as exc:
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = f"ETF group analysis enqueue failed: {exc}"
+        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        if mark_job_failed is not None:
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        logger.error("❌ %s", message, exc_info=True)
+
 
 def reset_stale_in_progress_queue(max_age_hours: float = 2.0) -> int:
     """Reset ``in_progress`` rows left by container restart so the job can resume."""
@@ -223,6 +396,10 @@ def etf_group_analysis_job() -> None:
     job_id = 'etf_group_analysis'
     start_time = time.time()
     target_date = datetime.now(UTC).date()
+
+    if _etf_group_analysis_queue_mode_enabled():
+        _run_etf_group_analysis_enqueue_mode(job_id, start_time)
+        return
 
     from utils.job_tracking import log_job_step
 

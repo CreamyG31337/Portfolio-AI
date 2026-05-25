@@ -11,6 +11,7 @@ import json
 import re
 import logging
 from typing import List, Dict, Optional, Any
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from etf_article_sector_infer import resolve_sector_for_etf_analysis_article
@@ -155,13 +156,28 @@ class ETFGroupAnalysisService:
             logger.warning(f"Error fetching ETF metadata for {etf_ticker}: {e}")
             return None
     
-    def analyze_group(self, etf_ticker: str, date: datetime) -> Optional[Dict]:
+    def analyze_group(
+        self,
+        etf_ticker: str,
+        date: datetime,
+        *,
+        model_override: str | None = None,
+        model_chain_override: Sequence[str] | None = None,
+    ) -> Optional[Dict]:
         """Analyze all changes for an ETF on a date.
-        
+
         Args:
             etf_ticker: ETF ticker symbol
             date: Date to analyze
-            
+            model_override: Pin the requested model for this call (queue-bound
+                workers pass the backend-bound model here).
+            model_chain_override: Pin the fallback chain to a single model so
+                cross-backend fallback happens via re-leasing the queue task,
+                not inline. Default ``None`` preserves the legacy multi-model
+                fallback used by the inline scheduler path. Matches the Q4a /
+                Q4b extensions on ``TickerMetaAnalysisService.run_meta_analysis``
+                / ``SectorMetaAnalysisService.run_sector_meta``.
+
         Returns:
             Analysis dictionary with sentiment, themes, etc., or None if no changes
         """
@@ -215,9 +231,9 @@ class ETFGroupAnalysisService:
             return None
         
         # Analyze with LLM
-        model = get_summarizing_model()
+        model = (model_override or "").strip() or get_summarizing_model()
         system_prompt = "You are a financial analyst. Return ONLY valid JSON with the exact fields specified."
-        
+
         try:
             full_response, model = collect_with_summary_model_chain(
                 self.ollama,
@@ -230,6 +246,7 @@ class ETFGroupAnalysisService:
                 response_ok=lambda s: extract_json(s) is not None,
                 function_name="etf_group_analysis",
                 audit_extra={"tickers_extracted": [etf_ticker]},
+                model_chain_override=model_chain_override,
             )
             if not full_response:
                 logger.error("ETF group LLM failed on all summarization models for %s", etf_ticker)

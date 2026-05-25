@@ -39,6 +39,7 @@ ERROR_UNKNOWN = "unknown"
 QUEUE_JOB_TICKER_ANALYSIS = "ticker_analysis"
 QUEUE_JOB_TICKER_META_ANALYSIS = "ticker_meta_analysis"
 QUEUE_JOB_SECTOR_META_ANALYSIS = "sector_meta_analysis"
+QUEUE_JOB_ETF_GROUP_ANALYSIS = "etf_group_analysis"
 
 TERMINAL_ERROR_CLASSES = {
     ERROR_SCHEMA_VIOLATION,
@@ -786,6 +787,226 @@ def sector_meta_analysis_task_handler(task: Mapping[str, Any], backend: str) -> 
         )
 
 
+def enqueue_etf_group_analysis_tasks(
+    supabase_client: Any,
+    etf_groups: Sequence[tuple[str, str, int]],
+    *,
+    enqueued_by: str = "cron",
+    max_attempts: int = 3,
+    queue_ids: Mapping[str, str] | None = None,
+) -> dict[str, int]:
+    """Enqueue one ``etf_group_analysis`` task per (ETF, date) pair.
+
+    Mirrors :func:`enqueue_sector_meta_analysis_tasks`. Each input tuple is
+    ``(etf_ticker, date_str, priority)`` where ``date_str`` is ISO ``YYYY-MM-DD``.
+    The ``target_key`` is the legacy ``ai_analysis_queue`` shape
+    ``f"{ETF}_{date_str}"`` so cross-checking against the existing per-day
+    queue rows is trivial. ETF tickers are uppercased; date strings round-trip
+    verbatim.
+
+    ``queue_ids`` (optional) maps ``target_key`` → ``ai_analysis_queue.id`` so
+    the worker can keep the legacy resumability log in sync (mark
+    ``completed`` on success / ``failed`` on raise). Missing entries cause the
+    handler to skip the legacy update (no-op, no error).
+
+    TODO: a manual rebuild route (priority ≥ 1000) is intentionally omitted —
+    today only the nightly cron path enqueues these tasks. Add a
+    ``manual_request`` branch later without a payload-shape change because
+    ``payload`` is already free-form JSON.
+    """
+
+    stats: dict[str, int] = {"attempted": 0, "enqueued": 0, "failed": 0}
+    queue_id_map = dict(queue_ids or {})
+    for etf_ticker, date_str, priority in etf_groups:
+        stats["attempted"] += 1
+        etf_upper = str(etf_ticker).upper().strip()
+        date_clean = str(date_str).strip()
+        if not etf_upper or not date_clean:
+            stats["failed"] += 1
+            continue
+        target_key = f"{etf_upper}_{date_clean}"
+        try:
+            payload: dict[str, Any] = {
+                "etf_ticker": etf_upper,
+                "date": date_clean,
+                "priority": int(priority),
+            }
+            queue_id = queue_id_map.get(target_key)
+            if queue_id:
+                payload["legacy_queue_id"] = str(queue_id)
+            enqueue_ai_task(
+                supabase_client,
+                analysis_type=QUEUE_JOB_ETF_GROUP_ANALYSIS,
+                target_key=target_key,
+                payload=payload,
+                priority=int(priority),
+                enqueued_by=enqueued_by,
+                max_attempts=max_attempts,
+            )
+            stats["enqueued"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logger.warning(
+                "Failed to enqueue etf_group_analysis task for %s: %s",
+                target_key,
+                exc,
+            )
+    return stats
+
+
+def etf_group_analysis_task_handler(task: Mapping[str, Any], backend: str) -> None:
+    """Run one ETF group analysis task on the assigned backend.
+
+    Mirrors :func:`sector_meta_analysis_task_handler`: the worker is bound to
+    a single backend / model so cross-backend fallback happens via re-leasing
+    instead of an inline chain. The scheduler queue-mode path is responsible
+    for candidate selection (the legacy ``ai_analysis_queue`` table); the
+    worker just re-runs ``analyze_group`` and persists the resulting research
+    article.
+
+    The legacy ``ai_analysis_queue`` resumability row (when its id is in the
+    payload) is updated to ``completed`` on success and ``failed`` on raise so
+    the existing audit/retry log stays in sync. The handler still re-raises
+    on failure so the task queue worker classifies the error and releases /
+    fails the lease normally.
+    """
+
+    target_key = str(task.get("target_key") or "").strip()
+    if not target_key:
+        raise ValueError("etf_group_analysis task missing target_key")
+
+    payload_raw = task.get("payload")
+    payload: dict[str, Any] = dict(payload_raw) if isinstance(payload_raw, dict) else {}
+
+    etf_ticker = str(payload.get("etf_ticker") or "").upper().strip()
+    date_str = str(payload.get("date") or "").strip()
+    if not etf_ticker or not date_str:
+        # Fall back to parsing the target_key when payload is incomplete (e.g.
+        # legacy enqueues that pre-date this handler). Format: ``ETF_YYYY-MM-DD``.
+        parts = target_key.split("_", 1)
+        if len(parts) == 2:
+            etf_ticker = etf_ticker or parts[0].upper()
+            date_str = date_str or parts[1]
+    if not etf_ticker or not date_str:
+        raise ValueError(
+            f"etf_group_analysis task has unparseable target_key={target_key!r}"
+        )
+
+    from datetime import datetime as _datetime
+    from datetime import UTC as _UTC
+
+    try:
+        analysis_date = _datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=_UTC)
+    except ValueError as exc:
+        raise ValueError(
+            f"etf_group_analysis task has invalid date={date_str!r}"
+        ) from exc
+
+    model = model_for_backend(backend)
+
+    from etf_group_analysis import ETFGroupAnalysisService
+    from ollama_client import OllamaClient
+    from postgres_client import PostgresClient
+    from research_repository import ResearchRepository
+    from supabase_client import SupabaseClient
+
+    supabase = SupabaseClient(use_service_role=True)
+    postgres = PostgresClient()
+    repo = ResearchRepository(postgres_client=postgres)
+
+    if backend == BACKEND_GLM:
+        ollama = OllamaClient(force_base_url_only=True)
+    else:
+        base_url = ollama_base_url_for_backend(backend)
+        if not base_url:
+            raise RuntimeError(f"No Ollama base URL configured for backend={backend}")
+        ollama = OllamaClient(base_url=base_url, force_base_url_only=True)
+
+    service = ETFGroupAnalysisService(ollama, supabase, repo)
+
+    legacy_queue_id = payload.get("legacy_queue_id")
+    legacy_queue_id_str: str | None = (
+        str(legacy_queue_id) if legacy_queue_id else None
+    )
+
+    try:
+        result = service.analyze_group(
+            etf_ticker,
+            analysis_date,
+            model_override=model,
+            model_chain_override=[model],
+        )
+        if not result:
+            raise RuntimeError(
+                f"etf_group_analysis returned no result for {etf_ticker} on {date_str}"
+            )
+        if legacy_queue_id_str:
+            _mark_legacy_etf_queue_outcome(
+                supabase, legacy_queue_id_str, success=True
+            )
+    except Exception as exc:
+        if legacy_queue_id_str:
+            _mark_legacy_etf_queue_outcome(
+                supabase,
+                legacy_queue_id_str,
+                success=False,
+                error=str(exc)[:500],
+            )
+        raise
+
+
+def _mark_legacy_etf_queue_outcome(
+    supabase: Any,
+    queue_id: str,
+    *,
+    success: bool,
+    error: str | None = None,
+) -> None:
+    """Update the legacy ``ai_analysis_queue`` row's status from the worker.
+
+    Best-effort: any exception is logged and swallowed so the queue worker's
+    primary success/failure signal remains the ``ai_task_queue`` outcome.
+    Mirrors the legacy job's :func:`mark_analysis_completed` /
+    :func:`mark_analysis_failed` behavior, including the ``retry_count``
+    increment on failure.
+    """
+    try:
+        from datetime import datetime as _datetime
+        from datetime import UTC as _UTC
+
+        if success:
+            supabase.supabase.table("ai_analysis_queue").update(
+                {
+                    "status": "completed",
+                    "completed_at": _datetime.now(_UTC).isoformat(),
+                }
+            ).eq("id", queue_id).execute()
+            return
+
+        # Failure: increment retry_count and write last error.
+        cur = (
+            supabase.supabase.table("ai_analysis_queue")
+            .select("retry_count")
+            .eq("id", queue_id)
+            .limit(1)
+            .execute()
+        )
+        prev = 0
+        if cur.data:
+            prev = int(cur.data[0].get("retry_count") or 0)
+        supabase.supabase.table("ai_analysis_queue").update(
+            {
+                "status": "failed",
+                "error_message": (error or "")[:500],
+                "retry_count": prev + 1,
+            }
+        ).eq("id", queue_id).execute()
+    except Exception as exc:
+        logger.warning(
+            "Failed to update legacy ai_analysis_queue row %s: %s", queue_id, exc
+        )
+
+
 _worker_pool: Optional[AIQueueWorkerPool] = None
 
 
@@ -831,6 +1052,8 @@ def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandl
         handlers[QUEUE_JOB_TICKER_META_ANALYSIS] = ticker_meta_analysis_task_handler
     if QUEUE_JOB_SECTOR_META_ANALYSIS in jobs:
         handlers[QUEUE_JOB_SECTOR_META_ANALYSIS] = sector_meta_analysis_task_handler
+    if QUEUE_JOB_ETF_GROUP_ANALYSIS in jobs:
+        handlers[QUEUE_JOB_ETF_GROUP_ANALYSIS] = etf_group_analysis_task_handler
     return handlers
 
 
