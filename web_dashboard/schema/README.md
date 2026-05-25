@@ -159,7 +159,7 @@ This will:
 - `published_at` (TIMESTAMP): When article was published
 - `fetched_at` (TIMESTAMP): When we scraped it
 - `relevance_score` (DECIMAL): 0.00 to 1.00
-- `embedding` (vector(768)): Vector embedding for semantic search
+- `embedding` (vector(1024)): Vector embedding for semantic search (bge-m3; configurable via `AI_EMBED_MODEL` / `AI_EMBED_DIM`)
 
 **Indexes**:
 - `idx_research_ticker`: Fast lookups by ticker

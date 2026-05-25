@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS research_articles (
     fetched_at TIMESTAMP DEFAULT NOW(), -- When we scraped it
     relevance_score DECIMAL(3,2),   -- 0.00 to 1.00
     
-    -- The AI Brain (768 dimensions is standard for nomic-embed-text)
-    embedding vector(768)
+    -- The AI Brain (1024 dimensions for bge-m3)
+    embedding vector(1024)
 );
 
 -- Indexes for Speed

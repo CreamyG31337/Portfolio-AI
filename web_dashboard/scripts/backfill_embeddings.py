@@ -88,7 +88,7 @@ def backfill_embeddings(batch_size: int = 10, delay_between_batches: float = 2.0
                 
                 # Generate embedding
                 logger.info(f"[{i+1}/{total_articles}] Embedding: {title[:50]}...")
-                embedding = ollama_client.generate_embedding(content[:6000])  # Truncate to avoid token limits
+                embedding = ollama_client.generate_embedding(content)  # Truncate to avoid token limits
                 
                 if not embedding:
                     logger.warning(f"Failed to generate embedding for {article_id}")

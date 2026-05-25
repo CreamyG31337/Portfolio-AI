@@ -17,7 +17,7 @@ The AI Research System is an automated intelligence gathering and analysis platf
 2. **Ollama Client** (`ollama_client.py`)
    - Local LLM integration (runs in Docker)
    - Generates article summaries with structured metadata
-   - Creates vector embeddings (768 dimensions) for semantic search
+   - Creates vector embeddings (1024 dimensions via `bge-m3`, configurable) for semantic search
    - Extracts tickers, sectors, and key themes from articles
    - Writes JSONL audit records for AI inference calls (summary, crowd sentiment, embeddings)
 
@@ -138,7 +138,7 @@ CREATE TABLE research_articles (
     published_at TIMESTAMP,
     fetched_at TIMESTAMP,
     relevance_score DECIMAL(3,2),   -- 0.00 to 1.00
-    embedding vector(768)           -- For semantic search
+    embedding vector(1024)          -- For semantic search (bge-m3)
 );
 ```
 
@@ -215,10 +215,13 @@ Scores are used for:
 
 ## Vector Embeddings
 
-- **Model:** nomic-embed-text (via Ollama)
-- **Dimensions:** 768
+- **Model:** `bge-m3` (via Ollama) — configurable via `AI_EMBED_MODEL`
+- **Dimensions:** 1024 — configurable via `AI_EMBED_DIM` (must match the column type)
+- **Input cap:** ~24,000 characters — configurable via `AI_EMBED_MAX_CHARS` (truncation is centralized in `ollama_client.generate_embedding`)
 - **Usage:** Semantic similarity search
-- **Storage:** PostgreSQL pgvector extension
+- **Storage:** PostgreSQL pgvector extension (`vector(1024)`, HNSW cosine indexes)
+
+> Historical note: this system originally used `nomic-embed-text` at 768 dimensions. It was migrated to `bge-m3` in May 2026 because the on-Ollama context for `nomic-embed-text` is hard-capped at 2048 tokens (~5500 chars), which caused long newsletters/articles to fail to embed. See `database/migrations/2026-05_migrate_embeddings_to_bge_m3_1024.sql` and `web_dashboard/scripts/reembed_research_vectors.py` for the schema change and backfill script.
 
 **Similarity Calculation:**
 ```sql
@@ -346,8 +349,9 @@ scheduler.add_job(
 - Check domain blacklist isn't too restrictive
 
 **"Embedding generation failed"**
-- Check Ollama model is loaded
-- Verify content isn't too long (>6000 chars truncated)
+- Check Ollama model is loaded (`ollama list` should show `bge-m3` or whatever `AI_EMBED_MODEL` is set to)
+- Inputs are truncated to `AI_EMBED_MAX_CHARS` (default 24,000) inside `ollama_client.generate_embedding`; if Ollama still complains about context length, the model itself (not just the column) has a smaller hard cap — try shrinking `AI_EMBED_MAX_CHARS` rather than passing longer text
+- If the returned vector's dimension doesn't match `AI_EMBED_DIM` (default 1024) the call is rejected — check the model and column type agree
 - Check Ollama logs for errors
 
 ## Future Enhancements

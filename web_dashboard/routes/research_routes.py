@@ -643,7 +643,7 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
                 embedding = None
                 ollama_client = get_ollama_client()
                 if ollama_client:
-                    embedding = ollama_client.generate_embedding(content[:6000])
+                    embedding = ollama_client.generate_embedding(content)
                 if embedding:
                     nl_repo.update_embedding(article_id, embedding)
 
@@ -737,7 +737,7 @@ def reanalyze_article_flask(article_id: str, model_name: str) -> tuple[bool, str
         embedding = None
         ollama_client = get_ollama_client()
         if ollama_client:
-            embedding = ollama_client.generate_embedding(content[:6000])
+            embedding = ollama_client.generate_embedding(content)
             if not embedding:
                 logger.warning(f"Failed to generate embedding for article {article_id}, continuing without embedding")
                 embedding = None
@@ -1149,7 +1149,7 @@ def reanalyze_article_stream():
 
                         yield f"data: {json.dumps({'status': 'embedding', 'message': 'Generating embedding...'})}\n\n"
                         _ollama = get_ollama_client()
-                        embedding = _ollama.generate_embedding(content[:6000]) if _ollama else None
+                        embedding = _ollama.generate_embedding(content) if _ollama else None
 
                         yield f"data: {json.dumps({'status': 'saving', 'message': 'Saving to database...'})}\n\n"
                         _ts_data_sse = (
@@ -1298,7 +1298,7 @@ def reanalyze_article_stream():
                 # Generate embedding (Ollama only; skip if unavailable, e.g. when using GLM without Ollama)
                 yield f"data: {json.dumps({'status': 'embedding', 'message': 'Generating embedding...'})}\n\n"
                 _ollama = get_ollama_client()
-                embedding = _ollama.generate_embedding(content[:6000]) if _ollama else None
+                embedding = _ollama.generate_embedding(content) if _ollama else None
                 if not embedding:
                     logger.warning(f"Failed to generate embedding for article {article_id}")
                     embedding = None
@@ -1767,7 +1767,7 @@ def api_research_save():
         ollama_client = get_ollama_client()
         if ollama_client:
             try:
-                embedding = ollama_client.generate_embedding(content[:6000])
+                embedding = ollama_client.generate_embedding(content)
             except Exception as e:
                 logger.warning(f"Failed to generate embedding: {e}")
                 embedding = None

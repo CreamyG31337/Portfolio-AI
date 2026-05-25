@@ -40,8 +40,10 @@ In Mailgun dashboard:
 ### 4. Ensure Ollama Model is Available
 
 ```bash
-ollama pull nomic-embed-text
+ollama pull bge-m3
 ```
+
+> The embedding model is configurable via `AI_EMBED_MODEL` (default `bge-m3`, 1024-dim). If you change it, also set `AI_EMBED_DIM` to the model's output size and update the `embedding vector(N)` column type to match (see `database/migrations/2026-05_migrate_embeddings_to_bge_m3_1024.sql` for the pattern).
 
 ## Production Deployment (Woodpecker CI)
 
@@ -90,7 +92,7 @@ FLASK_SECRET_KEY=...
 ✅ Mailgun webhook integration with HMAC-SHA256 signature verification
 ✅ Automatic text extraction from HTML/plain text emails
 ✅ Ticker symbol extraction using regex patterns
-✅ Ollama embeddings (nomic-embed-text, 768 dimensions) for semantic search
+✅ Ollama embeddings (`bge-m3`, 1024 dimensions — configurable via `AI_EMBED_MODEL` / `AI_EMBED_DIM`) for semantic search
 ✅ PostgreSQL storage with pgvector for similarity search
 ✅ Web UI with search, filtering, and pagination
 ✅ Duplicate prevention via message ID

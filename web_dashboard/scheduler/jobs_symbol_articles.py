@@ -302,7 +302,7 @@ def symbol_article_scraper_job() -> None:
                                 
                                 # Embedding is Ollama-only
                                 if ollama_client:
-                                    embedding = ollama_client.generate_embedding(content[:6000])
+                                    embedding = ollama_client.generate_embedding(content)
                             except Exception as e:
                                 logger.warning(f"  ⚠️ AI processing failed: {e}")
                         

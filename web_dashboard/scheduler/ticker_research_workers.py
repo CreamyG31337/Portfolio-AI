@@ -107,7 +107,7 @@ def process_sector_search_result(ctx: SectorArticleCtx, result: dict) -> Article
             return c
 
         if ctx.ollama_client:
-            embedding = ctx.ollama_client.generate_embedding(content[:6000])
+            embedding = ctx.ollama_client.generate_embedding(content)
             if not embedding:
                 logger.warning("Failed to generate embedding for sector %s", ctx.sector)
 
@@ -293,7 +293,7 @@ def process_ticker_search_result(ctx: TickerArticleCtx, result: dict) -> Article
             return c
 
         if ctx.ollama_client:
-            embedding = ctx.ollama_client.generate_embedding(content[:6000])
+            embedding = ctx.ollama_client.generate_embedding(content)
             if not embedding:
                 logger.warning("Failed to generate embedding for %s", ctx.ticker)
 

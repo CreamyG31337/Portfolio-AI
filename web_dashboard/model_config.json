@@ -122,6 +122,13 @@
             "desc": "Embedding model for text similarity and RAG",
             "hidden": true
         },
+        "bge-m3": {
+            "num_ctx": 8192,
+            "num_predict": 512,
+            "temperature": 0.1,
+            "desc": "Long-context embedding model for semantic search and RAG",
+            "hidden": true
+        },
         "glm-4.7": {
             "provider": "zhipu",
             "num_ctx": 128000,

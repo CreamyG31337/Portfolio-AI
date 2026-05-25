@@ -16,7 +16,9 @@ _DEFAULT_ZHIPU_BASE = "https://api.z.ai/api/coding/paas/v4"
 
 PRIMARY_MODEL_DEFAULT = "glm-5.1"
 CHEAP_MODEL_DEFAULT = "glm-5-turbo"
-EMBED_MODEL_DEFAULT = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text:latest")
+EMBED_MODEL_DEFAULT = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
+EMBED_DIM_DEFAULT = int(os.getenv("AI_EMBED_DIM", "1024"))
+EMBED_MAX_CHARS_DEFAULT = int(os.getenv("AI_EMBED_MAX_CHARS", "24000"))
 
 # Benchmark / probe lists (not used for automatic production fallback chains).
 BENCH_JUDGE_MODEL = os.getenv("AI_BENCH_JUDGE_MODEL", PRIMARY_MODEL_DEFAULT).strip() or PRIMARY_MODEL_DEFAULT
@@ -85,6 +87,38 @@ def get_embed_model() -> str:
     except Exception:
         pass
     return EMBED_MODEL_DEFAULT
+
+
+def get_embed_dim() -> int:
+    """Expected vector width for the configured embedding model."""
+    env = os.getenv("AI_EMBED_DIM", "").strip()
+    if env:
+        return int(env)
+    try:
+        from settings import get_system_setting
+
+        v = get_system_setting("ai_embed_dim", default=None)
+        if v and str(v).strip():
+            return int(str(v).strip())
+    except Exception:
+        pass
+    return EMBED_DIM_DEFAULT
+
+
+def get_embed_max_chars() -> int:
+    """Maximum input characters sent to the embedding model."""
+    env = os.getenv("AI_EMBED_MAX_CHARS", "").strip()
+    if env:
+        return int(env)
+    try:
+        from settings import get_system_setting
+
+        v = get_system_setting("ai_embed_max_chars", default=None)
+        if v and str(v).strip():
+            return int(str(v).strip())
+    except Exception:
+        pass
+    return EMBED_MAX_CHARS_DEFAULT
 
 
 def get_glm_base_urls() -> List[str]:

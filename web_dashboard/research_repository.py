@@ -949,7 +949,7 @@ class ResearchRepository:
         """Search for articles similar to the query embedding using vector similarity.
         
         Args:
-            query_embedding: Vector embedding of the search query (768 dimensions)
+            query_embedding: Vector embedding of the search query (matches the column dim, currently 1024 with bge-m3 — see `AI_EMBED_DIM`)
             limit: Maximum number of results to return
             min_similarity: Minimum cosine similarity score (0.0 to 1.0)
             ticker: Optional filter by ticker

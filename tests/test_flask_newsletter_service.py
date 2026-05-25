@@ -53,14 +53,40 @@ def test_extract_tickers_known_validation_keeps_explicit_unknowns() -> None:
     assert "ALSO" not in tickers
 
 
-def test_generate_embedding_rejects_non_768_dimensions(monkeypatch) -> None:
+def test_generate_embedding_rejects_wrong_dimensions(monkeypatch) -> None:
+    monkeypatch.setenv("AI_EMBED_MODEL", "bge-m3")
+    monkeypatch.setenv("AI_EMBED_DIM", "1024")
+
     class _FakeOllama:
         @staticmethod
-        def generate_embedding(_text: str, model: str = "nomic-embed-text") -> List[float]:
-            assert model == "nomic-embed-text"
+        def generate_embedding(_text: str, model: str = "bge-m3") -> List[float]:
+            assert model == "bge-m3"
             return [0.1] * 10
 
     monkeypatch.setattr(ollama_client, "get_ollama_client", lambda: _FakeOllama())
 
     service = NewsletterService()
     assert service.generate_embedding("hello world") is None
+
+
+def test_generate_embedding_uses_configured_model_and_truncation(monkeypatch) -> None:
+    monkeypatch.setenv("AI_EMBED_MODEL", "bge-m3")
+    monkeypatch.setenv("AI_EMBED_DIM", "1024")
+    monkeypatch.setenv("AI_EMBED_MAX_CHARS", "12")
+    seen: dict[str, object] = {}
+
+    class _FakeOllama:
+        @staticmethod
+        def generate_embedding(text: str, model: str = "bge-m3") -> List[float]:
+            seen["text"] = text
+            seen["model"] = model
+            return [0.1] * 1024
+
+    monkeypatch.setattr(ollama_client, "get_ollama_client", lambda: _FakeOllama())
+
+    service = NewsletterService()
+    embedding = service.generate_embedding("abcdefghijklmnopqrstuvwxyz")
+
+    assert embedding is not None
+    assert len(embedding) == 1024
+    assert seen == {"text": "abcdefghijkl", "model": "bge-m3"}

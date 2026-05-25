@@ -127,7 +127,7 @@ Configure in scheduler (recommended: hourly or every 6 hours)
    - Extracts tables (if present)
 
 6. **Generate AI Analysis**
-   - Generates vector embedding (768 dimensions)
+   - Generates vector embedding (1024 dimensions, `bge-m3` by default — see `AI_EMBED_MODEL`)
    - Creates AI summary with Chain of Thought analysis
    - Extracts claims, fact-check, conclusion, sentiment
 
@@ -150,7 +150,7 @@ Reports are stored in the existing `research_articles` table:
 | `fund` | Fund name or NULL | For fund-specific reports |
 | `title` | Cleaned filename | Without date prefix |
 | `content` | Full extracted text | From pdfplumber |
-| `embedding` | Vector(768) | For semantic search |
+| `embedding` | Vector(1024) | For semantic search (bge-m3) |
 | `published_at` | Date from filename | Parsed YYYYMMDD |
 | `source` | `'Research Report'` | Source identifier |
 

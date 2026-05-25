@@ -134,7 +134,7 @@ def process_rss_feed_item(ctx: RssFeedItemCtx, item: dict) -> ArticleCounters:
             return c
 
         if ctx.ollama_client:
-            embedding = ctx.ollama_client.generate_embedding(content[:6000])
+            embedding = ctx.ollama_client.generate_embedding(content)
 
         relevance_score = calculate_relevance_score(
             extracted_tickers if extracted_tickers else [],

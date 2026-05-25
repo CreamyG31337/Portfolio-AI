@@ -220,7 +220,7 @@ def process_market_research_pair(ctx: MarketResearchCtx, pair: tuple[int, dict])
 
         if ctx.ollama_client:
             logger.debug("Generating embedding for: %s...", title[:50])
-            embedding = ctx.ollama_client.generate_embedding(content[:6000])
+            embedding = ctx.ollama_client.generate_embedding(content)
             if not embedding:
                 logger.warning("Failed to generate embedding for %s...", title[:50])
         else:

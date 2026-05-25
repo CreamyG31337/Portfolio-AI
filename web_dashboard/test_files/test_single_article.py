@@ -131,7 +131,7 @@ def test_single_article(url: str, save_to_db: bool = False):
                         extracted_sector = sectors[0]
                 
                 # Generate embedding
-                embedding = ollama_client.generate_embedding(content[:6000])
+                embedding = ollama_client.generate_embedding(content)
                 
                 print(f"✅ AI analysis completed")
                 if extracted_tickers:

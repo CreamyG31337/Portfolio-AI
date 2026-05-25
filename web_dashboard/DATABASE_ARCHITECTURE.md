@@ -39,7 +39,7 @@ This project uses **two separate databases** for different purposes:
 **Tables**:
 - `research_articles` - Article content, embeddings, AI analysis
   - Full article text (can be lengthy)
-  - Vector embeddings (768 dimensions via pgvector)
+  - Vector embeddings (1024 dimensions via pgvector, model `bge-m3` — configurable via `AI_EMBED_MODEL` / `AI_EMBED_DIM`)
   - AI summaries and metadata
 - `market_relationships` - Company relationship graph
 - `congress_trades_analysis` - **NEW** AI conflict-of-interest analysis results

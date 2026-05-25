@@ -957,16 +957,20 @@ class NewsletterService:
             if not ollama:
                 return None, "ollama_unavailable", None
 
-            max_chars = 6000
+            from model_registry import get_embed_dim, get_embed_max_chars, get_embed_model
+
+            expected_dim = get_embed_dim()
+            model = get_embed_model()
+            max_chars = get_embed_max_chars()
             text_use = text[:max_chars] if len(text) > max_chars else text
             if len(text) > max_chars:
                 logger.debug("Truncated text to %s characters for embedding", max_chars)
 
-            embedding = ollama.generate_embedding(text_use, model="nomic-embed-text")
+            embedding = ollama.generate_embedding(text_use, model=model)
             if not embedding:
                 return None, "no_embedding_returned", None
-            if len(embedding) != 768:
-                return None, "dim_mismatch", f"got {len(embedding)} expected 768"
+            if len(embedding) != expected_dim:
+                return None, "dim_mismatch", f"got {len(embedding)} expected {expected_dim}"
             return embedding, "", None
         except Exception as e:
             return None, "exception", f"{type(e).__name__}: {e}"
@@ -978,7 +982,7 @@ class NewsletterService:
             text: Text to generate embedding for (will be truncated if too long)
             
         Returns:
-            List of floats (768 dimensions) or None if failed
+            List of floats (configured embedding dimension) or None if failed
         """
         emb, reason, err = self._embedding_attempt(text)
         if emb:
@@ -1008,7 +1012,7 @@ class NewsletterService:
                 "ok",
                 duration_ms=elapsed_ms,
                 dim=len(emb),
-                chars_in=min(chars_in, 6000),
+                chars_in=min(chars_in, self._get_embedding_max_chars_for_log()),
             )
             return emb
         log_status = "fail" if reason == "exception" else "skip"
@@ -1017,6 +1021,15 @@ class NewsletterService:
             extras["err"] = err
         NewsletterService.log_step(nl_id, "embedding", log_status, **extras)
         return None
+
+    @staticmethod
+    def _get_embedding_max_chars_for_log() -> int:
+        try:
+            from model_registry import get_embed_max_chars
+
+            return get_embed_max_chars()
+        except Exception:
+            return 24000
     
     def process_newsletter(
         self,

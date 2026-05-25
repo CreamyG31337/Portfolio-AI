@@ -146,7 +146,7 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
             return c
 
         if ctx.ollama_client:
-            embedding = ctx.ollama_client.generate_embedding(content[:6000])
+            embedding = ctx.ollama_client.generate_embedding(content)
 
         logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
 
@@ -342,7 +342,7 @@ def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: Index
             return c
 
         if ctx.ollama_client:
-            embedding = ctx.ollama_client.generate_embedding(content[:6000])
+            embedding = ctx.ollama_client.generate_embedding(content)
 
         logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
 

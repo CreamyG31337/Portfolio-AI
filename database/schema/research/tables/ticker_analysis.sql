@@ -19,7 +19,7 @@ CREATE TABLE ticker_analysis (
     etf_changes_count INTEGER DEFAULT 0,
     congress_trades_count INTEGER DEFAULT 0,
     research_articles_count INTEGER DEFAULT 0,
-    embedding vector(768),
+    embedding vector(1024),
     created_at TIMESTAMP DEFAULT now(),
     updated_at TIMESTAMP DEFAULT now(),
     model_used VARCHAR(50) DEFAULT 'granite3.3:8b'::character varying,
@@ -39,7 +39,7 @@ CREATE TABLE ticker_analysis (
 
 -- Indexes
 CREATE INDEX idx_ticker_analysis_date ON ticker_analysis (analysis_date);
--- HNSW on the embedding (vector(768)); a plain btree on this column overflows
+-- HNSW on the embedding (vector(1024)); a plain btree on this column overflows
 -- the 2704-byte btree max row size. See
 -- database/migrations/2026-05_fix_ticker_analysis_index_and_widths.sql
 CREATE INDEX idx_ticker_analysis_embedding

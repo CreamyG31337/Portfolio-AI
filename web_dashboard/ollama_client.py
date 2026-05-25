@@ -1601,24 +1601,41 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             logger.error(f"❌ Error generating streaming summary: {e}", exc_info=True)
             return {}
     
-    def generate_embedding(self, text: str, model: str = "nomic-embed-text") -> List[float]:
+    def generate_embedding(self, text: str, model: Optional[str] = None) -> List[float]:
         """Generate embedding vector for text using Ollama embedding API.
         
         Args:
             text: Text to generate embedding for
-            model: Embedding model name (defaults to nomic-embed-text)
+            model: Embedding model name (defaults to model_registry.get_embed_model())
             
         Returns:
-            List of floats (768 dimensions for nomic-embed-text)
+            List of floats (dimension depends on the configured embedding model)
         """
         if not self.enabled:
             logger.warning("Ollama embedding generation rejected: AI assistant disabled")
             return []
         
-        # Prepare request payload
+        if model is None:
+            try:
+                from model_registry import get_embed_model
+
+                model = get_embed_model()
+            except Exception:
+                model = "bge-m3"
+
+        try:
+            from model_registry import get_embed_max_chars
+
+            max_chars = get_embed_max_chars()
+        except Exception:
+            max_chars = 24000
+        text_use = text[:max_chars] if len(text) > max_chars else text
+
+        # Use Ollama's newer /api/embed endpoint. It supports modern embedding
+        # models like bge-m3 and returns {"embeddings": [[...]]}.
         payload = {
             "model": model,
-            "prompt": text
+            "input": text_use,
         }
         audit_start = time.time()
         embedding: List[float] = []
@@ -1626,10 +1643,11 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         
         try:
             logger.debug(f"Generating embedding with model {model}")
-            response = self._post_ollama(model, "/api/embeddings", payload, stream=False)
-            
+            response = self._post_ollama(model, "/api/embed", payload, stream=False)
+
             data = response.json()
-            embedding = data.get("embedding", [])
+            embeddings = data.get("embeddings", [])
+            embedding = embeddings[0] if embeddings else data.get("embedding", [])
             
             if not embedding:
                 logger.warning(f"No embedding returned from model {model}")
@@ -1659,8 +1677,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                     function="generate_embedding",
                     model=model,
                     provider="ollama",
-                    input_chars=len(text),
-                    input_hash=_compute_input_hash(text),
+                    input_chars=len(text_use),
+                    input_hash=_compute_input_hash(text_use),
                     output_summary=f"embedding_dims={len(embedding)}" if embedding else "empty",
                     duration_ms=int((time.time() - audit_start) * 1000),
                     success=bool(embedding),

@@ -14,7 +14,7 @@ CREATE TABLE research_articles (
     published_at TIMESTAMP,
     fetched_at TIMESTAMP DEFAULT now(),
     relevance_score NUMERIC(3, 2),
-    embedding NULL,
+    embedding vector(1024),
     tickers ARRAY,
     fund VARCHAR(100),
     claims JSONB,

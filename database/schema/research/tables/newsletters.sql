@@ -11,7 +11,7 @@ CREATE TABLE newsletters (
     body_html TEXT,
     tickers ARRAY,
     summary TEXT,
-    embedding NULL,
+    embedding vector(1024),
     received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP,
     message_id VARCHAR(500),
@@ -28,7 +28,7 @@ CREATE TABLE newsletters (
 );
 
 -- Indexes
-CREATE INDEX idx_newsletters_embedding ON newsletters (embedding);
+CREATE INDEX idx_newsletters_embedding ON newsletters USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX idx_newsletters_received_at ON newsletters (received_at);
 CREATE INDEX idx_newsletters_sender ON newsletters (sender);
 CREATE INDEX idx_newsletters_tickers ON newsletters (tickers);

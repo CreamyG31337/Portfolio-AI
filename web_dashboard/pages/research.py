@@ -238,7 +238,7 @@ def reanalyze_article(article_id: str, model_name: str) -> tuple[bool, str]:
         embedding = None
         ollama_client = get_ollama_client()
         if ollama_client:
-            embedding = ollama_client.generate_embedding(content[:6000])
+            embedding = ollama_client.generate_embedding(content)
             if not embedding:
                 logger.warning(f"Failed to generate embedding for article {article_id}, continuing without embedding")
                 embedding = None

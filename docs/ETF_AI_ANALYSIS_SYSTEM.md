@@ -157,7 +157,7 @@ The ticker analysis gathers data from:
 - `analysis_text`: Full detailed analysis
 - `reasoning`: Internal reasoning
 - `input_context`: **Exact text sent to LLM** (for debugging)
-- `embedding`: Vector(768) - **generated from summary field**
+- `embedding`: Vector(1024) - **generated from summary field** (model `bge-m3`)
 - `etf_changes_count` / `congress_trades_count` / `research_articles_count`: Data source counts
 - `requested_by`: User email (NULL = scheduled job)
 
@@ -177,9 +177,9 @@ The ticker analysis gathers data from:
 - Faster embedding generation
 - More consistent similarity matching
 
-**Vector Dimensions**: 768 (using Ollama's embedding model)
+**Vector Dimensions**: 1024 (Ollama `bge-m3` by default; configurable via `AI_EMBED_MODEL` / `AI_EMBED_DIM`)
 
-**Storage Format**: PostgreSQL `vector(768)` type with pgvector extension
+**Storage Format**: PostgreSQL `vector(1024)` type with pgvector extension. Migrated from `vector(768)` (nomic-embed-text) in May 2026 — see `database/migrations/2026-05_migrate_embeddings_to_bge_m3_1024.sql`.
 
 **Usage**: Currently generated but **not actively used** - available for:
 - Finding similar tickers by theme/sentiment
@@ -303,7 +303,7 @@ The ticker analysis gathers data from:
 - `temperature=0.1`: Low temperature for consistent, factual analysis
 - `system_prompt`: "You are a financial analyst. Return ONLY valid JSON with the exact fields specified."
 
-**Embedding Model**: Uses Ollama's embedding endpoint (generates 768-dim vectors)
+**Embedding Model**: Uses Ollama's `/api/embed` endpoint with `bge-m3` (generates 1024-dim vectors; see `AI_EMBED_MODEL` / `AI_EMBED_DIM` env vars)
 
 ---
 

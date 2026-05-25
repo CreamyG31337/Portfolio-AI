@@ -964,7 +964,7 @@ def archive_retry_job() -> None:
 
                                 # Generate embedding (Ollama-only)
                                 if ollama_client:
-                                    embedding = ollama_client.generate_embedding(extracted_content[:6000])
+                                    embedding = ollama_client.generate_embedding(extracted_content)
                                 
                                 # Calculate relevance score
                                 relevance_score = calculate_relevance_score(
