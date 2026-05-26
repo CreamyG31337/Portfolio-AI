@@ -244,56 +244,15 @@ def test_bench_article_summary_and_crowd_json() -> None:
                 }
             )
 
-    # --- Optional num_ctx sweep (one sample, one model) ---
-    if ctx_sweep and samples:
-        sweep_model = ctx_model or (models[0] if models else "")
-        if sweep_model and client.check_health_for_model(sweep_model):
-            sample = samples[0]
-            title = (sample.get("title") or "").strip()
-            content = (sample.get("content") or "")[:6000]
-            article_type = (sample.get("article_type") or "").strip()
-            text = f"Title: {title}\n\n{content}" if title else content
-            gold = sample.get("tickers") or []
-            if isinstance(gold, str):
-                gold = [gold]
-            for nctx in ctx_sweep:
-                err = ""
-                t0 = time.perf_counter()
-                try:
-                    result = _generate_summary_once(
-                        text=text,
-                        model=sweep_model,
-                        article_type=article_type,
-                        stream=False,
-                        progress_callback=None,
-                        num_ctx_override=nctx,
-                    )
-                except Exception as e:
-                    result = {}
-                    err = type(e).__name__
-                duration_ms = round((time.perf_counter() - t0) * 1000, 1)
-                if not isinstance(result, dict):
-                    result = {}
-                parse_ok = bool(result.get("summary", "").strip())
-                present, total = _summary_completeness(result)
-                keys_pct = round(100.0 * present / total, 2) if total else 0.0
-                pred_tickers = [str(t) for t in (result.get("tickers") or [])]
-                rec = _ticker_recall_pct(pred_tickers, list(gold))
-                rows.append(
-                    {
-                        "run_id": run_id,
-                        "timestamp": ts_iso,
-                        "model": sweep_model,
-                        "schema": "article_summary",
-                        "num_ctx": nctx,
-                        "sample_id": sample.get("id", ""),
-                        "parse_ok": 1 if parse_ok else 0,
-                        "keys_present_pct": keys_pct,
-                        "ticker_recall_pct": rec if rec is not None else "",
-                        "duration_ms": duration_ms,
-                        "error_type": err,
-                    }
-                )
+    # --- num_ctx sweep removed ---
+    # Previously this benchmark accepted --ctx-sweep to vary num_ctx per request
+    # via a num_ctx_override hook on _generate_summary_once. That hook has been
+    # removed because changing num_ctx between requests forces Ollama to evict
+    # and reload the model weights, which (a) wrecks latency comparisons since
+    # most of the wall-clock is reload time rather than inference, and (b) is
+    # never what production code wants. To benchmark a specific num_ctx, edit
+    # model_config.json (or system_settings) for the target model and re-run.
+    _ = ctx_sweep, ctx_model  # kept in signature for CLI compatibility
 
     # --- Crowd-style JSON track (no DB) ---
     crowd_prompt = """You are a financial sentiment analyst. Given the posts below, return ONLY valid JSON:

@@ -259,12 +259,103 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434
 OLLAMA_MODEL=llama3
 OLLAMA_TIMEOUT=120
 OLLAMA_ENABLED=true
+# How long Ollama keeps a model resident in VRAM after a request. Set on the
+# *Ollama host* (not the Flask container) — the value above is just a reminder.
+# Default Ollama is 5m; we use 7m so back-to-back jobs (summarize → embed →
+# next article) reuse the loaded model and avoid 20–60s reload stalls.
+# OLLAMA_KEEP_ALIVE=7m
 
 Per-model Ollama routing (`base_url`, `fallback_base_url`, `think`, `streaming_timeout`) is configured in `web_dashboard/model_config.json` with optional `system_settings` overrides (`model_<name>_base_url`, etc.).
 
 # Database
 RESEARCH_DATABASE_URL=postgresql://user:pass@host:5432/dbname
 ```
+
+## Ollama Operational Notes
+
+These are easy to forget and have bitten us before:
+
+### Ollama wraps llama.cpp
+
+The Ollama desktop/server install bundles the `llama.cpp` / `ggml` runtime
+(`ggml-base.dll`, `ggml-cpu-*.dll`, `cuda_v13`, `rocm`, `vulkan` under
+`<install>/lib/ollama/`). There is no separate `llama-server` process to find
+or configure. All knobs (model lifecycle, KV cache, GPU offload, keep-alive)
+go through Ollama, not through `llama.cpp` flags.
+
+### Two-host routing is for placement, not load-balancing
+
+We support two Ollama hosts via four env-var aliases that collapse to two slots:
+
+| Env var | Alias of | Models that prefer it (primary) |
+|---|---|---|
+| `OLLAMA_BASE_URL_AMD` | `OLLAMA_BASE_URL` | `granite3.3:8b` |
+| `OLLAMA_BASE_URL_NVIDIA` | `OLLAMA_BASE_URL_2` | `qwen3.6:27b` |
+
+`fallback_base_url` in `model_config.json` is **host-down failover** (HTTP 404
+or 5xx triggers a single retry on the other host inside `_post_ollama`). It is
+**not** load-balancing — if both hosts are up but busy, requests still go to
+the primary and queue there. See the `TODO(ollama-hosts)` block in
+`ollama_client.py` for the planned cleanup to a generic N-host model.
+
+### `num_ctx` is configured, not passed per-call
+
+The `num_ctx` value Ollama sees is resolved in exactly one place:
+
+```
+model_config.json  →  system_settings override (model_<name>_num_ctx)  →  request
+```
+
+There is intentionally **no `num_ctx` / `num_ctx_override` parameter** on any
+public summarization or query function. Earlier versions had one and it was
+removed because changing `num_ctx` between requests forces Ollama to evict and
+reload the model weights (typically 20–60s on a 24GB-class GPU), which:
+
+- wrecks any latency benchmark that varies it per-request (you measure reload
+  time, not inference);
+- defeats `OLLAMA_KEEP_ALIVE` (the keep-alive timer resets but the model is
+  gone anyway because the ctx changed);
+- is almost never what callers actually want.
+
+If you genuinely need a different `num_ctx`, edit the config and accept the
+single reload. Per-call overrides are gone for good.
+
+### Picking `num_ctx` on a shared GPU
+
+`num_ctx` × model size mostly determines KV-cache VRAM. On the
+single-3090 NVIDIA host this box also runs Plex transcoding, the IDE, browser,
+etc., so we deliberately undersize `num_ctx`:
+
+| Model | `num_ctx` | Why |
+|---|---|---|
+| `qwen3.6:27b` | `20000` | Leaves ~13k tokens slack over the ~6.5k-token worst-case summary input while keeping KV ≈ 2.5 GB so Plex/IDE can coexist. |
+
+Powers-of-two are a llama.cpp lore thing; in practice round numbers like 20000
+work fine — there is no measurable benefit to 16384 or 32768 specifically.
+Operators with dedicated VRAM can raise the value via the
+`model_qwen3.6:27b_num_ctx` row in `system_settings` without redeploying.
+
+### Summarizer input pipeline
+
+What gets sent to the summarizing LLM is built by
+`web_dashboard/summary_common.py`:
+
+1. **Character cap**, by article type:
+   - `Newsletter` → 16,000 chars (~4k tokens), override with `AI_SUMMARY_MAX_CHARS_NEWSLETTER`.
+   - Everything else → 6,000 chars (~1.5k tokens), override with `AI_SUMMARY_MAX_CHARS`.
+2. **Head + tail truncation** when over budget: keep the first 60 % and the
+   last 40 %, joined by an explicit marker
+   (`[...content truncated; middle section omitted...]`). The tail is preserved
+   on purpose — newsletter sign-offs, conclusions, and call-to-action lines
+   carry disproportionate signal for ticker extraction.
+3. **Fallback chain on failure**: if a model returns an empty body or hits
+   `_looks_like_query_ollama_user_facing_error`, `collect_with_summary_model_chain`
+   advances to the next entry in the chain (primary Ollama → secondary Ollama →
+   GLM → …). Truncation itself does not trigger fallback; truncation happens
+   *before* the call.
+
+If you change either constant, update `tests/test_summary_common_truncation.py`
+in the same change.
 
 ### Settings (`settings.py`)
 
@@ -353,6 +444,23 @@ scheduler.add_job(
 - Inputs are truncated to `AI_EMBED_MAX_CHARS` (default 24,000) inside `ollama_client.generate_embedding`; if Ollama still complains about context length, the model itself (not just the column) has a smaller hard cap — try shrinking `AI_EMBED_MAX_CHARS` rather than passing longer text
 - If the returned vector's dimension doesn't match `AI_EMBED_DIM` (default 1024) the call is rejected — check the model and column type agree
 - Check Ollama logs for errors
+
+**"Every Ollama call takes 30+ seconds, then fast for a while, then slow again"**
+- You're hitting model reloads. Two causes:
+  1. `keep_alive` is too short — the model is being evicted between jobs. Set
+     `OLLAMA_KEEP_ALIVE=7m` (or longer) on the Ollama host and restart it.
+  2. Something is varying `num_ctx` per request. This shouldn't be possible
+     from app code anymore (the per-call override was removed), but if you've
+     added a new caller, confirm it's not passing `num_ctx` to Ollama directly.
+- `ollama ps` on the host shows whether a model is currently resident and when
+  it will expire.
+
+**"Changed `num_ctx` in `model_config.json` but the new value isn't being used"**
+- The model has to be unloaded for the new ctx to take effect. Either wait for
+  `keep_alive` to expire, or `ollama stop <model>` then issue any request.
+- Also check `system_settings` — `model_<name>_num_ctx` there overrides
+  `model_config.json`. The admin UI (AI Settings page) is the easiest place to
+  see the effective value.
 
 ## Future Enhancements
 

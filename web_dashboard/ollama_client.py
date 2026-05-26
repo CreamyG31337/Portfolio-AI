@@ -324,12 +324,28 @@ class OllamaClient:
 
     def get_model_settings(self, model_name: str) -> Dict[str, Any]:
         """Get settings for specific model.
-        
-        Checks database for admin overrides first, then falls back to JSON config.
-        
+
+        Resolution order for each value:
+          1. ``model_config.json`` (exact match on ``model_name`` or
+             ``default_config``)
+          2. ``system_settings`` override row, key
+             ``model_<model_name>_<param>`` (temperature, num_ctx, num_predict,
+             base_url, fallback_base_url, streaming_timeout, …)
+          3. Env-var indirection: ``*_env`` keys (e.g. ``base_url_env``) are
+             popped and resolved through ``_pop_env_url`` against env vars.
+
+        This is the *single* source of truth for ``num_ctx`` etc. — callers
+        of ``query_ollama`` / ``generate_summary`` do not accept per-call
+        ``num_ctx`` overrides on purpose. Changing ``num_ctx`` between
+        requests forces Ollama to evict and reload the model weights
+        (~20–60s on a 24GB-class GPU), so the only supported way to change it
+        is to edit the config above and accept the single reload. See
+        ``web_dashboard/AI_RESEARCH_SYSTEM.md`` ("Ollama Operational Notes")
+        for the full rationale.
+
         Args:
             model_name: Name of the model
-            
+
         Returns:
             Dict with settings (num_ctx, temperature, num_predict, etc.)
         """
@@ -841,7 +857,6 @@ class OllamaClient:
         stream: bool = True,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        num_ctx: Optional[int] = None,
         system_prompt: Optional[str] = None,
         json_mode: bool = False,
         streaming_timeout: int = 90,
@@ -856,7 +871,6 @@ class OllamaClient:
             stream: Whether to stream the response
             temperature: Model temperature (0.0-1.0). If None, uses model default.
             max_tokens: Maximum tokens in response (num_predict)
-            num_ctx: Context window size. If None, uses model default.
             system_prompt: Optional system prompt to set model behavior
             json_mode: Whether to enforce JSON output format
             streaming_timeout: Max idle seconds between stream chunks (default: 90).
@@ -915,9 +929,11 @@ class OllamaClient:
         # Get model-specific defaults if values not provided
         model_settings = self.get_model_settings(model)
         
-        # Use provided values, or model specific defaults, or global defaults
+        # Use provided values, or model specific defaults, or global defaults.
+        # num_ctx is intentionally NOT a parameter — it always comes from
+        # model_config.json + system_settings to avoid Ollama model reloads.
         effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.7)
-        effective_ctx = num_ctx if num_ctx is not None else model_settings.get('num_ctx', 4096)
+        effective_ctx = model_settings.get('num_ctx', 4096)
         effective_max_tokens = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
         cfg_idle = model_settings.get("streaming_timeout")
         effective_idle = float(cfg_idle) if cfg_idle is not None else float(streaming_timeout)
@@ -1315,8 +1331,6 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         text: str,
         model: Optional[str] = None,
         article_type: str = "",
-        *,
-        num_ctx_override: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Generate a comprehensive summary with Chain of Thought analysis, sentiment categorization, and relationship extraction.
         
@@ -1388,12 +1402,13 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
 
         system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
 
-        # Get model settings
+        # Get model settings. num_ctx is intentionally the single source of truth
+        # from model_config.json + system_settings overrides — per-call overrides
+        # were removed because changing num_ctx forces Ollama to evict and reload
+        # the model, which is expensive and almost never what callers actually want.
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get('temperature', 0.3)
         effective_ctx = model_settings.get('num_ctx', 4096)
-        if num_ctx_override is not None:
-            effective_ctx = int(num_ctx_override)
         requested_max_tokens = model_settings.get("num_predict", SUMMARY_DEFAULT_PREDICT)
 
         # Warn if skill-enhanced prompt + article + output may overflow context
@@ -1469,8 +1484,6 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         model: Optional[str] = None,
         article_type: str = "",
         progress_callback=None,
-        *,
-        num_ctx_override: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Generate a comprehensive summary with streaming progress updates.
 
@@ -1532,12 +1545,11 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
 
         system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
 
-        # Get model settings
+        # See note in generate_summary(): num_ctx comes from model_config.json +
+        # system_settings only; per-call overrides were removed to avoid model reloads.
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get("temperature", 0.3)
         effective_ctx = model_settings.get("num_ctx", 4096)
-        if num_ctx_override is not None:
-            effective_ctx = int(num_ctx_override)
         requested_max_tokens = model_settings.get("num_predict", SUMMARY_DEFAULT_PREDICT)
 
         # Warn if skill-enhanced prompt + article + output may overflow context
@@ -1721,7 +1733,6 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         stream: bool = True,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        num_ctx: Optional[int] = None,
         streaming_timeout: int = 90,
         include_thinking: bool = False,
     ) -> Generator[str, None, None]:
@@ -1733,7 +1744,6 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             stream: Whether to stream the response
             temperature: Model temperature (0.0-1.0). If None, uses model default.
             max_tokens: Maximum tokens in response
-            num_ctx: Context window size. If None, uses model default.
             streaming_timeout: Max idle seconds between stream chunks (overridden by model config when set).
             include_thinking: Yield ``<think>...</think>`` when the server emits thinking.
             
@@ -1753,9 +1763,10 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         # Get model-specific defaults if values not provided
         model_settings = self.get_model_settings(model)
         
-        # Use provided values, or model specific defaults, or global defaults
+        # Use provided values, or model specific defaults, or global defaults.
+        # num_ctx is intentionally NOT a parameter (see query_ollama for rationale).
         effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.7)
-        effective_ctx = num_ctx if num_ctx is not None else model_settings.get('num_ctx', 4096)
+        effective_ctx = model_settings.get('num_ctx', 4096)
         effective_max_tokens = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
         cfg_idle = model_settings.get("streaming_timeout")
         effective_idle = float(cfg_idle) if cfg_idle is not None else float(streaming_timeout)
@@ -2337,7 +2348,6 @@ def collect_with_summary_model_chain(
     json_mode: bool = False,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-    num_ctx: Optional[int] = None,
     stream: bool = True,
     streaming_timeout: int = 90,
     include_thinking: bool = False,
@@ -2393,7 +2403,6 @@ def collect_with_summary_model_chain(
                 stream=stream,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                num_ctx=num_ctx,
                 system_prompt=system_prompt,
                 json_mode=json_mode,
                 streaming_timeout=streaming_timeout,
@@ -2493,7 +2502,6 @@ def _generate_summary_once(
     article_type: str = "",
     stream: bool,
     progress_callback=None,
-    num_ctx_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Generate a summary once for the specified model/provider."""
     start_ms = time.time()
@@ -2539,14 +2547,12 @@ def _generate_summary_once(
                 model=model,
                 article_type=article_type,
                 progress_callback=progress_callback,
-                num_ctx_override=num_ctx_override,
             )
             return result
         result = client.generate_summary(
             text,
             model=model,
             article_type=article_type,
-            num_ctx_override=num_ctx_override,
         )
         return result
     except Exception as e:
