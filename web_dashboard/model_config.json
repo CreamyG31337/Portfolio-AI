@@ -57,14 +57,14 @@
             "desc": "Summarization / fallback workhorse on the AMD Ollama host. Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). Failover: NVIDIA host."
         },
         "qwen3.6:27b": {
-            "num_ctx": 32768,
-            "num_predict": 4096,
+            "num_ctx": 20000,
+            "num_predict": 2048,
             "temperature": 0.2,
             "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Flagship Ollama model on the NVIDIA (e.g. RTX 3090) host. Primary: OLLAMA_BASE_URL_NVIDIA (else OLLAMA_BASE_URL_2). Failover: AMD host."
+            "desc": "Flagship Ollama model on a single 24GB-class GPU host (e.g. RTX 3090). num_ctx=20000 leaves ~13k tokens of slack above the current summary worst-case (~6.5k tokens) while keeping KV cache around 2.5GB so other GPU consumers (Plex transcode, browser, IDE) can coexist. Operators with dedicated VRAM can raise via system_settings.model_qwen3.6:27b_num_ctx. Primary host: OLLAMA_BASE_URL_NVIDIA (else legacy OLLAMA_BASE_URL_2). Failover host: AMD."
         },
         "phi4:14b": {
             "num_ctx": 8192,

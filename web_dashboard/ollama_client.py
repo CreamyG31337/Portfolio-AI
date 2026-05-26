@@ -219,6 +219,19 @@ def _fit_summary_num_predict(
 # legacy pair so existing deployments keep working:
 #   OLLAMA_BASE_URL_AMD      → OLLAMA_BASE_URL
 #   OLLAMA_BASE_URL_NVIDIA   → OLLAMA_BASE_URL_2
+#
+# TODO(ollama-hosts): The AMD/NVIDIA labels and the legacy ``_2`` slot bake in a
+#   2-host, single-vendor assumption that does not generalize to deployments
+#   with 0, 1, or N Ollama hosts. A future cleanup should:
+#     * Replace the two hardcoded slots with an ordered list, e.g.
+#       ``OLLAMA_BASE_URL`` + ``OLLAMA_BASE_URLS`` (comma-separated),
+#       and let model_config entries reference hosts by index or by an
+#       arbitrary symbolic key (``OLLAMA_BASE_URL_<NAME>``) instead of a
+#       vendor name.
+#     * Keep the AMD/NVIDIA aliases as a thin compatibility shim during
+#       migration, then remove them once env.example and downstream
+#       references catch up.
+#   Tracking this here so the dual naming doesn't outlive its usefulness.
 _OLLAMA_HOST_ENV_ALIASES: Dict[str, str] = {
     "OLLAMA_BASE_URL_AMD": "OLLAMA_BASE_URL",
     "OLLAMA_BASE_URL_NVIDIA": "OLLAMA_BASE_URL_2",
