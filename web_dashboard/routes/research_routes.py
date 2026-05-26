@@ -1376,6 +1376,10 @@ def reanalyze_newsletter():
         content = newsletter.get('body_plain') or ''
         if not content and newsletter.get('body_html'):
             content = nl_service.extract_text_from_html(newsletter['body_html'])
+        # Strip Gmail's "---------- Forwarded message ---------" boilerplate. Stored
+        # body_plain values are already cleaned at ingest time, but HTML-only rows
+        # bypass that cleaning, and re-running here is idempotent.
+        content = nl_service.clean_forwarded_body(content)
 
         if not content:
             return jsonify({'success': False, 'message': 'Newsletter has no content'}), 400

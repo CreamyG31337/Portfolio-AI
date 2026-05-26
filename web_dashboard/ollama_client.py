@@ -24,7 +24,12 @@ from glm_transport import (
     glm_raw_indicates_transport_failure,
     glm_should_try_cheap_fallback,
 )
-from summary_common import get_summary_system_prompt, parse_summary_response
+from summary_common import (
+    compute_summary_max_chars,
+    get_summary_system_prompt,
+    parse_summary_response,
+    truncate_for_summary,
+)
 from prompt_safety import (
     contains_instruction_like_text,
     prepare_untrusted_for_prompt,
@@ -1307,7 +1312,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         extracts corporate relationships (GraphRAG edges).
         
         Args:
-            text: Text to summarize (will be truncated to ~6000 chars)
+            text: Text to summarize (truncated via summary_common.compute_summary_max_chars; default 6000 chars, 16000 for article_type="Newsletter")
             model: Model name to use. If None, uses get_summarizing_model() from settings.
             
         Returns:
@@ -1351,7 +1356,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         if model and str(model).startswith("glm-"):
             return _generate_summary_via_zhipu(text, model, article_type=article_type, stream=False)
 
-        # Truncate text to ~6000 characters
+        # Clamp article body length so prompt + article + output fit common model contexts.
         # TODO: PROMPT-INJECTION - Sanitize scraped article text before LLM ingestion.
         #   Article content from trafilatura/RSS is sent as the raw prompt with no
         #   delimiter-based sandboxing. Hidden text or invisible CSS content in articles
@@ -1359,10 +1364,14 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         #   1. Strip residual HTML, zero-width chars, and control characters
         #   2. Use structural separation between system instructions and article content
         #   3. Validate that trafilatura output doesn't contain hidden/invisible text artifacts
-        max_chars = 6000
-        if len(text) > max_chars:
-            text = text[:max_chars] + "..."
-            logger.debug(f"Truncated text to {max_chars} characters for summarization")
+        max_chars = compute_summary_max_chars(article_type)
+        original_len = len(text)
+        if original_len > max_chars:
+            text = truncate_for_summary(text, max_chars)
+            logger.debug(
+                "Truncated %s text from %d to %d chars for summarization (max=%d, article_type=%r)",
+                article_type or "article", original_len, len(text), max_chars, article_type,
+            )
 
         system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
 
@@ -1456,7 +1465,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         Use this for Server-Sent Events (SSE) to show real-time progress in the UI.
 
         Args:
-            text: Text to summarize (will be truncated to ~6000 chars)
+            text: Text to summarize (truncated via summary_common.compute_summary_max_chars; default 6000 chars, 16000 for article_type="Newsletter")
             model: Model name to use. If None, uses get_summarizing_model() from settings.
             progress_callback: Optional callback function(tokens_received, estimated_progress) called with progress updates
 
@@ -1498,12 +1507,16 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             logger.warning("Ollama summary generation rejected: AI assistant disabled")
             return {}
 
-        # Truncate text to ~6000 characters
-        max_chars = 6000
-        if len(text) > max_chars:
-            text = text[:max_chars] + "..."
-            logger.debug(f"Truncated text to {max_chars} characters for summarization")
-        
+        # Clamp article body length so prompt + article + output fit common model contexts.
+        max_chars = compute_summary_max_chars(article_type)
+        original_len = len(text)
+        if original_len > max_chars:
+            text = truncate_for_summary(text, max_chars)
+            logger.debug(
+                "Truncated %s text from %d to %d chars for streaming summarization (max=%d, article_type=%r)",
+                article_type or "article", original_len, len(text), max_chars, article_type,
+            )
+
         system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
 
         # Get model settings
@@ -1824,16 +1837,24 @@ def _generate_summary_via_webai(
     """Run article summarization via web-based AI service (cookie-based). Used for WebAI models."""
     try:
         from webai_wrapper import PersistentConversationSession
-        from summary_common import get_summary_system_prompt, parse_summary_response
+        from summary_common import (
+            compute_summary_max_chars,
+            get_summary_system_prompt,
+            parse_summary_response,
+            truncate_for_summary,
+        )
     except ImportError:
         logger.warning("webai_wrapper or summary_common not available for web-based AI summary")
         return {}
 
-    max_chars = 6000
+    max_chars = compute_summary_max_chars(article_type)
     original_len = len(text)
-    if len(text) > max_chars:
-        text = text[:max_chars] + "..."
-        logger.debug(f"Truncated text from {original_len} to {max_chars} characters for web-based AI summarization")
+    if original_len > max_chars:
+        text = truncate_for_summary(text, max_chars)
+        logger.debug(
+            "Truncated %s text from %d to %d chars for web-based AI summarization (max=%d, article_type=%r)",
+            article_type or "article", original_len, len(text), max_chars, article_type,
+        )
 
     system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
     total_chars = len(system_prompt) + len(text)
@@ -1909,7 +1930,12 @@ def _generate_summary_via_zhipu(
     """Run article summarization via Z.AI /chat/completions. Used when model.startswith('glm-')."""
     try:
         from glm_config import get_zhipu_api_key
-        from summary_common import get_summary_system_prompt, parse_summary_response
+        from summary_common import (
+            compute_summary_max_chars,
+            get_summary_system_prompt,
+            parse_summary_response,
+            truncate_for_summary,
+        )
     except ImportError:
         logger.warning("glm_config or summary_common not available for GLM summary")
         return {}
@@ -1919,11 +1945,14 @@ def _generate_summary_via_zhipu(
         logger.warning("Z.AI API key not set - cannot generate summary with GLM model")
         return {}
 
-    max_chars = 6000
+    max_chars = compute_summary_max_chars(article_type)
     original_len = len(text)
-    if len(text) > max_chars:
-        text = text[:max_chars] + "..."
-        logger.debug(f"Truncated text from {original_len} to {max_chars} characters for Z.AI summarization")
+    if original_len > max_chars:
+        text = truncate_for_summary(text, max_chars)
+        logger.debug(
+            "Truncated %s text from %d to %d chars for Z.AI summarization (max=%d, article_type=%r)",
+            article_type or "article", original_len, len(text), max_chars, article_type,
+        )
 
     system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
     messages: List[Dict[str, str]] = [

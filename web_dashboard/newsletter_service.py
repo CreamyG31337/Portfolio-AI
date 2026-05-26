@@ -1063,11 +1063,13 @@ class NewsletterService:
             # Clean subject (strip Fwd:/Re: prefixes)
             clean_subj = self.clean_subject(subject)
 
-            # Use plain text if available, otherwise extract from HTML
+            # Use plain text if available, otherwise extract from HTML. Always strip
+            # forwarded-message boilerplate so downstream ticker/embedding paths see
+            # the actual newsletter content, not "---------- Forwarded message ---------".
             if body_plain:
                 text_content = self.clean_forwarded_body(body_plain)
             elif body_html:
-                text_content = self.extract_text_from_html(body_html)
+                text_content = self.clean_forwarded_body(self.extract_text_from_html(body_html))
             else:
                 text_content = ""
                 logger.warning("Newsletter has no body content")

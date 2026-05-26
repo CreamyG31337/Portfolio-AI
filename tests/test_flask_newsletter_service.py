@@ -90,3 +90,69 @@ def test_generate_embedding_uses_configured_model_and_truncation(monkeypatch) ->
     assert embedding is not None
     assert len(embedding) == 1024
     assert seen == {"text": "abcdefghijkl", "model": "bge-m3"}
+
+
+def test_process_newsletter_strips_forwarded_boilerplate_from_html_only_email(monkeypatch) -> None:
+    """Regression: HTML-only forwarded emails must run through ``clean_forwarded_body``.
+
+    Prior to this fix, the ``elif body_html`` branch in ``process_newsletter``
+    extracted text from HTML but skipped ``clean_forwarded_body``, so Gmail's
+    "---------- Forwarded message ---------" header block leaked into the
+    ticker-extraction input.
+    """
+    # Keep the test fully offline.
+    monkeypatch.setattr(
+        NewsletterService,
+        "extract_article_url_with_llm_fallback",
+        lambda self, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        NewsletterService,
+        "get_known_tickers_for_validation",
+        lambda self: set(),
+    )
+
+    # Spy on clean_forwarded_body so we can assert it was actually invoked
+    # on the HTML-derived text (the bug it fixes is that this call was missing).
+    original_clean = NewsletterService.clean_forwarded_body
+    clean_calls: List[str] = []
+
+    def _spy_clean(text: str) -> str:
+        clean_calls.append(text or "")
+        return original_clean(text)
+
+    monkeypatch.setattr(NewsletterService, "clean_forwarded_body", staticmethod(_spy_clean))
+
+    service = NewsletterService()
+    html = (
+        "<html><body>"
+        "---------- Forwarded message ---------<br>"
+        "From: Original Sender &lt;newsletter@example.com&gt;<br>"
+        "Date: Mon, May 25, 2026<br>"
+        "Subject: Quantum Stocks Watch<br>"
+        "To: Lance &lt;lance@example.com&gt;<br>"
+        "<br>"
+        "<p>The real newsletter body discusses $AAPL and $NVDA in detail.</p>"
+        "</body></html>"
+    )
+
+    processed = service.process_newsletter(
+        sender="forwarder@example.com",
+        recipient="inbox@example.com",
+        subject="Fwd: Quantum Stocks Watch",
+        body_plain=None,
+        body_html=html,
+        skip_embedding=True,
+    )
+
+    # Cleaning MUST have been called on text containing the forwarded header block.
+    saw_forwarded_input = any("Forwarded message" in call for call in clean_calls)
+    assert saw_forwarded_input, (
+        f"clean_forwarded_body was never called on the HTML-derived text. "
+        f"Calls: {clean_calls!r}"
+    )
+
+    # And the real body should still be extractable as tickers afterward.
+    extracted_tickers = processed.get("tickers") or []
+    assert "AAPL" in extracted_tickers
+    assert "NVDA" in extracted_tickers

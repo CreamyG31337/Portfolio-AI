@@ -3,10 +3,84 @@
 
 import json
 import logging
+import os
 import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+# Input-text budget for the summarizer, in characters (roughly chars/4 ≈ tokens).
+#
+# Historical default was 6000 chars (~1500 tokens), which is fine for short
+# news articles but silently drops the closing thesis on long-form newsletters
+# (typical 7-15k chars). Modern model contexts are large enough to handle more:
+# - Ollama models in model_config.json are 8k-40k tokens (32k typical).
+# - Z.AI GLM models are 128k-200k tokens.
+# - WebAI Gemini models are 1M-2M tokens.
+# So the conservative 6k cap is the bottleneck, not the model.
+SUMMARY_MAX_CHARS_DEFAULT = 6000
+SUMMARY_MAX_CHARS_NEWSLETTER = 16000  # ~4000 tokens, fits comfortably in 8k+ ctx
+SUMMARY_TRUNCATION_MARKER = "\n\n[...content truncated; middle section omitted...]\n\n"
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read a positive int from env, falling back to ``default`` on missing/invalid input."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        logger.warning("Ignoring non-integer env %s=%r; using default %s", name, raw, default)
+        return default
+    if val <= 0:
+        logger.warning("Ignoring non-positive env %s=%s; using default %s", name, val, default)
+        return default
+    return val
+
+
+def compute_summary_max_chars(article_type: str = "") -> int:
+    """Return the character budget the summarizer should clamp the article body to.
+
+    Newsletters get a larger budget than the default article cap because the
+    actionable thesis usually appears at the bottom; cutting the tail loses
+    the most important signal. Operators can override via
+    ``AI_SUMMARY_MAX_CHARS`` and ``AI_SUMMARY_MAX_CHARS_NEWSLETTER`` env vars.
+    """
+    if (article_type or "").strip().lower() == "newsletter":
+        return _env_int("AI_SUMMARY_MAX_CHARS_NEWSLETTER", SUMMARY_MAX_CHARS_NEWSLETTER)
+    return _env_int("AI_SUMMARY_MAX_CHARS", SUMMARY_MAX_CHARS_DEFAULT)
+
+
+def truncate_for_summary(text: str, max_chars: int) -> str:
+    """Trim article body to fit within ``max_chars`` while preserving head + tail.
+
+    Newsletters typically follow a setup-then-conclusion structure where the
+    most actionable content (specific tickers, price targets, calls to
+    action) lives in the closing paragraphs. A naive ``text[:max_chars]`` cut
+    drops that tail; instead we keep ~60% from the start and ~40% from the
+    end, joined by a clear marker so the model knows content was omitted.
+    """
+    if text is None:
+        return ""
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+
+    marker = SUMMARY_TRUNCATION_MARKER
+    # Reserve room for the marker so the result truly fits in max_chars.
+    budget = max_chars - len(marker)
+    if budget <= 0:
+        # max_chars is absurdly small; fall back to a plain head cut.
+        return text[:max_chars]
+
+    head_len = int(budget * 0.6)
+    tail_len = budget - head_len
+    head = text[:head_len].rstrip()
+    tail = text[-tail_len:].lstrip() if tail_len > 0 else ""
+    return f"{head}{marker}{tail}"
 
 
 def get_summary_system_prompt(article_text: str = "", article_type: str = "") -> str:

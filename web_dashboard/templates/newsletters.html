@@ -495,16 +495,45 @@ function hasRenderablePlain(value) {
     return value.trim().length > 0;
 }
 
-// Strip <script>...<\/script> so the sandboxed iframe doesn't log a
-// "Blocked script execution" warning for every newsletter. The sandbox
-// (no allow-scripts) is the real security control; this is cosmetic.
-// Note: the "<\/script>" above is intentionally escaped so the HTML parser
-// does not terminate this <script> block prematurely.
+// Strip active/remote newsletter content before rendering in the sandboxed iframe.
+// The sandbox (no allow-scripts) is the real security control; this removes common
+// console noise from scripts, event handlers, javascript: URLs, and remote font CSS.
+// Note: any "<\/script>" references must stay escaped so the HTML parser does not
+// terminate this <script> block prematurely.
 function sanitizeEmailHtml(html) {
     if (!hasRenderableHtml(html)) return '';
-    return html
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<script\b[^>]*\/>/gi, '');
+    const template = document.createElement('template');
+    template.innerHTML = html;
+
+    // Remove elements that can execute code, nest active content, or load remote
+    // CSS/fonts. Inline styles remain; external newsletter font faces are cosmetic.
+    template.content
+        .querySelectorAll('script, iframe, object, embed, applet, form, link[rel~="stylesheet"]')
+        .forEach(el => el.remove());
+
+    template.content.querySelectorAll('style').forEach(style => {
+        style.textContent = (style.textContent || '')
+            .replace(/@import\b[^;]+;/gi, '')
+            .replace(/@font-face\s*\{[\s\S]*?\}/gi, '');
+    });
+
+    template.content.querySelectorAll('*').forEach(el => {
+        Array.from(el.attributes).forEach(attr => {
+            const name = attr.name.toLowerCase();
+            const value = (attr.value || '').trim().toLowerCase();
+
+            if (name.startsWith('on') || name === 'srcdoc') {
+                el.removeAttribute(attr.name);
+                return;
+            }
+
+            if ((name === 'href' || name === 'src' || name === 'xlink:href') && value.startsWith('javascript:')) {
+                el.removeAttribute(attr.name);
+            }
+        });
+    });
+
+    return template.innerHTML;
 }
 
 async function viewEmail(id) {
