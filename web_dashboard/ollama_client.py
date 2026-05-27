@@ -434,7 +434,7 @@ class OllamaClient:
         if primary != default_norm:
             return primary, default_norm
         # When the model uses the default Ollama URL only, still try the optional second host
-        # (same pattern as qwen3.6:27b in model_config). _post_ollama retries 404/5xx on fallback.
+        # (same pattern as qwen3.6:27b-heretic in model_config). _post_ollama retries 404/5xx on fallback.
         env_secondary = os.getenv("OLLAMA_BASE_URL_2", "").strip().rstrip("/")
         if env_secondary and env_secondary != primary:
             return primary, env_secondary
@@ -1186,7 +1186,7 @@ class OllamaClient:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "qwen3.6:27b"
+                model = "qwen3.6:27b-heretic"
 
         audit_start = time.time()
         result: Dict[str, Any] = {}
@@ -1370,7 +1370,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "qwen3.6:27b"
+                model = "qwen3.6:27b-heretic"
 
         # Web-based AI service: use cookie-based service, not Ollama
         try:
@@ -1504,7 +1504,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "qwen3.6:27b"
+                model = "qwen3.6:27b-heretic"
 
         # Web-based AI service: use cookie-based service, not Ollama (note: doesn't support streaming)
         try:
@@ -2232,7 +2232,7 @@ def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
     except Exception as e:
         logger.warning("Could not load summarization settings: %s", e)
         if not primary:
-            primary = "qwen3.6:27b"
+            primary = "qwen3.6:27b-heretic"
         fallback_models = []
 
     chain = [primary] + fallback_models

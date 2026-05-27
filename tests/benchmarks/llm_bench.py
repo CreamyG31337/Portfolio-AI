@@ -9,7 +9,7 @@ Run::
 Requires:
 
 - Live Ollama (``OLLAMA_ENABLED`` not false) and models available on resolved hosts.
-  For ``qwen3.6:27b``, set ``OLLAMA_BASE_URL_2`` to the Ollama base URL of the host that has that model installed;
+  For ``qwen3.6:27b-heretic``, set ``OLLAMA_BASE_URL_2`` to the Ollama base URL of the host that has that model installed;
   ``OLLAMA_BASE_URL`` may point at a different machine.
 - ``RESEARCH_DATABASE_URL`` for article-summary rows (skipped if unset).
 
@@ -18,7 +18,7 @@ Artifacts are written under ``verification/benchmarks/`` (CSV + Markdown summary
 Optional context sweep (same article sample, one model)::
 
     set OLLAMA_BENCH_NUM_CTX_SWEEP=8192,16384,32768
-    set OLLAMA_BENCH_CTX_MODEL=qwen3.6:27b
+    set OLLAMA_BENCH_CTX_MODEL=qwen3.6:27b-heretic
 
 Requires ``RESEARCH_DATABASE_URL`` and a healthy Ollama for ``OLLAMA_BENCH_CTX_MODEL``.
 """
@@ -170,7 +170,7 @@ def test_bench_article_summary_and_crowd_json() -> None:
     if not client.enabled:
         pytest.skip("OLLAMA_ENABLED is false")
 
-    models_env = os.getenv("OLLAMA_BENCH_MODELS", "granite3.3:8b,qwen3.6:27b")
+    models_env = os.getenv("OLLAMA_BENCH_MODELS", "granite3.3:8b,qwen3.6:27b-heretic")
     models = [m.strip() for m in models_env.split(",") if m.strip()]
     limit = max(1, min(50, int(os.getenv("OLLAMA_BENCH_LIMIT", "5"))))
     ctx_sweep: list[int] = []

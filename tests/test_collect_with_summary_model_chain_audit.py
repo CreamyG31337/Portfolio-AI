@@ -115,7 +115,7 @@ def test_chain_audit_records_failure_attempt_then_glm_success(monkeypatch):
     monkeypatch.setattr(
         ollama_client,
         "_get_summary_model_chain",
-        lambda req: ["qwen3.6:27b", "glm-5.1"],
+        lambda req: ["qwen3.6:27b-heretic", "glm-5.1"],
     )
     captured = _make_audit_recorder(monkeypatch)
     fake = _FakeOllama(
@@ -128,7 +128,7 @@ def test_chain_audit_records_failure_attempt_then_glm_success(monkeypatch):
     body, model = ollama_client.collect_with_summary_model_chain(
         fake,
         prompt="prompt",
-        requested_model="qwen3.6:27b",
+        requested_model="qwen3.6:27b-heretic",
         stream=False,
         function_name="ticker_analysis",
         audit_extra={"tickers_extracted": ["AMAT"]},
@@ -138,7 +138,7 @@ def test_chain_audit_records_failure_attempt_then_glm_success(monkeypatch):
     assert model == "glm-5.1"
     assert len(captured) == 2, captured
     first, second = captured
-    assert first["model"] == "qwen3.6:27b"
+    assert first["model"] == "qwen3.6:27b-heretic"
     assert first["provider"] == "ollama"
     assert first["success"] is False
     assert "ollama backend exploded" in (first["error"] or "")
@@ -154,7 +154,7 @@ def test_chain_audit_records_all_failures_when_chain_exhausted(monkeypatch):
     monkeypatch.setattr(
         ollama_client,
         "_get_summary_model_chain",
-        lambda req: ["qwen3.6:27b", "glm-5.1"],
+        lambda req: ["qwen3.6:27b-heretic", "glm-5.1"],
     )
     captured = _make_audit_recorder(monkeypatch)
     fake = _FakeOllama(
@@ -167,7 +167,7 @@ def test_chain_audit_records_all_failures_when_chain_exhausted(monkeypatch):
     body, model = ollama_client.collect_with_summary_model_chain(
         fake,
         prompt="prompt",
-        requested_model="qwen3.6:27b",
+        requested_model="qwen3.6:27b-heretic",
         stream=False,
         function_name="sector_meta_analysis",
     )
@@ -185,7 +185,7 @@ def test_chain_audit_extract_audit_fields_runs_only_on_success(monkeypatch):
     monkeypatch.setattr(
         ollama_client,
         "_get_summary_model_chain",
-        lambda req: ["qwen3.6:27b", "glm-5.1"],
+        lambda req: ["qwen3.6:27b-heretic", "glm-5.1"],
     )
     captured = _make_audit_recorder(monkeypatch)
     fake = _FakeOllama(
@@ -204,7 +204,7 @@ def test_chain_audit_extract_audit_fields_runs_only_on_success(monkeypatch):
     body, model = ollama_client.collect_with_summary_model_chain(
         fake,
         prompt="prompt",
-        requested_model="qwen3.6:27b",
+        requested_model="qwen3.6:27b-heretic",
         stream=False,
         function_name="ticker_analysis",
         extract_audit_fields=_extract,

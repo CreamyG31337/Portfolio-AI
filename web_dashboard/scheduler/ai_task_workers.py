@@ -130,8 +130,8 @@ def model_for_backend(backend: str) -> str:
         return os.getenv("AI_QUEUE_MODEL_GLM", "glm-5.1").strip() or "glm-5.1"
     if backend == BACKEND_OLLAMA_SECONDARY:
         return (
-            os.getenv("AI_QUEUE_MODEL_OLLAMA_SECONDARY", "qwen3.6:27b").strip()
-            or "qwen3.6:27b"
+            os.getenv("AI_QUEUE_MODEL_OLLAMA_SECONDARY", "qwen3.6:27b-heretic").strip()
+            or "qwen3.6:27b-heretic"
         )
     return os.getenv("AI_QUEUE_MODEL_OLLAMA_PRIMARY", "granite3.3:8b").strip() or "granite3.3:8b"
 

@@ -253,7 +253,7 @@ SEARXNG_TIMEOUT=10
 
 # Ollama
 OLLAMA_BASE_URL=http://host.docker.internal:11434
-# Second host for models that use OLLAMA_BASE_URL_2 (e.g. qwen3.6:27b) when that model runs on a different machine
+# Second host for models that use OLLAMA_BASE_URL_2 (e.g. qwen3.6:27b-heretic) when that model runs on a different machine
 # than OLLAMA_BASE_URL.
 # OLLAMA_BASE_URL_2=http://second-ollama-host:11434
 OLLAMA_MODEL=llama3
@@ -290,7 +290,7 @@ We support two Ollama hosts via four env-var aliases that collapse to two slots:
 | Env var | Alias of | Models that prefer it (primary) |
 |---|---|---|
 | `OLLAMA_BASE_URL_AMD` | `OLLAMA_BASE_URL` | `granite3.3:8b` |
-| `OLLAMA_BASE_URL_NVIDIA` | `OLLAMA_BASE_URL_2` | `qwen3.6:27b` |
+| `OLLAMA_BASE_URL_NVIDIA` | `OLLAMA_BASE_URL_2` | `qwen3.6:27b-heretic` |
 
 `fallback_base_url` in `model_config.json` is **host-down failover** (HTTP 404
 or 5xx triggers a single retry on the other host inside `_post_ollama`). It is
@@ -328,12 +328,12 @@ etc., so we deliberately undersize `num_ctx`:
 
 | Model | `num_ctx` | Why |
 |---|---|---|
-| `qwen3.6:27b` | `20000` | Leaves ~13k tokens slack over the ~6.5k-token worst-case summary input while keeping KV ≈ 2.5 GB so Plex/IDE can coexist. |
+| `qwen3.6:27b-heretic` | `20000` | Leaves ~13k tokens slack over the ~6.5k-token worst-case summary input while keeping KV ≈ 2.5 GB so Plex/IDE can coexist. |
 
 Powers-of-two are a llama.cpp lore thing; in practice round numbers like 20000
 work fine — there is no measurable benefit to 16384 or 32768 specifically.
 Operators with dedicated VRAM can raise the value via the
-`model_qwen3.6:27b_num_ctx` row in `system_settings` without redeploying.
+`model_qwen3.6:27b-heretic_num_ctx` row in `system_settings` without redeploying.
 
 ### Summarizer input pipeline
 

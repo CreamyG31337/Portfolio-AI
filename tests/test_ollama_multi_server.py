@@ -25,7 +25,7 @@ def _reachable(url: str) -> bool:
 
 
 def test_qwen_payload_includes_think_false_and_routes_to_env_second_host(monkeypatch: pytest.MonkeyPatch) -> None:
-    """qwen3.6:27b hits NVIDIA URL first; granite3.3:8b hits AMD URL first (semantic env aliases)."""
+    """qwen3.6:27b-heretic hits NVIDIA URL first; granite3.3:8b hits AMD URL first (semantic env aliases)."""
     monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
     monkeypatch.delenv("OLLAMA_BASE_URL_NVIDIA", raising=False)
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://amd-test:11434")
@@ -41,7 +41,7 @@ def test_qwen_payload_includes_think_false_and_routes_to_env_second_host(monkeyp
         return resp
 
     monkeypatch.setattr(client.session, "post", fake_post)
-    out = client.generate_completion(prompt="x", model="qwen3.6:27b", json_mode=False)
+    out = client.generate_completion(prompt="x", model="qwen3.6:27b-heretic", json_mode=False)
     assert out == "ok"
     assert captured
     first_url, payload = captured[0]
@@ -138,9 +138,9 @@ def test_fallback_retry_on_http_404_for_qwen(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(client.session, "post", fake_post)
     out = client._post_ollama(
-        "qwen3.6:27b",
+        "qwen3.6:27b-heretic",
         "/api/generate",
-        {"model": "qwen3.6:27b", "prompt": "x"},
+        {"model": "qwen3.6:27b-heretic", "prompt": "x"},
         stream=False,
     )
     assert "good-fallback" in posts[-1]
@@ -163,7 +163,7 @@ def test_fallback_retry_on_connection_error_for_qwen(monkeypatch: pytest.MonkeyP
         return resp
 
     monkeypatch.setattr(client.session, "post", fake_post)
-    out = client.generate_completion(prompt="x", model="qwen3.6:27b")
+    out = client.generate_completion(prompt="x", model="qwen3.6:27b-heretic")
     assert out == "recovered"
     assert any("rtx-fail" in u for u in calls)
     assert len(calls) == 2
@@ -179,8 +179,8 @@ def test_live_health_skips_when_no_ollama() -> None:
         pytest.skip("OLLAMA_ENABLED is false")
     assert client.check_health() is True
     assert client.check_health_for_model("granite3.3:8b") is True
-    if not client.check_health_for_model("qwen3.6:27b"):
-        pytest.skip("qwen3.6:27b not installed on resolved Ollama host (ollama pull qwen3.6:27b)")
+    if not client.check_health_for_model("qwen3.6:27b-heretic"):
+        pytest.skip("qwen3.6:27b-heretic not installed on resolved Ollama host (ollama pull qwen3.6:27b-heretic)")
 
 
 def test_check_health_for_model_resolves_host(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -194,14 +194,14 @@ def test_check_health_for_model_resolves_host(monkeypatch: pytest.MonkeyPatch) -
             ok = True
             r = MagicMock()
             r.status_code = 200
-            r.json.return_value = {"models": [{"name": "qwen3.6:27b"}]}
+            r.json.return_value = {"models": [{"name": "qwen3.6:27b-heretic"}]}
             return r
         r = MagicMock()
         r.status_code = 500
         return r
 
     monkeypatch.setattr(client.session, "get", fake_get)
-    assert client.check_health_for_model("qwen3.6:27b") is True
+    assert client.check_health_for_model("qwen3.6:27b-heretic") is True
     assert ok is True
 
 
@@ -217,18 +217,18 @@ def test_check_health_for_model_false_when_model_not_in_tags(
         return r
 
     monkeypatch.setattr(client.session, "get", fake_get)
-    assert client.check_health_for_model("qwen3.6:27b") is False
+    assert client.check_health_for_model("qwen3.6:27b-heretic") is False
 
 
 def test_ollama_tags_list_contains_model_exact_and_tag_suffix() -> None:
-    assert ollama_client.ollama_tags_list_contains_model(["qwen3.6:27b"], "qwen3.6:27b")
+    assert ollama_client.ollama_tags_list_contains_model(["qwen3.6:27b-heretic"], "qwen3.6:27b-heretic")
     assert ollama_client.ollama_tags_list_contains_model(
-        ["qwen3.6:27b-q4_K_M"],
-        "qwen3.6:27b",
+        ["qwen3.6:27b-heretic-q4_K_M"],
+        "qwen3.6:27b-heretic",
     )
     assert not ollama_client.ollama_tags_list_contains_model(
         ["granite3.3:8b"],
-        "qwen3.6:27b",
+        "qwen3.6:27b-heretic",
     )
 
 
@@ -276,9 +276,9 @@ def test_inference_slot_busy_skips_to_second_host(monkeypatch: pytest.MonkeyPatc
     try:
         monkeypatch.setattr(client.session, "post", fake_post)
         out = client._post_ollama(
-            "qwen3.6:27b",
+            "qwen3.6:27b-heretic",
             "/api/generate",
-            {"model": "qwen3.6:27b", "prompt": "x"},
+            {"model": "qwen3.6:27b-heretic", "prompt": "x"},
             stream=False,
         )
         assert out.json()["response"] == "ok"
@@ -319,9 +319,9 @@ def test_streaming_slot_released_on_retryable_http_after_post(
 
     monkeypatch.setattr(client.session, "post", fake_post)
     out = client._post_ollama(
-        "qwen3.6:27b",
+        "qwen3.6:27b-heretic",
         "/api/generate",
-        {"model": "qwen3.6:27b", "prompt": "x"},
+        {"model": "qwen3.6:27b-heretic", "prompt": "x"},
         stream=True,
     )
     assert out is not None
@@ -347,9 +347,9 @@ def test_all_hosts_busy_raises_ollama_host_busy(monkeypatch: pytest.MonkeyPatch)
     try:
         with pytest.raises(ollama_client.OllamaHostBusyError):
             client._post_ollama(
-                "qwen3.6:27b",
+                "qwen3.6:27b-heretic",
                 "/api/generate",
-                {"model": "qwen3.6:27b"},
+                {"model": "qwen3.6:27b-heretic"},
                 stream=False,
             )
     finally:
@@ -365,10 +365,10 @@ def test_default_summarizer_and_fallbacks_when_settings_empty(monkeypatch: pytes
     )
     monkeypatch.delenv("OLLAMA_SUMMARIZING_MODEL", raising=False)
     monkeypatch.delenv("OLLAMA_SUMMARIZING_FALLBACK_MODELS", raising=False)
-    assert settings_module.get_summarizing_model() == "qwen3.6:27b"
-    assert settings_module.get_summarizing_fallback_models() == ["granite3.3:8b", "qwen3.6:27b"]
+    assert settings_module.get_summarizing_model() == "qwen3.6:27b-heretic"
+    assert settings_module.get_summarizing_fallback_models() == ["granite3.3:8b", "qwen3.6:27b-heretic"]
     chain = ollama_client._get_summary_model_chain(None)
-    assert chain[0] == "qwen3.6:27b"
+    assert chain[0] == "qwen3.6:27b-heretic"
     assert chain[1] == "granite3.3:8b"
     assert len(chain) == 2
     assert not any(str(m).startswith("glm-") for m in chain[1:])

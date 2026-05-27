@@ -125,7 +125,7 @@ def _get_explanation_model_chain(requested_model: Optional[str] = None) -> List[
     except Exception as e:
         logger.warning("Could not load summarization settings for explainer chain: %s", e)
         if not primary:
-            primary = "qwen3.6:27b"
+            primary = "qwen3.6:27b-heretic"
 
     chain = [primary] + fallback_models
     ordered: List[str] = []

@@ -80,7 +80,7 @@ _AI_AUDIT_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 def _ollama_models_to_probe() -> list[str]:
     """Small set of Ollama models worth probing (not every row in model_config.json)."""
-    names: set[str] = {"granite3.3:8b", "qwen3.6:27b"}
+    names: set[str] = {"granite3.3:8b", "qwen3.6:27b-heretic"}
     try:
         from settings import get_summarizing_model
 

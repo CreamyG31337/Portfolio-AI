@@ -213,7 +213,7 @@ def test_legacy_mode_unchanged_when_queue_disabled(monkeypatch):
     monkeypatch.setattr(job_module, "SectorMetaAnalysisService", lambda *args: fake_service)
     monkeypatch.setattr(job_module, "get_ollama_client", lambda: SimpleNamespace())
     monkeypatch.setattr(job_module, "OllamaClient", lambda: SimpleNamespace())
-    monkeypatch.setattr(job_module, "get_summarizing_model", lambda key: "qwen3.6:27b")
+    monkeypatch.setattr(job_module, "get_summarizing_model", lambda key: "qwen3.6:27b-heretic")
 
     # Queue mode OFF: only ticker_analysis is queue-managed, not sector meta.
     monkeypatch.setenv("AI_QUEUE_ENABLED", "true")
@@ -256,4 +256,4 @@ def test_legacy_mode_unchanged_when_queue_disabled(monkeypatch):
     fake_service.run_sector_meta.assert_called_once()
     call = fake_service.run_sector_meta.call_args
     assert call.args[0] == "Technology"
-    assert call.kwargs.get("model_override") == "qwen3.6:27b"
+    assert call.kwargs.get("model_override") == "qwen3.6:27b-heretic"

@@ -463,7 +463,7 @@ When evaluating each, decide whether it slots in as:
 
 Practical checks before promoting either to a real backend:
 
-- VRAM headroom on the host that will run it (24 GB 3090 fits both, but not concurrently with qwen3.6:27b).
+- VRAM headroom on the host that will run it (24 GB 3090 fits both, but not concurrently with qwen3.6:27b-heretic).
 - JSON-mode reliability against our ticker / sector / ETF schemas (run the audit comparison harness).
 - Latency under realistic prompt sizes — Magistral's reasoning traces can be long; GPT-OSS is usually fast but verify on agent-style prompts.
 
