@@ -9,6 +9,7 @@ Helper functions for extracting and processing research articles.
 import logging
 import re
 import os
+import time
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 from urllib.parse import urlparse
@@ -21,6 +22,19 @@ except ImportError:
     logging.warning("trafilatura not installed - article extraction will fail")
 
 logger = logging.getLogger(__name__)
+
+RESEARCH_FLARESOLVERR_MAX_TIMEOUT_MS = int(
+    os.getenv("RESEARCH_FLARESOLVERR_MAX_TIMEOUT_MS", "45000")
+)
+RESEARCH_DIRECT_FETCH_TIMEOUT_SECONDS = float(
+    os.getenv("RESEARCH_DIRECT_FETCH_TIMEOUT_SECONDS", "25")
+)
+RESEARCH_ARCHIVE_FETCH_TIMEOUT_SECONDS = float(
+    os.getenv("RESEARCH_ARCHIVE_FETCH_TIMEOUT_SECONDS", "20")
+)
+RESEARCH_DEFAULT_EXTRACTION_BUDGET_SECONDS = float(
+    os.getenv("RESEARCH_DEFAULT_EXTRACTION_BUDGET_SECONDS", "120")
+)
 
 ACCESS_CHALLENGE_PATTERNS = [
     r"access to this page has been denied",
@@ -103,12 +117,56 @@ def _get_flaresolverr_url() -> str:
     return flaresolverr_url or "http://localhost:8191"
 
 
-def extract_article_content(url: str) -> Dict[str, Any]:
+def _remaining_timeout(deadline: Optional[float], default_seconds: float) -> float:
+    """Return a timeout bounded by the remaining article extraction budget."""
+    if deadline is None:
+        return default_seconds
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("article extraction budget exhausted")
+    return max(1.0, min(default_seconds, remaining))
+
+
+def _fetch_direct_html(url: str, timeout_seconds: float) -> Optional[str]:
+    """Fetch article HTML with an explicit timeout instead of trafilatura's default fetcher."""
+    import requests
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    response = requests.get(url, headers=headers, timeout=timeout_seconds)
+    response.raise_for_status()
+    return response.text
+
+
+def _extraction_error_response(url: str, error: str) -> Dict[str, Any]:
+    return {
+        'title': '',
+        'content': '',
+        'published_at': None,
+        'source': extract_source_from_url(url),
+        'success': False,
+        'error': error,
+    }
+
+
+def extract_article_content(
+    url: str,
+    max_seconds: Optional[float] = None,
+) -> Dict[str, Any]:
 
     """Extract article content from URL using Trafilatura.
     
     Args:
         url: Article URL to extract content from
+        max_seconds: Optional wall-clock budget for network fetch and extraction.
         
     Returns:
         Dictionary with keys:
@@ -117,7 +175,8 @@ def extract_article_content(url: str) -> Dict[str, Any]:
         - published_at: Published date (datetime or None)
         - source: Source name extracted from URL
         - success: Boolean indicating success
-        - error: Error type if failed ('download_failed', 'extraction_empty', 'extraction_error', 'access_challenge')
+        - error: Error type if failed ('download_failed', 'extraction_empty',
+          'extraction_error', 'access_challenge')
     """
     if not trafilatura:
         logger.error("trafilatura not installed - cannot extract article content")
@@ -131,6 +190,13 @@ def extract_article_content(url: str) -> Dict[str, Any]:
         }
     
     try:
+        budget_seconds = (
+            RESEARCH_DEFAULT_EXTRACTION_BUDGET_SECONDS if max_seconds is None else max_seconds
+        )
+        if budget_seconds <= 0:
+            return _extraction_error_response(url, 'extraction_timeout')
+        deadline = time.monotonic() + budget_seconds if budget_seconds > 0 else None
+
         # Try FlareSolverr first to bypass Cloudflare protection
         downloaded = None
         try:
@@ -138,11 +204,22 @@ def extract_article_content(url: str) -> Dict[str, Any]:
 
             flaresolverr_url = _get_flaresolverr_url()
             flaresolverr_endpoint = f"{flaresolverr_url}/v1"
+            flaresolverr_timeout = _remaining_timeout(
+                deadline,
+                (RESEARCH_FLARESOLVERR_MAX_TIMEOUT_MS / 1000.0) + 5.0,
+            )
+            flaresolverr_max_timeout_ms = max(
+                1000,
+                min(
+                    RESEARCH_FLARESOLVERR_MAX_TIMEOUT_MS,
+                    int(max(1.0, flaresolverr_timeout - 1.0) * 1000),
+                ),
+            )
             
             payload = {
                 "cmd": "request.get",
                 "url": url,
-                "maxTimeout": 60000  # 60 seconds
+                "maxTimeout": flaresolverr_max_timeout_ms,
             }
             
             logger.debug(f"Attempting to fetch via FlareSolverr: {url}")
@@ -150,7 +227,7 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                 flaresolverr_endpoint,
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=70  # Slightly longer than maxTimeout
+                timeout=flaresolverr_timeout,
             )
             response.raise_for_status()
             
@@ -170,15 +247,28 @@ def extract_article_content(url: str) -> Dict[str, Any]:
             else:
                 error_msg = flaresolverr_data.get("message", "Unknown error")
                 logger.debug(f"FlareSolverr returned error: {error_msg}")
+        except TimeoutError as e:
+            logger.warning(f"Article extraction budget exhausted before FlareSolverr fetch: {e}")
+            return _extraction_error_response(url, 'extraction_timeout')
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             logger.debug(f"FlareSolverr unavailable or timed out: {e}")
         except Exception as e:
             logger.debug(f"FlareSolverr request failed: {e}")
         
-        # Fallback to direct trafilatura fetch if FlareSolverr failed or unavailable
+        # Fallback to direct fetch if FlareSolverr failed or unavailable.
         if not downloaded:
-            logger.debug(f"Falling back to direct trafilatura fetch: {url}")
-            downloaded = trafilatura.fetch_url(url)
+            logger.debug(f"Falling back to direct timed fetch: {url}")
+            try:
+                downloaded = _fetch_direct_html(
+                    url,
+                    _remaining_timeout(deadline, RESEARCH_DIRECT_FETCH_TIMEOUT_SECONDS),
+                )
+            except TimeoutError as e:
+                logger.warning(f"Article extraction budget exhausted before direct fetch: {e}")
+                return _extraction_error_response(url, 'extraction_timeout')
+            except Exception as e:
+                logger.debug(f"Direct article fetch failed: {e}")
+                downloaded = None
         
         if not downloaded:
             logger.warning(f"Failed to download content from {url}")
@@ -190,6 +280,8 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                 'success': False,
                 'error': 'download_failed'
             }
+
+        _remaining_timeout(deadline, 1.0)
 
         # Reject anti-bot challenge pages before extraction
         if contains_access_challenge(downloaded):
@@ -235,6 +327,8 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                 'error': 'access_challenge'
             }
         
+        _remaining_timeout(deadline, 1.0)
+
         # Extract metadata
         metadata = trafilatura.extract_metadata(downloaded)
         
@@ -256,20 +350,34 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                 from archive_service import check_archived, get_archived_content
                 
                 logger.info(f"Attempting to find archived version: {url}")
-                archived_url = check_archived(url)
+                _remaining_timeout(deadline, 1.0)
+                archived_url = check_archived(
+                    url,
+                    timeout=int(_remaining_timeout(deadline, 10.0)),
+                )
                 
                 if archived_url:
                     logger.info(f"Found archived version: {archived_url}")
                     # Use our custom fetch function with browser-like headers
                     # This avoids rate limiting that trafilatura.fetch_url() might trigger
                     try:
-                        import time
                         # Add a small delay to avoid rate limiting
-                        time.sleep(1)
+                        time.sleep(min(1.0, _remaining_timeout(deadline, 1.0)))
                         
-                        logger.debug(f"Fetching from archive URL with browser headers: {archived_url}")
+                        logger.debug(
+                            "Fetching from archive URL with browser headers: %s",
+                            archived_url,
+                        )
                         from archive_service import get_archived_content
-                        archived_html = get_archived_content(archived_url)
+                        archived_html = get_archived_content(
+                            archived_url,
+                            timeout=int(
+                                _remaining_timeout(
+                                    deadline,
+                                    RESEARCH_ARCHIVE_FETCH_TIMEOUT_SECONDS,
+                                )
+                            ),
+                        )
                         
                         if archived_html:
                             # Re-extract content from archived page
@@ -284,7 +392,9 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                             if archived_extracted and len(archived_extracted) > 200:
                                 # Check if archived version also has paywall
                                 if not is_paywalled_article(archived_extracted, archived_url):
-                                    logger.info(f"Successfully extracted content from archived version")
+                                    logger.info(
+                                        "Successfully extracted content from archived version"
+                                    )
                                     # Use archived content
                                     extracted = archived_extracted
                                     # Update metadata from archived page if needed
@@ -292,7 +402,10 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                                     if archived_metadata and archived_metadata.title:
                                         title = archived_metadata.title
                                 else:
-                                    logger.warning(f"Archived version also has paywall, submitting for archiving")
+                                    logger.warning(
+                            "Archived version also has paywall, "
+                            "submitting for archiving"
+                                    )
                                     # Archived version also paywalled, submit for archiving
                                     from archive_service import submit_for_archiving
                                     submit_for_archiving(url)
@@ -306,7 +419,7 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                                         'archive_submitted': True
                                     }
                             else:
-                                logger.warning(f"Archived version has insufficient content")
+                                logger.warning("Archived version has insufficient content")
                                 # Submit for archiving as fallback
                                 from archive_service import submit_for_archiving
                                 submit_for_archiving(url)
@@ -351,7 +464,10 @@ def extract_article_content(url: str) -> Dict[str, Any]:
                     # Not archived yet, submit for archiving
                     logger.info(f"URL not archived yet, submitting for archiving: {url}")
                     from archive_service import submit_for_archiving
-                    submit_for_archiving(url)
+                    submit_for_archiving(
+                        url,
+                        timeout=int(_remaining_timeout(deadline, 10.0)),
+                    )
                     return {
                         'title': title,
                         'content': '',
@@ -403,6 +519,9 @@ def extract_article_content(url: str) -> Dict[str, Any]:
             'error': None
         }
         
+    except TimeoutError as e:
+        logger.warning(f"Timed out extracting content from {url}: {e}")
+        return _extraction_error_response(url, 'extraction_timeout')
     except Exception as e:
         logger.error(f"Error extracting content from {url}: {e}")
         return {
@@ -481,7 +600,17 @@ def validate_ticker_format(ticker: Optional[str], max_length: int = 20) -> bool:
     # - Contains multiple words (spaces would be caught by pattern, but check for common words)
     # - Too long (already checked)
     # - Contains common company name words
-    company_name_indicators = ['LIMITED', 'INC', 'CORP', 'CORPORATION', 'LLC', 'LTD', 'HOLDINGS', 'GROUP', 'COMPANY']
+    company_name_indicators = [
+        'LIMITED',
+        'INC',
+        'CORP',
+        'CORPORATION',
+        'LLC',
+        'LTD',
+        'HOLDINGS',
+        'GROUP',
+        'COMPANY',
+    ]
     ticker_upper = ticker.upper()
     if any(indicator in ticker_upper for indicator in company_name_indicators):
         return False
@@ -559,7 +688,8 @@ def normalize_relationship(source: str, target: str, rel_type: str) -> Tuple[str
     Args:
         source: Source ticker or company name
         target: Target ticker or company name
-        rel_type: Relationship type (SUPPLIER, CUSTOMER, COMPETITOR, PARTNER, PARENT, SUBSIDIARY, LITIGATION)
+        rel_type: Relationship type (SUPPLIER, CUSTOMER, COMPETITOR, PARTNER,
+            PARENT, SUBSIDIARY, LITIGATION)
         
     Returns:
         Tuple of (normalized_source, normalized_target, normalized_type)

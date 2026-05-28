@@ -15,6 +15,30 @@ logger = logging.getLogger(__name__)
 IndexResult = tuple[int, dict]
 
 
+def _remaining_article_seconds(article_start: float, max_article_duration: float) -> float:
+    return max(0.0, max_article_duration - (time.time() - article_start))
+
+
+def _has_time_for_stage(
+    *,
+    article_start: float,
+    max_article_duration: float,
+    min_seconds: float,
+    title: str,
+    stage: str,
+) -> bool:
+    remaining = _remaining_article_seconds(article_start, max_article_duration)
+    if remaining < min_seconds:
+        logger.warning(
+            "⏱️  Skipping %s for %s... only %.1fs remain in article budget",
+            stage,
+            title[:40],
+            remaining,
+        )
+        return False
+    return True
+
+
 @dataclass
 class AlphaResearchCtx:
     research_repo: Any
@@ -66,8 +90,14 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
             logger.debug("Skipping explicitly blacklisted: %s", url[:60])
             return c
 
-        if time.time() - article_start > ctx.max_article_duration:
-            logger.warning("⏱️  Article timeout - skipping: %s...", title[:40])
+        if not _has_time_for_stage(
+            article_start=article_start,
+            max_article_duration=ctx.max_article_duration,
+            min_seconds=5.0,
+            title=title,
+            stage="extraction",
+        ):
+            c.failed += 1
             return c
 
         if ctx.research_repo.article_exists(url):
@@ -81,14 +111,25 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
             f"Extracting article {idx}/{ctx.total_results}: {title[:60]}",
         )
         logger.info("  💎 Extracting Alpha: %s...", title[:40])
-        extracted = extract_article_content(url)
+        extracted = extract_article_content(
+            url,
+            max_seconds=_remaining_article_seconds(article_start, ctx.max_article_duration),
+        )
 
         content = extracted.get("content", "")
         if not content or not extracted.get("success"):
+            if extracted.get("error") == "extraction_timeout":
+                c.failed += 1
             return c
 
-        if time.time() - article_start > ctx.max_article_duration:
-            logger.warning("⏱️  Article timeout after extraction - skipping: %s...", title[:40])
+        if not _has_time_for_stage(
+            article_start=article_start,
+            max_article_duration=ctx.max_article_duration,
+            min_seconds=30.0,
+            title=title,
+            stage="AI summary",
+        ):
+            c.failed += 1
             return c
 
         summary = None
@@ -127,14 +168,20 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
             if sectors:
                 extracted_sector = sectors[0]
 
-        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+        market_relevance = (
+            summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+        )
         has_market_signal = has_strong_market_signal(
             title=title,
             content=content,
             tickers=extracted_tickers,
         )
         if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
-            reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
+            reason = (
+                summary_data.get("market_relevance_reason", "")
+                if isinstance(summary_data, dict)
+                else ""
+            )
             if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
                 reason = reason or "No strong market signals detected in article text"
             c.irrelevant += 1
@@ -145,7 +192,13 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
             )
             return c
 
-        if ctx.ollama_client:
+        if ctx.ollama_client and _has_time_for_stage(
+            article_start=article_start,
+            max_article_duration=ctx.max_article_duration,
+            min_seconds=15.0,
+            title=title,
+            stage="embedding",
+        ):
             embedding = ctx.ollama_client.generate_embedding(content)
 
         logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
@@ -166,7 +219,9 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
             fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
             conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
             sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-            sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+            sentiment_score=(
+                summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None
+            ),
             logic_check=logic_check,
         )
 
@@ -188,7 +243,12 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
         return c
 
     except Exception as e:
-        log_job_step(ctx.job_id, "error", f"Error processing article: {str(e)[:100]}", status="failed")
+        log_job_step(
+            ctx.job_id,
+            "error",
+            f"Error processing article: {str(e)[:100]}",
+            status="failed",
+        )
         logger.error("Error processing alpha article: %s", e)
         return c
     finally:
@@ -207,7 +267,10 @@ class OpportunityDiscoveryCtx:
     sleep_after_article_sec: float
 
 
-def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: IndexResult) -> ArticleCounters:
+def process_opportunity_discovery_item(
+    ctx: OpportunityDiscoveryCtx,
+    item: IndexResult,
+) -> ArticleCounters:
     """Single SearXNG result for opportunity discovery."""
     from research_utils import extract_article_content, is_domain_blacklisted
     from ollama_client import generate_summary
@@ -249,8 +312,14 @@ def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: Index
             c.blacklisted += 1
             return c
 
-        if time.time() - article_start > ctx.max_article_duration:
-            logger.warning("⏱️  Article timeout - skipping: %s...", title[:40])
+        if not _has_time_for_stage(
+            article_start=article_start,
+            max_article_duration=ctx.max_article_duration,
+            min_seconds=5.0,
+            title=title,
+            stage="extraction",
+        ):
+            c.failed += 1
             return c
 
         if ctx.research_repo.article_exists(url):
@@ -264,7 +333,10 @@ def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: Index
             f"Extracting article {idx}/{ctx.total_results}: {title[:60]}",
         )
         logger.info("  💎 Extracting: %s...", title[:40])
-        extracted = extract_article_content(url)
+        extracted = extract_article_content(
+            url,
+            max_seconds=_remaining_article_seconds(article_start, ctx.max_article_duration),
+        )
 
         tracker = DomainHealthTracker()
 
@@ -272,6 +344,8 @@ def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: Index
         if not content or not extracted.get("success"):
             error_reason = extracted.get("error", "unknown")
             tracker.record_failure(url, error_reason)
+            if error_reason == "extraction_timeout":
+                c.failed += 1
 
             if tracker.should_auto_blacklist(url):
                 if tracker.auto_blacklist_domain(url):
@@ -279,8 +353,14 @@ def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: Index
                     c.blacklisted += 1
             return c
 
-        if time.time() - article_start > ctx.max_article_duration:
-            logger.warning("⏱️  Article timeout after extraction - skipping: %s...", title[:40])
+        if not _has_time_for_stage(
+            article_start=article_start,
+            max_article_duration=ctx.max_article_duration,
+            min_seconds=30.0,
+            title=title,
+            stage="AI summary",
+        ):
+            c.failed += 1
             return c
 
         tracker.record_success(url)
@@ -323,14 +403,20 @@ def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: Index
             if sectors:
                 extracted_sector = sectors[0]
 
-        market_relevance = summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+        market_relevance = (
+            summary_data.get("market_relevance") if isinstance(summary_data, dict) else None
+        )
         has_market_signal = has_strong_market_signal(
             title=title,
             content=content,
             tickers=extracted_tickers,
         )
         if market_relevance == "NOT_MARKET_RELATED" or not has_market_signal:
-            reason = summary_data.get("market_relevance_reason", "") if isinstance(summary_data, dict) else ""
+            reason = (
+                summary_data.get("market_relevance_reason", "")
+                if isinstance(summary_data, dict)
+                else ""
+            )
             if not has_market_signal and market_relevance != "NOT_MARKET_RELATED":
                 reason = reason or "No strong market signals detected in article text"
             c.irrelevant += 1
@@ -341,7 +427,13 @@ def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: Index
             )
             return c
 
-        if ctx.ollama_client:
+        if ctx.ollama_client and _has_time_for_stage(
+            article_start=article_start,
+            max_article_duration=ctx.max_article_duration,
+            min_seconds=15.0,
+            title=title,
+            stage="embedding",
+        ):
             embedding = ctx.ollama_client.generate_embedding(content)
 
         logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
@@ -362,7 +454,9 @@ def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: Index
             fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
             conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
             sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-            sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+            sentiment_score=(
+                summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None
+            ),
             logic_check=logic_check,
         )
 
@@ -419,7 +513,12 @@ def process_opportunity_discovery_item(ctx: OpportunityDiscoveryCtx, item: Index
         return c
 
     except Exception as e:
-        log_job_step(ctx.job_id, "error", f"Error processing article: {str(e)[:100]}", status="failed")
+        log_job_step(
+            ctx.job_id,
+            "error",
+            f"Error processing article: {str(e)[:100]}",
+            status="failed",
+        )
         logger.error("Error processing discovery article: %s", e)
         return c
     finally:

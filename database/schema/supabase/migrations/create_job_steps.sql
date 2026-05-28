@@ -1,5 +1,5 @@
--- Job Steps: Real-time step-by-step progress logging for long-running jobs
--- Append-only table for tracking where jobs are in their pipeline
+-- Create missing job_steps table used by utils.job_tracking.log_job_step().
+-- Without this table, long-running scheduler jobs silently lose per-step diagnostics.
 
 CREATE TABLE IF NOT EXISTS public.job_steps (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -7,12 +7,13 @@ CREATE TABLE IF NOT EXISTS public.job_steps (
     run_date DATE NOT NULL DEFAULT CURRENT_DATE,
     step_name VARCHAR(100) NOT NULL,
     message TEXT NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'running',  -- running, success, failed, skipped
-    metadata JSONB,                                   -- optional: article_url, ticker, error details
+    status VARCHAR(20) NOT NULL DEFAULT 'running',
+    metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_job_steps_lookup ON public.job_steps (job_name, run_date, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_job_steps_lookup
+    ON public.job_steps (job_name, run_date, created_at DESC);
 
 ALTER TABLE public.job_steps ENABLE ROW LEVEL SECURITY;
 

@@ -98,28 +98,17 @@ def run_article_pipeline_parallel(
     the stale-AI-lock watchdog at 1h on 2026-05-20 and 2026-05-22.
     """
     deadline = job_start_time + float(max_job_duration_sec)
-    if max_workers <= 1:
-        agg = ArticleCounters()
-        for item in items:
-            if time.time() >= deadline:
-                break
-            try:
-                agg += worker(item)
-            except Exception:
-                logger.exception("Article worker failed (serial mode)")
-                agg.failed += 1
-        return agg
-
     agg = ArticleCounters()
     it = iter(items)
     pending: set = set()
 
-    ex = ThreadPoolExecutor(max_workers=max_workers)
+    effective_workers = max(1, max_workers)
+    ex = ThreadPoolExecutor(max_workers=effective_workers)
     try:
 
         def refill() -> None:
             nonlocal pending
-            while len(pending) < max_workers:
+            while len(pending) < effective_workers:
                 if time.time() >= deadline:
                     return
                 try:
