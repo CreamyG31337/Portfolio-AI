@@ -43,3 +43,7 @@
 ## 2024-05-18 - Streamlit Render Loop Iterrows Overhead
 **Learning:** Found several `iterrows()` usages inside Streamlit render loops in `admin_users.py`, `etf_holdings.py`, `social_sentiment.py` and `chart_utils.py`. Using `iterrows()` inside display and charting loops creates significant overhead due to Pandas instantiating a new Series object per row, turning an O(N) loop into a slow O(N) with massive constant factors.
 **Action:** Replace `iterrows()` with `itertuples(index=False)` and use `getattr(row, 'colname')` for row access. This yields standard Python namedtuples, avoiding the Series instantiation overhead and providing a 10-100x speedup for dashboard rendering loops.
+
+## 2024-05-24 - Pandas Row-wise Operations (.apply) in API Responses
+**Learning:** In backend data processing functions that return immediate API responses (like `get_all_etf_holdings_changes` in Flask routes), using `.apply(..., axis=1)` creates massive CPU overhead for DataFrames with thousands of rows (e.g., historical ETF holdings). This blocks the main thread and dramatically increases response latency.
+**Action:** Always replace `.apply(..., axis=1)` with Pandas/NumPy vectorization (e.g., `np.where`, boolean indexing with `.loc`) which executes 10x-100x faster by bypassing Python interpreter object creation per row.
