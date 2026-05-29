@@ -1,8 +1,7 @@
 import pytest
 import sys
 import os
-import importlib.util
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Add web_dashboard to path so we can import app (ensure highest priority)
 web_dashboard_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'web_dashboard'))
@@ -28,7 +27,8 @@ def app():
     # Mock Supabase dependencies before importing app to prevent connection attempts
     with patch('supabase_client.SupabaseClient'), \
          patch('flask_caching.Cache'), \
-         patch('log_handler.setup_logging'):
+         patch('log_handler.setup_logging'), \
+         patch.dict(os.environ, {'DISABLE_SCHEDULER': 'true'}):
 
         from web_dashboard.app import app
         from jinja2 import FileSystemLoader

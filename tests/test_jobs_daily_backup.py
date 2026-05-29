@@ -213,7 +213,9 @@ def install_tracking_stub(monkeypatch):
             {"job_name": job_name, "target_date": target_date, "fund_name": fund_name}
         )
 
-    def mark_job_completed(job_name, target_date, fund_name, funds_processed, duration_ms=None, message=None):
+    def mark_job_completed(
+        job_name, target_date, fund_name, funds_processed, duration_ms=None, message=None
+    ):
         calls["completed"].append(
             {
                 "job_name": job_name,
@@ -270,6 +272,15 @@ def _make_trade(ticker: str, shares: str, price: str) -> _FakeTrade:
 # --------------------------------------------------------------------------- #
 # Slug
 # --------------------------------------------------------------------------- #
+
+
+def test_daily_backup_keeps_repo_root_ahead_of_web_dashboard_path():
+    from web_dashboard.scheduler import jobs_daily_backup as job_mod
+
+    project_root_index = sys.path.index(str(job_mod._project_root))
+    web_dashboard_index = sys.path.index(str(job_mod._web_dashboard_path))
+
+    assert project_root_index < web_dashboard_index
 
 
 def test_slugify_fund_name_simple_cases():

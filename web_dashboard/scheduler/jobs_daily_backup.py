@@ -83,9 +83,13 @@ from collections.abc import Iterable
 _current_dir = Path(__file__).resolve().parent
 _project_root = _current_dir.parent.parent
 _web_dashboard_path = _current_dir.parent
+# Keep the repo root ahead of web_dashboard/ so top-level packages like
+# data.repositories are not shadowed by modules such as web_dashboard/data.py.
 for _candidate in (str(_project_root), str(_web_dashboard_path)):
-    if _candidate not in sys.path:
-        sys.path.insert(0, _candidate)
+    if _candidate in sys.path:
+        sys.path.remove(_candidate)
+for _candidate in (str(_web_dashboard_path), str(_project_root)):
+    sys.path.insert(0, _candidate)
 
 from scheduler.scheduler_core import log_job_execution  # noqa: E402
 
