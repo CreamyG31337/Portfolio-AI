@@ -14,7 +14,7 @@ import time
 import requests
 import json
 import base64
-from datetime import datetime, date, timedelta, time as dt_time
+from datetime import datetime, date, timedelta, time as dt_time, timezone
 from typing import Dict, List, Optional, Tuple, NamedTuple
 from decimal import Decimal
 import pytz
@@ -415,6 +415,40 @@ def _is_drip_fund(dividend_mode: str) -> bool:
     return str(dividend_mode).strip().lower() == "reinvest"
 
 
+def _credit_cash_dividend(client, fund: str, currency: str, amount: Decimal) -> None:
+    """Credit net dividend proceeds to fund cash_balances."""
+    currency_upper = str(currency).upper()
+    result = (
+        client.supabase.table("cash_balances")
+        .select("amount")
+        .eq("fund", fund)
+        .eq("currency", currency_upper)
+        .limit(1)
+        .execute()
+    )
+    previous = Decimal("0")
+    if result.data:
+        previous = Decimal(str(result.data[0].get("amount", 0) or 0))
+
+    new_amount = previous + amount
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    client.supabase.table("cash_balances").upsert(
+        {
+            "fund": fund,
+            "currency": currency_upper,
+            "amount": float(new_amount),
+            "updated_at": now_iso,
+        },
+        on_conflict="fund,currency",
+    ).execute()
+
+    logger.info(
+        f"Credited {currency_upper} {amount:.2f} to {fund} cash "
+        f"(was {previous:.2f}, now {new_amount:.2f})"
+    )
+
+
 def insert_drip_transaction(
     fund: str, ticker: str, evt: DividendEvent,
     fund_type: str, dividend_mode: str, client
@@ -481,6 +515,19 @@ def insert_drip_transaction(
                 f"💵 Cash dividend {fund}/{ticker}: ${net_amount:.2f} "
                 f"(fund_type={fund_type}, dividend_mode={dividend_mode}, no share reinvestment)"
             )
+            try:
+                _credit_cash_dividend(client, fund, currency, net_amount)
+                try:
+                    from cache_version import bump_cache_version
+
+                    bump_cache_version()
+                except Exception as bump_err:
+                    logger.warning(f"Cash credited but cache bump failed: {bump_err}")
+            except Exception as cash_err:
+                logger.error(
+                    f"Failed to credit cash for {fund}/{ticker}: {cash_err}; "
+                    "continuing with dividend_log insert"
+                )
 
         # 5. Insert Dividend Log (always — tracks income for both DRIP and cash)
         div_entry = {
