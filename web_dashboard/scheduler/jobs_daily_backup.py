@@ -654,7 +654,9 @@ def daily_critical_data_backup_job(
                     exc_info=True,
                 )
                 fund_total_failures.append(fund_name)
-                all_warnings.append(f"trade_log:{fund_name}: unhandled error ({exc})")
+                all_warnings.append(
+                    f"trade_log:{fund_name}: unhandled error ({exc!r})"
+                )
                 continue
 
             processed_funds.append(fund_name)
@@ -689,7 +691,9 @@ def daily_critical_data_backup_job(
                     exc_info=True,
                 )
                 table_total_failures.append(table_name)
-                all_warnings.append(f"table:{table_name}: unhandled error ({exc})")
+                all_warnings.append(
+                    f"table:{table_name}: unhandled error ({exc!r})"
+                )
                 continue
 
             processed_tables.append(table_name)
@@ -706,6 +710,12 @@ def daily_critical_data_backup_job(
         duration_ms = int((time.time() - start_time) * 1000)
 
         # Trade-log is the marquee artifact, so the summary leads with it.
+        # When something went wrong we also tack on the first couple of
+        # warnings (truncated) so the persisted ``error_message`` carries the
+        # real exception text instead of just the fund/table names. The
+        # 500-char store-side cap means later warnings may be cut off, which
+        # is fine -- the header + the first warning is what we actually need
+        # to diagnose container-only failures.
         summary = (
             f"Backed up trade_log for {len(processed_funds)} funds "
             f"({fund_host_ok}_host + {fund_storage_ok}_storage) "
@@ -716,6 +726,9 @@ def daily_critical_data_backup_job(
             f"table failures: "
             f"{table_total_failures if table_total_failures else 'none'}"
         )
+        if all_warnings:
+            first_warnings = " | ".join(w[:200] for w in all_warnings[:2])
+            summary = f"{summary}; first warnings: {first_warnings}"
 
         # Failure means BOTH destinations missed for that item. Partial
         # successes (one destination ok, one warned) still count as job
