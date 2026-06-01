@@ -227,8 +227,96 @@ def _list_active_funds(client: Any) -> list[str]:
 # --------------------------------------------------------------------------- #
 
 
+def _trade_rows_to_csv_bytes(rows: Iterable[dict[str, Any]]) -> bytes:
+    """Render raw ``trade_log`` Supabase rows as UTF-8 CSV bytes.
+
+    This is the production rendering path: it consumes the dict rows that
+    ``supabase-py`` returns from ``table("trade_log").select("*").execute()``
+    without going through ``SupabaseRepository`` / ``TradeMapper`` /
+    ``Trade``. Bypassing the domain layer avoids the
+    ``ModuleNotFoundError("No module named 'data.repositories'")`` we hit in
+    production -- the scheduler container had ``web_dashboard/data/`` cached
+    in ``sys.modules`` from earlier imports, so the deferred
+    ``from data.repositories.supabase_repository import SupabaseRepository``
+    inside this job resolved to the wrong (shallow) ``data`` package.
+
+    Output columns are pinned to ``TRADE_CSV_COLUMNS`` so the snapshot
+    schema does not drift if Supabase adds new columns. Numeric values
+    (shares/price/cost_basis/pnl) are passed through as the strings the
+    REST API returns ("8.000000", "392.14", ...); pandas will quote/escape
+    them correctly. Timestamps are normalised to the ISO-8601 ``T``-separator
+    form used by the previous ``Trade.timestamp.isoformat()`` rendering, so
+    downstream readers don't see a format change after this refactor.
+    """
+    import pandas as pd
+
+    mapped: list[dict[str, Any]] = []
+    for row in rows or []:
+        ts = row.get("date")
+        if isinstance(ts, str) and " " in ts and "T" not in ts:
+            ts = ts.replace(" ", "T", 1)
+        mapped.append(
+            {
+                "trade_id": row.get("id"),
+                "timestamp": ts,
+                "ticker": row.get("ticker"),
+                "action": row.get("action"),
+                "shares": row.get("shares"),
+                "price": row.get("price"),
+                "cost_basis": row.get("cost_basis"),
+                "pnl": row.get("pnl"),
+                "currency": row.get("currency"),
+                "reason": row.get("reason"),
+            }
+        )
+
+    df = pd.DataFrame(mapped, columns=list(TRADE_CSV_COLUMNS))
+    buffer = io.StringIO()
+    df.to_csv(buffer, index=False)
+    return buffer.getvalue().encode("utf-8")
+
+
+def _fetch_fund_trade_rows(
+    admin_client: Any, fund_name: str
+) -> list[dict[str, Any]]:
+    """Paginate the full ``trade_log`` for one fund with the service-role client.
+
+    Same pagination contract as ``_fetch_full_table``: 1000-row pages,
+    capped by ``_TABLE_SAFETY_ROW_LIMIT`` defensively.
+    """
+    all_rows: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        result = (
+            admin_client.supabase.table("trade_log")
+            .select("*")
+            .eq("fund", fund_name)
+            .range(offset, offset + _TABLE_PAGE_SIZE - 1)
+            .execute()
+        )
+        rows = result.data or []
+        all_rows.extend(rows)
+        if len(rows) < _TABLE_PAGE_SIZE:
+            break
+        offset += _TABLE_PAGE_SIZE
+        if offset >= _TABLE_SAFETY_ROW_LIMIT:
+            logger.warning(
+                "Hit safety row limit (%d) while paginating trade_log for %s",
+                _TABLE_SAFETY_ROW_LIMIT,
+                fund_name,
+            )
+            break
+    return all_rows
+
+
 def _trades_to_csv_bytes(trades: Iterable[Any]) -> bytes:
     """Render a list of ``Trade`` objects as UTF-8 CSV bytes.
+
+    Test seam only. Production uses ``_trade_rows_to_csv_bytes`` against
+    raw Supabase rows so we don't depend on importing
+    ``data.repositories.supabase_repository`` from inside an APScheduler
+    worker (see ``_trade_rows_to_csv_bytes`` docstring for the import-shadow
+    bug this avoids).
 
     Always emits the header row, even for empty trade lists, so a snapshot
     on a fund with zero trades is still a valid, parseable CSV.
@@ -420,6 +508,7 @@ def _backup_fund_trade_log(
     *,
     backup_root: Path | None,
     date_str: str,
+    admin_client: Any | None = None,
     repository_factory: Any | None = None,
 ) -> tuple[int, bool, bool, list[str]]:
     """Back up a single fund's trade log to both destinations.
@@ -429,8 +518,18 @@ def _backup_fund_trade_log(
         backup_root: Resolved per-day host backup root, or ``None`` if the
             volume mount is unavailable. We still attempt the Storage upload.
         date_str: ``YYYY-MM-DD`` date stamp used as the day folder name.
-        repository_factory: Test seam. Production callers leave this ``None``
-            so the real ``SupabaseRepository`` is used.
+        admin_client: Service-role Supabase client used to query the
+            ``trade_log`` table directly. Production callers must pass this
+            so we can avoid importing ``data.repositories.supabase_repository``
+            from inside the APScheduler worker -- that deferred import was
+            resolving against the wrong ``data`` package in the container and
+            raising ``ModuleNotFoundError('No module named ...repositories')``
+            on every run.
+        repository_factory: Test seam ONLY. When provided, the function uses
+            the legacy repository-based path (returning ``Trade`` objects via
+            ``get_trade_history()``) so the existing test fakes keep working.
+            Production callers must leave this ``None`` and pass
+            ``admin_client``.
 
     Returns:
         ``(row_count, host_ok, storage_ok, warnings)``.
@@ -442,33 +541,59 @@ def _backup_fund_trade_log(
     storage_subdir = f"{STORAGE_PREFIX}/{date_str}/trade_log"
 
     if repository_factory is not None:
+        # Test path: keep the Trade-object rendering so existing fakes work.
         repo = repository_factory(fund_name)
+        try:
+            trades = repo.get_trade_history()
+        except Exception as exc:
+            warnings.append(f"{fund_name}: trade fetch failed ({exc!r})")
+            logger.error(
+                "Trade fetch failed for fund %s: %s", fund_name, exc, exc_info=True
+            )
+            return 0, False, False, warnings
+
+        row_count = len(trades or [])
+        if row_count == 0:
+            logger.info(
+                "Fund %s has no trades — writing header-only snapshot %s",
+                fund_name,
+                filename,
+            )
+        payload = _trades_to_csv_bytes(trades or [])
+        supabase_client = repo.supabase
     else:
-        from data.repositories.supabase_repository import SupabaseRepository
+        # Production path: direct service-role query, no SupabaseRepository.
+        if admin_client is None:
+            warnings.append(
+                f"{fund_name}: trade fetch skipped (no admin_client provided)"
+            )
+            logger.error(
+                "Trade fetch for %s skipped: admin_client must be provided in "
+                "production callers when repository_factory is None",
+                fund_name,
+            )
+            return 0, False, False, warnings
+        try:
+            rows = _fetch_fund_trade_rows(admin_client, fund_name)
+        except Exception as exc:
+            warnings.append(f"{fund_name}: trade fetch failed ({exc!r})")
+            logger.error(
+                "Trade fetch failed for fund %s: %s", fund_name, exc, exc_info=True
+            )
+            return 0, False, False, warnings
 
-        repo = SupabaseRepository(fund_name=fund_name, use_service_role=True)
-
-    try:
-        trades = repo.get_trade_history()
-    except Exception as exc:
-        warnings.append(f"{fund_name}: trade fetch failed ({exc})")
-        logger.error(
-            "Trade fetch failed for fund %s: %s", fund_name, exc, exc_info=True
-        )
-        return 0, False, False, warnings
-
-    row_count = len(trades or [])
-    if row_count == 0:
-        logger.info(
-            "Fund %s has no trades — writing header-only snapshot %s",
-            fund_name,
-            filename,
-        )
-
-    payload = _trades_to_csv_bytes(trades or [])
+        row_count = len(rows)
+        if row_count == 0:
+            logger.info(
+                "Fund %s has no trades — writing header-only snapshot %s",
+                fund_name,
+                filename,
+            )
+        payload = _trade_rows_to_csv_bytes(rows)
+        supabase_client = admin_client.supabase
 
     host_ok, storage_ok, write_warnings = _write_both_destinations(
-        supabase_client=repo.supabase,
+        supabase_client=supabase_client,
         backup_root=backup_root,
         host_subdir=host_subdir,
         storage_subdir=storage_subdir,
@@ -644,6 +769,7 @@ def daily_critical_data_backup_job(
                     fund_name,
                     backup_root=backup_root,
                     date_str=date_str,
+                    admin_client=admin_client,
                     repository_factory=repository_factory,
                 )
             except Exception as exc:

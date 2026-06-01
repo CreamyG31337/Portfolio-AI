@@ -362,6 +362,236 @@ def test_rows_to_csv_bytes_preserves_column_order_and_handles_sparse_keys():
     assert text[2].startswith("2,beta,False,tfsa")
 
 
+def test_trade_rows_to_csv_bytes_empty_writes_header_only():
+    """Production renderer matches Trade-object renderer for empty input."""
+    from web_dashboard.scheduler.jobs_daily_backup import (
+        TRADE_CSV_COLUMNS,
+        _trade_rows_to_csv_bytes,
+    )
+
+    payload = _trade_rows_to_csv_bytes([])
+    text = payload.decode("utf-8")
+    lines = [line for line in text.splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert lines[0] == ",".join(TRADE_CSV_COLUMNS)
+
+
+def test_trade_rows_to_csv_bytes_maps_db_columns_and_normalises_timestamps():
+    """``id`` -> ``trade_id``, ``date`` -> ``timestamp`` (space -> ``T``).
+
+    Pins the contract the daily backup downstream consumers rely on so the
+    raw-row path stays drop-in compatible with the previous
+    ``Trade.timestamp.isoformat()`` rendering.
+    """
+    from web_dashboard.scheduler.jobs_daily_backup import (
+        TRADE_CSV_COLUMNS,
+        _trade_rows_to_csv_bytes,
+    )
+
+    rows = [
+        {
+            "id": "f00258ab-f383-412a-9271-e5a8167e737d",
+            "fund": "RRSP Lance Webull",
+            "date": "2026-02-12 21:05:00+00",  # Postgres-style space separator
+            "ticker": "ETN",
+            "action": "BUY",
+            "shares": "8.000000",
+            "price": "392.14",
+            "cost_basis": "3137.12",
+            "pnl": "0.00",
+            "currency": "USD",
+            "reason": "Power management leader",
+        },
+        {
+            "id": "fd5bf848-c4e1-47a7-a292-798cf0ec0cc2",
+            "fund": "RRSP Lance Webull",
+            "date": "2026-02-12T20:58:00+00:00",  # already ISO-T form, pass through
+            "ticker": "DELL",
+            "action": "BUY",
+            "shares": "15",
+            "price": "111.97",
+            "cost_basis": "1679.55",
+            "pnl": "0.00",
+            "currency": "USD",
+            "reason": None,
+        },
+    ]
+
+    payload = _trade_rows_to_csv_bytes(rows)
+    text = payload.decode("utf-8")
+    lines = text.splitlines()
+    assert lines[0] == ",".join(TRADE_CSV_COLUMNS)
+    assert len(lines) == 3
+
+    # Row 1: trade_id from id, timestamp normalised to ISO-T
+    assert "f00258ab-f383-412a-9271-e5a8167e737d" in lines[1]
+    assert "2026-02-12T21:05:00+00" in lines[1]
+    assert "ETN" in lines[1]
+
+    # Row 2: ISO-T timestamp unchanged, DELL ticker
+    assert "2026-02-12T20:58:00+00:00" in lines[2]
+    assert "DELL" in lines[2]
+
+
+def test_fetch_fund_trade_rows_filters_by_fund_and_paginates(monkeypatch):
+    """Verify pagination contract + fund filter for the production reader."""
+    from web_dashboard.scheduler import jobs_daily_backup as job_mod
+
+    # Build 2.5 pages worth of rows for "GoodFund", plus noise rows for "Other".
+    page_size = job_mod._TABLE_PAGE_SIZE
+    good_rows = [
+        {
+            "id": f"row-{i}",
+            "fund": "GoodFund",
+            "date": "2026-05-23T14:30:00+00:00",
+            "ticker": "AAPL",
+            "action": "BUY",
+            "shares": "1",
+            "price": "100",
+            "cost_basis": "100",
+            "pnl": "0",
+            "currency": "USD",
+            "reason": "test",
+        }
+        for i in range(int(page_size * 2 + 5))
+    ]
+    other_rows = [
+        {
+            "id": f"other-{i}",
+            "fund": "OtherFund",
+            "date": "2026-05-23T14:30:00+00:00",
+            "ticker": "MSFT",
+            "action": "BUY",
+            "shares": "1",
+            "price": "100",
+            "cost_basis": "100",
+            "pnl": "0",
+            "currency": "USD",
+            "reason": "should be filtered out",
+        }
+        for i in range(50)
+    ]
+
+    class _TradeLogTableQuery:
+        def __init__(self, rows):
+            self._rows = rows
+            self._fund: str | None = None
+            self._range: tuple[int, int] | None = None
+
+        def select(self, *_a, **_kw):
+            return self
+
+        def eq(self, key, value):
+            assert key == "fund"
+            self._fund = value
+            return self
+
+        def range(self, lo, hi):
+            self._range = (lo, hi)
+            return self
+
+        def execute(self):
+            data = [r for r in self._rows if self._fund is None or r["fund"] == self._fund]
+            if self._range is not None:
+                lo, hi = self._range
+                data = data[lo : hi + 1]
+            return types.SimpleNamespace(data=data)
+
+    class _AdminSupabase:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def table(self, name):
+            assert name == "trade_log"
+            return _TradeLogTableQuery(self._rows)
+
+    admin_client = types.SimpleNamespace(supabase=_AdminSupabase(good_rows + other_rows))
+
+    result = job_mod._fetch_fund_trade_rows(admin_client, "GoodFund")
+
+    assert len(result) == len(good_rows)
+    assert all(r["fund"] == "GoodFund" for r in result)
+
+
+def test_backup_fund_trade_log_uses_admin_client_when_no_factory(tmp_path):
+    """Production path: ``admin_client`` used directly, no SupabaseRepository import."""
+    from web_dashboard.scheduler.jobs_daily_backup import _backup_fund_trade_log
+
+    bucket = _FakeStorageBucket()
+    raw_rows = [
+        {
+            "id": "uuid-aapl-1",
+            "fund": "Project Chimera",
+            "date": "2026-05-23 14:30:00+00",
+            "ticker": "AAPL",
+            "action": "BUY",
+            "shares": "1",
+            "price": "100",
+            "cost_basis": "100",
+            "pnl": "0",
+            "currency": "USD",
+            "reason": "raw row path",
+        }
+    ]
+    admin = _FakeAdminClient(
+        _FakeAdminSupabase(
+            bucket=bucket,
+            funds_rows=[],
+            table_rows={"trade_log": raw_rows},
+        )
+    )
+
+    row_count, host_ok, storage_ok, warnings = _backup_fund_trade_log(
+        "Project Chimera",
+        backup_root=tmp_path,
+        date_str="2026-05-23",
+        admin_client=admin,
+        repository_factory=None,
+    )
+
+    assert row_count == 1
+    assert host_ok is True
+    assert storage_ok is True
+    assert warnings == []
+
+    written = list(tmp_path.rglob("*.csv"))
+    assert len(written) == 1
+    assert written[0].name == "project_chimera_trades.csv"
+    body = written[0].read_text(encoding="utf-8").splitlines()
+    assert body[0].startswith("trade_id,timestamp,ticker")
+    assert "uuid-aapl-1" in body[1]
+    # Timestamp normalised to ISO-T form.
+    assert "2026-05-23T14:30:00+00" in body[1]
+    assert "AAPL" in body[1]
+
+    # Storage path uses the admin client's supabase, not a repo's.
+    assert len(bucket.uploads) == 1
+    assert (
+        bucket.uploads[0]["path"]
+        == "daily/2026-05-23/trade_log/project_chimera_trades.csv"
+    )
+
+
+def test_backup_fund_trade_log_admin_client_missing_warns_and_skips(tmp_path):
+    """Production caller must pass ``admin_client``; missing it is a soft fail."""
+    from web_dashboard.scheduler.jobs_daily_backup import _backup_fund_trade_log
+
+    row_count, host_ok, storage_ok, warnings = _backup_fund_trade_log(
+        "Project Chimera",
+        backup_root=tmp_path,
+        date_str="2026-05-23",
+        admin_client=None,
+        repository_factory=None,
+    )
+
+    assert row_count == 0
+    assert host_ok is False
+    assert storage_ok is False
+    assert any("no admin_client provided" in w for w in warnings)
+    # No CSV should have been written if we never got past the fetch step.
+    assert list(tmp_path.rglob("*.csv")) == []
+
+
 # --------------------------------------------------------------------------- #
 # Per-fund trade-log backup helper
 # --------------------------------------------------------------------------- #
