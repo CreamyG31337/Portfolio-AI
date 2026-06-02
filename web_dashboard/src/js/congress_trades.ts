@@ -186,9 +186,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
 
     init(params: AgGridCellRendererParams): void {
         this.eGui = document.createElement('div');
-        this.eGui.style.display = 'flex';
-        this.eGui.style.alignItems = 'center';
-        this.eGui.style.gap = '6px';
+        this.eGui.className = 'flex items-center gap-1.5';
 
         if (params.value && params.value !== 'N/A') {
             const ticker = params.value;
@@ -200,11 +198,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
 
             // Always add logo image (or transparent placeholder) for consistent alignment
             const img = document.createElement('img');
-            img.style.width = '24px';
-            img.style.height = '24px';
-            img.style.objectFit = 'contain';
-            img.style.borderRadius = '4px';
-            img.style.flexShrink = '0';
+            img.className = 'w-6 h-6 object-contain rounded shrink-0';
 
             if (failedLogoCache.has(cacheKey) || !logoUrl) {
                 // Use transparent placeholder for consistent spacing
@@ -243,10 +237,7 @@ class TickerCellRenderer implements AgGridCellRenderer {
             // Add ticker text
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
-            tickerSpan.style.color = 'var(--accent-color)';
-            tickerSpan.style.fontWeight = 'bold';
-            tickerSpan.style.textDecoration = 'underline';
-            tickerSpan.style.cursor = 'pointer';
+            tickerSpan.className = 'text-accent font-bold underline cursor-pointer';
             tickerSpan.addEventListener('click', function (e: Event) {
                 e.stopPropagation();
                 if (ticker && ticker !== 'N/A') {
@@ -283,7 +274,7 @@ class PartyCellRenderer implements AgGridCellRenderer {
         let color = '';
 
         if (partyLower.includes('democrat') || partyLower === 'd') {
-            color = 'var(--theme-info-text)'; // Blue
+            color = 'text-theme-info-text';
             if (this.emojiOnly) {
                 displayText = '🔵';
             } else if (this.useEmoji) {
@@ -292,7 +283,7 @@ class PartyCellRenderer implements AgGridCellRenderer {
                 displayText = value || 'N/A';
             }
         } else if (partyLower.includes('republican') || partyLower === 'r') {
-            color = 'var(--theme-error-text)'; // Red
+            color = 'text-theme-error-text';
             if (this.emojiOnly) {
                 displayText = '🔴';
             } else if (this.useEmoji) {
@@ -301,7 +292,7 @@ class PartyCellRenderer implements AgGridCellRenderer {
                 displayText = value || 'N/A';
             }
         } else if (partyLower.includes('independent') || partyLower === 'i') {
-            color = 'var(--theme-warning-text)'; // Purple -> mapped to Warning (or we could use semantic class)
+            color = 'text-theme-warning-text';
             if (this.emojiOnly) {
                 displayText = '🟣';
             } else if (this.useEmoji) {
@@ -315,8 +306,7 @@ class PartyCellRenderer implements AgGridCellRenderer {
 
         this.eGui.innerText = displayText;
         if (color) {
-            this.eGui.style.color = color;
-            this.eGui.style.fontWeight = '500';
+            this.eGui.className = `font-medium ${color}`;
         }
     }
 
@@ -344,8 +334,7 @@ class TypeCellRenderer implements AgGridCellRenderer {
         let background = '';
 
         if (typeLower === 'purchase' || typeLower === 'buy') {
-            color = 'var(--theme-success-text)'; // Green
-            background = 'var(--color-success-bg)';
+            color = 'text-theme-success-text bg-theme-success-bg/20';
             if (this.emojiOnly) {
                 displayText = '📈';
             } else if (this.useEmoji) {
@@ -354,8 +343,7 @@ class TypeCellRenderer implements AgGridCellRenderer {
                 displayText = value || 'N/A';
             }
         } else if (typeLower === 'sale' || typeLower === 'sell') {
-            color = 'var(--theme-error-text)'; // Red
-            background = 'var(--color-error-bg)';
+            color = 'text-theme-error-text bg-theme-error-bg/20';
             if (this.emojiOnly) {
                 displayText = '📉';
             } else if (this.useEmoji) {
@@ -369,17 +357,7 @@ class TypeCellRenderer implements AgGridCellRenderer {
 
         this.eGui.innerText = displayText;
         if (color) {
-            this.eGui.style.color = color;
-            this.eGui.style.fontWeight = '600';
-            this.eGui.style.display = 'inline-flex';
-            this.eGui.style.alignItems = 'center';
-            this.eGui.style.justifyContent = 'center';
-            this.eGui.style.padding = '2px 8px';
-            this.eGui.style.borderRadius = '9999px';
-            this.eGui.style.fontSize = '0.75rem';
-            if (background) {
-                this.eGui.style.backgroundColor = background;
-            }
+            this.eGui.className = `font-semibold inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs ${color}`;
         }
     }
 
