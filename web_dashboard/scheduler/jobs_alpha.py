@@ -27,12 +27,25 @@ def alpha_research_job() -> None:
 
     Robots.txt enforcement: Controlled by ENABLE_ROBOTS_TXT_CHECKS environment variable.
     When enabled, checks robots.txt before accessing article URLs from search results.
+
+    Job-tracking contract: every code path that runs AFTER ``mark_job_started``
+    MUST call exactly one of ``mark_job_completed`` / ``mark_job_failed``
+    before returning. Otherwise the ``job_executions`` row stays in
+    ``status='running'`` and the stale-lock cleaner in
+    ``utils/job_tracking.get_running_ai_job`` eventually marks it as
+    ``failed`` ("Auto-cleared stale AI lock") -- which is what was producing
+    the false-positive "failed" status the user reported. Skips for
+    configuration reasons (no domains/queries, SearXNG offline, no results)
+    are treated as **successful** completions because they reflect a
+    correct, intentional no-op, not an execution error.
     """
     job_id = 'alpha_research'
     start_time = time.time()
+    target_date = datetime.now(timezone.utc).date()
     from utils.job_tracking import log_job_step
 
-    # Global AI lock (SearXNG + Ollama workload)
+    # Global AI lock (SearXNG + Ollama workload). This check runs BEFORE
+    # mark_job_started, so an early return here does not leak a running row.
     try:
         from utils.job_tracking import get_running_ai_job
         running_ai = get_running_ai_job(exclude_job_name=job_id)
@@ -42,16 +55,59 @@ def alpha_research_job() -> None:
     except Exception as e:
         logger.warning(f"AI lock check failed (continuing): {e}")
 
+    # Resolve job-tracking utilities up front so every early-return branch
+    # below can clear the running lock symmetrically.
     try:
         from scheduler.scheduler_core import log_job_execution
-        from utils.job_tracking import mark_job_completed, mark_job_started
+        from utils.job_tracking import (
+            mark_job_completed,
+            mark_job_failed,
+            mark_job_started,
+        )
+    except ImportError as e:
+        # If we cannot import the tracking utilities, we also have no way to
+        # leak a running row (mark_job_started never ran), so bail loudly.
+        logger.error(
+            f"alpha_research: failed to import job tracking utilities: {e}",
+            exc_info=True,
+        )
+        return
 
-        # Mark started
-        target_date = datetime.now(timezone.utc).date()
+    def _finalize_success(message: str) -> None:
+        """Successful (or successfully-skipped) completion: clear the lock."""
+        duration_ms = int((time.time() - start_time) * 1000)
         try:
-             mark_job_started(job_id, target_date)
+            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         except Exception:
-             pass
+            logger.debug("log_job_execution failed", exc_info=True)
+        try:
+            mark_job_completed(
+                job_id, target_date, None, [], duration_ms=duration_ms, message=message
+            )
+        except Exception:
+            logger.debug("mark_job_completed failed", exc_info=True)
+
+    def _finalize_failure(message: str) -> None:
+        """Real execution failure: clear the lock and record the error."""
+        duration_ms = int((time.time() - start_time) * 1000)
+        try:
+            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        except Exception:
+            logger.debug("log_job_execution failed", exc_info=True)
+        try:
+            mark_job_failed(
+                job_id, target_date, None, message, duration_ms=duration_ms
+            )
+        except Exception:
+            logger.debug("mark_job_failed failed", exc_info=True)
+
+    try:
+        # Mark started -- from this point on we MUST call _finalize_success
+        # or _finalize_failure before returning.
+        try:
+            mark_job_started(job_id, target_date)
+        except Exception:
+            logger.debug("mark_job_started failed", exc_info=True)
 
         log_job_step(job_id, "init", "Starting Alpha Research job")
         logger.info("Starting Alpha Research job...")
@@ -63,20 +119,19 @@ def alpha_research_job() -> None:
             from research_repository import ResearchRepository
             from settings import get_alpha_research_domains, get_alpha_search_queries
         except ImportError as e:
-            duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
             log_job_step(job_id, "init", message, status="failed")
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            _finalize_failure(message)
             logger.error(f"❌ {message}")
             return
 
         # Check SearXNG health
         log_job_step(job_id, "searxng_check", "Checking SearXNG health...")
         if not check_searxng_health():
-            duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG is not available - skipping alpha research"
             log_job_step(job_id, "searxng_check", message, status="skipped")
-            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            # Intentional skip, not an execution failure.
+            _finalize_success(message)
             logger.info(f"ℹ️ {message}")
             return
         log_job_step(job_id, "searxng_check", "SearXNG is healthy", status="success")
@@ -86,10 +141,9 @@ def alpha_research_job() -> None:
         ollama_client = get_ollama_client()
 
         if not searxng_client:
-            duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG client not initialized"
             log_job_step(job_id, "init", message, status="failed")
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            _finalize_failure(message)
             logger.error(f"❌ {message}")
             return
 
@@ -101,8 +155,12 @@ def alpha_research_job() -> None:
         queries = get_alpha_search_queries()
 
         if not domains or not queries:
+            # Config-driven skip -- a clean no-op, not a failure. This is the
+            # specific path that was leaving running rows for the stale-lock
+            # cleaner to clobber as "failed".
             message = "No alpha domains or queries configured"
             log_job_step(job_id, "init", message, status="skipped")
+            _finalize_success(message)
             logger.warning(message)
             return
 
@@ -129,10 +187,9 @@ def alpha_research_job() -> None:
         )
 
         if not search_results or not search_results.get('results'):
-            duration_ms = int((time.time() - start_time) * 1000)
             message = f"No results for alpha query: {base_query}"
             log_job_step(job_id, "search", message, status="skipped")
-            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            _finalize_success(message)
             logger.info(f"ℹ️ {message}")
             return
 
@@ -190,25 +247,16 @@ def alpha_research_job() -> None:
         articles_skipped += agg_alpha.skipped
         articles_irrelevant += agg_alpha.irrelevant
 
-        duration_ms = int((time.time() - start_time) * 1000)
         message = (
             f"Query: '{base_query}' - Processed {articles_processed}: {articles_saved} saved, "
             f"{articles_skipped} skipped, {articles_irrelevant} non-market"
         )
         log_job_step(job_id, "complete", message, status="success")
-        log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        try:
-            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
-        except Exception:
-            pass
+        _finalize_success(message)
         logger.info(f"✅ {message}")
 
     except Exception as e:
-        duration_ms = int((time.time() - start_time) * 1000)
-        message = f"Error: {str(e)}"
+        message = f"Error: {e!r}"
         log_job_step(job_id, "fatal", message, status="failed")
-        try:
-             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
-        except:
-             pass
+        _finalize_failure(message)
         logger.error(f"❌ Alpha Research job failed: {e}", exc_info=True)
