@@ -625,8 +625,16 @@ def generate_benchmark_graph(settings: Settings) -> None:
                 merged['Date'] = pd.to_datetime(merged['Date'])
 
                 # Apply market close timing (1:00 PM PST) for consistency
-                # OPTIMIZATION: Replaced O(N) .iterrows() with O(1) vectorized operation
-                merged['Date'] = pd.to_datetime(merged['Date'].dt.date) + timedelta(hours=13)
+                for idx, row in merged.iterrows():
+                    date_only = row['Date'].date()
+                    weekday = pd.to_datetime(date_only).weekday()
+
+                    if weekday < 5:  # Trading day
+                        market_close_time = pd.to_datetime(date_only) + timedelta(hours=13)
+                        merged.at[idx, 'Date'] = market_close_time
+                    else:  # Weekend
+                        weekend_market_close = pd.to_datetime(date_only) + timedelta(hours=13)
+                        merged.at[idx, 'Date'] = weekend_market_close
 
                 benchmark_data[key] = merged[['Date', 'Normalized_Value']].copy()
                 print_success(f"Processed {config['name']} data: {len(merged)} days")

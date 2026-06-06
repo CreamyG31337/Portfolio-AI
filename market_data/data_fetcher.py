@@ -146,10 +146,8 @@ class MarketDataFetcher:
                     df = pd.read_csv(file_path)
                     if 'Ticker' in df.columns and 'Currency' in df.columns:
                         # Get the latest entry for each ticker
-                        # OPTIMIZATION: Replaced slow .iterrows() with .to_dict('records')
-                        latest_entries = df.groupby('Ticker').last().reset_index()
-                        for row in latest_entries.to_dict('records'):
-                            ticker = row['Ticker']
+                        latest_entries = df.groupby('Ticker').last()
+                        for ticker, row in latest_entries.iterrows():
                             currency = row['Currency']
                             self._portfolio_currency_cache[ticker] = currency
                             
@@ -193,10 +191,8 @@ class MarketDataFetcher:
                     df = pd.read_csv(file_path)
                     if 'Ticker' in df.columns and 'Currency' in df.columns:
                         # Get the latest entry for each ticker
-                        # OPTIMIZATION: Replaced slow .iterrows() with .to_dict('records')
-                        latest_entries = df.groupby('Ticker').last().reset_index()
-                        for row in latest_entries.to_dict('records'):
-                            ticker = row['Ticker']
+                        latest_entries = df.groupby('Ticker').last()
+                        for ticker, row in latest_entries.iterrows():
                             # Only add if not already present (trade log takes precedence)
                             if ticker not in self._portfolio_currency_cache:
                                 currency = row['Currency']

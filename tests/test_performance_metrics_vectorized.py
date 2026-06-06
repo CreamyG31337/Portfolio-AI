@@ -13,8 +13,6 @@ from flask_data_utils import calculate_performance_metrics_flask
 
 def test_calculate_performance_metrics_logic():
     """Test the logic of calculate_performance_metrics_flask with vectorized operations."""
-    if hasattr(calculate_performance_metrics_flask, 'cache_clear'):
-        calculate_performance_metrics_flask.cache_clear()
     # Create sample data
     # Row 1: market_value provided
     # Row 2: market_value 0, calculated from shares * current_price
@@ -52,12 +50,10 @@ def test_calculate_performance_metrics_logic():
 
 def test_calculate_performance_metrics_empty():
     """Test behavior with empty dataframe."""
-    if hasattr(calculate_performance_metrics_flask, 'cache_clear'):
-        calculate_performance_metrics_flask.cache_clear()
     with patch('flask_data_utils.get_current_positions_flask', return_value=pd.DataFrame()), \
          patch('flask_data_utils.calculate_portfolio_value_over_time_flask', return_value=pd.DataFrame()):
 
-        result = calculate_performance_metrics_flask("EmptyFund")
+        result = calculate_performance_metrics_flask("TestFund")
 
         assert result['current_value'] == 0.0
         assert result['total_invested'] == 0.0
