@@ -57,9 +57,7 @@ class TickerCellRenderer {
 
     init(params: GridParams) {
         this.eGui = document.createElement('div');
-        this.eGui.style.display = 'flex';
-        this.eGui.style.alignItems = 'center';
-        this.eGui.style.gap = '6px';
+        this.eGui.className = 'flex items-center gap-1.5';
 
         if (params.value && params.value !== 'N/A') {
             const ticker = params.value;
@@ -80,11 +78,7 @@ class TickerCellRenderer {
 
             // Always add logo image (or transparent placeholder) for consistent alignment
             const img = document.createElement('img');
-            img.style.width = '24px';
-            img.style.height = '24px';
-            img.style.objectFit = 'contain';
-            img.style.borderRadius = '4px';
-            img.style.flexShrink = '0';
+            img.className = 'w-6 h-6 object-contain rounded shrink-0';
 
             // Check if logo is already known to fail
             if (failedLogoCache.has(cacheKey) || !logoUrl) {
