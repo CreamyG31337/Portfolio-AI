@@ -133,7 +133,7 @@ def model_for_backend(backend: str) -> str:
             os.getenv("AI_QUEUE_MODEL_OLLAMA_SECONDARY", "qwen3.6:27b-heretic").strip()
             or "qwen3.6:27b-heretic"
         )
-    return os.getenv("AI_QUEUE_MODEL_OLLAMA_PRIMARY", "granite3.3:8b").strip() or "granite3.3:8b"
+    return os.getenv("AI_QUEUE_MODEL_OLLAMA_PRIMARY", "granite4.1:8b").strip() or "granite4.1:8b"
 
 
 def ollama_base_url_for_backend(backend: str) -> Optional[str]:

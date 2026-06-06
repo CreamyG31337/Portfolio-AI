@@ -289,7 +289,7 @@ We support two Ollama hosts via four env-var aliases that collapse to two slots:
 
 | Env var | Alias of | Models that prefer it (primary) |
 |---|---|---|
-| `OLLAMA_BASE_URL_AMD` | `OLLAMA_BASE_URL` | `granite3.3:8b` |
+| `OLLAMA_BASE_URL_AMD` | `OLLAMA_BASE_URL` | `granite4.1:8b` |
 | `OLLAMA_BASE_URL_NVIDIA` | `OLLAMA_BASE_URL_2` | `qwen3.6:27b-heretic` |
 
 `fallback_base_url` in `model_config.json` is **host-down failover** (HTTP 404

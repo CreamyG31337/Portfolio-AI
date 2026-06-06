@@ -52,7 +52,7 @@ Some steps run every **60 minutes**:
 
 ## Key Configurations
 - **Job Interval**: 60 minutes.
-- **AI Model**: `granite3.3:8b` (via Ollama).
+- **AI Model**: `granite4.1:8b` (via Ollama).
 - **Timeout**: 90 seconds for AI streaming calls.
 - **Rate Limits**: 
   - Reddit: Dynamic sleep (ensures >2s between requests).

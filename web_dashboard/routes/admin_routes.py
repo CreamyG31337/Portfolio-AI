@@ -80,7 +80,7 @@ _AI_AUDIT_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 def _ollama_models_to_probe() -> list[str]:
     """Small set of Ollama models worth probing (not every row in model_config.json)."""
-    names: set[str] = {"granite3.3:8b", "qwen3.6:27b-heretic"}
+    names: set[str] = {"granite4.1:8b", "qwen3.6:27b-heretic"}
     try:
         from settings import get_summarizing_model
 
@@ -114,12 +114,12 @@ def _ollama_models_to_probe() -> list[str]:
 
 
 def _ollama_per_model_health() -> list[dict[str, object]]:
-    """Probe Ollama /api/tags for production summarization models (parallel, short timeout)."""
+    """Probe every configured Ollama host for production summarization models."""
     out: list[dict[str, object]] = []
     try:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        from ollama_client import get_ollama_client
+        from ollama_client import get_ollama_client, ollama_tags_list_contains_model
     except ImportError:
         return out
 
@@ -134,12 +134,46 @@ def _ollama_per_model_health() -> list[dict[str, object]]:
     def _probe_one(model_name: str) -> dict[str, object]:
         try:
             primary, fallback = client._resolve_urls(model_name)
-            ok = client.check_health_for_model(model_name)
+            candidates: list[tuple[str, str]] = [("primary", primary)]
+            if fallback and fallback.rstrip("/") != primary.rstrip("/"):
+                candidates.append(("fallback", fallback))
+
+            servers: list[dict[str, object]] = []
+            for role, base_url in candidates:
+                url = base_url.rstrip("/")
+                row: dict[str, object] = {
+                    "role": role,
+                    "url": url,
+                    "reachable": False,
+                    "model_available": False,
+                    "ok": False,
+                }
+                try:
+                    response = client.session.get(f"{url}/api/tags", timeout=5)
+                    row["status_code"] = response.status_code
+                    row["reachable"] = response.status_code == 200
+                    if response.status_code == 200:
+                        data = response.json()
+                        names = []
+                        if isinstance(data, dict):
+                            names = [
+                                str(m.get("name", ""))
+                                for m in data.get("models", [])
+                                if isinstance(m, dict) and m.get("name")
+                            ]
+                        row["models_sample"] = names[:12]
+                        row["model_available"] = ollama_tags_list_contains_model(names, model_name)
+                        row["ok"] = bool(row["model_available"])
+                except Exception as e:
+                    row["error"] = str(e)[:120]
+                servers.append(row)
+
             return {
                 "model": model_name,
                 "base_url": primary,
                 "fallback_url": fallback or "",
-                "ok": ok,
+                "ok": any(bool(s.get("ok")) for s in servers),
+                "servers": servers,
             }
         except Exception as e:
             return {

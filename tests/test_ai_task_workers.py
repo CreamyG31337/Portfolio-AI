@@ -512,7 +512,7 @@ def _install_sector_meta_handler_fakes(monkeypatch, *, captured, return_value=No
         (
             "ollama_primary",
             "AI_QUEUE_MODEL_OLLAMA_PRIMARY",
-            "granite3.3:8b",
+            "granite4.1:8b",
             [("AI_QUEUE_OLLAMA_PRIMARY_BASE_URL", "http://amd:11434")],
             "http://amd:11434",
         ),
@@ -782,7 +782,7 @@ def _install_etf_group_handler_fakes(monkeypatch, *, captured, return_value=None
         (
             "ollama_primary",
             "AI_QUEUE_MODEL_OLLAMA_PRIMARY",
-            "granite3.3:8b",
+            "granite4.1:8b",
             [("AI_QUEUE_OLLAMA_PRIMARY_BASE_URL", "http://amd:11434")],
             "http://amd:11434",
         ),

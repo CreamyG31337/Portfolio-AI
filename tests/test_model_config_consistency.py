@@ -118,6 +118,59 @@ def test_admin_probe_models_all_exist(ollama_model_names: set[str]) -> None:
     )
 
 
+def test_admin_detailed_ollama_probe_reports_primary_and_fallback_hosts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Detailed health should show every resolved server, not only the primary host."""
+    import ollama_client
+    from routes import admin_routes
+
+    class _Response:
+        def __init__(self, names: list[str]) -> None:
+            self.status_code = 200
+            self._names = names
+
+        def json(self) -> dict[str, object]:
+            return {"models": [{"name": name} for name in self._names]}
+
+    class _Session:
+        def get(self, url: str, timeout: int = 5) -> _Response:
+            if "amd" in url:
+                return _Response(["granite4.1:8b"])
+            if "nvidia" in url:
+                return _Response(["qwen3.6:27b-heretic"])
+            raise AssertionError(f"unexpected probe URL: {url}")
+
+    class _Client:
+        enabled = True
+        session = _Session()
+
+        def _resolve_urls(self, model: str) -> tuple[str, str]:
+            if model == "granite4.1:8b":
+                return "http://amd:11434", "http://nvidia:11434"
+            return "http://nvidia:11434", "http://amd:11434"
+
+    monkeypatch.setattr(
+        admin_routes,
+        "_ollama_models_to_probe",
+        lambda: ["granite4.1:8b", "qwen3.6:27b-heretic"],
+    )
+    monkeypatch.setattr(ollama_client, "get_ollama_client", lambda: _Client())
+
+    rows = admin_routes._ollama_per_model_health()
+
+    assert {row["model"] for row in rows} == {"granite4.1:8b", "qwen3.6:27b-heretic"}
+    for row in rows:
+        servers = row["servers"]
+        assert len(servers) == 2
+        assert {server["role"] for server in servers} == {"primary", "fallback"}
+        assert {server["url"] for server in servers} == {
+            "http://amd:11434",
+            "http://nvidia:11434",
+        }
+        assert row["ok"] is True
+
+
 def test_summary_model_chain_resolves_to_known_models(ollama_model_names: set[str]) -> None:
     """``ollama_client._get_summary_model_chain`` for a known primary stays in config."""
     import ollama_client

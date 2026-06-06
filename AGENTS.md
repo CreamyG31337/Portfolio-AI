@@ -87,7 +87,7 @@ Streamlit (`web_dashboard/pages/*.py`) is a **prototype only** — no tests, mai
 
 ## Social Sentiment AI System
 
-- Uses Ollama `granite3.3:8b` for AI analysis of StockTwits/Reddit posts
+- Uses Ollama `granite4.1:8b` for AI analysis of StockTwits/Reddit posts
 - Pipeline: extract posts → group into 4h sessions → AI analysis → validate tickers → store in research DB
 - Supabase: `social_metrics`, `social_posts`, `sentiment_sessions`. Research DB: `social_sentiment_analysis`, `extracted_tickers`, `post_summaries`
 - Run job: `cd web_dashboard; python scheduler/social_sentiment_ai_job.py`

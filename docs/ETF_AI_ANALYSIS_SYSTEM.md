@@ -296,7 +296,7 @@ The ticker analysis gathers data from:
 
 ## LLM Configuration
 
-**Model**: Uses `get_summarizing_model()` (typically `granite3.3:8b`)
+**Model**: Uses `get_summarizing_model()` (typically `granite4.1:8b`)
 
 **Settings**:
 - `json_mode=True`: Forces structured JSON output

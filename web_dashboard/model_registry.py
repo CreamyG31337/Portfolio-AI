@@ -24,7 +24,7 @@ EMBED_MAX_CHARS_DEFAULT = int(os.getenv("AI_EMBED_MAX_CHARS", "24000"))
 BENCH_JUDGE_MODEL = os.getenv("AI_BENCH_JUDGE_MODEL", PRIMARY_MODEL_DEFAULT).strip() or PRIMARY_MODEL_DEFAULT
 BENCH_DEFAULT_CANDIDATES = os.getenv(
     "OLLAMA_QUALITY_MODELS",
-    "granite3.3:8b,qwen3.6:27b-heretic,"
+    "granite4.1:8b,qwen3.6:27b-heretic,"
     + PRIMARY_MODEL_DEFAULT
     + ","
     + CHEAP_MODEL_DEFAULT

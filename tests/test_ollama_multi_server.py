@@ -25,7 +25,7 @@ def _reachable(url: str) -> bool:
 
 
 def test_qwen_payload_includes_think_false_and_routes_to_env_second_host(monkeypatch: pytest.MonkeyPatch) -> None:
-    """qwen3.6:27b-heretic hits NVIDIA URL first; granite3.3:8b hits AMD URL first (semantic env aliases)."""
+    """qwen3.6:27b-heretic hits NVIDIA URL first; granite4.1:8b hits AMD URL first (semantic env aliases)."""
     monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
     monkeypatch.delenv("OLLAMA_BASE_URL_NVIDIA", raising=False)
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://amd-test:11434")
@@ -49,11 +49,11 @@ def test_qwen_payload_includes_think_false_and_routes_to_env_second_host(monkeyp
     assert payload.get("think") is False
 
     captured.clear()
-    client.generate_completion(prompt="x", model="granite3.3:8b", json_mode=False)
+    client.generate_completion(prompt="x", model="granite4.1:8b", json_mode=False)
     assert captured
     g_url, g_payload = captured[0]
     assert "amd-test" in g_url
-    assert "think" not in g_payload
+    assert g_payload.get("think") is False
 
 
 def test_ollama_semantic_host_env_aliases_fallback_to_legacy_pair(
@@ -178,7 +178,7 @@ def test_live_health_skips_when_no_ollama() -> None:
     if not client.enabled:
         pytest.skip("OLLAMA_ENABLED is false")
     assert client.check_health() is True
-    assert client.check_health_for_model("granite3.3:8b") is True
+    assert client.check_health_for_model("granite4.1:8b") is True
     if not client.check_health_for_model("qwen3.6:27b-heretic"):
         pytest.skip("qwen3.6:27b-heretic not installed on resolved Ollama host (ollama pull qwen3.6:27b-heretic)")
 
@@ -366,9 +366,9 @@ def test_default_summarizer_and_fallbacks_when_settings_empty(monkeypatch: pytes
     monkeypatch.delenv("OLLAMA_SUMMARIZING_MODEL", raising=False)
     monkeypatch.delenv("OLLAMA_SUMMARIZING_FALLBACK_MODELS", raising=False)
     assert settings_module.get_summarizing_model() == "qwen3.6:27b-heretic"
-    assert settings_module.get_summarizing_fallback_models() == ["granite3.3:8b", "qwen3.6:27b-heretic"]
+    assert settings_module.get_summarizing_fallback_models() == ["granite4.1:8b", "qwen3.6:27b-heretic"]
     chain = ollama_client._get_summary_model_chain(None)
     assert chain[0] == "qwen3.6:27b-heretic"
-    assert chain[1] == "granite3.3:8b"
+    assert chain[1] == "granite4.1:8b"
     assert len(chain) == 2
     assert not any(str(m).startswith("glm-") for m in chain[1:])

@@ -48,13 +48,14 @@
             "temperature": 0.1,
             "desc": "Strong alternative to Mistral."
         },
-        "granite3.3:8b": {
+        "granite4.1:8b": {
             "num_ctx": 39000,
             "num_predict": 4096,
             "temperature": 0.1,
             "base_url_env": "OLLAMA_BASE_URL_AMD",
             "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
-            "desc": "Summarization / fallback workhorse on the AMD Ollama host. Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). Failover: NVIDIA host."
+            "think": false,
+            "desc": "IBM Granite 4.1 8B (Q8) summarization/analysis workhorse on the AMD Ollama host. Replaces granite3.3:8b: self-benchmarked 88.0% vs 76.8% (GSM8K+MMLU, 2026-06) at ~38 tok/s. Hybrid-Mamba => low KV growth, 39k ctx fits with headroom. think:false (no reasoning tokens for summaries). Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). Failover: NVIDIA host."
         },
         "qwen3.6:27b-heretic": {
             "num_ctx": 20000,

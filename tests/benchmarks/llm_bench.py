@@ -170,7 +170,7 @@ def test_bench_article_summary_and_crowd_json() -> None:
     if not client.enabled:
         pytest.skip("OLLAMA_ENABLED is false")
 
-    models_env = os.getenv("OLLAMA_BENCH_MODELS", "granite3.3:8b,qwen3.6:27b-heretic")
+    models_env = os.getenv("OLLAMA_BENCH_MODELS", "granite4.1:8b,qwen3.6:27b-heretic")
     models = [m.strip() for m in models_env.split(",") if m.strip()]
     limit = max(1, min(50, int(os.getenv("OLLAMA_BENCH_LIMIT", "5"))))
     ctx_sweep: list[int] = []

@@ -850,7 +850,7 @@ def analyze_congress_trades_job() -> None:
         client = SupabaseClient(use_service_role=True)
         ollama = OllamaClient()
         
-        # Get model from settings (defaults to granite3.3:8b from model_config.json)
+        # Get model from settings (defaults to the configured summarizer, e.g. granite4.1:8b)
         model_name = get_summarizing_model()
         
         # Check Ollama health

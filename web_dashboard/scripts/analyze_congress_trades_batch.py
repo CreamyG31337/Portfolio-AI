@@ -13,7 +13,7 @@ Features:
 - Enriches data with company sector from securities table
 
 Usage:
-    python scripts/analyze_congress_trades_batch.py [--batch-size 10] [--model granite3.3:8b]
+    python scripts/analyze_congress_trades_batch.py [--batch-size 10] [--model granite4.1:8b]
 """
 
 import re
@@ -944,7 +944,7 @@ def analyze_session(
 def main():
     parser = argparse.ArgumentParser(description='Analyze Congress Trades')
     parser.add_argument('--batch-size', type=int, default=10, help='Number of trades/sessions to process per batch')
-    parser.add_argument('--model', type=str, default='granite3.3:8b', help='Ollama model to use')
+    parser.add_argument('--model', type=str, default='granite4.1:8b', help='Ollama model to use')
     parser.add_argument('--limit', type=int, default=0, help='Total limit of trades/sessions to process (0 for infinite)')
     parser.add_argument('--fix-only', action='store_true', help='Only fix failed scores and exit')
     parser.add_argument('--rescore', action='store_true', help='Re-analyze trades that already have conflict scores')
