@@ -187,7 +187,7 @@ class PromptGenerator:
         # Create a lookup for portfolio data fallback
         portfolio_lookup = {}
         if portfolio_df is not None and not portfolio_df.empty:
-            for row in portfolio_df.to_dict('records'):  # ⚡ Bolt: Replaced iterrows() with to_dict('records') for O(1) bulk conversion and 10x faster iteration
+            for _, row in portfolio_df.iterrows():
                 t = row.get('ticker')
                 if t:
                     portfolio_lookup[t] = row
@@ -597,7 +597,7 @@ class PromptGenerator:
         
         # Prepare data for sorting
         portfolio_rows = []
-        for row in portfolio_df.to_dict('records'):  # ⚡ Bolt: Replaced iterrows() with to_dict('records') for O(1) bulk conversion and 10x faster iteration
+        for _, row in portfolio_df.iterrows():
             ticker = str(row.get('ticker', ''))
             # Use company name from enhanced data (correct field name)
             company_name = row.get('company', ticker) or ticker
@@ -852,7 +852,7 @@ class PromptGenerator:
         # Cache currency lookup for performance - build once, use for all tickers
         currency_lookup = {}
         if portfolio_df is not None and not portfolio_df.empty:
-            for row in portfolio_df.to_dict('records'):  # ⚡ Bolt: Replaced iterrows() with to_dict('records') for O(1) bulk conversion and 10x faster iteration
+            for _, row in portfolio_df.iterrows():
                 ticker = row.get('ticker')
                 currency = row.get('currency', 'USD')
                 if ticker:
