@@ -43,3 +43,7 @@
 ## 2024-05-18 - Streamlit Render Loop Iterrows Overhead
 **Learning:** Found several `iterrows()` usages inside Streamlit render loops in `admin_users.py`, `etf_holdings.py`, `social_sentiment.py` and `chart_utils.py`. Using `iterrows()` inside display and charting loops creates significant overhead due to Pandas instantiating a new Series object per row, turning an O(N) loop into a slow O(N) with massive constant factors.
 **Action:** Replace `iterrows()` with `itertuples(index=False)` and use `getattr(row, 'colname')` for row access. This yields standard Python namedtuples, avoiding the Series instantiation overhead and providing a 10-100x speedup for dashboard rendering loops.
+
+## YYYY-MM-DD - Vectorized Dictionary Creation
+**Learning:** `df.iterrows()` inside a dictionary comprehension is extremely slow due to repeated `pd.Series` instantiation overhead.
+**Action:** Replace dictionary comprehensions iterating over rows with `dict(zip(df['col1'], df['col2']))` combined with vectorized transformations (like `df['col1'].dt.strftime('%Y-%m-%d')` and `df['col2'].astype(float)`). This pushes execution into fast C loops and provides a massive speedup over `.iterrows()`.
