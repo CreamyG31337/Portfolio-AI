@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Session...</title>
+    <!-- TODO(palette): This standalone page bypasses the Tailwind build + semantic theme tokens
+         and reimplements light/dark mode with hardcoded hex values. Integrate into the Tailwind
+         pipeline so it matches the rest of the dashboard. (Palette audit PR #347, item 3) -->
     <style>
         /* Respect system theme preference */
         :root {

@@ -1267,6 +1267,11 @@
 <!-- Search Tab JavaScript -->
 <script>
     // Tab switching logic
+    // TODO(palette): The markup already uses Flowbite's data-tabs-toggle/data-tabs-target. This
+    // manual tab JS duplicates/conflicts with Flowbite's tab API and risks desyncing aria-selected.
+    // Remove initResearchTabs() and rely on Flowbite's built-in tabs. Also prefer
+    // classList.add/remove('hidden') over inline style.display elsewhere in this file.
+    // (Palette audit PR #324, items 1 & 4)
     function initResearchTabs() {
         const tabs = [
             { id: 'articles-tab', target: 'articles-content' },

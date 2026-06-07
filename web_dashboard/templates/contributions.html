@@ -147,6 +147,10 @@
                             required>
                         <input type="hidden" id="contributor-id" name="contributor_id">
                         <!-- Custom dropdown for contributors -->
+                        <!-- TODO(palette): This custom JS-driven dropdown likely misses focus
+                             management, click-outside close, and ARIA roles. Prefer Flowbite's
+                             data-dropdown-toggle API for accessibility + Popper positioning.
+                             (Palette audit PR #324, item 3) -->
                         <div id="contributor-dropdown" 
                             class="hidden absolute z-50 w-full mt-1 bg-dashboard-surface border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                             <!-- Populated by JS -->

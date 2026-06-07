@@ -153,6 +153,10 @@ function escapeHtml(text: string): string {
 }
 
 // Toast notification system for AI settings
+// TODO(palette): Replace manual `toast.style.opacity` transitions throughout these toast
+// helpers with Flowbite's Toast component/JS API (consistent transitions + accessible
+// announcements), and toggle visibility via `opacity-0`/`opacity-100` classes rather than
+// inline styles. (Palette audit PR #347, item 4)
 function showToastForAI(message: string, type: 'success' | 'error' | 'info' = 'success'): void {
     let container = document.getElementById('toast-container');
     if (!container) {
@@ -409,6 +413,8 @@ async function testWebaiCookies() {
             verboseOutput = document.createElement('div');
             verboseOutput.id = 'cookie-test-verbose-output';
             verboseOutput.className = 'mt-4 p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm';
+            // TODO(palette): Toggle visibility with classList.add/remove('hidden') instead of
+            // inline style.display (here and below). (Palette audit PR #347, item 2)
             verboseOutput.style.display = 'none';
             webaiStatusCard.appendChild(verboseOutput);
         }

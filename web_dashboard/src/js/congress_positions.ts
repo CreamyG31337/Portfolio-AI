@@ -266,6 +266,10 @@ function initPositionsGrid(): void {
             maxWidth: 100,
             type: 'numericColumn',
             sort: 'desc',
+            // TODO(palette): Replace hardcoded hex colors + inline styles here (and in the
+            // Dollar Return renderer below) with semantic Tailwind tokens so dark themes work,
+            // e.g. `<span class="font-semibold ${cls}">` where cls is text-theme-success-text /
+            // text-theme-error-text / text-text-secondary. (Palette audit PR #347, item 1)
             cellRenderer: (params: any) => {
                 if (params.value == null) return '--';
                 const val = params.value;

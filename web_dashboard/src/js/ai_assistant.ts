@@ -896,6 +896,8 @@ class AIAssistant {
                 const tempTextarea = document.createElement('textarea');
                 tempTextarea.value = previewText;
                 tempTextarea.setAttribute('readonly', '');
+                // TODO(palette): Use the `sr-only` (or `opacity-0 fixed`) utility class instead
+                // of inline style for this temporary textarea. (Palette audit PR #347, item 4)
                 tempTextarea.style.position = 'fixed';
                 tempTextarea.style.opacity = '0';
                 document.body.appendChild(tempTextarea);

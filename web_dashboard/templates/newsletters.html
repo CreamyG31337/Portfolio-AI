@@ -552,6 +552,10 @@ async function viewEmail(id) {
     previousEmailModalFocus = document.activeElement;
 
     // Show modal
+    // TODO(palette): This custom modal manually manages body overflow lock, backdrop, focus and
+    // Esc handling. Prefer Flowbite's Modal API (data-modal-toggle/-target or `new Modal(...)`) to
+    // get body locking, focus trapping and keyboard nav for free and avoid orphaned backdrops /
+    // stuck scrollbars. (Palette audit PR #324, item 2)
     modal.classList.remove('hidden');
     modal.classList.add('flex'); // Flowbite modals use flex for centering
     modal.removeAttribute('aria-hidden');

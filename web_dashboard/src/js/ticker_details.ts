@@ -1060,6 +1060,9 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
         }
     }
 
+    // TODO(palette): Throughout this file, toggle visibility with
+    // classList.add/remove('hidden') instead of inline style.display = 'block'/'none'
+    // to avoid Tailwind cascade conflicts. (Palette audit PR #347, item 2)
     if (exchangeInfo) {
         if (basicInfo.exchange && basicInfo.exchange !== 'N/A') {
             exchangeInfo.textContent = `Exchange: ${basicInfo.exchange}`;
