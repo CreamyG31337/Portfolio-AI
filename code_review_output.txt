@@ -1,0 +1,284 @@
+=========================================
+Commit: 44ea89320d287aa041e3bbe037f6939f86e33ee1
+commit 44ea89320d287aa041e3bbe037f6939f86e33ee1
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Jun 9 23:26:48 2026 -0700
+
+    alpha: filter index/listing pages + log low-value reason
+
+    Extend the alpha low-value pre-extraction filter to catch index/listing/
+    aggregator pages (e.g. Benzinga "Latest Azitra Stock News | AMEX:AZTR",
+    Seeking Alpha "Latest Communication Services Stock Analysis Articles")
+    that are not real analysis and were slipping through.
+
+    - jobs_common: replace the flat pattern tuple with labelled
+      (reason, regex) pairs and add low_value_alpha_reason() which returns
+      WHICH rule matched (quote_overview / price_history / ticker_price /
+      listing_index) or None. is_low_value_alpha_result() stays as a bool
+      wrapper. Patterns are documented inline with tuning guidance; the
+      listing_index rule is anchored to a leading "Latest" to stay narrow
+      (real analysis rarely starts with that word).
+    - alpha worker: log the matched reason label + title in the `low_value`
+      job step (and logger) so we can audit exactly what the filter drops
+      and loosen patterns if they're too aggressive.
+
+    Tests: new cases for listing_index + reason labels, and an
+    allow-list of verified-real prod titles that must NOT be filtered.
+    39 alpha tests pass.
+
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+ tests/test_alpha_helpers.py                        | 44 +++++++++++++--
+ .../scheduler/alpha_opportunity_workers.py         | 10 ++--
+ web_dashboard/scheduler/jobs_common.py             | 62 +++++++++++++++++-----
+ 3 files changed, 95 insertions(+), 21 deletions(-)
+-----------------------------------------
+tests/test_alpha_helpers.py
+web_dashboard/scheduler/alpha_opportunity_workers.py
+web_dashboard/scheduler/jobs_common.py
+=========================================
+=========================================
+Commit: 85b2b1c92623b84420715cee9687ccf49209f8cb
+commit 85b2b1c92623b84420715cee9687ccf49209f8cb
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Jun 9 23:25:30 2026 -0700
+
+    Enhance token management and performance testing
+
+    - Introduced a new function `_recent_trading_triple()` to dynamically calculate recent trading days for performance metrics testing, ensuring tests remain valid over time.
+    - Updated the `test_performance_metrics_gap_is_filled_from_positions()` to utilize the new trading day calculations, improving test reliability.
+    - Added an `after_request` hook in `app.py` to persist refreshed authentication tokens as cookies, centralizing token management and enhancing user session stability.
+    - Refactored token refresh logic in `auth.py` to leverage the new cookie persistence mechanism, simplifying the code and reducing redundancy.
+
+    Tests updated accordingly to reflect these changes, ensuring all relevant tests pass successfully.
+
+ tests/test_flask_auth_refresh.py         | 187 +++++++++++++++++++++++++++++++
+ tests/test_flask_performance_gap_fill.py |  50 +++++++--
+ web_dashboard/app.py                     |  77 ++++++++-----
+ web_dashboard/auth.py                    |  46 +-------
+ web_dashboard/flask_auth_utils.py        | 130 +++++++++++++++------
+ 5 files changed, 375 insertions(+), 115 deletions(-)
+-----------------------------------------
+tests/test_flask_auth_refresh.py
+tests/test_flask_performance_gap_fill.py
+web_dashboard/app.py
+web_dashboard/auth.py
+web_dashboard/flask_auth_utils.py
+=========================================
+=========================================
+Commit: ba06bed26d1c18419a4d1e01b45a20e095b88881
+commit ba06bed26d1c18419a4d1e01b45a20e095b88881
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Jun 9 22:53:57 2026 -0700
+
+    alpha: move Alpha Hunter to 22:15 PT to reduce Ollama contention
+
+    Alpha Hunter runs INLINE and holds the global AI lock while extracting +
+    summarizing (up to its 40-min budget). At 23:15 PT its Ollama work
+    overlapped the queue-managed sector_meta (23:30) and ticker_meta (23:45)
+    jobs draining their enqueued tasks through the shared AI worker pool ->
+    Ollama throughput contention.
+
+    Move to 22:15 PT so alpha finishes (~22:55 worst case) before those
+    enqueue. opportunity_discovery (21:30, also inline, ~4min) still finishes
+    well before. Slot is otherwise empty. Lock-wise harmless either way since
+    sector/ticker bypass the global lock (queue-managed), but this avoids the
+    model-server contention.
+
+    Schedule-only change; domain tuning (disabling seekingalpha, which
+    hard-403s 27/27 article fetches) is handled via system_settings at
+    runtime, no deploy needed.
+
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+ web_dashboard/scheduler/jobs.py | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+-----------------------------------------
+web_dashboard/scheduler/jobs.py
+=========================================
+=========================================
+Commit: 66691e8223517ef3cf7f69dd00fecf7890156caf
+commit 66691e8223517ef3cf7f69dd00fecf7890156caf
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Jun 9 22:37:53 2026 -0700
+
+    alpha: round 2 — multi-query, failures, health, relevance, junk filter
+
+    Alpha Hunter improvements:
+
+    1. Multi-query per run: rotate a batch of N queries daily via
+       select_alpha_queries + get_alpha_queries_per_run (default 4, tunable in
+       system_settings). URL-dedupe combined SearXNG results before pipeline.
+
+    2. Surface extraction failures: always increment failed counter, log
+       extract_failed step with domain:reason, include failed in completion msg.
+
+    3. Domain health visibility: record_success/record_failure via
+       DomainHealthTracker in alpha worker (no auto-blacklist).
+
+    4. Logic_check-derived relevance: DATA_BACKED=0.9, NEUTRAL=0.7,
+       HYPE_DETECTED=0.1 (down-rank advertorials for junk filter pruning).
+
+    5. Low-value boilerplate filter: skip auto-generated stock price/overview
+       hits before extraction.
+
+    Tests: tests/test_alpha_helpers.py (9), extended test_alpha_domain_config.py
+    (6 queries_per_run), updated test_jobs_alpha stub. 37 alpha tests pass.
+
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+ tests/test_alpha_domain_config.py                  |  55 +++++++++++
+ tests/test_alpha_helpers.py                        |  94 +++++++++++++++++++
+ tests/test_jobs_alpha.py                           |   6 ++
+ .../scheduler/alpha_opportunity_workers.py         |  52 ++++++++++-
+ web_dashboard/scheduler/jobs_alpha.py              | 102 +++++++++++++++------
+ web_dashboard/scheduler/jobs_common.py             |  73 +++++++++++++++
+ web_dashboard/settings.py                          |  30 ++++++
+ 7 files changed, 377 insertions(+), 35 deletions(-)
+-----------------------------------------
+tests/test_alpha_domain_config.py
+tests/test_alpha_helpers.py
+tests/test_jobs_alpha.py
+web_dashboard/scheduler/alpha_opportunity_workers.py
+web_dashboard/scheduler/jobs_alpha.py
+web_dashboard/scheduler/jobs_common.py
+web_dashboard/settings.py
+=========================================
+=========================================
+Commit: 22ee5372ff70fce4057f02a1f15c1cd705ab1255
+commit 22ee5372ff70fce4057f02a1f15c1cd705ab1255
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Jun 9 21:23:03 2026 -0700
+
+    alpha: use general web search so site: dorks return results
+
+    The Alpha Hunter searched the SearXNG *news* category with
+    time_range='day'. News engines (Google/Bing News) largely ignore the
+    `site:` operator, and a one-day window over a handful of site-restricted
+    domains for one rotated query returned ~0 results -- the job ran green
+    but found nothing.
+
+    Switch the alpha search to a GENERAL web search (search_web), where
+    `site:` is honored, and widen the time window. The window is now tunable
+    at runtime via system_settings 'alpha_search_time_range'
+    (day/week/month/year or none=all-time; env ALPHA_SEARCH_TIME_RANGE;
+    default 'week') since site-restricted analysis pieces are often
+    days-to-weeks old.
+
+    Tests: 7 new cases for get_alpha_search_time_range (default, valid
+    values, normalization, all-time sentinels, invalid fallback, env vs
+    setting precedence). Updated the jobs_alpha settings stub to expose the
+    new getter. All alpha tests green.
+
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+ tests/test_alpha_domain_config.py     | 70 +++++++++++++++++++++++++++++++++++
+ tests/test_jobs_alpha.py              |  4 ++
+ web_dashboard/scheduler/jobs_alpha.py | 23 ++++++++++--
+ web_dashboard/settings.py             | 38 +++++++++++++++++++
+ 4 files changed, 131 insertions(+), 4 deletions(-)
+-----------------------------------------
+tests/test_alpha_domain_config.py
+tests/test_jobs_alpha.py
+web_dashboard/scheduler/jobs_alpha.py
+web_dashboard/settings.py
+=========================================
+=========================================
+Commit: 1f2c274b9ca1ef995696dd90de77920e22114ba1
+commit 1f2c274b9ca1ef995696dd90de77920e22114ba1
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Jun 9 21:14:47 2026 -0700
+
+    alpha: per-domain enable/disable for alpha_research_domains
+
+    Make the Alpha Hunter's target domain list operable without code changes
+    or losing entries. get_alpha_research_domains() now accepts two
+    system_settings.alpha_research_domains shapes:
+
+    * legacy flat ["fool.com", ...] (all enabled) -- unchanged behaviour;
+    * structured [{"domain": "fool.com", "enabled": true, "note": "..."}]
+      where enabled defaults to True and only enabled domains drive the
+      site: dorks.
+
+    This lets an operator temporarily disable a noisy or anti-bot-blocked
+    domain by flipping enabled to false (keeping the entry + a note on why)
+    instead of deleting it, and supports "run with fewer enabled if
+    something is blocking". Added get_alpha_research_domain_config() as the
+    full structured view (including disabled entries) for operators and a
+    future admin UI. Env-var ALPHA_RESEARCH_DOMAINS precedence is preserved
+    (all enabled).
+
+    Callers (jobs_alpha site-dork builder, debug script) are unchanged: the
+    getter still returns list[str] of enabled hostnames.
+
+    Tests: tests/test_alpha_domain_config.py (11 cases) covering legacy/flat,
+    structured enable/disable, mixed lists, env precedence, and malformed
+    input robustness. Existing tests/test_jobs_alpha.py still green.
+
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+ tests/test_alpha_domain_config.py | 168 ++++++++++++++++++++++++++++++++++++++
+ web_dashboard/settings.py         | 113 +++++++++++++++++++++----
+ 2 files changed, 264 insertions(+), 17 deletions(-)
+-----------------------------------------
+tests/test_alpha_domain_config.py
+web_dashboard/settings.py
+=========================================
+=========================================
+Commit: 5212c1395f3612a9c5211ecb646ce24278b77c6b
+commit 5212c1395f3612a9c5211ecb646ce24278b77c6b
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Jun 9 20:56:03 2026 -0700
+
+    chore: capture Palette audit follow-ups from PR #362
+
+    Add inline TODO(palette) comments for chevron rotate-90, redundant
+    removeProperty, and toast opacity patterns in additional TS files.
+
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+ web_dashboard/src/js/contributions.ts  | 2 ++
+ web_dashboard/src/js/contributors.ts   | 2 ++
+ web_dashboard/src/js/ticker_details.ts | 5 +++++
+ web_dashboard/src/js/trade_entry.ts    | 2 ++
+ 4 files changed, 11 insertions(+)
+-----------------------------------------
+web_dashboard/src/js/contributions.ts
+web_dashboard/src/js/contributors.ts
+web_dashboard/src/js/ticker_details.ts
+web_dashboard/src/js/trade_entry.ts
+=========================================
+=========================================
+Commit: 09905f4c98eb499b02abd4a45963c843d50a220a
+commit 09905f4c98eb499b02abd4a45963c843d50a220a
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Jun 9 20:55:00 2026 -0700
+
+    ⚡ Bolt: Vectorize datetime calculation in Graph Generation (#359)
+
+    Co-authored-by: google-labs-jules[bot] <161369871+google-labs-jules[bot]@users.noreply.github.com>
+    Co-authored-by: CreamyG31337 <11222932+CreamyG31337@users.noreply.github.com>
+
+ .jules/bolt.md                          |  4 ++++
+ Scripts and CSV Files/Generate_Graph.py | 33 ++++-----------------------------
+ 2 files changed, 8 insertions(+), 29 deletions(-)
+-----------------------------------------
+.jules/bolt.md
+Scripts and CSV Files/Generate_Graph.py
+=========================================
+=========================================
+Commit: a74b70670357136f10c9f1b18cf28ce68fd9380e
+commit a74b70670357136f10c9f1b18cf28ce68fd9380e
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Tue Jun 9 20:54:06 2026 -0700
+
+    ⚡ Bolt: Replace iterrows with vectorized dict construction in benchmark ingest (#363)
+
+    Co-authored-by: google-labs-jules[bot] <161369871+google-labs-jules[bot]@users.noreply.github.com>
+    Co-authored-by: CreamyG31337 <11222932+CreamyG31337@users.noreply.github.com>
+
+ web_dashboard/scheduler/benchmark_ingest.py | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+-----------------------------------------
+web_dashboard/scheduler/benchmark_ingest.py
+=========================================
