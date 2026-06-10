@@ -117,7 +117,11 @@ def alpha_research_job() -> None:
             from searxng_client import get_searxng_client, check_searxng_health
             from ollama_client import get_ollama_client
             from research_repository import ResearchRepository
-            from settings import get_alpha_research_domains, get_alpha_search_queries
+            from settings import (
+                get_alpha_research_domains,
+                get_alpha_search_queries,
+                get_alpha_search_time_range,
+            )
         except ImportError as e:
             message = f"Missing dependency: {e}"
             log_job_step(job_id, "init", message, status="failed")
@@ -177,12 +181,23 @@ def alpha_research_job() -> None:
         negative_keywords = "-astrology -horoscope -zodiac -restaurant -recipe -celebrity -movie -tv -sports"
         final_query = f'{base_query} ({site_dork}) {negative_keywords}'
 
-        log_job_step(job_id, "search", f"Searching: '{base_query}'")
-        logger.info(f"🔭 Alpha Query: '{final_query}'")
+        # Use a GENERAL web search (not the news category) so the ``site:``
+        # dorks are actually honored -- most news engines ignore ``site:``,
+        # which is why the news-category search returned ~0 results. The time
+        # window is configurable (defaults to 'week') because site-restricted
+        # analysis pieces are often days-to-weeks old.
+        time_range = get_alpha_search_time_range()
+        log_job_step(
+            job_id,
+            "search",
+            f"Searching (web, range={time_range or 'all'}): '{base_query}'",
+        )
+        logger.info(f"🔭 Alpha Query (range={time_range or 'all'}): '{final_query}'")
 
         # Search
-        search_results = searxng_client.search_news(
+        search_results = searxng_client.search_web(
             query=final_query,
+            time_range=time_range,
             max_results=10  # Get decent chunk
         )
 

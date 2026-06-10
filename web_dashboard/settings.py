@@ -572,3 +572,41 @@ def get_alpha_search_queries() -> list[str]:
         return custom_queries
     
     return default_queries
+
+
+# Valid SearXNG time-range filters; anything else means "all time" (None).
+_VALID_SEARCH_TIME_RANGES = ("day", "week", "month", "year")
+
+
+def get_alpha_search_time_range() -> Optional[str]:
+    """Time-range filter for the Alpha Hunter's web search.
+
+    The Alpha Hunter runs ``site:``-restricted queries against a small set of
+    high-value domains. Those analysis/opinion pieces are frequently a few
+    days-to-weeks old, so the previous ``news`` + ``time_range='day'`` strategy
+    returned almost nothing. This setting controls the window for the general
+    web search instead.
+
+    Resolution order:
+    1. ``system_settings`` key ``alpha_search_time_range`` (tune without a
+       redeploy).
+    2. ``ALPHA_SEARCH_TIME_RANGE`` env var.
+    3. Default ``"week"``.
+
+    Accepted values: ``day`` / ``week`` / ``month`` / ``year``, or one of
+    ``none`` / ``all`` / ``any`` / empty to search all time (returns ``None``).
+    Invalid values fall back to ``"week"``.
+    """
+    value = get_system_setting("alpha_search_time_range", default=None)
+    if value is None:
+        value = os.getenv("ALPHA_SEARCH_TIME_RANGE") or "week"
+
+    normalized = str(value).strip().lower()
+    if normalized in ("", "none", "all", "any"):
+        return None
+    if normalized not in _VALID_SEARCH_TIME_RANGES:
+        logger.warning(
+            "Invalid alpha_search_time_range %r; falling back to 'week'", value
+        )
+        return "week"
+    return normalized

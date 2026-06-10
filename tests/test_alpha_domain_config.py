@@ -166,3 +166,73 @@ def test_env_var_overrides_system_setting(monkeypatch: pytest.MonkeyPatch) -> No
         {"domain": "envone.com", "enabled": True},
         {"domain": "envtwo.com", "enabled": True},
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Alpha search time range
+# --------------------------------------------------------------------------- #
+
+
+def _patch_time_range_setting(monkeypatch: pytest.MonkeyPatch, value: object) -> None:
+    def fake_get(key: str, default: object = None) -> object:
+        if key == "alpha_search_time_range":
+            return value
+        return default
+
+    monkeypatch.setattr(settings_mod, "get_system_setting", fake_get)
+    monkeypatch.delenv("ALPHA_SEARCH_TIME_RANGE", raising=False)
+
+
+def test_time_range_defaults_to_week(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_time_range_setting(monkeypatch, None)
+    assert settings_mod.get_alpha_search_time_range() == "week"
+
+
+def test_time_range_valid_values_pass_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    for v in ("day", "week", "month", "year"):
+        _patch_time_range_setting(monkeypatch, v)
+        assert settings_mod.get_alpha_search_time_range() == v
+
+
+def test_time_range_normalizes_case_and_whitespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_time_range_setting(monkeypatch, "  Month ")
+    assert settings_mod.get_alpha_search_time_range() == "month"
+
+
+def test_time_range_all_time_sentinels_return_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for v in ("none", "all", "any", "", "  "):
+        _patch_time_range_setting(monkeypatch, v)
+        assert settings_mod.get_alpha_search_time_range() is None
+
+
+def test_time_range_invalid_falls_back_to_week(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_time_range_setting(monkeypatch, "fortnight")
+    assert settings_mod.get_alpha_search_time_range() == "week"
+
+
+def test_time_range_env_var_used_when_no_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_get(key: str, default: object = None) -> object:
+        return default  # no system_setting configured
+
+    monkeypatch.setattr(settings_mod, "get_system_setting", fake_get)
+    monkeypatch.setenv("ALPHA_SEARCH_TIME_RANGE", "month")
+    assert settings_mod.get_alpha_search_time_range() == "month"
+
+
+def test_time_range_setting_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_get(key: str, default: object = None) -> object:
+        if key == "alpha_search_time_range":
+            return "day"
+        return default
+
+    monkeypatch.setattr(settings_mod, "get_system_setting", fake_get)
+    monkeypatch.setenv("ALPHA_SEARCH_TIME_RANGE", "year")
+    assert settings_mod.get_alpha_search_time_range() == "day"

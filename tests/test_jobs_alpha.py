@@ -143,9 +143,13 @@ def _install_settings_stub(monkeypatch, *, domains: list[str], queries: list[str
     def get_research_domain_blacklist():
         return []
 
+    def get_alpha_search_time_range():
+        return "week"
+
     module.get_alpha_research_domains = get_alpha_research_domains
     module.get_alpha_search_queries = get_alpha_search_queries
     module.get_research_domain_blacklist = get_research_domain_blacklist
+    module.get_alpha_search_time_range = get_alpha_search_time_range
     monkeypatch.setitem(sys.modules, "settings", module)
 
 
