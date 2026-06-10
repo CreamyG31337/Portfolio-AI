@@ -1199,13 +1199,19 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: opportunity_discovery_scan (daily at 9:30 PM PT)")
 
-    # Alpha Research Job: Daily at 11:15 PM PT
+    # Alpha Research Job: Daily at 10:15 PM PT.
+    # Runs INLINE (holds the global AI lock while extracting + summarizing, up to
+    # its 40-min budget -> ~10:55 PM PT). Scheduled at 22:15 so its Ollama work
+    # finishes before the queue-managed sector_meta (23:30) and ticker_meta
+    # (23:45) enqueue their tasks into the AI worker pool, minimizing Ollama
+    # throughput contention. opportunity_discovery (21:30, also inline) finishes
+    # well before this starts.
     if AVAILABLE_JOBS.get('alpha_research', {}).get('enabled_by_default'):
         from scheduler.jobs_alpha import alpha_research_job
         scheduler.add_job(
             alpha_research_job,
             trigger=CronTrigger(
-                hour=23,
+                hour=22,
                 minute=15,
                 timezone='America/Los_Angeles'
             ),
@@ -1215,7 +1221,7 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: alpha_research_collect (daily at 11:15 PM PT)")
+        logger.info("Registered job: alpha_research_collect (daily at 10:15 PM PT)")
 
     if AVAILABLE_JOBS.get('sector_meta_analysis', {}).get('enabled_by_default', True):
         from scheduler.jobs_sector_meta_analysis import sector_meta_analysis_job
