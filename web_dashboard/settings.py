@@ -429,27 +429,106 @@ def get_discovery_search_queries() -> list[str]:
     return default_queries
 
 
-def get_alpha_research_domains() -> list[str]:
-    """Get the list of high-value 'alpha' domains for targeted research.
-    
-    Returns:
-        List of domain strings from configuration
+def _normalize_alpha_domain_entries(raw: Any) -> list[dict[str, Any]]:
+    """Normalize a raw ``alpha_research_domains`` value into structured entries.
+
+    Accepts two on-disk shapes for backwards compatibility:
+
+    1. Legacy flat list of strings::
+
+        ["fool.com", "benzinga.com"]
+
+       Every string is treated as an enabled domain.
+
+    2. Preferred structured list of objects::
+
+        [
+            {"domain": "fool.com", "enabled": true, "note": "reliable"},
+            {"domain": "seekingalpha.com", "enabled": false, "note": "paywalled"}
+        ]
+
+       ``enabled`` defaults to ``True`` when omitted so an operator can add a
+       bare ``{"domain": "..."}`` and have it active. ``note`` is free-form and
+       only used for human/operator context (and a future admin UI).
+
+    Mixed lists (some strings, some dicts) are tolerated. Invalid/blank
+    entries are dropped. Returns a list of dicts with at least ``domain`` and
+    ``enabled`` keys; ``note`` is preserved when present.
     """
-    # Get domains from environment variable (comma-separated)
+    if not isinstance(raw, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            domain = entry.strip()
+            if domain:
+                normalized.append({"domain": domain, "enabled": True})
+        elif isinstance(entry, dict):
+            domain = str(entry.get("domain", "")).strip()
+            if not domain:
+                continue
+            # Default to enabled when the flag is missing; coerce truthy/falsey.
+            enabled = entry.get("enabled", True)
+            item: dict[str, Any] = {"domain": domain, "enabled": bool(enabled)}
+            note = entry.get("note")
+            if note:
+                item["note"] = str(note)
+            normalized.append(item)
+        # Anything else (None, numbers, nested lists) is silently skipped.
+
+    return normalized
+
+
+def get_alpha_research_domain_config() -> list[dict[str, Any]]:
+    """Get the FULL structured alpha-domain config (including disabled entries).
+
+    This is the source-of-truth view for operators / a future admin UI: it
+    returns every configured domain with its ``enabled`` flag and optional
+    ``note``, so disabled domains remain visible and easy to re-enable.
+
+    Resolution order mirrors :func:`get_alpha_research_domains`:
+
+    1. ``ALPHA_RESEARCH_DOMAINS`` env var (comma-separated) -- every listed
+       domain is returned as enabled. Intended for local/dev overrides.
+    2. ``system_settings`` key ``alpha_research_domains`` (flat list or
+       structured list -- see :func:`_normalize_alpha_domain_entries`).
+    3. Empty list when nothing is configured.
+    """
     env_domains = os.getenv("ALPHA_RESEARCH_DOMAINS", "")
     if env_domains:
-        return [d.strip() for d in env_domains.split(",") if d.strip()]
-    
-    # Return empty list by default - domains must be configured via ALPHA_RESEARCH_DOMAINS env var
-    # This prevents exposing website names in the codebase
-    default_domains = []
-    
+        return [
+            {"domain": d.strip(), "enabled": True}
+            for d in env_domains.split(",")
+            if d.strip()
+        ]
+
     custom_domains = get_system_setting("alpha_research_domains", default=None)
-    
-    if custom_domains and isinstance(custom_domains, list):
-        return custom_domains
-    
-    return default_domains
+    return _normalize_alpha_domain_entries(custom_domains)
+
+
+def get_alpha_research_domains() -> list[str]:
+    """Get the list of ENABLED 'alpha' domains for targeted research.
+
+    Returns only the host names whose config entry is enabled, so the Alpha
+    Research job builds ``site:`` dorks exclusively from active domains. An
+    operator can temporarily disable a noisy or blocked domain by flipping its
+    ``enabled`` flag to ``false`` in the ``alpha_research_domains``
+    ``system_settings`` row -- without losing the entry or its note. See
+    :func:`get_alpha_research_domain_config` for the full structured view.
+
+    Domains are intentionally kept out of source control (see git history);
+    configure them via ``system_settings`` or the ``ALPHA_RESEARCH_DOMAINS``
+    env var.
+
+    Returns:
+        List of enabled domain strings (possibly empty).
+    """
+    return [
+        entry["domain"]
+        for entry in get_alpha_research_domain_config()
+        if entry.get("enabled", True)
+    ]
 
 
 def get_alpha_search_queries() -> list[str]:
