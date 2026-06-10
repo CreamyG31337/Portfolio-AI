@@ -118,10 +118,12 @@ def alpha_research_job() -> None:
             from ollama_client import get_ollama_client
             from research_repository import ResearchRepository
             from settings import (
+                get_alpha_queries_per_run,
                 get_alpha_research_domains,
                 get_alpha_search_queries,
                 get_alpha_search_time_range,
             )
+            from scheduler.jobs_common import select_alpha_queries
         except ImportError as e:
             message = f"Missing dependency: {e}"
             log_job_step(job_id, "init", message, status="failed")
@@ -173,48 +175,85 @@ def alpha_research_job() -> None:
         # Construct Search Dorks
         site_dork = " OR ".join([f"site:{d}" for d in domains])
 
-        # Rotate queries based on hour to avoid hammering
-        query_index = datetime.now().hour % len(queries)
-        base_query = queries[query_index]
+        # Rotate a batch of queries per day so all configured queries get coverage
+        # (the daily schedule fires at a fixed hour; hour-based rotation never
+        # advanced through the list).
+        queries_per_run = get_alpha_queries_per_run(len(queries))
+        day_ordinal = target_date.toordinal()
+        selected_queries = select_alpha_queries(queries, queries_per_run, day_ordinal)
 
-        # Full query with site restrictions
         negative_keywords = "-astrology -horoscope -zodiac -restaurant -recipe -celebrity -movie -tv -sports"
-        final_query = f'{base_query} ({site_dork}) {negative_keywords}'
-
-        # Use a GENERAL web search (not the news category) so the ``site:``
-        # dorks are actually honored -- most news engines ignore ``site:``,
-        # which is why the news-category search returned ~0 results. The time
-        # window is configurable (defaults to 'week') because site-restricted
-        # analysis pieces are often days-to-weeks old.
         time_range = get_alpha_search_time_range()
-        log_job_step(
-            job_id,
-            "search",
-            f"Searching (web, range={time_range or 'all'}): '{base_query}'",
-        )
-        logger.info(f"🔭 Alpha Query (range={time_range or 'all'}): '{final_query}'")
 
-        # Search
-        search_results = searxng_client.search_web(
-            query=final_query,
-            time_range=time_range,
-            max_results=10  # Get decent chunk
-        )
+        combined_results: list[dict] = []
+        seen_urls: set[str] = set()
+        queries_with_results = 0
 
-        if not search_results or not search_results.get('results'):
-            message = f"No results for alpha query: {base_query}"
+        for base_query in selected_queries:
+            final_query = f'{base_query} ({site_dork}) {negative_keywords}'
+            log_job_step(
+                job_id,
+                "search",
+                f"Searching (web, range={time_range or 'all'}): '{base_query}'",
+            )
+            logger.info(f"🔭 Alpha Query (range={time_range or 'all'}): '{final_query}'")
+
+            search_results = searxng_client.search_web(
+                query=final_query,
+                time_range=time_range,
+                max_results=10,
+            )
+
+            batch = (search_results or {}).get("results") or []
+            if not batch:
+                log_job_step(
+                    job_id,
+                    "search",
+                    f"No results for alpha query: {base_query}",
+                    status="skipped",
+                )
+                continue
+
+            queries_with_results += 1
+            added = 0
+            for item in batch:
+                url = (item.get("url") or "").strip()
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                combined_results.append(item)
+                added += 1
+
+            log_job_step(
+                job_id,
+                "search",
+                f"Found {len(batch)} results ({added} new) for '{base_query}'",
+                status="success",
+            )
+
+        if not combined_results:
+            message = (
+                f"No results across {len(selected_queries)} alpha queries "
+                f"(range={time_range or 'all'})"
+            )
             log_job_step(job_id, "search", message, status="skipped")
             _finalize_success(message)
             logger.info(f"ℹ️ {message}")
             return
 
-        total_results = len(search_results['results'])
-        log_job_step(job_id, "search", f"Found {total_results} results", status="success")
+        total_results = len(combined_results)
+        log_job_step(
+            job_id,
+            "search",
+            f"Found {total_results} unique results across {queries_with_results}/{len(selected_queries)} queries",
+            status="success",
+        )
 
         articles_processed = 0
         articles_saved = 0
         articles_skipped = 0
         articles_irrelevant = 0
+        articles_failed = 0
 
         # Safety timeouts (avoid runaway jobs)
         MAX_JOB_DURATION = 40 * 60  # 40 minutes total
@@ -237,7 +276,7 @@ def alpha_research_job() -> None:
             max_article_duration=MAX_ARTICLE_DURATION,
             sleep_after_article_sec=0.0 if workers_n > 1 else 1.0,
         )
-        indexed_results = list(enumerate(search_results["results"], 1))
+        indexed_results = list(enumerate(combined_results, 1))
         agg_alpha = run_article_pipeline_parallel(
             lambda pair, c=ctx_alpha: process_alpha_research_item(c, pair),
             indexed_results,
@@ -261,10 +300,13 @@ def alpha_research_job() -> None:
         articles_saved += agg_alpha.saved
         articles_skipped += agg_alpha.skipped
         articles_irrelevant += agg_alpha.irrelevant
+        articles_failed += agg_alpha.failed
 
         message = (
-            f"Query: '{base_query}' - Processed {articles_processed}: {articles_saved} saved, "
-            f"{articles_skipped} skipped, {articles_irrelevant} non-market"
+            f"{len(selected_queries)} queries, {total_results} results - "
+            f"Processed {articles_processed}: {articles_saved} saved, "
+            f"{articles_skipped} skipped, {articles_failed} failed, "
+            f"{articles_irrelevant} non-market"
         )
         log_job_step(job_id, "complete", message, status="success")
         _finalize_success(message)

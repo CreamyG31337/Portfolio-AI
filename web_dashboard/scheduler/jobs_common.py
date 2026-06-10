@@ -119,3 +119,76 @@ def has_strong_market_signal(
 
     return False
 
+
+# --------------------------------------------------------------------------- #
+# Alpha Hunter helpers (pure, testable)
+# --------------------------------------------------------------------------- #
+
+_LOW_VALUE_ALPHA_TITLE_PATTERNS = (
+    re.compile(r"stock\s+price\s*&\s*overview", re.IGNORECASE),
+    re.compile(r"stock\s+quote", re.IGNORECASE),
+    re.compile(r"stock\s+price\s+history", re.IGNORECASE),
+    re.compile(r"\([A-Z]{1,5}\)\s+stock\s+price\b", re.IGNORECASE),
+    re.compile(r"\bstock\s+price\s*&\s*overview\b", re.IGNORECASE),
+)
+
+
+def select_alpha_queries(
+    queries: Sequence[str],
+    n: int,
+    day_ordinal: int,
+) -> list[str]:
+    """Pick ``n`` queries for today's Alpha Hunter run, rotating through the full list.
+
+    Uses ``day_ordinal`` (typically ``date.toordinal()``) so every query is
+    covered over ``ceil(len(queries) / n)`` consecutive days without repeating
+    the same batch on adjacent days when ``n < len(queries)``.
+
+    Args:
+        queries: Full configured query list.
+        n: How many queries to run this invocation (clamped to ``len(queries)``).
+        day_ordinal: Day index for rotation (e.g. ``datetime.date.toordinal()``).
+
+    Returns:
+        Up to ``n`` query strings (may be fewer if ``queries`` is empty).
+    """
+    if not queries:
+        return []
+
+    total = len(queries)
+    count = max(1, min(int(n), total))
+    start = (int(day_ordinal) * count) % total
+
+    selected: list[str] = []
+    for i in range(count):
+        selected.append(queries[(start + i) % total])
+    return selected
+
+
+def relevance_for_logic_check(logic_check: Optional[str]) -> float:
+    """Map AI ``logic_check`` bucket to a stored ``relevance_score``.
+
+    HYPE_DETECTED is down-ranked to 0.1 so the existing junk filter can prune
+    advertorial/clickbait while still preserving the article in the DB briefly.
+    """
+    if not logic_check:
+        return 0.7
+    normalized = str(logic_check).strip().upper()
+    if normalized == "DATA_BACKED":
+        return 0.9
+    if normalized == "HYPE_DETECTED":
+        return 0.1
+    return 0.7  # NEUTRAL and unknown buckets
+
+
+def is_low_value_alpha_result(title: str, url: str = "") -> bool:
+    """True when a SearXNG hit looks like auto-generated quote/overview junk.
+
+    Cheap pre-extraction filter for boilerplate pages (e.g. stockanalysis.com
+    ``INVA Stock Price & Overview``) that waste FlareSolverr/Ollama budget.
+    """
+    text = f"{title or ''} {url or ''}".strip()
+    if not text:
+        return False
+    return any(pat.search(text) for pat in _LOW_VALUE_ALPHA_TITLE_PATTERNS)
+

@@ -610,3 +610,33 @@ def get_alpha_search_time_range() -> Optional[str]:
         )
         return "week"
     return normalized
+
+
+def get_alpha_queries_per_run(query_count: Optional[int] = None) -> int:
+    """How many search queries the Alpha Hunter runs per scheduled invocation.
+
+    The job rotates through the full query list over successive days so all
+    configured queries get coverage (see ``select_alpha_queries`` in
+    ``jobs_common``).
+
+    Resolution order:
+    1. ``system_settings`` key ``alpha_queries_per_run``.
+    2. ``ALPHA_QUERIES_PER_RUN`` env var.
+    3. Default ``4``.
+
+    The value is clamped to ``[1, query_count]`` when ``query_count`` is known;
+    otherwise clamped to ``[1, 32]``.
+    """
+    value = get_system_setting("alpha_queries_per_run", default=None)
+    if value is None:
+        value = os.getenv("ALPHA_QUERIES_PER_RUN") or "4"
+
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        logger.warning("Invalid alpha_queries_per_run %r; falling back to 4", value)
+        n = 4
+
+    if query_count is not None and query_count > 0:
+        return max(1, min(n, query_count))
+    return max(1, min(n, 32))

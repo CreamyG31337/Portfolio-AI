@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from scheduler.article_pipeline import ArticleCounters
-from scheduler.jobs_common import claim_recent_summary_input, has_strong_market_signal
+from scheduler.jobs_common import (
+    claim_recent_summary_input,
+    has_strong_market_signal,
+    is_low_value_alpha_result,
+    relevance_for_logic_check,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +57,7 @@ class AlphaResearchCtx:
 
 def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> ArticleCounters:
     """Single SearXNG result for alpha research (claim → extract → summarize → save)."""
-    from research_utils import extract_article_content, is_domain_blacklisted
+    from research_utils import extract_article_content, extract_source_from_url, is_domain_blacklisted
     from ollama_client import generate_summary
     from utils.job_tracking import log_job_step
 
@@ -61,12 +66,30 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
     processing_claimed = False
     url = ""
     article_start = time.time()
+    domain_health = None
+
+    try:
+        from research_domain_health import DomainHealthTracker
+
+        domain_health = DomainHealthTracker()
+    except Exception:
+        domain_health = None
 
     try:
         url = result.get("url", "") or ""
         title = result.get("title", "") or ""
 
         if not url or not title:
+            return c
+
+        if is_low_value_alpha_result(title, url):
+            log_job_step(
+                ctx.job_id,
+                "low_value",
+                f"Skipping boilerplate result: {title[:80]}",
+                status="skipped",
+            )
+            c.skipped += 1
             return c
 
         processing_claimed = bool(ctx.research_repo.claim_processing_url(url))
@@ -118,9 +141,27 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
 
         content = extracted.get("content", "")
         if not content or not extracted.get("success"):
-            if extracted.get("error") == "extraction_timeout":
-                c.failed += 1
+            error_reason = extracted.get("error", "unknown") or "unknown"
+            if domain_health is not None:
+                try:
+                    domain_health.record_failure(url, str(error_reason))
+                except Exception:
+                    pass
+            c.failed += 1
+            source_domain = extract_source_from_url(url) or "unknown"
+            log_job_step(
+                ctx.job_id,
+                "extract_failed",
+                f"{source_domain}: {error_reason}",
+                status="failed",
+            )
             return c
+
+        if domain_health is not None:
+            try:
+                domain_health.record_success(url)
+            except Exception:
+                pass
 
         if not _has_time_for_stage(
             article_start=article_start,
@@ -202,6 +243,7 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
             embedding = ctx.ollama_client.generate_embedding(content)
 
         logic_check = summary_data.get("logic_check") if isinstance(summary_data, dict) else None
+        relevance_score = relevance_for_logic_check(logic_check)
 
         article_id = ctx.research_repo.save_article(
             tickers=extracted_tickers if extracted_tickers else None,
@@ -213,7 +255,7 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
             content=content,
             source=extracted.get("source"),
             published_at=extracted.get("published_at"),
-            relevance_score=0.85,
+            relevance_score=relevance_score,
             embedding=embedding,
             claims=summary_data.get("claims") if isinstance(summary_data, dict) else None,
             fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,

@@ -236,3 +236,58 @@ def test_time_range_setting_overrides_env(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(settings_mod, "get_system_setting", fake_get)
     monkeypatch.setenv("ALPHA_SEARCH_TIME_RANGE", "year")
     assert settings_mod.get_alpha_search_time_range() == "day"
+
+
+# --------------------------------------------------------------------------- #
+# Alpha queries per run
+# --------------------------------------------------------------------------- #
+
+
+def _patch_queries_per_run_setting(monkeypatch: pytest.MonkeyPatch, value: object) -> None:
+    def fake_get(key: str, default: object = None) -> object:
+        if key == "alpha_queries_per_run":
+            return value
+        return default
+
+    monkeypatch.setattr(settings_mod, "get_system_setting", fake_get)
+    monkeypatch.delenv("ALPHA_QUERIES_PER_RUN", raising=False)
+
+
+def test_queries_per_run_defaults_to_four(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_queries_per_run_setting(monkeypatch, None)
+    assert settings_mod.get_alpha_queries_per_run() == 4
+
+
+def test_queries_per_run_clamps_to_query_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_queries_per_run_setting(monkeypatch, 99)
+    assert settings_mod.get_alpha_queries_per_run(query_count=3) == 3
+
+
+def test_queries_per_run_minimum_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_queries_per_run_setting(monkeypatch, 0)
+    assert settings_mod.get_alpha_queries_per_run(query_count=10) == 1
+
+
+def test_queries_per_run_invalid_falls_back_to_four(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_queries_per_run_setting(monkeypatch, "not-a-number")
+    assert settings_mod.get_alpha_queries_per_run() == 4
+
+
+def test_queries_per_run_env_used_when_no_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_get(key: str, default: object = None) -> object:
+        return default
+
+    monkeypatch.setattr(settings_mod, "get_system_setting", fake_get)
+    monkeypatch.setenv("ALPHA_QUERIES_PER_RUN", "2")
+    assert settings_mod.get_alpha_queries_per_run(query_count=16) == 2
+
+
+def test_queries_per_run_setting_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_get(key: str, default: object = None) -> object:
+        if key == "alpha_queries_per_run":
+            return 6
+        return default
+
+    monkeypatch.setattr(settings_mod, "get_system_setting", fake_get)
+    monkeypatch.setenv("ALPHA_QUERIES_PER_RUN", "2")
+    assert settings_mod.get_alpha_queries_per_run(query_count=16) == 6

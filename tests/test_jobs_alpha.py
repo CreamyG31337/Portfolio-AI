@@ -146,10 +146,16 @@ def _install_settings_stub(monkeypatch, *, domains: list[str], queries: list[str
     def get_alpha_search_time_range():
         return "week"
 
+    def get_alpha_queries_per_run(query_count=None):
+        if query_count is not None and query_count > 0:
+            return min(4, query_count)
+        return 4
+
     module.get_alpha_research_domains = get_alpha_research_domains
     module.get_alpha_search_queries = get_alpha_search_queries
     module.get_research_domain_blacklist = get_research_domain_blacklist
     module.get_alpha_search_time_range = get_alpha_search_time_range
+    module.get_alpha_queries_per_run = get_alpha_queries_per_run
     monkeypatch.setitem(sys.modules, "settings", module)
 
 
