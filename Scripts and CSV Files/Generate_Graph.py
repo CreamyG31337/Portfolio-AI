@@ -636,21 +636,8 @@ def create_continuous_timeline(df: pd.DataFrame) -> pd.DataFrame:
     
     # Adjust timestamps to represent market close time for trading days
     # For weekends, use market close time of the weekend day to keep lines flat
-    from datetime import timedelta
-    
-    for idx, row in merged.iterrows():
-        date_only = row['Date'].date()
-        weekday = pd.to_datetime(date_only).weekday()
-        
-        if weekday < 5:  # Trading day (Mon-Fri = 0-4)
-            # Set to market close time: 1:00 PM PST (13:00)
-            market_close_time = pd.to_datetime(date_only) + timedelta(hours=13)
-            merged.at[idx, 'Date'] = market_close_time
-        else:  # Weekend (Sat-Sun = 5-6)
-            # Also use market close time for weekend days to keep lines flat
-            # This prevents diagonal lines from weekend midnight to Monday market close
-            weekend_market_close = pd.to_datetime(date_only) + timedelta(hours=13)
-            merged.at[idx, 'Date'] = weekend_market_close
+    # ⚡ Bolt: Vectorized date timezone adjustment to avoid O(N) iterrows bottleneck
+    merged['Date'] = merged['Date'].dt.normalize() + pd.Timedelta(hours=13)
     
     # Drop the helper column
     merged = merged.drop('Date_Only', axis=1)
@@ -795,20 +782,8 @@ def download_benchmark(benchmark_name: str, start_date: pd.Timestamp, end_date: 
         merged['Date'] = pd.to_datetime(merged['Date'])
         
         # Apply market timing: trading days at market close (13:00 PST), weekends at midnight
-        from datetime import timedelta
-        for idx, row in merged.iterrows():
-            date_only = row['Date'].date()
-            weekday = pd.to_datetime(date_only).weekday()
-            
-            if weekday < 5:  # Trading day (Mon-Fri = 0-4)
-                # Set to market close time: 1:00 PM PST (13:00) to match portfolio timing
-                market_close_time = pd.to_datetime(date_only) + timedelta(hours=13)
-                merged.at[idx, 'Date'] = market_close_time
-            else:  # Weekend (Sat-Sun = 5-6)
-                # Also use market close time for weekend days to match portfolio timing
-                # This prevents misaligned dots and keeps both series consistent
-                weekend_market_close = pd.to_datetime(date_only) + timedelta(hours=13)
-                merged.at[idx, 'Date'] = weekend_market_close
+        # ⚡ Bolt: Vectorized date timezone adjustment to avoid O(N) iterrows bottleneck
+        merged['Date'] = merged['Date'].dt.normalize() + pd.Timedelta(hours=13)
         
         print(f"{_safe_emoji('📈')} {display_name} data: {len(benchmark_clean)} trading days -> {len(merged)} total days (with weekends)")
         return merged[["Date", column_name]]
