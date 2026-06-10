@@ -402,6 +402,8 @@ function showChartLoadingSpinner(): void {
     const el = document.getElementById('chart-loading');
     if (!el) return;
     el.classList.remove('hidden');
+    // TODO(palette): Remove redundant style.removeProperty('display') — classList.remove('hidden')
+    // is sufficient when visibility is controlled via Tailwind. (Palette audit PR #362, item 4)
     el.style.removeProperty('display');
 }
 
@@ -1748,6 +1750,9 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
             const detail = document.getElementById(rowId);
             if (chevron && detail) {
                 detail.classList.toggle('hidden');
+                // TODO(palette): Replace inline style.transform with classList.add/remove('rotate-90')
+                // and ensure transition-transform duration-200 is on the chevron element.
+                // (Palette audit PR #362, item 3)
                 if (detail.classList.contains('hidden')) {
                     chevron.style.transform = '';
                 } else {

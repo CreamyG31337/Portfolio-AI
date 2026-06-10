@@ -86,6 +86,8 @@ function debounceForContributions<T extends (...args: any[]) => void>(
 }
 
 function showToastForContributions(message: string, type: 'success' | 'error' = 'success'): void {
+    // TODO(palette): Replace manual toast.style.opacity transitions with the users.ts pattern
+    // (toggle opacity-0/opacity-100 classes) or Flowbite Toast API. (Palette audit PR #362, item 1)
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
