@@ -266,6 +266,48 @@ def add_security_headers(response):
 
     return response
 
+
+@app.after_request
+def persist_refreshed_tokens(response):
+    """Persist refreshed auth tokens as cookies on EVERY response.
+
+    Any code path that exchanges the refresh token (require_auth, the root route,
+    flask_auth_utils helpers) stashes the new tokens on the request. Supabase
+    refresh tokens are single-use, so if the new tokens never reach the browser
+    the session is orphaned and the user gets logged out — centralizing here
+    ensures every refresh lands in a Set-Cookie header.
+    """
+    new_token = getattr(request, '_new_auth_token', None)
+    if not new_token or getattr(request, '_supabase_session_invalid', False):
+        return response
+    expires_in = getattr(request, '_token_expires_in', None)
+    new_refresh = getattr(request, '_new_refresh_token', None)
+    x_forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
+    is_https = x_forwarded_proto == 'https' or request.is_secure
+    is_production = os.getenv("FLASK_ENV") == "production" or bool(os.getenv("APP_DOMAIN"))
+    use_secure = is_https or is_production
+    response.set_cookie(
+        'auth_token',
+        new_token,
+        max_age=expires_in or 3600,
+        httponly=True,
+        secure=use_secure,
+        samesite='Lax',
+        path='/'
+    )
+    if new_refresh:
+        response.set_cookie(
+            'refresh_token',
+            new_refresh,
+            max_age=86400 * 30,  # 30 days
+            httponly=True,
+            secure=use_secure,
+            samesite='Lax',
+            path='/'
+        )
+    return response
+
+
 # Configure CORS to allow credentials from Vercel deployment
 CORS(app,
      supports_credentials=True,
@@ -1378,23 +1420,12 @@ def index():
         # Don't delete cookies in root route - just check authentication
         # Check if auth_token is missing or expired, try to refresh if we have refresh_token
         if not auth_token and refresh_token:
-            # Missing auth_token but have refresh_token - try to refresh
+            # Missing auth_token but have refresh_token - try to refresh.
+            # New cookies are set by the persist_refreshed_tokens after_request hook.
             from flask_auth_utils import refresh_token_if_needed_flask
             success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
             if success and new_token:
-                # Refresh succeeded - redirect with new cookies
-                is_production = (
-                    os.getenv("FLASK_ENV") == "production" or
-                    os.getenv("APP_DOMAIN") is not None or
-                    request.headers.get('X-Forwarded-Proto') == 'https' or
-                    request.is_secure
-                )
-                samesite_value = 'Lax'
-                response = redirect(url_for('dashboard.dashboard_page'))
-                response.set_cookie('auth_token', new_token, max_age=expires_in or 3600, httponly=True, secure=is_production, samesite=samesite_value, path='/')
-                if new_refresh:
-                    response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite=samesite_value, path='/')
-                return response
+                return redirect(url_for('dashboard.dashboard_page'))
 
         # Check if auth_token exists and is expired, try to refresh
         if auth_token:
@@ -1407,24 +1438,12 @@ def index():
                     user_data = json_lib.loads(decoded)
                     exp = user_data.get('exp', 0)
                     if exp > 0 and exp < time.time():
-                        # Token expired - try to refresh
+                        # Token expired - try to refresh.
+                        # New cookies are set by the persist_refreshed_tokens after_request hook.
                         from flask_auth_utils import refresh_token_if_needed_flask
                         success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
                         if success and new_token:
-                            # Refresh succeeded - redirect with new cookies
-                            is_production = (
-                                os.getenv("FLASK_ENV") == "production" or
-                                os.getenv("APP_DOMAIN") is not None or
-                                request.headers.get('X-Forwarded-Proto') == 'https' or
-                                request.is_secure
-                            )
-                            # Use SameSite=Lax for same-site requests
-                            samesite_value = 'Lax'
-                            response = redirect(url_for('dashboard.dashboard_page'))
-                            response.set_cookie('auth_token', new_token, max_age=expires_in or 3600, httponly=True, secure=is_production, samesite=samesite_value, path='/')
-                            if new_refresh:
-                                response.set_cookie('refresh_token', new_refresh, max_age=86400*30, httponly=True, secure=is_production, samesite=samesite_value, path='/')
-                            return response
+                            return redirect(url_for('dashboard.dashboard_page'))
                         else:
                             # Refresh failed - token expired and can't refresh
                             # Don't delete cookies - just continue to auth check below

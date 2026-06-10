@@ -8,7 +8,7 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import request, jsonify, redirect, make_response
+from flask import request, jsonify, redirect
 import requests
 import logging
 
@@ -343,46 +343,10 @@ def require_auth(f):
         from flask_auth_utils import ensure_impersonation_session_valid
         ensure_impersonation_session_valid()
 
-        # Execute the route function
-        response = f(*args, **kwargs)
-
-        # If token was refreshed, update cookies in the response
-        if new_token:
-            import os
-            # Ensure we have a Response object: view may return str (render_template),
-            # tuple (jsonify(...), 401), or Response. make_response normalizes all of these.
-            response = make_response(response)
-            # Use same HTTPS detection logic as login route
-            x_forwarded_proto = request.headers.get('X-Forwarded-Proto', '').lower()
-            is_https = x_forwarded_proto == 'https' or request.is_secure
-            has_app_domain = bool(os.getenv("APP_DOMAIN"))
-            is_production_env = os.getenv("FLASK_ENV") == "production"
-            is_production = is_production_env or has_app_domain or is_https
-            # CRITICAL: Always use secure=True if we detect HTTPS
-            use_secure = is_https or is_production
-            # Use SameSite=Lax for same-site requests
-            samesite_value = 'Lax'
-            response.set_cookie(
-                'auth_token',
-                new_token,
-                max_age=expires_in if expires_in else 3600,
-                httponly=True,
-                secure=use_secure,
-                samesite=samesite_value,
-                path='/'
-            )
-            if new_refresh:
-                response.set_cookie(
-                    'refresh_token',
-                    new_refresh,
-                    max_age=86400 * 30,  # 30 days
-                    httponly=True,
-                    secure=use_secure,
-                    samesite=samesite_value,
-                    path='/'
-                )
-
-        return response
+        # Execute the route function.
+        # Refreshed tokens are persisted as cookies by the app-level
+        # persist_refreshed_tokens after_request hook (reads request._new_auth_token).
+        return f(*args, **kwargs)
     return decorated_function
 
 def require_fund_access(fund_name: str):

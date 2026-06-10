@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import threading
+import time
 import uuid
 from typing import Optional, Dict, Any
 from flask import request
@@ -26,6 +27,16 @@ SESSION_IMPERSONATE_USER_EMAIL = "impersonate_user_email"
 # Key: refresh_token value, Value: threading.Lock
 _refresh_locks: Dict[str, threading.Lock] = {}
 _refresh_locks_lock = threading.Lock()  # Lock for the locks dict itself
+
+# Supabase refresh tokens are single-use: exchanging RT1 revokes it and issues RT2.
+# Reusing RT1 more than REFRESH_TOKEN_REUSE_INTERVAL (default 10s) after the exchange
+# revokes the ENTIRE session family and logs the user out everywhere. Requests that
+# were sent with the old cookie (parallel fetches, queued requests, lost Set-Cookie
+# responses) must therefore be handed the already-issued tokens instead of replaying
+# the exchange. This cache maps old refresh_token -> (issued_at, access, refresh,
+# expires_in) for a grace period so refresh is idempotent within this process.
+_REFRESH_CACHE_TTL = 60.0  # seconds
+_recent_refreshes: Dict[str, tuple[float, str, Optional[str], Optional[int]]] = {}
 
 
 def get_auth_token() -> Optional[str]:
@@ -278,10 +289,8 @@ def _do_refresh(rt: str) -> tuple[bool, Optional[str], Optional[str], Optional[i
         - conflict: Too many concurrent refresh requests
     """
     try:
-        import time
-        import os
         import requests
-        
+
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
         
@@ -306,10 +315,6 @@ def _do_refresh(rt: str) -> tuple[bool, Optional[str], Optional[str], Optional[i
             expires_in = auth_data.get("expires_in", 3600)
             
             if new_access_token:
-                # Clean up old lock since we got a new refresh_token
-                with _refresh_locks_lock:
-                    if rt in _refresh_locks:
-                        del _refresh_locks[rt]
                 logger.debug(f"[FLASK_AUTH] Token refresh successful, expires_in={expires_in}s")
                 return (True, new_access_token, new_refresh_token, expires_in)
         
@@ -421,6 +426,77 @@ def _do_refresh(rt: str) -> tuple[bool, Optional[str], Optional[str], Optional[i
         return (False, None, None, None)
 
 
+def _get_cached_refresh(rt: str) -> Optional[tuple[bool, str, Optional[str], Optional[int]]]:
+    """Return cached refresh result for an already-exchanged refresh token, if fresh."""
+    entry = _recent_refreshes.get(rt)
+    if entry and (time.time() - entry[0]) < _REFRESH_CACHE_TTL:
+        logger.debug("[FLASK_AUTH] Refresh cache hit - reusing tokens from earlier exchange")
+        return (True, entry[1], entry[2], entry[3])
+    return None
+
+
+def _stash_tokens_on_request(access_token: str, refresh_token: Optional[str],
+                             expires_in: Optional[int]) -> None:
+    """Record refreshed tokens on the request so the app-level after_request hook
+    persists them as cookies no matter which code path performed the refresh."""
+    try:
+        from flask import has_request_context
+        if not has_request_context():
+            return
+        request._new_auth_token = access_token
+        if refresh_token:
+            request._new_refresh_token = refresh_token
+        if expires_in:
+            request._token_expires_in = expires_in
+    except Exception as e:
+        logger.debug(f"[FLASK_AUTH] Could not stash refreshed tokens on request: {e}")
+
+
+def _refresh_with_cache(rt: str, blocking: bool = True) -> tuple[bool, Optional[str], Optional[str], Optional[int]]:
+    """Exchange a refresh token for new tokens, idempotently.
+
+    If this refresh token was already exchanged within the grace period, returns the
+    tokens issued by that exchange instead of replaying it (replaying outside
+    Supabase's reuse interval revokes the whole session). The per-token lock
+    serializes concurrent callers so only one of them performs the network call.
+
+    With blocking=False, returns (True, None, None, None) if another thread holds the
+    lock — callers use this for proactive refresh where the current token is still valid.
+    """
+    cached = _get_cached_refresh(rt)
+    if cached:
+        _stash_tokens_on_request(cached[1], cached[2], cached[3])
+        return cached
+
+    lock = _get_refresh_lock(rt)
+    if not lock.acquire(blocking=blocking):
+        logger.debug("[FLASK_AUTH] Refresh skipped - another request is refreshing")
+        return (True, None, None, None)
+    try:
+        # Re-check under the lock: another request may have refreshed while we waited
+        cached = _get_cached_refresh(rt)
+        if cached:
+            _stash_tokens_on_request(cached[1], cached[2], cached[3])
+            return cached
+
+        result = _do_refresh(rt)
+        if result[0] and result[1]:
+            now = time.time()
+            with _refresh_locks_lock:
+                _recent_refreshes[rt] = (now, result[1], result[2], result[3])
+                # Prune expired cache entries and their locks to keep memory bounded
+                stale = [k for k, v in _recent_refreshes.items()
+                         if (now - v[0]) > _REFRESH_CACHE_TTL]
+                for k in stale:
+                    _recent_refreshes.pop(k, None)
+                    if k != rt:
+                        _refresh_locks.pop(k, None)
+            _stash_tokens_on_request(result[1], result[2], result[3])
+        return result
+    finally:
+        lock.release()
+
+
 def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str], Optional[int]]:
     """Check if token is expired or about to expire, and refresh it if needed (Flask context).
     
@@ -457,20 +533,13 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
     # If no auth_token but we have refresh_token, try to refresh immediately
     if not auth_token and refresh_token:
         # Missing auth_token - try to refresh using refresh_token
-        # Use lock to prevent concurrent refresh attempts
-        lock = _get_refresh_lock(refresh_token)
-        with lock:
-            return _do_refresh(refresh_token)
-    
+        return _refresh_with_cache(refresh_token)
+
     # If no token at all, can't refresh
     if not token:
         return (False, None, None, None)
-    
+
     try:
-        import time
-        import os
-        import requests
-        
         # Parse token to check expiration
         token_parts = token.split('.')
         if len(token_parts) < 2:
@@ -490,32 +559,21 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
         if exp > 0 and exp < current_time:
             # Token is expired - try to refresh
             if refresh_token:
-                # Use lock to prevent concurrent refresh attempts
-                lock = _get_refresh_lock(refresh_token)
-                with lock:
-                    return _do_refresh(refresh_token)
+                return _refresh_with_cache(refresh_token)
             else:
                 # No refresh token available
                 logger.debug("[FLASK_AUTH] Token expired and no refresh token available")
                 return (False, None, None, None)
-        
+
         # Token is valid - check if we should refresh it proactively
         # Only refresh if token is expiring soon (within 5 minutes)
         if time_until_expiry is not None and 0 < time_until_expiry <= 300 and refresh_token:
-            # Use lock to prevent concurrent refresh attempts
-            # Try to acquire lock non-blocking - if another request is refreshing, skip this one
-            lock = _get_refresh_lock(refresh_token)
-            if lock.acquire(blocking=False):
-                try:
-                    result = _do_refresh(refresh_token)
-                    if result[0]:  # Success
-                        return result
-                finally:
-                    lock.release()
-            else:
-                # Another request is already refreshing, skip proactive refresh
-                logger.debug("[FLASK_AUTH] Proactive refresh skipped - another request is refreshing")
-        
+            # Non-blocking: if another request is already refreshing, skip — our token
+            # is still valid, and the cache will serve us the new tokens next request.
+            result = _refresh_with_cache(refresh_token, blocking=False)
+            if result[0] and result[1]:  # Refreshed (or cache hit)
+                return result
+
         # Token is valid and doesn't need refresh
         return (True, None, None, None)
     except Exception as e:

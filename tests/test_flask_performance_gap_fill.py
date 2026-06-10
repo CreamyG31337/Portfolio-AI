@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import date, timedelta
 from unittest.mock import patch
 
 import pandas as pd
@@ -12,6 +13,36 @@ sys.path.append(
 )
 
 from flask_data_utils import calculate_portfolio_value_over_time_flask
+
+
+def _recent_trading_triple() -> tuple[date, date, date]:
+    """Three consecutive past trading days within the function's days=30 window.
+
+    The test seeds metrics on the outer two days and expects the middle day to be
+    gap-filled, so all three must be trading days. Dates are computed relative to
+    today: hardcoded dates silently age out of the 30-day query window and the
+    test starts failing a month after it was written.
+    """
+    try:
+        from utils.market_holidays import MarketHolidays
+        market_holidays = MarketHolidays()
+        def is_trading(d: date) -> bool:
+            return market_holidays.is_trading_day(d, market="any")
+    except Exception:
+        def is_trading(d: date) -> bool:
+            return d.weekday() < 5
+
+    # Most recent Wednesday that ended at least two days ago, then walk back
+    # week by week if any of Tue/Wed/Thu falls on a holiday.
+    anchor = date.today() - timedelta(days=2)
+    while anchor.weekday() != 2:
+        anchor -= timedelta(days=1)
+    for _ in range(3):
+        tue, wed, thu = anchor - timedelta(days=1), anchor, anchor + timedelta(days=1)
+        if all(is_trading(d) for d in (tue, wed, thu)):
+            return tue, wed, thu
+        anchor -= timedelta(days=7)
+    return tue, wed, thu
 
 
 class _Query:
@@ -63,17 +94,18 @@ class _SupabaseFacade:
 
 
 def test_performance_metrics_gap_is_filled_from_positions():
+    day_before, gap_day, day_after = _recent_trading_triple()
     table_rows = {
         "performance_metrics": [
             {
-                "date": "2026-05-05",
+                "date": day_before.isoformat(),
                 "total_value": 100.0,
                 "cost_basis": 90.0,
                 "unrealized_pnl": 10.0,
                 "fund": "Project Chimera",
             },
             {
-                "date": "2026-05-07",
+                "date": day_after.isoformat(),
                 "total_value": 120.0,
                 "cost_basis": 90.0,
                 "unrealized_pnl": 30.0,
@@ -82,7 +114,7 @@ def test_performance_metrics_gap_is_filled_from_positions():
         ],
         "portfolio_positions": [
             {
-                "date": "2026-05-06T20:05:00+00:00",
+                "date": f"{gap_day.isoformat()}T20:05:00+00:00",
                 "total_value": 0.0,
                 "cost_basis": 0.0,
                 "pnl": 0.0,
@@ -94,7 +126,7 @@ def test_performance_metrics_gap_is_filled_from_positions():
                 "base_currency": "CAD",
             },
             {
-                "date": "2026-05-06T20:05:00+00:00",
+                "date": f"{gap_day.isoformat()}T20:05:00+00:00",
                 "total_value": 0.0,
                 "cost_basis": 0.0,
                 "pnl": 0.0,
@@ -126,9 +158,9 @@ def test_performance_metrics_gap_is_filled_from_positions():
 
     assert not result.empty
     result_dates = [d.date().isoformat() for d in pd.to_datetime(result["date"])]
-    assert "2026-05-05" in result_dates
-    assert "2026-05-06" in result_dates
-    assert "2026-05-07" in result_dates
+    assert day_before.isoformat() in result_dates
+    assert gap_day.isoformat() in result_dates
+    assert day_after.isoformat() in result_dates
 
-    may_6_value = float(result.loc[pd.to_datetime(result["date"]).dt.date == pd.Timestamp("2026-05-06").date(), "value"].iloc[0])
-    assert may_6_value == 125.0
+    gap_day_value = float(result.loc[pd.to_datetime(result["date"]).dt.date == gap_day, "value"].iloc[0])
+    assert gap_day_value == 125.0
