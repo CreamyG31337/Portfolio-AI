@@ -1,4 +1,3 @@
-// TODO: Fix bugs documented in docs/TICKER_DETAILS_BUGS.md (chevron toggle, stale state, race conditions, theme classes, XSS)
 export { }; // Ensure file is treated as a module
 
 // ticker_autocomplete import removed -- ticker details now uses search-on-Enter via /api/v2/ticker/search
@@ -950,12 +949,8 @@ async function loadTickerData(ticker: string): Promise<void> {
         if (data.social_sentiment) {
             renderSocialSentiment(data.social_sentiment);
         }
-        if (data.congress_trades) {
-            renderCongressTickerTrades(data.congress_trades);
-        }
-        if (data.insider_trades) {
-            renderInsiderTrades(data.insider_trades);
-        }
+        renderCongressTickerTrades(data.congress_trades ?? []);
+        renderInsiderTrades(data.insider_trades ?? []);
         if (data.watchlist_status) {
             renderWatchlistStatus(data.watchlist_status);
         }

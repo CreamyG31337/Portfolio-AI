@@ -4444,6 +4444,8 @@ def api_ticker_chart():
         fund = _normalize_fund_param(request.args.get('fund'))
         # Get theme from request (client detects actual page theme)
         client_theme = request.args.get('theme', '').strip().lower()
+        if client_theme in {'midnight-tokyo', 'abyss'}:
+            client_theme = 'dark'
         # Get range from request (default: 3m)
         from ticker_chart_ranges import normalize_ticker_chart_range
 

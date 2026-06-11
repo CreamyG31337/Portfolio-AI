@@ -43,6 +43,7 @@ else:
     sys.path.append(web_dashboard_path)
 
 from scheduler.scheduler_core import log_job_execution
+from prompt_safety import sanitize_for_llm
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -533,17 +534,17 @@ def fetch_congress_trades_job() -> None:
                                             logger.debug(f"Could not fetch committees for politician {politician_id}: {comm_err}")
 
                                     # Get committee jurisdiction descriptions (the "cheat sheet" for the AI)
-                                    committee_context = get_committee_context(committees_str)
+                                    committee_context = sanitize_for_llm(
+                                        get_committee_context(committees_str)
+                                    )
 
                                     # Build description section
                                     description_section = ""
                                     if description:
-                                        description_section = f"- Description: {description}\n"
+                                        safe_description = sanitize_for_llm(description)
+                                        description_section = f"- Description: {safe_description}\n"
 
                                     # Build full prompt with all context (matches batch script quality)
-                                    # TODO: PROMPT-INJECTION - Congress trade notes/description fields are
-                                    #   free text from FMP API. While lower risk than public social posts,
-                                    #   these should still be sanitized before LLM ingestion.
                                     prompt = f"""Analyze this trade for potential Insider Trading/Conflict of Interest.
 Data:
 - Politician: {politician} ({party or 'Unknown'} - {state or 'Unknown'})

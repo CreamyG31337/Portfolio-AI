@@ -1383,14 +1383,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         if model and str(model).startswith("glm-"):
             return _generate_summary_via_zhipu(text, model, article_type=article_type, stream=False)
 
-        # Clamp article body length so prompt + article + output fit common model contexts.
-        # TODO: PROMPT-INJECTION - Sanitize scraped article text before LLM ingestion.
-        #   Article content from trafilatura/RSS is sent as the raw prompt with no
-        #   delimiter-based sandboxing. Hidden text or invisible CSS content in articles
-        #   could contain adversarial instructions. Mitigations to add:
-        #   1. Strip residual HTML, zero-width chars, and control characters
-        #   2. Use structural separation between system instructions and article content
-        #   3. Validate that trafilatura output doesn't contain hidden/invisible text artifacts
+        # Sanitize scraped article text before truncation and LLM ingestion.
+        text = sanitize_for_llm(text)
         max_chars = compute_summary_max_chars(article_type)
         original_len = len(text)
         if original_len > max_chars:
@@ -1400,6 +1394,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 article_type or "article", original_len, len(text), max_chars, article_type,
             )
 
+        safe_prompt_text = prepare_untrusted_for_prompt(text, source="scraped_article")
         system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
 
         # Get model settings. num_ctx is intentionally the single source of truth
@@ -1439,7 +1434,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         # Prepare request payload
         payload = {
             "model": model,
-            "prompt": text,
+            "prompt": safe_prompt_text,
             "stream": False,
             "system": system_prompt,
             "options": {

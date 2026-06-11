@@ -154,49 +154,60 @@ class ChatHandler:
             Flask Response (streaming or JSON)
         """
         from ai_prompts import get_system_prompt
+        from prompt_safety import prepare_untrusted_for_prompt
         from research_utils import escape_markdown
-        
-        # Build full prompt with context
-        # TODO: PROMPT-INJECTION - Multiple untrusted sources are concatenated into the prompt:
-        #   1. context_string may contain data derived from scraped articles
-        #   2. search_results['formatted'] includes semantic search hits from research DB
-        #   3. repository_articles contain summaries originally scraped from the web
-        #   All should be wrapped in <user_content> delimiters and sanitized before LLM ingestion.
-        full_prompt = query
+
+        # Build full prompt with sanitized, delimited untrusted context blocks.
+        prompt_parts: List[str] = []
         if context_string:
-            full_prompt = f"{context_string}\n\n{query}"
-        
-        # Add search results if provided
+            prompt_parts.append(
+                prepare_untrusted_for_prompt(context_string, source="chat_context")
+            )
+
         if search_results and search_results.get('formatted'):
-            if context_string:
-                full_prompt = f"{context_string}\n\n---\n\n{search_results['formatted']}\n\n{query}"
-            else:
-                full_prompt = f"{search_results['formatted']}\n\n{query}"
-        
-        # Add repository articles if provided
+            prompt_parts.append(
+                prepare_untrusted_for_prompt(
+                    search_results['formatted'],
+                    source="chat_search_results",
+                )
+            )
+
         if repository_articles:
             articles_text = "## Relevant Research from Repository:\n\n"
             for i, article in enumerate(repository_articles, 1):
                 similarity = article.get('similarity', 0)
-                title = article.get('title', 'Untitled')
-                summary = escape_markdown(article.get('summary', article.get('content', '')[:300]))
-                source = article.get('source', 'Unknown')
+                raw_summary = article.get('summary', article.get('content', '')[:300])
+                title = prepare_untrusted_for_prompt(
+                    article.get('title', 'Untitled'),
+                    source=f"repo_article_{i}_title",
+                )
+                summary = prepare_untrusted_for_prompt(
+                    escape_markdown(raw_summary),
+                    source=f"repo_article_{i}_summary",
+                )
+                source = prepare_untrusted_for_prompt(
+                    article.get('source', 'Unknown'),
+                    source=f"repo_article_{i}_source",
+                    max_chars=200,
+                )
                 published = article.get('published_at', '')
-                
+
                 articles_text += f"### Article {i} (Similarity: {similarity:.2%})\n"
                 articles_text += f"**{title}**\n"
                 articles_text += f"*Source: {source}"
                 if published:
                     articles_text += f" | Published: {published}"
                 articles_text += "*\n\n"
-                if summary:
+                if raw_summary:
                     articles_text += f"{summary}\n\n"
                 articles_text += "---\n\n"
-            
-            if context_string or (search_results and search_results.get('formatted')):
-                full_prompt = f"{full_prompt}\n\n{articles_text}"
-            else:
-                full_prompt = f"{articles_text}\n\n{query}"
+
+            prompt_parts.append(articles_text)
+
+        if prompt_parts:
+            full_prompt = "\n\n".join(prompt_parts) + f"\n\n{query}"
+        else:
+            full_prompt = query
         
         # Get model-specific system prompt (pass include_search for GLM models)
         system_prompt = get_system_prompt(self.model, allow_search=include_search)
