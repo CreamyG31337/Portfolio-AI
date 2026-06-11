@@ -414,13 +414,11 @@ def load_portfolio_totals() -> pd.DataFrame:
     
     if not today_data.empty:
         has_real_prices = False
-        for _, row in today_data.iterrows():
-            if 'Current Price' in row and 'Average Price' in row:
-                if pd.notna(row['Current Price']) and pd.notna(row['Average Price']):
-                    diff = abs(row['Current Price'] - row['Average Price'])
-                    if diff > 0.01:  # Real market data should have price differences
-                        has_real_prices = True
-                        break
+        # ⚡ Bolt: Vectorized check to avoid O(N) iterrows bottleneck
+        if 'Current Price' in today_data.columns and 'Average Price' in today_data.columns:
+            diffs = (today_data['Current Price'] - today_data['Average Price']).abs()
+            if (diffs > 0.01).any():  # Real market data should have price differences
+                has_real_prices = True
         
         if has_real_prices:
             print(f"INFO: Today ({today_date}) has real market data - will be included in graph")
@@ -468,10 +466,11 @@ def load_portfolio_totals() -> pd.DataFrame:
         day_df = llm_df[llm_df['Date'].dt.date == current_date.date()]
 
         # Update portfolio with the latest info from the day
-        for _, row in day_df.iterrows():
+        # ⚡ Bolt: Replaced slow .iterrows() with .to_dict('records') for O(1) bulk conversion
+        for row in day_df.to_dict('records'):
             ticker = row['Ticker']
             # We take the last update for any given ticker on a given day
-            portfolio[ticker] = row.to_dict()
+            portfolio[ticker] = row
 
         # Remove sold positions
         portfolio = {ticker: pos for ticker, pos in portfolio.items() if pos['Total Value'] > 0}
