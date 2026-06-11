@@ -345,7 +345,9 @@ def sync_exchange_rates_from_csv(csv_path: Path, use_service_role: bool = True) 
             return False
         
         rates = []
-        for _, row in df.iterrows():
+        # ⚡ Bolt: Replaced slow .iterrows() with .to_dict('records') for O(1) bulk conversion
+        records = df.to_dict('records')
+        for row in records:
             rates.append({
                 'timestamp': row['parsed_date'].isoformat(),
                 'rate': float(row['rate_decimal']),

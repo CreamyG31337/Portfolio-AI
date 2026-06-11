@@ -123,7 +123,9 @@ class ContributorMigrator:
         
         # Convert DataFrame to list of dicts for Supabase
         contributions = []
-        for _, row in df.iterrows():
+        # ⚡ Bolt: Replaced slow .iterrows() with .to_dict('records') for O(1) bulk conversion
+        records = df.to_dict('records')
+        for row in records:
             contribution = {
                 'fund': fund_name,
                 'contributor': str(row['Contributor']),

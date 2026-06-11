@@ -27,7 +27,9 @@ def migrate_portfolio_data():
     
     # Prepare data for Supabase
     records = []
-    for _, row in latest_positions.iterrows():
+    # ⚡ Bolt: Replaced slow .iterrows() with .to_dict('records') for O(1) bulk conversion
+    records_to_process = latest_positions.to_dict('records')
+    for row in records_to_process:
         record = {
             "fund": "Project Chimera",
             "ticker": str(row["Ticker"]),
@@ -74,7 +76,9 @@ def migrate_trade_data():
     
     # Prepare data for Supabase
     records = []
-    for _, row in df.iterrows():
+    # ⚡ Bolt: Replaced slow .iterrows() with .to_dict('records') for O(1) bulk conversion
+    records_to_process = df.to_dict('records')
+    for row in records_to_process:
         record = {
             "fund": "Project Chimera",
             "ticker": str(row["Ticker"]),
