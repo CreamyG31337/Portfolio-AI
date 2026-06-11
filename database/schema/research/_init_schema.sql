@@ -37,6 +37,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/ui_ai_summary.sql
 \i tables/ui_ai_rollup_fund.sql
 \i tables/action_queue_ai_review.sql
+\i tables/stance_history.sql
+\i tables/stance_outcomes.sql
+\i tables/idea_triage.sql
 
 -- FUNCTIONS
 \i functions/array_to_halfvec.sql

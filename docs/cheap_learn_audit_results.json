@@ -1,0 +1,83 @@
+{
+  "article_supply_by_type": [
+    {
+      "article_type": "Ticker News",
+      "cnt": 2022,
+      "domains": 170
+    },
+    {
+      "article_type": "ETF Analysis",
+      "cnt": 269,
+      "domains": 1
+    },
+    {
+      "article_type": "Reddit Discovery",
+      "cnt": 107,
+      "domains": 1
+    },
+    {
+      "article_type": "Market News",
+      "cnt": 88,
+      "domains": 23
+    },
+    {
+      "article_type": "Opportunity Discovery",
+      "cnt": 26,
+      "domains": 16
+    },
+    {
+      "article_type": "ETF Change",
+      "cnt": 17,
+      "domains": 1
+    },
+    {
+      "article_type": "Alpha Research",
+      "cnt": 16,
+      "domains": 4
+    }
+  ],
+  "etf_analysis_null_sector": [
+    {
+      "null_sector_count": 9
+    }
+  ],
+  "domain_health": {
+    "error": "relation \"research_domain_health\" does not exist\nLINE 3:             FROM research_domain_health\n                         ^\n"
+  },
+  "theme_coverage": [
+    {
+      "theme": "rate_cuts",
+      "articles": 123,
+      "domains": 39
+    },
+    {
+      "theme": "ai_capex",
+      "articles": 698,
+      "domains": 64
+    },
+    {
+      "theme": "lithium",
+      "articles": 22,
+      "domains": 13
+    },
+    {
+      "theme": "geopolitics",
+      "articles": 415,
+      "domains": 60
+    },
+    {
+      "theme": "retail_consumer",
+      "articles": 26,
+      "domains": 14
+    }
+  ],
+  "contradiction_supply": [
+    {
+      "rows_14d": 24
+    }
+  ],
+  "benchmark_rut_rows": 318,
+  "watchtower_holdings_sample": {
+    "error": "{'message': \"Could not find the table 'public.etf_holdings_log' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.trade_log'\", 'details': None}"
+  }
+}

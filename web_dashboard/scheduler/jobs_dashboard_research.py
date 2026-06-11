@@ -322,6 +322,35 @@ def action_queue_ai_review_job() -> None:
                     """,
                     (fund, ticker, sig_d, verdict, one_liner, model_used),
                 )
+
+                try:
+                    from stance_history import record_stance_safe
+
+                    mechanical_action = (it.get("action") or "").strip()
+                    if mechanical_action:
+                        record_stance_safe(
+                            postgres,
+                            ticker=ticker,
+                            source="action_queue_ai_review",
+                            fund_key=fund,
+                            stance=mechanical_action,
+                            confidence=it.get("confidence"),
+                            model_used=model_used,
+                            metadata={
+                                "verdict": verdict,
+                                "one_liner": one_liner,
+                                "overall_signal": it.get("overall_signal"),
+                                "signal_analysis_date": str(sig_d) if sig_d else None,
+                            },
+                        )
+                except Exception as ledger_exc:
+                    logger.warning(
+                        "stance_history hook failed for %s/%s: %s",
+                        fund,
+                        ticker,
+                        ledger_exc,
+                    )
+
                 processed += 1
 
         duration_ms = int((time.time() - start) * 1000)

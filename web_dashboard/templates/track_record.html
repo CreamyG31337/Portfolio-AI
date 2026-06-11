@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Track record - Portfolio Dashboard{% endblock %}
+{% block page_title %}Track record{% endblock %}
+{% block page_subtitle %}Was the system right? Hit rates by source and AI verdict{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+    <div id="track-loading" class="text-sm text-text-secondary">Loading outcomes…</div>
+    <div id="track-error" class="hidden text-sm text-theme-error-text"></div>
+    <section id="track-summary" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4"></section>
+    <section id="track-verdict" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+    <section id="track-calls" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/track_record.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+{% endblock %}

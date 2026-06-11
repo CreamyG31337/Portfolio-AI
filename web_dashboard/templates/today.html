@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Today - Portfolio Dashboard{% endblock %}
+{% block page_title %}Today{% endblock %}
+{% block page_subtitle %}What changed and what needs your attention{% endblock %}
+
+{% block content %}
+<div id="today-root" class="max-w-6xl mx-auto space-y-6">
+    <div id="today-loading" class="text-sm text-text-secondary">Loading briefing…</div>
+    <div id="today-error" class="hidden text-sm text-theme-error-text"></div>
+
+    <section id="today-regime" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+    <section id="today-flips" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+    <section id="today-actions" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+    <section id="today-alpha" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+    <section id="today-movers" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+    <section id="today-dividends" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/today.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+{% endblock %}

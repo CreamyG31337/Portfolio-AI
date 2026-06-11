@@ -1,0 +1,10 @@
+{# ROADMAP §2.5 — standardized as_of + model chip for AI surfaces #}
+{% macro freshness_badge(as_of=None, model_used=None) %}
+{% if as_of or model_used %}
+<span class="inline-flex items-center gap-1 text-xs text-text-secondary bg-dashboard-background border border-border rounded px-2 py-0.5" title="Data provenance">
+  <i class="fas fa-clock" aria-hidden="true"></i>
+  {% if as_of %}<span>{{ as_of }}</span>{% endif %}
+  {% if model_used %}<span class="opacity-75">· {{ model_used }}</span>{% endif %}
+</span>
+{% endif %}
+{% endmacro %}

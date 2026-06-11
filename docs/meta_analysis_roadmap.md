@@ -2,10 +2,16 @@
 
 This document tracks the multi-layer meta-analysis program and keeps the next phases explicit.
 
+> **⭐ Start here instead:** [`docs/ROADMAP.md`](ROADMAP.md) is the **master plan** (2026-06-09)
+> covering presentation redesign, the stance ledger / outcome feedback (Phase 4 made concrete),
+> and new trackables. This doc remains the deep reference for the meta-analysis layers
+> (Phases 1–3, all shipped); its "Later phases" section is superseded by `ROADMAP.md`.
+
 **Related docs (keep in sync when the pipeline changes):**
 
 | Doc | Purpose |
 |-----|---------|
+| [`docs/ROADMAP.md`](ROADMAP.md) | **Master plan** — prioritized pillars, decision surfaces, sequencing |
 | [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md) | Ops cheat sheet: catch-up after outage, one-command backfill |
 | [`docs/ETF_AI_ANALYSIS_SYSTEM.md`](ETF_AI_ANALYSIS_SYSTEM.md) | ETF group + ticker analysis jobs, prompts, storage |
 | [`docs/ETF_WATCHTOWER.md`](ETF_WATCHTOWER.md) | Holdings ingestion into Research |
@@ -468,6 +474,12 @@ Near term (recommended order):
 5. **Lock-aware scheduling:** Batch or stagger meta jobs if AI lock wait grows (global lock serializes anyway).
 
 ### Phase 4 — Outcome feedback
+
+> **Now planned concretely in [`docs/ROADMAP.md`](ROADMAP.md) Pillar 1** (stance ledger +
+> outcome scoring). Key blocker discovered 2026-06-09: `ticker_meta_analysis` has
+> `UNIQUE (ticker)` with `ON CONFLICT (ticker) DO UPDATE`, so stance history is destroyed on
+> every run — Phase 4 requires the **append-only `stance_history` table** before any scoring
+> is possible. Time-sensitive: history not captured is unrecoverable.
 
 - Compare `ticker_meta_analysis` / `ticker_analysis` stances to realized P&amp;L and trade outcomes.
 - Down-weight sources that add noise; document in this roadmap when weights change.

@@ -1203,27 +1203,33 @@ class TickerAnalysisService:
                     requested_by = EXCLUDED.requested_by
             """
             
+            stance_value = _normalize_stance(response.get('stance'))
+            confidence_value = _normalize_score(response.get('confidence_score'))
+            sentiment_value = _truncate_text(response.get('sentiment'), 40)
+            risks_list = response.get('risks', [])
+            catalysts_list = response.get('catalysts', [])
+
             self.postgres.execute_update(query, (
                 ticker,
                 analysis_date,
                 start_date,
                 end_date,
-                _truncate_text(response.get('sentiment'), 40),
+                sentiment_value,
                 _normalize_score(response.get('sentiment_score')),
-                _normalize_score(response.get('confidence_score')),
+                confidence_value,
                 response.get('themes', []),
                 response.get('summary'),
                 response.get('analysis_text'),
                 response.get('reasoning'),
                 context,
-                _normalize_stance(response.get('stance')),
+                stance_value,
                 _truncate_text(response.get('timeframe'), 60),
                 _truncate_text(response.get('entry_zone'), 100),
                 _truncate_text(response.get('target_price'), 60),
                 _truncate_text(response.get('stop_loss'), 60),
                 key_levels_json,
-                response.get('catalysts', []),
-                response.get('risks', []),
+                catalysts_list,
+                risks_list,
                 response.get('invalidation'),
                 etf_count,
                 congress_count,
@@ -1234,6 +1240,30 @@ class TickerAnalysisService:
             ))
             
             logger.info(f"Saved ticker analysis for {ticker}")
+
+            try:
+                from stance_history import record_stance_safe
+
+                price_data = data.get('price_data') or {}
+                price_at_stance = price_data.get('current_price')
+                record_stance_safe(
+                    self.postgres,
+                    ticker=ticker,
+                    source="ticker_analysis",
+                    stance=stance_value,
+                    confidence=confidence_value,
+                    price_at_stance=price_at_stance,
+                    drivers=catalysts_list if catalysts_list else None,
+                    risks=risks_list if risks_list else None,
+                    model_used=model_used,
+                    requested_by=requested_by,
+                    metadata={
+                        "sentiment": sentiment_value,
+                        "sentiment_score": _normalize_score(response.get('sentiment_score')),
+                    },
+                )
+            except Exception as ledger_exc:
+                logger.warning("stance_history hook failed for %s: %s", ticker, ledger_exc)
             
         except Exception as e:
             logger.error(f"Error saving analysis for {ticker}: {e}", exc_info=True)

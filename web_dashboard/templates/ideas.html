@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Ideas - Portfolio Dashboard{% endblock %}
+{% block page_title %}Ideas inbox{% endblock %}
+{% block page_subtitle %}Triage alpha and opportunity discoveries{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <p class="text-sm text-text-secondary mb-4">Accept adds tickers to the watchlist; dismiss/snooze trains relevance.</p>
+    <div id="ideas-loading" class="text-sm text-text-secondary">Loading ideas…</div>
+    <div id="ideas-error" class="hidden text-sm text-theme-error-text mb-4"></div>
+    <div id="ideas-list" class="space-y-3"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/ideas.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+{% endblock %}

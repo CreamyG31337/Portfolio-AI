@@ -874,6 +874,38 @@ async function loadModelOptions(): Promise<void> {
 
 
 // Load all ticker data
+async function loadEvidenceTimeline(ticker: string, seq?: number): Promise<void> {
+    const section = document.getElementById('evidence-timeline-section');
+    const list = document.getElementById('evidence-timeline-list');
+    if (!section || !list) return;
+    try {
+        const resp = await fetch(`/api/ticker/${encodeURIComponent(ticker)}/evidence-timeline`, {
+            credentials: 'include',
+        });
+        if (seq !== undefined && isStaleLoad(seq, ticker)) return;
+        if (!resp.ok) return;
+        const body = await resp.json() as { events?: Array<Record<string, unknown>> };
+        const events = body.events || [];
+        if (!events.length) {
+            section.classList.add('hidden');
+            return;
+        }
+        list.innerHTML = events.slice(0, 20).map((ev) => {
+            const at = String(ev.event_at || '').slice(0, 16);
+            const type = String(ev.event_type || '');
+            const label = String(ev.label || ev.stance || '');
+            const src = String(ev.source || '');
+            return `<div class="flex justify-between gap-2 border-b border-border py-1 last:border-0">
+                <span><span class="text-xs uppercase text-text-tertiary">${type}</span> ${label}</span>
+                <span class="text-xs whitespace-nowrap">${at} · ${src}</span>
+            </div>`;
+        }).join('');
+        section.classList.remove('hidden');
+    } catch {
+        section.classList.add('hidden');
+    }
+}
+
 async function loadTickerData(ticker: string): Promise<void> {
     const seq = ++loadSeq;
     allCongressTrades = [];
@@ -936,6 +968,9 @@ async function loadTickerData(ticker: string): Promise<void> {
         await loadTickerAnalysis(ticker, seq);
         if (isStaleLoad(seq, ticker)) return;
         await loadTickerAnalysisContext(ticker, seq);
+        if (isStaleLoad(seq, ticker)) return;
+
+        await loadEvidenceTimeline(ticker, seq);
         if (isStaleLoad(seq, ticker)) return;
 
         // Load and render chart

@@ -547,3 +547,27 @@
 
 ---
 
+## stance_history (manual add 2026-06-10)
+
+Append-only AI/mechanical stance ledger. Deduped on insert per `(ticker, source, fund_key)`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID | PK |
+| `ticker` | VARCHAR(10) | |
+| `fund_key` | TEXT | default `''`; set for action_queue rows |
+| `source` | VARCHAR(40) | `ticker_meta_analysis`, `ticker_analysis`, `action_queue_ai_review` |
+| `stance` | VARCHAR(40) | directional label; mechanical action for queue |
+| `confidence` | NUMERIC(5,4) | |
+| `metadata` | JSONB | e.g. AI `verdict`, `one_liner` |
+
+## stance_outcomes (manual add 2026-06-10)
+
+Scored returns vs ^RUT at 7/30/90d horizons. V1 scores BUY/SELL (and meta directional labels); excludes RISK/WATCH.
+
+## idea_triage (manual add 2026-06-10)
+
+Ideas inbox decisions: `accepted` | `dismissed` | `snoozed` per `article_id`.
+
+---
+

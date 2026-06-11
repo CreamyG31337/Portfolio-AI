@@ -4,6 +4,9 @@
 
 **Portfolio-AI** is a comprehensive, AI-driven investment management system that combines a powerful CLI trading engine with a modern, multi-user web dashboard. It leverages Large Language Models (LLMs) for market analysis, automated research, and portfolio optimization, specifically tailored for micro-cap stocks and dual-currency portfolios (USD/CAD).
 
+> 🗺️ **Roadmap:** Where this is going — prioritized plan, screen redesign, and feedback-loop
+> work — lives in **[docs/ROADMAP.md](docs/ROADMAP.md)**. Start there.
+
 ## 🚀 System Overview
 
 The project consists of three main pillars:
@@ -250,6 +253,7 @@ python simple_repository_switch.py csv
 *   [North American Trading Guide](NORTH_AMERICAN_TRADING_GUIDE.md)
 
 **Technical Documentation (in `docs/`)**
+*   [⭐ Roadmap — Intelligence & UX (master plan)](docs/ROADMAP.md)
 *   [Cache Management](docs/CACHE_MANAGEMENT.md)
 *   [Database Schema](docs/DATABASE_SCHEMA.md)
 *   [Portfolio Architecture](docs/PORTFOLIO_ARCHITECTURE.md)

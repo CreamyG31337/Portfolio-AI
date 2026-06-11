@@ -541,6 +541,50 @@ def get_market_brief():
         return jsonify({"error": str(e)}), 500
 
 
+@dashboard_bp.route('/api/dashboard/stance-flips', methods=['GET'])
+@require_auth
+def get_stance_flips():
+    """Recent stance changes per (ticker, source, fund_key) from stance_history."""
+    start_time = time.time()
+    try:
+        from postgres_client import PostgresClient
+        from today_briefing_service import fetch_stance_flips
+
+        days = request.args.get('days', default=30, type=int)
+        limit = request.args.get('limit', default=50, type=int)
+        days = max(1, min(days, 365))
+        limit = max(1, min(limit, 200))
+
+        pg = PostgresClient()
+        rows = fetch_stance_flips(pg, days=days, limit=limit)
+
+        data = []
+        for row in rows:
+            item = dict(row)
+            flipped = item.get("flipped_at")
+            if flipped is not None and hasattr(flipped, "isoformat"):
+                item["flipped_at"] = flipped.isoformat()
+            conf = item.get("confidence")
+            if conf is not None:
+                item["confidence"] = float(conf)
+            meta = item.get("metadata")
+            if isinstance(meta, str):
+                try:
+                    item["metadata"] = json.loads(meta)
+                except json.JSONDecodeError:
+                    item["metadata"] = {}
+            data.append(item)
+
+        return jsonify({
+            "data": data,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "processing_time": time.time() - start_time,
+        })
+    except Exception as e:
+        logger.error("[Dashboard API] stance-flips: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 def _serialize_ui_ai_summary_row(row: Dict[str, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for k, v in row.items():

@@ -193,6 +193,48 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '⚡',
     },
+    'stance_outcomes': {
+        'name': 'Stance Outcomes Scoring',
+        'description': 'Nightly no-LLM scoring of stance_history rows at 7/30/90d vs ^RUT',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '📈',
+        'cron_triggers': [
+            {'hour': 21, 'minute': 30, 'timezone': 'America/New_York'},
+        ],
+    },
+    'contradiction_drilldown': {
+        'name': 'Contradiction Drill-Down',
+        'description': 'Enqueue targeted ticker_analysis when meta contradiction supply is healthy',
+        'default_interval_minutes': 10080,
+        'enabled_by_default': True,
+        'icon': '🔬',
+        'cron_triggers': [
+            {'day_of_week': 'sun', 'hour': 20, 'minute': 0, 'timezone': 'America/New_York'},
+        ],
+    },
+    'dilution_watch': {
+        'name': 'Dilution Watch',
+        'description': 'PLACEHOLDER: scope enumeration only — no EDGAR scan implemented yet (ROADMAP §4.1)',
+        'default_interval_minutes': 1440,
+        # Off until the EDGAR pass exists: a daily no-op reporting success is a
+        # misleading green light in the Jobs UI.
+        'enabled_by_default': False,
+        'icon': '⚠️',
+        'cron_triggers': [
+            {'hour': 6, 'minute': 30, 'timezone': 'America/New_York'},
+        ],
+    },
+    'weekly_stance_retro': {
+        'name': 'Weekly Stance Retro',
+        'description': 'Weekly log summary of stance flips and outcome hit rates',
+        'default_interval_minutes': 10080,
+        'enabled_by_default': True,
+        'icon': '📬',
+        'cron_triggers': [
+            {'day_of_week': 'sun', 'hour': 17, 'minute': 0, 'timezone': 'America/New_York'},
+        ],
+    },
     'ui_ai_summaries': {
         'name': 'UI AI summaries',
         'description': (
@@ -625,6 +667,10 @@ from scheduler.jobs_dashboard_research import (
     action_queue_ai_review_job,
     market_daily_brief_job,
 )
+from scheduler.jobs_stance_outcomes import stance_outcomes_job
+from scheduler.jobs_contradiction_drilldown import contradiction_drilldown_job
+from scheduler.jobs_dilution_watch import dilution_watch_job
+from scheduler.jobs_weekly_stance_retro import weekly_stance_retro_job
 from scheduler.jobs_ui_ai_summaries import ui_ai_summaries_job
 
 # Import research jobs
@@ -720,6 +766,10 @@ __all__ = [
     'populate_performance_metrics_job',
     'market_daily_brief_job',
     'action_queue_ai_review_job',
+    'stance_outcomes_job',
+    'contradiction_drilldown_job',
+    'dilution_watch_job',
+    'weekly_stance_retro_job',
     'ui_ai_summaries_job',
     # Research jobs
     'market_research_job',
@@ -1302,6 +1352,97 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: benchmark_refresh (weekdays 9:30 AM - 4:00 PM EST, every 30 min during market hours)")
+
+    if AVAILABLE_JOBS.get('stance_outcomes', {}).get('enabled_by_default', True):
+        stance_cfg = AVAILABLE_JOBS['stance_outcomes']
+        stance_triggers = stance_cfg.get(
+            'cron_triggers',
+            [{'hour': 21, 'minute': 30, 'timezone': 'America/New_York'}],
+        )
+        stance_trigger = stance_triggers[0]
+        scheduler.add_job(
+            stance_outcomes_job,
+            trigger=CronTrigger(
+                hour=stance_trigger.get('hour', 21),
+                minute=stance_trigger.get('minute', 30),
+                timezone=stance_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='stance_outcomes',
+            name=f"{get_job_icon('stance_outcomes')} Stance Outcomes Scoring",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered job: stance_outcomes (nightly after benchmark refresh)")
+
+    if AVAILABLE_JOBS.get('contradiction_drilldown', {}).get('enabled_by_default', True):
+        cd_cfg = AVAILABLE_JOBS['contradiction_drilldown']
+        cd_triggers = cd_cfg.get(
+            'cron_triggers',
+            [{'day_of_week': 'sun', 'hour': 20, 'minute': 0, 'timezone': 'America/New_York'}],
+        )
+        cd_trigger = cd_triggers[0]
+        scheduler.add_job(
+            contradiction_drilldown_job,
+            trigger=CronTrigger(
+                day_of_week=cd_trigger.get('day_of_week', 'sun'),
+                hour=cd_trigger.get('hour', 20),
+                minute=cd_trigger.get('minute', 0),
+                timezone=cd_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='contradiction_drilldown',
+            name=f"{get_job_icon('contradiction_drilldown')} Contradiction Drill-Down",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info("Registered job: contradiction_drilldown (weekly)")
+
+    if AVAILABLE_JOBS.get('dilution_watch', {}).get('enabled_by_default', True):
+        dw_cfg = AVAILABLE_JOBS['dilution_watch']
+        dw_triggers = dw_cfg.get(
+            'cron_triggers',
+            [{'hour': 6, 'minute': 30, 'timezone': 'America/New_York'}],
+        )
+        dw_trigger = dw_triggers[0]
+        scheduler.add_job(
+            dilution_watch_job,
+            trigger=CronTrigger(
+                hour=dw_trigger.get('hour', 6),
+                minute=dw_trigger.get('minute', 30),
+                timezone=dw_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='dilution_watch',
+            name=f"{get_job_icon('dilution_watch')} Dilution Watch",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info("Registered job: dilution_watch (daily advisory)")
+
+    if AVAILABLE_JOBS.get('weekly_stance_retro', {}).get('enabled_by_default', True):
+        wr_cfg = AVAILABLE_JOBS['weekly_stance_retro']
+        wr_triggers = wr_cfg.get(
+            'cron_triggers',
+            [{'day_of_week': 'sun', 'hour': 17, 'minute': 0, 'timezone': 'America/New_York'}],
+        )
+        wr_trigger = wr_triggers[0]
+        scheduler.add_job(
+            weekly_stance_retro_job,
+            trigger=CronTrigger(
+                day_of_week=wr_trigger.get('day_of_week', 'sun'),
+                hour=wr_trigger.get('hour', 17),
+                minute=wr_trigger.get('minute', 0),
+                timezone=wr_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='weekly_stance_retro',
+            name=f"{get_job_icon('weekly_stance_retro')} Weekly Stance Retro",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info("Registered job: weekly_stance_retro (weekly)")
 
     if AVAILABLE_JOBS.get('market_daily_brief', {}).get('enabled_by_default', True):
         scheduler.add_job(

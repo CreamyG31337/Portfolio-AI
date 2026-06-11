@@ -679,22 +679,25 @@ class TickerMetaAnalysisService:
                 updated_at = NOW()
         """
 
+        stance_value = (
+            response.get("unified_conviction")
+            or response.get("stance")
+            or "INSUFFICIENT_DATA"
+        )[:40] or None
+        confidence_value = (
+            response.get("confidence_adjusted")
+            if response.get("confidence_adjusted") is not None
+            else response.get("confidence")
+        )
+
         self.postgres.execute_update(
             query,
             (
                 ticker,
                 str(src_id) if src_id else None,
                 snap,
-                (
-                    response.get("unified_conviction")
-                    or response.get("stance")
-                    or "INSUFFICIENT_DATA"
-                )[:40] or None,
-                (
-                    response.get("confidence_adjusted")
-                    if response.get("confidence_adjusted") is not None
-                    else response.get("confidence")
-                ),
+                stance_value,
+                confidence_value,
                 json.dumps(contradictions),
                 response.get("what_changed_vs_last_run"),
                 action_items,
@@ -706,3 +709,24 @@ class TickerMetaAnalysisService:
             ),
         )
         logger.info("Saved ticker meta analysis for %s", ticker)
+
+        try:
+            from stance_history import record_stance_safe
+
+            record_stance_safe(
+                self.postgres,
+                ticker=ticker,
+                source="ticker_meta_analysis",
+                stance=stance_value,
+                confidence=confidence_value,
+                drivers=action_items if action_items else None,
+                model_used=model_used,
+                requested_by=requested_by,
+                source_ref_id=str(src_id) if src_id else None,
+                metadata={
+                    "contradictions_count": len(contradictions),
+                    "artifact_bundle_digest": bundle_digest,
+                },
+            )
+        except Exception as ledger_exc:
+            logger.warning("stance_history hook failed for %s: %s", ticker, ledger_exc)
