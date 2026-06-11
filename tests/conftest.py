@@ -3,6 +3,18 @@ import sys
 import os
 from unittest.mock import patch
 
+# Force-disable the background scheduler for the entire test session.
+#
+# `web_dashboard/app.py` auto-starts a real APScheduler at import time (unless
+# DISABLE_SCHEDULER is set), which spawns a non-daemon init thread and runs
+# startup-backfill jobs on concurrent.futures worker threads. pytest imports
+# every test module during collection, so if any module imports the app before
+# the `app` fixture's narrower patch runs, the scheduler starts and its still
+# running (non-daemon) worker threads keep the pytest process alive long after
+# the test summary prints. Setting this here -- before collection imports any
+# test module -- guarantees the autostart guard is in effect for all tests.
+os.environ["DISABLE_SCHEDULER"] = "true"
+
 # Add web_dashboard to path so we can import app (ensure highest priority)
 web_dashboard_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'web_dashboard'))
 if web_dashboard_path not in sys.path:

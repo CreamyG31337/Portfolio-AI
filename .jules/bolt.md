@@ -48,6 +48,6 @@
 **Learning:** In `Scripts and CSV Files/Generate_Graph.py`, modifying timestamps via `.iterrows()` loop using `datetime.timedelta` took significant O(N) execution overhead because of Pandas instantiating Series objects for every row, and running timezone assignments row-by-row in python space.
 **Action:** When adjusting datetime columns by hours or constant offsets across entire DataFrames, entirely skip iterative loops and use `.dt.normalize() + pd.Timedelta(hours=X)` for massive 10-100x vectorization speedups.
 
-## $(date +%Y-%m-%d) - Optimize iterrows bottlenecks in Generate_Graph
+## 2026-06-10 - Optimize iterrows bottlenecks in Generate_Graph
 **Learning:** `df.iterrows()` inside `Generate_Graph.py` was being used incorrectly both for finding valid real prices and for converting to a dictionary, which incurred massive O(N) overheads due to instantiating Pandas Series objects. A quick vectorized check (`.abs()` and `.any()`) and `.to_dict('records')` conversion provide >90x speedup.
 **Action:** Replace `df.iterrows()` iterative checks with `.any()` boolean checks where possible. Use `.to_dict('records')` if an exact dictionary loop is needed instead of `row.to_dict()`.

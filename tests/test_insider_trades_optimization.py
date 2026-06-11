@@ -12,6 +12,7 @@ def test_insider_trades_offloading(client):
          patch('web_dashboard.app.threading.Thread') as mock_thread, \
          patch('web_dashboard.app.get_insider_trades_cached') as mock_get_trades, \
          patch('web_dashboard.app.get_unique_insider_names') as mock_get_names, \
+         patch('web_dashboard.app.get_company_names_map_cached') as mock_get_company_names, \
          patch('cache_version.get_cache_version') as mock_get_version:
 
         # Setup mocks
@@ -34,6 +35,7 @@ def test_insider_trades_offloading(client):
 
         # Mock other dependencies
         mock_get_names.return_value = []
+        mock_get_company_names.return_value = {}
         mock_get_version.return_value = "v1"
 
         # Simulate authenticated user
