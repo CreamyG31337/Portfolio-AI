@@ -92,8 +92,6 @@ function escapeHtmlForTradeEntry(text: string | undefined | null): string {
 }
 
 function showToastForTradeEntry(message: string, type: 'success' | 'error' | 'info' = 'success'): void {
-    // TODO(palette): Replace manual toast.style.opacity transitions with the users.ts pattern
-    // (toggle opacity-0/opacity-100 classes) or Flowbite Toast API. (Palette audit PR #362, item 1)
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
@@ -105,7 +103,7 @@ function showToastForTradeEntry(message: string, type: 'success' | 'error' | 'in
     const toast = document.createElement('div');
     const borderColor = type === 'error' ? 'border-theme-error-text' : (type === 'info' ? 'border-theme-info-text' : 'border-theme-success-text');
 
-    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow border-l-4 ${borderColor} transition-opacity duration-300 opacity-0`;
     toast.innerHTML = `
         <div class="ms-3 text-sm font-normal">${escapeHtmlForTradeEntry(message)}</div>
         <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-dashboard-surface text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-dashboard-surface-alt inline-flex items-center justify-center h-8 w-8">
@@ -118,12 +116,22 @@ function showToastForTradeEntry(message: string, type: 'success' | 'error' | 'in
 
     const closeBtn = toast.querySelector('button');
     if (closeBtn) {
-        closeBtn.onclick = () => toast.remove();
+        closeBtn.onclick = () => {
+            toast.classList.remove('opacity-100');
+            toast.classList.add('opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        };
     }
     container.appendChild(toast);
 
+    requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0');
+        toast.classList.add('opacity-100');
+    });
+
     setTimeout(() => {
-        toast.style.opacity = '0';
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
         setTimeout(() => toast.remove(), 300);
     }, 4000);
 }

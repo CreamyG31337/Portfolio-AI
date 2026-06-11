@@ -534,8 +534,6 @@ function initSearch(): void {
 
 // Toast Notification System
 function showContributorToast(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success'): void {
-    // TODO(palette): Replace manual toast.style.opacity transitions with the users.ts pattern
-    // (toggle opacity-0/opacity-100 classes) or Flowbite Toast API. (Palette audit PR #362, item 1)
     let container = document.getElementById('toast-container-contributors');
     if (!container) {
         container = document.createElement('div');
@@ -555,7 +553,7 @@ function showContributorToast(message: string, type: 'success' | 'error' | 'warn
             type === 'info' ? 'ℹ️' :
                 '✅';
 
-    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border-l-4 ${borderColor} transition-opacity duration-300 opacity-0`;
     toast.innerHTML = `
         <div class="ms-3 text-sm font-normal flex items-center gap-2 text-text-primary">
             <span class="text-lg">${icon}</span>
@@ -572,14 +570,21 @@ function showContributorToast(message: string, type: 'success' | 'error' | 'warn
     const closeBtn = toast.querySelector('button');
     if (closeBtn) {
         closeBtn.onclick = () => {
-            toast.style.opacity = '0';
+            toast.classList.remove('opacity-100');
+            toast.classList.add('opacity-0');
             setTimeout(() => toast.remove(), 300);
         };
     }
     container.appendChild(toast);
 
+    requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0');
+        toast.classList.add('opacity-100');
+    });
+
     setTimeout(() => {
-        toast.style.opacity = '0';
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
         setTimeout(() => toast.remove(), 300);
     }, 4000);
 }

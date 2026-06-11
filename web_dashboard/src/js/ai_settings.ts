@@ -153,10 +153,6 @@ function escapeHtml(text: string): string {
 }
 
 // Toast notification system for AI settings
-// TODO(palette): Replace manual `toast.style.opacity` transitions throughout these toast
-// helpers with Flowbite's Toast component/JS API (consistent transitions + accessible
-// announcements), and toggle visibility via `opacity-0`/`opacity-100` classes rather than
-// inline styles. (Palette audit PR #347, item 4)
 function showToastForAI(message: string, type: 'success' | 'error' | 'info' = 'success'): void {
     let container = document.getElementById('toast-container');
     if (!container) {
@@ -169,7 +165,7 @@ function showToastForAI(message: string, type: 'success' | 'error' | 'info' = 's
     const toast = document.createElement('div');
     const borderColor = type === 'error' ? 'border-red-500' : (type === 'info' ? 'border-blue-500' : 'border-green-500');
 
-    toast.className = `flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800 border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.className = `flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800 border-l-4 ${borderColor} transition-opacity duration-300 opacity-0`;
 
     toast.innerHTML = `
         <div class="ms-3 text-sm font-normal">${escapeHtml(message)}</div>
@@ -183,37 +179,30 @@ function showToastForAI(message: string, type: 'success' | 'error' | 'info' = 's
 
     container.appendChild(toast);
 
-    // Add close button functionality
-    const closeBtn = toast.querySelector('button');
-    if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-            toast.style.opacity = '0';
-            setTimeout(() => {
-                toast.remove();
-                const allToasts = container.querySelectorAll('div');
-                if (allToasts.length === 0) {
-                    container.remove();
-                }
-            }, 300);
-        });
-    }
-
-    toast.style.opacity = '0';
-    setTimeout(() => {
-        toast.style.opacity = '1';
-    }, 10);
-
-    setTimeout(() => {
-        toast.style.opacity = '0';
+    const dismiss = () => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
         setTimeout(() => {
             toast.remove();
-            // Remove container if empty
             const allToasts = container.querySelectorAll('div');
             if (allToasts.length === 0) {
                 container.remove();
             }
         }, 300);
-    }, 4000);
+    };
+
+    // Add close button functionality
+    const closeBtn = toast.querySelector('button');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', dismiss);
+    }
+
+    requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0');
+        toast.classList.add('opacity-100');
+    });
+
+    setTimeout(dismiss, 4000);
 }
 
 // Confirmation toast with action buttons
@@ -227,7 +216,7 @@ function showConfirmationToast(message: string, onConfirm: () => void, onCancel?
     }
 
     const toast = document.createElement('div');
-    toast.className = 'flex flex-col w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800 border-l-4 border-yellow-500 transition-opacity duration-300 opacity-100';
+    toast.className = 'flex flex-col w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800 border-l-4 border-yellow-500 transition-opacity duration-300 opacity-0';
 
     const toastId = `toast-${Date.now()}`;
     toast.id = toastId;
@@ -251,7 +240,8 @@ function showConfirmationToast(message: string, onConfirm: () => void, onCancel?
     const cancelBtn = toast.querySelector('.cancel-btn');
 
     const removeToast = () => {
-        toast.style.opacity = '0';
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
         setTimeout(() => {
             toast.remove();
             const allToasts = container.querySelectorAll('div');
@@ -277,10 +267,10 @@ function showConfirmationToast(message: string, onConfirm: () => void, onCancel?
         });
     }
 
-    toast.style.opacity = '0';
-    setTimeout(() => {
-        toast.style.opacity = '1';
-    }, 10);
+    requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0');
+        toast.classList.add('opacity-100');
+    });
 }
 
 /** Status dot beside each card — HTML uses bg-text-tertiary initially, not bg-gray-200. */

@@ -86,8 +86,6 @@ function debounceForContributions<T extends (...args: any[]) => void>(
 }
 
 function showToastForContributions(message: string, type: 'success' | 'error' = 'success'): void {
-    // TODO(palette): Replace manual toast.style.opacity transitions with the users.ts pattern
-    // (toggle opacity-0/opacity-100 classes) or Flowbite Toast API. (Palette audit PR #362, item 1)
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
@@ -99,14 +97,21 @@ function showToastForContributions(message: string, type: 'success' | 'error' = 
     const toast = document.createElement('div');
     const borderColor = type === 'error' ? 'border-theme-error-text' : 'border-theme-success-text';
 
-    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow border-l-4 ${borderColor} transition-opacity duration-300 opacity-100`;
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow border-l-4 ${borderColor} transition-opacity duration-300 opacity-0`;
     toast.innerHTML = `
         <div class="ms-3 text-sm font-normal text-text-primary">${escapeHtmlForContributions(message)}</div>
         <button type="button" class="bg-dashboard-surface text-text-secondary hover:text-text-primary rounded-lg p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8" onclick="this.parentElement.remove()">✕</button>
     `;
     container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0');
+        toast.classList.add('opacity-100');
+    });
+
     setTimeout(() => {
-        toast.style.opacity = '0';
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
         setTimeout(() => toast.remove(), 300);
     }, 4000);
 }
