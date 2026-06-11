@@ -1312,17 +1312,39 @@ class TickerAnalysisService:
         except Exception as e:
             logger.warning(f"Error fetching manual requests: {e}")
         
-        # 2. Holdings (high priority) - all funds.
+        # 2. Holdings (high priority) - production funds only.
+        # Test-suite runs leave TEST_* funds with fixture positions (STOCK1,
+        # FIFO, COMPLEX, ...) in prod Supabase; without the fund filter the
+        # nightly job burns real LLM cycles on them and pollutes stance_history.
         # `portfolio_positions` has tens of thousands of rows (one per fund/date),
         # but `select('ticker').execute()` is silently capped at 1000 by the
         # Supabase client. Paginate explicitly so we see every holding.
         try:
+            production_funds: list[str] = []
+            try:
+                funds_result = (
+                    self.supabase.supabase.table('funds')
+                    .select('name')
+                    .eq('is_production', True)
+                    .execute()
+                )
+                production_funds = [
+                    row['name'] for row in (funds_result.data or []) if row.get('name')
+                ]
+            except Exception as e:
+                logger.warning(f"Error fetching production funds (holdings unfiltered): {e}")
+
             page_size = 1000
             offset = 0
             while True:
-                holdings_result = (
+                holdings_query = (
                     self.supabase.supabase.table('portfolio_positions')
                     .select('ticker')
+                )
+                if production_funds:
+                    holdings_query = holdings_query.in_('fund', production_funds)
+                holdings_result = (
+                    holdings_query
                     .range(offset, offset + page_size - 1)
                     .execute()
                 )

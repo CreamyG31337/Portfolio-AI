@@ -156,6 +156,10 @@ class _RangeQuery:
     def gte(self, *_a, **_k):
         return self
 
+    def in_(self, column, values):
+        self._rows = [r for r in self._rows if r.get(column) in values]
+        return self
+
     def range(self, start, end):
         self._start = start
         self._end = end
@@ -168,21 +172,24 @@ class _RangeQuery:
 
 
 class _RangeSupabaseRaw:
-    def __init__(self, holdings_rows, manual_rows=None):
+    def __init__(self, holdings_rows, manual_rows=None, funds_rows=None):
         self._holdings = holdings_rows
         self._manual = manual_rows or []
+        self._funds = funds_rows or []
 
     def table(self, name):
         if name == "portfolio_positions":
-            return _RangeQuery(self._holdings)
+            return _RangeQuery(list(self._holdings))
         if name == "ai_analysis_queue":
-            return _RangeQuery(self._manual)
+            return _RangeQuery(list(self._manual))
+        if name == "funds":
+            return _RangeQuery(list(self._funds))
         return _RangeQuery([])
 
 
 class _RangeSupabaseWrapper:
-    def __init__(self, holdings_rows, manual_rows=None):
-        self.supabase = _RangeSupabaseRaw(holdings_rows, manual_rows)
+    def __init__(self, holdings_rows, manual_rows=None, funds_rows=None):
+        self.supabase = _RangeSupabaseRaw(holdings_rows, manual_rows, funds_rows)
 
 
 class _StubPostgres:
@@ -190,7 +197,7 @@ class _StubPostgres:
         return []
 
 
-def _make_service(holdings_rows, skip_list, monkeypatch):
+def _make_service(holdings_rows, skip_list, monkeypatch, funds_rows=None):
     monkeypatch.setattr(
         ticker_analysis_service,
         "get_active_watchlist_tickers",
@@ -198,7 +205,7 @@ def _make_service(holdings_rows, skip_list, monkeypatch):
     )
     return TickerAnalysisService(
         ollama=None,
-        supabase=_RangeSupabaseWrapper(holdings_rows),
+        supabase=_RangeSupabaseWrapper(holdings_rows, funds_rows=funds_rows),
         postgres=_StubPostgres(),
         skip_list=skip_list,
     )
@@ -213,6 +220,40 @@ def test_get_tickers_to_analyze_paginates_beyond_1000(monkeypatch):
     assert len(tickers) == 2500, "must paginate past Supabase's 1000-row default"
     assert service.last_selection_stats["holdings_candidates"] == 2500
     assert service.last_selection_stats["selected"] == 2500
+
+
+def test_get_tickers_to_analyze_filters_holdings_to_production_funds(monkeypatch):
+    """Fixture positions from TEST_* funds must not reach the nightly LLM run.
+
+    Observed 2026-06-10: test-suite leftovers (STOCK1, FIFO, ...) in prod
+    portfolio_positions were analyzed with real models and polluted the
+    brand-new stance_history ledger.
+    """
+    holdings = [
+        {"ticker": "REAL1", "fund": "Project Chimera"},
+        {"ticker": "STOCK1", "fund": "TEST_fund_abc123"},
+        {"ticker": "FIFO", "fund": "TEST_fund_def456"},
+    ]
+    funds = [{"name": "Project Chimera"}]
+    service = _make_service(holdings, DummySkipList(), monkeypatch, funds_rows=funds)
+
+    tickers = service.get_tickers_to_analyze()
+
+    assert [t for t, _ in tickers] == ["REAL1"]
+    assert service.last_selection_stats["holdings_candidates"] == 1
+
+
+def test_get_tickers_to_analyze_unfiltered_when_funds_lookup_empty(monkeypatch):
+    """If the funds table is unreadable/empty, fall back to all holdings."""
+    holdings = [
+        {"ticker": "AAA", "fund": "Project Chimera"},
+        {"ticker": "BBB", "fund": "TEST_fund_abc123"},
+    ]
+    service = _make_service(holdings, DummySkipList(), monkeypatch, funds_rows=[])
+
+    tickers = service.get_tickers_to_analyze()
+
+    assert [t for t, _ in tickers] == ["AAA", "BBB"]
 
 
 def test_get_tickers_to_analyze_reports_skip_list_filtering(monkeypatch):

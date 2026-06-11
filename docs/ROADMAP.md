@@ -281,6 +281,7 @@ Run date: **2026-06-10** (script: `web_dashboard/scripts/run_cheap_learn_audits.
 - [x] 1.2 `stance_outcomes` nightly scoring job (7/30/90d vs ^RUT)
 - [x] 1.3 `GET /api/dashboard/stance-flips`
 - [x] B0 cheap-learn audits (this section)
+- [x] **Verified live in prod 2026-06-11** — see post-ship verification below
 
 ## Sequencing
 
@@ -320,6 +321,39 @@ flowchart TD
 - [ ] **F · §4.5/4.6** short interest / 13F (not started)
 
 Quick wins (4.2, 4.3, 2.5 badges) slot into any phase as palate cleansers.
+
+## Post-ship verification (2026-06-11)
+
+Checked with `web_dashboard/scripts/verify_stance_pipeline.py` (read-only; rerun anytime):
+
+- **Ledger is live.** First prod writes landed 2026-06-11 04:00 UTC via both the
+  `ticker_analysis` and `ticker_meta` hooks during the nightly run. Dedupe and
+  per-source rows behave as designed.
+- **`stance_outcomes` empty — expected.** Rows score once ledger entries age ≥ 7 days;
+  first 7d scores due **~2026-06-18**, first meaningful track-record/calibration reads
+  **~2026-07-10** (30d). The Shape C audit-#4 gate should also be revisited then.
+- **`idea_triage` empty — expected** (no inbox decisions made yet).
+- **New jobs registered but not yet run** — prod restarted after the 2026-06-10 21:30 ET
+  slot, so `stance_outcomes` first fires tonight; retro + drill-down fire Sunday. Confirm
+  on the Jobs page after 2026-06-11 21:30 ET.
+
+Two real findings, found *because* the ledger exists:
+
+1. **Test-fund pollution reached the LLM pipeline.** `get_tickers_to_analyze()` pulled
+   holdings from **all** funds, and test-suite runs leave TEST_* funds with fixture
+   positions (STOCK1, FIFO, COMPLEX, …) in prod Supabase — so the nightly job spent real
+   model cycles on fake tickers and wrote them into `ticker_analysis`,
+   `ticker_meta_analysis`, and the new ledger. **Fixed in code** (holdings now filtered to
+   `funds.is_production = true`, with unfiltered fallback if the lookup fails; tests in
+   `tests/test_ticker_analysis_service.py`). **Data cleanup is a manual step:**
+   `python web_dashboard/scripts/cleanup_test_fund_pollution.py --fix-tfsa --apply`.
+2. **TFSA was never flagged `is_production`.** Only Project Chimera and RRSP carry the
+   flag, so the action-queue AI review job (and now the holdings filter) silently skip
+   TFSA. The cleanup script's `--fix-tfsa` flag corrects it.
+
+Root cause worth keeping in mind: the test suite writes into prod Supabase (TEST_*
+funds). Until tests run against the Docker sandbox by default, expect recurring
+TEST_* residue — production jobs must filter by `is_production`.
 
 ## Guardrails (carry over from the meta roadmap, plus new)
 
