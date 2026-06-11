@@ -124,12 +124,34 @@ def has_strong_market_signal(
 # Alpha Hunter helpers (pure, testable)
 # --------------------------------------------------------------------------- #
 
-_LOW_VALUE_ALPHA_TITLE_PATTERNS = (
-    re.compile(r"stock\s+price\s*&\s*overview", re.IGNORECASE),
-    re.compile(r"stock\s+quote", re.IGNORECASE),
-    re.compile(r"stock\s+price\s+history", re.IGNORECASE),
-    re.compile(r"\([A-Z]{1,5}\)\s+stock\s+price\b", re.IGNORECASE),
-    re.compile(r"\bstock\s+price\s*&\s*overview\b", re.IGNORECASE),
+# Low-value SearXNG result patterns, as (reason_label, compiled_regex) pairs.
+#
+# The reason_label is logged in the `low_value` job step (see the alpha worker)
+# so we can audit WHICH rule dropped a result and tune these later if they are
+# too aggressive (eating real articles) or not aggressive enough (junk slips
+# through). Patterns are matched against the result TITLE only.
+#
+# IMPORTANT - tuning guidance:
+#   * Keep patterns NARROW and anchored. A false positive silently drops a real
+#     article before it is ever extracted, and we only see it as a `low_value`
+#     skip in the logs.
+#   * The "listing_index" rule is anchored to a leading "Latest" because genuine
+#     analysis pieces almost never start with that word, whereas auto-generated
+#     index/aggregator pages do (e.g. Benzinga
+#     "Latest Azitra Stock News | AMEX:AZTR | Benzinga", Seeking Alpha
+#     "Latest Communication Services Stock Analysis Articles").
+#   * The "quote_overview"/"price_history"/"ticker_price" rules catch
+#     auto-generated quote pages (e.g. stockanalysis.com
+#     "INVA Stock Price & Overview", "AAPL stock quote").
+_LOW_VALUE_ALPHA_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    ("quote_overview", re.compile(r"stock\s+price\s*&\s*overview", re.IGNORECASE)),
+    ("quote_overview", re.compile(r"\bstock\s+quote\b", re.IGNORECASE)),
+    ("price_history", re.compile(r"stock\s+price\s+history", re.IGNORECASE)),
+    ("ticker_price", re.compile(r"\([A-Z]{1,5}\)\s+stock\s+price\b", re.IGNORECASE)),
+    (
+        "listing_index",
+        re.compile(r"^\s*latest\b.*\b(?:news|articles?|analysis)\b", re.IGNORECASE),
+    ),
 )
 
 
@@ -181,14 +203,28 @@ def relevance_for_logic_check(logic_check: Optional[str]) -> float:
     return 0.7  # NEUTRAL and unknown buckets
 
 
-def is_low_value_alpha_result(title: str, url: str = "") -> bool:
-    """True when a SearXNG hit looks like auto-generated quote/overview junk.
+def low_value_alpha_reason(title: str, url: str = "") -> Optional[str]:
+    """Return WHY a SearXNG hit is low-value boilerplate, or ``None`` if it looks legit.
 
-    Cheap pre-extraction filter for boilerplate pages (e.g. stockanalysis.com
-    ``INVA Stock Price & Overview``) that waste FlareSolverr/Ollama budget.
+    Cheap pre-extraction guard that skips pages which waste FlareSolverr/Ollama
+    budget: auto-generated quote/overview/price pages and index/listing/
+    aggregator pages ("Latest ... News/Articles/Analysis") that are not real
+    analysis. Matches against ``title`` only (see ``_LOW_VALUE_ALPHA_PATTERNS``).
+
+    The returned label (e.g. ``"listing_index"``, ``"quote_overview"``) is logged
+    by the caller so we can audit and tune the patterns. ``url`` is accepted for
+    signature stability / future use but is not currently matched.
     """
-    text = f"{title or ''} {url or ''}".strip()
+    text = (title or "").strip()
     if not text:
-        return False
-    return any(pat.search(text) for pat in _LOW_VALUE_ALPHA_TITLE_PATTERNS)
+        return None
+    for reason, pat in _LOW_VALUE_ALPHA_PATTERNS:
+        if pat.search(text):
+            return reason
+    return None
+
+
+def is_low_value_alpha_result(title: str, url: str = "") -> bool:
+    """Boolean convenience wrapper around :func:`low_value_alpha_reason`."""
+    return low_value_alpha_reason(title, url) is not None
 

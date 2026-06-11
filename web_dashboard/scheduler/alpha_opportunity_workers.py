@@ -11,7 +11,7 @@ from scheduler.article_pipeline import ArticleCounters
 from scheduler.jobs_common import (
     claim_recent_summary_input,
     has_strong_market_signal,
-    is_low_value_alpha_result,
+    low_value_alpha_reason,
     relevance_for_logic_check,
 )
 
@@ -82,13 +82,17 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
         if not url or not title:
             return c
 
-        if is_low_value_alpha_result(title, url):
+        low_value_reason = low_value_alpha_reason(title, url)
+        if low_value_reason:
+            # Log the matched rule + title so we can audit what the filter drops
+            # (and loosen the patterns in jobs_common if it's too aggressive).
             log_job_step(
                 ctx.job_id,
                 "low_value",
-                f"Skipping boilerplate result: {title[:80]}",
+                f"Skipping low-value [{low_value_reason}]: {title[:70]}",
                 status="skipped",
             )
+            logger.info("  🗑️ Low-value [%s]: %s", low_value_reason, title[:60])
             c.skipped += 1
             return c
 

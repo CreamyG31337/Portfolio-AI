@@ -12,6 +12,7 @@ if str(web_dashboard) not in sys.path:
 
 from scheduler.jobs_common import (  # noqa: E402
     is_low_value_alpha_result,
+    low_value_alpha_reason,
     relevance_for_logic_check,
     select_alpha_queries,
 )
@@ -85,10 +86,43 @@ def test_is_low_value_alpha_result_detects_boilerplate() -> None:
     )
 
 
+def test_low_value_quote_overview_reason() -> None:
+    assert low_value_alpha_reason("Innoviva (INVA) Stock Price & Overview") == "quote_overview"
+    assert low_value_alpha_reason("AAPL stock quote") == "quote_overview"
+    assert low_value_alpha_reason("MSFT stock price history") == "price_history"
+
+
+def test_low_value_listing_index_reason() -> None:
+    # Real-world index/aggregator pages observed in prod that should be dropped.
+    assert (
+        low_value_alpha_reason("Latest Azitra Stock News | AMEX:AZTR | Benzinga")
+        == "listing_index"
+    )
+    assert (
+        low_value_alpha_reason(
+            "Latest Communication Services Stock Analysis Articles | Seeking Alpha"
+        )
+        == "listing_index"
+    )
+    assert (
+        low_value_alpha_reason("Latest Financial Stocks and REIT Investing Analysis")
+        == "listing_index"
+    )
+
+
 def test_is_low_value_alpha_result_allows_real_analysis() -> None:
-    assert not is_low_value_alpha_result(
-        "Replimune: Modeling The Coin Flip Of FDA Approval"
-    )
-    assert not is_low_value_alpha_result(
-        "Milestone Pharmaceuticals: Here Comes The Revenue Ramp"
-    )
+    # Verified-real saves from prod runs must NOT be filtered.
+    legit = [
+        "Replimune: Modeling The Coin Flip Of FDA Approval",
+        "Milestone Pharmaceuticals: Here Comes The Revenue Ramp",
+        "Kyverna Therapeutics vs. Vertex Pharmaceuticals: Which Drug Stock Wins",
+        "Artificial Heart Maker Picard Medical's Stock Surges 15% After Earnings",
+        "Trevi Therapeutics Is Up 100%, Pivotal bioVenture Adds Anyway",
+        "Can Medtronic Finally Challenge Intuitive Surgical's Robotic Dominance",
+        "5 Best Infrastructure Stocks for 2026 and How to Invest",
+        # Starts with a word other than "Latest" -> not a listing match.
+        "Analysis: Why This Microcap Could Double",
+    ]
+    for title in legit:
+        assert not is_low_value_alpha_result(title), title
+        assert low_value_alpha_reason(title) is None, title
