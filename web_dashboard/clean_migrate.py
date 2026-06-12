@@ -27,7 +27,7 @@ def migrate_portfolio_data():
     
     # Prepare data for Supabase
     records = []
-    for _, row in latest_positions.iterrows():
+    for row in latest_positions.to_dict('records'):
         record = {
             "fund": "Project Chimera",
             "ticker": str(row["Ticker"]),
@@ -74,7 +74,7 @@ def migrate_trade_data():
     
     # Prepare data for Supabase
     records = []
-    for _, row in df.iterrows():
+    for row in df.to_dict('records'):
         record = {
             "fund": "Project Chimera",
             "ticker": str(row["Ticker"]),

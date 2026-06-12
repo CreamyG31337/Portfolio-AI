@@ -128,7 +128,7 @@ def _fetch_ticker_closes_yfinance(
         data.columns = data.columns.get_level_values(0)
 
     out: list[dict[str, Any]] = []
-    for _, row in data.iterrows():
+    for row in data.to_dict('records'):
         row_date = row.get("Date")
         if hasattr(row_date, "date"):
             row_date = row_date.date()

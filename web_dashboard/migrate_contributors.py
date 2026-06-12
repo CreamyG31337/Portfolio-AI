@@ -123,7 +123,7 @@ class ContributorMigrator:
         
         # Convert DataFrame to list of dicts for Supabase
         contributions = []
-        for _, row in df.iterrows():
+        for row in df.to_dict('records'):
             contribution = {
                 'fund': fund_name,
                 'contributor': str(row['Contributor']),

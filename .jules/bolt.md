@@ -51,3 +51,7 @@
 ## 2026-06-10 - Optimize iterrows bottlenecks in Generate_Graph
 **Learning:** `df.iterrows()` inside `Generate_Graph.py` was being used incorrectly both for finding valid real prices and for converting to a dictionary, which incurred massive O(N) overheads due to instantiating Pandas Series objects. A quick vectorized check (`.abs()` and `.any()`) and `.to_dict('records')` conversion provide >90x speedup.
 **Action:** Replace `df.iterrows()` iterative checks with `.any()` boolean checks where possible. Use `.to_dict('records')` if an exact dictionary loop is needed instead of `row.to_dict()`.
+
+## YYYY-MM-DD - Optimize iterrows bottlenecks in Data Migration
+**Learning:** `df.iterrows()` inside the web dashboard migration scripts and scheduler jobs was being used extensively for data iteration, incurring massive O(N) overhead due to instantiating Pandas Series objects.
+**Action:** Replace `df.iterrows()` iterative checks with `.to_dict('records')` when an exact dictionary loop is needed instead of `row.to_dict()` or `row['key']` inside `iterrows()`.
