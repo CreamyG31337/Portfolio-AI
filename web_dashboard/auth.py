@@ -4,7 +4,11 @@ Authentication system for portfolio dashboard
 Handles user login, registration, and fund access control
 """
 
+import base64
+import json as json_lib
 import os
+import time
+import uuid
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
@@ -13,6 +17,55 @@ import requests
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _auth_trace_prefix() -> str:
+    """Correlation prefix for auth trace logs on the current request."""
+    trace_id = getattr(request, "_auth_trace_id", None)
+    return f"[AUTH_TRACE] req={trace_id} " if trace_id else "[AUTH_TRACE] "
+
+
+def _auth_token_expiry_state(token: str | None) -> tuple[bool | None, int | None]:
+    """Return (is_expired, exp_epoch) for a JWT-like token, or (None, None) if unknown."""
+    if not token:
+        return None, None
+    try:
+        token_parts = token.split(".")
+        if len(token_parts) < 2:
+            return None, None
+        payload = token_parts[1]
+        payload += "=" * (4 - len(payload) % 4)
+        decoded = base64.urlsafe_b64decode(payload)
+        token_data = json_lib.loads(decoded)
+        exp = token_data.get("exp", 0)
+        if exp <= 0:
+            return None, None
+        return exp < time.time(), int(exp)
+    except Exception:
+        return None, None
+
+
+def _log_auth_refresh_outcome(
+    success: bool,
+    new_token: str | None,
+    new_refresh: str | None,
+    expires_in: int | None,
+    branch: str,
+) -> None:
+    """Log the result of a refresh attempt inside require_auth."""
+    logger.info(
+        f"{_auth_trace_prefix()}refresh_outcome branch={branch} "
+        f"success={success} new_token={'yes' if new_token else 'no'} "
+        f"new_refresh={'yes' if new_refresh else 'no'} expires_in={expires_in}"
+    )
+
+
+def _log_auth_logout(reason: str, *, api: bool) -> None:
+    """Log an explicit logout decision before redirect/401."""
+    logger.info(
+        f"{_auth_trace_prefix()}logout reason={reason} "
+        f"path={request.path} response={'401' if api else 'redirect:/auth'}"
+    )
 
 class AuthManager:
     """Handles user authentication and authorization"""
@@ -184,10 +237,18 @@ def require_auth(f):
     def decorated_function(*args, **kwargs):
         from flask_auth_utils import refresh_token_if_needed_flask, get_refresh_token
 
+        request._auth_trace_id = uuid.uuid4().hex[:8]
+
         # Detect broken auth state first
         auth_token = request.cookies.get('auth_token')
         session_token = request.cookies.get('session_token')
         refresh_token = get_refresh_token()
+        auth_expired, auth_exp = _auth_token_expiry_state(auth_token)
+        logger.info(
+            f"{_auth_trace_prefix()}require_auth entry path={request.path} "
+            f"has_auth_token={bool(auth_token)} auth_expired={auth_expired} auth_exp={auth_exp} "
+            f"has_refresh_token={bool(refresh_token)} has_session_token={bool(session_token)}"
+        )
 
         # Don't delete cookies in require_auth - let the route handle authentication
         # Note: Supabase now returns 12-character opaque refresh tokens (this is normal)
@@ -208,9 +269,15 @@ def require_auth(f):
             if not auth_token and refresh_token:
                 # Missing auth_token - try to refresh using refresh_token
                 success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+                _log_auth_refresh_outcome(
+                    success, new_token, new_refresh, expires_in, "missing_auth_token"
+                )
                 # If refresh fails, refresh_token is expired/invalid - redirect to login
                 if not success:
-                    logger.warning("[AUTH] require_auth: Refresh failed - refresh_token expired/invalid, redirecting to login")
+                    _log_auth_logout(
+                        "missing_auth_token_refresh_failed",
+                        api=request.path.startswith('/api/'),
+                    )
                     if request.path.startswith('/api/'):
                         return jsonify({"error": "Session expired, please log in again"}), 401
                     else:
@@ -219,31 +286,23 @@ def require_auth(f):
                 # Have auth_token - try to refresh proactively if needed (within 5 minutes of expiry)
                 # This keeps tokens fresh during active sessions
                 success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+                _log_auth_refresh_outcome(
+                    success, new_token, new_refresh, expires_in, "has_auth_token"
+                )
 
                 # Check if token is expired and refresh failed - if so, redirect to login
                 if not success and not new_token:
                     # Refresh failed - check if token is expired
-                    try:
-                        import base64
-                        import json as json_lib
-                        import time
-                        token_parts = auth_token.split('.')
-                        if len(token_parts) >= 2:
-                            payload = token_parts[1]
-                            payload += '=' * (4 - len(payload) % 4)
-                            decoded = base64.urlsafe_b64decode(payload)
-                            token_data = json_lib.loads(decoded)
-                            exp = token_data.get('exp', 0)
-                            if exp > 0 and exp < time.time():
-                                # Token is expired and refresh failed - redirect to login
-                                logger.warning("[AUTH] require_auth: Token expired and refresh failed, redirecting to login")
-                                if request.path.startswith('/api/'):
-                                    return jsonify({"error": "Session expired, please log in again"}), 401
-                                else:
-                                    return redirect('/auth')
-                    except Exception as e:
-                        logger.debug(f"[AUTH] Error checking token expiration: {e}")
-                        # If we can't parse the token, continue to validation below
+                    is_expired, _ = _auth_token_expiry_state(auth_token)
+                    if is_expired:
+                        _log_auth_logout(
+                            "auth_token_expired_refresh_failed",
+                            api=request.path.startswith('/api/'),
+                        )
+                        if request.path.startswith('/api/'):
+                            return jsonify({"error": "Session expired, please log in again"}), 401
+                        else:
+                            return redirect('/auth')
             else:
                 # Only have session_token - don't try to refresh, just use it
                 # This is OK for basic auth, but Supabase features won't work
@@ -256,14 +315,21 @@ def require_auth(f):
             # This happens for magic-link users after the session_token (24h) expires
             # but the refresh_token (30d) is still valid. Try to recover.
             success, new_token, new_refresh, expires_in = refresh_token_if_needed_flask()
+            _log_auth_refresh_outcome(
+                success, new_token, new_refresh, expires_in, "refresh_token_only"
+            )
             if not success:
-                logger.warning("[AUTH] require_auth: No session/auth token and refresh failed, redirecting to login")
+                _log_auth_logout(
+                    "refresh_token_only_failed",
+                    api=request.path.startswith('/api/'),
+                )
                 if request.path.startswith('/api/'):
                     return jsonify({"error": "Session expired, please log in again"}), 401
                 else:
                     return redirect('/auth')
         else:
             # No token at all - redirect to login
+            _log_auth_logout("no_tokens", api=request.path.startswith('/api/'))
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Authentication required"}), 401
             else:
@@ -294,6 +360,10 @@ def require_auth(f):
                 token = session_token
             else:
                 # No token at all, or refresh was attempted and failed - redirect to login
+                _log_auth_logout(
+                    "no_token_after_refresh_attempt",
+                    api=request.path.startswith('/api/'),
+                )
                 if request.path.startswith('/api/'):
                     return jsonify({"error": "Authentication required"}), 401
                 else:
@@ -331,6 +401,10 @@ def require_auth(f):
 
         if not user_data:
             # For HTML pages, redirect to login; for API, return JSON error
+            _log_auth_logout(
+                "invalid_or_expired_session",
+                api=request.path.startswith('/api/'),
+            )
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Invalid or expired session"}), 401
             else:
@@ -339,6 +413,10 @@ def require_auth(f):
         # Add user data to request context
         request.user_id = user_data.get("user_id") or user_data.get("sub")
         request.user_email = user_data.get("email")
+        logger.info(
+            f"{_auth_trace_prefix()}require_auth ok user_id={request.user_id} "
+            f"email={request.user_email} refreshed={bool(new_token)}"
+        )
 
         from flask_auth_utils import ensure_impersonation_session_valid
         ensure_impersonation_session_valid()

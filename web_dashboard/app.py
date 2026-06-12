@@ -200,6 +200,13 @@ def handle_invalid_session(response):
     """Check if Supabase marked the session as invalid and redirect to login"""
     if getattr(request, '_supabase_session_invalid', False):
         # Session is invalid (JWT signature error, etc.) - clear cookies and redirect
+        trace_id = getattr(request, "_auth_trace_id", None)
+        trace_prefix = f"[AUTH_TRACE] req={trace_id} " if trace_id else "[AUTH_TRACE] "
+        logger.info(
+            f"{trace_prefix}handle_invalid_session clearing cookies "
+            f"path={request.path} response="
+            f"{'401' if request.path.startswith('/api/') else 'redirect:/auth?error=session_invalid'}"
+        )
         logger.warning("[AUTH] Session invalid - clearing cookies and redirecting to login")
         # For API requests, return 401
         if request.path.startswith('/api/'):
@@ -277,8 +284,16 @@ def persist_refreshed_tokens(response):
     the session is orphaned and the user gets logged out — centralizing here
     ensures every refresh lands in a Set-Cookie header.
     """
+    trace_id = getattr(request, "_auth_trace_id", None)
+    trace_prefix = f"[AUTH_TRACE] req={trace_id} " if trace_id else "[AUTH_TRACE] "
     new_token = getattr(request, '_new_auth_token', None)
-    if not new_token or getattr(request, '_supabase_session_invalid', False):
+    if not new_token:
+        return response
+    if getattr(request, '_supabase_session_invalid', False):
+        logger.info(
+            f"{trace_prefix}persist_refreshed_tokens skipped — session marked invalid "
+            f"path={request.path}"
+        )
         return response
     expires_in = getattr(request, '_token_expires_in', None)
     new_refresh = getattr(request, '_new_refresh_token', None)
@@ -305,6 +320,15 @@ def persist_refreshed_tokens(response):
             samesite='Lax',
             path='/'
         )
+    token_preview = new_token[:12] + "..." if len(new_token) > 12 else new_token
+    refresh_preview = (
+        (new_refresh[:8] + "...") if new_refresh and len(new_refresh) > 8 else ("yes" if new_refresh else "no")
+    )
+    logger.info(
+        f"{trace_prefix}persist_refreshed_tokens set cookies path={request.path} "
+        f"auth_token={token_preview} auth_max_age={expires_in or 3600} "
+        f"refresh_token={refresh_preview} secure={use_secure} samesite=Lax"
+    )
     return response
 
 

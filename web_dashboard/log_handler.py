@@ -307,6 +307,8 @@ def setup_logging(level=logging.INFO):
         'streamlit_utils',
         'chart_utils', 
         'auth_utils',
+        'auth',  # Flask require_auth decorator and logout decisions
+        'flask_auth_utils',  # Supabase token refresh and cache
         'user_preferences',
         'supabase_client',
         'exchange_rates_utils',

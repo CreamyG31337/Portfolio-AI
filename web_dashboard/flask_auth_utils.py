@@ -39,6 +39,19 @@ _REFRESH_CACHE_TTL = 60.0  # seconds
 _recent_refreshes: Dict[str, tuple[float, str, Optional[str], Optional[int]]] = {}
 
 
+def _auth_trace_prefix() -> str:
+    """Correlation prefix for auth trace logs (set by require_auth on request)."""
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            trace_id = getattr(request, "_auth_trace_id", None)
+            if trace_id:
+                return f"[AUTH_TRACE] req={trace_id} "
+    except Exception:
+        pass
+    return "[AUTH_TRACE] "
+
+
 def get_auth_token() -> Optional[str]:
     """Get auth_token or session_token from cookies, or from refreshed token if available"""
     # Check for newly refreshed token first (set by @require_auth decorator)
@@ -315,6 +328,12 @@ def _do_refresh(rt: str) -> tuple[bool, Optional[str], Optional[str], Optional[i
             expires_in = auth_data.get("expires_in", 3600)
             
             if new_access_token:
+                rt_preview = rt[:8] + "..." if len(rt) > 8 else rt
+                logger.info(
+                    f"{_auth_trace_prefix()}[FLASK_AUTH] Token refresh successful "
+                    f"rt={rt_preview} expires_in={expires_in}s "
+                    f"new_refresh={'yes' if new_refresh_token else 'no'}"
+                )
                 logger.debug(f"[FLASK_AUTH] Token refresh successful, expires_in={expires_in}s")
                 return (True, new_access_token, new_refresh_token, expires_in)
         
@@ -430,6 +449,11 @@ def _get_cached_refresh(rt: str) -> Optional[tuple[bool, str, Optional[str], Opt
     """Return cached refresh result for an already-exchanged refresh token, if fresh."""
     entry = _recent_refreshes.get(rt)
     if entry and (time.time() - entry[0]) < _REFRESH_CACHE_TTL:
+        rt_preview = rt[:8] + "..." if len(rt) > 8 else rt
+        logger.info(
+            f"{_auth_trace_prefix()}[FLASK_AUTH] Refresh cache hit "
+            f"rt={rt_preview} age={time.time() - entry[0]:.1f}s"
+        )
         logger.debug("[FLASK_AUTH] Refresh cache hit - reusing tokens from earlier exchange")
         return (True, entry[1], entry[2], entry[3])
     return None
@@ -463,6 +487,7 @@ def _refresh_with_cache(rt: str, blocking: bool = True) -> tuple[bool, Optional[
     With blocking=False, returns (True, None, None, None) if another thread holds the
     lock — callers use this for proactive refresh where the current token is still valid.
     """
+    rt_preview = rt[:8] + "..." if len(rt) > 8 else rt
     cached = _get_cached_refresh(rt)
     if cached:
         _stash_tokens_on_request(cached[1], cached[2], cached[3])
@@ -470,6 +495,10 @@ def _refresh_with_cache(rt: str, blocking: bool = True) -> tuple[bool, Optional[
 
     lock = _get_refresh_lock(rt)
     if not lock.acquire(blocking=blocking):
+        logger.info(
+            f"{_auth_trace_prefix()}[FLASK_AUTH] Refresh skipped (non-blocking) "
+            f"rt={rt_preview} — another request holds the lock"
+        )
         logger.debug("[FLASK_AUTH] Refresh skipped - another request is refreshing")
         return (True, None, None, None)
     try:
@@ -479,6 +508,10 @@ def _refresh_with_cache(rt: str, blocking: bool = True) -> tuple[bool, Optional[
             _stash_tokens_on_request(cached[1], cached[2], cached[3])
             return cached
 
+        logger.info(
+            f"{_auth_trace_prefix()}[FLASK_AUTH] Performing network refresh exchange "
+            f"rt={rt_preview} blocking={blocking}"
+        )
         result = _do_refresh(rt)
         if result[0] and result[1]:
             now = time.time()
@@ -532,7 +565,9 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
 
     # If no auth_token but we have refresh_token, try to refresh immediately
     if not auth_token and refresh_token:
-        # Missing auth_token - try to refresh using refresh_token
+        logger.info(
+            f"{_auth_trace_prefix()}[FLASK_AUTH] Missing auth_token — refreshing via refresh_token"
+        )
         return _refresh_with_cache(refresh_token)
 
     # If no token at all, can't refresh
@@ -559,20 +594,40 @@ def refresh_token_if_needed_flask() -> tuple[bool, Optional[str], Optional[str],
         if exp > 0 and exp < current_time:
             # Token is expired - try to refresh
             if refresh_token:
+                logger.info(
+                    f"{_auth_trace_prefix()}[FLASK_AUTH] auth_token expired "
+                    f"(exp={exp}, now={current_time}) — refreshing"
+                )
                 return _refresh_with_cache(refresh_token)
             else:
                 # No refresh token available
+                logger.info(
+                    f"{_auth_trace_prefix()}[FLASK_AUTH] auth_token expired "
+                    f"and no refresh_token available"
+                )
                 logger.debug("[FLASK_AUTH] Token expired and no refresh token available")
                 return (False, None, None, None)
 
         # Token is valid - check if we should refresh it proactively
         # Only refresh if token is expiring soon (within 5 minutes)
         if time_until_expiry is not None and 0 < time_until_expiry <= 300 and refresh_token:
+            logger.info(
+                f"{_auth_trace_prefix()}[FLASK_AUTH] Proactive refresh "
+                f"(expires_in={time_until_expiry}s)"
+            )
             # Non-blocking: if another request is already refreshing, skip — our token
             # is still valid, and the cache will serve us the new tokens next request.
             result = _refresh_with_cache(refresh_token, blocking=False)
             if result[0] and result[1]:  # Refreshed (or cache hit)
+                logger.info(
+                    f"{_auth_trace_prefix()}[FLASK_AUTH] Proactive refresh succeeded "
+                    f"expires_in={result[3]}"
+                )
                 return result
+            logger.info(
+                f"{_auth_trace_prefix()}[FLASK_AUTH] Proactive refresh skipped or deferred "
+                f"(token still valid for {time_until_expiry}s)"
+            )
 
         # Token is valid and doesn't need refresh
         return (True, None, None, None)
