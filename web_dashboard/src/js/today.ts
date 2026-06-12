@@ -1,11 +1,32 @@
 export {};
 
+interface InsiderCluster {
+  ticker: string;
+  insider_count: number;
+  buy_count: number;
+  total_value: number;
+  latest_buy?: string;
+  insiders?: Array<{ name: string; title?: string; value: number }>;
+  held?: boolean;
+  watched?: boolean;
+}
+
+interface LiquidityRow {
+  ticker: string;
+  shares: number;
+  days_to_exit?: number | null;
+  pct_of_adv?: number | null;
+  avg_daily_volume?: number | null;
+  risk_bucket: string;
+}
+
 interface Briefing {
   market_regime?: { risk_regime?: string; as_of?: string };
   market_brief_headline?: string;
   stance_flips?: Array<Record<string, unknown>>;
   action_queue?: Array<Record<string, unknown>>;
   alpha_articles?: Array<Record<string, unknown>>;
+  insider_cluster_buys?: InsiderCluster[];
   watchlist_movers?: Array<Record<string, unknown>>;
   upcoming_dividends?: Array<Record<string, unknown>>;
 }
@@ -21,11 +42,64 @@ function showSection(id: string, html: string): void {
   node.classList.remove("hidden");
 }
 
+function formatCompact(value: number | null | undefined): string {
+  const n = Number(value || 0);
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return n.toFixed(0);
+}
+
+const BUCKET_BADGES: Record<string, string> = {
+  low: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  elevated: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  unknown: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
+};
+
+async function loadLiquidityPanel(fund: string | undefined): Promise<void> {
+  // Separate request on purpose: cold cache fans out to yfinance and can take
+  // tens of seconds; the rest of the briefing must not wait on it.
+  const node = el("today-liquidity");
+  if (!node) return;
+  node.innerHTML = `<h2 class="text-lg font-semibold mb-2">Liquidity / exit risk</h2>
+    <p class="text-sm text-text-secondary">Loading volume data…</p>`;
+  node.classList.remove("hidden");
+  try {
+    const qs = fund ? `?fund=${encodeURIComponent(fund)}` : "";
+    const resp = await fetch(`/api/liquidity/panel${qs}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const payload = (await resp.json()) as { data?: LiquidityRow[] };
+    const rows = payload.data || [];
+    showSection(
+      "today-liquidity",
+      `<h2 class="text-lg font-semibold mb-2">Liquidity / exit risk
+         <span class="text-xs font-normal text-text-secondary">(days to exit at 10% of avg daily volume)</span></h2>
+       ${rows.length ? rows.map((r) => {
+         const badge = BUCKET_BADGES[r.risk_bucket] || BUCKET_BADGES.unknown;
+         const days = r.days_to_exit != null ? `${r.days_to_exit} d` : "no volume data";
+         return `<div class="text-sm py-1 border-b border-border last:border-0 flex items-center gap-2">
+            <a href="/ticker?ticker=${encodeURIComponent(r.ticker)}" class="text-accent hover:underline font-semibold">${r.ticker}</a>
+            <span class="text-xs px-1.5 py-0.5 rounded ${badge}">${r.risk_bucket}</span>
+            <span>${days}</span>
+            ${r.pct_of_adv != null ? `<span class="text-xs text-text-secondary">position = ${r.pct_of_adv}% of daily volume</span>` : ""}
+          </div>`;
+       }).join("") : `<p class="text-sm text-text-secondary">No open positions.</p>`}`
+    );
+  } catch (e) {
+    showSection(
+      "today-liquidity",
+      `<h2 class="text-lg font-semibold mb-2">Liquidity / exit risk</h2>
+       <p class="text-sm text-theme-error-text">Failed to load: ${e instanceof Error ? e.message : String(e)}</p>`
+    );
+  }
+}
+
 async function loadBriefing(): Promise<void> {
   const loading = el("today-loading");
   const err = el("today-error");
   try {
     const fund = (window as unknown as { ui?: { getSelectedFund?: () => string } }).ui?.getSelectedFund?.();
+    void loadLiquidityPanel(fund);
     const qs = fund ? `?fund=${encodeURIComponent(fund)}` : "";
     const resp = await fetch(`/api/today/briefing${qs}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -60,6 +134,20 @@ async function loadBriefing(): Promise<void> {
             ${(a as { ai_review?: { verdict?: string } }).ai_review?.verdict
               ? ` · ${(a as { ai_review?: { verdict?: string } }).ai_review?.verdict}` : ""}
           </div>`).join("")}`
+    );
+
+    const clusters = data.insider_cluster_buys || [];
+    showSection(
+      "today-insider-clusters",
+      `<h2 class="text-lg font-semibold mb-2">Insider cluster buys <span class="text-xs font-normal text-text-secondary">(3+ insiders, 30d)</span></h2>
+       ${clusters.length ? clusters.map((c) =>
+         `<div class="text-sm py-1 border-b border-border last:border-0">
+            <a href="/ticker?ticker=${encodeURIComponent(c.ticker)}" class="text-accent hover:underline font-semibold">${c.ticker}</a>
+            ${c.held ? `<span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">held</span>` : ""}
+            ${c.watched && !c.held ? `<span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">watching</span>` : ""}
+            · ${c.insider_count} insiders, ${c.buy_count} buys, $${formatCompact(c.total_value)}
+            <span class="text-xs text-text-secondary">latest ${c.latest_buy || "?"}</span>
+          </div>`).join("") : `<p class="text-sm text-text-secondary">No cluster buys in the last 30 days.</p>`}`
     );
 
     const alpha = data.alpha_articles || [];

@@ -106,6 +106,14 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: enrich action queue failed: %s", exc)
 
+    insider_clusters: list[dict[str, Any]] = []
+    try:
+        from insider_clusters_service import build_insider_cluster_buys
+
+        insider_clusters = build_insider_cluster_buys(supabase_client, fund=fund)
+    except Exception as exc:
+        logger.warning("Today briefing: insider clusters failed: %s", exc)
+
     movers: list[dict[str, Any]] = []
     dividends: list[dict[str, Any]] = []
     try:
@@ -143,6 +151,7 @@ def build_today_briefing(
         "stance_flips": fetch_stance_flips(pg, days=2, limit=20),
         "action_queue": actions,
         "alpha_articles": fetch_alpha_ideas(pg, limit=15),
+        "insider_cluster_buys": insider_clusters,
         "watchlist_movers": movers,
         "upcoming_dividends": dividends,
         "updated_at": datetime.now(UTC).isoformat(),

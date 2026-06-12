@@ -5,6 +5,7 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 
 | Doc | Relationship to this one |
 |-----|--------------------------|
+| [`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | **The active implementation brief** (created 2026-06-11, after Phases A–F shipped): provenance, EDGAR/SEDI filing coverage, confluence scorer. Start there for current work. |
 | [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md) | Deep detail on the meta-analysis layers (Phases 1–3 shipped). This doc supersedes its "Later phases" section as the prioritized plan. |
 | [`docs/AI_TASK_QUEUE_DESIGN.md`](AI_TASK_QUEUE_DESIGN.md) | Infra status for the AI task queue. Any new LLM job in this plan should be queue-managed. |
 | [`docs/DASHBOARD_RESEARCH_LOOP.md`](DASHBOARD_RESEARCH_LOOP.md) | How the Action Queue / market brief / enrichment currently fit together. |
@@ -251,8 +252,8 @@ Ordered by value-per-effort:
 | # | Tracker | Why / How | Effort |
 |---|---------|-----------|--------|
 | 4.1 | **Dilution watch** | #1 micro-cap killer. Monitor EDGAR full-text for S-3 / 424B5 / ATM offerings / reverse splits on holdings + watchlist. SEC plumbing exists (`web_dashboard/scheduler/sec_form4_poc.py`). Surface on Today screen + dossier. | M |
-| 4.2 | **Insider cluster-buy detection** | 130k insider rows already collected. "3+ distinct insiders buying within 30 days" is one SQL view + a Today-screen block. No new collection. | S |
-| 4.3 | **Liquidity / exit-risk panel** | Position size ÷ avg dollar volume = "days to exit" per holding. Pure math on existing data; more honest micro-cap risk than beta. Holdings-table column + portfolio panel. | S |
+| 4.2 | **Insider cluster-buy detection** — **shipped 2026-06-11** | 130k insider rows already collected. "3+ distinct insiders buying within 30 days" is one SQL view + a Today-screen block. No new collection. | S |
+| 4.3 | **Liquidity / exit-risk panel** — **shipped 2026-06-11 (panel; holdings column open)** | Position size ÷ avg dollar volume = "days to exit" per holding. Pure math on existing data; more honest micro-cap risk than beta. Holdings-table column + portfolio panel. | S |
 | 4.4 | **Earnings calendar** | Genuinely absent. Earnings dates for holdings/watchlist (yfinance), countdown badges on Today + dossier; optional pre-earnings AI note later. | M |
 | 4.5 | **Short interest** | FINRA bi-monthly; days-to-cover on dossier. | M |
 | 4.6 | **13F ownership deltas** | Quarterly EDGAR; institutional accumulation/distribution on dossier. | M/L |
@@ -306,6 +307,7 @@ flowchart TD
 | **D** | 2.3 dossier timeline; 2.5 polish; 4.4 earnings | ~1–2 wk — **partial 2026-06-10** |
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro pending** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1 advisory V1 shipped** |
+| **G** | Stance provenance; real EDGAR filing watch; SEDI Canadian insiders; confluence scorer; retro Mailgun — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **planned 2026-06-11** |
 
 ### Phase B–F checklist (2026-06-10)
 
@@ -319,8 +321,30 @@ flowchart TD
 - [x] **E · weekly retro** `weekly_stance_retro_job` (log summary; Mailgun digest hookup next)
 - [x] **F · §4.1** `dilution_watch_job` advisory V1 (ticker scope scan; EDGAR hookup next)
 - [ ] **F · §4.5/4.6** short interest / 13F (not started)
+- [x] **Quick win · §4.2** insider cluster buys (2026-06-11): `insider_clusters_service.py`,
+  `GET /api/insiders/cluster-buys`, Today-screen block. 3+ distinct insiders buying within
+  30d, held/watchlist tickers ranked first. Live check found 15 clusters on day one.
+- [x] **Quick win · §4.3** liquidity/exit-risk panel (2026-06-11): `liquidity_service.py`,
+  `GET /api/liquidity/panel`, Today-screen block. Days-to-exit = shares / (10% × 1-mo avg
+  daily volume), share-based so currency never enters the math; yfinance volumes cached 6h
+  and kept out of the briefing payload (panel loads async). Holdings-table column still open.
 
-Quick wins (4.2, 4.3, 2.5 badges) slot into any phase as palate cleansers.
+Quick wins remaining: 2.5 badges rollout slots into any phase as a palate cleanser.
+
+### Phase G checklist (planned 2026-06-11)
+
+Full specs, research tasks, and acceptance criteria live in
+[`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) — keep the two checklists in sync.
+
+- [ ] **G1** stance evidence provenance (article IDs into `stance_history.metadata`) — P0,
+  unblocks the source-ROI report; every stance written without it is unattributable forever
+- [ ] **G2** real EDGAR filing watch replacing the §4.1 placeholder (`filing_events`:
+  dilution, NT late filings, 8-K 3.01, Form 25, SC 13D/G)
+- [ ] **G3a** SEDI feasibility memo → **G3b** Canadian insider pipeline (the `.TO`-heavy book
+  is invisible to the §4.2 clusters today)
+- [ ] **G4** cross-signal confluence scorer (no LLM; events recorded as scoreable stances)
+- [ ] **G5** weekly retro → Mailgun digest
+- [ ] **G6** FINRA daily short volume (optional)
 
 ## Post-ship verification (2026-06-11)
 
@@ -370,10 +394,37 @@ TEST_* residue — production jobs must filter by `is_production`.
 
 ---
 
-## Appendix — Agent kickoff prompt
+## Appendix — Agent kickoff prompts
 
-A ready-to-paste prompt for a coding agent (Cursor plan mode, etc.) lives here so it's never
-lost. Paste it as-is; it instructs the agent to read this doc first.
+Ready-to-paste prompts for a coding agent (Cursor plan mode, etc.) live here so they're never
+lost. Paste as-is; each instructs the agent to read the relevant doc first.
+
+### Phase G kickoff (current — use this one)
+
+> You are working in the Portfolio-AI repo (Windows + PowerShell, venv at `.\venv`). Read
+> `docs/PHASE_G_PLAN.md` in full — it is the active implementation brief — plus the Guardrails
+> section of `docs/ROADMAP.md` and `.claude/CLAUDE.md` for conventions (Flask is production,
+> Streamlit is prototype-only; edit TypeScript in `web_dashboard/src/js/` never `static/js/`;
+> use Decimal for money; run `python -m pytest tests/ -v` and keep it green).
+>
+> Implement Phase G **in the plan's work order (G1 → G2 → G4 → G5 → G3 memo → G3b/G6), one
+> item per PR-sized change set**. Several items contain explicit RESEARCH tasks: do the
+> research first, write your findings into the plan doc (or the memo it names), and adjust the
+> approach before coding. Where this plan contradicts the codebase, trust the codebase and
+> update the plan.
+>
+> Hard rules (the plan repeats them with detail): no autonomous trade execution; additive
+> schema only; holdings-scoped jobs must filter `funds.is_production = true`; paginate
+> Supabase REST past its 1000-row cap; SEC fair-access headers + throttling; if a data
+> source's ToS is unclear (SEDI especially), deliver the feasibility memo and stop for a human
+> decision instead of working around it; no new LLM call sites except where the plan marks
+> them optional (and then only via `collect_with_summary_model_chain` + the AI task queue);
+> don't touch `verification/`; check items off in both `PHASE_G_PLAN.md` and `ROADMAP.md` as
+> they land; run the relevant test suite before declaring any item done. If a data assumption
+> fails (a table or column the plan names doesn't exist), stop and re-verify against
+> `docs/database/research_schema.md` and `database/schema/` rather than guessing.
+
+### Phases A–F kickoff (historical — shipped 2026-06-10/11)
 
 > You are working in the Portfolio-AI repo (Windows + PowerShell, venv at `.\venv`). Read
 > `docs/ROADMAP.md` in full — it is the master plan — plus the Guardrails section of
