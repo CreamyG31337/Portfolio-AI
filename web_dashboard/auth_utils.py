@@ -469,7 +469,6 @@ def refresh_token_if_needed() -> bool:
     
     # Get current token and expiration
     access_token = get_user_token()
-    refresh_token = st.session_state.get("refresh_token")
     expires_at = st.session_state.get("token_expires_at")
     
     if not access_token:
@@ -508,64 +507,14 @@ def refresh_token_if_needed() -> bool:
     # If token is expired, fail immediately
     if token_valid is False or (time_until_expiry is not None and time_until_expiry <= 0):
         return False
-    
-    # Token is valid - check if we should refresh it
-    # Only try to refresh if:
-    # 1. We have a refresh_token available
-    # 2. Token is expiring soon (within 5 minutes)
-    should_refresh = (
-        refresh_token and 
-        time_until_expiry is not None and 
-        0 < time_until_expiry <= 300  # Between 0 and 5 minutes
-    )
-    
-    if not should_refresh:
-        # Token is valid and either doesn't need refresh or we can't refresh
-        # This is the normal case for page navigation
-        return True
-    
-    # Token is about to expire and we can refresh - try to refresh it
-    try:
-        response = requests.post(
-            f"{SUPABASE_URL}/auth/v1/token?grant_type=refresh_token",
-            headers={
-                "apikey": SUPABASE_PUBLISHABLE_KEY,
-                "Content-Type": "application/json"
-            },
-            json={
-                "refresh_token": refresh_token
-            }
-        )
-        
-        if response.status_code == 200:
-            auth_data = response.json()
-            new_access_token = auth_data.get("access_token")
-            new_refresh_token = auth_data.get("refresh_token")
-            new_expires_at = auth_data.get("expires_at")
-            
-            if new_access_token:
-                # Update session with new tokens
-                st.session_state.user_token = new_access_token
-                if new_refresh_token:
-                    st.session_state.refresh_token = new_refresh_token
-                if new_expires_at:
-                    st.session_state.token_expires_at = new_expires_at
-                
-                # Mark that cookie needs to be updated with new token
-                # This will be handled in the main app to avoid redirect loops
-                st.session_state._cookie_needs_update = new_access_token
-                
-                return True
-            else:
-                # Refresh response didn't include new token - keep existing one if valid
-                return token_valid
-        else:
-            # Refresh failed - but existing token might still be valid
-            # Only fail if token is actually expired
-            return token_valid
-    except Exception as e:
-        # Refresh failed due to error - but existing token might still be valid
-        return token_valid
+
+    # Token is valid. Streamlit (a legacy/prototype surface) intentionally does NOT
+    # refresh (rotate) Supabase tokens. Supabase refresh tokens are single-use: the
+    # production Flask app owns refresh + cookie persistence. If Streamlit also
+    # exchanged the refresh token it would rotate it out from under Flask, orphaning
+    # the browser's refresh_token cookie and logging the user out (~1h later when the
+    # access token expires). So we only validate here and never call the token endpoint.
+    return True
 
 
 def is_admin() -> bool:
