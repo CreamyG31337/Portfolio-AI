@@ -1739,13 +1739,11 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
         const cleanedArticleId = rawArticleId.replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2, 11);
         const rowId = `article-row-${cleanedArticleId}`;
 
-        // Truncate summary for the expandable preview
-        const previewSummary = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
         const escapedTitle = escapeHtml(title);
         const escapedSource = escapeHtml(source);
         const escapedArticleType = escapeHtml(articleType);
         const escapedRelTime = escapeHtml(relTime);
-        const escapedSummary = escapeHtml(previewSummary);
+        const escapedSummary = escapeHtml(summary);
         const escapedDate = escapeHtml(formatDate(dateStr));
 
         const row = document.createElement('div');
