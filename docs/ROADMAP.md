@@ -251,8 +251,8 @@ Ordered by value-per-effort:
 | # | Tracker | Why / How | Effort |
 |---|---------|-----------|--------|
 | 4.1 | **Dilution watch** | #1 micro-cap killer. Monitor EDGAR full-text for S-3 / 424B5 / ATM offerings / reverse splits on holdings + watchlist. SEC plumbing exists (`web_dashboard/scheduler/sec_form4_poc.py`). Surface on Today screen + dossier. | M |
-| 4.2 | **Insider cluster-buy detection** | 130k insider rows already collected. "3+ distinct insiders buying within 30 days" is one SQL view + a Today-screen block. No new collection. | S |
-| 4.3 | **Liquidity / exit-risk panel** | Position size ÷ avg dollar volume = "days to exit" per holding. Pure math on existing data; more honest micro-cap risk than beta. Holdings-table column + portfolio panel. | S |
+| 4.2 | **Insider cluster-buy detection** — **shipped 2026-06-11** | 130k insider rows already collected. "3+ distinct insiders buying within 30 days" is one SQL view + a Today-screen block. No new collection. | S |
+| 4.3 | **Liquidity / exit-risk panel** — **shipped 2026-06-11 (panel; holdings column open)** | Position size ÷ avg dollar volume = "days to exit" per holding. Pure math on existing data; more honest micro-cap risk than beta. Holdings-table column + portfolio panel. | S |
 | 4.4 | **Earnings calendar** | Genuinely absent. Earnings dates for holdings/watchlist (yfinance), countdown badges on Today + dossier; optional pre-earnings AI note later. | M |
 | 4.5 | **Short interest** | FINRA bi-monthly; days-to-cover on dossier. | M |
 | 4.6 | **13F ownership deltas** | Quarterly EDGAR; institutional accumulation/distribution on dossier. | M/L |
@@ -319,8 +319,15 @@ flowchart TD
 - [x] **E · weekly retro** `weekly_stance_retro_job` (log summary; Mailgun digest hookup next)
 - [x] **F · §4.1** `dilution_watch_job` advisory V1 (ticker scope scan; EDGAR hookup next)
 - [ ] **F · §4.5/4.6** short interest / 13F (not started)
+- [x] **Quick win · §4.2** insider cluster buys (2026-06-11): `insider_clusters_service.py`,
+  `GET /api/insiders/cluster-buys`, Today-screen block. 3+ distinct insiders buying within
+  30d, held/watchlist tickers ranked first. Live check found 15 clusters on day one.
+- [x] **Quick win · §4.3** liquidity/exit-risk panel (2026-06-11): `liquidity_service.py`,
+  `GET /api/liquidity/panel`, Today-screen block. Days-to-exit = shares / (10% × 1-mo avg
+  daily volume), share-based so currency never enters the math; yfinance volumes cached 6h
+  and kept out of the briefing payload (panel loads async). Holdings-table column still open.
 
-Quick wins (4.2, 4.3, 2.5 badges) slot into any phase as palate cleansers.
+Quick wins remaining: 2.5 badges rollout slots into any phase as a palate cleanser.
 
 ## Post-ship verification (2026-06-11)
 

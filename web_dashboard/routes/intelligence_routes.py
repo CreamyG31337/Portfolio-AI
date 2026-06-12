@@ -15,6 +15,8 @@ from postgres_client import PostgresClient
 from today_briefing_service import build_today_briefing, fetch_alpha_ideas
 from track_record_service import build_track_record_summary
 from earnings_calendar_service import earnings_for_fund
+from insider_clusters_service import build_insider_cluster_buys
+from liquidity_service import build_liquidity_panel
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +235,47 @@ def ticker_evidence_timeline(ticker: str):
         return jsonify({"ticker": ticker_u, "events": events[:60]})
     except Exception as exc:
         logger.error("evidence-timeline failed: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@intelligence_bp.route("/api/insiders/cluster-buys", methods=["GET"])
+@require_auth
+def insider_cluster_buys_api():
+    """3+ distinct insiders buying within the window (ROADMAP §4.2)."""
+    try:
+        fund = request.args.get("fund")
+        days = request.args.get("days", default=30, type=int)
+        min_insiders = request.args.get("min_insiders", default=3, type=int)
+        supabase = get_supabase_client_flask()
+        if not supabase:
+            return jsonify({"error": "Database client unavailable"}), 500
+        clusters = build_insider_cluster_buys(
+            supabase,
+            fund=fund,
+            days=max(7, min(days, 90)),
+            min_insiders=max(2, min(min_insiders, 10)),
+        )
+        return jsonify({"data": clusters, "window_days": max(7, min(days, 90))})
+    except Exception as exc:
+        logger.error("insiders/cluster-buys failed: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@intelligence_bp.route("/api/liquidity/panel", methods=["GET"])
+@require_auth
+def liquidity_panel_api():
+    """Days-to-exit per holding (ROADMAP §4.3). Cold cache is slow by design:
+    one yfinance call per ticker, 6h TTL — keep it out of the briefing payload."""
+    try:
+        fund = request.args.get("fund")
+        from flask_data_utils import get_current_positions_flask
+        from liquidity_service import PARTICIPATION_RATE
+
+        positions_df = get_current_positions_flask(fund=fund)
+        rows = build_liquidity_panel(positions_df)
+        return jsonify({"data": rows, "participation_rate": PARTICIPATION_RATE})
+    except Exception as exc:
+        logger.error("liquidity/panel failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500
 
 
