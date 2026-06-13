@@ -1140,37 +1140,13 @@ def main():
                         set_user_session(auth_token, skip_cookie_redirect=True, expires_at=exp,
                                         refresh_token=cookie_refresh_token)
                         
-                        # Update cookie proactively on page load to keep it fresh
-                        # Refresh if cookie has <= 30 minutes left (keeps it fresh)
-                        # This ensures cookie stays valid and prevents logout on next page load
-                        # Redirects only happen on page load, not during active use
-                        if time_until_expiry <= 1800:  # 30 minutes
-                            # Cookie token is getting stale, refresh it proactively
-                            from auth_utils import refresh_token_if_needed
-                            try:
-                                if refresh_token_if_needed():
-                                    # Token was refreshed, update cookie with new token
-                                    # This happens on page load, so redirect is acceptable
-                                    new_token = st.session_state.get("user_token")
-                                    new_refresh = st.session_state.get("refresh_token")
-                                    if new_token and new_token != auth_token:
-                                        # New token is different, update cookies
-                                        import urllib.parse
-                                        encoded_token = urllib.parse.quote(new_token, safe='')
-                                        return_to = urllib.parse.quote(get_current_page_path(), safe='')
-                                        redirect_url = f'/set_cookie.html?token={encoded_token}&return_to={return_to}'
-                                        if new_refresh:
-                                            encoded_refresh = urllib.parse.quote(new_refresh, safe='')
-                                            redirect_url += f'&refresh_token={encoded_refresh}'
-                                        st.markdown(
-                                            f'<meta http-equiv="refresh" content="0; url={redirect_url}">',
-                                            unsafe_allow_html=True
-                                        )
-                                        st.write("Refreshing session...")
-                                        st.stop()
-                            except Exception:
-                                # If refresh fails, continue with restored session
-                                pass
+                        # NOTE: Streamlit is a legacy/prototype surface and must NOT
+                        # rotate Supabase refresh tokens. Refresh tokens are single-use;
+                        # the production Flask app owns refresh + cookie persistence. If
+                        # Streamlit also exchanged the refresh token it would revoke the
+                        # cookie Flask relies on, logging the user out (~1h later when the
+                        # access token expires). We use the restored session as-is and do
+                        # not proactively refresh here.
                         
                         # Verify user_id was set correctly
                         restored_user_id = get_user_id()
@@ -1179,53 +1155,13 @@ def main():
                             pass
                         # No rerun needed - we're already in the right state
                     elif cookie_refresh_token:
-                        # Access token expired, but we have refresh_token - try to refresh!
-                        # This is the key improvement: recover session after Docker restart
-                        try:
-                            import requests
-                            SUPABASE_URL = os.getenv("SUPABASE_URL")
-                            SUPABASE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-                            
-                            if SUPABASE_URL and SUPABASE_KEY:
-                                response = requests.post(
-                                    f"{SUPABASE_URL}/auth/v1/token?grant_type=refresh_token",
-                                    headers={
-                                        "apikey": SUPABASE_KEY,
-                                        "Content-Type": "application/json"
-                                    },
-                                    json={"refresh_token": cookie_refresh_token},
-                                    timeout=10
-                                )
-                                
-                                if response.status_code == 200:
-                                    auth_data = response.json()
-                                    new_access_token = auth_data.get("access_token")
-                                    new_refresh_token = auth_data.get("refresh_token")
-                                    new_expires_at = auth_data.get("expires_at")
-                                    
-                                    if new_access_token:
-                                        # Success! Restore session and update cookies with fresh tokens
-                                        set_user_session(new_access_token, skip_cookie_redirect=True,
-                                                        refresh_token=new_refresh_token,
-                                                        expires_at=new_expires_at)
-                                        
-                                        # Update cookies with new tokens via redirect
-                                        import urllib.parse
-                                        encoded_token = urllib.parse.quote(new_access_token, safe='')
-                                        return_to = urllib.parse.quote(get_current_page_path(), safe='')
-                                        redirect_url = f'/set_cookie.html?token={encoded_token}&return_to={return_to}'
-                                        if new_refresh_token:
-                                            encoded_refresh = urllib.parse.quote(new_refresh_token, safe='')
-                                            redirect_url += f'&refresh_token={encoded_refresh}'
-                                        st.markdown(
-                                            f'<meta http-equiv="refresh" content="0; url={redirect_url}">',
-                                            unsafe_allow_html=True
-                                        )
-                                        st.write("Session recovered, updating cookies...")
-                                        st.stop()
-                        except Exception:
-                            # Refresh failed, user will need to log in again
-                            pass
+                        # Access token expired. Streamlit (legacy) intentionally does NOT
+                        # exchange the refresh token here: Supabase refresh tokens are
+                        # single-use and the production Flask app owns refresh + cookie
+                        # rotation. Rotating the token here would revoke the cookie Flask
+                        # depends on and log the user out. The user re-authenticates via
+                        # Flask, which then issues fresh cookies.
+                        pass
                     # If token expired and no refresh_token, user will need to log in again
         except (AttributeError, Exception):
             # Cookie restoration failed - silently continue
