@@ -133,7 +133,8 @@ def build_today_briefing(
                 (c for c in ("daily_pnl_pct", "return_pct") if c in frame.columns),
                 None,
             )
-            for _, mrow in frame.iterrows():
+            # ⚡ Bolt: Replaced slow .iterrows() with .to_dict('records') for O(1) bulk conversion
+            for mrow in frame.to_dict('records'):
                 entry: dict[str, Any] = {"ticker": mrow.get("ticker"), "group": group}
                 if pct_col is not None and mrow.get(pct_col) is not None:
                     try:
