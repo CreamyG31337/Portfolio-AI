@@ -336,8 +336,9 @@ Quick wins remaining: 2.5 badges rollout slots into any phase as a palate cleans
 Full specs, research tasks, and acceptance criteria live in
 [`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) — keep the two checklists in sync.
 
-- [ ] **G1** stance evidence provenance (article IDs into `stance_history.metadata`) — P0,
-  unblocks the source-ROI report; every stance written without it is unattributable forever
+- [x] **G1** stance evidence provenance (article IDs into `stance_history.metadata`) — P0,
+  unblocks the source-ROI report; every stance written without it is unattributable forever.
+  Shipped 2026-06-13.
 - [ ] **G2** real EDGAR filing watch replacing the §4.1 placeholder (`filing_events`:
   dilution, NT late filings, 8-K 3.01, Form 25, SC 13D/G)
 - [ ] **G3a** SEDI feasibility memo → **G3b** Canadian insider pipeline (the `.TO`-heavy book

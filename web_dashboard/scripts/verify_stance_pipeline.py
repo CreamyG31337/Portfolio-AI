@@ -33,6 +33,32 @@ def main() -> int:
         print(f"  {r['source']:<22} rows={r['n']:<5} tickers={r['tickers']:<4} "
               f"first={r['first']} last={r['last']}")
 
+    print("== evidence provenance (last 24h, G1) ==")
+    rows = pg.execute_query(
+        """
+        SELECT source,
+               COUNT(*) AS n,
+               COUNT(*) FILTER (WHERE metadata ? 'evidence') AS with_evidence,
+               COUNT(*) FILTER (
+                   WHERE jsonb_array_length(
+                       COALESCE(metadata->'evidence'->'article_ids', '[]'::jsonb)
+                   ) > 0
+               ) AS with_article_ids
+        FROM stance_history
+        WHERE as_of > NOW() - INTERVAL '24 hours'
+        GROUP BY source
+        ORDER BY n DESC
+        """
+    )
+    if not rows:
+        print("  (no stances in the last 24h)")
+    for r in rows:
+        n = r["n"] or 0
+        cov = (100.0 * (r["with_evidence"] or 0) / n) if n else 0.0
+        print(f"  {r['source']:<22} rows={n:<5} "
+              f"evidence={r['with_evidence']:<5} ({cov:5.1f}%) "
+              f"article_ids={r['with_article_ids']}")
+
     print("== stance_outcomes ==")
     rows = pg.execute_query(
         "SELECT horizon_days, COUNT(*) AS n FROM stance_outcomes GROUP BY horizon_days ORDER BY 1"

@@ -319,7 +319,9 @@ land; run the relevant test suite before declaring each done.
 
 ## Phase G checklist
 
-- [ ] **G1** stance evidence provenance (manifest in `stance_history.metadata`)
+- [x] **G1** stance evidence provenance (manifest in `stance_history.metadata`) — shipped
+  2026-06-13: `build_artifact_bundle_with_evidence` + `evidence` key on both stance hooks;
+  verify script reports 24h coverage
 - [ ] **G2** EDGAR filing watch (`filing_events`, real `dilution_watch_job`, Today + dossier)
 - [ ] **G3a** SEDI feasibility memo (`docs/research/sedi_feasibility.md`)
 - [ ] **G3b** SEDI pipeline (only if G3a passes; `.TO` clusters live)

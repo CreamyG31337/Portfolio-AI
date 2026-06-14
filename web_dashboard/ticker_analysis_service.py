@@ -1246,6 +1246,31 @@ class TickerAnalysisService:
 
                 price_data = data.get('price_data') or {}
                 price_at_stance = price_data.get('current_price')
+
+                research_articles = data.get('research_articles') or []
+                article_ids = [
+                    str(a.get('id'))
+                    for a in research_articles
+                    if isinstance(a, dict) and a.get('id') is not None
+                ]
+                artifact_types: list[str] = []
+                if data.get('price_data'):
+                    artifact_types.append('price')
+                if data.get('signals'):
+                    artifact_types.append('signals')
+                if data.get('fundamentals'):
+                    artifact_types.append('fundamentals')
+                if etf_count:
+                    artifact_types.append('etf_changes')
+                if congress_count:
+                    artifact_types.append('congress')
+                if data.get('insider_trades'):
+                    artifact_types.append('insider')
+                if research_articles:
+                    artifact_types.append('articles')
+                if data.get('social_sentiment'):
+                    artifact_types.append('social')
+
                 record_stance_safe(
                     self.postgres,
                     ticker=ticker,
@@ -1260,6 +1285,10 @@ class TickerAnalysisService:
                     metadata={
                         "sentiment": sentiment_value,
                         "sentiment_score": _normalize_score(response.get('sentiment_score')),
+                        "evidence": {
+                            "article_ids": article_ids,
+                            "artifact_types": artifact_types,
+                        },
                     },
                 )
             except Exception as ledger_exc:

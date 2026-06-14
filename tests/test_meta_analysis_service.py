@@ -188,6 +188,58 @@ def test_build_artifact_bundle_includes_standard_block() -> None:
     assert "Buy the dip" in bundle
 
 
+def test_build_artifact_bundle_with_evidence_collects_article_ids_and_families() -> None:
+    """G1 provenance: manifest carries article IDs and the families that fed the bundle."""
+    article_rows = [
+        {
+            "id": UUID("11111111-1111-1111-1111-111111111111"),
+            "title": "Alpha",
+            "conclusion": "c",
+            "sentiment": "BULLISH",
+            "sentiment_score": 0.5,
+            "published_at": None,
+            "fetched_at": None,
+        },
+        {
+            "id": UUID("22222222-2222-2222-2222-222222222222"),
+            "title": "Beta",
+            "conclusion": None,
+            "sentiment": "NEUTRAL",
+            "sentiment_score": 0.0,
+            "published_at": None,
+            "fetched_at": None,
+        },
+    ]
+    pg = MagicMock()
+    # phase1 enabled (default): std, market_brief, social, articles
+    pg.execute_query.side_effect = [[_STD_ROW], [], [], article_rows]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    sb.supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[]
+    )
+    svc = _svc(pg, sb)
+    bundle, primary, evidence = svc.build_artifact_bundle_with_evidence("ABC")
+    assert primary is not None
+    assert evidence["article_ids"] == [
+        "11111111-1111-1111-1111-111111111111",
+        "22222222-2222-2222-2222-222222222222",
+    ]
+    assert "standard_analysis" in evidence["artifact_types"]
+    assert "articles" in evidence["artifact_types"]
+    assert "Alpha" in bundle
+
+
+def test_build_artifact_bundle_with_evidence_empty_when_no_standard() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    svc = _svc(pg)
+    bundle, primary, evidence = svc.build_artifact_bundle_with_evidence("XYZ")
+    assert bundle == ""
+    assert primary is None
+    assert evidence == {"article_ids": [], "artifact_types": []}
+
+
 def test_build_artifact_bundle_omits_signal_and_brief_when_phase1_disabled(monkeypatch) -> None:
     monkeypatch.delenv("META_ANALYSIS_PHASE1_SIGNAL_FUSION", raising=False)
     monkeypatch.setenv("META_ANALYSIS_PHASE1_SIGNAL_FUSION", "false")
