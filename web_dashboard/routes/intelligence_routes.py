@@ -248,7 +248,26 @@ def ticker_evidence_timeline(ticker: str):
             )
         except Exception as dil_exc:
             logger.warning("evidence-timeline dilution lookup failed: %s", dil_exc)
-        events = _serialize_rows(list(stances) + list(articles) + list(dilution))
+        # G2 filing events (distinct from G3's 'dilution': forward SEC filing risk).
+        filings: list[dict[str, Any]] = []
+        try:
+            filings = pg.execute_query(
+                """
+                SELECT 'filing' AS event_type, filed_at::timestamptz AS event_at,
+                       (form_type || ' · ' || category) AS label,
+                       'sec_filings' AS source, NULL::numeric AS confidence,
+                       jsonb_build_object('category', category, 'direction', direction,
+                                          'form_type', form_type, 'url', url) AS metadata
+                FROM filing_events
+                WHERE ticker = %s
+                ORDER BY filed_at DESC
+                LIMIT 20
+                """,
+                (ticker_u,),
+            )
+        except Exception as fil_exc:
+            logger.warning("evidence-timeline filing lookup failed: %s", fil_exc)
+        events = _serialize_rows(list(stances) + list(articles) + list(dilution) + list(filings))
         events.sort(key=lambda e: e.get("event_at") or "", reverse=True)
         return jsonify({"ticker": ticker_u, "events": events[:60]})
     except Exception as exc:
