@@ -114,6 +114,14 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: insider clusters failed: %s", exc)
 
+    dilution_alerts: list[dict[str, Any]] = []
+    try:
+        from dilution_service import fetch_recent_dilution_flags
+
+        dilution_alerts = fetch_recent_dilution_flags(pg, days=45, limit=20)
+    except Exception as exc:
+        logger.warning("Today briefing: dilution alerts failed: %s", exc)
+
     movers: list[dict[str, Any]] = []
     dividends: list[dict[str, Any]] = []
     try:
@@ -152,6 +160,7 @@ def build_today_briefing(
         "action_queue": actions,
         "alpha_articles": fetch_alpha_ideas(pg, limit=15),
         "insider_cluster_buys": insider_clusters,
+        "dilution_alerts": dilution_alerts,
         "watchlist_movers": movers,
         "upcoming_dividends": dividends,
         "updated_at": datetime.now(UTC).isoformat(),

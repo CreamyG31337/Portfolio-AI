@@ -215,14 +215,14 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     },
     'dilution_watch': {
         'name': 'Dilution Watch',
-        'description': 'PLACEHOLDER: scope enumeration only — no EDGAR scan implemented yet (ROADMAP §4.1)',
-        'default_interval_minutes': 1440,
-        # Off until the EDGAR pass exists: a daily no-op reporting success is a
-        # misleading green light in the Jobs UI.
-        'enabled_by_default': False,
+        'description': 'Flags shares-outstanding growth (dilution) on holdings + watchlist via yfinance (ROADMAP G3)',
+        'default_interval_minutes': 10080,
+        'enabled_by_default': True,
         'icon': '⚠️',
+        # Weekly: share counts move slowly, so a daily scan would only add
+        # duplicate flagged rows for the same ongoing dilution. Monday 06:30 ET.
         'cron_triggers': [
-            {'hour': 6, 'minute': 30, 'timezone': 'America/New_York'},
+            {'day_of_week': 'mon', 'hour': 6, 'minute': 30, 'timezone': 'America/New_York'},
         ],
     },
     'weekly_stance_retro': {

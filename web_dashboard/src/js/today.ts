@@ -20,6 +20,15 @@ interface LiquidityRow {
   risk_bucket: string;
 }
 
+interface DilutionAlert {
+  ticker: string;
+  window_days: number;
+  pct_change: number;
+  shares_start?: number;
+  shares_end?: number;
+  as_of?: string;
+}
+
 interface Briefing {
   market_regime?: { risk_regime?: string; as_of?: string };
   market_brief_headline?: string;
@@ -27,6 +36,7 @@ interface Briefing {
   action_queue?: Array<Record<string, unknown>>;
   alpha_articles?: Array<Record<string, unknown>>;
   insider_cluster_buys?: InsiderCluster[];
+  dilution_alerts?: DilutionAlert[];
   watchlist_movers?: Array<Record<string, unknown>>;
   upcoming_dividends?: Array<Record<string, unknown>>;
 }
@@ -148,6 +158,18 @@ async function loadBriefing(): Promise<void> {
             · ${c.insider_count} insiders, ${c.buy_count} buys, $${formatCompact(c.total_value)}
             <span class="text-xs text-text-secondary">latest ${c.latest_buy || "?"}</span>
           </div>`).join("") : `<p class="text-sm text-text-secondary">No cluster buys in the last 30 days.</p>`}`
+    );
+
+    const dilution = data.dilution_alerts || [];
+    showSection(
+      "today-dilution",
+      `<h2 class="text-lg font-semibold mb-2">Dilution alerts <span class="text-xs font-normal text-text-secondary">(shares outstanding rising)</span></h2>
+       ${dilution.length ? dilution.map((d) =>
+         `<div class="text-sm py-1 border-b border-border last:border-0">
+            <a href="/ticker?ticker=${encodeURIComponent(d.ticker)}" class="text-accent hover:underline font-semibold">${d.ticker}</a>
+            <span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">+${d.pct_change}%</span>
+            <span class="text-xs text-text-secondary">shares / ${d.window_days}d${d.as_of ? ` · as of ${d.as_of}` : ""}</span>
+          </div>`).join("") : `<p class="text-sm text-text-secondary">No dilution flagged on holdings/watchlist.</p>`}`
     );
 
     const alpha = data.alpha_articles || [];
