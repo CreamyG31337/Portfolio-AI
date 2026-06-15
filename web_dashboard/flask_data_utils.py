@@ -27,7 +27,7 @@ def get_supabase_client_flask() -> Optional[SupabaseClient]:
     which sets the Authorization header so RLS policies work correctly.
     """
     try:
-        from flask_auth_utils import get_supabase_access_token, get_refresh_token
+        from flask_auth_utils import get_supabase_access_token
         
         # Get the user's JWT token from cookies
         user_token = get_supabase_access_token()
@@ -37,11 +37,14 @@ def get_supabase_client_flask() -> Optional[SupabaseClient]:
             # Return client anyway, but queries on RLS tables will return empty
             return SupabaseClient()
         
-        # Also get refresh token so set_session() can work properly
-        refresh_token = get_refresh_token()
-        
-        logger.debug(f"[get_supabase_client_flask] Creating client with user token (length: {len(user_token)}), refresh_token: {bool(refresh_token)}")
-        return SupabaseClient(user_token=user_token, refresh_token=refresh_token)
+        # Do not pass the refresh token into SupabaseClient. The auth decorator
+        # owns refresh-token rotation; route/data clients only need the validated
+        # access token for RLS header injection.
+        logger.debug(
+            "[get_supabase_client_flask] Creating client with user token "
+            f"(length: {len(user_token)}), refresh_token=False"
+        )
+        return SupabaseClient(user_token=user_token, refresh_token=None)
         
     except Exception as e:
         logger.error(f"Error initializing Supabase client: {e}", exc_info=True)

@@ -61,7 +61,25 @@ class SupabaseClient:
             use_service_role: If True, use service role key (bypasses RLS, admin only)
         """
         self.url = os.getenv("SUPABASE_URL")
-        
+
+        # Tripwire: in a Flask request, require_auth is the SOLE owner of refresh-token
+        # rotation. If a refresh_token reaches the SDK here, set_session()/auto-refresh
+        # can rotate it in memory without writing the new token back to the cookie,
+        # which logs the user out ~1h later (refresh_token_already_used). Log loudly so
+        # we can find any remaining Flask caller that still passes one.
+        if refresh_token and not use_service_role:
+            try:
+                from flask import has_request_context, request
+                if has_request_context():
+                    logger.warning(
+                        "[SUPABASE_CLIENT] [AUTH_TRACE] tripwire: refresh_token passed to "
+                        "SupabaseClient inside a Flask request (path=%s). This can rotate the "
+                        "refresh token outside require_auth and cause unexpected logouts.",
+                        getattr(request, "path", "?"),
+                    )
+            except Exception:
+                pass
+
         if use_service_role:
             # Use service role key for admin operations (bypasses RLS)
             self.key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
