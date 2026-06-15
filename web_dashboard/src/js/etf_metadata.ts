@@ -251,7 +251,7 @@ function renderSecurities(securities: SecurityMetadata[], mode: SecurityMode, qu
                     </div>
                     <div class="flex gap-2">
                         <button data-fetch-button="${ticker}" onclick="fetchFromYfinance('${ticker}')"
-                            class="inline-flex items-center justify-center ${hasDescription ? "text-text-secondary border-border" : "text-blue-400 border-blue-400"} bg-transparent border hover:bg-blue-400/10 focus:ring-4 focus:ring-blue-400/30 font-medium rounded-lg text-sm px-4 py-2.5 transition-colors duration-200"
+                            class="inline-flex items-center justify-center ${hasDescription ?"text-text-secondary border-border" : "text-blue-400 border-blue-400"} bg-transparent border hover:bg-blue-400/10 focus:ring-4 focus:ring-blue-400/30 font-medium rounded-lg text-sm px-4 py-2.5 transition-colors duration-200"
                             title="Fetch description from yfinance">
                             <i class="fas fa-download mr-2"></i>Fetch
                         </button>

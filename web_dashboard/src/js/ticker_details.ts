@@ -1491,7 +1491,7 @@ function renderEtfTradesPagination(): void {
 
     const prevLi = document.createElement("li");
     prevLi.innerHTML = `
-        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${etfTradesCurrentPage === 0 ? "pointer-events-none opacity-50" : ""}">
+        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${etfTradesCurrentPage === 0 ?"pointer-events-none opacity-50" : ""}">
             <span class="sr-only">Previous</span>
             <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
               <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
@@ -1539,7 +1539,7 @@ function renderEtfTradesPagination(): void {
     for (let i = startPage; i <= endPage; i++) {
         const pageLi = document.createElement("li");
         pageLi.innerHTML = `
-            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary ${i === etfTradesCurrentPage ? "bg-accent text-white" : ""}">${i + 1}</a>
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary ${i === etfTradesCurrentPage ?"bg-accent text-white" : ""}">${i + 1}</a>
         `;
         pageLi.onclick = (e) => {
             e.preventDefault();
@@ -1572,7 +1572,7 @@ function renderEtfTradesPagination(): void {
 
     const nextLi = document.createElement("li");
     nextLi.innerHTML = `
-        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${etfTradesCurrentPage === totalPages - 1 ? "pointer-events-none opacity-50" : ""}">
+        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${etfTradesCurrentPage === totalPages - 1 ?"pointer-events-none opacity-50" : ""}">
             <span class="sr-only">Next</span>
             <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
               <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 9l4-4-4-4"/>
@@ -2191,7 +2191,7 @@ function renderInsiderTradesPagination(): void {
 
     const prevLi = document.createElement("li");
     prevLi.innerHTML = `
-        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${insiderTradesCurrentPage === 0 ? "pointer-events-none opacity-50" : ""}">
+        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${insiderTradesCurrentPage === 0 ?"pointer-events-none opacity-50" : ""}">
             <span class="sr-only">Previous</span>
             <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
               <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
@@ -2239,7 +2239,7 @@ function renderInsiderTradesPagination(): void {
     for (let i = startPage; i <= endPage; i++) {
         const pageLi = document.createElement("li");
         pageLi.innerHTML = `
-            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary ${i === insiderTradesCurrentPage ? "bg-accent text-white" : ""}">${i + 1}</a>
+            <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border hover:bg-dashboard-surface-alt hover:text-text-primary ${i === insiderTradesCurrentPage ?"bg-accent text-white" : ""}">${i + 1}</a>
         `;
         pageLi.onclick = (e) => {
             e.preventDefault();
@@ -2272,7 +2272,7 @@ function renderInsiderTradesPagination(): void {
 
     const nextLi = document.createElement("li");
     nextLi.innerHTML = `
-        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${insiderTradesCurrentPage === totalPages - 1 ? "pointer-events-none opacity-50" : ""}">
+        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${insiderTradesCurrentPage === totalPages - 1 ?"pointer-events-none opacity-50" : ""}">
             <span class="sr-only">Next</span>
             <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
               <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 9l4-4-4-4"/>
