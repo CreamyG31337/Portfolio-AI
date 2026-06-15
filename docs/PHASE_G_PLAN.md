@@ -167,14 +167,22 @@ by nature (EDGAR has no Canadian filings).
    `filing` events merged into `GET /api/ticker/<ticker>/evidence-timeline`
    (`web_dashboard/routes/intelligence_routes.py`, line 203). This endpoint reads the **Research
    Postgres DB** via `PostgresClient` (not Supabase); it currently merges `stance` + `article`
-   event types — add a third `event_type='filing'` from `filing_events`.
+   event types (G3 added `dilution`) — add a third source `event_type='filing'` from `filing_events`.
+   **Naming — keep G2 and G3 distinct.** Both touch "dilution" (G2 = forward filing *intent*,
+   e.g. an S-3 category='dilution'; G3 = realized share-count growth), so do NOT reuse G3's
+   names: use briefing key `filing_alerts` (not `dilution_alerts`), a separate Today block
+   labeled e.g. "SEC filings (risk)" distinct from G3's "Dilution alerts", and timeline
+   `event_type='filing'` distinct from G3's `'dilution'`. Complementary signals, clearly labeled.
 
 **RESEARCH:** (a) ~~submissions-API shape + how 8-K items are exposed~~ — **RESOLVED live
 2026-06-14** (both endpoints hit, fair-access UA + ~9 req/s throttle reused): items are inline,
 no per-8-K fetch needed; no pagination; findings folded into steps 2–3 above. (b) going-concern
 language detection in 10-K/Q via EDGAR full-text search
-(`https://efts.sec.gov/LATEST/search-index?q=...`) — **still open**; assess feasibility and, if
-cheap, add as `category='distress'`, otherwise defer and say so here.
+(`https://efts.sec.gov/LATEST/search-index?q=...`) — **DEFERRED for V1 (2026-06-14):** it needs a
+full-text query/fetch per 10-K/Q (the inline-`items` shortcut that makes 8-K Item 3.01 free does
+not apply to going-concern language), so it's left out to keep the nightly scan to one submissions
+fetch per ticker. Revisit as a `category='distress'` add-on if the per-ticker FTS cost proves
+acceptable.
 
 **Acceptance:** job runs against prod scope without placeholder messaging; fixture-based unit
 tests for classification + dedupe on `accession_no`; events visible on dossier timeline;
@@ -228,9 +236,11 @@ was built (and where it diverged from the original sketch):
 - **Lagging, not an alert** — detects realized issuance after it hits the share count, not the
   filing moment, and the data tail is ~50d stale. Forward intent (a shelf before it's drawn) is
   exactly what G2's EDGAR watch adds for US names — G2 and G3 are complementary.
-- **No Canadian insider coverage.** Killing SEDI leaves §4.2 insider clusters US-only; no free,
-  ToS-clean Canadian insider source exists. Gap accepted; `insider_clusters_service.py` stays
-  source-agnostic so a feed could drop in later.
+- **Canadian insider coverage is a separate, still-open gap.** G3 closes the *dilution* blind
+  spot on `.TO`, but **not** the *insider-cluster* blind spot — §4.2 clusters remain US-only
+  (Form 4). That gap is NOT accepted as permanent: a 2026-06-14 probe found yfinance
+  `Ticker(t).insider_transactions` **does carry SEDI data for `.TO` names** (GLO.TO, GMIN.TO,
+  CNR.TO, DRX.TO all returned real insider rows), so it's closeable for free — see **G7**.
 
 ## G4 — Cross-signal confluence scorer (no LLM)
 
@@ -322,6 +332,44 @@ Research DB; show on the dossier; optionally feed a "short-ratio spike" family i
 **RESEARCH:** confirm current file URL/format and whether consolidated (CNMS) covers the
 listings you hold. **Size:** S.
 
+## G7 — Canadian insider coverage via yfinance (revives the dropped SEDI goal, for free)
+
+**Why:** the §4.2 insider-cluster feature is Form 4 only, so it's blind to the `.TO` half of the
+book — the gap the original (SEDI) G3 was meant to fix before SEDAR+ was dropped as paid/ToS-
+blocked. **A 2026-06-14 probe reopened it:** `yfinance.Ticker(t).insider_transactions` carries
+Yahoo-sourced **SEDI data for `.TO` tickers** — free, and yfinance is already core infrastructure
+here (no new dependency, no new ToS exposure). Live sample: GLO.TO returned officer/director
+"Acquisition in the public market" buys; GMIN.TO 92 rows, CNR.TO 150, DRX.TO 7 (CCO.TO 0 — not
+every name has data). This is lower-fidelity than an official feed but non-zero and free.
+
+**What to build:**
+1. A small job (weekly; e.g. fold into `jobs_insiders.py` or a sibling) that, for production-fund
+   `.TO`/`.V` holdings + watchlist, reads `yf.Ticker(t).insider_transactions` and upserts into the
+   existing Supabase `insider_trades` table. The **source-agnostic** `insider_clusters_service.py`
+   then picks Canadian names up automatically (verify with a `.TO` fixture test).
+2. **Add the `source` column** to `insider_trades` first (additive migration: `'sec_form4'`
+   default vs `'yahoo_sedi'`) so provenance is queryable and the two ingesters don't fight.
+3. **Parsing (from the probe — the `Transaction` column is blank for these rows; classify off the
+   `Text` field):**
+   - `"Acquisition in the public market…"` → `type='Purchase'` (the conviction signal clusters need)
+   - `"Sale at price…"` → `type='Sale'`
+   - **Exclude** `"Exercise of options…"`, `"Stock Gift…"`, `"Redemption, retraction…"` — not
+     open-market conviction trades; counting them would fabricate clusters.
+   - Fields: `Insider` (format `"Surname (First)"` — normalize), `Start Date` → `transaction_date`,
+     `Shares`, price parsed from `Text` (`Value` is sometimes NaN). Map onto the existing
+     `insider_trades` unique key; trust the DB unique index + upsert (the pre-upsert dup check in
+     `jobs_insiders.py` is narrower — see notes carried over from the old SEDI plan).
+
+**Honest limitations:** best-effort completeness (Yahoo's SEDI mirror, not the source); some names
+return nothing; option-exercise/gift noise must be filtered. Good enough to surface `.TO` insider
+clusters that are invisible today; not a system of record.
+
+**Acceptance:** `source` column added; `.TO` insider rows ingested and deduped across re-runs;
+`insider_clusters_service` surfaces a `.TO` cluster in a fixture test; no option-exercise/gift
+rows leak in as Purchases.
+**Size:** M (2–3 days). **Coordinate with whoever is editing the insider code** (Cursor is in
+that area now) to avoid collisions.
+
 ---
 
 ## Explicitly deferred (do NOT build in Phase G)
@@ -341,17 +389,18 @@ listings you hold. **Size:** S.
 
 ```
 G1 provenance (P0, days) ✓ shipped
-  ├─> G3 shares-outstanding dilution watch (free, all tickers incl .TO) ──┐
+  ├─> G3 shares-outstanding dilution watch (free, all tickers incl .TO) ✓ ─┐
   ├─> G2 EDGAR filing-risk watch (US: shelf/distress/delisting/13D)    ───┤
   │                                                                       └─> G4 confluence (dilution + filing families)
+  ├─> G7 Canadian insider coverage via yfinance (closes the .TO cluster gap, free)
   ├─> G5 retro Mailgun (parallel, anytime)
   └─> G6 short volume (optional, last)
 ```
 
-Work order recommendation: **G1 ✓ → G3 → G2 → G4 → G5 → G6 as appetite allows.** G3 now leads
-the dilution work because it's free, country-agnostic (covers the `.TO` book EDGAR can't see), and
-already validated against real holdings; G2 adds the US forward/distress/activist signal on top.
-One PR-sized change set per item; check items off here and in ROADMAP.md as they land; run the
+Work order recommendation: **G1 ✓ → G3 ✓ → G2 → G4 → G7 → G5 → G6 as appetite allows.** G3 led
+the dilution work because it's free, country-agnostic, and already validated; G2 adds the US
+forward/distress/activist signal; G7 closes the remaining `.TO` *insider* gap for free. One
+PR-sized change set per item; check items off here and in ROADMAP.md as they land; run the
 relevant test suite before declaring each done.
 
 ## Phase G checklist
@@ -361,10 +410,22 @@ relevant test suite before declaring each done.
   verify script reports 24h coverage
 - [x] **G3** dilution watch via shares-outstanding (free; yfinance `get_shares_full`;
   `dilution_observations`; replaces the §4.1 placeholder; covers `.TO`) — **shipped 2026-06-14**,
-  live run flagged GLO.TO +59%, GANX +37%, OKLO +25%, PANW +21%, LTRX +12%. *(SEDAR+/SEDI dropped —
-  paid or ToS-violating; Canadian insider gap accepted.)*
-- [ ] **G2** EDGAR filing-risk watch — US (`filing_events`, new `sec_filings` job: shelf/distress/
-  delisting/13D; Today + dossier)
+  live run flagged GLO.TO +59%, GANX +37%, OKLO +25%, PANW +21%, LTRX +12%. *(SEDAR+ dilution
+  dropped — paid/ToS; the `.TO` insider gap it left is now G7, not accepted as permanent.)*
+- [x] **G2** EDGAR filing-risk watch — US (`filing_events`, new `sec_filings` job: shelf/distress/
+  delisting/13D; Today + dossier). EDGAR endpoints research-confirmed live 2026-06-14.
+  **Shipped 2026-06-14:** shared throttled SEC client `scheduler/sec_http.py` (extracted from
+  `sec_form4_poc.py` — one global ~9 req/s limiter); `sec_filings_service.py` (ticker→CIK via
+  `company_tickers.json`, weekly disk cache; `classify_filing`; parallel-array extraction; dedupe;
+  graceful-degrade reader); `scheduler/jobs_sec_filings.py` (`JOB_ID="sec_filings"`, mon–fri
+  18:30 ET, `enabled_by_default=False` until the table is applied); `filing_events.sql` wired into
+  `_init_schema.sql` (NOT applied to prod — human applies the DDL); Today block `filing_alerts`
+  ("SEC filings (risk)") + `event_type='filing'` on the evidence timeline; 21 unit tests.
+  **Deferred for V1:** going-concern full-text detection (EDGAR FTS — not wired) and 8-K
+  reverse-split detection (needs filing-title/full-text parsing); both need a per-filing fetch
+  the inline-`items` approach avoids, so left out to keep the nightly scan cheap.
 - [ ] **G4** confluence scorer (`confluence_events`, ledger hook at score ≥ 3, Today block)
+- [ ] **G7** Canadian insider coverage via yfinance `insider_transactions` (free; `source` col on
+  `insider_trades`; feeds the source-agnostic §4.2 clusters; closes the `.TO` insider blind spot)
 - [ ] **G5** weekly retro Mailgun digest (admin/env recipient list via `RETRO_DIGEST_RECIPIENTS`)
 - [ ] **G6** FINRA daily short volume (optional)

@@ -344,10 +344,15 @@ Full specs, research tasks, and acceptance criteria live in
   tickers incl. `.TO`**; live run flagged GLO.TO +59%, GANX +37%, OKLO +25%, PANW +21% (365d),
   LTRX +12% (90d). *SEDAR+/SEDI dropped: only free path is a CAPTCHA bypass (ToS), only clean path
   is a paid feed (declined); Canadian insider gap accepted.*
-- [ ] **G2** **EDGAR (US)** filing-risk watch (`filing_events`, new `sec_filings` job): the
+- [x] **G2** **EDGAR (US)** filing-risk watch (`filing_events`, new `sec_filings` job): the
   *forward* dilution signal (shelf/S-3) + distress/late-filing, delisting, activist 13D —
-  categories the share count can't show
+  categories the share count can't show. **Shipped 2026-06-14** (shared SEC client, ticker→CIK
+  map, classifier, Today `filing_alerts` block + dossier timeline, 21 tests; `filing_events` DDL
+  pending human apply; going-concern FTS deferred). See [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) G2.
 - [ ] **G4** cross-signal confluence scorer (no LLM; events recorded as scoreable stances)
+- [ ] **G7** Canadian insider coverage via yfinance `insider_transactions` (free; closes the `.TO`
+  insider-cluster blind spot the dropped SEDI plan left — probe 2026-06-14 confirmed Yahoo carries
+  SEDI data for `.TO`). Revives the original G3 goal without paying or scraping.
 - [ ] **G5** weekly retro → Mailgun digest
 - [ ] **G6** FINRA daily short volume (optional)
 
