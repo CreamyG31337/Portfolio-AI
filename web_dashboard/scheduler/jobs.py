@@ -229,9 +229,9 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'name': 'SEC Filing Watch',
         'description': 'US EDGAR filing-risk watch (shelf/dilution intent, distress, delisting, activist 13D) on holdings + watchlist (ROADMAP G2)',
         'default_interval_minutes': 1440,
-        # Stays False until a human applies the filing_events table to the
-        # Research DB (see docs/PHASE_G_PLAN.md G2); flip to True after that.
-        'enabled_by_default': False,
+        # filing_events table applied to the Research DB (see docs/PHASE_G_PLAN.md
+        # G2), so the job is now enabled.
+        'enabled_by_default': True,
         'icon': '📄',
         # Daytime ET (18:30) on business days: after the SEC 5:30pm ET filing
         # cutoff so the day's filings have posted, and well before the future G4
