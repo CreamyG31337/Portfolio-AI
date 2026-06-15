@@ -17,7 +17,6 @@ import io
 import logging
 import os
 import re
-import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -51,38 +50,20 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 SEC_ARCHIVES = "https://www.sec.gov/Archives"
-# SEC requires User-Agent with contact: "Company Name AdminContact@company.com" (see sec.gov/os/accessing-edgar-data)
-DEFAULT_USER_AGENT = "LLM-Micro-Cap-Trading-Bot AdminContact@example.com"
-# Target ~9 requests/sec to stay under SEC's 10/sec; limiter is global and thread-safe for parallel fetch
-_REQUESTS_PER_SEC = 9.0
-_rate_limit_lock = threading.Lock()
-_last_request_time = 0.0
 
-
-def _rate_limit_wait() -> None:
-    """Wait until we can start another SEC request (thread-safe, ~9 req/s)."""
-    global _last_request_time
-    with _rate_limit_lock:
-        now = time.monotonic()
-        wait = (_last_request_time + (1.0 / _REQUESTS_PER_SEC)) - now
-        if wait > 0:
-            _rate_limit_lock.release()
-            time.sleep(wait)
-            _rate_limit_lock.acquire()
-        _last_request_time = time.monotonic()
-
+# Throttle, fair-access headers, and retry constants live in the shared SEC
+# client so this POC, the ticker→CIK map, and the submissions poll (G2) all
+# share ONE global ~9 req/s limiter rather than each keeping its own.
+from scheduler.sec_http import (  # noqa: E402
+    DEFAULT_USER_AGENT,  # noqa: F401  (re-exported for callers/back-compat)
+    RETRYABLE_STATUS,
+    SEC_FETCH_BACKOFF_BASE,
+    SEC_FETCH_MAX_RETRIES,
+)
+from scheduler.sec_http import headers as _headers  # noqa: E402
+from scheduler.sec_http import rate_limit_wait as _rate_limit_wait  # noqa: E402
 
 FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "").strip()
-
-# Retry on transient server/rate-limit errors (503, 502, 429)
-RETRYABLE_STATUS = (429, 502, 503)
-SEC_FETCH_MAX_RETRIES = int(os.getenv("SEC_FETCH_MAX_RETRIES", "5"))
-SEC_FETCH_BACKOFF_BASE = float(os.getenv("SEC_FETCH_BACKOFF_BASE", "2.0"))
-
-
-def _headers() -> Dict[str, str]:
-    ua = os.getenv("SEC_EDGAR_USER_AGENT", "").strip() or DEFAULT_USER_AGENT
-    return {"User-Agent": ua, "Accept-Encoding": "gzip", "Accept": "*/*"}
 
 
 def fetch_via_flaresolverr(url: str, timeout: int = 120) -> Optional[str]:

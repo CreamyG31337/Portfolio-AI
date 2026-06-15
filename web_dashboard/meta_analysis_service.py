@@ -178,7 +178,7 @@ class TickerMetaAnalysisService:
     def _fetch_article_snippets(self, ticker: str) -> list[dict[str, Any]]:
         return self.postgres.execute_query(
             """
-            SELECT title, conclusion, sentiment, sentiment_score, published_at, fetched_at
+            SELECT id, title, conclusion, sentiment, sentiment_score, published_at, fetched_at
             FROM research_articles
             WHERE (
                 ticker = %s
@@ -374,11 +374,29 @@ class TickerMetaAnalysisService:
         parts.append("")
 
     def build_artifact_bundle(self, ticker: str) -> tuple[str, dict[str, Any] | None]:
-        """Return (formatted bundle text, primary standard analysis row)."""
+        """Return (formatted bundle text, primary standard analysis row).
+
+        Back-compat 2-tuple wrapper. Use build_artifact_bundle_with_evidence when
+        you need the evidence manifest (G1 stance provenance).
+        """
+        bundle, primary, _evidence = self.build_artifact_bundle_with_evidence(ticker)
+        return bundle, primary
+
+    def build_artifact_bundle_with_evidence(
+        self, ticker: str
+    ) -> tuple[str, dict[str, Any] | None, dict[str, Any]]:
+        """Return (bundle text, primary standard analysis row, evidence manifest).
+
+        The manifest records which artifact families fed the bundle and the
+        research article IDs included, so stances written from this bundle are
+        attributable (G1 provenance). Families with no data are omitted.
+        """
+        evidence: dict[str, Any] = {"article_ids": [], "artifact_types": []}
         std_rows = self.fetch_latest_standard_analyses(ticker)
         if not std_rows:
-            return "", None
+            return "", None, evidence
 
+        families: list[str] = ["standard_analysis"]
         parts: list[str] = []
 
         for i, row in enumerate(std_rows):
@@ -395,6 +413,7 @@ class TickerMetaAnalysisService:
         if is_meta_analysis_phase1_signal_fusion_enabled():
             signal = self._fetch_signal_snapshot(ticker)
             if signal:
+                families.append("signals")
                 structure = signal.get("structure_signal") or {}
                 timing = signal.get("timing_signal") or {}
                 fear = signal.get("fear_risk_signal") or {}
@@ -425,6 +444,7 @@ class TickerMetaAnalysisService:
 
             market_brief = self._fetch_market_brief_snippet()
             if market_brief:
+                families.append("market_regime")
                 regime_raw = market_brief.get("regime_json") or {}
                 if isinstance(regime_raw, str):
                     try:
@@ -477,10 +497,14 @@ class TickerMetaAnalysisService:
                 parts.append("")
 
         if is_meta_analysis_phase3_sector_enabled():
+            _before_sector = len(parts)
             self._append_sector_prior_block(parts, ticker)
+            if len(parts) > _before_sector:
+                families.append("sector_prior")
 
         social = self._fetch_social_snippets(ticker)
         if social:
+            families.append("social")
             parts.append("### Social sentiment AI (session-level)")
             for s in social:
                 themes = s.get("key_themes") or []
@@ -497,8 +521,12 @@ class TickerMetaAnalysisService:
 
         articles = self._fetch_article_snippets(ticker)
         if articles:
+            families.append("articles")
             parts.append("### Research articles (titles + conclusions + sentiment only)")
             for a in articles:
+                aid = a.get("id")
+                if aid is not None:
+                    evidence["article_ids"].append(str(aid))
                 parts.append(f"- {_clip(a.get('title'), 200)}")
                 parts.append(
                     f"  sentiment={a.get('sentiment')} score={a.get('sentiment_score')} "
@@ -510,6 +538,8 @@ class TickerMetaAnalysisService:
             parts.append("")
 
         trade_ai, sessions = self._fetch_congress_snippets(ticker)
+        if sessions or trade_ai:
+            families.append("congress")
         if sessions:
             parts.append("### Congress session AI summaries")
             for ses in sessions:
@@ -528,7 +558,8 @@ class TickerMetaAnalysisService:
                 )
                 parts.append(f"  {_clip(t.get('reasoning'), _MAX_REASON)}")
 
-        return "\n".join(parts).strip(), std_rows[0]
+        evidence["artifact_types"] = families
+        return "\n".join(parts).strip(), std_rows[0], evidence
 
     def run_meta_analysis(
         self,
@@ -539,7 +570,7 @@ class TickerMetaAnalysisService:
         model_chain_override: Sequence[str] | None = None,
     ) -> dict[str, Any] | None:
         ticker_u = ticker.upper().strip()
-        bundle, primary = self.build_artifact_bundle(ticker_u)
+        bundle, primary, evidence = self.build_artifact_bundle_with_evidence(ticker_u)
         if not primary:
             logger.warning("Meta analysis skipped for %s: no standard ticker_analysis", ticker_u)
             return None
@@ -624,6 +655,7 @@ class TickerMetaAnalysisService:
             model,
             requested_by,
             bundle_digest,
+            evidence=evidence,
         )
         return self.fetch_meta_row(ticker_u)
 
@@ -635,6 +667,7 @@ class TickerMetaAnalysisService:
         model_used: str,
         requested_by: str | None,
         bundle_digest: str,
+        evidence: dict[str, Any] | None = None,
     ) -> None:
         src_id = primary.get("id")
         snap = primary.get("updated_at")
@@ -713,6 +746,13 @@ class TickerMetaAnalysisService:
         try:
             from stance_history import record_stance_safe
 
+            stance_metadata: dict[str, Any] = {
+                "contradictions_count": len(contradictions),
+                "artifact_bundle_digest": bundle_digest,
+            }
+            if evidence:
+                stance_metadata["evidence"] = evidence
+
             record_stance_safe(
                 self.postgres,
                 ticker=ticker,
@@ -723,10 +763,7 @@ class TickerMetaAnalysisService:
                 model_used=model_used,
                 requested_by=requested_by,
                 source_ref_id=str(src_id) if src_id else None,
-                metadata={
-                    "contradictions_count": len(contradictions),
-                    "artifact_bundle_digest": bundle_digest,
-                },
+                metadata=stance_metadata,
             )
         except Exception as ledger_exc:
             logger.warning("stance_history hook failed for %s: %s", ticker, ledger_exc)

@@ -20,6 +20,25 @@ interface LiquidityRow {
   risk_bucket: string;
 }
 
+interface DilutionAlert {
+  ticker: string;
+  window_days: number;
+  pct_change: number;
+  shares_start?: number;
+  shares_end?: number;
+  as_of?: string;
+}
+
+interface FilingAlert {
+  ticker: string;
+  form_type: string;
+  category: string;
+  direction: string;
+  filed_at?: string;
+  title?: string;
+  url?: string;
+}
+
 interface Briefing {
   market_regime?: { risk_regime?: string; as_of?: string };
   market_brief_headline?: string;
@@ -27,6 +46,8 @@ interface Briefing {
   action_queue?: Array<Record<string, unknown>>;
   alpha_articles?: Array<Record<string, unknown>>;
   insider_cluster_buys?: InsiderCluster[];
+  dilution_alerts?: DilutionAlert[];
+  filing_alerts?: FilingAlert[];
   watchlist_movers?: Array<Record<string, unknown>>;
   upcoming_dividends?: Array<Record<string, unknown>>;
 }
@@ -148,6 +169,36 @@ async function loadBriefing(): Promise<void> {
             · ${c.insider_count} insiders, ${c.buy_count} buys, $${formatCompact(c.total_value)}
             <span class="text-xs text-text-secondary">latest ${c.latest_buy || "?"}</span>
           </div>`).join("") : `<p class="text-sm text-text-secondary">No cluster buys in the last 30 days.</p>`}`
+    );
+
+    const dilution = data.dilution_alerts || [];
+    showSection(
+      "today-dilution",
+      `<h2 class="text-lg font-semibold mb-2">Dilution alerts <span class="text-xs font-normal text-text-secondary">(shares outstanding rising)</span></h2>
+       ${dilution.length ? dilution.map((d) =>
+         `<div class="text-sm py-1 border-b border-border last:border-0">
+            <a href="/ticker?ticker=${encodeURIComponent(d.ticker)}" class="text-accent hover:underline font-semibold">${d.ticker}</a>
+            <span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">+${d.pct_change}%</span>
+            <span class="text-xs text-text-secondary">shares / ${d.window_days}d${d.as_of ? ` · as of ${d.as_of}` : ""}</span>
+          </div>`).join("") : `<p class="text-sm text-text-secondary">No dilution flagged on holdings/watchlist.</p>`}`
+    );
+
+    const filings = data.filing_alerts || [];
+    const filingBadge = (direction: string): string => {
+      if (direction === "positive") return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      if (direction === "neutral") return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200";
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+    };
+    showSection(
+      "today-filings",
+      `<h2 class="text-lg font-semibold mb-2">SEC filings (risk) <span class="text-xs font-normal text-text-secondary">(US EDGAR: shelf, distress, delisting, 13D)</span></h2>
+       ${filings.length ? filings.map((f) =>
+         `<div class="text-sm py-1 border-b border-border last:border-0">
+            <a href="/ticker?ticker=${encodeURIComponent(f.ticker)}" class="text-accent hover:underline font-semibold">${f.ticker}</a>
+            <span class="ml-1 text-xs px-1.5 py-0.5 rounded ${filingBadge(f.direction)}">${f.form_type}</span>
+            <span class="text-xs text-text-secondary">${f.category}${f.filed_at ? ` · ${f.filed_at}` : ""}</span>
+            ${f.url ? ` · <a href="${f.url}" target="_blank" rel="noopener" class="text-accent hover:underline text-xs">filing</a>` : ""}
+          </div>`).join("") : `<p class="text-sm text-text-secondary">No SEC filing risk events on holdings/watchlist.</p>`}`
     );
 
     const alpha = data.alpha_articles || [];

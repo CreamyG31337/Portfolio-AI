@@ -1,5 +1,6 @@
 """Tests for stance_history ledger helper."""
 
+import json
 from unittest.mock import MagicMock
 
 from web_dashboard.stance_history import (
@@ -112,3 +113,43 @@ def test_record_stance_dedupes_per_fund_key() -> None:
 
     query_args = pg.execute_query.call_args[0][1]
     assert query_args == ("ABC", "action_queue_ai_review", "FundA")
+
+
+def test_record_stance_serializes_evidence_metadata() -> None:
+    """G1 provenance: evidence manifest survives JSON serialization into metadata."""
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    pg.execute_update.return_value = 1
+
+    evidence = {
+        "article_ids": ["11111111-1111-1111-1111-111111111111"],
+        "artifact_types": ["standard_analysis", "articles", "social"],
+    }
+    inserted = record_stance(
+        pg,
+        ticker="ABC",
+        source="ticker_meta_analysis",
+        stance="BULLISH",
+        confidence=0.7,
+        metadata={"contradictions_count": 2, "evidence": evidence},
+    )
+
+    assert inserted is True
+    # Insert positional args: metadata json is the last bound parameter.
+    insert_args = pg.execute_update.call_args[0][1]
+    metadata_json = insert_args[-1]
+    assert isinstance(metadata_json, str)
+    parsed = json.loads(metadata_json)
+    assert parsed["evidence"] == evidence
+    assert parsed["contradictions_count"] == 2
+
+
+def test_record_stance_metadata_none_when_empty() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    pg.execute_update.return_value = 1
+
+    record_stance(pg, ticker="ABC", source="ticker_analysis", stance="BUY")
+
+    insert_args = pg.execute_update.call_args[0][1]
+    assert insert_args[-1] is None

@@ -40,6 +40,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/stance_history.sql
 \i tables/stance_outcomes.sql
 \i tables/idea_triage.sql
+\i tables/dilution_observations.sql
+\i tables/filing_events.sql
 
 -- FUNCTIONS
 \i functions/array_to_halfvec.sql

@@ -215,14 +215,31 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     },
     'dilution_watch': {
         'name': 'Dilution Watch',
-        'description': 'PLACEHOLDER: scope enumeration only — no EDGAR scan implemented yet (ROADMAP §4.1)',
-        'default_interval_minutes': 1440,
-        # Off until the EDGAR pass exists: a daily no-op reporting success is a
-        # misleading green light in the Jobs UI.
-        'enabled_by_default': False,
+        'description': 'Flags shares-outstanding growth (dilution) on holdings + watchlist via yfinance (ROADMAP G3)',
+        'default_interval_minutes': 10080,
+        'enabled_by_default': True,
         'icon': '⚠️',
+        # Weekly: share counts move slowly, so a daily scan would only add
+        # duplicate flagged rows for the same ongoing dilution. Monday 06:30 ET.
         'cron_triggers': [
-            {'hour': 6, 'minute': 30, 'timezone': 'America/New_York'},
+            {'day_of_week': 'mon', 'hour': 6, 'minute': 30, 'timezone': 'America/New_York'},
+        ],
+    },
+    'sec_filings': {
+        'name': 'SEC Filing Watch',
+        'description': 'US EDGAR filing-risk watch (shelf/dilution intent, distress, delisting, activist 13D) on holdings + watchlist (ROADMAP G2)',
+        'default_interval_minutes': 1440,
+        # filing_events table applied to the Research DB (see docs/PHASE_G_PLAN.md
+        # G2), so the job is now enabled.
+        'enabled_by_default': True,
+        'icon': '📄',
+        # Daytime ET (18:30) on business days: after the SEC 5:30pm ET filing
+        # cutoff so the day's filings have posted, and well before the future G4
+        # confluence slot (~22:30 ET) which reads filing_events. No LLM, so no
+        # Ollama contention. 18:30 ET is free in cron_triggers (file mixes ET/PT;
+        # 22:15 ET = 19:15 PT is taken).
+        'cron_triggers': [
+            {'day_of_week': 'mon-fri', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'},
         ],
     },
     'weekly_stance_retro': {
@@ -670,6 +687,7 @@ from scheduler.jobs_dashboard_research import (
 from scheduler.jobs_stance_outcomes import stance_outcomes_job
 from scheduler.jobs_contradiction_drilldown import contradiction_drilldown_job
 from scheduler.jobs_dilution_watch import dilution_watch_job
+from scheduler.jobs_sec_filings import sec_filings_job
 from scheduler.jobs_weekly_stance_retro import weekly_stance_retro_job
 from scheduler.jobs_ui_ai_summaries import ui_ai_summaries_job
 
@@ -769,6 +787,7 @@ __all__ = [
     'stance_outcomes_job',
     'contradiction_drilldown_job',
     'dilution_watch_job',
+    'sec_filings_job',
     'weekly_stance_retro_job',
     'ui_ai_summaries_job',
     # Research jobs
@@ -1420,6 +1439,30 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True,
         )
         logger.info("Registered job: dilution_watch (daily advisory)")
+
+    # G2: registered only once the human enables it (after applying filing_events).
+    if AVAILABLE_JOBS.get('sec_filings', {}).get('enabled_by_default', False):
+        sf_cfg = AVAILABLE_JOBS['sec_filings']
+        sf_triggers = sf_cfg.get(
+            'cron_triggers',
+            [{'day_of_week': 'mon-fri', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'}],
+        )
+        sf_trigger = sf_triggers[0]
+        scheduler.add_job(
+            sec_filings_job,
+            trigger=CronTrigger(
+                day_of_week=sf_trigger.get('day_of_week', 'mon-fri'),
+                hour=sf_trigger.get('hour', 18),
+                minute=sf_trigger.get('minute', 30),
+                timezone=sf_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='sec_filings',
+            name=f"{get_job_icon('sec_filings')} SEC Filing Watch",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info("Registered job: sec_filings (daytime ET filing watch)")
 
     if AVAILABLE_JOBS.get('weekly_stance_retro', {}).get('enabled_by_default', True):
         wr_cfg = AVAILABLE_JOBS['weekly_stance_retro']

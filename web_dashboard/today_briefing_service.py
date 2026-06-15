@@ -114,6 +114,23 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: insider clusters failed: %s", exc)
 
+    dilution_alerts: list[dict[str, Any]] = []
+    try:
+        from dilution_service import fetch_recent_dilution_flags
+
+        dilution_alerts = fetch_recent_dilution_flags(pg, days=45, limit=20)
+    except Exception as exc:
+        logger.warning("Today briefing: dilution alerts failed: %s", exc)
+
+    # G2 (distinct from G3's dilution_alerts): US EDGAR filing-risk events.
+    filing_alerts: list[dict[str, Any]] = []
+    try:
+        from sec_filings_service import fetch_recent_filing_alerts
+
+        filing_alerts = fetch_recent_filing_alerts(pg, days=14, limit=20)
+    except Exception as exc:
+        logger.warning("Today briefing: filing alerts failed: %s", exc)
+
     movers: list[dict[str, Any]] = []
     dividends: list[dict[str, Any]] = []
     try:
@@ -133,7 +150,7 @@ def build_today_briefing(
                 (c for c in ("daily_pnl_pct", "return_pct") if c in frame.columns),
                 None,
             )
-            for _, mrow in frame.iterrows():
+            for mrow in frame.to_dict('records'):
                 entry: dict[str, Any] = {"ticker": mrow.get("ticker"), "group": group}
                 if pct_col is not None and mrow.get(pct_col) is not None:
                     try:
@@ -152,6 +169,8 @@ def build_today_briefing(
         "action_queue": actions,
         "alpha_articles": fetch_alpha_ideas(pg, limit=15),
         "insider_cluster_buys": insider_clusters,
+        "dilution_alerts": dilution_alerts,
+        "filing_alerts": filing_alerts,
         "watchlist_movers": movers,
         "upcoming_dividends": dividends,
         "updated_at": datetime.now(UTC).isoformat(),
