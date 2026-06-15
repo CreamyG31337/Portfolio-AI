@@ -3,7 +3,7 @@ Dilution watch job (ROADMAP G3).
 
 Free, country-agnostic dilution detection: a rising shares-outstanding count IS
 dilution. Pulls share-count history from yfinance (`get_shares_full`, works for
-US and `.TO`/`.V` tickers alike), computes 30/90-day growth for production-fund
+US and `.TO`/`.V` tickers alike), computes 90/365-day growth for production-fund
 holdings + watchlist, and records flagged movers into `dilution_observations`.
 
 Replaces the old §4.1 placeholder. No LLM. The complementary US filing watch
@@ -28,6 +28,9 @@ from scheduler.scheduler_core import log_job_execution
 logger = logging.getLogger(__name__)
 
 JOB_ID = "dilution_watch"
+
+# Supabase REST returns at most 1000 rows per request regardless of .limit().
+_PAGE_SIZE = 1000
 
 
 def _production_fund_names(supabase_client) -> list[str]:
@@ -54,22 +57,38 @@ def _collect_tickers(supabase_client) -> list[str]:
     tickers: set[str] = set()
     production_funds = _production_fund_names(supabase_client)
     try:
-        holdings_query = supabase_client.supabase.table("latest_positions").select("ticker,fund")
-        if production_funds:
-            holdings_query = holdings_query.in_("fund", production_funds)
-        pos = holdings_query.execute()
-        for row in pos.data or []:
-            if row.get("ticker"):
-                tickers.add(str(row["ticker"]).upper())
-        wl = (
-            supabase_client.supabase.table("watched_tickers_v2")
-            .select("ticker")
-            .eq("is_active", True)
-            .execute()
-        )
-        for row in wl.data or []:
-            if row.get("ticker"):
-                tickers.add(str(row["ticker"]).upper())
+        offset = 0
+        while True:
+            holdings_query = supabase_client.supabase.table("latest_positions").select(
+                "ticker,fund"
+            )
+            if production_funds:
+                holdings_query = holdings_query.in_("fund", production_funds)
+            pos = holdings_query.range(offset, offset + _PAGE_SIZE - 1).execute()
+            page = pos.data or []
+            for row in page:
+                if row.get("ticker"):
+                    tickers.add(str(row["ticker"]).upper())
+            if len(page) < _PAGE_SIZE:
+                break
+            offset += _PAGE_SIZE
+
+        offset = 0
+        while True:
+            wl = (
+                supabase_client.supabase.table("watched_tickers_v2")
+                .select("ticker")
+                .eq("is_active", True)
+                .range(offset, offset + _PAGE_SIZE - 1)
+                .execute()
+            )
+            page = wl.data or []
+            for row in page:
+                if row.get("ticker"):
+                    tickers.add(str(row["ticker"]).upper())
+            if len(page) < _PAGE_SIZE:
+                break
+            offset += _PAGE_SIZE
     except Exception as exc:
         logger.warning("dilution_watch ticker load failed: %s", exc)
     return sorted(tickers)

@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS dilution_observations (
     id UUID NOT NULL DEFAULT gen_random_uuid(),
     ticker VARCHAR(20) NOT NULL,
     as_of DATE NOT NULL,
-    window_days INT NOT NULL,            -- 30 | 90
+    window_days INT NOT NULL,            -- 90 | 365
     shares_start NUMERIC(20, 2),
     shares_end NUMERIC(20, 2),
     pct_change NUMERIC(10, 2),           -- percent growth over the window
@@ -24,4 +24,4 @@ CREATE INDEX IF NOT EXISTS idx_dilution_obs_asof ON dilution_observations (as_of
 COMMENT ON TABLE dilution_observations IS
     'Flagged shares-outstanding growth events (free dilution detection via yfinance get_shares_full)';
 COMMENT ON COLUMN dilution_observations.window_days IS
-    'Lookback window the pct_change is measured over (30 or 90 days)';
+    'Lookback window the pct_change is measured over (90 or 365 days)';
