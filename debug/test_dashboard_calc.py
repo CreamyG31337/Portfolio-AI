@@ -23,7 +23,7 @@ if pos_res.data:
     
     # Calculate portfolio value (no cash)
     portfolio_value = 0.0
-    for _, row in df.iterrows():
+    for row in df.to_dict('records'):
         market_value = float(row.get('market_value', 0) or 0)
         currency = str(row.get('currency', 'CAD')).upper() if pd.notna(row.get('currency')) else 'CAD'
         if currency == 'USD':

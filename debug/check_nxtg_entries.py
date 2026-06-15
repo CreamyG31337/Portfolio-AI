@@ -15,7 +15,7 @@ def check_nxtg_entries():
     print('All NXTG entries in portfolio:')
     print('=' * 50)
 
-    for idx, row in nxtg_entries.iterrows():
+    for row in nxtg_entries.to_dict('records'):
         print(f'Date: {row["Date"]}')
         print(f'  Company: {row["Company"]}')
         print(f'  Shares: {row["Shares"]}')

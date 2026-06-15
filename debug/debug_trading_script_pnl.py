@@ -51,7 +51,7 @@ def test_actual_portfolio_loading():
             
         # Show the last few GLO.TO entries
         print("\n📈 Recent GLO.TO entries:")
-        for _, row in glo_entries.tail(3).iterrows():
+        for row in glo_entries.tail(3).to_dict('records'):
             timestamp = row.get('Date', 'N/A')
             price = row.get('Current Price', 'N/A')
             print(f"  {timestamp}: ${price}")

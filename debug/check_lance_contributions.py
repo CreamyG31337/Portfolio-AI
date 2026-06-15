@@ -18,7 +18,7 @@ print(f'Total records: {len(df)}')
 print(f'Total amount: ${df["amount"].sum():.2f}')
 
 print('\nAll contributions:')
-for _, row in df.iterrows():
+for row in df.to_dict('records'):
     print(f'{row["timestamp"]} | {row["contribution_type"]} | ${row["amount"]:.2f} | {row.get("notes", "")}')
 
 # Check for duplicates
@@ -28,7 +28,7 @@ df['date'] = pd.to_datetime(df['timestamp']).dt.date
 duplicates = df[df.duplicated(subset=['date', 'amount', 'contribution_type'], keep=False)]
 if len(duplicates) > 0:
     print(f'Found {len(duplicates)} duplicate records!')
-    for _, row in duplicates.iterrows():
+    for row in duplicates.to_dict('records'):
         print(f'  {row["timestamp"]} | ${row["amount"]:.2f} | {row.get("notes", "")}')
 else:
     print('No duplicates found')

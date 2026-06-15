@@ -141,7 +141,7 @@ def calculate_nav_over_time(fund: str, days: Optional[int] = None) -> pd.DataFra
     # Now calculate NAV for each date in portfolio_df
     nav_data = []
     
-    for _, row in portfolio_df.iterrows():
+    for row in portfolio_df.to_dict('records'):
         date_obj = row['date'].date() if hasattr(row['date'], 'date') else row['date']
         portfolio_value = row['value']
         

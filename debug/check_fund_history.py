@@ -19,7 +19,7 @@ print("\nFirst 20 contributions to Project Chimera:")
 res = client.supabase.table('fund_contributions').select('*').eq('fund', 'Project Chimera').order('timestamp').limit(20).execute()
 df = pd.DataFrame(res.data)
 
-for _, row in df.iterrows():
+for row in df.to_dict('records'):
     print(f"{row['timestamp'][:10]} | {row['contributor']:20s} | ${row['amount']:8,.2f} | {row['contribution_type']}")
 
 # Get first portfolio position date

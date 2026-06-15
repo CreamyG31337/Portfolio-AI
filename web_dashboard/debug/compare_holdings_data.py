@@ -56,7 +56,7 @@ def get_web_dashboard_data(fund: Optional[str] = None) -> List[Dict[str, Any]]:
     
     # Process data and calculate converted values first
     converted_data = []
-    for idx, row in positions_df.iterrows():
+    for row in positions_df.to_dict('records'):
         rate = get_rate(row.get('currency', 'CAD'))
         market_val = (row.get('market_value', 0) or 0) * rate
         converted_data.append(market_val)
@@ -66,7 +66,7 @@ def get_web_dashboard_data(fund: Optional[str] = None) -> List[Dict[str, Any]]:
     
     # Process data
     data = []
-    for idx, row in positions_df.iterrows():
+    for row in positions_df.to_dict('records'):
         ticker = row.get('ticker')
         
         # Handle nested securities data

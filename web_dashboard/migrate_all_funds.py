@@ -135,7 +135,7 @@ class FundMigrator:
             unique_tickers = set()
             ticker_currencies = {}
 
-            for _, row in portfolio_df.iterrows():
+            for row in portfolio_df.to_dict('records'):
                 ticker = str(row.get("Ticker", ""))
                 currency = str(row.get("Currency", "USD"))
 
@@ -208,7 +208,7 @@ class FundMigrator:
             unique_tickers = set()
             ticker_currencies = {}
 
-            for _, row in trades_df.iterrows():
+            for row in trades_df.to_dict('records'):
                 ticker = str(row.get("Ticker", ""))
                 currency = str(row.get("Currency", "USD"))
 

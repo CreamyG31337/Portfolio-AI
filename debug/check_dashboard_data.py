@@ -40,7 +40,7 @@ for fund in funds:
         
         if len(ctrn) > 0:
             print(f"\n  ✓ Found CTRN:")
-            for _, row in ctrn.iterrows():
+            for row in ctrn.to_dict('records'):
                 print(f"    Shares: {row.get('shares', 0)}")
                 print(f"    Price: ${row.get('current_price', 0) or row.get('price', 0):.2f}")
                 print(f"    Cost Basis: ${row.get('cost_basis', 0):.2f}")
@@ -50,7 +50,7 @@ for fund in funds:
         
         if len(nue) > 0:
             print(f"\n  ✓ Found NUE:")
-            for _, row in nue.iterrows():
+            for row in nue.to_dict('records'):
                 print(f"    Shares: {row.get('shares', 0)}")
                 print(f"    Price: ${row.get('current_price', 0) or row.get('price', 0):.2f}")
                 print(f"    Cost Basis: ${row.get('cost_basis', 0):.2f}")
@@ -62,7 +62,7 @@ for fund in funds:
         zero_pnl = positions_df[positions_df['unrealized_pnl'].abs() < 0.01]
         if len(zero_pnl) > 0:
             print(f"\n  ⚠️  Found {len(zero_pnl)} positions with P&L = 0:")
-            for _, row in zero_pnl.iterrows():
+            for row in zero_pnl.to_dict('records'):
                 ticker = row.get('ticker', 'UNKNOWN')
                 shares = row.get('shares', 0)
                 cost_basis = row.get('cost_basis', 0)

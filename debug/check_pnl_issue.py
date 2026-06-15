@@ -33,7 +33,7 @@ print("="*80)
 zero_pnl = df[df['unrealized_pnl'].abs() < 0.01]
 if len(zero_pnl) > 0:
     print(f"\nFound {len(zero_pnl)} positions with P&L = 0:")
-    for _, row in zero_pnl.iterrows():
+    for row in zero_pnl.to_dict('records'):
         ticker = row.get('ticker', 'UNKNOWN')
         fund = row.get('fund', 'UNKNOWN')
         shares = row.get('shares', 0)
@@ -68,7 +68,7 @@ print("="*80)
 
 nue_positions = df[df['ticker'] == 'NUE']
 if len(nue_positions) > 0:
-    for _, row in nue_positions.iterrows():
+    for row in nue_positions.to_dict('records'):
         ticker = row.get('ticker', 'UNKNOWN')
         fund = row.get('fund', 'UNKNOWN')
         shares = row.get('shares', 0)
@@ -131,7 +131,7 @@ print("\n" + "="*80)
 print("Sample positions with non-zero P&L (for comparison):")
 print("="*80)
 non_zero_pnl = df[df['unrealized_pnl'].abs() >= 0.01].head(5)
-for _, row in non_zero_pnl.iterrows():
+for row in non_zero_pnl.to_dict('records'):
     ticker = row.get('ticker', 'UNKNOWN')
     fund = row.get('fund', 'UNKNOWN')
     shares = row.get('shares', 0)

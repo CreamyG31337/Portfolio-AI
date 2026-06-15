@@ -59,7 +59,7 @@ def load_and_transform_trades(trade_log_path: Path, fund_name: str) -> list:
         return []
     
     trades = []
-    for _, row in df.iterrows():
+    for row in df.to_dict('records'):
         try:
             # Handle NaN/empty/invalid currency values BEFORE building the dict
             raw_currency = row.get('Currency')

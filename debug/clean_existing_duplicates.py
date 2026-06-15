@@ -75,7 +75,7 @@ def clean_existing_duplicates(dry_run: bool = True, fund_name: str = None):
     kept_count = 0
     deleted_count = 0
     
-    for _, dup in duplicates.iterrows():
+    for dup in duplicates.to_dict('records'):
         fund = dup['fund']
         date_key = dup['date_key']
         ticker = dup['ticker']
@@ -100,7 +100,7 @@ def clean_existing_duplicates(dry_run: bool = True, fund_name: str = None):
         print(f"{fund} | {date_key} | {ticker}: {count} records")
         print(f"  [KEEP] ID={keep_record['id'][:8]}... created={keep_record.get('created_at', 'N/A')}")
         
-        for _, record in delete_records.iterrows():
+        for record in delete_records.to_dict('records'):
             print(f"  [DELETE] ID={record['id'][:8]}... created={record.get('created_at', 'N/A')}")
             ids_to_delete.append(record['id'])
             deleted_count += 1

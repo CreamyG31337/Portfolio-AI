@@ -62,7 +62,7 @@ try:
             ownership_pie = your_row.iloc[0]['ownership_pct']
             print(f"  Your ownership: {ownership_pie:.2f}%")
             print(f"\n  All investors:")
-            for _, row in allocations.iterrows():
+            for row in allocations.to_dict('records'):
                 print(f"    {row['contributor_display']}: {row['ownership_pct']:.2f}%")
         else:
             print("  You not found in allocations")

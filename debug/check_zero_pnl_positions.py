@@ -33,7 +33,7 @@ if len(zero_pnl) > 0:
     print(f"Found {len(zero_pnl)} positions with P&L = 0 (or very close):")
     print(f"{'='*80}")
     
-    for _, row in zero_pnl.iterrows():
+    for row in zero_pnl.to_dict('records'):
         ticker = row.get('ticker', 'UNKNOWN')
         fund = row.get('fund', 'UNKNOWN')
         shares = float(row.get('shares', 0))
@@ -98,6 +98,6 @@ print(f"Positions where cost_basis = market_value: {((df['market_value'] - df['c
 mismatch = df[((df['market_value'] - df['cost_basis']).abs() < 0.01) & (df['unrealized_pnl'].abs() >= 0.01)]
 if len(mismatch) > 0:
     print(f"\n⚠️  Found {len(mismatch)} positions where cost_basis = market_value but P&L != 0 (SQL view calculation issue?)")
-    for _, row in mismatch.head(5).iterrows():
+    for row in mismatch.head(5).to_dict('records'):
         print(f"  {row.get('ticker', 'UNKNOWN')} ({row.get('fund', 'UNKNOWN')}): P&L=${row.get('unrealized_pnl', 0):.2f}, Cost=${row.get('cost_basis', 0):.2f}, Value=${row.get('market_value', 0):.2f}")
 

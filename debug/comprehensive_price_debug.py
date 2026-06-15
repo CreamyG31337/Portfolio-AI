@@ -53,13 +53,13 @@ def debug_ticker_prices(ticker, days_back=5, verbose=True):
             print("-" * 60)
             
             # Display recent data
-            for date, row in hist.tail(3).iterrows():
-                print(f"📅 {date.strftime('%Y-%m-%d %H:%M:%S')}")
-                print(f"   Open:  ${row['Open']:.2f}")
-                print(f"   High:  ${row['High']:.2f}")
-                print(f"   Low:   ${row['Low']:.2f}")
-                print(f"   Close: ${row['Close']:.2f}")
-                print(f"   Volume: {row['Volume']:,}")
+            for row in hist.tail(3).itertuples():
+                print(f"📅 {row.Index.strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"   Open:  ${row.Open:.2f}")
+                print(f"   High:  ${row.High:.2f}")
+                print(f"   Low:   ${row.Low:.2f}")
+                print(f"   Close: ${row.Close:.2f}")
+                print(f"   Volume: {row.Volume:,}")
                 print()
         
         # Get current info
@@ -110,7 +110,7 @@ def compare_with_portfolio_data(ticker, portfolio_file="my trading/llm_portfolio
         if verbose:
             print(f"📋 Portfolio Records for {ticker}")
             print("-" * 60)
-            for _, row in ticker_data.iterrows():
+            for row in ticker_data.to_dict('records'):
                 print(f"Date: {row['Date']}")
                 print(f"Shares: {row['Shares']}")
                 print(f"Price: ${row['Price']}")
@@ -170,7 +170,7 @@ def suggest_corrections(ticker, debug_data, portfolio_file="my trading/llm_portf
         
         corrections = []
         
-        for _, row in ticker_data.iterrows():
+        for row in ticker_data.to_dict('records'):
             if pd.isna(row['Current Price']) or row['Current Price'] == 'NO DATA':
                 # Use latest close as current price
                 suggested_price = hist['Close'].iloc[-1]

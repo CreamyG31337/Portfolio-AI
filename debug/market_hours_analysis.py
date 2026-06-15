@@ -73,13 +73,13 @@ def analyze_yfinance_behavior(ticker="TSLA"):
         print()
         
         # Show the last few days
-        for date, row in hist.tail(3).iterrows():
-            print(f"📅 {date.strftime('%Y-%m-%d')}")
-            print(f"   Open:  ${row['Open']:.2f}")
-            print(f"   High:  ${row['High']:.2f}")
-            print(f"   Low:   ${row['Low']:.2f}")
-            print(f"   Close: ${row['Close']:.2f}")
-            print(f"   Volume: {row['Volume']:,}")
+        for row in hist.tail(3).itertuples():
+            print(f"📅 {row.Index.strftime('%Y-%m-%d')}")
+            print(f"   Open:  ${row.Open:.2f}")
+            print(f"   High:  ${row.High:.2f}")
+            print(f"   Low:   ${row.Low:.2f}")
+            print(f"   Close: ${row.Close:.2f}")
+            print(f"   Volume: {row.Volume:,}")
             print()
     else:
         print("❌ No historical data available")

@@ -40,7 +40,7 @@ if len(duplicates) > 0:
     for ticker, count in duplicates.items():
         print(f"  {ticker}: {count} rows")
         ticker_rows = latest_df[latest_df['ticker'] == ticker]
-        for _, row in ticker_rows.iterrows():
+        for row in ticker_rows.to_dict('records'):
             print(f"    shares={row['shares']}, price={row['price']}, created_at={row.get('created_at', 'N/A')}")
 else:
     print("\nNo duplicates found")
@@ -55,5 +55,5 @@ print(f"Number of positions: {len(latest_df)}")
 # Show top 10 positions by value
 print("\nTop 10 positions by value:")
 top_positions = latest_df.nlargest(10, 'value')[['ticker', 'shares', 'price', 'value']]
-for _, row in top_positions.iterrows():
+for row in top_positions.to_dict('records'):
     print(f"  {row['ticker']:6s}: {float(row['shares']):>8.2f} shares @ ${float(row['price']):>7.2f} = ${float(row['value']):>10,.2f}")

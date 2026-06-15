@@ -42,16 +42,17 @@ def fix_currency_assignments(data_dir: str = "trading_data/funds/TEST"):
             changes_made = 0
             
             # Fix currency assignments based on ticker
-            for index, row in df.iterrows():
-                ticker = row['Ticker']
-                current_currency = row['Currency']
+            # itertuples preserves the index label needed by df.at[index, ...].
+            for row in df.itertuples():
+                ticker = row.Ticker
+                current_currency = row.Currency
                 
                 # Get correct currency
                 correct_currency = currency_handler.get_ticker_currency(ticker)
                 
                 if current_currency != correct_currency:
                     print(f"  Fixing {ticker}: {current_currency} -> {correct_currency}")
-                    df.at[index, 'Currency'] = correct_currency
+                    df.at[row.Index, 'Currency'] = correct_currency
                     changes_made += 1
             
             if changes_made > 0:

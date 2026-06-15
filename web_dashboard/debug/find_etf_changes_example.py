@@ -96,7 +96,7 @@ def main():
                     
                     if not changes.empty:
                         print(f"\n  Example changes for {example_etf}:")
-                        for _, row in changes.head(5).iterrows():
+                        for row in changes.head(5).to_dict('records'):
                             ticker = row['holding_ticker']
                             curr_shares = int(row['shares_held_current'])
                             prev_shares = int(row['shares_held_prev'])

@@ -126,7 +126,7 @@ def test_duplicate_fix():
             print("✅ Portfolio prices were updated correctly")
             
             # Verify prices were actually updated
-            for _, row in df_after.iterrows():
+            for row in df_after.to_dict('records'):
                 ticker = row['Ticker']
                 current_price = row['Current Price']
                 print(f"   {ticker}: ${current_price:.2f}")

@@ -57,7 +57,7 @@ def main():
         
         if not changes.empty:
             print(f"\n{etf}: {len(changes)} changes")
-            for _, row in changes.iterrows():
+            for row in changes.to_dict('records'):
                 ticker = row['holding_ticker']
                 name = row.get('holding_name', 'N/A')
                 curr_shares = int(row['shares_held_current'])

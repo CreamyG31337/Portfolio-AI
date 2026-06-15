@@ -67,7 +67,7 @@ def debug_create_portfolio_table_logic():
     open_dates = []
     if trade_log_df is not None:
         print("_safe_emoji('✅') Trade log is not None, processing dates...")
-        for i, (_, row) in enumerate(display_df.iterrows()):
+        for i, row in enumerate(display_df.to_dict('records')):
             ticker = str(row.get('ticker', ''))
             print(f"  Processing row {i+1}: {ticker}")
             

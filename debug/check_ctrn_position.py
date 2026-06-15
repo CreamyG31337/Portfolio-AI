@@ -93,7 +93,7 @@ if pp_result.data:
         
         # Show history
         print(f"\n    Recent history (last 5 records):")
-        for idx, row in fund_df.head(5).iterrows():
+        for row in fund_df.head(5).to_dict('records'):
             date = row.get('date', 'UNKNOWN')
             r_shares = row.get('shares', 0)
             r_price = row.get('price', 0)

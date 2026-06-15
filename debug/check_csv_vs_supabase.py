@@ -27,7 +27,7 @@ def check_data_differences():
     # Check latest CSV entries
     latest_csv = df.tail(5)
     print('\n=== Latest CSV Data ===')
-    for idx, row in latest_csv.iterrows():
+    for row in latest_csv.to_dict('records'):
         print(f'{row["Date"]}: {row["Ticker"]} - Avg: ${row["Average Price"]:.2f}, Current: ${row["Current Price"]:.2f}, PnL: ${row["PnL"]:.2f}')
     
     # Load Supabase data

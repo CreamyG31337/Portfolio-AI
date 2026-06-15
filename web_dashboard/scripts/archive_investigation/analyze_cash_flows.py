@@ -27,12 +27,12 @@ for date_only, date_group in df.groupby('Date_Only'):
     if len(buys) > 0:
         total_new_investment = buys['Cost Basis'].sum()
         print(f"   💰 New Investments: ${total_new_investment:,.2f}")
-        for _, buy in buys.iterrows():
+        for buy in buys.to_dict('records'):
             print(f"      - {buy['Ticker']}: ${buy['Cost Basis']:.2f}")
     
     if len(sells) > 0:
         print(f"   📤 Sales:")
-        for _, sell in sells.iterrows():
+        for sell in sells.to_dict('records'):
             print(f"      - {sell['Ticker']}: SOLD")
     
     # Calculate end-of-day portfolio value and cost basis

@@ -141,15 +141,16 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     # Detect and filter systematic adjustments
     if len(significant) > 5:
         from collections import Counter
-        rounded_pcts = [round(abs(row['percent_change']), 1) for _, row in significant.iterrows()]
+        rounded_pcts = [round(abs(row['percent_change']), 1) for row in significant.to_dict('records')]
         pct_counts = Counter(rounded_pcts)
         most_common_pct, most_common_count = pct_counts.most_common(1)[0]
         
         if most_common_count >= len(significant) * 0.8:
             if most_common_pct <= 2.0:
+                records = significant.to_dict('records')
                 all_same_direction = (
-                    all(row['share_diff'] > 0 for _, row in significant.iterrows()) or
-                    all(row['share_diff'] < 0 for _, row in significant.iterrows())
+                    all(row['share_diff'] > 0 for row in records) or
+                    all(row['share_diff'] < 0 for row in records)
                 )
                 
                 if all_same_direction:

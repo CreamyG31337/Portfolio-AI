@@ -467,7 +467,7 @@ def rebuild_portfolio_from_scratch(data_dir: str = None, timezone_str: str = Non
         
         print(f"\n📈 Processing trades chronologically:")
         
-        for _, trade in trade_df.iterrows():
+        for trade in trade_df.to_dict('records'):
             ticker = trade['Ticker']
             date = trade['Date']
             shares = Decimal(str(trade['Shares']))  # Keep original precision
@@ -615,7 +615,7 @@ def rebuild_portfolio_from_scratch(data_dir: str = None, timezone_str: str = Non
         
         # Pre-calculate which tickers were traded on which dates
         # This helps us avoid duplicate HOLD entries on days with trades
-        for _, trade in trade_df.iterrows():
+        for trade in trade_df.to_dict('records'):
             trade_date_obj = trade['Date'] # This is now a datetime object
             if trade_date_obj:
                 trade_date = trade_date_obj.strftime('%Y-%m-%d')
@@ -636,7 +636,7 @@ def rebuild_portfolio_from_scratch(data_dir: str = None, timezone_str: str = Non
             temp_positions = defaultdict(lambda: {'shares': Decimal('0'), 'cost': Decimal('0')})
             
             # Process all trades up to this date
-            for _, trade in trade_df.iterrows():
+            for trade in trade_df.to_dict('records'):
                 trade_date_obj = trade['Date'] # This is now a datetime object
                 if trade_date_obj and trade_date_obj.date() <= hold_date_obj.date():
                     ticker = trade['Ticker']
@@ -914,7 +914,7 @@ def rebuild_ticker_from_date(ticker: str, from_date: datetime, data_dir: str = N
         # Calculate positions up to from_date
         position_at_from_date = {'shares': Decimal('0'), 'cost': Decimal('0')}
         
-        for _, trade in ticker_trades.iterrows():
+        for trade in ticker_trades.to_dict('records'):
             trade_date = trade['Date']
             if trade_date.date() < from_date_naive.date():
                 shares = Decimal(str(trade['Shares']))
@@ -968,7 +968,7 @@ def rebuild_ticker_from_date(ticker: str, from_date: datetime, data_dir: str = N
             
             # Process any trades on this date
             date_trades = ticker_trades[ticker_trades['Date'].dt.date == current_date]
-            for _, trade in date_trades.iterrows():
+            for trade in date_trades.to_dict('records'):
                 shares = Decimal(str(trade['Shares']))
                 cost = Decimal(str(trade['Cost Basis']))
                 reason = trade['Reason']

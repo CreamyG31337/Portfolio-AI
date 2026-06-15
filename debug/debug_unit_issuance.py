@@ -109,7 +109,7 @@ investor_units = {}
 
 running_cash = 0.0
 
-for _, row in df_contribs.iterrows():
+for row in df_contribs.to_dict('records'):
     date_str = row['timestamp'].strftime('%Y-%m-%d')
     email = row['email']
     amount = float(row['amount'])

@@ -70,8 +70,8 @@ def debug_date_parsing():
                 ticker_trades_copy['Date'] = ticker_trades_copy['Date'].apply(parse_csv_timestamp)
                 
                 print(f"   📅 Parsed dates:")
-                for idx, row in ticker_trades_copy.iterrows():
-                    print(f"     Row {idx}: {row['Date']} (type: {type(row['Date'])})")
+                for row in ticker_trades_copy.itertuples():
+                    print(f"     Row {row.Index}: {row.Date} (type: {type(row.Date)})")
                 
                 # Test min() operation
                 try:

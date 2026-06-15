@@ -72,7 +72,7 @@ def recalculate_portfolio_data(data_dir: str = "trading_data/funds/TEST"):
         
         print(f"\n📈 Processing trades from trade log:")
         
-        for _, trade in trade_df.iterrows():
+        for trade in trade_df.to_dict('records'):
             ticker = trade['Ticker']
             shares = float(trade['Shares'])
             price = float(trade['Price'])
@@ -107,7 +107,7 @@ def recalculate_portfolio_data(data_dir: str = "trading_data/funds/TEST"):
         # Process each trade to see if we need to add missing entries
         running_positions = defaultdict(lambda: {'shares': 0, 'cost': 0, 'trades': []})
         
-        for _, trade in trade_df.iterrows():
+        for trade in trade_df.to_dict('records'):
             ticker = trade['Ticker']
             date = trade['Date']
             shares = float(trade['Shares'])
@@ -122,7 +122,7 @@ def recalculate_portfolio_data(data_dir: str = "trading_data/funds/TEST"):
             if is_sell:
                 # Check if we have this sell entry by date and ticker
                 sell_exists = False
-                for _, row in portfolio_df.iterrows():
+                for row in portfolio_df.to_dict('records'):
                     if (row['Ticker'] == ticker and 
                         row['Date'] == date and
                         row['Action'] == 'SELL'):
@@ -133,7 +133,7 @@ def recalculate_portfolio_data(data_dir: str = "trading_data/funds/TEST"):
                     # Get company/currency info
                     company = get_company_name(ticker)
                     currency = get_currency(ticker)
-                    for _, row in portfolio_df.iterrows():
+                    for row in portfolio_df.to_dict('records'):
                         if row['Ticker'] == ticker:
                             currency = row.get('Currency', get_currency(ticker))
                             break
@@ -164,7 +164,7 @@ def recalculate_portfolio_data(data_dir: str = "trading_data/funds/TEST"):
                 
                 # Check if we have this buy entry by date and ticker
                 buy_exists = False
-                for _, row in portfolio_df.iterrows():
+                for row in portfolio_df.to_dict('records'):
                     if (row['Ticker'] == ticker and 
                         row['Date'] == date and
                         row['Action'] == 'BUY'):
@@ -175,7 +175,7 @@ def recalculate_portfolio_data(data_dir: str = "trading_data/funds/TEST"):
                     # Get company/currency info
                     company = get_company_name(ticker)
                     currency = get_currency(ticker)
-                    for _, row in portfolio_df.iterrows():
+                    for row in portfolio_df.to_dict('records'):
                         if row['Ticker'] == ticker:
                             currency = row.get('Currency', get_currency(ticker))
                             break
@@ -220,10 +220,11 @@ def recalculate_portfolio_data(data_dir: str = "trading_data/funds/TEST"):
         
         # Group portfolio by ticker and find the latest entry for each
         latest_entries = {}
-        for idx, row in portfolio_df.iterrows():
-            ticker = row['Ticker']
-            if ticker not in latest_entries or row['Date'] > latest_entries[ticker]['Date']:
-                latest_entries[ticker] = {'idx': idx, 'Date': row['Date']}
+        # itertuples preserves the index label stored in 'idx' (used by iloc/.at below).
+        for row in portfolio_df.itertuples():
+            ticker = row.Ticker
+            if ticker not in latest_entries or row.Date > latest_entries[ticker]['Date']:
+                latest_entries[ticker] = {'idx': row.Index, 'Date': row.Date}
         
         # Update only the latest entry for each ticker
         for ticker, entry_info in latest_entries.items():

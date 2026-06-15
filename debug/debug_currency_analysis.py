@@ -35,7 +35,7 @@ def analyze_currency_distribution():
     usd_total = Decimal('0')
 
     print("\n📊 CAD POSITIONS:")
-    for _, row in cad_positions.iterrows():
+    for row in cad_positions.to_dict('records'):
         current_price = Decimal(str(row['Current Price']))
         shares = Decimal(str(row['Shares']))
         value = current_price * shares
@@ -44,7 +44,7 @@ def analyze_currency_distribution():
         print(f"  {ticker:8s}: ${value",.2f"}")
 
     print("\n📈 USD POSITIONS:")
-    for _, row in usd_positions.iterrows():
+    for row in usd_positions.to_dict('records'):
         current_price = Decimal(str(row['Current Price']))
         shares = Decimal(str(row['Shares']))
         value = current_price * shares

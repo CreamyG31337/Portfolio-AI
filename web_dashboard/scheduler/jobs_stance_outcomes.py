@@ -128,11 +128,13 @@ def _fetch_ticker_closes_yfinance(
         data.columns = data.columns.get_level_values(0)
 
     out: list[dict[str, Any]] = []
-    for _, row in data.iterrows():
-        row_date = row.get("Date")
+    # to_dict("records") preserves per-column dtypes (Timestamp keeps .date(),
+    # Close stays float) and avoids the Series instantiation overhead of iterrows().
+    for record in data.to_dict("records"):
+        row_date = record.get("Date")
         if hasattr(row_date, "date"):
             row_date = row_date.date()
-        close_val = row.get("Close")
+        close_val = record.get("Close")
         if row_date and close_val is not None:
             out.append({"date": row_date, "close": float(close_val)})
     out.sort(key=lambda r: r["date"])

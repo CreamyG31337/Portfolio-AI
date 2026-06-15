@@ -20,7 +20,7 @@ contrib_res = client.supabase.table('fund_contributions').select('*').eq('contri
 df = pd.DataFrame(contrib_res.data)
 
 print(f"\nLance's contributions:")
-for _, row in df.iterrows():
+for row in df.to_dict('records'):
     date_str = row['timestamp'][:10]
     print(f"  {date_str}: ${row['amount']:,.2f}")
 
@@ -29,7 +29,7 @@ print("\n" + "="*80)
 print("PORTFOLIO VALUES ON EACH DATE")
 print("="*80)
 
-for _, row in df.iterrows():
+for row in df.to_dict('records'):
     contrib_date = row['timestamp'][:10]
     
     # Get portfolio positions for that date

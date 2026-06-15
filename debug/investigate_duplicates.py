@@ -54,12 +54,13 @@ def investigate_duplicates():
     print("DUPLICATE ANALYSIS")
     print("="*80)
     
-    for idx, dup in duplicates.iterrows():
-        date_key = dup['date_key']
-        ticker = dup['ticker']
-        count = dup['count']
+    # itertuples preserves the original (gappy) index label used in the [{idx+1}] display.
+    for dup in duplicates.itertuples():
+        date_key = dup.date_key
+        ticker = dup.ticker
+        count = dup.count
         
-        print(f"\n[{idx+1}] {date_key} | {ticker} ({count} records)")
+        print(f"\n[{dup.Index+1}] {date_key} | {ticker} ({count} records)")
         print("-" * 80)
         
         # Get all records for this duplicate
@@ -68,7 +69,7 @@ def investigate_duplicates():
         # Sort by created_at to see order
         dup_records = dup_records.sort_values('created_at')
         
-        for i, (_, record) in enumerate(dup_records.iterrows(), 1):
+        for i, record in enumerate(dup_records.to_dict('records'), 1):
             print(f"\n  Record {i}:")
             print(f"    ID: {record['id']}")
             print(f"    Date: {record['date']}")
@@ -103,13 +104,13 @@ def investigate_duplicates():
     dup_dates = dup_dates.sort_values('dup_count', ascending=False)
     
     print(f"\nDates with most duplicates:")
-    for _, row in dup_dates.head(10).iterrows():
+    for row in dup_dates.head(10).to_dict('records'):
         print(f"  {row['date_key']}: {row['dup_count']} duplicate tickers")
     
     # Check time differences between duplicates
     print(f"\nTime differences between duplicate records:")
     time_diffs = []
-    for _, dup in duplicates.iterrows():
+    for dup in duplicates.to_dict('records'):
         date_key = dup['date_key']
         ticker = dup['ticker']
         dup_records = df[(df['date_key'] == date_key) & (df['ticker'] == ticker)].copy()
@@ -135,7 +136,7 @@ def investigate_duplicates():
     
     # Calculate how much NAV is inflated
     total_duplicate_value = 0
-    for _, dup in duplicates.iterrows():
+    for dup in duplicates.to_dict('records'):
         date_key = dup['date_key']
         ticker = dup['ticker']
         dup_records = df[(df['date_key'] == date_key) & (df['ticker'] == ticker)]

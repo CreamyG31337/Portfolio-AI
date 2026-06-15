@@ -29,7 +29,7 @@ def audit_pnl_calculation():
     total_bot_pnl = Decimal('0')
     position_details = []
 
-    for _, row in hold_positions.iterrows():
+    for row in hold_positions.to_dict('records'):
         ticker = row['Ticker']
         shares = Decimal(str(row['Shares']))
         avg_price = Decimal(str(row['Average Price']))

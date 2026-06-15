@@ -66,7 +66,7 @@ def test_get_previous_holdings():
             print(f"  [PASS] Retrieved {len(df)} holdings")
             print(f"\n  Sample data (first 5 rows):")
             print(f"  Columns: {list(df.columns)}")
-            for _, row in df.head().iterrows():
+            for row in df.head().to_dict('records'):
                 ticker = row.get('ticker', 'N/A')
                 shares = row.get('shares', 0)
                 weight = row.get('weight_percent', 0)
@@ -191,7 +191,7 @@ def test_fetch_handler():
         print(f"  [PASS] Fetched {len(df)} holdings")
         print(f"\n  Columns: {list(df.columns)}")
         print(f"\n  Top 5 holdings:")
-        for _, row in df.head().iterrows():
+        for row in df.head().to_dict('records'):
             ticker = row.get('ticker', 'N/A')
             shares = row.get('shares', 0)
             weight = row.get('weight_percent', 0)

@@ -42,7 +42,7 @@ def analyze_trades_for_ticker(ticker, fund_name):
     running_cost = Decimal('0')
     currency = 'USD'
     
-    for _, trade in df.iterrows():
+    for trade in df.to_dict('records'):
         date = trade.get('date', 'UNKNOWN')
         reason = str(trade.get('reason', '')).upper()
         shares = Decimal(str(trade.get('shares', 0)))

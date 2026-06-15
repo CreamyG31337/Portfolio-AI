@@ -43,7 +43,7 @@ def analyze_duplicates():
     
     for dup_group in duplicates[:10]:  # Show first 10
         print(f"\n{dup_group.iloc[0]['date'].strftime('%Y-%m-%d')} | {dup_group.iloc[0]['ticker']}")
-        for _, row in dup_group.iterrows():
+        for row in dup_group.to_dict('records'):
             print(f"  ID: {row['id'][:8]}... | Fund: {row['fund']} | Shares: {row['shares']} | Price: ${row['price']:.2f} | Value: ${row['total_value']:.2f} | Created: {row['created_at']}")
     
     print(f"\n... and {len(duplicates) - 10} more" if len(duplicates) > 10 else "")

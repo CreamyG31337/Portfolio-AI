@@ -52,7 +52,7 @@ for fund in df['fund'].unique():
     
     # Show all records for this fund
     print(f"\n  All records for {fund}:")
-    for idx, row in fund_df.iterrows():
+    for row in fund_df.to_dict('records'):
         date = row.get('date', 'UNKNOWN')
         shares = row.get('shares', 0)
         price = row.get('price', 0)

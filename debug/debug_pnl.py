@@ -57,7 +57,7 @@ def analyze_pnl():
     
     if not extreme_pnl.empty:
         print('Tickers with >50% P&L:')
-        for _, row in extreme_pnl.iterrows():
+        for row in extreme_pnl.to_dict('records'):
             print(f"  {row['Ticker']}: {row['pnl_pct']:+.1f}%")
     else:
         print('No extreme P&L values found (>50%)')
@@ -66,13 +66,13 @@ def analyze_pnl():
     print('\nTop 10 highest P&L percentages:')
     print('-' * 40)
     top_pnl = latest_entries.nlargest(10, 'pnl_pct')[['Ticker', 'pnl_pct', 'PnL', 'Total Value']]
-    for _, row in top_pnl.iterrows():
+    for row in top_pnl.to_dict('records'):
         print(f"{row['Ticker']:<6} {row['pnl_pct']:+6.1f}% (${row['PnL']:+8.2f})")
     
     print('\nTop 10 lowest P&L percentages:')
     print('-' * 40)
     bottom_pnl = latest_entries.nsmallest(10, 'pnl_pct')[['Ticker', 'pnl_pct', 'PnL', 'Total Value']]
-    for _, row in bottom_pnl.iterrows():
+    for row in bottom_pnl.to_dict('records'):
         print(f"{row['Ticker']:<6} {row['pnl_pct']:+6.1f}% (${row['PnL']:+8.2f})")
 
 if __name__ == "__main__":

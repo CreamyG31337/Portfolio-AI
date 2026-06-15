@@ -46,7 +46,7 @@ def recalculate_portfolio_data(data_dir: str = "my trading"):
         # Calculate average prices from trade log
         ticker_data = defaultdict(lambda: {'total_shares': 0, 'total_cost': 0, 'trades': []})
         
-        for _, trade in trade_df.iterrows():
+        for trade in trade_df.to_dict('records'):
             ticker = trade['Ticker']
             shares = float(trade['Shares'])
             price = float(trade['Price'])
@@ -70,7 +70,9 @@ def recalculate_portfolio_data(data_dir: str = "my trading"):
         updated_count = 0
         changes_made = []
         
-        for idx, row in portfolio_df.iterrows():
+        # zip(index, to_dict) keeps the index label for df.at[idx, ...] while giving
+        # dict rows (handles space-named columns) without per-row Series creation.
+        for idx, row in zip(portfolio_df.index, portfolio_df.to_dict('records')):
             ticker = row['Ticker']
             
             if ticker in ticker_data and ticker_data[ticker]['total_shares'] > 0:

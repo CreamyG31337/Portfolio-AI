@@ -345,10 +345,12 @@ def sync_exchange_rates_from_csv(csv_path: Path, use_service_role: bool = True) 
             return False
         
         rates = []
-        for _, row in df.iterrows():
+        # to_dict("records") keeps the object-dtype columns intact, so parsed_date
+        # stays a datetime/Timestamp and rate_decimal stays a Decimal (no float coercion).
+        for record in df.to_dict('records'):
             rates.append({
-                'timestamp': row['parsed_date'].isoformat(),
-                'rate': float(row['rate_decimal']),
+                'timestamp': record['parsed_date'].isoformat(),
+                'rate': float(record['rate_decimal']),
                 'from_currency': 'USD',
                 'to_currency': 'CAD'
             })

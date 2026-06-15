@@ -136,7 +136,7 @@ class TradingInterface:
             # Display contributors with numbers
             print("\n📋 Select Contributor:")
             print("─" * 50)
-            for i, (_, contributor) in enumerate(contributors.iterrows(), 1):
+            for i, contributor in enumerate(contributors.to_dict('records'), 1):
                 name = contributor['Contributor']
                 email = contributor['Email'] if pd.notna(contributor['Email']) and contributor['Email'] else "No email"
                 print(f"  {i:2d}. {name:<20} ({email})")
@@ -224,7 +224,7 @@ class TradingInterface:
             # Display contributors with numbers
             print("\n📋 Select Contributor:")
             print("─" * 50)
-            for i, (_, contributor) in enumerate(contributors.iterrows(), 1):
+            for i, contributor in enumerate(contributors.to_dict('records'), 1):
                 name = contributor['Contributor']
                 email = contributor['Email'] if pd.notna(contributor['Email']) and contributor['Email'] else "No email"
                 print(f"  {i:2d}. {name:<20} ({email})")

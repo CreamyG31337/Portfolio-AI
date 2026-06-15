@@ -35,7 +35,7 @@ def check_table_duplicates(client, table_name, key_columns):
         for key_vals, group in duplicates.groupby(key_columns):
             print(f"\n  Key: {key_vals}")
             print(f"  Count: {len(group)}")
-            for _, row in group.iterrows():
+            for row in group.to_dict('records'):
                 print(f"    ID: {row.get('id', 'N/A')[:8]}... Created: {row.get('created_at', 'N/A')}")
     else:
         print(f"[OK] No duplicates found")
@@ -73,7 +73,7 @@ def trace_user_return_calculation(client, user_email, fund_name="Project Chimera
     print(f"Total Withdrawals: ${total_withdrawn:,.2f}")
     print(f"Net Contributed: ${net_contributed:,.2f}")
     print(f"\nContribution History:")
-    for _, row in contrib_df.iterrows():
+    for row in contrib_df.to_dict('records'):
         sign = "+" if row['contribution_type'] == 'CONTRIBUTION' else "-"
         print(f"  {row['timestamp'].strftime('%Y-%m-%d')}: {sign}${row['amount']:,.2f}")
     
@@ -121,7 +121,7 @@ def trace_user_return_calculation(client, user_email, fund_name="Project Chimera
     total_units = 0
     unit_transactions = []
     
-    for _, contrib in contrib_df.iterrows():
+    for contrib in contrib_df.to_dict('records'):
         contrib_date = contrib['timestamp']
         # Find NAV on or before contribution date
         nav_at_contrib = nav_df[nav_df['date'] <= contrib_date]

@@ -68,7 +68,7 @@ total_units = 0
 user_units = 0
 net_contribution = 0
 
-for _, contrib in contribs.iterrows():
+for contrib in contribs.to_dict('records'):
     amount = float(contrib['amount'])
     is_withdrawal = contrib.get('is_withdrawal', False)
     timestamp = pd.to_datetime(contrib['timestamp'])
