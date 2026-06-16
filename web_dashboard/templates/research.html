@@ -702,8 +702,8 @@
 
             if (scrollHeight <= maxHeight) {
                 // Content fits, hide the button and fade
-                toggleBtn.style.display = 'none';
-                if (fadeEl) fadeEl.style.display = 'none';
+                toggleBtn.classList.add('hidden');
+                if (fadeEl) fadeEl.classList.add('hidden');
                 // Remove max-height restriction so full content shows
                 summaryEl.style.maxHeight = 'none';
             }
@@ -714,7 +714,6 @@
     document.addEventListener('DOMContentLoaded', function () {
         loadAvailableModels();
         setupArticleReanalyzeButtons();
-        initResearchTabs();
         initSearchTab();
         loadResearchAiSummary();
         // Small delay to ensure content is fully rendered before checking overflow
@@ -1266,47 +1265,7 @@
 
 <!-- Search Tab JavaScript -->
 <script>
-    // Tab switching logic
-    // TODO(palette): The markup already uses Flowbite's data-tabs-toggle/data-tabs-target. This
-    // manual tab JS duplicates/conflicts with Flowbite's tab API and risks desyncing aria-selected.
-    // Remove initResearchTabs() and rely on Flowbite's built-in tabs. Also prefer
-    // classList.add/remove('hidden') over inline style.display elsewhere in this file.
-    // (Palette audit PR #324, items 1 & 4)
-    function initResearchTabs() {
-        const tabs = [
-            { id: 'articles-tab', target: 'articles-content' },
-            { id: 'search-tab', target: 'search-content' }
-        ];
 
-        tabs.forEach(tab => {
-            const btn = document.getElementById(tab.id);
-            if (!btn) return;
-
-            btn.addEventListener('click', () => {
-                const activeClasses = ['text-accent', 'border-accent'];
-                const inactiveClasses = ['text-text-secondary', 'border-transparent', 'hover:text-text-primary', 'hover:border-border-hover'];
-
-                tabs.forEach(t => {
-                    const b = document.getElementById(t.id);
-                    const c = document.getElementById(t.target);
-
-                    if (t.id === tab.id) {
-                        // Activate this tab
-                        b?.classList.remove(...inactiveClasses);
-                        b?.classList.add(...activeClasses);
-                        b?.setAttribute('aria-selected', 'true');
-                        c?.classList.remove('hidden');
-                    } else {
-                        // Deactivate other tabs
-                        b?.classList.remove(...activeClasses);
-                        b?.classList.add(...inactiveClasses);
-                        b?.setAttribute('aria-selected', 'false');
-                        c?.classList.add('hidden');
-                    }
-                });
-            });
-        });
-    }
 
     // Search functionality
     let searchResults = [];

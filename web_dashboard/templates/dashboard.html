@@ -58,7 +58,7 @@
     </div>
 
     <!-- Thesis Section (Dynamic) -->
-    <div id="thesis-container" class="hidden mb-6 p-4 card shadow-xs">
+    <div id="thesis-container" class="hidden mb-6 p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
         <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
             <span class="text-xl">📋</span> <span id="thesis-title">Investment Thesis</span>
         </h3>
@@ -75,7 +75,7 @@
     <!-- Key Metrics Grid (fund-level; labels clarify when multiple investors) -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <!-- Total Value -->
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary" id="metric-total-value-label">Total value</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-total-value">--</span>
@@ -84,7 +84,7 @@
         </div>
 
         <!-- Day Change -->
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary" id="metric-day-change-label">Day Change</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-day-change">--</span>
@@ -93,7 +93,7 @@
         </div>
 
         <!-- Unrealized P&L -->
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">Unrealized P&L</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-total-pnl">--</span>
@@ -102,7 +102,7 @@
         </div>
 
         <!-- Cash Balance -->
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">Cash Balance</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-cash">--</span>
@@ -118,28 +118,28 @@
             <p class="text-xs text-text-secondary">Estimated from contribution history and fund units. Not tax or legal advice.</p>
         </div>
         <div id="user-share-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="p-4 card shadow-xs border border-accent/30">
+            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs border border-accent/30">
                 <h5 class="mb-1 text-sm font-medium text-text-tertiary">Your value</h5>
                 <div class="flex items-baseline gap-2">
                     <span class="text-2xl font-bold text-text-primary" id="user-metric-value">--</span>
                     <span class="text-xs font-medium text-text-tertiary" id="user-metric-currency">CAD</span>
                 </div>
             </div>
-            <div class="p-4 card shadow-xs border border-accent/30">
+            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs border border-accent/30">
                 <h5 class="mb-1 text-sm font-medium text-text-tertiary" id="user-metric-change-label">Your change</h5>
                 <div class="flex items-baseline gap-2">
                     <span class="text-2xl font-bold text-text-primary" id="user-metric-change">--</span>
                     <span class="text-sm font-medium px-2 py-0.5 rounded" id="user-metric-change-pct">--%</span>
                 </div>
             </div>
-            <div class="p-4 card shadow-xs border border-accent/30">
+            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs border border-accent/30">
                 <h5 class="mb-1 text-sm font-medium text-text-tertiary">Your return</h5>
                 <div class="flex items-baseline gap-2">
                     <span class="text-2xl font-bold text-text-primary" id="user-metric-return">--</span>
                     <span class="text-sm font-medium px-2 py-0.5 rounded" id="user-metric-return-pct">--%</span>
                 </div>
             </div>
-            <div class="p-4 card shadow-xs border border-accent/30">
+            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs border border-accent/30">
                 <h5 class="mb-1 text-sm font-medium text-text-tertiary">Ownership</h5>
                 <div class="flex items-baseline gap-2">
                     <span class="text-2xl font-bold text-text-primary" id="user-metric-ownership">--</span>
@@ -154,7 +154,7 @@
     <!-- Fund Stats -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <!-- Investors (hidden if count <= 1) -->
-        <div id="investor-metric-container" class="p-4 card shadow-xs">
+        <div id="investor-metric-container" class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">Investors</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-investors">--</span>
@@ -162,7 +162,7 @@
         </div>
 
         <!-- Holdings Count -->
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">Holdings</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-holdings-count">--</span>
@@ -170,7 +170,7 @@
         </div>
 
         <!-- First Trade Date -->
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h5 class="mb-1 text-sm font-medium text-text-tertiary">First Trade Date</h5>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-first-trade-date">--</span>
@@ -179,7 +179,7 @@
     </div>
 
     <!-- Market brief (cached daily) -->
-    <div id="market-brief-card" class="p-4 card shadow-xs mb-6 hidden">
+    <div id="market-brief-card" class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6 hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
             <div class="flex items-center gap-2 flex-wrap">
                 <h3 class="text-lg font-bold text-text-primary">📰 Market brief</h3>
@@ -218,7 +218,7 @@
     </div>
 
     <!-- Tier-1: portfolio metrics AI read (cached; scheduler ui_ai_summaries) -->
-    <div id="portfolio-ai-summary-card" class="p-4 card shadow-xs mb-6 hidden">
+    <div id="portfolio-ai-summary-card" class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6 hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
             <div class="flex items-center gap-2 flex-wrap">
                 <h3 class="text-lg font-bold text-text-primary">📊 Portfolio snapshot (AI)</h3>
@@ -251,7 +251,7 @@
     </div>
 
     <!-- Tier-2: per-fund cross-screen digest -->
-    <div id="fund-digest-card" class="p-4 card shadow-xs mb-6 hidden border border-accent/20">
+    <div id="fund-digest-card" class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6 hidden border border-accent/20">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
             <div class="flex items-center gap-2 flex-wrap">
                 <h3 class="text-lg font-bold text-text-primary">🧠 Fund digest</h3>
@@ -282,7 +282,7 @@
     </div>
 
     <!-- Action Queue -->
-    <div class="p-4 card shadow-xs mb-6">
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
                 <h3 class="text-lg font-bold text-text-primary">⚡ Action Queue</h3>
@@ -321,7 +321,7 @@
     <!-- Biggest Daily Movers -->
     <div id="movers-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <!-- Top Gainers -->
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
                 <span class="text-theme-success-text">🟢</span> Top Gainers
             </h3>
@@ -348,7 +348,7 @@
         </div>
 
         <!-- Top Losers -->
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
                 <span class="text-theme-error-text">🔴</span> Top Losers
             </h3>
@@ -378,7 +378,7 @@
     <!-- Main Charts -->
     <!-- Performance Chart (full width) -->
     <div class="mb-6 w-full">
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-text-primary">Portfolio Performance</h3>
                 <label class="inline-flex items-center cursor-pointer">
@@ -466,7 +466,7 @@
     <!-- Sector Allocation and Market Indicators Row -->
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6 w-full">
         <!-- Sector Allocation Chart -->
-        <div class="p-4 card shadow-xs min-w-0">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs min-w-0">
             <h3 class="text-lg font-bold text-text-primary mb-4">Sector Allocation</h3>
             <div class="w-full relative aspect-square max-h-[500px]" id="sector-chart">
                 <!-- Loading spinner -->
@@ -477,7 +477,7 @@
         </div>
 
         <!-- Market Indicators Section -->
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <h3 class="text-lg font-bold text-text-primary mb-4">📊 Market Indicators</h3>
 
             <!-- Commodity Prices Chart -->
@@ -573,7 +573,7 @@
     </div>
 
     <!-- P&L by Position Chart -->
-    <div class="p-4 card shadow-xs mb-6">
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h3 class="text-lg font-bold text-text-primary">P&L by Position</h3>
             <div class="inline-flex rounded-md shadow-xs" role="group" aria-label="P&L chart view">
@@ -610,7 +610,7 @@
 
     <!-- Dividends Section -->
     <div class="mb-6">
-        <div class="p-4 card shadow-xs">
+        <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-text-primary flex items-center gap-2">
                     <span class="text-theme-success-text">💰</span> Dividends
@@ -672,7 +672,7 @@
     </div>
 
     <!-- Holdings Table -->
-    <div class="p-4 card shadow-xs mb-6">
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs mb-6">
         <h3 class="text-lg font-bold text-text-primary mb-4">Current Holdings</h3>
         <p class="text-xs text-text-tertiary mb-3">
             * Total P&amp;L in this table is unrealized only and excludes realized P&amp;L from closed trades.
@@ -687,7 +687,7 @@
     </div>
 
     <!-- Recent Activity -->
-    <div class="p-4 card shadow-xs">
+    <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
         <h3 class="text-lg font-bold text-text-primary mb-4">Recent Activity</h3>
         <div class="relative overflow-x-auto max-h-[600px] overflow-y-auto border border-border rounded-lg">
             <!-- Loading spinner -->

@@ -379,24 +379,12 @@
         @apply bg-dashboard-surface-alt border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5;
     }
 
-    /* TODO(palette): `.card` is a thin `@apply` wrapper over 4 utilities. Audit flagged
-       it as @apply overuse vs utility-first. Evaluate inlining these utilities at call
-       sites (or keep only if reused widely enough to justify the abstraction). (Palette audit PR #365) */
-    .card {
-        @apply bg-dashboard-surface rounded-lg border border-border;
-    }
 
     /* Standardized button styles */
-    /* TODO(palette): `.btn-outline` and `.btn-outline-accent` below have identical @apply
-       declarations (duplicate utility). Collapse to one class (or make `-accent` differ
-       intentionally) and update call sites. (Palette audit PR #365) */
     .btn-outline {
         @apply text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200;
     }
 
-    .btn-outline-accent {
-        @apply text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200;
-    }
 
     /* Standardized button group item */
     .btn-group-item {
