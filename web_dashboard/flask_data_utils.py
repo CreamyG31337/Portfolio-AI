@@ -854,12 +854,11 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                                 )
                                 current_pnl += u_pnl * rate
 
-                            # Create row for today (noon)
-                            today_date = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
-
-                            # Only append if date is newer than last metric
-                            last_metric_date = daily_totals['date'].max()
-                            if last_metric_date < today_date:
+                            # Create row for today (noon UTC) — compare calendar dates only so
+                            # tz-aware portfolio_positions timestamps don't break the check.
+                            today_date = pd.Timestamp.utcnow().normalize() + pd.Timedelta(hours=12)
+                            last_metric_date = pd.to_datetime(daily_totals['date'].max())
+                            if last_metric_date.date() < today_date.date():
                                 new_row = pd.DataFrame([{
                                     'date': today_date,
                                     'value': current_val,

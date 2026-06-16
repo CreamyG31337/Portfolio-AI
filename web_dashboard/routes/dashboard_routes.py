@@ -747,6 +747,7 @@ def get_dashboard_fund_digest():
 
 
 @dashboard_bp.route('/api/dashboard/charts/performance', methods=['GET'])
+@require_auth
 def get_performance_chart():
     """Get portfolio performance chart as Plotly JSON.
     
@@ -919,6 +920,7 @@ def get_performance_chart():
 
 
 @dashboard_bp.route('/api/dashboard/charts/individual-holdings', methods=['GET'])
+@require_auth
 def get_individual_holdings_chart():
     """Get individual stock performance chart as Plotly JSON.
     
@@ -1085,6 +1087,7 @@ def get_individual_holdings_chart():
 
 
 @dashboard_bp.route('/api/dashboard/charts/allocation', methods=['GET'])
+@require_auth
 def get_allocation_charts():
     """Get allocation chart as Plotly JSON (Sector pie chart).
     
@@ -1805,6 +1808,7 @@ def get_dividend_data():
         return jsonify({"error": str(e)}), 500
 
 @dashboard_bp.route('/api/dashboard/charts/currency', methods=['GET'])
+@require_auth
 def get_currency_chart():
     """Get currency exposure chart as Plotly JSON."""
     fund = request.args.get('fund')
@@ -2148,6 +2152,7 @@ def get_movers_data():
 
 
 @dashboard_bp.route('/api/dashboard/charts/commodities', methods=['GET'])
+@require_auth
 def get_commodities_chart():
     """Get commodity prices chart as Plotly JSON.
     
