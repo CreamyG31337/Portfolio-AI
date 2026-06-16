@@ -418,8 +418,14 @@ def require_auth(f):
             f"email={request.user_email} refreshed={bool(new_token)}"
         )
 
-        from flask_auth_utils import ensure_impersonation_session_valid
+        from flask_auth_utils import ensure_impersonation_session_valid, stash_supabase_access_token_for_request
         ensure_impersonation_session_valid()
+        stash_supabase_access_token_for_request()
+        if not getattr(request, "_supabase_access_token", None):
+            logger.error(
+                f"{_auth_trace_prefix()}require_auth: session ok but no Supabase JWT for RLS "
+                f"path={request.path} cookies={list(request.cookies.keys())}"
+            )
 
         # Execute the route function.
         # Refreshed tokens are persisted as cookies by the app-level

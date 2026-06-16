@@ -27,14 +27,23 @@ def get_supabase_client_flask() -> Optional[SupabaseClient]:
     which sets the Authorization header so RLS policies work correctly.
     """
     try:
-        from flask_auth_utils import get_supabase_access_token
-        
-        # Get the user's JWT token from cookies
-        user_token = get_supabase_access_token()
-        
+        from flask import has_request_context, request
+        from flask_auth_utils import resolve_supabase_access_token_for_rls
+
+        user_token = resolve_supabase_access_token_for_rls()
+
         if not user_token:
-            logger.warning("[get_supabase_client_flask] No auth_token cookie found - RLS queries will fail!")
-            # Return client anyway, but queries on RLS tables will return empty
+            if has_request_context() and getattr(request, "user_id", None):
+                logger.error(
+                    "[get_supabase_client_flask] Authenticated request user_id=%s but no "
+                    "valid Supabase JWT for RLS (cookies=%s). Queries will return empty.",
+                    request.user_id,
+                    list(request.cookies.keys()),
+                )
+            else:
+                logger.warning(
+                    "[get_supabase_client_flask] No valid Supabase JWT - RLS queries will fail!"
+                )
             return SupabaseClient()
         
         # Do not pass the refresh token into SupabaseClient. The auth decorator
@@ -772,6 +781,13 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
 
                     # Normalize date
                     daily_totals['date'] = pd.to_datetime(daily_totals['date']).dt.normalize() + pd.Timedelta(hours=12)
+
+                    # All-funds view: metrics rows are per-fund — sum to one series per day
+                    if (fund is None or (isinstance(fund, str) and fund.lower() == 'all')) and 'fund' in daily_totals.columns:
+                        daily_totals = (
+                            daily_totals.groupby('date', as_index=False)
+                            .agg({'value': 'sum', 'cost_basis': 'sum', 'pnl': 'sum'})
+                        )
 
                     # Append today's live data if needed
                     # Performance metrics are updated daily (yesterday's close), so we need live data for today

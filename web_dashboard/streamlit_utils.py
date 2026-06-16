@@ -2477,36 +2477,6 @@ def get_user_investment_metrics(
                     level="WARNING",
                 )
         
-        # #region agent log
-        try:
-            import json as _json
-            with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
-                _f.write(
-                    _json.dumps(
-                        {
-                            "sessionId": "dc6352",
-                            "runId": f"nav_match_{int(time.time() * 1000)}",
-                            "hypothesisId": "H6",
-                            "location": "streamlit_utils.py:get_user_investment_metrics:identity_match",
-                            "message": "Resolved identity to contributor and units",
-                            "data": {
-                                "fund": fund,
-                                "resolved_email_present": bool(resolved_email),
-                                "resolved_user_id_present": bool(resolved_user_id),
-                                "matched_contributor": user_contributor,
-                                "matched_units": user_units,
-                                "total_units": total_units,
-                                "contribution_rows": len(contributions),
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
         if user_contributor is None or user_units <= 0:
             log_message(f"[{session_id}] PERF: get_user_investment_metrics - User not found or no units, returning None (total: {time.time() - func_start:.2f}s)", level='DEBUG')
             return None
@@ -2525,39 +2495,6 @@ def get_user_investment_metrics(
         gain_loss = current_value - user_net_contribution
         gain_loss_pct = (gain_loss / user_net_contribution) * 100 if user_net_contribution > 0 else 0.0
 
-        # #region agent log
-        try:
-            import json as _json
-            with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
-                _f.write(
-                    _json.dumps(
-                        {
-                            "sessionId": "dc6352",
-                            "runId": f"nav_value_{int(time.time() * 1000)}",
-                            "hypothesisId": "H7",
-                            "location": "streamlit_utils.py:get_user_investment_metrics:value_math",
-                            "message": "Computed NAV value slice",
-                            "data": {
-                                "fund": fund,
-                                "user_contributor": user_contributor,
-                                "user_units": user_units,
-                                "total_units": total_units,
-                                "fund_total_value": fund_total_value,
-                                "current_nav": current_nav,
-                                "current_value": current_value,
-                                "user_net_contribution": user_net_contribution,
-                                "ownership_pct": ownership_pct,
-                                "gain_loss": gain_loss,
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-        
         log_message(f"[{session_id}] PERF: get_user_investment_metrics - SUCCESS, total time: {time.time() - func_start:.2f}s", level='DEBUG')
         
         return {

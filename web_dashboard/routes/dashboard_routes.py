@@ -205,26 +205,6 @@ def get_dashboard_summary():
     
     logger.info(f"[Dashboard API] /api/dashboard/summary called - fund={fund}, range={time_range}, currency={display_currency}")
     start_time = time.time()
-    # #region agent log
-    try:
-        with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
-            _f.write(json.dumps({
-                "sessionId": "dc6352",
-                "runId": f"summary_{int(start_time * 1000)}",
-                "hypothesisId": "H1",
-                "location": "dashboard_routes.py:get_dashboard_summary:start",
-                "message": "Summary request normalized on server",
-                "data": {
-                    "rawFund": raw_fund,
-                    "normalizedFund": fund,
-                    "range": time_range,
-                    "displayCurrency": display_currency
-                },
-                "timestamp": int(time.time() * 1000)
-            }) + "\n")
-    except Exception:
-        pass
-    # #endregion
     
     try:
         # Fetch Data
@@ -265,28 +245,6 @@ def get_dashboard_summary():
         # Investor & Holdings Count
         investor_count = get_investor_count(fund)
         holdings_count = len(positions_df) if not positions_df.empty else 0
-        # #region agent log
-        try:
-            with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
-                _f.write(json.dumps({
-                    "sessionId": "dc6352",
-                    "runId": f"summary_{int(start_time * 1000)}",
-                    "hypothesisId": "H2",
-                    "location": "dashboard_routes.py:get_dashboard_summary:core",
-                    "message": "Core summary totals computed",
-                    "data": {
-                        "fund": fund,
-                        "totalValue": total_value,
-                        "totalCash": total_cash,
-                        "portfolioValueNoCash": portfolio_value_no_cash,
-                        "investorCount": investor_count,
-                        "holdingsCount": holdings_count
-                    },
-                    "timestamp": int(time.time() * 1000)
-                }) + "\n")
-        except Exception:
-            pass
-        # #endregion
         
         # Get First Trade Date
         first_trade_date = None
@@ -339,28 +297,6 @@ def get_dashboard_summary():
                     user_email=uid,
                     user_id=eff_user_id,
                 )
-                # #region agent log
-                try:
-                    with open("debug-dc6352.log", "a", encoding="utf-8") as _f:
-                        _f.write(json.dumps({
-                            "sessionId": "dc6352",
-                            "runId": f"summary_{int(start_time * 1000)}",
-                            "hypothesisId": "H3",
-                            "location": "dashboard_routes.py:get_dashboard_summary:user_investment",
-                            "message": "User investment resolution result",
-                            "data": {
-                                "fund": fund,
-                                "emailProvided": bool(uid),
-                                "effectiveUserIdProvided": bool(eff_user_id),
-                                "userInvestmentPresent": raw_ui is not None,
-                                "userCurrentValue": (raw_ui or {}).get("current_value") if raw_ui else None,
-                                "userOwnershipPct": (raw_ui or {}).get("ownership_pct") if raw_ui else None
-                            },
-                            "timestamp": int(time.time() * 1000)
-                        }) + "\n")
-                except Exception:
-                    pass
-                # #endregion
                 if raw_ui:
                     ownership_ratio = float(raw_ui["ownership_pct"]) / 100.0
                     if days is not None and period_change is not None:
@@ -812,8 +748,17 @@ def get_performance_chart():
                     logger.info(f"[DEBUG] First investment day: {first_investment.iloc[0]['date']}, cost_basis: {first_investment.iloc[0]['cost_basis']}, performance_index: {first_investment.iloc[0]['performance_index']}")
         
         if df.empty:
-            logger.warning(f"[Dashboard API] No portfolio value data found for fund={fund}, range={time_range}")
-            # Return empty Plotly chart
+            from flask_auth_utils import resolve_supabase_access_token_for_rls
+
+            had_supabase_jwt = bool(resolve_supabase_access_token_for_rls())
+            logger.warning(
+                "[Dashboard API] Performance chart empty - fund=%s range=%s "
+                "had_supabase_jwt=%s user_id=%s",
+                fund,
+                time_range,
+                had_supabase_jwt,
+                getattr(request, "user_id", None),
+            )
             import plotly.graph_objs as go
             fig = go.Figure()
             fig.add_annotation(
@@ -822,8 +767,15 @@ def get_performance_chart():
                 x=0.5, y=0.5, showarrow=False
             )
             from plotly_utils import serialize_plotly_figure
+            payload = json.loads(serialize_plotly_figure(fig))
+            payload["meta"] = {
+                "reason": "no_portfolio_rows",
+                "had_supabase_jwt": had_supabase_jwt,
+                "fund": fund,
+                "range": time_range,
+            }
             return Response(
-                serialize_plotly_figure(fig),
+                json.dumps(payload),
                 mimetype='application/json'
             )
         
