@@ -180,27 +180,25 @@ def _fetch_congress_purchase_tickers(
     if not tickers:
         return set()
     cutoff = (datetime.now(UTC).date() - timedelta(days=window_days)).isoformat()
+    ticker_list = sorted(tickers)
     found: set[str] = set()
-    offset = 0
     try:
-        while True:
+        # Scope the ticker filter to the DB instead of scanning every congressional
+        # purchase market-wide; batch to stay well under Supabase IN-list limits.
+        for i in range(0, len(ticker_list), 100):
+            batch = ticker_list[i : i + 100]
             res = (
                 supabase_client.supabase.table("congress_trades_enriched")
-                .select("ticker,transaction_date,type")
+                .select("ticker")
                 .eq("type", "Purchase")
                 .gte("transaction_date", cutoff)
-                .order("transaction_date", desc=True)
-                .range(offset, offset + _PAGE_SIZE - 1)
+                .in_("ticker", batch)
                 .execute()
             )
-            page = res.data or []
-            for row in page:
+            for row in res.data or []:
                 t = str(row.get("ticker") or "").upper()
-                if t in tickers:
+                if t:
                     found.add(t)
-            if len(page) < _PAGE_SIZE:
-                break
-            offset += _PAGE_SIZE
     except Exception as exc:
         logger.warning("confluence congress fetch failed: %s", exc)
     return found
@@ -275,15 +273,18 @@ def _fetch_signal_hits(
     ticker_list = sorted(tickers)
     latest_by_ticker: dict[str, dict[str, Any]] = {}
     try:
-        for i in range(0, len(ticker_list), 100):
-            batch = ticker_list[i : i + 100]
+        # signal_analysis holds ~1 row/ticker/day, so a 10d window is ~10 rows/ticker.
+        # Keep batch_size * window_rows under the 1000-row REST cap or later tickers in
+        # the batch get truncated away and silently miss the signals family.
+        for i in range(0, len(ticker_list), 50):
+            batch = ticker_list[i : i + 50]
             res = (
                 supabase_client.supabase.table("signal_analysis")
                 .select("ticker,analysis_date,structure_signal,overall_signal,confidence_score")
                 .in_("ticker", batch)
                 .gte("analysis_date", cutoff)
                 .order("analysis_date", desc=True)
-                .limit(500)
+                .limit(1000)
                 .execute()
             )
             for row in res.data or []:
@@ -426,7 +427,9 @@ def gather_ticker_hits(
         bucket["risk"].add("dilution_flag")
         bucket["details"]["dilution_flag"] = {"flagged": True}
 
-    return hits
+    # Stance flips and insider clusters are fetched market-wide (not ticker-scoped),
+    # so restrict the final result to the production holdings + watchlist scope.
+    return {t: h for t, h in hits.items() if t in ticker_set}
 
 
 def compute_confluence_for_tickers(

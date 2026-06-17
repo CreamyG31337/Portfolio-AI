@@ -11,6 +11,7 @@ from web_dashboard.confluence_service import (
     _detect_social_spike_tickers,
     build_confluence_events_from_hits,
     fetch_recent_confluence_events,
+    gather_ticker_hits,
     persist_confluence_event,
     run_confluence_scan,
 )
@@ -154,6 +155,31 @@ def test_run_scan_writes_stance_at_threshold(mock_tickers, mock_compute, mock_st
     mock_stance.assert_called_once()
     assert mock_stance.call_args.kwargs["source"] == "confluence"
     assert mock_stance.call_args.kwargs["stance"] == "BULLISH"
+
+
+@patch("web_dashboard.confluence_service._fetch_dilution_hits", return_value=set())
+@patch("web_dashboard.confluence_service._fetch_filing_hits", return_value={})
+@patch("web_dashboard.confluence_service._fetch_signal_hits", return_value={})
+@patch("web_dashboard.confluence_service._detect_social_spike_tickers", return_value=set())
+@patch("web_dashboard.confluence_service._fetch_congress_purchase_tickers", return_value=set())
+@patch("insider_clusters_service.build_insider_cluster_buys")
+@patch("today_briefing_service.fetch_stance_flips")
+def test_gather_hits_intersects_scope(
+    mock_flips, mock_clusters, *_mocks
+):
+    # An off-scope ticker with both a flip and a cluster would score 2 and persist;
+    # gather_ticker_hits must drop it because it is not in the holdings/watchlist scope.
+    mock_flips.return_value = [
+        {"ticker": "INSCOPE", "to_stance": "BULLISH", "from_stance": "NEUTRAL"},
+        {"ticker": "OFFSCOPE", "to_stance": "BULLISH", "from_stance": "NEUTRAL"},
+    ]
+    mock_clusters.return_value = [
+        {"ticker": "INSCOPE", "insider_count": 3},
+        {"ticker": "OFFSCOPE", "insider_count": 3},
+    ]
+    hits = gather_ticker_hits(MagicMock(), MagicMock(), ["INSCOPE"])
+    assert "INSCOPE" in hits
+    assert "OFFSCOPE" not in hits
 
 
 def test_fetch_recent_swallows_missing_table():
