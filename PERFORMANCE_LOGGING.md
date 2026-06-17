@@ -10,7 +10,7 @@ We've added comprehensive performance logging throughout the web dashboard to id
 - This allows you to track individual user sessions even when multiple users are active
 - Session ID persists across page reloads within the same browser session
 
-### 1. **Main Dashboard Loading** (`streamlit_app.py`)
+### 1. **Main Dashboard Loading** (`web_dashboard/routes/dashboard_routes.py`, `app.py`)
 - Individual timing for each data fetch operation:
   - `get_current_positions()`
   - `get_trade_log()`
@@ -22,10 +22,10 @@ We've added comprehensive performance logging throughout the web dashboard to id
   - `get_latest_exchange_rate()`
   - `get_user_investment_metrics()` ⚠️ **LIKELY BOTTLENECK**
 - Chart creation and rendering:
-  - `create_portfolio_value_chart()`
-  - `st.plotly_chart()` (actual render time)
+  - `create_portfolio_value_chart()` (chart_utils)
+  - Client-side Plotly render time (browser)
 
-### 2. **User Investment Metrics** (`streamlit_utils.py` - `get_user_investment_metrics()`)
+### 2. **User Investment Metrics** (`web_dashboard/portfolio_metrics.py` — `get_user_investment_metrics()`)
 This function has detailed logging for each step:
 - **Contributions query**: Time to fetch all fund_contributions from database
 - **Cash/exchange rate**: Time to get cash balances and exchange rates
@@ -53,7 +53,6 @@ Based on your original logs showing an 11-second gap, we expect to see (with ses
 [a1b2c3d4] PERF: Metrics calculations complete, took ~11s total
 [a1b2c3d4] PERF: Creating portfolio value chart
 [a1b2c3d4] PERF: create_portfolio_value_chart took ~1.8s
-[a1b2c3d4] PERF: st.plotly_chart (render) took ~0.1s
 ```
 
 **Multi-User Example:**
@@ -81,11 +80,8 @@ This function:
 ## Recommended Optimizations
 
 ### 1. **Add Caching to `get_user_investment_metrics()`**
-```python
-@st.cache_data(ttl=300)  # Cache for 5 minutes
-def get_user_investment_metrics(fund: str, total_portfolio_value: float, ...):
-    ...
-```
+
+Use `@cache_data` from `flask_cache_utils` (see `FLASK_CACHING_GUIDE.md`).
 
 ### 2. **Cache Historical Fund Values**
 Create a materialized view or cached table for daily fund values instead of calculating on-the-fly.

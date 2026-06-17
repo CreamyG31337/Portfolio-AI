@@ -2,7 +2,7 @@
 
 ## Overview
 
-Since Streamlit blocks JavaScript cookies, user preferences are stored in the **Supabase database** using a JSONB column in the `user_profiles` table. This provides:
+User preferences are stored in the **Supabase database** using a JSONB column in `user_profiles`. This provides:
 
 - ✅ Persistent storage across sessions and devices
 - ✅ Per-user preferences (respects authentication)
@@ -85,7 +85,7 @@ set_user_preference('theme', 'dark')
 
 ### Features
 
-1. **Automatic Caching**: Preferences are cached in Streamlit session state for performance
+1. **Automatic Caching**: Preferences are cached in the Flask session for performance
 2. **Type Safety**: Values are stored as JSONB, supporting strings, numbers, booleans, objects, arrays
 3. **Secure**: Uses RLS policies - users can only access their own preferences
 4. **Fallback**: If user not authenticated, returns default values gracefully
@@ -107,9 +107,9 @@ Users can set their timezone via:
 ## Files
 
 - `web_dashboard/schema/06_user_preferences.sql` - Database migration
-- `web_dashboard/user_preferences.py` - Python utility functions
-- `web_dashboard/pages/settings.py` - Settings UI page
-- `web_dashboard/scheduler_ui.py` - Updated to use user timezone preference
+- `web_dashboard/user_preferences.py` — Python utility functions
+- `web_dashboard/templates/settings.html` — Settings UI
+- Admin scheduler pages — use `get_user_timezone()` for display
 
 ## Example: Adding a New Preference
 
@@ -124,6 +124,6 @@ set_user_preference('my_new_setting', 'new_value')
 ## Notes
 
 - Preferences are stored as JSONB, so you can store complex objects/arrays
-- Session state cache is cleared on logout (handled by auth_utils)
+- Session cache is cleared on logout (Flask session / `auth.py`)
 - All RPC functions use `SECURITY DEFINER` to ensure proper RLS enforcement
 

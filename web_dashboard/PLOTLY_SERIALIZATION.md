@@ -2,22 +2,11 @@
 
 ## Overview
 
-When porting Plotly charts from Streamlit to Flask, you **must** use the shared serialization utilities to convert numpy arrays to Python native types before JSON serialization.
+Flask API routes that return Plotly charts **must** use `plotly_utils.serialize_plotly_figure()` so numpy arrays become JSON-safe native types before the browser parses them.
 
 ## Why This Is Needed
 
-### Streamlit vs Flask Difference
-
-**Streamlit (`st.plotly_chart()`):**
-- Automatically handles numpy array conversion internally
-- No manual conversion needed
-- Works out of the box
-
-**Flask (Manual JSON serialization):**
-- Requires explicit serialization using `PlotlyJSONEncoder`
-- `PlotlyJSONEncoder` can serialize numpy arrays in binary format
-- JavaScript frontend cannot parse binary-encoded numpy arrays
-- **Result**: Charts display incorrect values (e.g., 1, 2, 3, 4 instead of 100, 101, 102)
+`PlotlyJSONEncoder` can emit numpy arrays in a binary JSON shape (`dtype` + `bdata`). Browsers cannot parse that — charts show wrong values (e.g. 1, 2, 3 instead of real prices).
 
 ### The Problem
 
@@ -124,7 +113,7 @@ After implementing, verify:
 1. Charts display correct values (starting at 100 for normalized charts)
 2. No console errors in browser developer tools
 3. Chart data is valid JSON (check Network tab)
-4. Values match Streamlit version
+4. Values match expected chart data from tests or manual spot-check
 
 ## Common Mistakes
 
@@ -141,6 +130,5 @@ return serialize_plotly_figure(fig)
 
 ## Related Files
 
-- `web_dashboard/plotly_utils.py` - Shared serialization utilities
-- `web_dashboard/chart_utils.py` - Chart creation functions
-- `web_dashboard/streamlit_app.py` - Streamlit version (for reference)
+- `web_dashboard/plotly_utils.py` — serialization utilities
+- `web_dashboard/chart_utils.py` — chart creation functions

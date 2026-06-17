@@ -1226,15 +1226,12 @@ def render_ticker_link(
         >>> print(link)
         '[Apple Inc.](ticker_details?ticker=AAPL)'
         >>> 
-        >>> # Use in Streamlit markdown
-        >>> import streamlit as st
-        >>> st.markdown(f"View details for {render_ticker_link('AAPL')}")
+        >>> # Use in Jinja / markdown templates
+        >>> # {{ render_ticker_link('AAPL') | safe }}  (expose via template filter as needed)
     
     Warning:
-        This does NOT work in st.dataframe() or AgGrid - the markdown
-        will display as plain text. For tables, consider:
-        - st.data_editor() with LinkColumn (Streamlit 1.29+)
-        - Separate "View Details" button column
+        Raw markdown links do not work inside AG Grid cells —
+        use a dedicated link column or actions column instead.
         - Custom HTML table with unsafe_allow_html=True
     """
     ticker_upper = ticker.upper().strip()

@@ -21,8 +21,6 @@ The Flask app is automatically deployed via Woodpecker CI/CD when you push to th
 - `trading-dashboard-flask` container (Flask on port 5001)
 - `cookie-refresher` container (sidecar)
 
-Streamlit (`trading-dashboard` on 8501) is no longer built or deployed.
-
 No manual deployment needed - just push to main branch!
 
 ## Manual Deployment Options
@@ -172,7 +170,7 @@ Important: do not use local-machine scheduler checks as the source of truth for 
 
 ## Caddy Configuration
 
-Route all dashboard traffic to port **5001**. See `Caddyfile.example` and `CADDYFILE_MIGRATION.md` — remove any `/streamlit` or `8501` blocks from your live Caddyfile.
+Route all dashboard traffic to port **5001**. See `Caddyfile.example` and `CADDY_SETUP.md`.
 
 ## Troubleshooting
 

@@ -1,4 +1,4 @@
-# Caddyfile Example (Flask-only — Streamlit removed)
+# Caddyfile Example (Flask dashboard)
 # Copy this to Caddyfile and set APP_DOMAIN environment variable
 # Example: export APP_DOMAIN=your-domain.com
 #

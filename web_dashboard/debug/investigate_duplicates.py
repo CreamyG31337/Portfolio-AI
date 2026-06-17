@@ -82,11 +82,11 @@ def check_duplicates():
         df['date_dt'] = pd.to_datetime(df['date'])
         df['date_key'] = df['date'].astype(str).str[:10]
     
-    # Check logic used in streamlit_utils.py: date_key (YYYY-MM-DD) and ticker
+    # Check logic used in portfolio_metrics / flask_data_utils: date_key (YYYY-MM-DD) and ticker
     duplicates_logic = df[df.duplicated(subset=['date_key', 'ticker'], keep=False)]
     
     if not duplicates_logic.empty:
-        print(f"\nCRITICAL (streamlit_utils logic): Found {len(duplicates_logic)} duplicates based on date_key and ticker!")
+        print(f"\nCRITICAL (dashboard logic): Found {len(duplicates_logic)} duplicates based on date_key and ticker!")
         
         # Show detail of duplicates to see if they are identical or different
         print("\nDetail of duplicates (sorted by ticker, date):")

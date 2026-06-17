@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide explains how to use Flask caching for data-heavy pages, providing functionality similar to Streamlit's `@st.cache_data` and `@st.cache_resource` decorators.
+This guide explains Flask caching for data-heavy routes using `@cache_data` and `@cache_resource` in `flask_cache_utils.py`.
 
 ## Installation
 
@@ -19,46 +19,33 @@ pip install Flask-Caching
 ```python
 from flask_cache_utils import cache_data, cache_resource
 
-# Cache function results with TTL (like @st.cache_data)
+# Cache function results with TTL
 @cache_data(ttl=300)  # Cache for 5 minutes
 def get_expensive_data(param1, param2):
     # Expensive database query or API call
     return expensive_operation()
 
-# Cache resources (like @st.cache_resource)
+# Cache long-lived resources
 @cache_resource
 def get_database_client():
     return DatabaseClient()
 ```
 
-## Migration from Streamlit
-
-### Before (Streamlit)
-
-```python
-@st.cache_data(ttl=60, show_spinner=False)
-def get_cached_statistics(_repo, refresh_key: int):
-    return _repo.get_article_statistics(days=90)
-```
-
-### After (Flask)
+## Example Pattern
 
 ```python
 from flask_cache_utils import cache_data
 
-@cache_data(ttl=60)  # show_spinner not needed in Flask
+@cache_data(ttl=60)
 def get_cached_statistics(repo, refresh_key: int):
     return repo.get_article_statistics(days=90)
 ```
 
-**Key Differences:**
-- Remove `_repo` prefix (no need to mark parameters for cache key exclusion)
-- Remove `show_spinner` parameter (Flask doesn't have UI spinners)
-- Function signature stays the same otherwise
+Use `get_flask_cache_scope_id()` / user id in arguments when cache must be per-user.
 
 ## Cache Version Support
 
-The caching system integrates with `cache_version.py` for manual cache invalidation, just like Streamlit:
+The caching system integrates with `cache_version.py` for manual cache invalidation:
 
 ```python
 from flask_cache_utils import cache_data
@@ -143,13 +130,10 @@ print(f"Total cached keys: {stats['total_keys']}")
 
 ## TTL Guidelines
 
-Based on your Streamlit usage patterns:
-
-- **Very short (5-30s)**: Frequently changing data, active user interactions
-- **Short (60-300s)**: Dashboard data, recent statistics
-- **Medium (300-1800s)**: Portfolio data, article lists
-- **Long (3600s+)**: Historical data, exchange rates, static content
-- **None (forever)**: Historical trades, immutable data
+- **Very short (5–30s)**: frequently changing data
+- **Short (60–300s)**: dashboard summaries, recent stats
+- **Medium (300–1800s)**: portfolio positions, article lists
+- **Long (3600s+)**: exchange rates, historical reference data
 
 ## Backend Options
 
@@ -187,17 +171,11 @@ cache = Cache(config={
 })
 ```
 
-## Examples from Your Codebase
+## Examples from This Codebase
 
-### Research Page Caching
+### Research statistics
 
 ```python
-# Before (Streamlit)
-@st.cache_data(ttl=60, show_spinner=False)
-def get_cached_statistics(_repo, refresh_key: int):
-    return _repo.get_article_statistics(days=90)
-
-# After (Flask)
 from flask_cache_utils import cache_data
 
 @cache_data(ttl=60)
@@ -205,28 +183,22 @@ def get_cached_statistics(repo, refresh_key: int):
     return repo.get_article_statistics(days=90)
 ```
 
-### Portfolio Data Caching
+### Portfolio positions (`flask_data_utils`)
 
 ```python
-# Before (Streamlit)
-@st.cache_data(ttl=300)
-def get_current_positions(fund: Optional[str] = None, _cache_version: str = CACHE_VERSION):
-    # ... fetch positions ...
-
-# After (Flask)
 from flask_cache_utils import cache_data
-from cache_version import get_cache_version
+from dashboard_constants import get_cache_version
 
 @cache_data(ttl=300)
-def get_current_positions(fund: Optional[str] = None, _cache_version: str = None):
+def get_current_positions(fund: Optional[str] = None, _cache_version: str | None = None):
     if _cache_version is None:
         _cache_version = get_cache_version()
-    # ... fetch positions ...
+    ...
 ```
 
 ## Best Practices
 
-1. **Use appropriate TTLs**: Match your Streamlit TTL values for consistency
+1. **Use appropriate TTLs** — see `dashboard_constants.get_cache_ttl()`
 2. **Include cache_version**: For data that changes when portfolio updates occur
 3. **Cache expensive operations**: Database queries, API calls, data transformations
 4. **Don't cache user-specific mutable data**: Unless you want stale data
@@ -253,15 +225,9 @@ def get_current_positions(fund: Optional[str] = None, _cache_version: str = None
 2. Call `clear_all_caches()` for manual clearing
 3. Use function-specific `clear_cache()` methods
 
-## Migration Checklist
+## New Route Checklist
 
-When migrating a Streamlit page to Flask:
-
-- [ ] Replace `@st.cache_data` with `@cache_data`
-- [ ] Replace `@st.cache_resource` with `@cache_resource`
-- [ ] Remove `show_spinner` parameter
-- [ ] Remove `_repo` prefix (if used for cache exclusion)
-- [ ] Update imports to use `flask_cache_utils`
-- [ ] Test cache invalidation with `bump_cache_version()`
-- [ ] Verify TTL values match original Streamlit implementation
-- [ ] Check cache statistics to ensure caching is working
+- [ ] Add `@cache_data` or `@cache_resource` where fetches are expensive
+- [ ] Scope cache keys per user/fund when data is not global
+- [ ] Wire invalidation via `bump_cache_version()` or `clear_all_caches()` after writes
+- [ ] Confirm TTL via tests or `get_cache_stats()`

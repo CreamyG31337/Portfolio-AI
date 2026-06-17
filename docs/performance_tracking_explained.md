@@ -170,10 +170,10 @@ We also "freeze" the unit count at the start of each trading day. Everyone buyin
 
 ## 8. For Developers: Files to Check
 
-- **Primary Logic:** `web_dashboard/streamlit_utils.py`
-  - `get_user_investment_metrics()` - Your sidebar numbers
-  - `get_investor_allocations()` - Pie chart ownership
-  - `calculate_portfolio_value_over_time()` - Graph data
+- **Primary Logic:** `web_dashboard/portfolio_metrics.py` and `web_dashboard/flask_data_utils.py`
+  - `get_user_investment_metrics()` — sidebar numbers
+  - `get_investor_allocations()` — ownership (fund routes)
+  - `calculate_portfolio_value_over_time()` — graph data (`flask_data_utils`)
   
 - **Historical Data:** `portfolio_positions` table (Supabase)
 - **Contributions:** `fund_contributions` table (Supabase)
