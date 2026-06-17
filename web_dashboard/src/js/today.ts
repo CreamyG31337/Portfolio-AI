@@ -39,6 +39,14 @@ interface FilingAlert {
   url?: string;
 }
 
+interface ConfluenceEvent {
+  ticker: string;
+  direction: string;
+  score: number;
+  families?: string[] | unknown;
+  as_of?: string;
+}
+
 interface Briefing {
   market_regime?: { risk_regime?: string; as_of?: string };
   market_brief_headline?: string;
@@ -48,6 +56,7 @@ interface Briefing {
   insider_cluster_buys?: InsiderCluster[];
   dilution_alerts?: DilutionAlert[];
   filing_alerts?: FilingAlert[];
+  confluence_events?: ConfluenceEvent[];
   watchlist_movers?: Array<Record<string, unknown>>;
   upcoming_dividends?: Array<Record<string, unknown>>;
 }
@@ -199,6 +208,28 @@ async function loadBriefing(): Promise<void> {
             <span class="text-xs text-text-secondary">${f.category}${f.filed_at ? ` · ${f.filed_at}` : ""}</span>
             ${f.url ? ` · <a href="${f.url}" target="_blank" rel="noopener" class="text-accent hover:underline text-xs">filing</a>` : ""}
           </div>`).join("") : `<p class="text-sm text-text-secondary">No SEC filing risk events on holdings/watchlist.</p>`}`
+    );
+
+    const confluence = data.confluence_events || [];
+    const confluenceBadge = (direction: string): string => {
+      if (direction === "bullish") {
+        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      }
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+    };
+    const formatFamilies = (families: unknown): string => {
+      if (Array.isArray(families)) return families.join(", ");
+      return "";
+    };
+    showSection(
+      "today-confluence",
+      `<h2 class="text-lg font-semibold mb-2">Signal confluence <span class="text-xs font-normal text-text-secondary">(2+ families aligned, 10d)</span></h2>
+       ${confluence.length ? confluence.map((c) =>
+         `<div class="text-sm py-1 border-b border-border last:border-0">
+            <a href="/ticker?ticker=${encodeURIComponent(c.ticker)}" class="text-accent hover:underline font-semibold">${c.ticker}</a>
+            <span class="ml-1 text-xs px-1.5 py-0.5 rounded ${confluenceBadge(c.direction)}">${c.direction} · ${c.score}</span>
+            <span class="text-xs text-text-secondary">${formatFamilies(c.families)}${c.as_of ? ` · ${c.as_of}` : ""}</span>
+          </div>`).join("") : `<p class="text-sm text-text-secondary">No confluence events in the last 2 days.</p>`}`
     );
 
     const alpha = data.alpha_articles || [];

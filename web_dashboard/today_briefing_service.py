@@ -131,6 +131,14 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: filing alerts failed: %s", exc)
 
+    confluence_events: list[dict[str, Any]] = []
+    try:
+        from confluence_service import fetch_recent_confluence_events
+
+        confluence_events = fetch_recent_confluence_events(pg, days=2, limit=15)
+    except Exception as exc:
+        logger.warning("Today briefing: confluence events failed: %s", exc)
+
     movers: list[dict[str, Any]] = []
     dividends: list[dict[str, Any]] = []
     try:
@@ -171,6 +179,7 @@ def build_today_briefing(
         "insider_cluster_buys": insider_clusters,
         "dilution_alerts": dilution_alerts,
         "filing_alerts": filing_alerts,
+        "confluence_events": confluence_events,
         "watchlist_movers": movers,
         "upcoming_dividends": dividends,
         "updated_at": datetime.now(UTC).isoformat(),

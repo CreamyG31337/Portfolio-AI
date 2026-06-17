@@ -411,7 +411,7 @@ flowchart TD
 | **D** | 2.3 dossier timeline; 2.5 polish; 4.4 earnings | ~1–2 wk — **partial 2026-06-10** |
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro pending** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1 advisory V1 shipped** |
-| **G** | Stance provenance; dilution watch (shares-outstanding, free, incl. `.TO`) + EDGAR US filing-risk watch; confluence scorer; retro Mailgun — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **planned 2026-06-11; G1 shipped, G3 pivoted 2026-06-13** |
+| **G** | Stance provenance; dilution watch (shares-outstanding, free, incl. `.TO`) + EDGAR US filing-risk watch; confluence scorer; retro Mailgun — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G4 shipped; G5/G7/G6 remain** |
 
 ### Phase B–F checklist (2026-06-10)
 
@@ -453,7 +453,7 @@ Full specs, research tasks, and acceptance criteria live in
   categories the share count can't show. **Shipped 2026-06-14** (shared SEC client, ticker→CIK
   map, classifier, Today `filing_alerts` block + dossier timeline, 21 tests; `filing_events` DDL
   pending human apply; going-concern FTS deferred). See [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) G2.
-- [ ] **G4** cross-signal confluence scorer (no LLM; events recorded as scoreable stances)
+- [x] **G4** cross-signal confluence scorer (no LLM; events recorded as scoreable stances) — shipped 2026-06-17
 - [ ] **G7** Canadian insider coverage via yfinance `insider_transactions` (free; closes the `.TO`
   insider-cluster blind spot the dropped SEDI plan left — probe 2026-06-14 confirmed Yahoo carries
   SEDI data for `.TO`). Revives the original G3 goal without paying or scraping.

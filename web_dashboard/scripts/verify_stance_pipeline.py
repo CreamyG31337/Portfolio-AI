@@ -86,6 +86,24 @@ def main() -> int:
         print(f"  {r['as_of']} {r['ticker']:<8} {r['source']:<18} "
               f"stance={r['stance']} conf={r['confidence']} model={r['model_used']}")
 
+    print("== confluence_events (G4) ==")
+    try:
+        rows = pg.execute_query(
+            """
+            SELECT direction, COUNT(*) AS n, MAX(as_of) AS last_as_of,
+                   COUNT(DISTINCT ticker) AS tickers
+            FROM confluence_events
+            GROUP BY direction
+            ORDER BY n DESC
+            """
+        )
+        if not rows:
+            print("  (empty — job not run yet or table not applied)")
+        for r in rows:
+            print(f"  {r['direction']:<8} rows={r['n']:<5} tickers={r['tickers']:<4} last={r['last_as_of']}")
+    except Exception as exc:
+        print(f"  (lookup failed: {exc})")
+
     print("== job_executions (Supabase) for new jobs ==")
     try:
         from supabase_client import SupabaseClient
@@ -96,7 +114,7 @@ def main() -> int:
             .select("job_name,status,error_message,started_at,completed_at")
             .in_("job_name", [
                 "stance_outcomes", "contradiction_drilldown",
-                "weekly_stance_retro", "dilution_watch",
+                "weekly_stance_retro", "dilution_watch", "sec_filings", "confluence",
             ])
             .order("started_at", desc=True)
             .limit(10)

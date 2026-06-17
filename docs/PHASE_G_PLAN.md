@@ -424,7 +424,7 @@ relevant test suite before declaring each done.
   **Deferred for V1:** going-concern full-text detection (EDGAR FTS — not wired) and 8-K
   reverse-split detection (needs filing-title/full-text parsing); both need a per-filing fetch
   the inline-`items` approach avoids, so left out to keep the nightly scan cheap.
-- [ ] **G4** confluence scorer (`confluence_events`, ledger hook at score ≥ 3, Today block)
+- [x] **G4** confluence scorer (`confluence_events`, ledger hook at score ≥ 3, Today block) — shipped 2026-06-17
 - [ ] **G7** Canadian insider coverage via yfinance `insider_transactions` (free; `source` col on
   `insider_trades`; feeds the source-agnostic §4.2 clusters; closes the `.TO` insider blind spot)
 - [ ] **G5** weekly retro Mailgun digest (admin/env recipient list via `RETRO_DIGEST_RECIPIENTS`)
