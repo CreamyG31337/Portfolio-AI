@@ -305,7 +305,7 @@ steps:
         
         # Check results and show errors
         BUILD_ERRORS=0
-if [ "$FLASK_EXIT" != "0" ]; then
+        if [ "$FLASK_EXIT" != "0" ]; then
           echo "❌ ERROR: Flask build failed (exit code: $FLASK_EXIT)"
           echo "=== Full Flask build output ==="
           cat "$FLASK_LOG" || echo "No log available"
@@ -341,7 +341,7 @@ if [ "$FLASK_EXIT" != "0" ]; then
         
         # Images were already verified above, but do a final check before tagging
         echo "Final verification before tagging..."
-if ! docker images trading-dashboard-flask:latest --format "{{.Repository}}:{{.Tag}}" | grep -q "trading-dashboard-flask:latest" 2>/dev/null; then
+        if ! docker images trading-dashboard-flask:latest --format "{{.Repository}}:{{.Tag}}" | grep -q "trading-dashboard-flask:latest" 2>/dev/null; then
           echo "❌ Flask image not found after build"
           exit 1
         fi
