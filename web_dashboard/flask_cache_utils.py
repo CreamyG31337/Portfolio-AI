@@ -233,7 +233,7 @@ def _get_cache_ttl() -> int:
     """
     try:
         # Try to import from streamlit_utils first
-        from streamlit_utils import get_cache_ttl
+        from dashboard_constants import get_cache_ttl
         return get_cache_ttl()
     except (ImportError, AttributeError):
         # Fallback implementation if streamlit_utils not available

@@ -73,7 +73,7 @@ def test_summary_includes_user_investment_when_multi_investor(client, auth_ok):
         "flask_auth_utils.get_user_email_flask",
         return_value="alice@example.com",
     ), patch(
-        "streamlit_utils.get_user_investment_metrics",
+        "portfolio_metrics.get_user_investment_metrics",
         return_value=mock_ui,
     ):
         resp = client.get("/api/dashboard/summary?fund=SyntheticTestFund&range=ALL")
@@ -120,7 +120,7 @@ def test_summary_user_investment_null_when_helper_returns_none(client, auth_ok):
         "flask_auth_utils.get_user_email_flask",
         return_value="no-match@example.com",
     ), patch(
-        "streamlit_utils.get_user_investment_metrics",
+        "portfolio_metrics.get_user_investment_metrics",
         return_value=None,
     ):
         resp = client.get("/api/dashboard/summary?fund=SyntheticTestFund&range=ALL")
@@ -157,7 +157,7 @@ def test_summary_skips_user_investment_single_investor(client, auth_ok):
         "routes.dashboard_routes.calculate_portfolio_value_over_time",
         return_value=pd.DataFrame(),
     ), patch(
-        "streamlit_utils.get_user_investment_metrics",
+        "portfolio_metrics.get_user_investment_metrics",
         mock_fn,
     ):
         resp = client.get("/api/dashboard/summary?fund=SyntheticTestFund&range=ALL")

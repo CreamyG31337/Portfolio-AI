@@ -142,8 +142,8 @@ def get_latest_timestamp():
         fund = None
     
     try:
-        from streamlit_utils import get_supabase_client
-        client = get_supabase_client()
+        from flask_data_utils import get_supabase_client_flask
+        client = get_supabase_client_flask()
         if not client:
             return jsonify({"error": "Database client unavailable"}), 500
         
@@ -284,7 +284,7 @@ def get_dashboard_summary():
         user_investment_payload: Optional[Dict[str, Any]] = None
         if fund is not None and investor_count > 1:
             try:
-                from streamlit_utils import get_user_investment_metrics
+                from portfolio_metrics import get_user_investment_metrics
 
                 uid = (get_effective_user_email_flask() or "").strip()
                 eff_user_id = (get_effective_user_id_flask() or "").strip()

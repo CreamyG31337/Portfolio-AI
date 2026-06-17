@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from auth import require_admin, is_admin
-from streamlit_utils import get_supabase_client, SupabaseClient
+from flask_data_utils import get_supabase_client_flask
+from supabase_client import SupabaseClient
 import logging
 import os
 import sys
@@ -188,7 +189,7 @@ def create_fund():
         if not validate_fund_name(name):
              return jsonify({"error": "Invalid fund name. Names cannot contain '/', '\\', or '..'"}), 400
 
-        client = get_supabase_client()
+        client = get_supabase_client_flask()
         
         # Check if exists
         existing = client.supabase.table("funds").select("name").eq("name", name).execute()
@@ -226,7 +227,7 @@ def update_fund(fund_name):
         # But here it's just used for DB update key.
 
         data = request.get_json()
-        client = get_supabase_client()
+        client = get_supabase_client_flask()
         
         # Update fields
         updates = {}
@@ -266,7 +267,7 @@ def rename_fund():
         if not validate_fund_name(new_name):
              return jsonify({"error": "Invalid new fund name. Names cannot contain '/', '\\', or '..'"}), 400
 
-        client = get_supabase_client()
+        client = get_supabase_client_flask()
         
         # Check new name availability
         existing = client.supabase.table("funds").select("name").eq("name", new_name).execute()
@@ -288,7 +289,7 @@ def rename_fund():
 def delete_fund(fund_name):
     """Permanently delete a fund"""
     try:
-        client = get_supabase_client()
+        client = get_supabase_client_flask()
         
         # Manual cleanup of dependent tables first (safer than relying purely on cascades)
         tables = ["portfolio_positions", "trade_log", "cash_balances", "fund_contributions", "fund_thesis"]
@@ -316,7 +317,7 @@ def wipe_fund_data(fund_name):
         data = request.get_json()
         wipe_trades = data.get('wipe_trades', False)
         
-        client = get_supabase_client()
+        client = get_supabase_client_flask()
         
         # Wipe positions
         client.supabase.table("portfolio_positions").delete().eq("fund", fund_name).execute()

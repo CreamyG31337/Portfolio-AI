@@ -474,8 +474,8 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
     try:
         # Try to get from cache first
         try:
-            from streamlit_utils import get_supabase_client
-            client = get_supabase_client()
+            from dashboard_data_clients import get_user_scoped_supabase_client
+            client = get_user_scoped_supabase_client()
             
             if client:
                 cached_data = client.get_benchmark_data(ticker, start_date, end_date)
@@ -637,7 +637,7 @@ def create_portfolio_value_chart(
     # Get display currency
     if display_currency is None:
         try:
-            from streamlit_utils import get_user_display_currency
+            from currency_display_utils import get_user_display_currency
             display_currency = get_user_display_currency()
         except ImportError:
             display_currency = 'CAD'
@@ -861,7 +861,7 @@ def create_performance_by_fund_chart(funds_data: Dict[str, float], display_curre
     # Get display currency
     if display_currency is None:
         try:
-            from streamlit_utils import get_user_display_currency
+            from currency_display_utils import get_user_display_currency
             display_currency = get_user_display_currency()
         except ImportError:
             display_currency = 'CAD'
@@ -931,7 +931,7 @@ def create_pnl_chart(
     # Get display currency
     if display_currency is None:
         try:
-            from streamlit_utils import get_user_display_currency
+            from currency_display_utils import get_user_display_currency
             display_currency = get_user_display_currency()
         except ImportError:
             display_currency = 'CAD'
@@ -1227,7 +1227,7 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
     # Get display currency if not provided
     if display_currency is None:
         try:
-            from streamlit_utils import get_user_display_currency
+            from currency_display_utils import get_user_display_currency
             display_currency = get_user_display_currency()
         except ImportError:
             display_currency = 'CAD'
@@ -1239,7 +1239,7 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
     rate_map = {}
     if 'currency' in positions_df.columns:
         try:
-            from streamlit_utils import fetch_latest_rates_bulk
+            from currency_display_utils import fetch_latest_rates_bulk
             # Check for missing currencies and log them
             missing_currency_mask = positions_df['currency'].isna()
             if missing_currency_mask.any():
@@ -1642,7 +1642,7 @@ def create_trades_timeline_chart(trades_df: pd.DataFrame, fund_name: Optional[st
     # Get display currency
     if display_currency is None:
         try:
-            from streamlit_utils import get_user_display_currency
+            from currency_display_utils import get_user_display_currency
             display_currency = get_user_display_currency()
         except ImportError:
             display_currency = 'CAD'

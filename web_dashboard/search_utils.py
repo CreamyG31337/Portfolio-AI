@@ -25,9 +25,9 @@ def get_company_name_from_db(ticker: str) -> Optional[str]:
     """
     try:
         # Import here to avoid circular dependency
-        from streamlit_utils import get_supabase_client
-        
-        client = get_supabase_client()
+        from dashboard_data_clients import get_user_scoped_supabase_client
+
+        client = get_user_scoped_supabase_client()
         if not client:
             logger.debug(f"Supabase client not available for company name lookup: {ticker}")
             return None
