@@ -302,11 +302,11 @@ def setup_logging(level=logging.INFO):
     
     # List of our application module names to capture logs from
     app_modules = [
-        'app',  # For log_message() calls from streamlit_app.py
+        'app',
         'werkzeug',  # Flask's internal logger for request/response logs
-        'streamlit_utils',
-        'chart_utils', 
-        'auth_utils',
+        'flask_data_utils',
+        'portfolio_metrics',
+        'chart_utils',
         'auth',  # Flask require_auth decorator and logout decisions
         'flask_auth_utils',  # Supabase token refresh and cache
         'user_preferences',

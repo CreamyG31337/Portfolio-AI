@@ -757,7 +757,7 @@ def create_portfolio_value_chart(
         end_date = df['date'].max()
         
         # Both portfolio and benchmark data use noon (12:00) timestamps for consistency
-        # Portfolio data normalized to noon in streamlit_utils.py line 925
+        # Portfolio data normalized to noon in portfolio_metrics / flask_data_utils
         # Benchmark data normalized to noon after fetching/caching
         start_date_normalized = pd.Timestamp(start_date).normalize()  # Set to 00:00:00
         end_date_normalized = pd.Timestamp(end_date).normalize() + timedelta(days=1)  # Include full end date

@@ -17,7 +17,7 @@ def clear_trade_related_caches(data_dir: Optional[Path] = None) -> Dict[str, Any
     This function clears:
     - Price cache (market data)
     - Exchange rate cache (currency conversions)
-    - Streamlit cache (if in Streamlit context)
+    - Flask dashboard cache (when web_dashboard is importable)
     
     Args:
         data_dir: Optional data directory path for currency handler initialization
@@ -27,13 +27,13 @@ def clear_trade_related_caches(data_dir: Optional[Path] = None) -> Dict[str, Any
         {
             "price_cache": {"success": bool, "message": str},
             "exchange_rate_cache": {"success": bool, "message": str},
-            "streamlit_cache": {"success": bool, "message": str}
+            "flask_cache": {"success": bool, "message": str}
         }
     """
     results = {
         "price_cache": {"success": False, "message": "Not attempted"},
         "exchange_rate_cache": {"success": False, "message": "Not attempted"},
-        "streamlit_cache": {"success": False, "message": "Not attempted"}
+        "flask_cache": {"success": False, "message": "Not attempted"},
     }
     
     # Clear price cache
@@ -61,18 +61,18 @@ def clear_trade_related_caches(data_dir: Optional[Path] = None) -> Dict[str, Any
         results["exchange_rate_cache"] = {"success": False, "message": f"Failed to clear exchange rate cache: {e}"}
         logger.warning(f"Failed to clear exchange rate cache: {e}")
     
-    # Clear Streamlit cache (if in Streamlit context)
+    # Clear Flask dashboard caches when available
     try:
-        import streamlit as st
-        st.cache_data.clear()
-        results["streamlit_cache"] = {"success": True, "message": "Streamlit cache cleared"}
-        logger.info("Cleared Streamlit cache after trade entry")
+        from flask_cache_utils import clear_all_caches
+
+        clear_all_caches()
+        results["flask_cache"] = {"success": True, "message": "Flask cache cleared"}
+        logger.info("Cleared Flask dashboard cache after trade entry")
     except ImportError:
-        # Not in Streamlit context, that's fine
-        results["streamlit_cache"] = {"success": True, "message": "Not in Streamlit context (skipped)"}
+        results["flask_cache"] = {"success": True, "message": "Flask cache utils not available (skipped)"}
     except Exception as e:
-        results["streamlit_cache"] = {"success": False, "message": f"Failed to clear Streamlit cache: {e}"}
-        logger.warning(f"Failed to clear Streamlit cache: {e}")
+        results["flask_cache"] = {"success": False, "message": f"Failed to clear Flask cache: {e}"}
+        logger.warning(f"Failed to clear Flask cache: {e}")
     
     return results
 

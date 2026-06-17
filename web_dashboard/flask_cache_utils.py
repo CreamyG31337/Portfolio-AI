@@ -224,41 +224,10 @@ def skip_cache_if_empty_dataframe(result: Any) -> bool:
 
 
 def _get_cache_ttl() -> int:
-    """Get cache TTL based on market hours (reuses logic from streamlit_utils).
-    
-    Returns:
-        Cache TTL in seconds:
-        - 300s (5 min) during market hours (9:30 AM - 4:00 PM EST, Mon-Fri)
-        - 3600s (1 hour) outside market hours
-    """
-    try:
-        # Try to import from streamlit_utils first
-        from dashboard_constants import get_cache_ttl
-        return get_cache_ttl()
-    except (ImportError, AttributeError):
-        # Fallback implementation if streamlit_utils not available
-        from datetime import datetime
-        try:
-            import pytz
-            est = pytz.timezone('America/New_York')
-            now = datetime.now(est)
-        except ImportError:
-            from zoneinfo import ZoneInfo
-            est = ZoneInfo('America/New_York')
-            now = datetime.now(est)
-        
-        # Weekend: cache for 1 hour
-        if now.weekday() >= 5:  # Saturday=5, Sunday=6
-            return 3600
-        
-        # Market hours: 9:30 AM - 4:00 PM EST
-        market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
-        market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
-        
-        if market_open <= now <= market_close:
-            return 300  # 5 minutes during market hours
-        else:
-            return 3600  # 1 hour outside market hours
+    """Get cache TTL based on market hours."""
+    from dashboard_constants import get_cache_ttl
+
+    return get_cache_ttl()
 
 
 def cache_data(

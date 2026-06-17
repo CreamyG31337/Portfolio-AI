@@ -48,8 +48,6 @@ class DomainHealthTracker:
     
     def __init__(self):
         """Initialize the tracker with database connection."""
-        from streamlit_utils import get_supabase_client
-        # Use service role to bypass RLS for background jobs
         from supabase_client import SupabaseClient
         self.client = SupabaseClient(use_service_role=True)
     

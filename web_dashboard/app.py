@@ -2577,7 +2577,7 @@ def api_contributors():
         # NOTE: This API returns ownership percentages from the summary view.
         # For accurate per-contributor returns, use NAV-based calculations from:
         # - portfolio/position_calculator.py calculate_ownership_percentages()
-        # - web_dashboard/streamlit_utils.py get_user_investment_metrics()
+        # - web_dashboard/portfolio_metrics.py get_user_investment_metrics()
         for contributor in result.data:
             net_contrib = float(contributor['net_contribution'])
             ownership_pct = (net_contrib / total_net * 100) if total_net > 0 else 0

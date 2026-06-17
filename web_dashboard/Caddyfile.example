@@ -1,9 +1,15 @@
-# Caddyfile Example
+# Caddyfile Example (Flask-only — Streamlit removed)
 # Copy this to Caddyfile and set APP_DOMAIN environment variable
 # Example: export APP_DOMAIN=your-domain.com
+#
+# Prerequisites on the host:
+#   - trading-dashboard-flask container listening on localhost:5001
+#   - Static auth pages deployed to /ai-trading/frontend (Woodpecker copies these)
+#   - Optional: Research PDFs at /ai-trading/research
+#   - Optional: App logs mounted at /srv/logs for /logs/* browsing
 
 {$APP_DOMAIN} {
-    # Optional: bind to specific interface (from user config)
+    # Optional: bind to specific interface
     # bind 192.168.100.69
 
     # Serve auth callback HTML (handles magic links & password resets)
@@ -11,95 +17,59 @@
         root * /ai-trading/frontend
         file_server
     }
-    
+
     # Serve set_cookie.html (sets auth cookie and redirects back)
     handle /set_cookie.html {
         root * /ai-trading/frontend
         file_server
     }
-    
+
     # Serve login.html (simple HTML login form for browser automation)
     handle /login.html {
         root * /ai-trading/frontend
         file_server
     }
-    
+
     # Serve Research PDF files (static file server)
     handle_path /research/* {
         root * /ai-trading/research
         file_server browse
-        # Optional: Add cache headers for PDFs
         header Cache-Control "public, max-age=3600"
     }
 
-	# API endpoints - route to Flask
-	handle /api/* {
-		reverse_proxy localhost:5001 {
-			trusted_proxies private_ranges
-			trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
-		}
-	}
-	
-	# Streamlit (Legacy) - accessible at /streamlit/* for rollback/debugging
-	# Fix Streamlit asset loading when accessed from /streamlit/pages/ subpaths
-	@streamlit_items_in_pages {
-		path_regexp streamlit_pages_assets ^/streamlit/pages/(static|vendor|component|favicon\.png|manifest\.json)(.*)$
-	}
-	handle @streamlit_items_in_pages {
-		rewrite * /streamlit/{re.streamlit_pages_assets.1}{re.streamlit_pages_assets.2}
-	}
-	
-	# Redirect /streamlit/pages/*.py to /streamlit/pages/* (strip .py extension)
-	route /streamlit/pages/*.py {
-		uri strip_suffix .py
-		redir {path} permanent
-	}
-	
-	# Streamlit - all paths under /streamlit/*
-	# Use handle_path to strip the /streamlit prefix before proxying
-	handle_path /streamlit/* {
-		reverse_proxy localhost:8501 {
-			# flush_interval -1 is required for WebSocket/SSE streaming
-			flush_interval -1
-			transport http {
-				versions 1.1 2
-			}
-			trusted_proxies private_ranges
-			trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
-		}
-	}
-	
-	# Flask static assets - route /assets/* to Flask (port 5001)
-	# Flask uses /assets for static files
-	handle /assets/* {
-		reverse_proxy localhost:5001 {
-			trusted_proxies private_ranges
-			trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
-		}
-	}
-	
-	# Flask static files - route /static/* to Flask (standard Flask path)
-	handle /static/* {
-		reverse_proxy localhost:5001 {
-			trusted_proxies private_ranges
-		}
-	}
+    # API endpoints — Flask (trading-dashboard-flask on port 5001)
+    handle /api/* {
+        reverse_proxy localhost:5001 {
+            trusted_proxies private_ranges
+            trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
+        }
+    }
 
-	# Health check endpoint - route to Flask
-	handle /health {
-		reverse_proxy localhost:5001
-	}
-	
-	# Serve logs directory (for AI access)
-	# Requires mounting host logs to /srv/logs in Caddy container
-	handle_path /logs/* {
-		root * /srv/logs
-		file_server browse
-	}
-	
-	# Reverse proxy everything else to Flask (Default)
-	reverse_proxy localhost:5001 {
-		trusted_proxies private_ranges
-		trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
-	}
+    # Flask static assets (Vite/Tailwind build output)
+    handle /assets/* {
+        reverse_proxy localhost:5001 {
+            trusted_proxies private_ranges
+            trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
+        }
+    }
+
+    # Standard Flask static path
+    handle /static/* {
+        reverse_proxy localhost:5001 {
+            trusted_proxies private_ranges
+        }
+    }
+
+    # Serve logs directory (for AI / admin access)
+    # Requires mounting host logs to /srv/logs in Caddy container
+    handle_path /logs/* {
+        root * /srv/logs
+        file_server browse
+    }
+
+    # Everything else — Flask dashboard (default)
+    reverse_proxy localhost:5001 {
+        trusted_proxies private_ranges
+        trusted_proxies 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22
+    }
 }

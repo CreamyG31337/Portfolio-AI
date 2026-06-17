@@ -1,6 +1,6 @@
-# Streamlit Dashboard Build and Deploy Pipeline
+# Flask Dashboard Build and Deploy Pipeline
 #
-# This pipeline builds the Streamlit dashboard Docker image and deploys it to the server.
+# This pipeline builds the Flask dashboard Docker image and deploys it to the server.
 # It uses Docker socket mounting to build directly on the server (no SSH needed).
 #
 # Pipeline Events:
@@ -11,7 +11,7 @@
 # for PR validation to work. Go to: Repository → Settings → and enable PR events.
 #
 # Build Process:
-# 1. Build Docker image from web_dashboard/Dockerfile
+# 1. Build Docker image from web_dashboard/Dockerfile.flask
 # 2. Tag image with commit SHA for version tracking
 # 3. Stop and remove existing container (if running)
 # 4. Deploy new container with environment variables from Woodpecker secrets
@@ -247,7 +247,7 @@ steps:
         echo "✅ Frontend builder image built successfully"
       
       # Build all Docker images in parallel for faster deployment
-      # Note: Both Streamlit and Flask now copy frontend assets from shared frontend builder
+      # Frontend assets are copied from the shared frontend builder image
       # Using BuildKit for better caching and parallel builds
       - |
         set +e  # Don't exit on error - we'll handle errors manually
@@ -260,31 +260,12 @@ steps:
         echo "Starting parallel builds..."
         
         # Create temporary files to capture build outputs and exit codes
-        STREAMLIT_LOG=$(mktemp)
         FLASK_LOG=$(mktemp)
         COOKIE_LOG=$(mktemp)
-        STREAMLIT_EXIT_FILE="${STREAMLIT_LOG}.exit"
         FLASK_EXIT_FILE="${FLASK_LOG}.exit"
         COOKIE_EXIT_FILE="${COOKIE_LOG}.exit"
         
-        # Debug: Verify variables are set correctly
-        echo "Debug: STREAMLIT_EXIT_FILE=$STREAMLIT_EXIT_FILE"
-        echo "Debug: FLASK_EXIT_FILE=$FLASK_EXIT_FILE"
-        echo "Debug: COOKIE_EXIT_FILE=$COOKIE_EXIT_FILE"
-        
-        echo "Log files: STREAMLIT=$STREAMLIT_LOG FLASK=$FLASK_LOG COOKIE=$COOKIE_LOG"
-        
-        # Build Streamlit image (capture both stdout and stderr)
-        # Use previous images as cache sources for better cache hits
-        (docker build --progress=plain \
-          --build-arg BUILDKIT_INLINE_CACHE=1 \
-          --build-arg CACHEBUST=${CI_COMMIT_SHA} \
-          --cache-from trading-dashboard-base:latest \
-          --cache-from trading-dashboard-frontend:latest \
-          --cache-from trading-dashboard:latest \
-          -f web_dashboard/Dockerfile \
-          -t trading-dashboard:latest . > "$STREAMLIT_LOG" 2>&1; echo $? > "$STREAMLIT_EXIT_FILE") &
-        STREAMLIT_PID=$!
+        echo "Log files: FLASK=$FLASK_LOG COOKIE=$COOKIE_LOG"
         
         # Build Flask image (capture both stdout and stderr)
         # Use previous images as cache sources for better cache hits
@@ -306,38 +287,25 @@ steps:
           -t cookie-refresher:latest . > "$COOKIE_LOG" 2>&1; echo $? > "$COOKIE_EXIT_FILE") &
         COOKIE_PID=$!
         
-        echo "Waiting for builds to complete (PIDs: Streamlit=$STREAMLIT_PID Flask=$FLASK_PID Cookie=$COOKIE_PID)..."
+        echo "Waiting for builds to complete (PIDs: Flask=$FLASK_PID Cookie=$COOKIE_PID)..."
         
         # Wait for all builds to complete and capture exit codes
-        wait $STREAMLIT_PID
-        STREAMLIT_WAIT_EXIT=$?
         wait $FLASK_PID
         FLASK_WAIT_EXIT=$?
         wait $COOKIE_PID
         COOKIE_WAIT_EXIT=$?
         
-        echo "Builds completed. Wait exit codes: Streamlit=$STREAMLIT_WAIT_EXIT Flask=$FLASK_WAIT_EXIT Cookie=$COOKIE_WAIT_EXIT"
+        echo "Builds completed. Wait exit codes: Flask=$FLASK_WAIT_EXIT Cookie=$COOKIE_WAIT_EXIT"
         
         # Read exit codes from files (more reliable than wait exit codes)
-        STREAMLIT_EXIT=$(cat "$STREAMLIT_EXIT_FILE" 2>/dev/null || echo "1")
         FLASK_EXIT=$(cat "$FLASK_EXIT_FILE" 2>/dev/null || echo "1")
         COOKIE_EXIT=$(cat "$COOKIE_EXIT_FILE" 2>/dev/null || echo "1")
         
-        echo "Build exit codes from files: Streamlit=$STREAMLIT_EXIT Flask=$FLASK_EXIT Cookie=$COOKIE_EXIT"
+        echo "Build exit codes from files: Flask=$FLASK_EXIT Cookie=$COOKIE_EXIT"
         
         # Check results and show errors
         BUILD_ERRORS=0
-        if [ "$STREAMLIT_EXIT" != "0" ]; then
-          echo "❌ ERROR: Streamlit build failed (exit code: $STREAMLIT_EXIT)"
-          echo "=== Full Streamlit build output ==="
-          cat "$STREAMLIT_LOG" || echo "No log available"
-          echo "=== End Streamlit build output ==="
-          BUILD_ERRORS=$((BUILD_ERRORS + 1))
-        else
-          echo "✅ Streamlit build succeeded"
-        fi
-        
-        if [ "$FLASK_EXIT" != "0" ]; then
+if [ "$FLASK_EXIT" != "0" ]; then
           echo "❌ ERROR: Flask build failed (exit code: $FLASK_EXIT)"
           echo "=== Full Flask build output ==="
           cat "$FLASK_LOG" || echo "No log available"
@@ -359,9 +327,9 @@ steps:
         
         # Clean up log files (but keep them if builds failed for debugging)
         if [ $BUILD_ERRORS -eq 0 ]; then
-          rm -f "$STREAMLIT_LOG" "$STREAMLIT_EXIT_FILE" "$FLASK_LOG" "$FLASK_EXIT_FILE" "$COOKIE_LOG" "$COOKIE_EXIT_FILE"
+          rm -f "$FLASK_LOG" "$FLASK_EXIT_FILE" "$COOKIE_LOG" "$COOKIE_EXIT_FILE"
         else
-          echo "⚠️  Keeping log files for debugging: $STREAMLIT_LOG $FLASK_LOG $COOKIE_LOG"
+          echo "⚠️  Keeping log files for debugging: $FLASK_LOG $COOKIE_LOG"
         fi
         
         if [ $BUILD_ERRORS -gt 0 ]; then
@@ -373,11 +341,7 @@ steps:
         
         # Images were already verified above, but do a final check before tagging
         echo "Final verification before tagging..."
-        if ! docker images trading-dashboard:latest --format "{{.Repository}}:{{.Tag}}" | grep -q "trading-dashboard:latest" 2>/dev/null; then
-          echo "❌ Streamlit image not found after build"
-          exit 1
-        fi
-        if ! docker images trading-dashboard-flask:latest --format "{{.Repository}}:{{.Tag}}" | grep -q "trading-dashboard-flask:latest" 2>/dev/null; then
+if ! docker images trading-dashboard-flask:latest --format "{{.Repository}}:{{.Tag}}" | grep -q "trading-dashboard-flask:latest" 2>/dev/null; then
           echo "❌ Flask image not found after build"
           exit 1
         fi
@@ -389,7 +353,6 @@ steps:
         
         echo "✅ All builds completed successfully"
         echo "Tagging images with commit SHA..."
-        docker tag trading-dashboard:latest trading-dashboard:${CI_COMMIT_SHA} || { echo "❌ Failed to tag Streamlit image"; exit 1; }
         docker tag trading-dashboard-flask:latest trading-dashboard-flask:${CI_COMMIT_SHA} || { echo "❌ Failed to tag Flask image"; exit 1; }
         docker tag cookie-refresher:latest cookie-refresher:${CI_COMMIT_SHA} || { echo "❌ Failed to tag cookie-refresher image"; exit 1; }
         echo "✅ All images built and tagged"
@@ -397,12 +360,8 @@ steps:
       # Stop and remove existing containers if they exist (parallel stops for speed)
       - |
         echo "Stopping existing containers in parallel..."
-        (docker stop trading-dashboard 2>/dev/null || true) &
-        (docker stop trading-dashboard-flask 2>/dev/null || true) &
-        wait
-        echo "Removing stopped containers..."
-        (docker rm trading-dashboard 2>/dev/null || true) &
-        (docker rm trading-dashboard-flask 2>/dev/null || true) &
+        docker stop trading-dashboard-flask 2>/dev/null || true
+        docker rm trading-dashboard-flask 2>/dev/null || true
         wait
         echo "✅ Containers stopped and removed (some may not have existed, which is fine)"
       
@@ -427,85 +386,8 @@ steps:
           exit 1
         fi
       
-      # Deploy new container (single line to avoid parsing issues)
-      # Added --add-host to allow connecting to Ollama on the host machine via host.docker.internal (Linux support)
-      # NOTE: On Windows/Mac, host.docker.internal works natively. On Linux, you MUST add "--add-host=host.docker.internal:host-gateway"
-      # IPv6 support: Containers will use IPv6 if Docker daemon has IPv6 enabled (see DOCKER_IPV6_SETUP.md)
-      # Ollama: see file header — host env or /home/lance/trading-dashboard-optional.env (not Woodpecker secrets)
-      # RESEARCH_DATABASE_URL is optional - only set if research articles storage is needed
-      # FMP_API_KEY is optional - only set if congress trading module is needed
-      - |
-        if [ -f /home/lance/trading-dashboard-optional.env ]; then
-          set -a
-          # shellcheck disable=SC1091
-          . /home/lance/trading-dashboard-optional.env
-          set +a
-          echo "Loaded /home/lance/trading-dashboard-optional.env (Streamlit + Ollama optional vars)"
-        fi
-        # Build base docker run command
-        DOCKER_CMD="docker run -d --name trading-dashboard --restart unless-stopped -p 8501:8501 --network bridge-ipv6 --add-host=host.docker.internal:host-gateway"
-        # Mount application logs directory (host logs -> container logs)
-        DOCKER_CMD="$DOCKER_CMD -v /home/lance/trading-dashboard-logs:/app/web_dashboard/logs"
-        # Mount Ollama server.log so logs UI can read it (Ollama container writes to /home/lance/ollama-logs/server.log)
-        DOCKER_CMD="$DOCKER_CMD -v /home/lance/ollama-logs/server.log:/app/web_dashboard/logs/server.log"
-        # Mount shared cookies directory (for cookie refresher sidecar)
-        DOCKER_CMD="$DOCKER_CMD -v /shared/cookies:/shared/cookies"
-        DOCKER_CMD="$DOCKER_CMD -e SUPABASE_URL=\"$SUPABASE_URL\""
-        DOCKER_CMD="$DOCKER_CMD -e SUPABASE_PUBLISHABLE_KEY=\"$SUPABASE_PUBLISHABLE_KEY\""
-        DOCKER_CMD="$DOCKER_CMD -e SUPABASE_SECRET_KEY=\"$SUPABASE_SECRET_KEY\""
-        DOCKER_CMD="$DOCKER_CMD -e BUILD_TIMESTAMP=\"$BUILD_TIMESTAMP\""
-        [ -n "$FLASK_SECRET_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e FLASK_SECRET_KEY=\"$FLASK_SECRET_KEY\""
-        [ -n "$JWT_SECRET" ] && DOCKER_CMD="$DOCKER_CMD -e JWT_SECRET=\"$JWT_SECRET\""
-        [ -n "$SUPABASE_JWT_SECRET" ] && DOCKER_CMD="$DOCKER_CMD -e SUPABASE_JWT_SECRET=\"$SUPABASE_JWT_SECRET\""
-
-        # Add APP_DOMAIN (required for auth callbacks and cookie domain)
-        [ -n "$APP_DOMAIN" ] && DOCKER_CMD="$DOCKER_CMD -e APP_DOMAIN=\"$APP_DOMAIN\""
-        
-        # Add optional environment variables if set
-        [ -n "$RESEARCH_DATABASE_URL" ] && DOCKER_CMD="$DOCKER_CMD -e RESEARCH_DATABASE_URL=\"$RESEARCH_DATABASE_URL\""
-        [ -n "$SUPABASE_DATABASE_URL" ] && DOCKER_CMD="$DOCKER_CMD -e SUPABASE_DATABASE_URL=\"$SUPABASE_DATABASE_URL\""
-        [ -n "$FMP_API_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e FMP_API_KEY=\"$FMP_API_KEY\""
-        [ -n "$ZHIPU_API_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e ZHIPU_API_KEY=\"$ZHIPU_API_KEY\""
-        
-        # Add WebAI cookies as environment variable (fallback if shared volume file not available)
-        # The cookie refresher sidecar writes to /shared/cookies/webai_cookies.json
-        # Main app checks shared volume first, then falls back to WEBAI_COOKIES_JSON_B64 env var
-        # Use base64 encoding to avoid shell quoting issues with JSON
-        if [ -n "$WEBAI_COOKIES_JSON" ]; then
-          # Encode JSON as base64 to avoid shell quoting/escaping issues
-          WEBAI_COOKIES_B64=$(echo -n "$WEBAI_COOKIES_JSON" | base64 -w 0)
-          DOCKER_CMD="$DOCKER_CMD -e WEBAI_COOKIES_JSON_B64=$WEBAI_COOKIES_B64"
-          echo "✅ WEBAI_COOKIES_JSON set (base64 encoded to avoid shell quoting issues)"
-          echo "   Cookie file also written to /shared/cookies/webai_cookies.json"
-          echo "   Base64 length: ${#WEBAI_COOKIES_B64} chars"
-        else
-          echo "⚠️  WARNING: WEBAI_COOKIES_JSON not set. WebAI Pro may not work until sidecar writes cookies."
-        fi
-        
-        # Add Mailgun/Newsletter settings
-        [ -n "$MAILGUN_API_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e MAILGUN_API_KEY=\"$MAILGUN_API_KEY\""
-        [ -n "$MAILGUN_WEBHOOK_SIGNING_KEY" ] && DOCKER_CMD="$DOCKER_CMD -e MAILGUN_WEBHOOK_SIGNING_KEY=\"$MAILGUN_WEBHOOK_SIGNING_KEY\""
-        [ -n "$NEWSLETTER_EMAIL" ] && DOCKER_CMD="$DOCKER_CMD -e NEWSLETTER_EMAIL=\"$NEWSLETTER_EMAIL\""
-        
-        # Add Ollama and Streamlit settings
-        DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL=\"${OLLAMA_BASE_URL:-http://host.docker.internal:11434}\""
-        [ -n "$OLLAMA_BASE_URL_2" ] && DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL_2=\"$OLLAMA_BASE_URL_2\""
-        [ -n "$OLLAMA_BASE_URL_AMD" ] && DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL_AMD=\"$OLLAMA_BASE_URL_AMD\""
-        [ -n "$OLLAMA_BASE_URL_NVIDIA" ] && DOCKER_CMD="$DOCKER_CMD -e OLLAMA_BASE_URL_NVIDIA=\"$OLLAMA_BASE_URL_NVIDIA\""
-        DOCKER_CMD="$DOCKER_CMD -e OLLAMA_MODEL=\"${OLLAMA_MODEL:-mistral-nemo:12b}\""
-        DOCKER_CMD="$DOCKER_CMD -e OLLAMA_ENABLED=\"${OLLAMA_ENABLED:-true}\""
-        DOCKER_CMD="$DOCKER_CMD -e STREAMLIT_SERVER_HEADLESS=true"
-        DOCKER_CMD="$DOCKER_CMD -e STREAMLIT_BROWSER_GATHER_USAGE_STATS=false"
-        DOCKER_CMD="$DOCKER_CMD -e DISABLE_SCHEDULER=true"
-        DOCKER_CMD="$DOCKER_CMD trading-dashboard:latest"
-        
-        # Start Streamlit container in background (parallel with Flask deployment)
-        eval $DOCKER_CMD &
-        STREAMLIT_PID=$!
-        echo "✅ Trading Dashboard Streamlit container starting (PID: $STREAMLIT_PID)"
       
       # Deploy Flask container (Trading Dashboard Flask app on port 5001)
-      # Deploy in parallel with Streamlit for faster deployment
       - |
         echo "Deploying Trading Dashboard Flask container in parallel..."
         # Optional vars (outbound Mailgun, etc.): Woodpecker has no optional from_secret; use host file if needed.
@@ -518,7 +400,7 @@ steps:
         fi
         # Build base docker run command for Flask
         FLASK_CMD="docker run -d --name trading-dashboard-flask --restart unless-stopped -p 5001:5001 --network bridge-ipv6 --add-host=host.docker.internal:host-gateway"
-        # Mount application logs directory (shared with Streamlit container)
+        # Mount application logs directory
         FLASK_CMD="$FLASK_CMD -v /home/lance/trading-dashboard-logs:/app/web_dashboard/logs"
         # Mount Ollama server.log so Admin Logs page can read it (Ollama writes to /home/lance/ollama-logs/server.log)
         FLASK_CMD="$FLASK_CMD -v /home/lance/ollama-logs/server.log:/app/web_dashboard/logs/server.log"
@@ -597,18 +479,15 @@ steps:
         eval $FLASK_CMD
         echo "✅ Trading Dashboard Flask container deployed on port 5001"
       
-      # Wait for Streamlit container to finish starting
-      - |
-        wait $STREAMLIT_PID 2>/dev/null || true
-        echo "✅ All containers deployed successfully"
+      - echo "✅ Flask container deployed successfully"
       
       # Verify cookie file is accessible in container (retry loop instead of fixed sleep)
       - |
         i=1
         while [ $i -le 5 ]; do
-          if docker exec trading-dashboard test -f /shared/cookies/webai_cookies.json 2>/dev/null; then
+          if docker exec trading-dashboard-flask test -f /shared/cookies/webai_cookies.json 2>/dev/null; then
             echo "✅ Cookie file is accessible in container"
-            docker exec trading-dashboard head -c 100 /shared/cookies/webai_cookies.json
+            docker exec trading-dashboard-flask head -c 100 /shared/cookies/webai_cookies.json
             echo "..."
             break
           fi
@@ -694,7 +573,6 @@ steps:
       # Run cleanup in parallel for faster execution
       - |
         echo "Cleaning up old Docker images (keeping last 5)..."
-        (docker images -q trading-dashboard | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
         (docker images -q trading-dashboard-flask | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
         (docker images -q trading-dashboard-frontend | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
         (docker images -q cookie-refresher | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &

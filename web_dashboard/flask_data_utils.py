@@ -3,7 +3,7 @@ Flask Data Utilities
 ====================
 
 Flask-compatible data access functions that do NOT import Streamlit.
-These mirror the functionality in streamlit_utils.py but work in Flask context.
+Flask-native data utilities for the web dashboard.
 """
 
 import logging

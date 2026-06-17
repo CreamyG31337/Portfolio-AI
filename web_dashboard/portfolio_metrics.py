@@ -20,15 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 def _get_cash_balances(fund: str) -> Dict[str, float]:
-    try:
-        from flask import has_request_context
-        if has_request_context():
-            from flask_data_utils import get_cash_balances_flask
-            return get_cash_balances_flask(fund)
-    except (ImportError, RuntimeError):
-        pass
-    from streamlit_utils import get_cash_balances
-    return get_cash_balances(fund)
+    from flask_data_utils import get_cash_balances_flask
+
+    return get_cash_balances_flask(fund)
 
 
 
@@ -331,20 +325,28 @@ def get_user_investment_metrics(
     if user_email is not None:
         resolved_email = user_email.strip()
     else:
-        from auth_utils import get_user_email
-
         try:
-            resolved_email = (get_user_email() or "").strip()
-        except RuntimeError:
+            from flask import has_request_context
+            from flask_auth_utils import get_user_email_flask
+
+            if has_request_context():
+                resolved_email = (get_user_email_flask() or "").strip()
+            else:
+                resolved_email = ""
+        except (ImportError, RuntimeError):
             resolved_email = ""
 
     resolved_user_id = (user_id or "").strip()
     if not resolved_user_id:
         try:
-            from auth_utils import get_user_id
+            from flask import has_request_context
+            from flask_auth_utils import get_user_id_flask
 
-            resolved_user_id = (get_user_id() or "").strip()
-        except RuntimeError:
+            if has_request_context():
+                resolved_user_id = (get_user_id_flask() or "").strip()
+            else:
+                resolved_user_id = ""
+        except (ImportError, RuntimeError):
             resolved_user_id = ""
 
     # Require at least one identifier for matching.
@@ -444,7 +446,7 @@ def get_user_investment_metrics(
                                     except ValueError:
                                         continue
                     else:
-                        # Use print for streamlit utilities (logger may not be available)
+                        # Use print when logger may not be available
                         print(f"⚠️  Unexpected timestamp type '{type(timestamp_raw)}' for contributor {record.get('contributor', 'Unknown')}")
                 except Exception as e:
                     print(f"⚠️  Could not parse timestamp '{timestamp_raw}' for contributor {record.get('contributor', 'Unknown')}: {e}")
@@ -756,21 +758,5 @@ def get_user_investment_metrics(
         }
         
     except Exception as e:
-        import logging
-        import traceback
-        logger = logging.getLogger(__name__)
         logger.error(f"Error getting user investment metrics: {e}", exc_info=True)
-        # error_msg logic removed as logger handles it better, but keeping st.error for UI
-        
-        # Also show in UI if possible
-        try:
-            import streamlit as st
-            st.error(f"⚠️ Error calculating your investment: {str(e)}")
-        except:
-            pass
-        
-        # Re-raise in development to surface the actual issue
-        if os.environ.get('STREAMLIT_ENV') != 'production':
-            raise
-            
         return None

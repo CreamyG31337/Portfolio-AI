@@ -18,9 +18,10 @@ Flowbite is loaded via CDN (no Python package required). See [FLOWBITE_GUIDE.md]
 ## Automatic Deployment (Recommended)
 
 The Flask app is automatically deployed via Woodpecker CI/CD when you push to the main branch. The `.woodpecker.yml` file builds and deploys:
-- `trading-dashboard` container (Streamlit on port 8501)
 - `trading-dashboard-flask` container (Flask on port 5001)
 - `cookie-refresher` container (sidecar)
+
+Streamlit (`trading-dashboard` on 8501) is no longer built or deployed.
 
 No manual deployment needed - just push to main branch!
 
@@ -171,7 +172,7 @@ Important: do not use local-machine scheduler checks as the source of truth for 
 
 ## Caddy Configuration
 
-Update your Caddyfile to route `/settings` and `/api/settings/*` to port 5001 (see `CADDYFILE_MIGRATION.md`).
+Route all dashboard traffic to port **5001**. See `Caddyfile.example` and `CADDYFILE_MIGRATION.md` — remove any `/streamlit` or `8501` blocks from your live Caddyfile.
 
 ## Troubleshooting
 

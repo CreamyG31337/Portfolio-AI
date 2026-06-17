@@ -77,7 +77,7 @@ def dashboard_page():
         from app import get_navigation_context
         
         # V2 preference check removed - Flask is now the primary UI
-        # Users who prefer Streamlit can access it directly at /streamlit/
+        # Flask dashboard is the only UI; auth cookies are set on this callback page.
         # but Flask handles all authentication
             
         user_email = get_effective_user_email_flask()
