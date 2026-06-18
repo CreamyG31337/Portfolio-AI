@@ -127,12 +127,13 @@ def _fetch_ticker_closes_yfinance(
     if hasattr(data.columns, "levels"):
         data.columns = data.columns.get_level_values(0)
 
+    # ⚡ Bolt: Replaced slow .iterrows() with .itertuples()
     out: list[dict[str, Any]] = []
-    for _, row in data.iterrows():
-        row_date = row.get("Date")
+    for row in data.itertuples(index=False):
+        row_date = getattr(row, "Date", None)
         if hasattr(row_date, "date"):
             row_date = row_date.date()
-        close_val = row.get("Close")
+        close_val = getattr(row, "Close", None)
         if row_date and close_val is not None:
             out.append({"date": row_date, "close": float(close_val)})
     out.sort(key=lambda r: r["date"])
