@@ -51,3 +51,6 @@
 ## 2026-06-10 - Optimize iterrows bottlenecks in Generate_Graph
 **Learning:** `df.iterrows()` inside `Generate_Graph.py` was being used incorrectly both for finding valid real prices and for converting to a dictionary, which incurred massive O(N) overheads due to instantiating Pandas Series objects. A quick vectorized check (`.abs()` and `.any()`) and `.to_dict('records')` conversion provide >90x speedup.
 **Action:** Replace `df.iterrows()` iterative checks with `.any()` boolean checks where possible. Use `.to_dict('records')` if an exact dictionary loop is needed instead of `row.to_dict()`.
+## 2025-02-23 - Pandas Vectorization with Default Fallbacks
+**Learning:** `df.get()` when chained with default arguments like `df.get('col', pd.Series(0, index=df.index))` doesn't reliably replace the column with the fallback if the column is absent. This caused test failures because `None` was returned instead of a Series. It also happens when assigning a default `pd.Series` fallback and later doing `.astype(float)` on it.
+**Action:** When falling back to a `pd.Series` in Pandas vectorization, use explicit `if 'col' in df.columns:` checks, assign the column or fallback explicitly, and then perform `.astype(float)` to ensure safety. This is safer than using `.get()` with chained `.fillna()` and `.astype()`.

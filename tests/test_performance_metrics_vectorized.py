@@ -50,8 +50,13 @@ def test_calculate_performance_metrics_logic():
 
 def test_calculate_performance_metrics_empty():
     """Test behavior with empty dataframe."""
+
     with patch('flask_data_utils.get_current_positions_flask', return_value=pd.DataFrame()), \
          patch('flask_data_utils.calculate_portfolio_value_over_time_flask', return_value=pd.DataFrame()):
+
+        # In tests, we need to clear the flask cache
+        from flask_cache_utils import clear_all_caches
+        clear_all_caches()
 
         result = calculate_performance_metrics_flask("TestFund")
 
