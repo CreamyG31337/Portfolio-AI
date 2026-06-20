@@ -12,11 +12,30 @@ This is new functionality not present in InvestAI.
 """
 
 import pandas as pd
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 import logging
 from .indicators import calculate_volatility
 
 logger = logging.getLogger(__name__)
+
+
+def _neutral_result(error: Optional[str] = None) -> Dict[str, Any]:
+    """Return a safe, low-fear default result (optionally tagged with an error)."""
+    result: Dict[str, Any] = {
+        'fear_level': 'LOW',
+        'risk_score': 0.0,
+        'volatility_spike': False,
+        'volatility_ratio': 1.0,
+        'drawdown_pct': 0.0,
+        'volume_anomaly': False,
+        'volume_ratio': 1.0,
+        'price_action_risk': False,
+        'daily_change_pct': 0.0,
+        'recommendation': 'SAFE',
+    }
+    if error is not None:
+        result['error'] = error
+    return result
 
 
 class FearRiskSignal:
@@ -77,38 +96,33 @@ class FearRiskSignal:
         try:
             if df.empty or len(df) < 60:
                 logger.warning("Insufficient data for fear/risk signal (need at least 60 periods)")
-                return {
-                    'fear_level': 'LOW',
-                    'risk_score': 0.0,
-                    'volatility_spike': False,
-                    'volatility_ratio': 1.0,
-                    'drawdown_pct': 0.0,
-                    'volume_anomaly': False,
-                    'volume_ratio': 1.0,
-                    'price_action_risk': False,
-                    'daily_change_pct': 0.0,
-                    'recommendation': 'SAFE',
-                    'error': 'Insufficient data'
-                }
-            
+                return _neutral_result('Insufficient data')
+
             if price_col not in df.columns:
                 logger.warning(f"Column {price_col} not found in DataFrame")
-                return {
-                    'fear_level': 'LOW',
-                    'risk_score': 0.0,
-                    'volatility_spike': False,
-                    'volatility_ratio': 1.0,
-                    'drawdown_pct': 0.0,
-                    'volume_anomaly': False,
-                    'volume_ratio': 1.0,
-                    'price_action_risk': False,
-                    'daily_change_pct': 0.0,
-                    'recommendation': 'SAFE',
-                    'error': 'Missing price column'
-                }
-            
+                return _neutral_result('Missing price column')
+
             df = df.copy()
-            
+
+            # Sanitize the price column: drop bars with missing/zero/negative
+            # prices.  A single bad bar (e.g. a $0 close from a partial,
+            # holiday, or glitchy feed row that upstream coerced to 0) would
+            # otherwise read as a -100% drawdown / daily move and trigger a
+            # phantom EXTREME fear signal on an otherwise healthy stock.
+            prices_numeric = pd.to_numeric(df[price_col], errors="coerce")
+            valid_mask = prices_numeric.notna() & (prices_numeric > 0)
+            if not bool(valid_mask.all()):
+                dropped = int((~valid_mask).sum())
+                logger.warning(
+                    f"Dropping {dropped} bar(s) with missing/zero/negative "
+                    f"{price_col} before fear/risk analysis"
+                )
+                df = df[valid_mask]
+
+            if len(df) < 60:
+                logger.warning("Insufficient valid price data for fear/risk signal")
+                return _neutral_result('Insufficient data')
+
             # Volatility analysis (20-day vs 60-day)
             vol_20 = calculate_volatility(df, price_col=price_col, period=20)
             vol_60 = calculate_volatility(df, price_col=price_col, period=60)
@@ -189,16 +203,4 @@ class FearRiskSignal:
         
         except Exception as e:
             logger.error(f"Error evaluating fear/risk signal: {e}", exc_info=True)
-            return {
-                'fear_level': 'LOW',
-                'risk_score': 0.0,
-                'volatility_spike': False,
-                'volatility_ratio': 1.0,
-                'drawdown_pct': 0.0,
-                'volume_anomaly': False,
-                'volume_ratio': 1.0,
-                'price_action_risk': False,
-                'daily_change_pct': 0.0,
-                'recommendation': 'SAFE',
-                'error': str(e)
-            }
+            return _neutral_result(str(e))

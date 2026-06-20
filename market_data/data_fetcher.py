@@ -853,7 +853,20 @@ class MarketDataFetcher:
         # Return only the columns we need
         cols = existing_cols + (["Adj Close"] if "Adj Close" in df.columns else [])
         result_df = df[cols].copy()
-        
+
+        # Drop bars with a missing/zero Close.  These are bad data (partial
+        # in-progress bars, holidays, glitchy feed rows) -- NOT a real $0
+        # price.  Previously they were coerced to Decimal('0'), which made
+        # downstream signals read a phantom -100% crash (e.g. fear/risk
+        # flagged healthy large-caps as EXTREME fear / AVOID).
+        if "Close" in result_df.columns:
+            close_numeric = pd.to_numeric(result_df["Close"], errors="coerce")
+            valid_mask = close_numeric.notna() & (close_numeric != 0)
+            if not bool(valid_mask.all()):
+                dropped = int((~valid_mask).sum())
+                logger.debug(f"Dropping {dropped} OHLCV bar(s) with missing/zero Close")
+                result_df = result_df[valid_mask]
+
         # Convert all price columns to Decimal for precision
         price_cols = [col for col in cols if col != "Volume"]
         for col in price_cols:
