@@ -376,10 +376,7 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
         // Fallback for non-HTTPS / older browsers
         const ta = document.createElement('textarea');
         ta.value = text;
-        // TODO(palette): Use the `sr-only` (or `opacity-0 fixed`) utility class instead of
-        // inline style for this temporary textarea. (Palette audit PR #347, item 4)
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
+        ta.classList.add('sr-only');
         document.body.appendChild(ta);
         ta.select();
         const ok = document.execCommand('copy');

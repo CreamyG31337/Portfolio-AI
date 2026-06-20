@@ -403,16 +403,14 @@ async function testWebaiCookies() {
             verboseOutput = document.createElement('div');
             verboseOutput.id = 'cookie-test-verbose-output';
             verboseOutput.className = 'mt-4 p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm';
-            // TODO(palette): Toggle visibility with classList.add/remove('hidden') instead of
-            // inline style.display (here and below). (Palette audit PR #347, item 2)
-            verboseOutput.style.display = 'none';
+            verboseOutput.classList.add('hidden');
             webaiStatusCard.appendChild(verboseOutput);
         }
     }
 
     // Show verbose output container
     if (verboseOutput) {
-        verboseOutput.style.display = 'block';
+        verboseOutput.classList.remove('hidden');
         verboseOutput.innerHTML = '<div class="text-gray-600 dark:text-gray-400">🔄 Running cookie connection test...</div>';
     }
 

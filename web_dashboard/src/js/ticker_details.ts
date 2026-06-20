@@ -401,9 +401,6 @@ function showChartLoadingSpinner(): void {
     const el = document.getElementById('chart-loading');
     if (!el) return;
     el.classList.remove('hidden');
-    // TODO(palette): Remove redundant style.removeProperty('display') — classList.remove('hidden')
-    // is sufficient when visibility is controlled via Tailwind. (Palette audit PR #362, item 4)
-    el.style.removeProperty('display');
 }
 
 function hideChartLoadingSpinner(): void {
@@ -1092,15 +1089,12 @@ function renderBasicInfo(basicInfo: BasicInfo): void {
         }
     }
 
-    // TODO(palette): Throughout this file, toggle visibility with
-    // classList.add/remove('hidden') instead of inline style.display = 'block'/'none'
-    // to avoid Tailwind cascade conflicts. (Palette audit PR #347, item 2)
     if (exchangeInfo) {
         if (basicInfo.exchange && basicInfo.exchange !== 'N/A') {
             exchangeInfo.textContent = `Exchange: ${basicInfo.exchange}`;
-            exchangeInfo.style.display = 'block';
+            exchangeInfo.classList.remove('hidden');
         } else {
-            exchangeInfo.style.display = 'none';
+            exchangeInfo.classList.add('hidden');
         }
     }
 
@@ -1235,11 +1229,11 @@ function renderTickerPortfolioData(portfolioData: TickerPortfolioData): void {
             });
 
             const container = document.getElementById('positions-container');
-            if (container) container.style.display = 'block';
+            if (container) container.classList.remove('hidden');
         }
     } else {
         const container = document.getElementById('positions-container');
-        if (container) container.style.display = 'none';
+        if (container) container.classList.add('hidden');
     }
 
     // Render trades
@@ -1778,13 +1772,10 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
             const detail = document.getElementById(rowId);
             if (chevron && detail) {
                 detail.classList.toggle('hidden');
-                // TODO(palette): Replace inline style.transform with classList.add/remove('rotate-90')
-                // and ensure transition-transform duration-200 is on the chevron element.
-                // (Palette audit PR #362, item 3)
                 if (detail.classList.contains('hidden')) {
-                    chevron.style.transform = '';
+                    chevron.classList.remove('rotate-90');
                 } else {
-                    chevron.style.transform = 'rotate(90deg)';
+                    chevron.classList.add('rotate-90');
                 }
             }
         });
@@ -1825,11 +1816,11 @@ function renderSocialSentiment(sentiment: SocialSentiment): void {
             });
 
             const container = document.getElementById('sentiment-metrics-container');
-            if (container) container.style.display = 'block';
+            if (container) container.classList.remove('hidden');
         }
     } else {
         const container = document.getElementById('sentiment-metrics-container');
-        if (container) container.style.display = 'none';
+        if (container) container.classList.add('hidden');
     }
 
     // Render alerts
@@ -1859,11 +1850,11 @@ function renderSocialSentiment(sentiment: SocialSentiment): void {
             });
 
             const container = document.getElementById('sentiment-alerts-container');
-            if (container) container.style.display = 'block';
+            if (container) container.classList.remove('hidden');
         }
     } else {
         const container = document.getElementById('sentiment-alerts-container');
-        if (container) container.style.display = 'none';
+        if (container) container.classList.add('hidden');
     }
 }
 
