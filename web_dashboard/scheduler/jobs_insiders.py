@@ -480,6 +480,7 @@ def fetch_insider_trades_job() -> None:
                         'shares': shares,
                         'price_per_share': float(price_per_share) if price_per_share else None,
                         'value': float(value) if value else None,
+                        'source': 'sec_form4',
                     }
 
                     # Insert to Supabase (use upsert to handle duplicates)

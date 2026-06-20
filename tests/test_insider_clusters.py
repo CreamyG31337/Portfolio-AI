@@ -77,6 +77,41 @@ def test_held_and_watched_flags_and_priority_sort():
     assert clusters[1]["held"] is False and clusters[1]["watched"] is False
 
 
+def test_detect_cluster_buys_includes_canadian_yahoo_sedi_rows():
+    """G7: yahoo_sedi rows in insider_trades are source-agnostic for clusters."""
+    rows = [
+        {
+            "ticker": "GLO.TO",
+            "insider_name": "Leung (Guy)",
+            "transaction_date": "2026-06-01",
+            "type": "Purchase",
+            "shares": 1000,
+            "value": 500.0,
+        },
+        {
+            "ticker": "GLO.TO",
+            "insider_name": "Smith (Jane)",
+            "transaction_date": "2026-06-02",
+            "type": "Purchase",
+            "shares": 200,
+            "value": 100.0,
+        },
+        {
+            "ticker": "GLO.TO",
+            "insider_name": "Doe (John)",
+            "transaction_date": "2026-06-03",
+            "type": "Purchase",
+            "shares": 300,
+            "value": 150.0,
+        },
+    ]
+    clusters = detect_cluster_buys(rows, min_insiders=3, held_tickers={"GLO.TO"})
+    assert len(clusters) == 1
+    assert clusters[0]["ticker"] == "GLO.TO"
+    assert clusters[0]["insider_count"] == 3
+    assert clusters[0]["held"] is True
+
+
 class _PagedQuery:
     def __init__(self, rows):
         self._rows = rows

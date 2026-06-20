@@ -430,6 +430,7 @@ relevant test suite before declaring each done.
   the inline-`items` approach avoids, so left out to keep the nightly scan cheap.
 - [x] **G4** confluence scorer (`confluence_events`, ledger hook at score ≥ 3, Today block) — shipped 2026-06-17
 - [x] **G5** weekly retro → Mailgun digest — code shipped 2026-06-20; **prod email not configured** (deferred)
-- [ ] **G7** Canadian insider coverage via yfinance `insider_transactions` (free; `source` col on
-  `insider_trades`; feeds the source-agnostic §4.2 clusters; closes the `.TO` insider blind spot)
+- [x] **G7** Canadian insider coverage via yfinance `insider_transactions` — shipped 2026-06-20:
+  `yahoo_sedi_insider_service.py`, `jobs_yahoo_sedi_insiders.py`, `source` column migration,
+  weekly Mon 07:00 ET. See [`web_dashboard/scheduler/YAHOO_SEDI_INSIDERS_JOB.md`](../web_dashboard/scheduler/YAHOO_SEDI_INSIDERS_JOB.md).
 - [ ] **G6** FINRA daily short volume (optional)

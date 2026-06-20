@@ -15,6 +15,7 @@ CREATE TABLE insider_trades (
     shares_held_after BIGINT,
     percent_change NUMERIC(10, 4),
     notes TEXT,
+    source TEXT NOT NULL DEFAULT 'sec_form4',
     created_at TIMESTAMP DEFAULT now(),
     updated_at TIMESTAMP DEFAULT now()
 ,
@@ -30,4 +31,5 @@ CREATE INDEX idx_insider_ticker ON insider_trades (ticker);
 CREATE INDEX idx_insider_transaction_date ON insider_trades (transaction_date);
 CREATE INDEX idx_insider_type ON insider_trades (type);
 CREATE INDEX idx_insider_value ON insider_trades (value);
+CREATE INDEX idx_insider_source ON insider_trades (source);
 CREATE UNIQUE INDEX insider_trades_unique_key ON insider_trades (ticker, insider_name, transaction_date, type, shares, price_per_share);

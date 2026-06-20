@@ -225,6 +225,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'day_of_week': 'mon', 'hour': 6, 'minute': 30, 'timezone': 'America/New_York'},
         ],
     },
+    'yahoo_sedi_insiders': {
+        'name': 'Yahoo SEDI Insiders',
+        'description': 'Ingest Canadian .TO/.V insider trades from yfinance into insider_trades (ROADMAP G7)',
+        'default_interval_minutes': 10080,
+        'enabled_by_default': True,
+        'icon': '🍁',
+        'cron_triggers': [
+            {'day_of_week': 'mon', 'hour': 7, 'minute': 0, 'timezone': 'America/New_York'},
+        ],
+    },
     'sec_filings': {
         'name': 'SEC Filing Watch',
         'description': 'US EDGAR filing-risk watch (shelf/dilution intent, distress, delisting, activist 13D) on holdings + watchlist (ROADMAP G2)',
@@ -699,6 +709,7 @@ from scheduler.jobs_dashboard_research import (
 from scheduler.jobs_stance_outcomes import stance_outcomes_job
 from scheduler.jobs_contradiction_drilldown import contradiction_drilldown_job
 from scheduler.jobs_dilution_watch import dilution_watch_job
+from scheduler.jobs_yahoo_sedi_insiders import yahoo_sedi_insiders_job
 from scheduler.jobs_sec_filings import sec_filings_job
 from scheduler.jobs_confluence import confluence_job
 from scheduler.jobs_weekly_stance_retro import weekly_stance_retro_job
@@ -800,6 +811,7 @@ __all__ = [
     'stance_outcomes_job',
     'contradiction_drilldown_job',
     'dilution_watch_job',
+    'yahoo_sedi_insiders_job',
     'sec_filings_job',
     'confluence_job',
     'weekly_stance_retro_job',
@@ -1453,6 +1465,29 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True,
         )
         logger.info("Registered job: dilution_watch (daily advisory)")
+
+    if AVAILABLE_JOBS.get('yahoo_sedi_insiders', {}).get('enabled_by_default', True):
+        ys_cfg = AVAILABLE_JOBS['yahoo_sedi_insiders']
+        ys_triggers = ys_cfg.get(
+            'cron_triggers',
+            [{'day_of_week': 'mon', 'hour': 7, 'minute': 0, 'timezone': 'America/New_York'}],
+        )
+        ys_trigger = ys_triggers[0]
+        scheduler.add_job(
+            yahoo_sedi_insiders_job,
+            trigger=CronTrigger(
+                day_of_week=ys_trigger.get('day_of_week', 'mon'),
+                hour=ys_trigger.get('hour', 7),
+                minute=ys_trigger.get('minute', 0),
+                timezone=ys_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='yahoo_sedi_insiders',
+            name=f"{get_job_icon('yahoo_sedi_insiders')} Yahoo SEDI Insiders",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info("Registered job: yahoo_sedi_insiders (weekly Mon 07:00 ET)")
 
     # G2: registered only once the human enables it (after applying filing_events).
     if AVAILABLE_JOBS.get('sec_filings', {}).get('enabled_by_default', False):

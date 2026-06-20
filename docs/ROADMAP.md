@@ -411,7 +411,7 @@ flowchart TD
 | **D** | 2.3 dossier timeline; 2.5 polish; 4.4 earnings | ~1–2 wk — **partial 2026-06-10** |
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro pending** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1 advisory V1 shipped** |
-| **G** | Stance provenance; dilution watch (shares-outstanding, free, incl. `.TO`) + EDGAR US filing-risk watch; confluence scorer; retro Mailgun — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 shipped; G7/G6 remain** |
+| **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G7 shipped; G6 optional remains** |
 
 ### Phase B–F checklist (2026-06-10)
 
@@ -456,9 +456,7 @@ Full specs, research tasks, and acceptance criteria live in
 - [x] **G4** confluence scorer (`confluence_events`, ledger hook at score ≥ 3, Today block) — shipped 2026-06-17
 - [x] **G5** weekly retro → Mailgun digest — **code shipped 2026-06-20** (`retro_digest_service.py`);
   **email not configured in prod** (no `RETRO_DIGEST_RECIPIENTS`; job logs only until set up)
-- [ ] **G7** Canadian insider coverage via yfinance `insider_transactions` (free; closes the `.TO`
-  insider-cluster blind spot the dropped SEDI plan left — probe 2026-06-14 confirmed Yahoo carries
-  SEDI data for `.TO`). Revives the original G3 goal without paying or scraping.
+- [x] **G7** Canadian insider coverage via yfinance (`source` on `insider_trades`, weekly job) — shipped 2026-06-20
 - [ ] **G6** FINRA daily short volume (optional)
 
 ## Post-ship verification (2026-06-20)
