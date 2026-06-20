@@ -355,7 +355,7 @@ whether it warrants a §5.2-style read-only benchmark before anything else.
 
 ### Pillar 5 checklist
 
-- [ ] **5.1a** congress herd-buy service + `GET /api/congress/herd-buys` + Today-screen block (mirror `insider_clusters_service.py`)
+- [x] **5.1a** congress herd-buy service + `GET /api/congress/herd-buys` + Today-screen block (mirror `insider_clusters_service`) — shipped 2026-06-20
 - [ ] **5.1b** politician greediness leaderboard (conflict × volume, with realized-return column) on the congress page
 - [ ] **5.1c** late-filer flag (disclosure − transaction > 45d) on congress page + dossier
 - [ ] **5.1** record congress herd reading as `stance_history` source for outcome scoring

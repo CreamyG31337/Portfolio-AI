@@ -47,6 +47,23 @@ interface ConfluenceEvent {
   as_of?: string;
 }
 
+interface CongressHerd {
+  ticker: string;
+  politician_count: number;
+  buy_count: number;
+  latest_buy?: string;
+  politicians?: Array<{
+    politician_id: string;
+    name: string;
+    party?: string;
+    chamber?: string;
+    buy_count?: number;
+    latest_buy?: string;
+  }>;
+  held?: boolean;
+  watched?: boolean;
+}
+
 interface Briefing {
   market_regime?: { risk_regime?: string; as_of?: string };
   market_brief_headline?: string;
@@ -54,6 +71,7 @@ interface Briefing {
   action_queue?: Array<Record<string, unknown>>;
   alpha_articles?: Array<Record<string, unknown>>;
   insider_cluster_buys?: InsiderCluster[];
+  congress_herd_buys?: CongressHerd[];
   dilution_alerts?: DilutionAlert[];
   filing_alerts?: FilingAlert[];
   confluence_events?: ConfluenceEvent[];
@@ -178,6 +196,20 @@ async function loadBriefing(): Promise<void> {
             · ${c.insider_count} insiders, ${c.buy_count} buys, $${formatCompact(c.total_value)}
             <span class="text-xs text-text-secondary">latest ${c.latest_buy || "?"}</span>
           </div>`).join("") : `<p class="text-sm text-text-secondary">No cluster buys in the last 30 days.</p>`}`
+    );
+
+    const herds = data.congress_herd_buys || [];
+    showSection(
+      "today-congress-herd",
+      `<h2 class="text-lg font-semibold mb-2">Congress herd buys <span class="text-xs font-normal text-text-secondary">(2+ politicians, 30d)</span></h2>
+       ${herds.length ? herds.map((h) =>
+         `<div class="text-sm py-1 border-b border-border last:border-0">
+            <a href="/ticker?ticker=${encodeURIComponent(h.ticker)}" class="text-accent hover:underline font-semibold">${h.ticker}</a>
+            ${h.held ? `<span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">held</span>` : ""}
+            ${h.watched && !h.held ? `<span class="ml-1 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">watching</span>` : ""}
+            · ${h.politician_count} politicians, ${h.buy_count} purchases
+            <span class="text-xs text-text-secondary">latest ${h.latest_buy || "?"}</span>
+          </div>`).join("") : `<p class="text-sm text-text-secondary">No congress herd buys in the last 30 days.</p>`}`
     );
 
     const dilution = data.dilution_alerts || [];

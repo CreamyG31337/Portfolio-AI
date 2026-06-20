@@ -114,6 +114,14 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: insider clusters failed: %s", exc)
 
+    congress_herd_buys: list[dict[str, Any]] = []
+    try:
+        from congress_herd_service import build_congress_herd_buys
+
+        congress_herd_buys = build_congress_herd_buys(supabase_client, fund=fund)
+    except Exception as exc:
+        logger.warning("Today briefing: congress herd buys failed: %s", exc)
+
     dilution_alerts: list[dict[str, Any]] = []
     try:
         from dilution_service import fetch_recent_dilution_flags
@@ -177,6 +185,7 @@ def build_today_briefing(
         "action_queue": actions,
         "alpha_articles": fetch_alpha_ideas(pg, limit=15),
         "insider_cluster_buys": insider_clusters,
+        "congress_herd_buys": congress_herd_buys,
         "dilution_alerts": dilution_alerts,
         "filing_alerts": filing_alerts,
         "confluence_events": confluence_events,

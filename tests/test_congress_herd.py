@@ -1,0 +1,104 @@
+"""Tests for congress herd-buy detection (ROADMAP Pillar 5.1a)."""
+
+import types
+
+from web_dashboard.congress_herd_service import (
+    detect_herd_buys,
+    fetch_recent_congress_buys,
+)
+
+
+def _buy(
+    ticker: str,
+    politician_id: str,
+    *,
+    name: str | None = None,
+    tx_date: str = "2026-06-01",
+    party: str = "D",
+    chamber: str = "house",
+) -> dict:
+    return {
+        "politician_id": politician_id,
+        "ticker": ticker,
+        "politician": name or f"Politician {politician_id}",
+        "party": party,
+        "chamber": chamber,
+        "transaction_date": tx_date,
+        "amount": "$1,001 - $15,000",
+        "type": "Purchase",
+    }
+
+
+def test_detect_requires_min_distinct_politicians():
+    rows = [
+        _buy("NVDA", "p1"), _buy("NVDA", "p2"),
+        _buy("AAPL", "p3"), _buy("AAPL", "p4"), _buy("AAPL", "p5"),
+    ]
+    herds = detect_herd_buys(rows, min_politicians=2)
+    assert [h["ticker"] for h in herds] == ["AAPL", "NVDA"]
+    assert herds[0]["politician_count"] == 3
+
+
+def test_same_politician_multiple_buys_counts_once():
+    rows = [
+        _buy("NVDA", "p1", tx_date="2026-06-01"),
+        _buy("NVDA", "p1", tx_date="2026-06-05"),
+        _buy("NVDA", "p1", tx_date="2026-06-09"),
+    ]
+    assert detect_herd_buys(rows, min_politicians=2) == []
+
+
+def test_held_and_watched_priority_sort():
+    rows = [
+        _buy("DISC", "p1"), _buy("DISC", "p2"), _buy("DISC", "p3"),
+        _buy("MINE", "p4"), _buy("MINE", "p5"),
+    ]
+    herds = detect_herd_buys(
+        rows,
+        min_politicians=2,
+        held_tickers={"MINE"},
+        watched_tickers={"WATCH"},
+    )
+    assert [h["ticker"] for h in herds] == ["MINE", "DISC"]
+    assert herds[0]["held"] is True
+
+
+class _PagedQuery:
+    def __init__(self, rows):
+        self._rows = rows
+        self._start = 0
+        self._end = None
+
+    def select(self, *_a, **_k):
+        return self
+
+    def eq(self, *_a, **_k):
+        return self
+
+    def gte(self, *_a, **_k):
+        return self
+
+    def order(self, *_a, **_k):
+        return self
+
+    def range(self, start, end):
+        self._start, self._end = start, end
+        return self
+
+    def execute(self):
+        return types.SimpleNamespace(data=self._rows[self._start : self._end + 1])
+
+
+class _PagedSupabase:
+    def __init__(self, rows):
+        self._rows = rows
+        self.supabase = self
+
+    def table(self, _name):
+        return _PagedQuery(self._rows)
+
+
+def test_fetch_recent_congress_buys_paginates_past_1000():
+    rows = [_buy(f"T{i:05d}", f"p{i}") for i in range(2300)]
+    fetched = fetch_recent_congress_buys(_PagedSupabase(rows), days=30)
+    assert len(fetched) == 2300

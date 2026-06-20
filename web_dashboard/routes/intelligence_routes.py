@@ -16,6 +16,7 @@ from today_briefing_service import build_today_briefing, fetch_alpha_ideas
 from track_record_service import build_track_record_summary
 from earnings_calendar_service import earnings_for_fund
 from insider_clusters_service import build_insider_cluster_buys
+from congress_herd_service import build_congress_herd_buys
 from liquidity_service import build_liquidity_panel
 
 logger = logging.getLogger(__name__)
@@ -315,6 +316,29 @@ def insider_cluster_buys_api():
         return jsonify({"data": clusters, "window_days": max(7, min(days, 90))})
     except Exception as exc:
         logger.error("insiders/cluster-buys failed: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@intelligence_bp.route("/api/congress/herd-buys", methods=["GET"])
+@require_auth
+def congress_herd_buys_api():
+    """N+ distinct politicians purchasing the same ticker (ROADMAP Pillar 5.1a)."""
+    try:
+        fund = request.args.get("fund")
+        days = request.args.get("days", default=30, type=int)
+        min_politicians = request.args.get("min_politicians", default=2, type=int)
+        supabase = get_supabase_client_flask()
+        if not supabase:
+            return jsonify({"error": "Database client unavailable"}), 500
+        herds = build_congress_herd_buys(
+            supabase,
+            fund=fund,
+            days=max(7, min(days, 90)),
+            min_politicians=max(2, min(min_politicians, 10)),
+        )
+        return jsonify({"data": herds, "window_days": max(7, min(days, 90))})
+    except Exception as exc:
+        logger.error("congress/herd-buys failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500
 
 

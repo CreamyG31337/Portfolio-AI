@@ -101,6 +101,33 @@ def test_insider_cluster_buys_api(client, auth_ok):
 
 
 @skip_without_plotly
+def test_congress_herd_buys_api(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    herds = [{
+        "ticker": "NVDA",
+        "politician_count": 3,
+        "buy_count": 4,
+        "latest_buy": "2026-06-09",
+        "politicians": [],
+        "held": True,
+        "watched": False,
+    }]
+    with patch(
+        "routes.intelligence_routes.get_supabase_client_flask",
+        return_value=MagicMock(),
+    ), patch(
+        "routes.intelligence_routes.build_congress_herd_buys",
+        return_value=herds,
+    ) as mock_build:
+        resp = client.get("/api/congress/herd-buys?days=200&min_politicians=1")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["data"][0]["ticker"] == "NVDA"
+    assert mock_build.call_args.kwargs["days"] == 90
+    assert mock_build.call_args.kwargs["min_politicians"] == 2
+
+
+@skip_without_plotly
 def test_liquidity_panel_api(client, auth_ok):
     client.set_cookie("auth_token", "test.jwt.token")
     rows = [{
