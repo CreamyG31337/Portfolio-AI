@@ -236,10 +236,12 @@ class ContributorUI:
         if contributors.empty:
             print("  No contributors found")
         else:
-            for i, row in contributors.iterrows():
-                idx = i + 1
-                name = row['Contributor']
-                email = row['Email'] if row['Email'] and pd.notna(row['Email']) else "Not provided"
+            # itertuples preserves the index label (row.Index) used below and avoids
+            # per-row Series instantiation; Contributor/Email are valid identifiers.
+            for row in contributors.itertuples():
+                idx = row.Index + 1
+                name = row.Contributor
+                email = row.Email if row.Email and pd.notna(row.Email) else "Not provided"
                 print(f"{idx:<3} {name:<25} {email:<30}")
         
         print("─" * 60)
@@ -257,10 +259,10 @@ class ContributorUI:
         print(f"{'#':<3} {'Name':<25} {'Email':<30}")
         print("─" * 60)
         
-        for i, row in contributors.iterrows():
-            idx = i + 1
-            name = row['Contributor']
-            email = row['Email'] if row['Email'] and pd.notna(row['Email']) else "Not provided"
+        for row in contributors.itertuples():
+            idx = row.Index + 1
+            name = row.Contributor
+            email = row.Email if row.Email and pd.notna(row.Email) else "Not provided"
             print(f"{idx:<3} {name:<25} {email:<30}")
         
         print("─" * 60)

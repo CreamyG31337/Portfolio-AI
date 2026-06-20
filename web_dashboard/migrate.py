@@ -86,7 +86,7 @@ def migrate_fund(client: SupabaseClient, fund_name: str, fund_data: Dict[str, pd
         unique_tickers = set()
         ticker_currencies = {}
 
-        for _, row in df.iterrows():
+        for row in df.to_dict('records'):
             ticker = str(row["Ticker"])
             # Assuming default currency if not present in CSV, usually USD
             currency = str(row.get("Currency", "USD"))
@@ -141,7 +141,7 @@ def migrate_fund(client: SupabaseClient, fund_name: str, fund_data: Dict[str, pd
         unique_tickers = set()
         ticker_currencies = {}
 
-        for _, row in df.iterrows():
+        for row in df.to_dict('records'):
             ticker = str(row["Ticker"])
             currency = str(row.get("Currency", "USD"))
 
@@ -191,7 +191,7 @@ def migrate_fund(client: SupabaseClient, fund_name: str, fund_data: Dict[str, pd
         df = fund_data['cash']
         print(f"  💰 Cash: {len(df)} balances")
 
-        for _, row in df.iterrows():
+        for row in df.to_dict('records'):
             try:
                 result = client.supabase.table("cash_balances").upsert({
                     "fund": fund_name,  # Add fund name!

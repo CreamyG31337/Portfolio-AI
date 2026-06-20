@@ -69,7 +69,7 @@ def migrate_csv_to_supabase(fund_name="TEST", data_dir="trading_data/funds/TEST"
     # Convert to Supabase format
     # NOTE: total_value is a GENERATED COLUMN - do not include it in inserts
     portfolio_entries = []
-    for _, row in latest_positions.iterrows():
+    for row in latest_positions.to_dict('records'):
         entry = {
             'fund': fund_name,
             'ticker': row['Ticker'],
@@ -93,7 +93,7 @@ def migrate_csv_to_supabase(fund_name="TEST", data_dir="trading_data/funds/TEST"
     print("📝 Migrating trade log...")
     
     trade_entries = []
-    for _, row in trade_df.iterrows():
+    for row in trade_df.to_dict('records'):
         # Handle NaN values
         def safe_float(value, default=0):
             try:

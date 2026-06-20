@@ -29,7 +29,7 @@ def test_dashboard_pnl():
 
         # Check a few positions
         print('\nFirst 3 positions:')
-        for i, (_, row) in enumerate(portfolio_df.head(3).iterrows()):
+        for i, row in enumerate(portfolio_df.head(3).to_dict('records')):
             print(f'{i+1}. {row["ticker"]}: PnL = {row.get("total_pnl", "N/A")}')
 
         # Check if PnL values are correct
@@ -43,7 +43,7 @@ def test_dashboard_pnl():
 
             if len(non_zero_pnl) > 0:
                 print('Sample non-zero PnL positions:')
-                for _, row in non_zero_pnl.head(3).iterrows():
+                for row in non_zero_pnl.head(3).to_dict('records'):
                     pnl_pct = (row['total_pnl'] / row['total_cost_basis'] * 100) if row['total_cost_basis'] > 0 else 0
                     print(f'  {row["ticker"]}: ${row["total_pnl"]:.2f} ({pnl_pct:.2f}%)')
         else:

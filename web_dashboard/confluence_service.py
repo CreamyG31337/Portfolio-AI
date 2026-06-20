@@ -276,6 +276,8 @@ def _fetch_signal_hits(
         # signal_analysis holds ~1 row/ticker/day, so a 10d window is ~10 rows/ticker.
         # Keep batch_size * window_rows under the 1000-row REST cap or later tickers in
         # the batch get truncated away and silently miss the signals family.
+        # TODO(confluence): If the window widens or signal cadence increases (>20 rows/ticker
+        # per 50-ticker batch), paginate or tighten the per-batch .limit(1000) — see PR #393 review.
         for i in range(0, len(ticker_list), 50):
             batch = ticker_list[i : i + 50]
             res = (

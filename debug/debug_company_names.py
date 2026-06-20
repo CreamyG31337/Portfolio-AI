@@ -31,8 +31,8 @@ def debug_company_names():
             df = pd.read_csv(file_path)
             if 'Ticker' in df.columns and 'Currency' in df.columns:
                 latest_entries = df.groupby('Ticker').last()
-                for ticker, row in latest_entries.iterrows():
-                    currency_cache[ticker] = row['Currency']
+                for row in latest_entries.itertuples():
+                    currency_cache[row.Index] = row.Currency
         except Exception:
             continue
     

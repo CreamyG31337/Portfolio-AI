@@ -143,7 +143,7 @@ class ExchangeRatesMigrator:
         """Convert DataFrame to list of dictionaries for Supabase upsert"""
         rates = []
         
-        for _, row in df.iterrows():
+        for row in df.to_dict('records'):
             timestamp = row['parsed_date']
             rate = row['rate_decimal']
             

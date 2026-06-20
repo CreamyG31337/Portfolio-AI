@@ -16,7 +16,7 @@ def check_csv_data():
         # Check recent entries
         recent = df.tail(5)
         print('Recent CSV entries:')
-        for _, row in recent.iterrows():
+        for row in recent.to_dict('records'):
             print(f'  {row["Date"]}: {row["Ticker"]} - PnL: ${row.get("PnL", "N/A")}')
 
         # Check if there are any non-zero PnL values
@@ -25,7 +25,7 @@ def check_csv_data():
 
         if len(non_zero_pnl) > 0:
             print('Sample non-zero PnL:')
-            for _, row in non_zero_pnl.head(3).iterrows():
+            for row in non_zero_pnl.head(3).to_dict('records'):
                 print(f'  {row["Ticker"]}: ${row["PnL"]}')
     else:
         print('CSV file does not exist')

@@ -24,7 +24,7 @@ for date, group in df.groupby('Date'):
     count = len(group)
     print(f'{date.date()}: ${total:,.2f} ({count} positions)')
     if count <= 3:  # Show details for days with few positions
-        for _, row in group.iterrows():
+        for row in group.to_dict('records'):
             ticker = row['Ticker']
             value = row['Total Value']
             action = row['Action']
@@ -39,6 +39,6 @@ for date, group in df.groupby('Date'):
     total = group['Total Value'].dropna().sum()
     if total < 500:  # Less than $500 total portfolio
         print(f'  {date.date()}: ${total:.2f}')
-        for _, row in group.iterrows():
+        for row in group.to_dict('records'):
             if row['Total Value'] == 0:
                 print(f'    - {row["Ticker"]}: ${row["Total Value"]:.2f} ({row["Action"]})')

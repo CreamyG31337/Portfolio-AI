@@ -26,7 +26,7 @@ def fix_hlit_sell_simple():
     # Find HLIT.TO trades
     hlit_trades = trade_df[trade_df['Ticker'] == 'HLIT.TO']
     print(f"\n🔍 HLIT.TO trades:")
-    for _, trade in hlit_trades.iterrows():
+    for trade in hlit_trades.to_dict('records'):
         print(f"   {trade['Date']} - {trade['Reason']} - {trade['Shares']} shares @ ${trade['Price']}")
     
     # Calculate net position
@@ -35,7 +35,7 @@ def fix_hlit_sell_simple():
     sell_shares = 0
     sell_price = 0
     
-    for _, trade in hlit_trades.iterrows():
+    for trade in hlit_trades.to_dict('records'):
         shares = float(trade['Shares'])
         price = float(trade['Price'])
         cost = float(trade['Cost Basis'])

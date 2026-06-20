@@ -242,6 +242,8 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'day_of_week': 'mon-fri', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'},
         ],
     },
+    # TODO(scheduler): Confluence cron is America/New_York (22:30 ET); confirm this matches
+    # operator expectations vs UTC dashboards — see PR #393 review.
     'confluence': {
         'name': 'Cross-Signal Confluence',
         'description': 'Nightly no-LLM scorer when multiple signal families align on a ticker (ROADMAP G4)',

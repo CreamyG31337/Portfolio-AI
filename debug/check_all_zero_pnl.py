@@ -54,7 +54,7 @@ print(f"Positions with P&L = 0 (or very close to 0): {len(zero_pnl)}")
 print(f"{'='*80}")
 
 if len(zero_pnl) > 0:
-    for _, row in zero_pnl.iterrows():
+    for row in zero_pnl.to_dict('records'):
         ticker = row.get('ticker', 'UNKNOWN')
         fund = row.get('fund', 'UNKNOWN')
         shares = float(row.get('shares', 0))
@@ -92,14 +92,14 @@ nue_matches = df[df['ticker'].str.upper() == 'NUE']
 
 if len(ctrn_matches) > 0:
     print(f"\nFound {len(ctrn_matches)} CTRN positions:")
-    for _, row in ctrn_matches.iterrows():
+    for row in ctrn_matches.to_dict('records'):
         print(f"  {row.get('ticker')} in {row.get('fund')}: P&L=${row.get('unrealized_pnl', 0):.2f}")
 else:
     print("\nCTRN not found (case-insensitive search)")
 
 if len(nue_matches) > 0:
     print(f"\nFound {len(nue_matches)} NUE positions:")
-    for _, row in nue_matches.iterrows():
+    for row in nue_matches.to_dict('records'):
         print(f"  {row.get('ticker')} in {row.get('fund')}: P&L=${row.get('unrealized_pnl', 0):.2f}")
 else:
     print("\nNUE not found (case-insensitive search)")

@@ -29,17 +29,18 @@ def fix_trade_log_with_fees():
     
     # Update prices for all trades (BUY and SELL)
     changes_made = 0
-    for index, row in df.iterrows():
-        if row['Shares'] > 0: # Ensure shares are positive for a valid trade
-            shares = Decimal(str(row['Shares']))
-            price = Decimal(str(row['Price']))
+    # itertuples preserves the index label needed by df.at[index, 'Price'].
+    for row in df.itertuples():
+        if row.Shares > 0: # Ensure shares are positive for a valid trade
+            shares = Decimal(str(row.Shares))
+            price = Decimal(str(row.Price))
             
             # Add fee per share to price
             fee_per_share = commission_per_trade / shares
             new_price = price + fee_per_share
             new_price = new_price.quantize(Decimal('0.01'))
             
-            df.at[index, 'Price'] = float(new_price)
+            df.at[row.Index, 'Price'] = float(new_price)
             changes_made += 1
     
     # Save updated CSV

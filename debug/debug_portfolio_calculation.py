@@ -37,7 +37,7 @@ def debug_portfolio_calculation():
     positions_total = Decimal('0')
     positions_pnl_total = Decimal('0')
 
-    for _, row in hold_positions.iterrows():
+    for row in hold_positions.to_dict('records'):
         current_price = Decimal(str(row['Current Price']))
         shares = Decimal(str(row['Shares']))
         avg_price = Decimal(str(row['Average Price']))

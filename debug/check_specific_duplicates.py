@@ -47,7 +47,7 @@ def check_specific_date():
         print("[OK] No duplicates found on this date!")
     else:
         print(f"[ERROR] Found {len(duplicates)} tickers with duplicates:\n")
-        for _, dup in duplicates.iterrows():
+        for dup in duplicates.to_dict('records'):
             ticker = dup['ticker']
             count = dup['count']
             print(f"  {ticker}: {count} records")
@@ -56,7 +56,7 @@ def check_specific_date():
             dup_records = df[df['ticker'] == ticker].copy()
             dup_records = dup_records.sort_values('created_at')
             
-            for i, (_, record) in enumerate(dup_records.iterrows(), 1):
+            for i, record in enumerate(dup_records.to_dict('records'), 1):
                 print(f"\n    Record {i}:")
                 print(f"      ID: {record['id']}")
                 print(f"      Date: {record['date']}")
@@ -94,7 +94,7 @@ def check_specific_date():
         if len(batch_dups) > 0:
             all_duplicates.append(batch_dups)
             print(f"\nBatch {offset//batch_size + 1} (rows {offset} to {offset + len(df_batch)}):")
-            for _, dup in batch_dups.iterrows():
+            for dup in batch_dups.to_dict('records'):
                 print(f"  {dup['date_key']} | {dup['ticker']}: {dup['count']} records")
         
         if len(result.data) < batch_size:

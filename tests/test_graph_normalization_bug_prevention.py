@@ -308,7 +308,7 @@ class TestGraphNormalizationBugPrevention(unittest.TestCase):
         fund_data["Performance_Index"] = fund_data["Performance_Pct"] + 100
         
         # Verify Performance_Index calculation
-        for idx, row in fund_data.iterrows():
+        for row in fund_data.to_dict("records"):
             expected_index = row["Performance_Pct"] + 100
             self.assertEqual(row["Performance_Index"], expected_index)
 

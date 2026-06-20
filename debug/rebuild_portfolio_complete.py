@@ -598,7 +598,7 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
             # Process trades for this specific day only
             day_trades = trade_df[trade_df['Date'].dt.date == trading_day]
             
-            for _, trade in day_trades.iterrows():
+            for trade in day_trades.to_dict('records'):
                 ticker = trade['Ticker']
                 reason = trade['Reason']
                 shares = Decimal(str(trade['Shares']))
@@ -795,7 +795,7 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
                         filtered = df_with_dates.loc[mask]
                         
                         # Extract prices (vectorized)
-                        for _, row in filtered.iterrows():
+                        for row in filtered.to_dict('records'):
                             day = row['_date']
                             if day in valid_days_for_ticker:
                                 ticker_prices[day] = Decimal(str(row['Close']))

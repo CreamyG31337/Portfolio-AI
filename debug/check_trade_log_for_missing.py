@@ -25,7 +25,7 @@ ctrn_trades = client.supabase.table('trade_log')\
 if ctrn_trades.data:
     print(f"Found {len(ctrn_trades.data)} CTRN trades:")
     df_ctrn = pd.DataFrame(ctrn_trades.data)
-    for _, trade in df_ctrn.iterrows():
+    for trade in df_ctrn.to_dict('records'):
         print(f"  Date: {trade.get('date', 'UNKNOWN')}")
         print(f"  Action: {trade.get('action', 'UNKNOWN')}")
         print(f"  Reason: {trade.get('reason', 'UNKNOWN')}")
@@ -48,7 +48,7 @@ nue_trades = client.supabase.table('trade_log')\
 if nue_trades.data:
     print(f"Found {len(nue_trades.data)} NUE trades:")
     df_nue = pd.DataFrame(nue_trades.data)
-    for _, trade in df_nue.iterrows():
+    for trade in df_nue.to_dict('records'):
         print(f"  Date: {trade.get('date', 'UNKNOWN')}")
         print(f"  Action: {trade.get('action', 'UNKNOWN')}")
         print(f"  Reason: {trade.get('reason', 'UNKNOWN')}")

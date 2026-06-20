@@ -57,7 +57,7 @@ def debug_rich_table_logic():
     print("🔬 Testing Rich Table Logic (exact copy from create_portfolio_table):")
     print("-" * 60)
     
-    for i, (_, row) in enumerate(portfolio_df.iterrows()):
+    for i, row in enumerate(portfolio_df.to_dict('records')):
         ticker = str(row.get('ticker', ''))
         print(f"Processing row {i+1}: {ticker}")
         

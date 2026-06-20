@@ -217,6 +217,8 @@ async function loadBriefing(): Promise<void> {
       }
       return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
     };
+    // TODO(today-ui): Type `families` as `string[]` end-to-end; prefer DOM APIs over
+    // `.innerHTML` template strings for user-facing ticker data — see PR #393 review.
     const formatFamilies = (families: unknown): string => {
       if (Array.isArray(families)) return families.join(", ");
       return "";

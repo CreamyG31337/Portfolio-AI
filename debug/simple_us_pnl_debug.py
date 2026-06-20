@@ -43,7 +43,7 @@ def main():
             if unique_dates > 1:
                 # Show last 3 entries
                 print("  Last 3 entries:")
-                for _, row in ticker_data.tail(3).iterrows():
+                for row in ticker_data.tail(3).to_dict('records'):
                     print(f"    {row['Date_Only']}: ${row['Current Price']} (shares: {row['Shares']})")
             else:
                 print("  Only one day of data - this explains why P&L is $0.00")

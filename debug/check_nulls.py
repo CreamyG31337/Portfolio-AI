@@ -103,7 +103,7 @@ def check_nulls(fund_name: str = "Project Chimera", days_back: int = 30):
     print("=" * 70)
     
     last_7_days = date_stats.head(7).sort_values('date', ascending=False)
-    for _, row in last_7_days.iterrows():
+    for row in last_7_days.to_dict('records'):
         date_str = str(row['date'])
         total = int(row['total_records'])
         missing = int(row['missing_base'])
@@ -122,7 +122,7 @@ def check_nulls(fund_name: str = "Project Chimera", days_back: int = 30):
             if len(missing_for_date) > 0:
                 print(f"  Sample missing records:")
                 sample = missing_for_date.head(3)[['ticker', 'currency', 'total_value', 'base_currency', 'exchange_rate']]
-                for _, rec in sample.iterrows():
+                for rec in sample.to_dict('records'):
                     print(f"    {rec['ticker']:6s} {rec['currency']:3s} value=${rec['total_value']:>10.2f} base={rec.get('base_currency', 'N/A')} rate={rec.get('exchange_rate', 'N/A')}")
     
     # Compare Dec 24 (working) vs Dec 23-16 (broken) to identify code path

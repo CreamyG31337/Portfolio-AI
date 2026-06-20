@@ -28,11 +28,12 @@ def fix_missing_timezone_in_trade_log():
     
     # Check for rows with missing timezone (ending with space)
     problematic_rows = []
-    for idx, row in df.iterrows():
-        date_str = str(row['Date'])
+    # itertuples preserves the index label needed by df.at[idx, ...] below.
+    for row in df.itertuples():
+        date_str = str(row.Date)
         if date_str.endswith(' '):
-            problematic_rows.append((idx, date_str))
-            print(f"⚠️  Found problematic row {idx}: '{date_str}'")
+            problematic_rows.append((row.Index, date_str))
+            print(f"⚠️  Found problematic row {row.Index}: '{date_str}'")
     
     if not problematic_rows:
         print("✅ No problematic rows found")
@@ -63,12 +64,12 @@ def fix_missing_timezone_in_trade_log():
     # Verify the fix
     print("\n🔍 Verification:")
     df_verify = pd.read_csv(trade_log_path)
-    for idx, row in df_verify.iterrows():
-        date_str = str(row['Date'])
+    for row in df_verify.itertuples():
+        date_str = str(row.Date)
         if date_str.endswith(' '):
-            print(f"❌ Row {idx} still has trailing space: '{date_str}'")
+            print(f"❌ Row {row.Index} still has trailing space: '{date_str}'")
         else:
-            print(f"✅ Row {idx} looks good: '{date_str}'")
+            print(f"✅ Row {row.Index} looks good: '{date_str}'")
 
 if __name__ == "__main__":
     fix_missing_timezone_in_trade_log()

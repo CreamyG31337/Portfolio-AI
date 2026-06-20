@@ -28,7 +28,7 @@ if ctrn_pos.data:
     print(f"Date range: {df['date'].min()} to {df['date'].max()}")
     print(f"Funds: {df['fund'].unique()}")
     print("\nSample records:")
-    for _, row in df.head(10).iterrows():
+    for row in df.head(10).to_dict('records'):
         print(f"  {row.get('date', 'UNKNOWN')[:10]}: {row.get('fund', 'UNKNOWN')} - Shares={row.get('shares', 0)}, Cost=${row.get('cost_basis', 0):.2f}")
 else:
     print("NO CTRN records found in portfolio_positions!")
@@ -48,7 +48,7 @@ if nue_pos.data:
     print(f"Date range: {df['date'].min()} to {df['date'].max()}")
     print(f"Funds: {df['fund'].unique()}")
     print("\nSample records:")
-    for _, row in df.head(10).iterrows():
+    for row in df.head(10).to_dict('records'):
         print(f"  {row.get('date', 'UNKNOWN')[:10]}: {row.get('fund', 'UNKNOWN')} - Shares={row.get('shares', 0)}, Cost=${row.get('cost_basis', 0):.2f}")
 else:
     print("NO NUE records found in portfolio_positions!")

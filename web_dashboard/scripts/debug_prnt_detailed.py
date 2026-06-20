@@ -73,7 +73,7 @@ if len(significant) > 0:
     print("\n" + "=" * 80)
     print("TICKER FILTERING")
     print("=" * 80)
-    for _, row in significant.head(10).iterrows():
+    for row in significant.head(10).to_dict('records'):
         ticker = row['ticker']
         is_stock = is_stock_ticker(ticker)
         print(f"{ticker:10} -> is_stock_ticker = {is_stock}")

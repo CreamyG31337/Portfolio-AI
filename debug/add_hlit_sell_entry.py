@@ -90,8 +90,8 @@ def add_hlit_sell_entry():
     hlit_entries_after = portfolio_df[portfolio_df['Ticker'] == 'HLIT.TO']
     print(f"   HLIT.TO entries: {len(hlit_entries_after)}")
     
-    for idx, entry in hlit_entries_after.iterrows():
-        print(f"   Row {idx}: {entry['Date']} - {entry['Action']} - {entry['Shares']} shares")
+    for entry in hlit_entries_after.itertuples():
+        print(f"   Row {entry.Index}: {entry.Date} - {entry.Action} - {entry.Shares} shares")
     
     return True
 

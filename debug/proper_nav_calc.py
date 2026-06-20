@@ -54,10 +54,10 @@ if positions_result.data:
     )
     
     daily_stock = df.groupby('date').agg({'value_cad': 'sum', 'cost_basis': 'sum'})
-    for date_ts, row in daily_stock.iterrows():
-        date_str = date_ts.strftime('%Y-%m-%d')
-        daily_stock_value[date_str] = row['value_cad']
-        daily_cost_basis[date_str] = row['cost_basis']
+    for row in daily_stock.itertuples():
+        date_str = row.Index.strftime('%Y-%m-%d')
+        daily_stock_value[date_str] = row.value_cad
+        daily_cost_basis[date_str] = row.cost_basis
 
 print("="*130)
 print("FINAL NAV CALCULATION: Same-day contributions all use START-OF-DAY NAV")

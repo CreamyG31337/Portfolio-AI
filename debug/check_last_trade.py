@@ -24,7 +24,7 @@ def check_last_trade():
             # Show last 5 trades
             print('\nLast 5 trades:')
             last_trades = df.tail(5)
-            for idx, row in last_trades.iterrows():
+            for row in last_trades.to_dict('records'):
                 date = row.get('Date', row.get('date', 'Unknown'))
                 ticker = row.get('Ticker', row.get('ticker', 'Unknown'))
                 action = row.get('Action', row.get('action', row.get('Reason', 'Unknown')))
@@ -50,7 +50,7 @@ def check_last_trade():
             # Show last few entries with actions
             recent = df.tail(10)
             print('\nLast 10 portfolio entries:')
-            for idx, row in recent.iterrows():
+            for row in recent.to_dict('records'):
                 if pd.notna(row.get('Action')):
                     print(f'  {row["Date"]}: {row["Action"]} {row["Ticker"]}')
                     

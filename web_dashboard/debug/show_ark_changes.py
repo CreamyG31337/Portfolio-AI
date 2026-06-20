@@ -63,7 +63,7 @@ def show_changes_for_date(etf_ticker: str, target_date: datetime, db: SupabaseCl
     if previous_holdings.empty:
         print(f"[INFO] No previous holdings found - all {len(target_holdings)} holdings would appear as 'new'")
         print("\nFirst 20 'new' holdings:")
-        for idx, row in target_holdings.head(20).iterrows():
+        for row in target_holdings.head(20).to_dict('records'):
             print(f"  {row['ticker']}: {row['shares']:,.0f} shares")
         return
     

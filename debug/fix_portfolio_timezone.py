@@ -26,7 +26,7 @@ def fix_portfolio_timezone(file_path: str) -> None:
         return
 
     print(f"Original format in first few rows:")
-    for i, row in df.head(3).iterrows():
+    for row in df.head(3).to_dict('records'):
         print(f"  {row['Date']}")
 
     # Simple string replacement approach for -07:00 format
@@ -61,7 +61,7 @@ def fix_portfolio_timezone(file_path: str) -> None:
     df['Date'] = df['Date'].apply(convert_timezone_format)
 
     print(f"Fixed format in first few rows:")
-    for i, row in df.head(3).iterrows():
+    for row in df.head(3).to_dict('records'):
         print(f"  {row['Date']}")
 
     # Save the fixed file

@@ -86,7 +86,7 @@ def check_for_corruption(df, label):
     
     if not suspicious_prices.empty:
         print(f"   ⚠️  Suspicious prices found: {len(suspicious_prices)} entries")
-        for _, row in suspicious_prices.head(3).iterrows():
+        for row in suspicious_prices.head(3).to_dict('records'):
             print(f"      {row['Ticker']}: ${row['Current Price']}")
     else:
         print("   ✅ No suspicious prices")

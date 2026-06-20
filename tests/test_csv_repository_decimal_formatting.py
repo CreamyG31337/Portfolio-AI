@@ -180,7 +180,7 @@ class TestCSVRepositoryDecimalFormatting(unittest.TestCase):
         saved_data = pd.read_csv(self.portfolio_file)
 
         # Verify all positions are properly formatted
-        for i, row in saved_data.iterrows():
+        for i, row in enumerate(saved_data.to_dict('records')):
             with self.subTest(position=i):
                 # Check shares precision (4 decimal places)
                 self.assertTrue(self._has_correct_precision(row['Shares'], 4))
@@ -337,7 +337,7 @@ class TestCSVRepositoryDecimalFormattingIntegration(unittest.TestCase):
             saved_data = pd.read_csv(portfolio_file)
             
             # Verify all values are clean
-            for i, row in saved_data.iterrows():
+            for i, row in enumerate(saved_data.to_dict('records')):
                 with self.subTest(position=i):
                     # Check that no values have excessive decimal places
                     for col in ['Shares', 'Average Price', 'Cost Basis', 'Current Price', 'Total Value', 'PnL']:

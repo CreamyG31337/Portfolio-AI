@@ -279,7 +279,9 @@ class PriceCorrectionUtility:
                 issues = []
                 corrections = []
                 
-                for idx, row in ticker_data.iterrows():
+                # zip(index, to_dict) preserves the index label captured in
+                # corrections['index'] while supporting space-named columns.
+                for idx, row in zip(ticker_data.index, ticker_data.to_dict('records')):
                     timestamp = row['Parsed_Date']
                     action = row['Action']
                     current_price = row['Current Price']
@@ -359,7 +361,9 @@ class PriceCorrectionUtility:
             corrections_log = []
             
             # Process each row
-            for idx, row in df.iterrows():
+            # zip(index, to_dict) preserves the index label needed by df.loc[idx, ...]
+            # while supporting the space-named columns accessed below.
+            for idx, row in zip(df.index, df.to_dict('records')):
                 ticker = row['Ticker']
                 timestamp = row['Parsed_Date']
                 action = row['Action']

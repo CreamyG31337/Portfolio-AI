@@ -69,7 +69,7 @@ def debug_production_dates():
         print("🔬 Testing portfolio display logic:")
         print("-" * 40)
         
-        for _, row in portfolio_df.iterrows():
+        for row in portfolio_df.to_dict('records'):
             ticker = str(row.get('Ticker', ''))
             print(f"🎯 Processing ticker: {ticker}")
             

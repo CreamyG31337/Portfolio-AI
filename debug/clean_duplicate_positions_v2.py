@@ -65,7 +65,7 @@ def clean_duplicates(dry_run=True):
         print(f"  [KEEP] ID={keep_record['id'][:8]}... created={keep_record['created_at']}")
         kept_count += 1
         
-        for _, record in delete_records.iterrows():
+        for record in delete_records.to_dict('records'):
             print(f"  [DELETE] ID={record['id'][:8]}... created={record['created_at']}")
             
             if not dry_run:

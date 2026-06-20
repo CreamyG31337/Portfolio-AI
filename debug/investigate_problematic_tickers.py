@@ -25,7 +25,7 @@ def investigate_problematic_tickers():
         trades = df[df['Ticker'] == ticker]
         if not trades.empty:
             print(f'\n{ticker}:')
-            for _, trade in trades.iterrows():
+            for trade in trades.to_dict('records'):
                 print(f'  {trade["Date"]} | {trade["Shares"]} shares @ ${trade["Price"]:.2f} | P&L: ${trade["PnL"]:.2f}')
         else:
             print(f'\n{ticker}: No trades found in trade log')
@@ -69,7 +69,7 @@ def investigate_problematic_tickers():
         if ticker in webull_df['Symbol'].values:
             print(f'{ticker}: Found in Webull data')
             webull_trades = webull_df[webull_df['Symbol'] == ticker]
-            for _, trade in webull_trades.iterrows():
+            for trade in webull_trades.to_dict('records'):
                 print(f'  {trade["Side"]} {trade["Filled Qty"]} @ ${trade["Average Filled Price"]:.2f} on {trade["Filled Time"]}')
         else:
             print(f'{ticker}: NOT found in Webull data')

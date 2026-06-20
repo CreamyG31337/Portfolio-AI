@@ -19,6 +19,8 @@ SQL_PATH = (
 )
 
 
+# TODO(migrations): Line-ending `;` splitting breaks on nested SQL (functions, DO blocks).
+# Prefer tracked migrations (Alembic/psql -f) over ad-hoc statement parsing — see PR #393 review.
 def _statements_from_file(path: Path) -> list[str]:
     statements: list[str] = []
     buf: list[str] = []

@@ -31,7 +31,7 @@ def check_job_logs():
     df = pd.DataFrame(response.data)
     
     print(f"Found {len(df)} executions:\n")
-    for _, row in df.iterrows():
+    for row in df.to_dict('records'):
         print(f"Time: {row['executed_at']}")
         print(f"Success: {row['success']}")
         print(f"Message: {row.get('message', 'N/A')}")

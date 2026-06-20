@@ -77,11 +77,11 @@ def merge_backups_intelligently():
     
     # Find the right position to insert the buy entry
     insert_idx = 0
-    for idx, row in merged_df.iterrows():
-        if row['Date'] > buy_date:
-            insert_idx = idx
+    for row in merged_df.itertuples():
+        if row.Date > buy_date:
+            insert_idx = row.Index
             break
-        insert_idx = idx + 1
+        insert_idx = row.Index + 1
     
     # Insert the buy entry
     merged_df = pd.concat([
@@ -115,11 +115,11 @@ def merge_backups_intelligently():
     
     # Find position for sell entry
     sell_insert_idx = 0
-    for idx, row in merged_df.iterrows():
-        if row['Date'] > sell_date:
-            sell_insert_idx = idx
+    for row in merged_df.itertuples():
+        if row.Date > sell_date:
+            sell_insert_idx = row.Index
             break
-        sell_insert_idx = idx + 1
+        sell_insert_idx = row.Index + 1
     
     # Insert the sell entry
     merged_df = pd.concat([
@@ -143,8 +143,8 @@ def merge_backups_intelligently():
     # Show HLIT.TO entries
     hlit_entries = merged_df[merged_df['Ticker'] == 'HLIT.TO']
     print(f"\n🔍 HLIT.TO entries in final portfolio:")
-    for idx, entry in hlit_entries.iterrows():
-        print(f"   Row {idx}: {entry['Date']} - {entry['Action']} - {entry['Shares']} shares")
+    for entry in hlit_entries.itertuples():
+        print(f"   Row {entry.Index}: {entry.Date} - {entry.Action} - {entry.Shares} shares")
     
     return True
 

@@ -33,7 +33,7 @@ def fix_fund_contributions_csv(file_path: str) -> None:
         return
 
     print(f"Original format in first few rows:")
-    for i, row in df.head(3).iterrows():
+    for row in df.head(3).to_dict('records'):
         print(f"  {row['Timestamp']}")
 
     # Fix the invalid "PST PDT" format
@@ -73,7 +73,7 @@ def fix_fund_contributions_csv(file_path: str) -> None:
     df['Timestamp'] = df['Timestamp'].apply(fix_timestamp)
 
     print(f"Fixed format in first few rows:")
-    for i, row in df.head(3).iterrows():
+    for row in df.head(3).to_dict('records'):
         print(f"  {row['Timestamp']}")
 
     # Save the fixed file
@@ -94,7 +94,7 @@ def convert_portfolio_timestamps_to_abbreviations(file_path: str) -> None:
         return
 
     print(f"Original format in first few rows:")
-    for i, row in df.head(3).iterrows():
+    for row in df.head(3).to_dict('records'):
         print(f"  {row['Date']}")
 
     # Convert timestamps
@@ -114,7 +114,7 @@ def convert_portfolio_timestamps_to_abbreviations(file_path: str) -> None:
     df['Date'] = df['Date'].apply(convert_timestamp)
 
     print(f"Converted format in first few rows:")
-    for i, row in df.head(3).iterrows():
+    for row in df.head(3).to_dict('records'):
         print(f"  {row['Date']}")
 
     # Save the converted file
@@ -135,12 +135,12 @@ def verify_exchange_rates_csv(file_path: str) -> None:
         return
 
     print(f"Current format in first few rows:")
-    for i, row in df.head(3).iterrows():
+    for row in df.head(3).to_dict('records'):
         print(f"  {row['Date']}")
 
     # Check if format is already correct (PST/PDT)
     needs_conversion = False
-    for i, row in df.iterrows():
+    for row in df.to_dict('records'):
         date_str = str(row['Date'])
         if "-07:00" in date_str or "-08:00" in date_str:
             needs_conversion = True
