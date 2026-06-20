@@ -128,7 +128,7 @@ class AIAssistant {
         this.config = config;
         this.messages = [];
         this.contextItems = [];
-        this.selectedModel = config.defaultModel || 'glm-5.1';
+        this.selectedModel = config.defaultModel || 'glm-5.2';
         this.selectedFund = config.availableFunds?.[0] || null;
         this.conversationHistory = [];
         this.includeSearch = true;

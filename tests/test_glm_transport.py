@@ -12,6 +12,18 @@ if str(web_dashboard) not in sys.path:
     sys.path.insert(0, str(web_dashboard))
 
 import glm_transport  # noqa: E402
+import glm_config  # noqa: E402
+
+
+def test_get_glm_models_refresh_false_skips_live_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("glm_config.get_zhipu_api_key", lambda: "test-key")
+    monkeypatch.setattr("glm_config._read_glm_models_cache", lambda: [])
+    monkeypatch.setattr(
+        "glm_config.fetch_zhipu_models",
+        lambda: (_ for _ in ()).throw(AssertionError("live fetch should not run")),
+    )
+    models = glm_config.get_glm_models(refresh=False)
+    assert "glm-5.2" in models
 
 
 def test_glm_chat_completion_text_failover_second_base_on_500(monkeypatch: pytest.MonkeyPatch) -> None:

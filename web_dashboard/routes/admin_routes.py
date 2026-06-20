@@ -80,7 +80,18 @@ _AI_AUDIT_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 def _ollama_models_to_probe() -> list[str]:
     """Small set of Ollama models worth probing (not every row in model_config.json)."""
-    names: set[str] = {"granite4.1:8b", "qwen3.6:27b-heretic"}
+    try:
+        from model_registry import (
+            OLLAMA_QUEUE_PRIMARY_DEFAULT,
+            OLLAMA_QUEUE_SECONDARY_DEFAULT,
+        )
+
+        names: set[str] = {
+            OLLAMA_QUEUE_PRIMARY_DEFAULT,
+            OLLAMA_QUEUE_SECONDARY_DEFAULT,
+        }
+    except ImportError:
+        names = {"granite4.1:8b", "qwen3.6:27b-heretic"}
     try:
         from settings import get_summarizing_model
 

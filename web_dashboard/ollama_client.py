@@ -53,7 +53,11 @@ else:
 
         OLLAMA_MODEL = get_primary_model()
     except ImportError:
-        OLLAMA_MODEL = "glm-5.1"
+        OLLAMA_MODEL = "glm-5.2"
+try:
+    from model_registry import OLLAMA_SUMMARIZING_DEFAULT
+except ImportError:
+    OLLAMA_SUMMARIZING_DEFAULT = "qwen3.6:27b-heretic"
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 # Z.AI / GLM HTTP read timeout (seconds). Article summarization uses this; see docs/GLM_ZAI_SUMMARY_TIMING.md.
@@ -886,7 +890,7 @@ class OllamaClient:
 
                 model = get_primary_model()
             except ImportError:
-                model = "glm-5.1"
+                model = "glm-5.2"
         # Route GLM models to Z.AI transport (independent of Ollama availability).
         if model and str(model).startswith("glm-"):
             yield from self._query_glm(
@@ -1138,7 +1142,7 @@ class OllamaClient:
 
                 model = get_primary_model()
             except ImportError:
-                model = "glm-5.1"
+                model = "glm-5.2"
         try:
             text, _used = collect_with_summary_model_chain(
                 self,
@@ -1186,7 +1190,7 @@ class OllamaClient:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "qwen3.6:27b-heretic"
+                model = OLLAMA_SUMMARIZING_DEFAULT
 
         audit_start = time.time()
         result: Dict[str, Any] = {}
@@ -1370,7 +1374,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "qwen3.6:27b-heretic"
+                model = OLLAMA_SUMMARIZING_DEFAULT
 
         # Web-based AI service: use cookie-based service, not Ollama
         try:
@@ -1499,7 +1503,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 model = get_summarizing_model()
             except Exception as e:
                 logger.warning(f"Could not load summarizing model from settings: {e}, using fallback")
-                model = "qwen3.6:27b-heretic"
+                model = OLLAMA_SUMMARIZING_DEFAULT
 
         # Web-based AI service: use cookie-based service, not Ollama (note: doesn't support streaming)
         try:
@@ -1754,7 +1758,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
 
                 model = get_primary_model()
             except ImportError:
-                model = "glm-5.1"
+                model = "glm-5.2"
         # Get model-specific defaults if values not provided
         model_settings = self.get_model_settings(model)
         
@@ -2227,7 +2231,9 @@ def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
     except Exception as e:
         logger.warning("Could not load summarization settings: %s", e)
         if not primary:
-            primary = "qwen3.6:27b-heretic"
+            from model_registry import OLLAMA_SUMMARIZING_DEFAULT
+
+            primary = OLLAMA_SUMMARIZING_DEFAULT
         fallback_models = []
 
     chain = [primary] + fallback_models
@@ -2622,10 +2628,10 @@ def list_available_models(include_hidden: bool = False) -> List[str]:
         from glm_config import get_zhipu_api_key, get_glm_models
 
         if get_zhipu_api_key():
-            for m in get_glm_models():
+            for m in get_glm_models(refresh=False):
                 if m not in models:
                     models.append(m)
-    except ImportError:
-        pass
+    except Exception as e:
+        logger.warning("Could not append GLM models to available list: %s", e)
 
     return models

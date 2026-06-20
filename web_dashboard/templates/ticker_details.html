@@ -339,7 +339,11 @@
                 <label for="ticker-model-select" class="text-xs font-medium text-text-secondary">Model</label>
                 <select id="ticker-model-select"
                     class="bg-dashboard-background border border-border text-text-primary text-xs rounded-lg focus:ring-accent focus:border-accent px-2 py-1 min-w-[180px]">
+                    {% if default_model %}
+                    <option value="{{ default_model }}" selected>{{ default_model }}</option>
+                    {% else %}
                     <option value="">Loading models...</option>
+                    {% endif %}
                 </select>
             </div>
             <span id="ticker-context-usage" class="text-xs text-text-secondary">Context: -</span>
@@ -529,7 +533,11 @@
                 <label for="signals-model-select" class="text-xs font-medium text-text-secondary">Model</label>
                 <select id="signals-model-select"
                     class="bg-dashboard-background border border-border text-text-primary text-xs rounded-lg focus:ring-accent focus:border-accent px-2 py-1 min-w-[180px]">
+                    {% if default_model %}
+                    <option value="{{ default_model }}" selected>{{ default_model }}</option>
+                    {% else %}
                     <option value="">Loading models...</option>
+                    {% endif %}
                 </select>
             </div>
             <span id="signals-status" class="text-sm text-text-secondary"></span>

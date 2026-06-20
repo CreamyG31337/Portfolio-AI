@@ -216,13 +216,19 @@ def test_enqueue_ticker_meta_analysis_tasks_skips_blank_targets():
 
 
 def test_backend_model_and_host_mapping(monkeypatch):
-    monkeypatch.setenv("AI_QUEUE_MODEL_GLM", "glm-5.1")
+    monkeypatch.setenv("AI_QUEUE_MODEL_GLM", "glm-5.2")
     monkeypatch.setenv("AI_QUEUE_OLLAMA_PRIMARY_BASE_URL", "http://amd:11434")
     monkeypatch.setenv("AI_QUEUE_OLLAMA_SECONDARY_BASE_URL", "http://nvidia:11434")
 
-    assert model_for_backend("glm") == "glm-5.1"
+    assert model_for_backend("glm") == "glm-5.2"
     assert ollama_base_url_for_backend("ollama_primary") == "http://amd:11434"
     assert ollama_base_url_for_backend("ollama_secondary") == "http://nvidia:11434"
+
+
+def test_model_for_backend_glm_default_uses_primary_registry(monkeypatch):
+    monkeypatch.delenv("AI_QUEUE_MODEL_GLM", raising=False)
+    monkeypatch.delenv("AI_PRIMARY_MODEL", raising=False)
+    assert model_for_backend("glm") == "glm-5.2"
 
 
 def test_ticker_meta_analysis_task_handler_uses_backend_bound_model(monkeypatch):

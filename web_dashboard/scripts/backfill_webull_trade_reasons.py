@@ -55,6 +55,7 @@ load_project_dotenv()
 import requests
 
 from glm_config import get_zhipu_api_key
+from model_registry import get_primary_model
 from postgres_client import PostgresClient
 from supabase_client import SupabaseClient
 from utils.trade_reason import infer_trade_action
@@ -72,7 +73,6 @@ DEFAULT_PLACEHOLDER_REASON = "Initial buy (rationale pending)"
 DEFAULT_FUNDS: Tuple[str, ...] = ("Project Chimera", "RRSP Lance Webull")
 
 ZHIPU_API_URL = "https://api.z.ai/api/coding/paas/v4"
-GLM_MODEL = "glm-5.1"
 MAX_REASON_CHARS = 500
 # Tier 1: conclusion + mechanical excerpts only (never full multi-ticker report body).
 MAX_CONCLUSION_FOR_GLM = 1800
@@ -304,7 +304,7 @@ def _glm_chat(system: str, user: str, skip: bool) -> Optional[str]:
     url = f"{ZHIPU_API_URL}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload: Dict[str, Any] = {
-        "model": GLM_MODEL,
+        "model": get_primary_model(),
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},

@@ -266,6 +266,63 @@ interface ErrorResponse {
     error?: string;
 }
 
+interface AiModelOption {
+    id: string;
+    name: string;
+    type?: string;
+}
+
+function formatModelLabel(modelId: string): string {
+    if (modelId.startsWith('glm-')) {
+        return 'GLM ' + modelId.slice(4).replace(/-/g, ' ');
+    }
+    return modelId;
+}
+
+function preferredModelId(): string {
+    return (selectedModel || tickerDetailsConfig.defaultModel || 'glm-5.2').trim();
+}
+
+function populateModelSelect(
+    select: HTMLSelectElement,
+    models: AiModelOption[],
+    preferredId: string,
+): void {
+    select.innerHTML = '';
+    if (!Array.isArray(models) || models.length === 0) {
+        const fallbackId = preferredId || preferredModelId();
+        const option = document.createElement('option');
+        option.value = fallbackId;
+        option.textContent = formatModelLabel(fallbackId);
+        select.appendChild(option);
+        select.value = fallbackId;
+        return;
+    }
+
+    models.forEach((model) => {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = model.name || model.id;
+        select.appendChild(option);
+    });
+
+    const preferredOption = preferredId
+        ? Array.from(select.options).find((option) => option.value === preferredId)
+        : null;
+    if (preferredOption) {
+        select.value = preferredOption.value;
+    } else if (select.options.length > 0) {
+        select.value = select.options[0].value;
+    }
+}
+
+function applyModelSelectFallback(select: HTMLSelectElement, reason: unknown): void {
+    console.warn('AI model list unavailable; using server default:', reason);
+    const fallbackId = preferredModelId();
+    populateModelSelect(select, [], fallbackId);
+    selectedModel = select.value;
+}
+
 let currentTicker: string = '';
 let tickerList: string[] = [];
 let selectedModel: string = '';
@@ -777,39 +834,13 @@ async function loadSignalsModelOptions(): Promise<void> {
         });
 
         if (!response.ok) {
-            throw new Error('Failed to load AI models');
+            throw new Error(`Failed to load AI models (${response.status})`);
         }
 
-        const data = await response.json();
-        const models = data.models || [];
-
-        select.innerHTML = '';
-        if (!Array.isArray(models) || models.length === 0) {
-            select.innerHTML = '<option value="">No models available</option>';
-            return;
-        }
-
-        models.forEach((model: { id: string; name: string; type?: string }) => {
-            const option = document.createElement('option');
-            option.value = model.id;
-            option.textContent = model.name;
-            select.appendChild(option);
-        });
-
-        const preferredModel = tickerDetailsConfig.defaultModel || '';
-        const preferredOption = preferredModel
-            ? Array.from(select.options).find(option => option.value === preferredModel)
-            : null;
-
-        if (preferredOption) {
-            select.value = preferredOption.value;
-        } else if (select.options.length > 0) {
-            // Select the first model by default
-            select.value = select.options[0].value;
-        }
+        const data = await response.json() as { models?: AiModelOption[]; default_model?: string };
+        populateModelSelect(select, data.models || [], data.default_model || preferredModelId());
     } catch (error) {
-        console.error('Error loading signals AI models:', error);
-        select.innerHTML = '<option value="">Error loading models</option>';
+        applyModelSelectFallback(select, error);
     }
 }
 
@@ -835,36 +866,21 @@ async function loadModelOptions(): Promise<void> {
         });
 
         if (!response.ok) {
-            throw new Error('Failed to load AI models');
+            throw new Error(`Failed to load AI models (${response.status})`);
         }
 
-        const data = await response.json();
-        const models = data.models || [];
+        const data = await response.json() as { models?: AiModelOption[]; default_model?: string };
+        populateModelSelect(
+            select,
+            data.models || [],
+            selectedModel || data.default_model || preferredModelId(),
+        );
 
-        select.innerHTML = '';
-        if (!Array.isArray(models) || models.length === 0) {
-            select.innerHTML = '<option value="">No models available</option>';
-            return;
-        }
-
-        models.forEach((model: { id: string; name: string; type?: string }) => {
-            const option = document.createElement('option');
-            option.value = model.id;
-            option.textContent = model.name;
-            select.appendChild(option);
-        });
-
-        if (selectedModel) {
-            select.value = selectedModel;
-        } else if (select.options.length > 0) {
-            select.value = select.options[0].value;
-            selectedModel = select.value;
-        }
-
+        selectedModel = select.value;
         updateContextUsage();
     } catch (error) {
-        console.error('Error loading AI models:', error);
-        select.innerHTML = '<option value="">Error loading models</option>';
+        applyModelSelectFallback(select, error);
+        updateContextUsage();
     }
 }
 

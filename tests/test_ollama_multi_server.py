@@ -366,9 +366,14 @@ def test_default_summarizer_and_fallbacks_when_settings_empty(monkeypatch: pytes
     monkeypatch.delenv("OLLAMA_SUMMARIZING_MODEL", raising=False)
     monkeypatch.delenv("OLLAMA_SUMMARIZING_FALLBACK_MODELS", raising=False)
     assert settings_module.get_summarizing_model() == "qwen3.6:27b-heretic"
-    assert settings_module.get_summarizing_fallback_models() == ["granite4.1:8b", "qwen3.6:27b-heretic"]
+    assert settings_module.get_summarizing_fallback_models() == [
+        "granite4.1:8b",
+        "qwen3.6:27b-heretic",
+        "glm-5.2",
+    ]
     chain = ollama_client._get_summary_model_chain(None)
     assert chain[0] == "qwen3.6:27b-heretic"
     assert chain[1] == "granite4.1:8b"
-    assert len(chain) == 2
-    assert not any(str(m).startswith("glm-") for m in chain[1:])
+    assert chain[2] == "glm-5.2"
+    assert len(chain) == 3
+    assert chain[-1].startswith("glm-")

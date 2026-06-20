@@ -14,8 +14,12 @@ from typing import List
 # Same default coding endpoint as glm_config (avoid importing glm_config at module load).
 _DEFAULT_ZHIPU_BASE = "https://api.z.ai/api/coding/paas/v4"
 
-PRIMARY_MODEL_DEFAULT = "glm-5.1"
+PRIMARY_MODEL_DEFAULT = "glm-5.2"
 CHEAP_MODEL_DEFAULT = "glm-5-turbo"
+# Local Ollama roles (summarization primary + queue worker defaults).
+OLLAMA_SUMMARIZING_DEFAULT = "qwen3.6:27b-heretic"
+OLLAMA_QUEUE_PRIMARY_DEFAULT = "granite4.1:8b"
+OLLAMA_QUEUE_SECONDARY_DEFAULT = "qwen3.6:27b-heretic"
 EMBED_MODEL_DEFAULT = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
 EMBED_DIM_DEFAULT = int(os.getenv("AI_EMBED_DIM", "1024"))
 EMBED_MAX_CHARS_DEFAULT = int(os.getenv("AI_EMBED_MAX_CHARS", "24000"))
@@ -24,7 +28,7 @@ EMBED_MAX_CHARS_DEFAULT = int(os.getenv("AI_EMBED_MAX_CHARS", "24000"))
 BENCH_JUDGE_MODEL = os.getenv("AI_BENCH_JUDGE_MODEL", PRIMARY_MODEL_DEFAULT).strip() or PRIMARY_MODEL_DEFAULT
 BENCH_DEFAULT_CANDIDATES = os.getenv(
     "OLLAMA_QUALITY_MODELS",
-    "granite4.1:8b,qwen3.6:27b-heretic,"
+    f"{OLLAMA_QUEUE_PRIMARY_DEFAULT},{OLLAMA_SUMMARIZING_DEFAULT},"
     + PRIMARY_MODEL_DEFAULT
     + ","
     + CHEAP_MODEL_DEFAULT
@@ -32,6 +36,7 @@ BENCH_DEFAULT_CANDIDATES = os.getenv(
 ).strip()
 PROBE_DEFAULT_MODELS: List[str] = [
     PRIMARY_MODEL_DEFAULT,
+    "glm-5.1",
     CHEAP_MODEL_DEFAULT,
     "glm-5",
     "glm-4.7",
@@ -71,6 +76,27 @@ def get_cheap_model() -> str:
     except Exception:
         pass
     return CHEAP_MODEL_DEFAULT
+
+
+def get_ollama_queue_primary_model() -> str:
+    """Ollama model pinned to AI queue ``ollama_primary`` workers."""
+    env = os.getenv("AI_QUEUE_MODEL_OLLAMA_PRIMARY", "").strip()
+    return env or OLLAMA_QUEUE_PRIMARY_DEFAULT
+
+
+def get_ollama_queue_secondary_model() -> str:
+    """Ollama model pinned to AI queue ``ollama_secondary`` workers."""
+    env = os.getenv("AI_QUEUE_MODEL_OLLAMA_SECONDARY", "").strip()
+    return env or OLLAMA_QUEUE_SECONDARY_DEFAULT
+
+
+def get_builtin_summarizing_fallback_models() -> List[str]:
+    """Built-in summarization fallback tail when DB/env fallbacks are unset."""
+    return [
+        OLLAMA_QUEUE_PRIMARY_DEFAULT,
+        OLLAMA_QUEUE_SECONDARY_DEFAULT,
+        get_primary_model(),
+    ]
 
 
 def get_embed_model() -> str:

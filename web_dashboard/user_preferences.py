@@ -801,7 +801,9 @@ def get_user_ai_model() -> Optional[str]:
 
         return get_primary_model()
     except Exception:
-        return "glm-5.1"
+        from model_registry import PRIMARY_MODEL_DEFAULT
+
+        return PRIMARY_MODEL_DEFAULT
 
     # Fall back to environment variable (deprotilized in favor of Granite)
     # env_model = os.getenv("OLLAMA_MODEL")

@@ -27,6 +27,7 @@ load_project_dotenv()
 # Allowlist: order = rough preference for UI; only ids also returned by GET /models are shown.
 # GLM-5.x / 4.6 availability depends on Z.AI plan; keys that recently lacked 5.x may need cache refresh.
 GLM_ALLOWED: List[str] = [
+    "glm-5.2",
     "glm-5.1",
     "glm-5-turbo",
     "glm-5",
@@ -36,7 +37,7 @@ GLM_ALLOWED: List[str] = [
     "glm-4.5-air",
 ]
 # Static list when API is unavailable
-GLM_MODELS: List[str] = ["glm-5.1", "glm-5-turbo", "glm-4.5-air"]
+GLM_MODELS: List[str] = ["glm-5.2", "glm-5.1", "glm-5-turbo", "glm-4.5-air"]
 
 # Z.AI OpenAI-compatible Coding API (GLM-4.7, Coding Plan)
 # Override with ZHIPU_BASE_URL if using general endpoint (e.g. open.bigmodel.cn)
@@ -82,6 +83,26 @@ def get_zhipu_api_key() -> Optional[str]:
     return None
 
 
+def _read_glm_models_cache() -> List[str]:
+    """Return allowlisted GLM ids from cache if fresh, else []."""
+    now = time.time()
+    if not _CACHE_FILE.exists():
+        return []
+    try:
+        with open(_CACHE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        fetched = data.get("fetched_at", 0) or 0
+        if not isinstance(fetched, (int, float)) or (now - float(fetched)) >= _CACHE_TTL_SEC:
+            return []
+        models = data.get("models") or []
+        if not isinstance(models, list) or not models:
+            return []
+        out = [m for m in GLM_ALLOWED if m in models]
+        return out if out else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
 def fetch_zhipu_models() -> List[str]:
     """
     Fetch model ids from Z.AI GET /models or /v1/models; cache to .cache/glm_models.json.
@@ -93,21 +114,9 @@ def fetch_zhipu_models() -> List[str]:
         return list(GLM_MODELS)
 
     # Read cache
-    now = time.time()
-    if _CACHE_FILE.exists():
-        try:
-            with open(_CACHE_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            fetched = data.get("fetched_at", 0) or 0
-            if isinstance(fetched, (int, float)) and (now - float(fetched)) < _CACHE_TTL_SEC:
-                models = data.get("models") or []
-                if isinstance(models, list) and models:
-                    # Only return allowed models, in preferred order
-                    out = [m for m in GLM_ALLOWED if m in models]
-                    if out:
-                        return out
-        except (OSError, json.JSONDecodeError):
-            pass
+    cached = _read_glm_models_cache()
+    if cached:
+        return cached
 
     # Fetch from API
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -140,18 +149,25 @@ def fetch_zhipu_models() -> List[str]:
     try:
         _CACHE_DIR.mkdir(parents=True, exist_ok=True)
         with open(_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump({"models": out, "fetched_at": now}, f, indent=0)
+            json.dump({"models": out, "fetched_at": time.time()}, f, indent=0)
     except OSError:
         pass
 
     return out if out else list(GLM_MODELS)
 
 
-def get_glm_models() -> List[str]:
-    """Return GLM model list: from fetch cache/API when key is set, else static GLM_MODELS."""
-    if get_zhipu_api_key():
-        return fetch_zhipu_models()
-    return list(GLM_MODELS)
+def get_glm_models(*, refresh: bool = True) -> List[str]:
+    """Return GLM model list: from fetch cache/API when key is set, else static GLM_MODELS.
+
+    When ``refresh=False`` (model picker / UI), use cache or static list only — no live
+    Z.AI round-trip so ticker-details and AI Assistant load quickly even if Z.AI is slow.
+    """
+    if not get_zhipu_api_key():
+        return list(GLM_MODELS)
+    if not refresh:
+        cached = _read_glm_models_cache()
+        return cached if cached else list(GLM_MODELS)
+    return fetch_zhipu_models()
 
 
 def get_zhipu_api_key_source() -> Optional[str]:

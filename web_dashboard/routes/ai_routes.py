@@ -522,44 +522,52 @@ def _get_formatted_ai_models():
     except ImportError:
         def get_model_display_name(m): return m
 
-    all_models = list_available_models()
+    try:
+        all_models = list_available_models()
+    except Exception as e:
+        logger.error("list_available_models failed for model picker: %s", e, exc_info=True)
+        all_models = []
+
     formatted_models = []
     for model in all_models:
-        if model.startswith("glm-"):
-            # Only expose GLM in the selectable list when the API key is set
-            try:
-                from glm_config import get_zhipu_api_key
-                if not get_zhipu_api_key():
-                    continue
-            except ImportError:
-                continue
-            display_name = "GLM " + model[4:].replace("-", " ") if len(model) > 4 else model
-            formatted_models.append({"id": model, "name": display_name, "type": "glm"})
-            continue
-        
-        # Check for web-based AI models
         try:
-            from webai_wrapper import is_webai_model
-            is_webai = is_webai_model(model)
-        except ImportError:
-            is_webai = False
-        
-        display_name = model
-        if is_webai:
+            if model.startswith("glm-"):
+                # Only expose GLM in the selectable list when the API key is set
+                try:
+                    from glm_config import get_zhipu_api_key
+                    if not get_zhipu_api_key():
+                        continue
+                except ImportError:
+                    continue
+                display_name = "GLM " + model[4:].replace("-", " ") if len(model) > 4 else model
+                formatted_models.append({"id": model, "name": display_name, "type": "glm"})
+                continue
+
+            # Check for web-based AI models
             try:
-                display_name = get_model_display_name(model)
-                # Add sparkle to webai models if not already there
-                if 'AI' in display_name:
-                     display_name = f"✨ {display_name}"
-            except:
-                pass
-        
-        formatted_models.append({
-            'id': model,
-            'name': display_name,
-            'type': 'webai' if is_webai else 'ollama'
-        })
-    
+                from webai_wrapper import is_webai_model
+                is_webai = is_webai_model(model)
+            except ImportError:
+                is_webai = False
+
+            display_name = model
+            if is_webai:
+                try:
+                    display_name = get_model_display_name(model)
+                    # Add sparkle to webai models if not already there
+                    if 'AI' in display_name:
+                         display_name = f"✨ {display_name}"
+                except Exception:
+                    pass
+
+            formatted_models.append({
+                'id': model,
+                'name': display_name,
+                'type': 'webai' if is_webai else 'ollama'
+            })
+        except Exception as e:
+            logger.warning("Skipping model %r in formatted list: %s", model, e)
+
     return formatted_models
 
 # ============================================================================
@@ -730,16 +738,47 @@ def api_ai_preview_context():
 @require_auth
 def api_ai_models():
     """Get available AI models with user's preferred default"""
+    formatted_models: list[dict[str, str]] = []
+    default_model: Optional[str] = None
+    errors: list[str] = []
+
     try:
         formatted_models = _get_formatted_ai_models()
-        default_model = get_user_ai_model()
-        return jsonify({
-            "models": formatted_models,
-            "default_model": default_model
-        })
     except Exception as e:
-        logger.error(f"Error fetching AI models: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error("Error formatting AI models: %s", e, exc_info=True)
+        errors.append("models_unavailable")
+
+    try:
+        default_model = get_user_ai_model()
+    except Exception as e:
+        logger.warning("Error resolving user default AI model: %s", e, exc_info=True)
+        errors.append("default_model_unavailable")
+        try:
+            from model_registry import get_primary_model
+            default_model = get_primary_model()
+        except Exception:
+            default_model = None
+
+    if not formatted_models and default_model:
+        formatted_models = [{
+            "id": default_model,
+            "name": default_model,
+            "type": "glm" if str(default_model).startswith("glm-") else "ollama",
+        }]
+
+    if not formatted_models:
+        return jsonify({
+            "error": "No AI models available",
+            "details": errors,
+        }), 503
+
+    payload: dict[str, object] = {
+        "models": formatted_models,
+        "default_model": default_model,
+    }
+    if errors:
+        payload["warnings"] = errors
+    return jsonify(payload)
 
 @ai_bp.route('/api/v2/ai/context/build', methods=['POST'])
 @require_auth

@@ -299,10 +299,12 @@ def get_summarizing_model(scope: Optional[str] = None) -> str:
         scope: Optional logical workload name for per-job model overrides.
 
     Returns:
-        Model name for summarization (defaults to ``qwen3.6:27b-heretic`` when unset)
+        Model name for summarization (defaults to ``OLLAMA_SUMMARIZING_DEFAULT`` when unset)
     """
     import os
     import re
+
+    from model_registry import OLLAMA_SUMMARIZING_DEFAULT
 
     if scope and str(scope).strip():
         suffix = re.sub(r"[^a-zA-Z0-9]+", "_", str(scope).strip()).strip("_").lower()
@@ -319,7 +321,7 @@ def get_summarizing_model(scope: Optional[str] = None) -> str:
     if env_model:
         return env_model.strip()
 
-    return "qwen3.6:27b-heretic"
+    return OLLAMA_SUMMARIZING_DEFAULT
 
 
 def get_summarizing_fallback_models() -> list[str]:
@@ -328,8 +330,10 @@ def get_summarizing_fallback_models() -> list[str]:
     Source:
     1. system_settings.ai_summarizing_fallback_models (list or comma/newline string)
     2. ``OLLAMA_SUMMARIZING_FALLBACK_MODELS`` (comma-separated) when (1) is empty
-    3. Built-in ``granite4.1:8b`` then ``qwen3.6:27b-heretic`` when still empty (order de-duped with primary)
+    3. Built-in queue Ollama pair then primary GLM (``get_builtin_summarizing_fallback_models()``) when still empty
     """
+    from model_registry import get_builtin_summarizing_fallback_models
+
     configured = get_system_setting("ai_summarizing_fallback_models", default=None)
     models: list[str] = []
 
@@ -352,7 +356,7 @@ def get_summarizing_fallback_models() -> list[str]:
                 models.append(s)
 
     if not models:
-        models = ["granite4.1:8b", "qwen3.6:27b-heretic"]
+        models = get_builtin_summarizing_fallback_models()
 
     # Stable de-dup preserving order
     seen: set[str] = set()

@@ -127,13 +127,28 @@ def model_for_backend(backend: str) -> str:
     """Resolve the single model a backend-bound worker should use."""
 
     if backend == BACKEND_GLM:
-        return os.getenv("AI_QUEUE_MODEL_GLM", "glm-5.1").strip() or "glm-5.1"
+        override = os.getenv("AI_QUEUE_MODEL_GLM", "").strip()
+        if override:
+            return override
+        try:
+            from model_registry import get_primary_model
+
+            return get_primary_model()
+        except ImportError:
+            return "glm-5.2"
     if backend == BACKEND_OLLAMA_SECONDARY:
-        return (
-            os.getenv("AI_QUEUE_MODEL_OLLAMA_SECONDARY", "qwen3.6:27b-heretic").strip()
-            or "qwen3.6:27b-heretic"
-        )
-    return os.getenv("AI_QUEUE_MODEL_OLLAMA_PRIMARY", "granite4.1:8b").strip() or "granite4.1:8b"
+        try:
+            from model_registry import get_ollama_queue_secondary_model
+
+            return get_ollama_queue_secondary_model()
+        except ImportError:
+            return "qwen3.6:27b-heretic"
+    try:
+        from model_registry import get_ollama_queue_primary_model
+
+        return get_ollama_queue_primary_model()
+    except ImportError:
+        return "granite4.1:8b"
 
 
 def ollama_base_url_for_backend(backend: str) -> Optional[str]:
