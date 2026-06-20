@@ -4,6 +4,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import { showToast as showToastBase } from './toast.js';
 
 // Type definitions
 interface Fund {
@@ -71,16 +72,7 @@ function escapeHtmlForFunds(text: string | undefined | null): string {
 }
 
 function showToastForFunds(message: string, type: 'success' | 'error' = 'success'): void {
-    const toast = document.createElement('div');
-    toast.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${type === 'success' ? 'bg-theme-success-bg text-theme-success-text border border-theme-success-text' : 'bg-theme-error-bg text-theme-error-text border border-theme-error-text'
-        }`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-
-    setTimeout(() => {
-        toast.classList.add('opacity-0', 'transition-opacity', 'duration-300');
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    showToastBase(message, type);
 }
 
 function getSelectedFund(): string {

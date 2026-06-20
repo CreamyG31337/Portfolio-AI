@@ -400,11 +400,6 @@
         @apply text-text-primary hover:text-accent;
     }
 
-    /* Ticker details composite bars use a CSS variable to avoid direct width styles. */
-    .ticker-composite-progress {
-        width: var(--bar-width, 0%);
-    }
-
     /* Insider trades AG Grid row highlights using theme-aware token utilities. */
     .ag-row.insider-trade-purchase .ag-cell {
         @apply bg-theme-success-bg/20;

@@ -4,6 +4,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import { showToast as showToastBase } from './toast.js';
 
 // Type definitions
 interface Fund {
@@ -86,34 +87,7 @@ function debounceForContributions<T extends (...args: any[]) => void>(
 }
 
 function showToastForContributions(message: string, type: 'success' | 'error' = 'success'): void {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container';
-        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
-        document.body.appendChild(container);
-    }
-
-    const toast = document.createElement('div');
-    const borderColor = type === 'error' ? 'border-theme-error-text' : 'border-theme-success-text';
-
-    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow border-l-4 ${borderColor} transition-opacity duration-300 opacity-0`;
-    toast.innerHTML = `
-        <div class="ms-3 text-sm font-normal text-text-primary">${escapeHtmlForContributions(message)}</div>
-        <button type="button" class="bg-dashboard-surface text-text-secondary hover:text-text-primary rounded-lg p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8" onclick="this.parentElement.remove()">✕</button>
-    `;
-    container.appendChild(toast);
-
-    requestAnimationFrame(() => {
-        toast.classList.remove('opacity-0');
-        toast.classList.add('opacity-100');
-    });
-
-    setTimeout(() => {
-        toast.classList.remove('opacity-100');
-        toast.classList.add('opacity-0');
-        setTimeout(() => toast.remove(), 300);
-    }, 4000);
+    showToastBase(message, type);
 }
 
 // Load funds dropdown

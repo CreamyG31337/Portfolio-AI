@@ -2750,7 +2750,6 @@ function renderDividends(data: DividendData): void {
                 // Ticker (clickable) with logo
                 const tickerCell = document.createElement('td');
                 tickerCell.className = 'px-4 py-2 text-accent font-bold cursor-pointer hover:underline';
-                tickerCell.style.cursor = 'pointer';
 
                 // Create logo image using shared helper function (always create for consistent alignment)
                 const logoUrl = (row as any)._logo_url || '';
@@ -3629,11 +3628,11 @@ function renderPnlChart(data: PnlChartData): void {
             });
 
             pnlGraphEl.on('plotly_hover', () => {
-                pnlGraphEl.style.cursor = 'pointer';
+                pnlGraphEl.classList.add('cursor-pointer');
             });
 
             pnlGraphEl.on('plotly_unhover', () => {
-                pnlGraphEl.style.cursor = 'default';
+                pnlGraphEl.classList.remove('cursor-pointer');
             });
         }
         console.log('[Dashboard] P&L chart rendered with Plotly');

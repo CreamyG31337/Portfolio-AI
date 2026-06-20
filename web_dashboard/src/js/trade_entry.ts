@@ -3,12 +3,9 @@
  * Handles manual trade entry, email parsing, and trade history
  */
 
-// TODO(ui): Refactor Edit Trade / Delete Trade modals (trade_entry.html + this file) to standard
-// Flowbite patterns — data-modal-target / data-modal-hide, remove custom backdrop + Escape
-// handlers — for a11y (focus trap, ARIA) and consistency with e.g. funds.html.
-
 import { getCsrfHeaders } from './csrf.js';
 import { setupTickerAutocomplete, getCompanyName } from './ticker_autocomplete.js';
+import { showToast as showToastBase } from './toast.js';
 
 // Type definitions
 interface TradeActionLike {
@@ -92,48 +89,7 @@ function escapeHtmlForTradeEntry(text: string | undefined | null): string {
 }
 
 function showToastForTradeEntry(message: string, type: 'success' | 'error' | 'info' = 'success'): void {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container';
-        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
-        document.body.appendChild(container);
-    }
-
-    const toast = document.createElement('div');
-    const borderColor = type === 'error' ? 'border-theme-error-text' : (type === 'info' ? 'border-theme-info-text' : 'border-theme-success-text');
-
-    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow border-l-4 ${borderColor} transition-opacity duration-300 opacity-0`;
-    toast.innerHTML = `
-        <div class="ms-3 text-sm font-normal">${escapeHtmlForTradeEntry(message)}</div>
-        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-dashboard-surface text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-dashboard-surface-alt inline-flex items-center justify-center h-8 w-8">
-            <span class="sr-only">Close</span>
-            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-            </svg>
-        </button>
-    `;
-
-    const closeBtn = toast.querySelector('button');
-    if (closeBtn) {
-        closeBtn.onclick = () => {
-            toast.classList.remove('opacity-100');
-            toast.classList.add('opacity-0');
-            setTimeout(() => toast.remove(), 300);
-        };
-    }
-    container.appendChild(toast);
-
-    requestAnimationFrame(() => {
-        toast.classList.remove('opacity-0');
-        toast.classList.add('opacity-100');
-    });
-
-    setTimeout(() => {
-        toast.classList.remove('opacity-100');
-        toast.classList.add('opacity-0');
-        setTimeout(() => toast.remove(), 300);
-    }, 4000);
+    showToastBase(message, type);
 }
 
 // Update the company name display below the ticker input
@@ -723,13 +679,13 @@ function openEditModal(trade: Trade): void {
     const name = getCompanyName(trade.ticker || '');
     updateEditCompanyName(name);
 
-    // Show modal
-    modal.classList.remove('hidden');
+    // Open via Flowbite's trigger so the modal is in Flowbite's registry (needed for
+    // data-modal-hide, backdrop, focus trap and Esc handling).
+    document.getElementById('edit-trade-modal-trigger')?.click();
 }
 
 function closeEditModal(): void {
-    const modal = document.getElementById('edit-trade-modal');
-    if (modal) modal.classList.add('hidden');
+    document.querySelector<HTMLElement>('[data-modal-hide="edit-trade-modal"]')?.click();
 }
 
 async function handleEditSubmit(e: Event): Promise<void> {
@@ -834,12 +790,12 @@ function openDeleteModal(trade: Trade): void {
         summary.textContent = `${action} ${trade.shares} ${trade.ticker} @ $${trade.price.toFixed(2)} on ${dateStr}`;
     }
 
-    modal.classList.remove('hidden');
+    // Open via Flowbite's trigger (registers the modal for data-modal-hide).
+    document.getElementById('delete-trade-modal-trigger')?.click();
 }
 
 function closeDeleteModal(): void {
-    const modal = document.getElementById('delete-trade-modal');
-    if (modal) modal.classList.add('hidden');
+    document.querySelector<HTMLElement>('[data-modal-hide="delete-trade-modal"]')?.click();
 }
 
 async function handleDeleteConfirm(): Promise<void> {
@@ -1062,23 +1018,8 @@ document.addEventListener('DOMContentLoaded', () => {
         editForm.addEventListener('submit', handleEditSubmit);
     }
 
-    const editModalClose = document.getElementById('edit-modal-close');
-    if (editModalClose) {
-        editModalClose.addEventListener('click', closeEditModal);
-    }
-
-    const editModalCancel = document.getElementById('edit-modal-cancel');
-    if (editModalCancel) {
-        editModalCancel.addEventListener('click', closeEditModal);
-    }
-
-    // Close edit modal on backdrop click
-    const editModal = document.getElementById('edit-trade-modal');
-    if (editModal) {
-        editModal.addEventListener('click', (e) => {
-            if (e.target === editModal) closeEditModal();
-        });
-    }
+    // Close (X), Cancel, backdrop-click and Esc are handled by Flowbite via the
+    // modal's data-modal-hide attributes and its managed backdrop.
 
     // Set up ticker autocomplete on the edit modal's ticker field
     setupTickerAutocomplete({
@@ -1106,26 +1047,8 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteConfirmBtn.addEventListener('click', handleDeleteConfirm);
     }
 
-    const deleteModalCancel = document.getElementById('delete-modal-cancel');
-    if (deleteModalCancel) {
-        deleteModalCancel.addEventListener('click', closeDeleteModal);
-    }
-
-    // Close delete modal on backdrop click
-    const deleteModal = document.getElementById('delete-trade-modal');
-    if (deleteModal) {
-        deleteModal.addEventListener('click', (e) => {
-            if (e.target === deleteModal) closeDeleteModal();
-        });
-    }
-
-    // Close modals on Escape key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeEditModal();
-            closeDeleteModal();
-        }
-    });
+    // Delete modal Cancel, backdrop-click and Esc are handled by Flowbite via
+    // the modal's data-modal-hide attribute and its managed backdrop.
 });
 
 // Export empty object to make this a module

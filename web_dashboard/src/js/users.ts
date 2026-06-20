@@ -4,6 +4,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import { showToast as showToastBase } from './toast.js';
 
 // Type definitions
 interface User {
@@ -1287,61 +1288,7 @@ async function handleRevokeAccess(): Promise<void> {
 
 // Toast Notification System
 function showToast(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success'): void {
-    let container = document.getElementById('toast-container-users');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container-users';
-        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
-        document.body.appendChild(container);
-    }
-
-    const toast = document.createElement('div');
-    const borderColor = type === 'error' ? 'border-theme-error-text' :
-        type === 'warning' ? 'border-theme-warning-text' :
-            type === 'info' ? 'border-theme-info-text' :
-                'border-theme-success-text';
-
-    const icon = type === 'error' ? '❌' :
-        type === 'warning' ? '⚠️' :
-            type === 'info' ? 'ℹ️' :
-                '✅';
-
-    // Start with opacity-0 for fade-in effect
-    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border-l-4 ${borderColor} transition-opacity duration-300 opacity-0 border border-border`;
-    toast.innerHTML = `
-        <div class="ms-3 text-sm font-normal flex items-center gap-2">
-            <span class="text-lg">${icon}</span>
-            <span>${escapeHtmlForUsers(message)}</span>
-        </div>
-        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-transparent text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-accent p-1.5 hover:bg-dashboard-hover inline-flex items-center justify-center h-8 w-8" aria-label="Close">
-            <span class="sr-only">Close</span>
-            <svg class="w-3 h-3" aria-true="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-            </svg>
-        </button>
-    `;
-
-    const closeBtn = toast.querySelector('button');
-    if (closeBtn) {
-        closeBtn.onclick = () => {
-            toast.classList.remove('opacity-100');
-            toast.classList.add('opacity-0');
-            setTimeout(() => toast.remove(), 300);
-        };
-    }
-    container.appendChild(toast);
-
-    // Trigger fade in
-    requestAnimationFrame(() => {
-        toast.classList.remove('opacity-0');
-        toast.classList.add('opacity-100');
-    });
-
-    setTimeout(() => {
-        toast.classList.remove('opacity-100');
-        toast.classList.add('opacity-0');
-        setTimeout(() => toast.remove(), 300);
-    }, 4000);
+    showToastBase(message, type);
 }
 
 // Helper Functions

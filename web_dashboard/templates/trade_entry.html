@@ -290,13 +290,15 @@
         </div>
     </div>
 </div>
-<!-- TODO(ui-flowbite): Migrate edit/delete trade dialogs from custom modal markup/JS to Flowbite modal components to reduce duplicated dialog logic. -->
-<!-- Edit Trade Modal -->
-<div id="edit-trade-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-    <div class="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-dashboard-surface rounded-lg shadow-lg border border-border mx-4">
+<!-- Edit Trade Modal (Flowbite; opened programmatically via openEditModal -> hidden trigger) -->
+<button id="edit-trade-modal-trigger" type="button" class="hidden" data-modal-target="edit-trade-modal"
+    data-modal-toggle="edit-trade-modal" aria-label="Open edit trade">Open</button>
+<div id="edit-trade-modal" tabindex="-1" aria-hidden="true"
+    class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-dashboard-surface rounded-lg shadow-lg border border-border">
         <div class="flex items-center justify-between p-4 border-b border-border">
             <h3 class="text-lg font-semibold text-text-primary">Edit Trade</h3>
-            <button id="edit-modal-close" type="button"
+            <button id="edit-modal-close" type="button" data-modal-hide="edit-trade-modal"
                 class="text-text-secondary hover:text-text-primary rounded-lg text-sm w-8 h-8 inline-flex items-center justify-center hover:bg-dashboard-surface-alt">
                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                     <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
@@ -362,7 +364,7 @@
                     placeholder="e.g. Rebalancing, Limit Fill"></textarea>
             </div>
             <div class="flex justify-end gap-3 pt-2 border-t border-border">
-                <button type="button" id="edit-modal-cancel"
+                <button type="button" id="edit-modal-cancel" data-modal-hide="edit-trade-modal"
                     class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-surface-alt font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
                     Cancel
                 </button>
@@ -375,9 +377,12 @@
     </div>
 </div>
 
-<!-- Delete Trade Confirmation Modal -->
-<div id="delete-trade-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-    <div class="relative w-full max-w-md bg-dashboard-surface rounded-lg shadow-lg border border-border mx-4">
+<!-- Delete Trade Confirmation Modal (Flowbite; opened programmatically via openDeleteModal -> hidden trigger) -->
+<button id="delete-trade-modal-trigger" type="button" class="hidden" data-modal-target="delete-trade-modal"
+    data-modal-toggle="delete-trade-modal" aria-label="Open delete trade">Open</button>
+<div id="delete-trade-modal" tabindex="-1" aria-hidden="true"
+    class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-md bg-dashboard-surface rounded-lg shadow-lg border border-border">
         <div class="p-6 text-center">
             <svg class="mx-auto mb-4 text-theme-error-text w-12 h-12" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 11V6m0 8h.01M19 10a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
@@ -392,7 +397,7 @@
                     class="text-white bg-red-600 hover:bg-red-700 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
                     Yes, Delete
                 </button>
-                <button id="delete-modal-cancel" type="button"
+                <button id="delete-modal-cancel" type="button" data-modal-hide="delete-trade-modal"
                     class="text-text-secondary bg-transparent border border-border hover:bg-dashboard-surface-alt font-medium rounded-lg text-sm px-5 py-2.5 transition-colors duration-200">
                     Cancel
                 </button>

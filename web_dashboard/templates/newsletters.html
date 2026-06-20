@@ -103,9 +103,10 @@
     </div>
 </div>
 
-<!-- TODO(ui-flowbite): Replace this custom modal show/hide implementation with Flowbite Modal API for consistent behavior and accessibility. -->
-<!-- Email View Modal -->
-<div id="email-view-modal" tabindex="-1" aria-hidden="true" class="hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full bg-gray-900/50 dark:bg-gray-900/80 backdrop-blur-sm" onclick="if(event.target === this) closeEmailModal()">
+<!-- Email View Modal (Flowbite; opened programmatically via viewEmail -> hidden trigger) -->
+<button id="email-view-modal-trigger" type="button" class="hidden" data-modal-target="email-view-modal"
+    data-modal-toggle="email-view-modal" aria-label="Open email">Open</button>
+<div id="email-view-modal" tabindex="-1" aria-hidden="true" class="hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative p-4 w-full max-w-5xl max-h-full flex">
         <!-- Modal content -->
         <div class="relative bg-dashboard-surface rounded-lg shadow-sm w-full flex flex-col max-h-[90vh]">
@@ -127,7 +128,7 @@
                             <i class="fas fa-align-left mr-1"></i>Plain
                         </button>
                     </div>
-                    <button type="button" onclick="closeEmailModal()" class="text-text-tertiary bg-transparent hover:bg-dashboard-surface-alt hover:text-text-primary rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center">
+                    <button type="button" data-modal-hide="email-view-modal" class="text-text-tertiary bg-transparent hover:bg-dashboard-surface-alt hover:text-text-primary rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center">
                         <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                             <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                         </svg>
@@ -551,18 +552,11 @@ async function viewEmail(id) {
     currentEmailData = null;
     previousEmailModalFocus = document.activeElement;
 
-    // Show modal
-    // TODO(palette): This custom modal manually manages body overflow lock, backdrop, focus and
-    // Esc handling. Prefer Flowbite's Modal API (data-modal-toggle/-target or `new Modal(...)`) to
-    // get body locking, focus trapping and keyboard nav for free and avoid orphaned backdrops /
-    // stuck scrollbars. (Palette audit PR #324, item 2)
-    modal.classList.remove('hidden');
-    modal.classList.add('flex'); // Flowbite modals use flex for centering
-    modal.removeAttribute('aria-hidden');
-    modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('role', 'dialog');
-    document.body.style.overflow = 'hidden';
-    modal.focus();
+    // Open via Flowbite's trigger (handles backdrop, body-scroll lock, focus trap
+    // and Esc). Guard against the toggle re-hiding an already-open modal.
+    if (modal && modal.classList.contains('hidden')) {
+        document.getElementById('email-view-modal-trigger')?.click();
+    }
 
     try {
         const response = await fetch('/api/newsletters/' + id, { credentials: 'include' });
@@ -691,29 +685,22 @@ function toggleEmailView(view) {
     }
 }
 
-function closeEmailModal() {
-    const modal = document.getElementById('email-view-modal');
-
-    if (modal.contains(document.activeElement)) {
-        document.activeElement.blur();
-    }
-
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-    modal.setAttribute('aria-hidden', 'true');
-    modal.removeAttribute('aria-modal');
-    modal.removeAttribute('role');
-    document.body.style.overflow = '';
+// Flowbite manages show/hide (backdrop, body-scroll lock, focus and Esc) via the
+// data-modal-* attributes. We only need to tear down our own state -- clear the
+// sandboxed iframe and restore focus -- which we run whenever Flowbite hides the
+// modal (i.e. re-adds the `hidden` class).
+function cleanupEmailModalState() {
     currentEmailData = null;
 
-    // Clear iframe
     const htmlView = document.getElementById('email-modal-html');
-    try {
-        const doc = htmlView.contentDocument || htmlView.contentWindow.document;
-        doc.open();
-        doc.write('');
-        doc.close();
-    } catch(e) {}
+    if (htmlView) {
+        try {
+            const doc = htmlView.contentDocument || htmlView.contentWindow.document;
+            doc.open();
+            doc.write('');
+            doc.close();
+        } catch (e) { /* iframe became cross-origin */ }
+    }
 
     if (previousEmailModalFocus && typeof previousEmailModalFocus.focus === 'function') {
         previousEmailModalFocus.focus();
@@ -721,14 +708,15 @@ function closeEmailModal() {
     previousEmailModalFocus = null;
 }
 
-// Close modal on Escape key
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        const modal = document.getElementById('email-view-modal');
-        if (!modal.classList.contains('hidden')) {
-            closeEmailModal();
+(function observeEmailModalClose() {
+    const modal = document.getElementById('email-view-modal');
+    if (!modal) return;
+    const observer = new MutationObserver(() => {
+        if (modal.classList.contains('hidden')) {
+            cleanupEmailModalState();
         }
-    }
-});
+    });
+    observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+})();
 </script>
 {% endblock %}

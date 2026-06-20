@@ -1,5 +1,6 @@
 export { }; // Ensure file is treated as a module
 import { getCsrfHeaders } from './csrf.js';
+import { showToast as showToastBase } from './toast.js';
 
 type SecurityMode = "etf" | "stock" | "portfolio";
 
@@ -408,17 +409,7 @@ function escapeHtml(text: string): string {
 }
 
 function showToast(message: string, type: "success" | "error" | "info" = "info"): void {
-    const toast = document.createElement("div");
-    toast.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 ${
-        type === "success" ? "bg-green-500 text-white" :
-        type === "error" ? "bg-red-500 text-white" :
-        "bg-blue-500 text-white"
-    }`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-        toast.remove();
-    }, 5000);
+    showToastBase(message, type);
 }
 
 // Make functions available globally

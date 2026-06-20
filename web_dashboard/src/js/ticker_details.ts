@@ -2,6 +2,7 @@ export { }; // Ensure file is treated as a module
 
 // ticker_autocomplete import removed -- ticker details now uses search-on-Enter via /api/v2/ticker/search
 import { getCsrfHeaders } from './csrf.js';
+import { showToast as showToastBase } from './toast.js';
 
 // API Response interfaces
 interface TickerListResponse {
@@ -2556,7 +2557,7 @@ function renderMomentumSignal(momentum: any): void {
         colorScoreEl(compositeEl, score);
     }
     if (compositeBar) {
-        compositeBar.style.setProperty('--bar-width', `${(score * 100).toFixed(0)}%`);
+        compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
         compositeBar.classList.remove('bg-theme-success-bg', 'bg-theme-warning-bg', 'bg-theme-error-bg', 'bg-accent');
         compositeBar.classList.add(barColorClass(score));
     }
@@ -2666,7 +2667,7 @@ function renderFundamentalSignal(fundamental: any): void {
         colorScoreEl(compositeEl, score);
     }
     if (compositeBar) {
-        compositeBar.style.setProperty('--bar-width', `${(score * 100).toFixed(0)}%`);
+        compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
         compositeBar.classList.remove('bg-theme-success-bg', 'bg-theme-warning-bg', 'bg-theme-error-bg', 'bg-accent');
         compositeBar.classList.add(barColorClass(score));
     }
@@ -3533,17 +3534,7 @@ function isStaleLoad(expectedLoadSeq: number | undefined, ticker: string): boole
 
 // Helper to show toast notifications
 function showToast(message: string, type: 'success' | 'error' | 'info' = 'info'): void {
-    // Simple toast implementation - you can enhance this
-    const toast = document.createElement('div');
-    toast.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 border ${type === 'success' ? 'bg-theme-success-bg text-theme-success-text border-theme-success-text' :
-        type === 'error' ? 'bg-theme-error-bg text-theme-error-text border-theme-error-text' :
-            'bg-theme-info-bg text-theme-info-text border-theme-info-text'
-        }`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-        toast.remove();
-    }, 5000);
+    showToastBase(message, type);
 }
 
 // Make toggleSummary available globally

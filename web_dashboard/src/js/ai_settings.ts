@@ -1,5 +1,6 @@
 import { ApiResponse } from './types';
 import { getCsrfHeaders } from './csrf.js';
+import { showToast as showToastBase } from './toast.js';
 
 // Types for AI Settings
 interface StatusResponse {
@@ -154,55 +155,7 @@ function escapeHtml(text: string): string {
 
 // Toast notification system for AI settings
 function showToastForAI(message: string, type: 'success' | 'error' | 'info' = 'success'): void {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container';
-        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
-        document.body.appendChild(container);
-    }
-
-    const toast = document.createElement('div');
-    const borderColor = type === 'error' ? 'border-red-500' : (type === 'info' ? 'border-blue-500' : 'border-green-500');
-
-    toast.className = `flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800 border-l-4 ${borderColor} transition-opacity duration-300 opacity-0`;
-
-    toast.innerHTML = `
-        <div class="ms-3 text-sm font-normal">${escapeHtml(message)}</div>
-        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-white text-gray-400 hover:text-gray-900 rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 hover:bg-gray-100 inline-flex items-center justify-center h-8 w-8 dark:text-gray-500 dark:hover:text-white dark:bg-gray-800 dark:hover:bg-gray-700">
-            <span class="sr-only">Close</span>
-            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-            </svg>
-        </button>
-    `;
-
-    container.appendChild(toast);
-
-    const dismiss = () => {
-        toast.classList.remove('opacity-100');
-        toast.classList.add('opacity-0');
-        setTimeout(() => {
-            toast.remove();
-            const allToasts = container.querySelectorAll('div');
-            if (allToasts.length === 0) {
-                container.remove();
-            }
-        }, 300);
-    };
-
-    // Add close button functionality
-    const closeBtn = toast.querySelector('button');
-    if (closeBtn) {
-        closeBtn.addEventListener('click', dismiss);
-    }
-
-    requestAnimationFrame(() => {
-        toast.classList.remove('opacity-0');
-        toast.classList.add('opacity-100');
-    });
-
-    setTimeout(dismiss, 4000);
+    showToastBase(message, type);
 }
 
 // Confirmation toast with action buttons
