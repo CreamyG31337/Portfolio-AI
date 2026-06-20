@@ -9,10 +9,8 @@ dilution is *coming*. No LLM.
 Distinct from G3: this is ``JOB_ID="sec_filings"`` writing ``filing_events``;
 G3 is ``JOB_ID="dilution_watch"`` writing ``dilution_observations``.
 
-DB note: ``filing_events`` is applied to the Research DB by a human after this
-ships (see docs/PHASE_G_PLAN.md G2). Until then the INSERT fails per row and the
-job logs and continues — it never crashes the scheduler. ``enabled_by_default``
-stays False until the table exists. See docs/PHASE_G_PLAN.md G2.
+DB note: ``filing_events`` is in the Research DB schema; enable the job in the
+Jobs admin UI once the table is applied in your environment.
 """
 
 from __future__ import annotations

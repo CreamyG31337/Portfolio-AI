@@ -411,7 +411,7 @@ flowchart TD
 | **D** | 2.3 dossier timeline; 2.5 polish; 4.4 earnings | ~1–2 wk — **partial 2026-06-10** |
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro pending** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1 advisory V1 shipped** |
-| **G** | Stance provenance; dilution watch (shares-outstanding, free, incl. `.TO`) + EDGAR US filing-risk watch; confluence scorer; retro Mailgun — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G4 shipped; G5/G7/G6 remain** |
+| **G** | Stance provenance; dilution watch (shares-outstanding, free, incl. `.TO`) + EDGAR US filing-risk watch; confluence scorer; retro Mailgun — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 shipped; G7/G6 remain** |
 
 ### Phase B–F checklist (2026-06-10)
 
@@ -451,31 +451,35 @@ Full specs, research tasks, and acceptance criteria live in
 - [x] **G2** **EDGAR (US)** filing-risk watch (`filing_events`, new `sec_filings` job): the
   *forward* dilution signal (shelf/S-3) + distress/late-filing, delisting, activist 13D —
   categories the share count can't show. **Shipped 2026-06-14** (shared SEC client, ticker→CIK
-  map, classifier, Today `filing_alerts` block + dossier timeline, 21 tests; `filing_events` DDL
-  pending human apply; going-concern FTS deferred). See [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) G2.
-- [x] **G4** cross-signal confluence scorer (no LLM; events recorded as scoreable stances) — shipped 2026-06-17
+  map, classifier, Today `filing_alerts` block + dossier timeline, 21 tests; `enabled_by_default`
+  True in prod). See [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) G2.
+- [x] **G4** confluence scorer (`confluence_events`, ledger hook at score ≥ 3, Today block) — shipped 2026-06-17
+- [x] **G5** weekly retro → Mailgun digest — **code shipped 2026-06-20** (`retro_digest_service.py`);
+  **email not configured in prod** (no `RETRO_DIGEST_RECIPIENTS`; job logs only until set up)
 - [ ] **G7** Canadian insider coverage via yfinance `insider_transactions` (free; closes the `.TO`
   insider-cluster blind spot the dropped SEDI plan left — probe 2026-06-14 confirmed Yahoo carries
   SEDI data for `.TO`). Revives the original G3 goal without paying or scraping.
-- [ ] **G5** weekly retro → Mailgun digest
 - [ ] **G6** FINRA daily short volume (optional)
 
-## Post-ship verification (2026-06-11)
+## Post-ship verification (2026-06-20)
 
 Checked with `web_dashboard/scripts/verify_stance_pipeline.py` (read-only; rerun anytime):
 
-- **Ledger is live.** First prod writes landed 2026-06-11 04:00 UTC via both the
-  `ticker_analysis` and `ticker_meta` hooks during the nightly run. Dedupe and
-  per-source rows behave as designed.
-- **`stance_outcomes` empty — expected.** Rows score once ledger entries age ≥ 7 days;
-  first 7d scores due **~2026-06-18**, first meaningful track-record/calibration reads
-  **~2026-07-10** (30d). The Shape C audit-#4 gate should also be revisited then.
+- **Ledger is live.** Meta + ticker_analysis hooks writing nightly; G1 provenance at
+  100% for those sources (action_queue stores `verdict` in metadata by design — not
+  the `evidence` article-ID manifest).
+- **`stance_outcomes` scoring live.** First 7d scores landed **2026-06-19** (~127 rows
+  by 2026-06-20). Track-record `/track-record` uses 7d data now; 30d horizon matures
+  **~2026-07-10**. Fixed 2026-06-20: NaN yfinance returns no longer crash
+  `build_track_record_summary` (purged + skipped on insert).
+- **`sec_filings` enabled in prod** — `filing_events` populated; job runs weekdays 18:30 ET.
+- **`confluence` live** — events + Today block shipping.
+- **G5 retro Mailgun** — code shipped (`retro_digest_service.py`); **not configured in prod**
+  (no `RETRO_DIGEST_RECIPIENTS` / Mailgun recipients). Weekly job still runs and logs summary;
+  enable later with `RETRO_DIGEST_RECIPIENTS=you@example.com` + existing Mailgun outbound env.
 - **`idea_triage` empty — expected** (no inbox decisions made yet).
-- **New jobs registered but not yet run** — prod restarted after the 2026-06-10 21:30 ET
-  slot, so `stance_outcomes` first fires tonight; retro + drill-down fire Sunday. Confirm
-  on the Jobs page after 2026-06-11 21:30 ET.
 
-Two real findings, found *because* the ledger exists:
+Two real findings from the June 2026 ledger rollout (still relevant):
 
 1. **Test-fund pollution reached the LLM pipeline.** `get_tickers_to_analyze()` pulled
    holdings from **all** funds, and test-suite runs leave TEST_* funds with fixture

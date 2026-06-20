@@ -72,6 +72,27 @@ def test_score_stance_row_returns_payload() -> None:
     assert payload["excess_return"] == Decimal("5")
 
 
+def test_score_stance_row_skips_nan_prices() -> None:
+    as_of = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    ticker_rows = [
+        {"date": date(2026, 1, 1), "close": float("nan")},
+        {"date": date(2026, 1, 8), "close": float("nan")},
+    ]
+    bench_rows = [
+        {"date": date(2026, 1, 1), "close": 200.0},
+        {"date": date(2026, 1, 8), "close": 210.0},
+    ]
+    payload = score_stance_row(
+        {"id": "uuid-1", "ticker": "BAD", "stance": "BUY", "as_of": as_of, "price_at_stance": None},
+        horizon_days=7,
+        now=now,
+        benchmark_rows=bench_rows,
+        ticker_rows=ticker_rows,
+    )
+    assert payload is None
+
+
 @patch("web_dashboard.scheduler.jobs_stance_outcomes._fetch_benchmark_closes")
 @patch("web_dashboard.scheduler.jobs_stance_outcomes._fetch_ticker_closes_yfinance")
 def test_stance_outcomes_job_scores_row(mock_ticker_fetch, mock_bench_fetch) -> None:

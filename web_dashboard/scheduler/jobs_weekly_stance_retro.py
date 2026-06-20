@@ -24,6 +24,7 @@ def weekly_stance_retro_job() -> None:
     target_date = datetime.now(UTC).date()
     try:
         from postgres_client import PostgresClient
+        from retro_digest_service import send_weekly_retro_digest
         from track_record_service import build_track_record_summary
         from utils.job_tracking import mark_job_completed, mark_job_started
 
@@ -31,12 +32,14 @@ def weekly_stance_retro_job() -> None:
         pg = PostgresClient()
         from today_briefing_service import fetch_stance_flips
 
-        # Actual flips (stance changed), not raw ledger row count.
         flip_cnt = len(fetch_stance_flips(pg, days=7, limit=500))
         summary = build_track_record_summary(pg, horizon_days=30)
+        send_result = send_weekly_retro_digest(pg)
         msg = (
             f"flips_7d={flip_cnt} scored_30d={summary.get('total_scored', 0)} "
-            f"sources={len(summary.get('hit_rate_by_source') or {})}"
+            f"sources={len(summary.get('hit_rate_by_source') or {})} "
+            f"email_sent={send_result.get('sent', 0)} "
+            f"email_skipped={send_result.get('skipped', False)}"
         )
         duration_ms = int((time.time() - start) * 1000)
         log_job_execution(JOB_ID, True, msg, duration_ms)

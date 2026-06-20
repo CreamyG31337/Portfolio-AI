@@ -40,9 +40,12 @@ def _to_decimal(value: Any) -> Decimal | None:
     if value is None:
         return None
     try:
-        return Decimal(str(value))
+        d = Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):
         return None
+    if not d.is_finite():
+        return None
+    return d
 
 
 def _pct_return(baseline: Decimal, end: Decimal) -> Decimal | None:
@@ -232,6 +235,19 @@ def _run_stance_outcomes_job() -> None:
         postgres = PostgresClient()
         supabase = SupabaseClient(use_service_role=True)
         now = datetime.now(UTC)
+
+        # yfinance gaps can produce Decimal('NaN') rows that break track-record;
+        # delete them so the next run can retry once prices exist.
+        deleted = postgres.execute_update(
+            """
+            DELETE FROM stance_outcomes
+            WHERE excess_return != excess_return
+               OR ticker_return != ticker_return
+               OR benchmark_return != benchmark_return
+            """
+        )
+        if deleted:
+            logger.info("stance_outcomes_job: purged %s NaN outcome row(s)", deleted)
 
         # Pass 1: collect candidates for every horizon so price windows can be
         # fetched once with the widest needed date range (a per-horizon cache

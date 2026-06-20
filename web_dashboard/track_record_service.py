@@ -8,14 +8,23 @@ from typing import Any
 from postgres_client import PostgresClient
 
 
-def _hit_from_row(row: dict[str, Any]) -> bool | None:
-    stance = (row.get("stance") or "").upper()
-    excess = row.get("excess_return")
-    if excess is None:
+def _finite_decimal(value: Any) -> Decimal | None:
+    """Parse a numeric DB value; reject None/NaN/Inf (yfinance gaps write Decimal('NaN'))."""
+    if value is None:
         return None
     try:
-        ex = Decimal(str(excess))
+        d = Decimal(str(value))
     except Exception:
+        return None
+    if not d.is_finite():
+        return None
+    return d
+
+
+def _hit_from_row(row: dict[str, Any]) -> bool | None:
+    stance = (row.get("stance") or "").upper()
+    ex = _finite_decimal(row.get("excess_return"))
+    if ex is None:
         return None
     bullish = stance in {"BUY", "BULLISH", "VERY_BULLISH"}
     bearish = stance in {"SELL", "BEARISH", "VERY_BEARISH", "AVOID"}
@@ -89,10 +98,10 @@ def build_track_record_summary(
         return round(bucket["hits"] / bucket["scored"], 4)
 
     def _excess_magnitude(row: dict[str, Any]) -> float:
-        try:
-            return float(row.get("excess_return") or 0)
-        except (TypeError, ValueError):
+        ex = _finite_decimal(row.get("excess_return"))
+        if ex is None:
             return 0.0
+        return float(ex)
 
     # "Best/worst" should mean by excess-return magnitude, not insertion order.
     hits.sort(key=_excess_magnitude, reverse=True)
