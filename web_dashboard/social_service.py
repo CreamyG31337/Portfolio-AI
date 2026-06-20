@@ -151,9 +151,7 @@ def _extract_json_array(text: str) -> Optional[List[Any]]:
 
 
 # FlareSolverr configuration (for bypassing Cloudflare on StockTwits)
-# Default: host.docker.internal for Docker containers
-# Override: FLARESOLVERR_URL env variable for local testing (e.g., Tailscale)
-FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "http://host.docker.internal:8191")
+from web_fetch_client import get_web_fetch_client
 
 # Import clients
 from postgres_client import PostgresClient
@@ -201,9 +199,7 @@ class SocialSentimentService:
             raise
         
         self.ollama = ollama_client or get_ollama_client()
-        
-        # FlareSolverr URL (can be overridden per instance if needed)
-        self.flaresolverr_url = FLARESOLVERR_URL
+        self.web_fetch = get_web_fetch_client()
     
     def _wait_for_reddit_rate_limit(self, min_interval: float = 2.0) -> None:
         """Enforce rate limit between Reddit requests.
@@ -304,107 +300,8 @@ class SocialSentimentService:
         return unique_posts
 
     def make_flaresolverr_request(self, url: str) -> Optional[Dict[str, Any]]:
-        """Make a request through FlareSolverr to bypass Cloudflare protection.
-        
-        Args:
-            url: Target URL to fetch via FlareSolverr
-            
-        Returns:
-            Dictionary with parsed JSON data if successful, None if failed
-        """
-        try:
-            flaresolverr_endpoint = f"{self.flaresolverr_url}/v1"
-            
-            payload = {
-                "cmd": "request.get",
-                "url": url,
-                "maxTimeout": 60000  # 60 seconds
-            }
-            
-            logger.debug(f"Requesting via FlareSolverr: {url}")
-            response = requests.post(
-                flaresolverr_endpoint,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=70  # Slightly longer than maxTimeout
-            )
-            
-            response.raise_for_status()
-            flaresolverr_data = response.json()
-            
-            # Check FlareSolverr status
-            if flaresolverr_data.get("status") != "ok":
-                error_msg = flaresolverr_data.get("message", "Unknown error")
-                logger.warning(f"FlareSolverr returned error status: {error_msg}")
-                return None
-            
-            # Extract solution
-            solution = flaresolverr_data.get("solution", {})
-            if not solution:
-                logger.warning("FlareSolverr response missing solution")
-                return None
-            
-            # Get the actual HTTP status from the solution
-            http_status = solution.get("status", 0)
-            response_body = solution.get("response", "")
-            
-            # Check if the target site returned an error
-            if http_status != 200:
-                logger.warning(f"Target site returned HTTP {http_status} via FlareSolverr")
-                # Log first 200 chars of response for debugging
-                if response_body:
-                    preview = response_body[:200] if len(response_body) > 200 else response_body
-                    logger.debug(f"Response preview: {preview}")
-                return None
-            
-            # Check if response body is empty
-            if not response_body or not response_body.strip():
-                logger.warning("FlareSolverr returned empty response body")
-                return None
-            
-            # Parse the response body (should be JSON for StockTwits API)
-            # FlareSolverr may return HTML with JSON inside, so try to extract JSON
-            try:
-                # Try parsing as-is first
-                data = json.loads(response_body)
-                logger.debug(f"Successfully fetched data via FlareSolverr (status: {http_status}, {len(response_body)} bytes)")
-                return data
-            except json.JSONDecodeError:
-                # If direct parse fails, try to extract JSON from HTML
-                # FlareSolverr sometimes wraps JSON in HTML (e.g., <pre> tags)
-                import re
-                # Look for JSON object in the response (starts with { and ends with })
-                json_match = re.search(r'\{.*\}', response_body, re.DOTALL)
-                if json_match:
-                    try:
-                        json_str = json_match.group(0)
-                        data = json.loads(json_str)
-                        logger.debug("Successfully extracted JSON from HTML response via FlareSolverr")
-                        return data
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"Failed to parse extracted JSON from FlareSolverr response: {e}")
-                else:
-                    # Log first 500 chars to help debug what we got
-                    preview = response_body[:500] if len(response_body) > 500 else response_body
-                    logger.warning("Failed to find JSON in FlareSolverr response")
-                    logger.debug(f"Response preview (first 500 chars): {preview}")
-                    # Check if it looks like HTML (Cloudflare challenge page)
-                    if response_body.strip().startswith('<') or 'cloudflare' in response_body.lower():
-                        logger.warning("Response appears to be HTML (Cloudflare challenge) - FlareSolverr may need more time")
-                return None
-                
-        except requests.exceptions.ConnectionError:
-            logger.debug(f"FlareSolverr unavailable at {self.flaresolverr_url} - will fallback to direct request")
-            return None
-        except requests.exceptions.Timeout:
-            logger.warning("FlareSolverr request timed out - will fallback to direct request")
-            return None
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"FlareSolverr request failed: {e} - will fallback to direct request")
-            return None
-        except Exception as e:
-            logger.warning(f"Unexpected error with FlareSolverr: {e} - will fallback to direct request")
-            return None
+        """Make a request through FlareSolverr to bypass Cloudflare protection."""
+        return self.web_fetch.fetch_json_via_flaresolverr(url)
     
     def get_watched_tickers(self, fund: Optional[str] = None) -> List[str]:
         """Get active tickers from fund-scoped watchlist (with legacy fallback).

@@ -13,7 +13,6 @@ import time
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 from urllib.parse import urlparse
-from pathlib import Path
 
 try:
     import trafilatura
@@ -95,26 +94,19 @@ def is_domain_blacklisted(url: str, blacklist: list[str]) -> tuple[bool, str]:
     return (False, domain)
 
 
-def _get_flaresolverr_url() -> str:
-    """Get FlareSolverr URL, loading common .env locations if needed."""
-    flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip()
-    if flaresolverr_url:
-        return flaresolverr_url
 
-    # Best-effort fallback: load env files if variable is missing
+def _fetch_direct_html(url: str, timeout_seconds: float) -> Optional[str]:
+    """Fetch article HTML with domain strategy headers."""
+    from web_fetch_client import get_web_fetch_client
+
     try:
-        from dotenv import load_dotenv
-
-        project_root = Path(__file__).resolve().parent.parent
-        load_dotenv(project_root / ".env")
-        load_dotenv(project_root / "web_dashboard" / ".env")
-        flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip()
-    except Exception:
-        # Keep silent fallback behavior; caller logs if unavailable
-        flaresolverr_url = ""
-
-    # Use localhost as a practical default for local/dev environments
-    return flaresolverr_url or "http://localhost:8191"
+        return get_web_fetch_client().fetch_direct_html(
+            url,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception as exc:
+        logger.debug("Direct article fetch failed: %s", exc)
+        return None
 
 
 def _remaining_timeout(deadline: Optional[float], default_seconds: float) -> float:
@@ -126,24 +118,6 @@ def _remaining_timeout(deadline: Optional[float], default_seconds: float) -> flo
     if remaining <= 0:
         raise TimeoutError("article extraction budget exhausted")
     return max(1.0, min(default_seconds, remaining))
-
-
-def _fetch_direct_html(url: str, timeout_seconds: float) -> Optional[str]:
-    """Fetch article HTML with an explicit timeout instead of trafilatura's default fetcher."""
-    import requests
-
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-    response = requests.get(url, headers=headers, timeout=timeout_seconds)
-    response.raise_for_status()
-    return response.text
 
 
 def _extraction_error_response(url: str, error: str) -> Dict[str, Any]:
@@ -197,13 +171,11 @@ def extract_article_content(
             return _extraction_error_response(url, 'extraction_timeout')
         deadline = time.monotonic() + budget_seconds if budget_seconds > 0 else None
 
-        # Try FlareSolverr first to bypass Cloudflare protection
+        # Try FlareSolverr first, then direct fetch with domain strategy headers.
         downloaded = None
         try:
-            import requests
+            from web_fetch_client import get_web_fetch_client
 
-            flaresolverr_url = _get_flaresolverr_url()
-            flaresolverr_endpoint = f"{flaresolverr_url}/v1"
             flaresolverr_timeout = _remaining_timeout(
                 deadline,
                 (RESEARCH_FLARESOLVERR_MAX_TIMEOUT_MS / 1000.0) + 5.0,
@@ -215,60 +187,35 @@ def extract_article_content(
                     int(max(1.0, flaresolverr_timeout - 1.0) * 1000),
                 ),
             )
-            
-            payload = {
-                "cmd": "request.get",
-                "url": url,
-                "maxTimeout": flaresolverr_max_timeout_ms,
-            }
-            
-            logger.debug(f"Attempting to fetch via FlareSolverr: {url}")
-            response = requests.post(
-                flaresolverr_endpoint,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=flaresolverr_timeout,
+
+            logger.debug("Attempting to fetch via FlareSolverr: %s", url)
+            downloaded = get_web_fetch_client().fetch_via_flaresolverr_text(
+                url,
+                max_timeout_ms=flaresolverr_max_timeout_ms,
+                request_timeout_seconds=flaresolverr_timeout,
             )
-            response.raise_for_status()
-            
-            flaresolverr_data = response.json()
-            
-            # Check FlareSolverr status
-            if flaresolverr_data.get("status") == "ok":
-                solution = flaresolverr_data.get("solution", {})
-                if solution:
-                    downloaded = solution.get("response", "")
-                    if downloaded:
-                        logger.debug(f"Successfully fetched via FlareSolverr: {url}")
-                    else:
-                        logger.debug(f"FlareSolverr returned empty response for: {url}")
-                else:
-                    logger.debug(f"FlareSolverr response missing solution for: {url}")
-            else:
-                error_msg = flaresolverr_data.get("message", "Unknown error")
-                logger.debug(f"FlareSolverr returned error: {error_msg}")
+            if downloaded:
+                logger.debug("Successfully fetched via FlareSolverr: %s", url)
         except TimeoutError as e:
-            logger.warning(f"Article extraction budget exhausted before FlareSolverr fetch: {e}")
-            return _extraction_error_response(url, 'extraction_timeout')
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            logger.debug(f"FlareSolverr unavailable or timed out: {e}")
+            logger.warning(
+                "Article extraction budget exhausted before FlareSolverr fetch: %s", e
+            )
+            return _extraction_error_response(url, "extraction_timeout")
         except Exception as e:
-            logger.debug(f"FlareSolverr request failed: {e}")
-        
-        # Fallback to direct fetch if FlareSolverr failed or unavailable.
+            logger.debug("FlareSolverr request failed: %s", e)
+
         if not downloaded:
-            logger.debug(f"Falling back to direct timed fetch: {url}")
+            logger.debug("Falling back to direct timed fetch: %s", url)
             try:
                 downloaded = _fetch_direct_html(
                     url,
                     _remaining_timeout(deadline, RESEARCH_DIRECT_FETCH_TIMEOUT_SECONDS),
                 )
             except TimeoutError as e:
-                logger.warning(f"Article extraction budget exhausted before direct fetch: {e}")
-                return _extraction_error_response(url, 'extraction_timeout')
-            except Exception as e:
-                logger.debug(f"Direct article fetch failed: {e}")
-                downloaded = None
+                logger.warning(
+                    "Article extraction budget exhausted before direct fetch: %s", e
+                )
+                return _extraction_error_response(url, "extraction_timeout")
         
         if not downloaded:
             logger.warning(f"Failed to download content from {url}")

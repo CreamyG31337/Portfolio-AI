@@ -21,10 +21,8 @@ from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
-# FlareSolverr configuration (for bypassing Cloudflare)
-# Default: host.docker.internal for Docker containers
-# Override: FLARESOLVERR_URL env variable for local testing (e.g., Tailscale)
-FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "http://host.docker.internal:8191")
+# Backwards-compatible export for test/diagnostic scripts.
+from web_fetch_client import FLARESOLVERR_URL, get_web_fetch_client
 
 # Junk filter patterns (case-insensitive)
 SPAM_PHRASES = [
@@ -96,125 +94,13 @@ class RSSClient:
         })
     
     def _fetch_via_flaresolverr(self, url: str) -> Optional[bytes]:
-        """Fetch RSS feed content via FlareSolverr to bypass Cloudflare protection.
-        
-        Args:
-            url: RSS feed URL
-            
-        Returns:
-            Feed content as bytes, or None if failed
-        """
-        try:
-            flaresolverr_endpoint = f"{FLARESOLVERR_URL}/v1"
-            payload = {
-                "cmd": "request.get",
-                "url": url,
-                "maxTimeout": 60000,  # 60 seconds
-                # Add headers to request RSS/XML content specifically
-                "headers": {
-                    "Accept": "application/rss+xml, application/xml, text/xml, */*",
-                    "Accept-Language": "en-US,en;q=0.9",
-                }
-            }
-            
-            logger.debug(f"Requesting RSS feed via FlareSolverr: {url}")
-            response = requests.post(
-                flaresolverr_endpoint,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=70  # Slightly longer than maxTimeout
-            )
-            response.raise_for_status()
-            
-            flaresolverr_data = response.json()
-            
-            # Check FlareSolverr status
-            if flaresolverr_data.get("status") != "ok":
-                error_msg = flaresolverr_data.get("message", "Unknown error")
-                logger.warning(f"FlareSolverr returned error status: {error_msg}")
-                return None
-            
-            # Extract solution
-            solution = flaresolverr_data.get("solution", {})
-            if not solution:
-                logger.warning("FlareSolverr response missing solution")
-                return None
-            
-            # Get the actual HTTP status and response body
-            http_status = solution.get("status", 0)
-            response_body = solution.get("response", "")
-            response_headers = solution.get("headers", {})
-            
-            # Check if the target site returned an error
-            if http_status != 200:
-                logger.warning(f"Target site returned HTTP {http_status} via FlareSolverr")
-                return None
-            
-            # Check Content-Type to see if we got XML or HTML
-            content_type = response_headers.get("content-type", "").lower()
-            logger.debug(f"FlareSolverr response Content-Type: {content_type}, size: {len(response_body) if isinstance(response_body, str) else len(str(response_body))} bytes")
-            
-            # Convert response body to bytes if it's a string
-            if isinstance(response_body, str):
-                # NOTE: FlareSolverr uses a headless browser (Chrome via Selenium), so when it loads
-                # an XML/RSS feed, the browser renders it as HTML (wrapping XML in HTML structure).
-                # This is why we see HTML with XML wrapped in <pre> tags and HTML-escaped, even though
-                # the raw HTTP response (visible in F12) is pure XML. This is expected browser behavior.
-                # We extract and unescape the XML from the HTML to get the original feed content.
-                if "html" in content_type or response_body.strip().startswith("<html"):
-                    logger.debug("Response appears to be HTML, attempting to extract XML...")
-                    import re
-                    from html import unescape
-                    
-                    # Try to find XML content in HTML (e.g., in <pre> tags)
-                    # Look for <pre> tags that might contain XML
-                    pre_match = re.search(r'<pre[^>]*>(.*?)</pre>', response_body, re.DOTALL | re.IGNORECASE)
-                    if pre_match:
-                        pre_content = pre_match.group(1)
-                        # Unescape HTML entities (e.g., &lt; -> <)
-                        unescaped = unescape(pre_content)
-                        # Check if it looks like XML
-                        if unescaped.strip().startswith("<?xml") or unescaped.strip().startswith("<rss"):
-                            logger.debug(f"Found XML content within HTML <pre> tag, unescaping... (extracted {len(unescaped)} chars)")
-                            # Verify it's valid XML by checking structure
-                            if "</rss>" in unescaped or "</feed>" in unescaped:
-                                return unescaped.encode('utf-8')
-                            else:
-                                logger.warning("Extracted content doesn't appear to be complete XML (missing closing tag)")
-                    
-                    # Also try direct XML extraction (in case it's not in <pre>)
-                    xml_match = re.search(r'(<\?xml[^>]*>.*?</rss>)', response_body, re.DOTALL | re.IGNORECASE)
-                    if xml_match:
-                        logger.debug("Found XML content within HTML response")
-                        return xml_match.group(1).encode('utf-8')
-                    
-                    # If we have HTML-escaped XML (e.g., &lt;?xml), try unescaping the whole thing
-                    if "&lt;?xml" in response_body or "&lt;rss" in response_body:
-                        logger.debug("Found HTML-escaped XML, unescaping entire response...")
-                        unescaped = unescape(response_body)
-                        # Try to extract XML after unescaping
-                        xml_match = re.search(r'(<\?xml[^>]*>.*?</rss>)', unescaped, re.DOTALL | re.IGNORECASE)
-                        if xml_match:
-                            logger.debug("Successfully extracted XML after unescaping")
-                            return xml_match.group(1).encode('utf-8')
-                
-                return response_body.encode('utf-8')
-            elif isinstance(response_body, bytes):
-                return response_body
-            else:
-                logger.warning(f"Unexpected response body type from FlareSolverr: {type(response_body)}")
-                return None
-                
-        except requests.exceptions.ConnectionError:
-            logger.debug(f"FlareSolverr unavailable at {FLARESOLVERR_URL} - will fallback to direct request")
-            return None
-        except requests.exceptions.Timeout:
-            logger.warning("FlareSolverr request timed out - will fallback to direct request")
-            return None
-        except Exception as e:
-            logger.warning(f"FlareSolverr request failed: {e} - will fallback to direct request")
-            return None
-    
+        """Fetch RSS feed content via FlareSolverr to bypass Cloudflare protection."""
+        return get_web_fetch_client().fetch_via_flaresolverr_rss_bytes(
+            url,
+            max_timeout_ms=60_000,
+            request_timeout_seconds=max(self.timeout + 60, 70),
+        )
+
     def fetch_feed(self, url: str) -> Optional[Dict[str, Any]]:
         """Fetch and parse an RSS/Atom feed.
         

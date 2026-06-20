@@ -63,39 +63,12 @@ from scheduler.sec_http import (  # noqa: E402
 from scheduler.sec_http import headers as _headers  # noqa: E402
 from scheduler.sec_http import rate_limit_wait as _rate_limit_wait  # noqa: E402
 
-FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "").strip()
+from web_fetch_client import fetch_page_via_flaresolverr, get_flaresolverr_url
 
 
 def fetch_via_flaresolverr(url: str, timeout: int = 120) -> Optional[str]:
-    """Fetch URL via FlareSolverr to bypass Cloudflare/403. Returns response body as text."""
-    if not FLARESOLVERR_URL:
-        return None
-    try:
-        endpoint = f"{FLARESOLVERR_URL.rstrip('/')}/v1"
-        payload = {"cmd": "request.get", "url": url, "maxTimeout": 60000}
-        logger.debug("Requesting via FlareSolverr: %s", url[:80])
-        r = requests.post(endpoint, json=payload, timeout=timeout)
-        r.raise_for_status()
-        data = r.json()
-        if data.get("status") != "ok":
-            logger.warning("FlareSolverr error: %s", data.get("message", "Unknown"))
-            return None
-        solution = data.get("solution", {}) or {}
-        body = solution.get("response")
-        if body is None:
-            return None
-        if isinstance(body, bytes):
-            return body.decode("utf-8", errors="replace")
-        return str(body)
-    except requests.exceptions.ConnectionError:
-        logger.warning("FlareSolverr unavailable at %s", FLARESOLVERR_URL)
-        return None
-    except requests.exceptions.Timeout:
-        logger.warning("FlareSolverr request timed out")
-        return None
-    except Exception as e:
-        logger.warning("FlareSolverr request failed: %s", e)
-        return None
+    """Fetch URL via FlareSolverr to bypass Cloudflare/403."""
+    return fetch_page_via_flaresolverr(url, request_timeout_seconds=float(timeout))
 
 
 def download_index(year: int, quarter: int, use_gzip: bool = True) -> Optional[str]:
@@ -118,8 +91,8 @@ def download_index(year: int, quarter: int, use_gzip: bool = True) -> Optional[s
             return r.text
         except requests.exceptions.HTTPError as e:
             last_error = e
-            if e.response is not None and e.response.status_code == 403 and FLARESOLVERR_URL:
-                logger.info("Index returned 403; trying FlareSolverr (%s)...", FLARESOLVERR_URL)
+            if e.response is not None and e.response.status_code == 403 and get_flaresolverr_url():
+                logger.info("Index returned 403; trying FlareSolverr (%s)...", get_flaresolverr_url())
                 body = fetch_via_flaresolverr(url, timeout=120)
                 if body is not None:
                     return body
@@ -202,7 +175,7 @@ def fetch_filing(filename: str) -> Optional[str]:
             return r.text
         except requests.exceptions.HTTPError as e:
             last_error = e
-            if e.response is not None and e.response.status_code == 403 and FLARESOLVERR_URL:
+            if e.response is not None and e.response.status_code == 403 and get_flaresolverr_url():
                 body = fetch_via_flaresolverr(url, timeout=90)
                 if body:
                     return body
@@ -676,7 +649,7 @@ def fetch_filing_by_path(path: str) -> Optional[str]:
             return r.text
         except requests.exceptions.HTTPError as e:
             last_error = e
-            if e.response is not None and e.response.status_code == 403 and FLARESOLVERR_URL:
+            if e.response is not None and e.response.status_code == 403 and get_flaresolverr_url():
                 body = fetch_via_flaresolverr(url, timeout=90)
                 if body:
                     return body

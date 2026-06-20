@@ -55,8 +55,7 @@ BASE_URL = os.getenv("CONGRESS_TRADES_BASE_URL", "")
 if not BASE_URL:
     raise ValueError("CONGRESS_TRADES_BASE_URL environment variable not set")
 
-# FlareSolverr URL (for bypassing Cloudflare)
-FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "http://localhost:8191")
+from web_fetch_client import fetch_page_via_flaresolverr, get_web_fetch_client
 
 # Direct request headers (fallback if FlareSolverr unavailable)
 HEADERS = {
@@ -158,51 +157,6 @@ def preload_politician_states():
         logger.debug(f"Could not pre-load politician states: {e}")
     
     _POLITICIAN_CACHE_LOADED = True
-
-
-def fetch_page_via_flaresolverr(url: str) -> Optional[str]:
-    """Fetch a page using FlareSolverr to bypass Cloudflare protection."""
-    try:
-        flaresolverr_endpoint = f"{FLARESOLVERR_URL}/v1"
-        payload = {
-            "cmd": "request.get",
-            "url": url,
-            "maxTimeout": 60000
-        }
-        
-        logger.debug(f"Requesting via FlareSolverr: {url}")
-        response = requests.post(
-            flaresolverr_endpoint,
-            json=payload,
-            timeout=90
-        )
-        response.raise_for_status()
-        
-        data = response.json()
-        
-        if data.get("status") != "ok":
-            error_msg = data.get("message", "Unknown error")
-            logger.warning(f"FlareSolverr returned error: {error_msg}")
-            return None
-        
-        solution = data.get("solution", {})
-        html_content = solution.get("response", "")
-        
-        if not html_content:
-            logger.warning("FlareSolverr returned empty response")
-            return None
-        
-        return html_content
-    
-    except requests.exceptions.ConnectionError:
-        logger.warning(f"FlareSolverr unavailable at {FLARESOLVERR_URL}")
-        return None
-    except requests.exceptions.Timeout:
-        logger.warning("FlareSolverr request timed out")
-        return None
-    except Exception as e:
-        logger.warning(f"FlareSolverr request failed: {e}")
-        return None
 
 
 def fetch_page_direct(url: str) -> Optional[str]:
@@ -1022,15 +976,12 @@ def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100
     print("=" * 70)
     print()
     
-    # Check FlareSolverr availability
-    flaresolverr_available = False
-    try:
-        health_response = requests.get(f"{FLARESOLVERR_URL}/health", timeout=5)
-        if health_response.status_code == 200:
-            flaresolverr_available = True
-            print(f"✅ FlareSolverr available at {FLARESOLVERR_URL}")
-    except:
-        print(f"⚠️  FlareSolverr not available at {FLARESOLVERR_URL}")
+    fetch_client = get_web_fetch_client()
+    flaresolverr_available = fetch_client.check_health()
+    if flaresolverr_available:
+        print(f"✅ FlareSolverr available at {fetch_client.flaresolverr_url}")
+    else:
+        print(f"⚠️  FlareSolverr not available at {fetch_client.flaresolverr_url}")
         print("   Will attempt direct requests (may be blocked by Cloudflare)")
     
     # Initialize Supabase client

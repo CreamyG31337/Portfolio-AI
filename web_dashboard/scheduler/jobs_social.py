@@ -177,12 +177,11 @@ def fetch_social_sentiment_job() -> None:
         supabase_client = SupabaseClient(use_service_role=True)
         
         # Check FlareSolverr availability
-        try:
-            import requests
-            flaresolverr_url = os.getenv("FLARESOLVERR_URL", "http://host.docker.internal:8191")
-            requests.get(f"{flaresolverr_url}/health", timeout=5)
+        from web_fetch_client import get_web_fetch_client
+
+        if get_web_fetch_client().check_health():
             logger.info("✅ FlareSolverr is available")
-        except Exception:
+        else:
             logger.warning("⚠️  FlareSolverr unavailable - will fallback to direct requests")
         
         # Check Ollama availability

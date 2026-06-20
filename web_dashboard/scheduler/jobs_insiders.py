@@ -53,10 +53,9 @@ from scheduler.scheduler_core import log_job_execution
 # Initialize logger
 logger = logging.getLogger(__name__)
 
-# FlareSolverr URL (for bypassing Cloudflare)
-FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "http://localhost:8191")
+from web_fetch_client import fetch_page_via_flaresolverr
 
-# Source URL: prefer env so it is not stored in repo; fallback for backward compatibility
+
 def _get_insider_source_url() -> str:
     url = os.getenv("INSIDER_TRADES_BASE_URL", "").strip()
     if url:
@@ -67,49 +66,6 @@ def _get_insider_source_url() -> str:
         ).decode("utf-8")
     except Exception:
         return ""
-
-
-def fetch_page_via_flaresolverr(url: str) -> Optional[str]:
-    """Fetch a page using FlareSolverr to bypass Cloudflare protection."""
-    try:
-        flaresolverr_endpoint = f"{FLARESOLVERR_URL}/v1"
-        payload = {
-            "cmd": "request.get",
-            "url": url,
-            "maxTimeout": 60000
-        }
-
-        logger.debug("Requesting via FlareSolverr...")
-        response = requests.post(
-            flaresolverr_endpoint,
-            json=payload,
-            timeout=90
-        )
-        response.raise_for_status()
-
-        data = response.json()
-
-        if data.get("status") != "ok":
-            error_msg = data.get("message", "Unknown error")
-            logger.warning(f"FlareSolverr returned error: {error_msg}")
-            return None
-
-        solution = data.get("solution", {})
-        if not solution:
-            logger.warning("FlareSolverr response missing solution")
-            return None
-
-        return solution.get("response")
-
-    except requests.exceptions.ConnectionError:
-        logger.warning(f"FlareSolverr unavailable at {FLARESOLVERR_URL}")
-        return None
-    except requests.exceptions.Timeout:
-        logger.warning("FlareSolverr request timed out")
-        return None
-    except Exception as e:
-        logger.warning(f"FlareSolverr request failed: {e}")
-        return None
 
 
 def parse_value(value_str: str) -> Optional[float]:
