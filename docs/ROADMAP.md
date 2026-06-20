@@ -260,6 +260,110 @@ Ordered by value-per-effort:
 
 ---
 
+## Pillar 5 — Congress trade intelligence (aggregation + external validation)
+
+**Added 2026-06-15** after reviewing GovGreed (govgreed.com), a proprietary platform that scores
+congressional trading ("Greediness" scores, "Triple Signals", leaderboards) off the same public
+STOCK Act / committee / FEC data we already collect. The takeaways below are deliberately scoped to
+fit this repo's guardrails — **not** to adopt their paid API as a runtime dependency.
+
+### What we already have (do not rebuild)
+
+A future agent should treat the congress pipeline as **mature** and additive-only:
+
+| Capability | Where |
+|------------|-------|
+| Trade ingestion (FMP every 12 min + Capitol Trades scraper) | `web_dashboard/scheduler/jobs_congress.py` |
+| Politician identity + party/state/chamber | `web_dashboard/utils/politician_mapping.py`, `politicians` table |
+| Committee → sector mapping ("complicated sector stuff") | `data/committee_map.py` → `committees.target_sectors` (filled by `scripts/fill_committee_target_sectors.py`) |
+| Committee jurisdiction cheat-sheet for the LLM | `data/committee_jurisdictions.py` (`COMMITTEE_CONTEXT`) |
+| Per-trade + per-session AI conflict scoring | `congress_trades_analysis`, `congress_trade_sessions` (Postgres): `conflict_score`, `confidence_score`, `risk_pattern`, `reasoning` |
+| Trade-level realized return tracking | `congress_trade_returns` (`pct_change` vs entry adj close) |
+| Reconstructed positions | `web_dashboard/scheduler/jobs_congress_positions.py` |
+| Per-ticker congress context into synthesis | `meta_analysis_service.py::_fetch_congress_snippets` (feeds `ticker_meta_analysis` bundle) |
+
+**The honest gap vs GovGreed:** we have committee-overlap + trade + AI scoring, but we lack
+(a) **cross-politician aggregation** (leaderboards, herd detection, late-filer flags), (b) **FEC
+campaign-contribution** data (the third leg of their "Triple Signal"), and (c) congress as a
+**forward signal** on the Today screen the way insider clusters (§4.2) already are.
+
+### 5.1 Congress aggregation trackers (aggregation only — fits the "no new collection" guardrail)
+
+Pure SQL/aggregation over tables we already populate, mirroring the **shipped** insider-cluster
+pattern (`insider_clusters_service.py` → `GET /api/insiders/cluster-buys` → Today-screen block).
+No new collection job, no new LLM call site.
+
+| # | Tracker | Definition (existing columns) | Effort |
+|---|---------|-------------------------------|--------|
+| 5.1a | **Congress herd buys** | N+ distinct `politician_id` with `type='Purchase'` on one `ticker` within a lookback window (`congress_trades`); rank held/watchlist tickers first | S |
+| 5.1b | **Politician "greediness" leaderboard** | Aggregate `congress_trades_analysis.conflict_score` (volume-weighted by `amount` band) per politician; join `congress_trade_returns.pct_change` for a "do their conflicted trades actually win?" column | S |
+| 5.1c | **Late-filer flag** | `disclosure_date − transaction_date` > 45 days (STOCK Act window); surface as a data-quality / signal-quality badge on the congress page and dossier | S |
+
+Surface 5.1a on the **Today** briefing next to `insider_cluster_buys` (feature-flagged,
+INSUFFICIENT_DATA-safe). 5.1b/5.1c extend the existing congress page/dossier. Record any directional
+"follow the herd" reading as a **scoreable stance** in `stance_history` (`source='congress_herd'`)
+so Pillar 1's outcome scoring grades it automatically — this is the disciplined version of their
+leaderboard, with a built-in honesty check.
+
+### 5.2 GovGreed external-validation audit (read-only benchmark — *not* a runtime dependency)
+
+Per the agreed approach: use GovGreed's **free tier** (20 calls/day, `X-API-Key`) only to
+**spot-check our own conclusions**, exactly like the read-only "cheap-learn" audits above. One
+manual script, no scheduler job, no production code path.
+
+- `web_dashboard/scripts/validate_against_govgreed.py` (manual; mirrors
+  `run_cheap_learn_audits.py` shape): pull a small sample of their top signals / a few
+  `/v1/companies/{ticker}` + `/v1/politicians` rows, join to our `congress_trades_analysis` on
+  (politician, ticker), and report rank correlation / disagreements between our `conflict_score`
+  and their score. Write findings into this doc under a "GovGreed validation results" heading
+  (like the cheap-learn results table).
+- **Purpose:** calibrate/trust our self-hosted scores; find systematic blind spots (e.g. a
+  committee→sector edge in `committee_map.py` we're missing). **Anti-goal:** importing their scores
+  into any user-facing surface or making any job depend on their API.
+- Respect their free-tier limits and ToS; key via env (`GOVGREED_API_KEY`), absent → script no-ops
+  with a clear message. OpenAPI spec: `https://www.govgreed.com/api/v1/openapi.json`.
+
+### 5.3 FEC contributions → "Triple Signal" (the one genuinely new collection — deferred)
+
+Adding FEC campaign-contribution data would let us replicate their "Triple Signal" (committee
+jurisdiction overlap + trade + donor-industry match) using our **existing** `committee_map.py`
+sector mapping for the donor-industry → sector leg. But this is a **new collection source**, which
+the guardrails gate behind the Learn layer proving existing collectors earn their keep. Capture it
+here; **do not build it** until 5.1 ships and the track-record screen shows congress signals have
+edge. When unblocked: official free FEC API (`api.data.gov` key), new `campaign_contributions`
+table + job following the `jobs_congress.py` pattern, additive and INSUFFICIENT_DATA-safe.
+
+### Similar projects / sources worth investigating
+
+Captured as a research backlog — any project mining the same public data is a useful reference for
+our own scoring, enrichment, and blind spots. **Investigate, don't depend.**
+
+| Source | Type | Why look |
+|--------|------|----------|
+| **GovGreed** (govgreed.com) | Commercial + free API | The trigger for Pillar 5; 7-layer ML scoring, "Triple Signals", Bill Pass Index. Benchmark via §5.2. |
+| **QuiverQuant / Capitol Trades / Unusual Whales** | Commercial | Competing congress/insider dashboards; compare what signals they surface vs ours. |
+| **burd5/congress_stock_trading** (GitHub) | OSS pipeline | Senate + House PDF scraping → Postgres → DBT; reference for scraper robustness. |
+| **kadoa-org/congress-trading-monitor** (GitHub) | OSS dataset + dashboard | Open dataset of every congressional trade; cross-check our ingestion completeness. |
+| **johnisanerd/Apify-Congressional-Trading-Data-Scraper** | OSS / Apify actor | Clean JSON of House + Senate PTRs; potential backfill/redundancy for our FMP+scraper. |
+| **Congress.gov API** (api.data.gov) | Official free | Bills, committees, members, **roll-call votes** — the path to bill/vote correlation (Tier 3). |
+| **ProPublica Congress API** | Official-ish free | Members, votes, bills, committees; alternate to Congress.gov. |
+| **FEC API + bulk data** (api.data.gov) | Official free | Campaign contributions — the §5.3 "Triple Signal" donor leg. |
+| **OpenSecrets** | Bulk data / tools | Donations + lobbying aggregation; reference for donor→industry mapping. |
+
+When a new comparable platform shows up (the prompt for this pillar), add a row here and decide
+whether it warrants a §5.2-style read-only benchmark before anything else.
+
+### Pillar 5 checklist
+
+- [ ] **5.1a** congress herd-buy service + `GET /api/congress/herd-buys` + Today-screen block (mirror `insider_clusters_service.py`)
+- [ ] **5.1b** politician greediness leaderboard (conflict × volume, with realized-return column) on the congress page
+- [ ] **5.1c** late-filer flag (disclosure − transaction > 45d) on congress page + dossier
+- [ ] **5.1** record congress herd reading as `stance_history` source for outcome scoring
+- [ ] **5.2** `validate_against_govgreed.py` read-only audit + results table in this doc
+- [ ] **5.3** FEC "Triple Signal" — **deferred** until Learn layer clears the new-collection guardrail
+
+---
+
 ## Cheap-learn results
 
 Run date: **2026-06-10** (script: `web_dashboard/scripts/run_cheap_learn_audits.py`; raw JSON:
@@ -307,7 +411,7 @@ flowchart TD
 | **D** | 2.3 dossier timeline; 2.5 polish; 4.4 earnings | ~1–2 wk — **partial 2026-06-10** |
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro pending** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1 advisory V1 shipped** |
-| **G** | Stance provenance; dilution watch (shares-outstanding, free, incl. `.TO`) + EDGAR US filing-risk watch; confluence scorer; retro Mailgun — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **planned 2026-06-11; G1 shipped, G3 pivoted 2026-06-13** |
+| **G** | Stance provenance; dilution watch (shares-outstanding, free, incl. `.TO`) + EDGAR US filing-risk watch; confluence scorer; retro Mailgun — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G4 shipped; G5/G7/G6 remain** |
 
 ### Phase B–F checklist (2026-06-10)
 
@@ -349,7 +453,7 @@ Full specs, research tasks, and acceptance criteria live in
   categories the share count can't show. **Shipped 2026-06-14** (shared SEC client, ticker→CIK
   map, classifier, Today `filing_alerts` block + dossier timeline, 21 tests; `filing_events` DDL
   pending human apply; going-concern FTS deferred). See [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) G2.
-- [ ] **G4** cross-signal confluence scorer (no LLM; events recorded as scoreable stances)
+- [x] **G4** cross-signal confluence scorer (no LLM; events recorded as scoreable stances) — shipped 2026-06-17
 - [ ] **G7** Canadian insider coverage via yfinance `insider_transactions` (free; closes the `.TO`
   insider-cluster blind spot the dropped SEDI plan left — probe 2026-06-14 confirmed Yahoo carries
   SEDI data for `.TO`). Revives the original G3 goal without paying or scraping.

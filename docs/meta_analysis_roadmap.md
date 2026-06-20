@@ -370,7 +370,7 @@ What exists today:
 - Route: `web_dashboard/routes/etf_routes.py::sector_insights` (`/sector_insights`).
 - Template: `web_dashboard/templates/sector_insights.html`.
 - Behavior: queries `ResearchRepository.get_recent_articles(limit=48, days=730, article_type="ETF Analysis")` and renders cards.
-- Sidebar link: emitted via `get_navigation_links()` in `web_dashboard/shared_navigation.py`; `get_navigation_context()` in `web_dashboard/app.py` forces `show=True` for `sector_insights` regardless of `v2_enabled` (Flask-only page, no Streamlit fallback).
+- Sidebar link: emitted via `get_navigation_links()` in `web_dashboard/shared_navigation.py`; `get_navigation_context()` in `web_dashboard/app.py` forces `show=True` for `sector_insights`.
 - When `sector_meta_analysis` rows exist for the latest `run_date`, the page shows synthesized sector cards; article list remains as drill-down. Banner may still note that **ticker meta does not consume sector prior until 3c**.
 
 What 3a is **not**:

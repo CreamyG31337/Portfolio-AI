@@ -44,7 +44,6 @@ This workflow ensures robust code by writing tests *before* implementation.
 **Quick Reference:**
 - **Flask code** (`web_dashboard/app.py`, `web_dashboard/routes/*.py`, etc.) → Run Flask tests
 - **Console app code** (`trading_script.py`, `portfolio/*.py`, etc.) → Run console app tests
-- **Streamlit code** (`web_dashboard/pages/*.py`) → No tests (prototype)
 
 ## Commands
 

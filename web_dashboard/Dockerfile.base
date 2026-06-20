@@ -1,5 +1,5 @@
 # Shared Base Image for Trading Dashboard
-# Contains common Python dependencies used by both Streamlit and Flask containers
+# Contains common Python dependencies used by Flask dashboard containers
 # This reduces build time by sharing cached layers between images
 
 FROM python:3.11-slim

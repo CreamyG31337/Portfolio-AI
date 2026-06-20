@@ -39,6 +39,7 @@ def test_today_briefing_api(client, auth_ok):
         "stance_flips": [],
         "action_queue": [],
         "alpha_articles": [],
+        "confluence_events": [{"ticker": "AAA", "direction": "bullish", "score": 3}],
         "updated_at": "2026-06-10T00:00:00+00:00",
     }
     with patch(
@@ -50,7 +51,9 @@ def test_today_briefing_api(client, auth_ok):
     ):
         resp = client.get("/api/today/briefing")
     assert resp.status_code == 200
-    assert resp.get_json()["market_regime"]["risk_regime"] == "NEUTRAL"
+    body = resp.get_json()
+    assert body["market_regime"]["risk_regime"] == "NEUTRAL"
+    assert body["confluence_events"][0]["ticker"] == "AAA"
 
 
 @skip_without_plotly

@@ -11,10 +11,9 @@ Added two key features to improve debugging and deployment tracking:
 **Solution:** Each user session now gets a unique 8-character session ID that prefixes all performance logs.
 
 **Implementation:**
-- Session ID generated on first page load using `uuid.uuid4()[:8]`
-- Stored in `st.session_state.session_id` (persists across page reloads)
-- All PERF logs now include `[session_id]` prefix
-- Passed to `get_user_investment_metrics()` function for nested logging
+- Session ID generated per Flask request context where applicable
+- Stored in Flask `session` or passed into `get_user_investment_metrics(session_id=...)`
+- PERF logs use `[session_id]` prefix for filtering
 
 **Example Logs:**
 ```
@@ -62,7 +61,7 @@ The build timestamp is set by Woodpecker CI during deployment:
   fi
 
 # Docker run command (line 65)
-docker run -d ... -e BUILD_TIMESTAMP="$BUILD_TIMESTAMP" ... trading-dashboard:latest
+docker run -d ... -e BUILD_TIMESTAMP="$BUILD_TIMESTAMP" ... trading-dashboard-flask:latest
 ```
 
 **Benefits:**
@@ -74,12 +73,12 @@ docker run -d ... -e BUILD_TIMESTAMP="$BUILD_TIMESTAMP" ... trading-dashboard:la
 ## Files Modified
 
 ### Performance Logging with Session ID:
-- `web_dashboard/streamlit_app.py` - Added session ID generation and logging
-- `web_dashboard/streamlit_utils.py` - Updated `get_user_investment_metrics()` to accept and use session_id
-- `PERFORMANCE_LOGGING.md` - Updated documentation with session ID examples
+- `web_dashboard/app.py` / dashboard routes — session ID in PERF logs
+- `web_dashboard/portfolio_metrics.py` — `get_user_investment_metrics()` accepts `session_id`
+- `PERFORMANCE_LOGGING.md` — examples
 
 ### Build Timestamp Display:
-- `web_dashboard/pages/admin.py` - Display `BUILD_TIMESTAMP` env var in header
+- Flask admin templates / footer — `BUILD_TIMESTAMP` env var
 - `.woodpecker.yml` - Already configured to set `BUILD_TIMESTAMP` (no changes needed)
 - `SESSION_ID_AND_BUILD_STAMP.md` - Documentation
 

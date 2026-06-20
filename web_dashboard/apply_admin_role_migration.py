@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from streamlit_utils import get_supabase_client
+from admin_utils import get_admin_supabase_client
 
 load_dotenv()
 
@@ -34,7 +34,7 @@ def apply_migration():
         sql_content = f.read()
     
     # Get Supabase client
-    client = get_supabase_client()
+    client = get_admin_supabase_client()
     if not client:
         print("❌ Failed to get Supabase client")
         return False

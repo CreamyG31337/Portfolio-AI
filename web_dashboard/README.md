@@ -162,16 +162,11 @@ Anon Key: your-anon-key-here
 - **Dynamic Dashboard** - Automatically adjusts layout for single vs multi-investor funds
 - **Investor Allocation Chart** - Visual breakdown of fund ownership
 
-## ⏰ Background Scheduler
+## Background Scheduler
 
-The dashboard includes APScheduler for running background tasks inside the Docker container.
+APScheduler runs **inside the Flask container** (`app.py` starts it on module load). Job status appears in the Admin UI and sidebar badge.
 
-### How It Works
-- **Entrypoint script** starts APScheduler before Streamlit
-- Jobs run in background threads while dashboard serves requests
-- Job status and logs accessible via admin UI
-- For production checks, use the server-first runbook: [`docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md`](docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md)
-- Avoid local-only scheduler checks for production diagnosis; verify from server/container context.
+Production checks: [`docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md`](docs/SCHEDULER_HEALTH_CHECK_RUNBOOK.md).
 
 ### Available Jobs
 | Job | Interval | Description |
@@ -197,16 +192,12 @@ Keep track of system health and background jobs with the built-in Admin Logs:
 *Real-time System & Job Logs*
 
 ### Admin UI
-Add to your Streamlit app:
-```python
-from scheduler_ui import render_scheduler_admin
-render_scheduler_admin()
-```
 
-Features:
-- View all scheduled jobs
+Scheduler controls live in the Flask Admin area (`/admin` routes). Features:
+
+- View scheduled jobs
 - Run jobs immediately
-- Pause/Resume jobs
+- Pause/resume jobs
 - View recent execution logs
 
 ### Adding New Jobs
@@ -233,12 +224,10 @@ scheduler.add_job(
 ```
 web_dashboard/
 ├── scheduler/
-│   ├── __init__.py       # Module exports
-│   ├── scheduler_core.py # APScheduler config & management
-│   └── jobs.py           # Job definitions
-├── scheduler_ui.py       # Streamlit admin UI
-├── entrypoint.py         # Container entrypoint
-└── Dockerfile            # Uses entrypoint.py
+│   ├── scheduler_core.py   # APScheduler config
+│   └── jobs*.py            # Job definitions
+├── Dockerfile.flask        # Production image (port 5001)
+└── app.py                  # Starts scheduler + Flask
 ```
 
 ## 🔧 Development

@@ -88,11 +88,64 @@ def is_supabase_jwt(token: Optional[str]) -> bool:
         return False
 
 
+def _jwt_not_expired(token: str, skew_seconds: int = 30) -> bool:
+    """Return True if JWT exp is in the future (with small clock-skew buffer)."""
+    import time
+
+    try:
+        token_parts = token.split(".")
+        if len(token_parts) < 2:
+            return False
+        payload = token_parts[1]
+        payload += "=" * (4 - len(payload) % 4)
+        decoded = base64.urlsafe_b64decode(payload)
+        claims = json.loads(decoded)
+        exp = claims.get("exp", 0)
+        if not exp:
+            return True
+        return int(exp) > int(time.time()) + skew_seconds
+    except Exception:
+        return False
+
+
+def resolve_supabase_access_token_for_rls() -> Optional[str]:
+    """Return a Supabase access JWT suitable for PostgREST / RLS queries.
+
+    Checks, in order: request stash from @require_auth, token refreshed this
+    request, auth_token cookie, then session_token when it is a Supabase JWT.
+    Skips expired JWTs so we do not send stale tokens that silently return empty
+  RLS result sets.
+    """
+    cached = getattr(request, "_supabase_access_token", None)
+    if cached and is_supabase_jwt(cached):
+        fresh_refresh = getattr(request, "_new_auth_token", None)
+        if cached is fresh_refresh or _jwt_not_expired(cached):
+            return cached
+
+    fresh_refresh = getattr(request, "_new_auth_token", None)
+    candidates = [
+        fresh_refresh,
+        request.cookies.get("auth_token"),
+        request.cookies.get("session_token"),
+    ]
+    for candidate in candidates:
+        if not candidate or not is_supabase_jwt(candidate):
+            continue
+        if candidate is fresh_refresh or _jwt_not_expired(candidate):
+            return candidate
+    return None
+
+
+def stash_supabase_access_token_for_request() -> None:
+    """Resolve and cache the Supabase JWT on the request for data-layer clients."""
+    token = resolve_supabase_access_token_for_rls()
+    if token:
+        request._supabase_access_token = token
+
+
 def get_supabase_access_token() -> Optional[str]:
-    """Get a Supabase access token (auth_token only), never a session_token."""
-    # Prefer refreshed token if available
-    candidate = getattr(request, '_new_auth_token', None) or request.cookies.get('auth_token')
-    return candidate if is_supabase_jwt(candidate) else None
+    """Get a valid Supabase access JWT for RLS-backed queries."""
+    return resolve_supabase_access_token_for_rls()
 
 
 def get_refresh_token() -> Optional[str]:

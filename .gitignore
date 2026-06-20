@@ -309,6 +309,13 @@ web_dashboard/scripts/archive_investigation/*_output*
 test_output*.txt
 debug_output*.txt
 
+# Local performance-chart debug artifacts (see debug/debug_performance_chart_data.py)
+web_dashboard/debug/output/*
+!web_dashboard/debug/output/.gitkeep
+web_dashboard/debug_flask_function_output.csv
+web_dashboard/debug_portfolio_performance_output.csv
+debug-dc6352.log
+
 # Trade reason source material (keep scripts, not raw reason content)
 web_dashboard/scripts/improved_reasons_*.csv
 web_dashboard/scripts/improved_reasons_*.txt

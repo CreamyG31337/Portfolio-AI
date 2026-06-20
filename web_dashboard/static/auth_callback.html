@@ -68,7 +68,7 @@
             if (hash) {
                 const params = new URLSearchParams(hash);
                 const baseUrl = window.location.origin;
-                const streamlitUrl = new URL(baseUrl);
+                let redirectUrl = baseUrl + '/';
 
                 // Check for errors (expired links, etc.)
                 if (params.get('error')) {
@@ -95,16 +95,7 @@
                     if (refreshToken) {
                         setCookie('refresh_token', refreshToken, 30); // 30 days for refresh token
                     }
-
-                    streamlitUrl.searchParams.set('magic_token', token);
-                    // Pass type to distinguish between magic link and password reset
-                    if (params.get('type')) {
-                        streamlitUrl.searchParams.set('auth_type', params.get('type'));
-                    }
                 }
-
-                // Build redirect URL
-                let redirectUrl = streamlitUrl.toString();
 
                 // Check if we have a return_to parameter in the search params
                 const searchParams = new URLSearchParams(window.location.search);

@@ -8,7 +8,6 @@ from collections import Counter
 # Import utilities
 from flask_auth_utils import get_user_email_flask
 from user_preferences import get_user_timezone, get_user_selected_fund
-from streamlit_utils import get_supabase_client
 from flask_data_utils import get_available_funds_flask
 from auth import require_auth
 # Better to use the one from app context or creating a fresh one

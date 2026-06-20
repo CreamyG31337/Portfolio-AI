@@ -61,7 +61,25 @@ class SupabaseClient:
             use_service_role: If True, use service role key (bypasses RLS, admin only)
         """
         self.url = os.getenv("SUPABASE_URL")
-        
+
+        # Tripwire: in a Flask request, require_auth is the SOLE owner of refresh-token
+        # rotation. If a refresh_token reaches the SDK here, set_session()/auto-refresh
+        # can rotate it in memory without writing the new token back to the cookie,
+        # which logs the user out ~1h later (refresh_token_already_used). Log loudly so
+        # we can find any remaining Flask caller that still passes one.
+        if refresh_token and not use_service_role:
+            try:
+                from flask import has_request_context, request
+                if has_request_context():
+                    logger.warning(
+                        "[SUPABASE_CLIENT] [AUTH_TRACE] tripwire: refresh_token passed to "
+                        "SupabaseClient inside a Flask request (path=%s). This can rotate the "
+                        "refresh token outside require_auth and cause unexpected logouts.",
+                        getattr(request, "path", "?"),
+                    )
+            except Exception:
+                pass
+
         if use_service_role:
             # Use service role key for admin operations (bypasses RLS)
             self.key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -164,6 +182,7 @@ class SupabaseClient:
                 logger.debug("[SUPABASE_CLIENT] Skipping set_session() — token is expired")
             if self._legacy_header_injection_enabled:
                 self._apply_legacy_header_injection(user_token)
+                self._wrap_postgrest_table_for_auth()
             elif SUPABASE_AUTH_DIAGNOSTICS:
                 logger.info(
                     "[SUPABASE_CLIENT] Legacy header injection disabled "
@@ -175,28 +194,44 @@ class SupabaseClient:
         if SUPABASE_AUTH_DIAGNOSTICS:
             logger.info("[SUPABASE_CLIENT] Auth diagnostics: %s", self._auth_diagnostics)
 
+    def _ensure_postgrest_user_auth(self) -> None:
+        """Re-apply user JWT to postgrest-py 2.x before table/RPC queries."""
+        if not getattr(self, "_user_token", None):
+            return
+        if not hasattr(self.supabase, "postgrest") or not self.supabase.postgrest:
+            return
+        postgrest = self.supabase.postgrest
+        token = self._user_token
+        try:
+            # postgrest-py 2.x: SyncRequestBuilder reads postgrest.headers (via auth()),
+            # NOT postgrest.session.headers. Setting session only leaves anon key on queries.
+            if hasattr(postgrest, "auth"):
+                postgrest.auth(token)
+            if hasattr(postgrest, "session") and hasattr(postgrest.session, "headers"):
+                postgrest.session.headers["Authorization"] = f"Bearer {token}"
+        except Exception as e:
+            logger.warning(f"[SUPABASE_CLIENT] Could not re-apply postgrest user auth: {e}")
+
     def _apply_legacy_header_injection(self, user_token: str) -> None:
         """Apply legacy header mutations for SDK compatibility.
 
         This is intentionally feature-flagged and can be disabled with
         SUPABASE_LEGACY_HEADER_INJECTION=false for staged rollout.
         """
-        # Method 2: Set Authorization header directly on postgrest client
         try:
-            logger.debug(f"[SUPABASE_CLIENT] postgrest exists: {hasattr(self.supabase, 'postgrest')}")
-            if hasattr(self.supabase, 'postgrest') and self.supabase.postgrest:
-                logger.debug(f"[SUPABASE_CLIENT] postgrest.session exists: {hasattr(self.supabase.postgrest, 'session')}")
-                logger.debug(f"[SUPABASE_CLIENT] postgrest.auth exists: {hasattr(self.supabase.postgrest, 'auth')}")
-                if hasattr(self.supabase.postgrest, 'session'):
-                    self.supabase.postgrest.session.headers["Authorization"] = f"Bearer {user_token}"
-                    logger.debug("[SUPABASE_CLIENT] ✅ Set Authorization header on postgrest.session")
-                elif hasattr(self.supabase.postgrest, 'auth'):
-                    self.supabase.postgrest.auth(user_token)
-                    logger.debug("[SUPABASE_CLIENT] ✅ Called postgrest.auth()")
-                else:
-                    logger.warning("[SUPABASE_CLIENT] ❌ No postgrest.session or postgrest.auth() available")
+            if hasattr(self.supabase, "postgrest") and self.supabase.postgrest:
+                postgrest = self.supabase.postgrest
+                # MUST call auth() — session-only injection is ignored by postgrest-py 2.x builders.
+                if hasattr(postgrest, "auth"):
+                    postgrest.auth(user_token)
+                    logger.debug("[SUPABASE_CLIENT] Called postgrest.auth(user_token)")
+                if hasattr(postgrest, "session") and hasattr(postgrest.session, "headers"):
+                    postgrest.session.headers["Authorization"] = f"Bearer {user_token}"
+                    logger.debug("[SUPABASE_CLIENT] Set Authorization on postgrest.session (compat)")
+                elif not hasattr(postgrest, "auth"):
+                    logger.warning("[SUPABASE_CLIENT] No postgrest.auth() available for JWT injection")
         except Exception as e:
-            logger.warning(f"[SUPABASE_CLIENT] ❌ Could not set postgrest headers: {e}")
+            logger.warning(f"[SUPABASE_CLIENT] Could not set postgrest headers: {e}")
 
         # Method 3: Set headers on underlying clients used by some SDK paths
         try:
@@ -220,7 +255,28 @@ class SupabaseClient:
 
             self._auth_diagnostics["legacy_header_injection_applied"] = True
         except Exception as e:
-            logger.warning(f"[SUPABASE_CLIENT] ❌ Could not set client-level headers: {e}")
+            logger.warning(f"[SUPABASE_CLIENT] Could not set client-level headers: {e}")
+
+    def _wrap_postgrest_table_for_auth(self) -> None:
+        """Wrap postgrest.table/from_ so flask code using client.supabase.table() sends the user JWT."""
+        if not getattr(self, "_user_token", None):
+            return
+        if not hasattr(self.supabase, "postgrest") or not self.supabase.postgrest:
+            return
+        postgrest = self.supabase.postgrest
+        if getattr(postgrest, "_user_auth_table_wrapped", False):
+            return
+
+        original_from = postgrest.from_
+        client_self = self
+
+        def from_with_auth(table_name: str):
+            client_self._ensure_postgrest_user_auth()
+            return original_from(table_name)
+
+        postgrest.from_ = from_with_auth  # type: ignore[method-assign]
+        postgrest.table = from_with_auth  # type: ignore[method-assign]
+        postgrest._user_auth_table_wrapped = True
     
     def test_connection(self) -> bool:
         """Test database connection"""
@@ -252,29 +308,10 @@ class SupabaseClient:
         
         postgrest = self.supabase.postgrest
         
-        # Optional legacy re-injection before RPC.
+        # Ensure JWT is on postgrest.headers (not just session) before RPC.
         if self._legacy_header_injection_enabled and hasattr(self, '_user_token') and self._user_token:
-            # Set header directly on session - this is more reliable than postgrest.auth()
-            if hasattr(postgrest, 'session'):
-                session_headers = postgrest.session.headers
-                
-                # Headers object type - check if it supports dict-like assignment
-                try:
-                    # Try setting directly (works for most header types)
-                    session_headers['Authorization'] = f'Bearer {self._user_token}'
-                except Exception as header_error:
-                    # Fallback for httpx.Headers which might require different approach
-                    logger.warning(f"Could not set Authorization header directly: {header_error}")
-                    # For httpx, try merging
-                    try:
-                        from httpx import Headers
-                        if isinstance(session_headers, Headers):
-                            new_headers = session_headers.copy()
-                            new_headers['Authorization'] = f'Bearer {self._user_token}'
-                            postgrest.session.headers = new_headers
-                    except ImportError:
-                        pass
-                self._auth_diagnostics["rpc_header_reinjection_count"] += 1
+            self._ensure_postgrest_user_auth()
+            self._auth_diagnostics["rpc_header_reinjection_count"] += 1
         
         # Now make the RPC call
         # The session should have the Authorization header set above

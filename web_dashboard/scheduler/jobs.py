@@ -242,6 +242,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'day_of_week': 'mon-fri', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'},
         ],
     },
+    'confluence': {
+        'name': 'Cross-Signal Confluence',
+        'description': 'Nightly no-LLM scorer when multiple signal families align on a ticker (ROADMAP G4)',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '🔗',
+        'cron_triggers': [
+            {'hour': 22, 'minute': 30, 'timezone': 'America/New_York'},
+        ],
+    },
     'weekly_stance_retro': {
         'name': 'Weekly Stance Retro',
         'description': 'Weekly log summary of stance flips and outcome hit rates',
@@ -688,6 +698,7 @@ from scheduler.jobs_stance_outcomes import stance_outcomes_job
 from scheduler.jobs_contradiction_drilldown import contradiction_drilldown_job
 from scheduler.jobs_dilution_watch import dilution_watch_job
 from scheduler.jobs_sec_filings import sec_filings_job
+from scheduler.jobs_confluence import confluence_job
 from scheduler.jobs_weekly_stance_retro import weekly_stance_retro_job
 from scheduler.jobs_ui_ai_summaries import ui_ai_summaries_job
 
@@ -788,6 +799,7 @@ __all__ = [
     'contradiction_drilldown_job',
     'dilution_watch_job',
     'sec_filings_job',
+    'confluence_job',
     'weekly_stance_retro_job',
     'ui_ai_summaries_job',
     # Research jobs
@@ -1463,6 +1475,29 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True,
         )
         logger.info("Registered job: sec_filings (daytime ET filing watch)")
+
+    if AVAILABLE_JOBS.get('confluence', {}).get('enabled_by_default', True):
+        cf_cfg = AVAILABLE_JOBS['confluence']
+        cf_triggers = cf_cfg.get(
+            'cron_triggers',
+            [{'hour': 22, 'minute': 30, 'timezone': 'America/New_York'}],
+        )
+        cf_trigger = cf_triggers[0]
+        scheduler.add_job(
+            confluence_job,
+            trigger=CronTrigger(
+                hour=cf_trigger.get('hour', 22),
+                minute=cf_trigger.get('minute', 30),
+                timezone=cf_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='confluence',
+            name=f"{get_job_icon('confluence')} Cross-Signal Confluence",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered job: confluence (nightly after stance_outcomes + sec_filings)")
 
     if AVAILABLE_JOBS.get('weekly_stance_retro', {}).get('enabled_by_default', True):
         wr_cfg = AVAILABLE_JOBS['weekly_stance_retro']

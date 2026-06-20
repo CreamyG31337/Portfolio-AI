@@ -46,8 +46,6 @@ Run the right test suite based on what you're changing (both suites use the root
 | Root-level Python (trading_script, portfolio/, financial/, utils/) | `python -m pytest tests/ -v -k "not flask"` |
 | Both changed | Run both |
 
-Streamlit (`web_dashboard/pages/*.py`) is a **prototype only** — no tests, maintenance only. Flask is production and gets priority for all new features.
-
 ## Code Style
 
 - Python 3.11+, `decimal.Decimal` for all financial values (convert to float only at Supabase boundary), timezone-aware datetimes

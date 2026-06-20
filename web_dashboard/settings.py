@@ -183,34 +183,11 @@ def get_rebalance_policy(fund_type: Optional[str] = None) -> dict[str, Any]:
 
 
 def get_system_setting(key: str, default: Any = None) -> Any:
-    """Get a system setting value.
-    
-    Args:
-        key: Setting key
-        default: Default value if setting not found
-        
-    Returns:
-        Setting value (parsed from JSONB) or default
-    """
+    """Get a system setting value."""
     try:
-        # Try to use service role client when outside Streamlit context
-        try:
-            import streamlit as st
-            try:
-                from streamlit.runtime.scriptrunner import get_script_run_ctx
-                if not get_script_run_ctx():
-                     raise AttributeError("No script run context")
-            except ImportError:
-                 # fallback for older streamlit versions or if internal API changes
-                 if not hasattr(st, "runtime"): # rough check
-                      pass
-            
-            from streamlit_utils import get_supabase_client
-            client = get_supabase_client()
-        except (ImportError, AttributeError):
-            # Fallback to service role client when not in Streamlit
-            from supabase_client import SupabaseClient
-            client = SupabaseClient(use_service_role=True)
+        from supabase_client import SupabaseClient
+
+        client = SupabaseClient(use_service_role=True)
         
         if not client:
             logger.warning("Could not connect to database for system settings")
@@ -243,15 +220,22 @@ def set_system_setting(key: str, value: Any, description: Optional[str] = None) 
         True if successful, False otherwise
     """
     try:
-        from streamlit_utils import get_supabase_client
-        from auth_utils import get_user_id
-        
-        client = get_supabase_client()
+        from supabase_client import SupabaseClient
+        from flask_auth_utils import get_user_id_flask
+
+        client = SupabaseClient(use_service_role=True)
         if not client:
             logger.error("Could not connect to database for system settings")
             return False
-        
-        user_id = get_user_id()
+
+        user_id = None
+        try:
+            from flask import has_request_context
+
+            if has_request_context():
+                user_id = get_user_id_flask()
+        except (ImportError, RuntimeError):
+            pass
         
         # Prepare the data
         # Supabase handles JSONB conversion automatically, just pass the value
@@ -285,9 +269,9 @@ def get_all_system_settings() -> dict:
         Dictionary of key-value pairs
     """
     try:
-        from streamlit_utils import get_supabase_client
-        
-        client = get_supabase_client()
+        from supabase_client import SupabaseClient
+
+        client = SupabaseClient(use_service_role=True)
         if not client:
             return {}
         

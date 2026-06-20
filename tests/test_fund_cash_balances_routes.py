@@ -2,7 +2,6 @@
 
 import json
 import sys
-import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -12,21 +11,6 @@ web_dashboard_path = Path(__file__).resolve().parent.parent / "web_dashboard"
 if str(web_dashboard_path) not in sys.path:
     sys.path.insert(0, str(web_dashboard_path))
 
-
-def _fake_st_cache_data(*_args, **_kwargs):
-    """Minimal @st.cache_data stand-in so streamlit_utils loads without Streamlit."""
-
-    def _decorator(fn):
-        return fn
-
-    return _decorator
-
-
-# Register before any import of streamlit_utils (via fund_routes).
-sys.modules.setdefault(
-    "streamlit",
-    types.SimpleNamespace(cache_data=_fake_st_cache_data),
-)
 sys.modules.setdefault("yfinance", MagicMock())
 
 

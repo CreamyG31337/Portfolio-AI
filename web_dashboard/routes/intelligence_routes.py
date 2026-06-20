@@ -267,7 +267,27 @@ def ticker_evidence_timeline(ticker: str):
             )
         except Exception as fil_exc:
             logger.warning("evidence-timeline filing lookup failed: %s", fil_exc)
-        events = _serialize_rows(list(stances) + list(articles) + list(dilution) + list(filings))
+        confluence: list[dict[str, Any]] = []
+        try:
+            confluence = pg.execute_query(
+                """
+                SELECT 'confluence' AS event_type, as_of AS event_at,
+                       (direction || ' · score ' || score) AS label,
+                       'confluence' AS source, NULL::numeric AS confidence,
+                       jsonb_build_object('direction', direction, 'score', score,
+                                          'families', families, 'details', details) AS metadata
+                FROM confluence_events
+                WHERE ticker = %s
+                ORDER BY as_of DESC
+                LIMIT 20
+                """,
+                (ticker_u,),
+            )
+        except Exception as conf_exc:
+            logger.warning("evidence-timeline confluence lookup failed: %s", conf_exc)
+        events = _serialize_rows(
+            list(stances) + list(articles) + list(dilution) + list(filings) + list(confluence)
+        )
         events.sort(key=lambda e: e.get("event_at") or "", reverse=True)
         return jsonify({"ticker": ticker_u, "events": events[:60]})
     except Exception as exc:

@@ -29,10 +29,10 @@ Run these in order:
 tailscale status
 ssh -i "<key_path>" lance@ts-ubuntu-server "hostname && date && whoami"
 ssh -i "<key_path>" lance@ts-ubuntu-server "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.RunningFor}}'"
-ssh -i "<key_path>" lance@ts-ubuntu-server "docker logs --since 30m trading-dashboard --tail 200"
-ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python /app/web_dashboard/scripts/check_job_status.py"
-ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python /app/web_dashboard/scripts/read_job_logs.py --days 1 --limit 120"
-ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python /app/web_dashboard/scripts/check_job_backlog_health.py"
+ssh -i "<key_path>" lance@ts-ubuntu-server "docker logs --since 30m trading-dashboard-flask --tail 200"
+ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard-flask python /app/web_dashboard/scripts/check_job_status.py"
+ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard-flask python /app/web_dashboard/scripts/read_job_logs.py --days 1 --limit 120"
+ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard-flask python /app/web_dashboard/scripts/check_job_backlog_health.py"
 ```
 
 ## Detailed Verification Flow
@@ -42,11 +42,11 @@ ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python
    - Confirm you are on the right host/user via `hostname && whoami`.
 
 2. Runtime/container health
-   - Confirm `trading-dashboard` and `trading-dashboard-flask` are `Up` and healthy.
-   - If they are healthy, move to scheduler/log checks before concluding anything is broken.
+   - Confirm `trading-dashboard-flask` is `Up` and healthy (port 5001).
+   - Scheduler and background jobs run inside this container.
 
 3. Scheduler heartbeat evidence
-   - In `trading-dashboard` logs, confirm frequent entries like:
+   - In `trading-dashboard-flask` logs, confirm frequent entries like:
      - `Scheduler Heartbeat ... executed successfully`
    - Heartbeat every ~15s indicates the scheduler loop is alive.
 
@@ -60,7 +60,7 @@ ssh -i "<key_path>" lance@ts-ubuntu-server "docker exec trading-dashboard python
 
 ```bash
 ssh -i "<key_path>" lance@ts-ubuntu-server \
-  "docker exec trading-dashboard python /app/web_dashboard/scripts/read_job_logs.py --days 7 --job <job_name> --limit 10"
+  "docker exec trading-dashboard-flask python /app/web_dashboard/scripts/read_job_logs.py --days 7 --job <job_name> --limit 10"
 ```
 
 6. Backlog health snapshot (read-only)
@@ -93,7 +93,6 @@ Article summarization uses Z.AI `chat/completions` with a configurable HTTP read
 
 These can be noisy but not necessarily outages:
 
-- `missing ScriptRunContext! ... can be ignored when running in bare mode`
 - Some external content fetch failures (`403`, paywalls, blocked sources)
 - Temporary source-specific warnings if overall job still completes successfully
 
@@ -102,10 +101,10 @@ These can be noisy but not necessarily outages:
 | Symptom | Likely Cause | Read-only Confirmation |
 |---|---|---|
 | `Permission denied (publickey,password)` on SSH | wrong user/key or key ACL issue | retry with known good key path and verify key permissions |
-| Scheduler appears down locally but jobs still execute | checking wrong machine/context | run all checks from server via `docker exec trading-dashboard ...` |
+| Scheduler appears down locally but jobs still execute | checking wrong machine/context | run all checks from server via `docker exec trading-dashboard-flask ...` |
 | Job marked failed once with interruption | container restart interrupted run | inspect recent logs for restart timing and next run status |
 | Job appears stale | cron/market-hour schedule mismatch | run `read_job_logs.py --days 7 --job <job_name>` |
-| No heartbeat entries in recent logs | scheduler process issue | inspect `docker logs --since 30m trading-dashboard --tail 200` for heartbeat absence and scheduler errors |
+| No heartbeat entries in recent logs | scheduler process issue | inspect `docker logs --since 30m trading-dashboard-flask --tail 200` for heartbeat absence and scheduler errors |
 
 ## Privacy and Git Safety Checklist (Required)
 

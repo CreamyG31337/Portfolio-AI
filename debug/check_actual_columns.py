@@ -13,7 +13,7 @@ def check_actual_columns():
     client = SupabaseClient()
     fund = "Project Chimera"
     
-    # Fetch using SAME columns as dashboard (line 376-377 of streamlit_utils.py)
+    # Fetch using SAME columns as dashboard (flask_data_utils / portfolio_metrics)
     all_rows = []
     offset = 0
     

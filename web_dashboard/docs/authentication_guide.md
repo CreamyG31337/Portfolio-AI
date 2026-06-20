@@ -2,10 +2,9 @@
 
 ## The Problem: Expired Tokens & PostgREST 401
 
-In Flask applications using Supabase, you may encounter a situation where:
-1.  **Direct HTTP requests work** with fresh tokens.
-2.  **Streamlit works** (because it auto-refreshes tokens).
-3.  **Flask fails** with `auth.uid()` returning `NULL` or 401 errors.
+In Flask applications using Supabase, you may encounter:
+1. **Direct HTTP requests work** with fresh tokens.
+2. **Flask fails** with `auth.uid()` returning `NULL` or 401 errors when the access token cookie is expired.
 
 ### Root Cause
 Supabase JWT access tokens have a short lifetime (typically 1 hour). When a user logs in, the token is stored in a cookie. If the user returns to the Flask app after 1 hour:
