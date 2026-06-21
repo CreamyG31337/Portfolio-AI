@@ -30,21 +30,27 @@ import os
 import sys
 import time
 from collections import defaultdict
-from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 # --- path setup (project root + web_dashboard), mirroring the scheduler job ---
+# CRITICAL: project root MUST come BEFORE web_dashboard in sys.path. Otherwise
+# web_dashboard/utils (a package lacking ticker_utils) shadows the root `utils`
+# package, and the Yahoo fetch path's `import utils.ticker_utils` fails -- which
+# silently breaks EVERY price fetch ("all strategies failed"). Insert
+# web_dashboard first, then project root, so root lands at index 0.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DASHBOARD = PROJECT_ROOT / "web_dashboard"
-for p in (str(PROJECT_ROOT), str(WEB_DASHBOARD)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+if str(WEB_DASHBOARD) not in sys.path:
+    sys.path.insert(0, str(WEB_DASHBOARD))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(WEB_DASHBOARD / ".env")
 
+import pandas as pd  # noqa: E402
 import psycopg2  # noqa: E402
 import psycopg2.extras  # noqa: E402
 
@@ -129,28 +135,57 @@ def group_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, Any], list[dict[st
     return groups
 
 
-def recompute_group(
+def fetch_ticker_window(
     fetcher: MarketDataFetcher,
+    ticker: str,
+    period: str,
+    attempts: int,
+    backoff: float,
+) -> pd.DataFrame | None:
+    """Fetch ONE window per ticker (covering every corrupt run, sliced later).
+
+    Uses the period-only call -- the same pattern the production scan uses and
+    proven reliable here -- instead of start/end, which is flakier and triggers
+    Yahoo's throttle far more readily. `period='1y'` gives enough history to
+    slice back to the oldest corrupt run (~2 weeks ago) with margin."""
+    for attempt in range(1, attempts + 1):
+        try:
+            df = fetcher.fetch_price_data(ticker, period=period).df
+            if df is not None and not df.empty:
+                return df
+        except Exception as e:  # noqa: BLE001
+            logger.debug("  %s fetch attempt %d/%d failed: %s", ticker, attempt, attempts, e)
+        if attempt < attempts:
+            wait = backoff * attempt  # long, to let any throttle clear
+            logger.info("  %s fetch attempt %d/%d empty; backing off %.0fs",
+                        ticker, attempt, attempts, wait)
+            time.sleep(wait)
+    return None
+
+
+def slice_as_of(df: pd.DataFrame, as_of: Any) -> pd.DataFrame:
+    """Return the rows of df dated on or before `as_of` (faithful as-of-date)."""
+    idx = df.index
+    try:
+        idx_naive = idx.tz_localize(None) if getattr(idx, "tz", None) is not None else idx
+    except (TypeError, AttributeError):
+        idx_naive = idx
+    cutoff = pd.Timestamp(as_of.date())
+    return df[idx_naive <= cutoff]
+
+
+def recompute_as_of(
     engine: SignalEngine,
     ticker: str,
-    as_of,
+    df_full: pd.DataFrame,
+    as_of: Any,
     fundamentals: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Recompute the full signal set for `ticker` as of `as_of` date."""
-    start = as_of - timedelta(days=300)
-    end = as_of + timedelta(days=2)
-    df = None
-    for attempt in range(3):  # yfinance is flaky; retry transient failures
-        try:
-            price_data = fetcher.fetch_price_data(ticker, start=start, end=end, period="6mo")
-            df = price_data.df
-            if df is not None and not df.empty:
-                break
-        except Exception as e:  # noqa: BLE001
-            logger.debug("  %s fetch attempt %d failed: %s", ticker, attempt + 1, e)
-        time.sleep(1.0 * (attempt + 1))
+    """Recompute the full signal set for `ticker` as of `as_of`, from a
+    pre-fetched window sliced to that date."""
+    df = slice_as_of(df_full, as_of)
     if df is None or df.empty or len(df) < 60:
-        logger.warning("  %s @ %s: insufficient price data (rows=%s) -- skipping",
+        logger.warning("  %s @ %s: insufficient sliced data (rows=%s) -- skipping",
                        ticker, as_of.date(), 0 if df is None else len(df))
         return None
     signals = engine.evaluate(ticker, df, fundamentals=fundamentals)
@@ -193,10 +228,19 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true",
                         help="Write corrected rows to production (default: dry run)")
     parser.add_argument("--limit", type=int, default=0,
-                        help="Process at most N (ticker, run) groups")
-    parser.add_argument("--sleep", type=float, default=0.6,
-                        help="Seconds to sleep between fetches (rate limit)")
+                        help="Process at most N tickers (one fetch each)")
+    parser.add_argument("--sleep", type=float, default=3.0,
+                        help="Seconds to sleep between tickers (rate limit)")
+    parser.add_argument("--attempts", type=int, default=3,
+                        help="Fetch attempts per ticker before skipping")
+    parser.add_argument("--backoff", type=float, default=20.0,
+                        help="Base seconds to back off after an empty fetch (x attempt)")
+    parser.add_argument("--period", type=str, default="1y",
+                        help="yfinance period to fetch per ticker (sliced per run)")
     args = parser.parse_args()
+
+    if os.environ.get("REPAIR_DEBUG"):
+        logging.getLogger("market_data.data_fetcher").setLevel(logging.DEBUG)
 
     db_url = os.environ.get("SUPABASE_DATABASE_URL")
     if not db_url:
@@ -212,18 +256,23 @@ def main() -> int:
             return 0
 
         groups = group_rows(rows)
-        items = sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1]))
+        # Regroup by ticker so we fetch ONE window per ticker (bursting many
+        # date-bounded fetches is what trips Yahoo's rate limiter).
+        by_ticker: dict[str, list[tuple[Any, list[dict[str, Any]]]]] = defaultdict(list)
+        for (ticker, bucket), grp in groups.items():
+            by_ticker[ticker].append((bucket, grp))
+        tickers = sorted(by_ticker)
         if args.limit:
-            items = items[: args.limit]
+            tickers = tickers[: args.limit]
 
-        n_rows = sum(len(v) for _, v in items)
         with_expl = sum(1 for r in rows if r["has_explanation"])
         mode = "APPLY (writing to production)" if args.apply else "DRY RUN (no writes)"
         logger.info("=" * 72)
         logger.info("Repair corrupt signals -- %s", mode)
         logger.info("Corrupt rows total: %d across %d (ticker, run) groups, %d tickers",
-                    len(rows), len(groups), len({k[0] for k in groups}))
-        logger.info("Processing %d groups / %d rows this run", len(items), n_rows)
+                    len(rows), len(groups), len(by_ticker))
+        logger.info("Processing %d tickers this run (one fetch each, sleep=%.1fs)",
+                    len(tickers), args.sleep)
         if with_expl:
             logger.info("Note: %d corrupt rows have a non-null explanation (left untouched).",
                         with_expl)
@@ -231,53 +280,70 @@ def main() -> int:
 
         fetcher = MarketDataFetcher()
         engine = SignalEngine()
-        fundamentals_map = load_fundamentals(conn, [k[0] for k in groups])
+        fundamentals_map = load_fundamentals(conn, list(by_ticker))
 
         fixed_rows = 0
         fixed_groups = 0
         skipped_groups = 0
-        for (ticker, bucket), grp in items:
-            ids = [r["id"] for r in grp]
-            old_fear = grp[0]["old_fear"]
-            old_overall = grp[0]["old_overall"]
-            try:
-                signals = recompute_group(
-                    fetcher, engine, ticker, bucket, fundamentals_map.get(ticker)
-                )
-            except Exception as e:  # noqa: BLE001 - report and continue, never blank
-                logger.warning("  %s @ %s: fetch/recompute error: %s -- skipping",
-                               ticker, bucket.date(), e)
-                signals = None
-
-            if signals is None:
-                skipped_groups += 1
+        skipped_tickers = 0
+        total_t = len(tickers)
+        for ti, ticker in enumerate(tickers, start=1):
+            buckets = sorted(by_ticker[ticker], key=lambda x: x[0])
+            df_full = fetch_ticker_window(
+                fetcher, ticker, args.period, args.attempts, args.backoff
+            )
+            if df_full is None or df_full.empty:
+                n_grp = len(buckets)
+                logger.warning("[%d/%d] %-9s: fetch failed after %d attempts -- "
+                               "skipping %d run(s) (re-run later)",
+                               ti, total_t, ticker, args.attempts, n_grp)
+                skipped_groups += n_grp
+                skipped_tickers += 1
                 time.sleep(args.sleep)
                 continue
 
-            new_fear = signals.get("fear_risk", {}).get("fear_level")
-            new_overall = signals.get("overall_signal")
-            new_dd = signals.get("fear_risk", {}).get("drawdown_pct")
-            logger.info("  %-9s @ %s  %sx  %s/%s -> %s/%s (dd=%.1f%%)",
-                        ticker, bucket.date(), len(ids),
-                        old_fear, old_overall, new_fear, new_overall, float(new_dd))
+            for bucket, grp in buckets:
+                ids = [r["id"] for r in grp]
+                old_fear = grp[0]["old_fear"]
+                old_overall = grp[0]["old_overall"]
+                try:
+                    signals = recompute_as_of(
+                        engine, ticker, df_full, bucket, fundamentals_map.get(ticker)
+                    )
+                except Exception as e:  # noqa: BLE001 - report and continue, never blank
+                    logger.warning("[%d/%d] %s @ %s: recompute error: %s -- skipping",
+                                   ti, total_t, ticker, bucket.date(), e)
+                    signals = None
 
-            if args.apply:
-                update_rows(conn, ids, signals)
-            fixed_rows += len(ids)
-            fixed_groups += 1
-            time.sleep(args.sleep)
+                if signals is None:
+                    skipped_groups += 1
+                    continue
 
+                new_fear = signals.get("fear_risk", {}).get("fear_level")
+                new_overall = signals.get("overall_signal")
+                new_dd = signals.get("fear_risk", {}).get("drawdown_pct")
+                logger.info("[%d/%d] %-9s @ %s  %sx  %s/%s -> %s/%s (dd=%.1f%%)",
+                            ti, total_t, ticker, bucket.date(), len(ids),
+                            old_fear, old_overall, new_fear, new_overall, float(new_dd))
+
+                if args.apply:
+                    update_rows(conn, ids, signals)
+                    conn.commit()  # commit per run so slow-run progress persists
+                fixed_rows += len(ids)
+                fixed_groups += 1
+
+            time.sleep(args.sleep)  # one pace step per ticker (after its single fetch)
+
+        logger.info("-" * 72)
         if args.apply:
-            conn.commit()
-            logger.info("-" * 72)
-            logger.info("COMMITTED. Fixed %d rows in %d groups; %d groups skipped.",
-                        fixed_rows, fixed_groups, skipped_groups)
+            logger.info("DONE. Fixed %d rows in %d runs; %d runs skipped "
+                        "(%d tickers unfetched). Committed per run; re-run to retry skips.",
+                        fixed_rows, fixed_groups, skipped_groups, skipped_tickers)
         else:
             conn.rollback()
-            logger.info("-" * 72)
-            logger.info("DRY RUN complete. Would fix %d rows in %d groups; "
-                        "%d groups skipped. Re-run with --apply to write.",
-                        fixed_rows, fixed_groups, skipped_groups)
+            logger.info("DRY RUN complete. Would fix %d rows in %d runs; %d runs skipped "
+                        "(%d tickers unfetched). Re-run with --apply to write.",
+                        fixed_rows, fixed_groups, skipped_groups, skipped_tickers)
         return 0
     except Exception:
         conn.rollback()
