@@ -8,6 +8,7 @@ fundamental) into unified analysis.
 import pandas as pd
 from typing import Any, Dict, Optional
 import logging
+from market_data.ohlcv_quality import drop_invalid_ohlcv_bars
 from .structure_signal import StructureSignal
 from .timing_signal import TimingSignal
 from .fear_risk_signal import FearRiskSignal
@@ -79,6 +80,27 @@ class SignalEngine:
             }
         """
         try:
+            # Sanitize once at the boundary: drop bad (zero/NaN/negative) price
+            # bars so a single glitchy feed row can't corrupt ANY sub-signal --
+            # a $0 bar otherwise reads as DOWNTREND @ 0, -100% momentum returns,
+            # and EXTREME fear. All sub-signals receive the SAME cleaned frame;
+            # each keeps its own row-count guard, so short-history tickers still
+            # degrade gracefully rather than being dropped wholesale here.
+            df = drop_invalid_ohlcv_bars(df)
+            if df is None or df.empty:
+                msg = 'No valid price data'
+                return {
+                    'ticker': ticker.upper(),
+                    'structure': {'error': msg},
+                    'timing': {'error': msg},
+                    'fear_risk': {'error': msg},
+                    'momentum': {'error': msg},
+                    'fundamental': {'error': msg},
+                    'overall_signal': 'HOLD',
+                    'confidence': 0.0,
+                    'error': msg,
+                }
+
             # Evaluate each signal type
             structure = self.structure_signal.evaluate(df, price_col=price_col)
             timing = self.timing_signal.evaluate(df, price_col=price_col)

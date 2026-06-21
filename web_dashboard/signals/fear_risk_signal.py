@@ -14,6 +14,7 @@ This is new functionality not present in InvestAI.
 import pandas as pd
 from typing import Any, Dict, Optional
 import logging
+from market_data.ohlcv_quality import drop_invalid_ohlcv_bars
 from .indicators import calculate_volatility
 
 logger = logging.getLogger(__name__)
@@ -102,22 +103,13 @@ class FearRiskSignal:
                 logger.warning(f"Column {price_col} not found in DataFrame")
                 return _neutral_result('Missing price column')
 
-            df = df.copy()
-
-            # Sanitize the price column: drop bars with missing/zero/negative
-            # prices.  A single bad bar (e.g. a $0 close from a partial,
-            # holiday, or glitchy feed row that upstream coerced to 0) would
-            # otherwise read as a -100% drawdown / daily move and trigger a
-            # phantom EXTREME fear signal on an otherwise healthy stock.
-            prices_numeric = pd.to_numeric(df[price_col], errors="coerce")
-            valid_mask = prices_numeric.notna() & (prices_numeric > 0)
-            if not bool(valid_mask.all()):
-                dropped = int((~valid_mask).sum())
-                logger.warning(
-                    f"Dropping {dropped} bar(s) with missing/zero/negative "
-                    f"{price_col} before fear/risk analysis"
-                )
-                df = df[valid_mask]
+            # Defense-in-depth: drop bad (zero/NaN/negative) price bars via the
+            # shared helper. A glitchy $0 bar would otherwise read as a -100%
+            # drawdown / daily move and trigger phantom EXTREME fear on a healthy
+            # stock. SignalEngine already sanitizes; this keeps direct callers
+            # (e.g. the /api/signals/fear_risk route) safe too. Single source of
+            # truth: market_data.ohlcv_quality.
+            df = drop_invalid_ohlcv_bars(df)
 
             if len(df) < 60:
                 logger.warning("Insufficient valid price data for fear/risk signal")

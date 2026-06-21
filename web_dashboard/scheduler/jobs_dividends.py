@@ -390,20 +390,24 @@ def get_price_on_date(ticker: str, target_date: date) -> Optional[Decimal]:
     """Get closing price for ticker on target_date."""
     try:
         from market_data.data_fetcher import MarketDataFetcher
-        
+        from market_data.ohlcv_quality import get_last_valid_close
+
         market_fetcher = MarketDataFetcher()
-        
+
         # Try finding price for up to 3 days (in case of weekends/holidays)
         for i in range(4):
             check_date = target_date + timedelta(days=i)
             start_dt = datetime.combine(check_date, dt_time(0, 0, 0))
             end_dt = datetime.combine(check_date, dt_time(23, 59, 59, 999999))
-            
+
             result = market_fetcher.fetch_price_data(ticker, start=start_dt, end=end_dt)
-            
+
             if result and result.df is not None and not result.df.empty:
-                return Decimal(str(result.df['Close'].iloc[-1]))
-                
+                # Last VALID close -- never return a $0 from a bad bar
+                price = get_last_valid_close(result.df)
+                if price is not None:
+                    return price
+
         return None
     except Exception as e:
         logger.warning(f"Error getting price for {ticker}: {e}")

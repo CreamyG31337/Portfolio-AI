@@ -9,11 +9,14 @@ This module provides:
 
 from .data_fetcher import MarketDataFetcher, FetchResult
 from .market_hours import MarketHours
+from .ohlcv_quality import drop_invalid_ohlcv_bars, get_last_valid_close
 from .price_cache import PriceCache
 
 __all__ = [
     'MarketDataFetcher',
-    'FetchResult', 
+    'FetchResult',
     'MarketHours',
-    'PriceCache'
+    'PriceCache',
+    'drop_invalid_ohlcv_bars',
+    'get_last_valid_close',
 ]

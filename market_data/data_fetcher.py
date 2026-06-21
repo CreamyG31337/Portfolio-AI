@@ -20,6 +20,8 @@ from typing import Any, Dict, Optional, cast
 import pandas as pd
 from pathlib import Path
 
+from .ohlcv_quality import drop_invalid_ohlcv_bars, get_last_valid_close
+
 logger = logging.getLogger(__name__)
 
 # Optional pandas-datareader import for Stooq access
@@ -374,7 +376,12 @@ class MarketDataFetcher:
         if self.cache:
             cached_data = self.cache.get_cached_price(ticker, start, end)
             if cached_data is not None:
-                return FetchResult(cached_data, "cache")
+                # Re-sanitize on read: a stale entry cached before the data-quality
+                # fix may still contain a zero/NaN bar. If nothing valid remains,
+                # treat it as a cache miss and fall through to a live fetch.
+                cleaned = drop_invalid_ohlcv_bars(cached_data)
+                if cleaned is not None and not cleaned.empty:
+                    return FetchResult(cleaned, "cache")
 
         # Determine date range
         start_date, end_date = self._weekend_safe_range(period, start, end)
@@ -854,18 +861,14 @@ class MarketDataFetcher:
         cols = existing_cols + (["Adj Close"] if "Adj Close" in df.columns else [])
         result_df = df[cols].copy()
 
-        # Drop bars with a missing/zero Close.  These are bad data (partial
-        # in-progress bars, holidays, glitchy feed rows) -- NOT a real $0
-        # price.  Previously they were coerced to Decimal('0'), which made
-        # downstream signals read a phantom -100% crash (e.g. fear/risk
-        # flagged healthy large-caps as EXTREME fear / AVOID).
-        if "Close" in result_df.columns:
-            close_numeric = pd.to_numeric(result_df["Close"], errors="coerce")
-            valid_mask = close_numeric.notna() & (close_numeric != 0)
-            if not bool(valid_mask.all()):
-                dropped = int((~valid_mask).sum())
-                logger.debug(f"Dropping {dropped} OHLCV bar(s) with missing/zero Close")
-                result_df = result_df[valid_mask]
+        # Drop bars with a missing/zero/negative price (any of OHLC).  These are
+        # bad data (partial in-progress bars, holidays, glitchy feed rows) --
+        # NOT a real $0 price.  Previously they were coerced to Decimal('0'),
+        # which made downstream signals read a phantom -100% crash (e.g.
+        # fear/risk flagged healthy large-caps as EXTREME fear / AVOID).
+        # Shared helper also catches bad Open/High/Low the old Close-only
+        # filter missed.
+        result_df = drop_invalid_ohlcv_bars(result_df)
 
         # Convert all price columns to Decimal for precision
         price_cols = [col for col in cols if col != "Volume"]
@@ -1307,30 +1310,28 @@ class MarketDataFetcher:
                 # Get data for the last few days to find the most recent trading day
                 cached_data = self.cache.get_cached_price(ticker)
                 if cached_data is not None and not cached_data.empty:
-                    # Get the most recent close price from cache
-                    latest_close = cached_data['Close'].iloc[-1]
-                    if not pd.isna(latest_close):
-                        logger.debug(f"Using cached market close price for {ticker}: {latest_close}")
-                        return Decimal(str(latest_close)).quantize(Decimal('0.01'))
-            
+                    # Most recent VALID close (skips a bad zero/NaN trailing bar)
+                    last_close = get_last_valid_close(cached_data)
+                    if last_close is not None:
+                        logger.debug(f"Using cached market close price for {ticker}: {last_close}")
+                        return last_close.quantize(Decimal('0.01'))
+
             # If no cached data, fetch minimal data to get market close price
             # Only fetch 1 day to get the most recent close price
             result = self.fetch_price_data(ticker, period="1d")
-            
+
             if result.df.empty:
                 logger.warning(f"No market close price data available for {ticker}")
                 return None
-            
-            # Get the most recent close price
-            latest_close = result.df['Close'].iloc[-1]
-            
-            # Convert to Decimal for precision
-            if pd.isna(latest_close):
-                logger.warning(f"Latest close price is NaN for {ticker}")
+
+            # Most recent VALID close (skips a bad zero/NaN trailing bar)
+            last_close = get_last_valid_close(result.df)
+            if last_close is None:
+                logger.warning(f"No valid market close price for {ticker}")
                 return None
-                
-            logger.debug(f"Fetched market close price for {ticker}: {latest_close}")
-            return Decimal(str(latest_close)).quantize(Decimal('0.01'))
+
+            logger.debug(f"Fetched market close price for {ticker}: {last_close}")
+            return last_close.quantize(Decimal('0.01'))
             
         except Exception as e:
             logger.error(f"Error fetching market close price for {ticker}: {e}")
@@ -1354,47 +1355,41 @@ class MarketDataFetcher:
             if self.cache:
                 cached_data = self.cache.get_cached_price(ticker)
                 if cached_data is not None and not cached_data.empty:
-                    # Get the most recent close price from cache
-                    latest_close = cached_data['Close'].iloc[-1]
-                    if not pd.isna(latest_close):
-                        logger.debug(f"Using cached live price for {ticker}: {latest_close}")
-                        return Decimal(str(latest_close)).quantize(Decimal('0.01'))
-            
+                    # Most recent VALID close (skips a bad zero/NaN trailing bar)
+                    last_close = get_last_valid_close(cached_data)
+                    if last_close is not None:
+                        logger.debug(f"Using cached live price for {ticker}: {last_close}")
+                        return last_close.quantize(Decimal('0.01'))
+
             # If no cached data or cache miss, fetch minimal data
             # Try 1 day first, then 2 days if needed (for weekend/holiday handling)
             for period in ["1d", "2d"]:
                 result = self.fetch_price_data(ticker, period=period)
-                
+
                 if not result.df.empty:
-                    # Get the most recent close price
-                    latest_close = result.df['Close'].iloc[-1]
-                    
-                    # Convert to Decimal for precision
-                    if pd.isna(latest_close):
-                        logger.warning(f"Latest close price is NaN for {ticker}")
+                    last_close = get_last_valid_close(result.df)
+                    if last_close is None:
+                        logger.warning(f"No valid close price for {ticker} ({period})")
                         continue
-                        
-                    logger.debug(f"Fetched live price for {ticker} using {period}: {latest_close}")
-                    return Decimal(str(latest_close)).quantize(Decimal('0.01'))
-            
+
+                    logger.debug(f"Fetched live price for {ticker} using {period}: {last_close}")
+                    return last_close.quantize(Decimal('0.01'))
+
             # If 1d and 2d both fail, fall back to 5d as last resort
             logger.debug(f"Trying 5d fallback for {ticker}")
             result = self.fetch_price_data(ticker, period="5d")
-            
+
             if result.df.empty:
                 logger.warning(f"No price data available for {ticker}")
                 return None
-            
-            # Get the most recent close price
-            latest_close = result.df['Close'].iloc[-1]
-            
-            # Convert to Decimal for precision
-            if pd.isna(latest_close):
-                logger.warning(f"Latest close price is NaN for {ticker}")
+
+            last_close = get_last_valid_close(result.df)
+            if last_close is None:
+                logger.warning(f"No valid close price for {ticker}")
                 return None
-                
-            logger.debug(f"Fetched live price for {ticker} using 5d fallback: {latest_close}")
-            return Decimal(str(latest_close)).quantize(Decimal('0.01'))
+
+            logger.debug(f"Fetched live price for {ticker} using 5d fallback: {last_close}")
+            return last_close.quantize(Decimal('0.01'))
             
         except Exception as e:
             logger.error(f"Error fetching live price for {ticker}: {e}")

@@ -1180,13 +1180,16 @@ def run_portfolio_workflow(args: argparse.Namespace, settings: Settings, reposit
 
         # Update positions with current prices
         updated_positions = []
+        from market_data.ohlcv_quality import get_last_valid_close
         for position in latest_snapshot.positions:
             cached_data = price_cache.get_cached_price(position.ticker)
-            if cached_data is not None and not cached_data.empty:
-                # Get the latest close price from the cached data and convert to Decimal
-                from decimal import Decimal
-                current_price = Decimal(str(cached_data['Close'].iloc[-1]))
-
+            # Most recent VALID close (skips a bad zero/NaN trailing bar that
+            # would otherwise zero out the position's market value). None ->
+            # fall through to the last-known price from the position/CSV.
+            current_price = (
+                get_last_valid_close(cached_data) if cached_data is not None else None
+            )
+            if current_price is not None:
                 # Extra debug for GLCC
                 if position.ticker == 'GLCC':
                     logger.info(f"\n{'='*60}")
