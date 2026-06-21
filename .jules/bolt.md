@@ -51,3 +51,6 @@
 ## 2026-06-10 - Optimize iterrows bottlenecks in Generate_Graph
 **Learning:** `df.iterrows()` inside `Generate_Graph.py` was being used incorrectly both for finding valid real prices and for converting to a dictionary, which incurred massive O(N) overheads due to instantiating Pandas Series objects. A quick vectorized check (`.abs()` and `.any()`) and `.to_dict('records')` conversion provide >90x speedup.
 **Action:** Replace `df.iterrows()` iterative checks with `.any()` boolean checks where possible. Use `.to_dict('records')` if an exact dictionary loop is needed instead of `row.to_dict()`.
+## 2024-05-23 - [Optimizing pandas .apply() with zero-division handling]
+**Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, be aware that pandas evaluates the division `A / B` for *all* rows before applying the `np.where` condition. If `B` can be zero, this will raise a `RuntimeWarning: divide by zero encountered in divide` which can flood production logs, even if the result is masked by `np.where`.
+**Action:** Always use safe division by replacing zeros with `np.nan` prior to division: `df['A'].divide(df['B'].replace(0, np.nan))`.
