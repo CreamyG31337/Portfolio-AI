@@ -258,6 +258,11 @@ Results.png
 # Ignore generated graphs folder
 graphs/
 
+# Graphify code-graph artifacts (local analysis; regenerate with `graphify update .`)
+graphify-out/
+.graphify/
+.graphify_*
+
 # Webull import data and test files
 webull_test_data.csv
 webull_*.csv

@@ -27,6 +27,7 @@ import pandas as pd
 from data.models.portfolio import Position, PortfolioSnapshot
 from market_data.market_hours import MarketHours
 from market_data.data_fetcher import MarketDataFetcher
+from market_data.ohlcv_quality import get_last_valid_close
 from market_data.price_cache import PriceCache
 from portfolio.portfolio_manager import PortfolioManager
 
@@ -110,7 +111,7 @@ class PriceService:
             ...     datetime(2024, 10, 1)
             ... )
             >>> aapl_data = market_data['AAPL']  # Full DataFrame
-            >>> latest_price = aapl_data['Close'].iloc[-1]
+            >>> latest_price = get_last_valid_close(aapl_data)
         """
         market_data = {}
         cache_hits = 0
@@ -266,7 +267,7 @@ class PriceService:
             prices = {}
             for ticker, df in market_data.items():
                 if not df.empty and 'Close' in df.columns:
-                    prices[ticker] = Decimal(str(df['Close'].iloc[-1]))
+                    prices[ticker] = get_last_valid_close(df)
                 else:
                     prices[ticker] = None
         else:

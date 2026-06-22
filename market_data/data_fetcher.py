@@ -1310,8 +1310,10 @@ class MarketDataFetcher:
                 # Get data for the last few days to find the most recent trading day
                 cached_data = self.cache.get_cached_price(ticker)
                 if cached_data is not None and not cached_data.empty:
-                    # Most recent VALID close (skips a bad zero/NaN trailing bar)
-                    last_close = get_last_valid_close(cached_data)
+                    # Sanitize before close lookup: raw cache may predate the
+                    # data-quality fix or carry a row with a valid Close but
+                    # bad Open/High/Low.
+                    last_close = get_last_valid_close(drop_invalid_ohlcv_bars(cached_data))
                     if last_close is not None:
                         logger.debug(f"Using cached market close price for {ticker}: {last_close}")
                         return last_close.quantize(Decimal('0.01'))
@@ -1355,8 +1357,7 @@ class MarketDataFetcher:
             if self.cache:
                 cached_data = self.cache.get_cached_price(ticker)
                 if cached_data is not None and not cached_data.empty:
-                    # Most recent VALID close (skips a bad zero/NaN trailing bar)
-                    last_close = get_last_valid_close(cached_data)
+                    last_close = get_last_valid_close(drop_invalid_ohlcv_bars(cached_data))
                     if last_close is not None:
                         logger.debug(f"Using cached live price for {ticker}: {last_close}")
                         return last_close.quantize(Decimal('0.01'))
