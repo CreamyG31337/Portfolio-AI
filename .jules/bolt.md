@@ -59,3 +59,6 @@
 ## 2026-06-22 - np.where with pandas division and zero denominators
 **Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, pandas evaluates `A / B` for all rows before `np.where` applies its mask. If `B` can be zero, this floods logs with `RuntimeWarning: divide by zero encountered in divide` even when the result is masked.
 **Action:** Use safe division by replacing zeros with `np.nan` before dividing: `df['A'].divide(df['B'].replace(0, np.nan))`.
+## 2026-06-23 - Vectorized action determination and NaN filtering in ETF Watchtower
+**Learning:** `df.apply` with lambda functions like `significant['share_diff'].apply(lambda x: 'BUY' if x > 0 else 'SELL')` executes in Python space row-by-row, incurring massive object overhead on large DataFrames.
+**Action:** Replaced `df.apply` bottlenecks with vectorized equivalents (`np.where(..., 'BUY', 'SELL')` and `~pd.isna(...)`). This pushes operations down to C level, resulting in up to 100x performance improvements on large arrays.
