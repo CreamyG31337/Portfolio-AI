@@ -1,6 +1,7 @@
 """Unit tests for the shared OHLCV data-quality helpers."""
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 import numpy as np
@@ -93,6 +94,39 @@ def test_handles_decimal_values():
     df["Close"] = [Decimal("100"), Decimal("0"), Decimal("102")]
     out = drop_invalid_ohlcv_bars(df)
     assert len(out) == 2
+
+
+def test_single_bar_drop_logs_debug(caplog: pytest.LogCaptureFixture):
+    """One bad bar on a long series is routine (partial feed) -> debug."""
+    df = _make_df(100)
+    df.iloc[-1, df.columns.get_loc("Close")] = 0.0
+    with caplog.at_level(logging.DEBUG, logger="market_data.ohlcv_quality"):
+        drop_invalid_ohlcv_bars(df)
+    assert any(r.levelname == "DEBUG" and "Dropping 1/100" in r.message for r in caplog.records)
+    assert not any(r.levelname == "WARNING" for r in caplog.records)
+
+
+def test_large_fraction_drop_logs_warning(caplog: pytest.LogCaptureFixture):
+    """Many bad bars suggest upstream feed corruption -> warning."""
+    df = _make_df(20)
+    df.loc[df.index[-5:], "Close"] = 0.0
+    with caplog.at_level(logging.WARNING, logger="market_data.ohlcv_quality"):
+        drop_invalid_ohlcv_bars(df)
+    assert any(
+        r.levelname == "WARNING" and "Dropping 5/20" in r.message and "25.0%" in r.message
+        for r in caplog.records
+    )
+
+
+def test_all_invalid_logs_warning(caplog: pytest.LogCaptureFixture):
+    df = _make_df(5)
+    df["Close"] = 0.0
+    with caplog.at_level(logging.WARNING, logger="market_data.ohlcv_quality"):
+        out = drop_invalid_ohlcv_bars(df)
+    assert out.empty
+    assert any(
+        r.levelname == "WARNING" and "0 retained" in r.message for r in caplog.records
+    )
 
 
 # ---------------------------------------------------------------------------
