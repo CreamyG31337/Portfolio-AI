@@ -55,3 +55,7 @@
 ## 2026-06-22 - Pandas df.apply with axis=1 in routes
 **Learning:** Using df.apply(..., axis=1) is notoriously slow (O(n) overhead) in Flask routes like dashboard_routes.py and etf_routes.py. It is a major bottleneck on large DataFrames compared to numpy vectorized alternatives.
 **Action:** Replaced df.apply(..., axis=1) with vectorized conditional logic using numpy.where and numpy.select, improving iteration speed by 8x-80x.
+
+## 2026-06-22 - np.where with pandas division and zero denominators
+**Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, pandas evaluates `A / B` for all rows before `np.where` applies its mask. If `B` can be zero, this floods logs with `RuntimeWarning: divide by zero encountered in divide` even when the result is masked.
+**Action:** Use safe division by replacing zeros with `np.nan` before dividing: `df['A'].divide(df['B'].replace(0, np.nan))`.

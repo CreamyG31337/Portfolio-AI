@@ -491,10 +491,14 @@ def get_holdings_changes(
                         merged_df['share_change'] = merged_df['shares_held'] - merged_df['previous_shares']
 
                         # ⚡ Bolt: Vectorized percent_change calculation to avoid O(N) df.apply overhead (80x faster)
+                        # Use .divide with zero→nan so pandas does not log divide-by-zero before np.where masks
                         merged_df['percent_change'] = np.where(
                             merged_df['previous_shares'] > 0,
-                            (merged_df['share_change'] / merged_df['previous_shares']) * 100,
-                            0
+                            merged_df['share_change'].divide(
+                                merged_df['previous_shares'].replace(0, np.nan)
+                            )
+                            * 100,
+                            0,
                         )
 
                         # ⚡ Bolt: Vectorized determine_action calculation to avoid O(N) df.apply overhead
