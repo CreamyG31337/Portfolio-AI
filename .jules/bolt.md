@@ -59,3 +59,6 @@
 ## 2026-06-22 - np.where with pandas division and zero denominators
 **Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, pandas evaluates `A / B` for all rows before `np.where` applies its mask. If `B` can be zero, this floods logs with `RuntimeWarning: divide by zero encountered in divide` even when the result is masked.
 **Action:** Use safe division by replacing zeros with `np.nan` before dividing: `df['A'].divide(df['B'].replace(0, np.nan))`.
+## 2024-06-24 - Pandas apply(lambda) with conditionals
+**Learning:** Using `apply(lambda ...)` on large DataFrames to perform conditional logic (e.g. `lambda x: 'BUY' if x > 0 else 'SELL'`) is significantly slower than using fully vectorized Numpy alternatives because it executes a Python function call for every single row. It also causes performance regressions in memory footprint when `df` is large.
+**Action:** Replace `apply(lambda)` conditional operations with `np.where(condition, true_value, false_value)` and `pd.notna()` for 2x+ speedups and zero Python row-level loop overhead.

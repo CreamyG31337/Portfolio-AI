@@ -972,7 +972,9 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     
     # Add context
     significant['etf'] = etf_ticker
-    significant['action'] = significant['share_diff'].apply(lambda x: 'BUY' if x > 0 else 'SELL')
+    # ⚡ Bolt: Replaced slow .apply(lambda) with vectorized np.where
+    import numpy as np
+    significant['action'] = np.where(significant['share_diff'] > 0, 'BUY', 'SELL')
     
     logger.info(f"📊 {etf_ticker}: Found {len(significant)} significant stock changes out of {len(merged)} holdings")
     
@@ -999,7 +1001,8 @@ def save_holdings_snapshot(pc: PostgresClient, etf_ticker: str, holdings: pd.Dat
     # Remove rows with empty/invalid tickers
     clean_holdings = clean_holdings[clean_holdings['ticker'].notna()]
     clean_holdings = clean_holdings[clean_holdings['ticker'] != '']
-    clean_holdings = clean_holdings[clean_holdings['ticker'].apply(lambda x: not (isinstance(x, float) and math.isnan(x)))]
+    # ⚡ Bolt: Replaced slow .apply(lambda) with vectorized pd.notna()
+    clean_holdings = clean_holdings[pd.notna(clean_holdings['ticker'])]
     clean_holdings['ticker'] = clean_holdings['ticker'].astype(str).str.strip()
     
     # Replace NaN/inf with 0 for numeric columns before aggregation
