@@ -1529,9 +1529,9 @@ def get_biggest_movers_flask(positions_df: pd.DataFrame, display_currency: str, 
     if 'securities' in df.columns:
         # Handle nested securities data
         try:
-            df['company_name'] = df['securities'].apply(
-                lambda x: x.get('company_name', '') if isinstance(x, dict) else ''
-            )
+            # ⚡ Bolt: Replace slow .apply() with list comprehension for dictionary extraction
+            sec_list = df['securities'].tolist()
+            df['company_name'] = [x.get('company_name', '') if isinstance(x, dict) else '' for x in sec_list]
             company_col = 'company_name'
         except:
             pass
