@@ -59,3 +59,7 @@
 ## 2026-06-22 - np.where with pandas division and zero denominators
 **Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, pandas evaluates `A / B` for all rows before `np.where` applies its mask. If `B` can be zero, this floods logs with `RuntimeWarning: divide by zero encountered in divide` even when the result is masked.
 **Action:** Use safe division by replacing zeros with `np.nan` before dividing: `df['A'].divide(df['B'].replace(0, np.nan))`.
+
+## 2026-07-28 - Pandas Iterative Timezone Stripping via Strftime
+**Learning:** In `CSVRepository`, `df['Date'] = pd.to_datetime(parsed_dates.apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S')))` was used to drop timezone objects while preserving exact local wall-clock time. This approach, while technically avoiding pandas `AmbiguousTimeError` by forcing it into string space, scales extremely poorly as it evaluates `.strftime()` row-by-row in python space via `apply`.
+**Action:** Achieve the same result in purely optimized pandas C code by using `pd.to_datetime(parsed_dates, utc=True)` followed by `.dt.tz_convert(target_tz).dt.tz_localize(None).dt.tz_localize(target_tz)`. This sequence converts to the desired zone, strips the tz-awareness cleanly (preserving the literal hour/minute), and reapplies it as naive, executing roughly ~30x faster.

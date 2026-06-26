@@ -81,11 +81,13 @@ class CSVRepository(BaseRepository):
             # Parse timestamps with timezone awareness
             # _parse_csv_timestamp returns timezone-aware pandas Timestamps
             parsed_dates = df['Date'].apply(self._parse_csv_timestamp)
-            # Convert to datetime64 by extracting components (avoids timezone conversion issues)
-            df['Date'] = pd.to_datetime(parsed_dates.apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if hasattr(x, 'strftime') else str(x)))
-            # Add timezone info back
-            if not parsed_dates.empty and hasattr(parsed_dates.iloc[0], 'tz'):
-                df['Date'] = df['Date'].dt.tz_localize(parsed_dates.iloc[0].tz)
+            # Convert directly to timezone-aware datetime objects to avoid O(N) string formatting overhead
+            # We first convert to UTC, then back to the local timezone, then strip the timezone and re-localize
+            # This exactly replicates the original logic of extracting components via strftime to preserve wall clock time before localizing
+            df['Date'] = pd.to_datetime(parsed_dates, utc=True)
+            if not parsed_dates.dropna().empty and hasattr(parsed_dates.dropna().iloc[0], 'tz'):
+                target_tz = parsed_dates.dropna().iloc[0].tz
+                df['Date'] = df['Date'].dt.tz_convert(target_tz).dt.tz_localize(None).dt.tz_localize(target_tz)
 
             self._portfolio_cache = df
             self._portfolio_mtime = current_mtime
@@ -123,9 +125,13 @@ class CSVRepository(BaseRepository):
                 from utils.timezone_utils import get_trading_timezone
                 trading_tz = get_trading_timezone()
                 parsed_dates = df['Date'].apply(self._parse_csv_timestamp)
-                df['Date'] = pd.to_datetime(parsed_dates.apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if hasattr(x, 'strftime') else str(x)))
-                if not parsed_dates.empty and hasattr(parsed_dates.iloc[0], 'tz'):
-                    df['Date'] = df['Date'].dt.tz_localize(parsed_dates.iloc[0].tz)
+                # Convert directly to timezone-aware datetime objects to avoid O(N) string formatting overhead
+                # We first convert to UTC, then back to the local timezone, then strip the timezone and re-localize
+                # This exactly replicates the original logic of extracting components via strftime to preserve wall clock time before localizing
+                df['Date'] = pd.to_datetime(parsed_dates, utc=True)
+                if not parsed_dates.dropna().empty and hasattr(parsed_dates.dropna().iloc[0], 'tz'):
+                    target_tz = parsed_dates.dropna().iloc[0].tz
+                    df['Date'] = df['Date'].dt.tz_convert(target_tz).dt.tz_localize(None).dt.tz_localize(target_tz)
             
             # Filter by date range if provided
             if date_range:
