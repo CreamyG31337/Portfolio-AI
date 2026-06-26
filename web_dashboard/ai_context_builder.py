@@ -1022,7 +1022,195 @@ def format_congress_trades(trades: List[Dict], limit: int = 50) -> str:
     return "\n".join(lines)
 
 
-def format_etf_trades(trades: List[Dict], limit: int = 50) -> str:
+def _etf_direction_label(net_shares: float, buy_count: int, sell_count: int) -> str:
+    """Human-readable dominant direction for ETF or ticker rollup."""
+    if buy_count > 0 and sell_count > 0:
+        if net_shares > 0:
+            return "Mixed (net buying)"
+        if net_shares < 0:
+            return "Mixed (net selling)"
+        return "Mixed"
+    if net_shares > 0 or buy_count > 0:
+        return "Net buying"
+    if net_shares < 0 or sell_count > 0:
+        return "Net selling"
+    return "No activity"
+
+
+def aggregate_etf_changes(changes: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Roll up etf_holdings_changes rows into per-ETF and per-ticker summaries."""
+    etf_buckets: Dict[str, Dict[str, Any]] = {}
+    ticker_buckets: Dict[str, Dict[str, Any]] = {}
+
+    for row in changes:
+        etf = str(row.get("etf_ticker") or "").upper()
+        holding = str(row.get("holding_ticker") or "").upper()
+        if not etf or not holding:
+            continue
+
+        try:
+            share_change = float(row.get("share_change") or row.get("shares_change") or 0)
+        except (TypeError, ValueError):
+            share_change = 0.0
+
+        action = str(row.get("action") or row.get("trade_type") or "").upper()
+        is_buy = action in ("BUY", "PURCHASE")
+        is_sell = action in ("SELL", "SALE")
+
+        if etf not in etf_buckets:
+            etf_buckets[etf] = {
+                "etf_ticker": etf,
+                "buy_events": 0,
+                "sell_events": 0,
+                "net_shares": 0.0,
+                "tickers": set(),
+            }
+        eb = etf_buckets[etf]
+        eb["net_shares"] += share_change
+        eb["tickers"].add(holding)
+        if is_buy:
+            eb["buy_events"] += 1
+        if is_sell:
+            eb["sell_events"] += 1
+
+        if holding not in ticker_buckets:
+            ticker_buckets[holding] = {
+                "holding_ticker": holding,
+                "etfs_buying": set(),
+                "etfs_selling": set(),
+                "net_shares": 0.0,
+            }
+        tb = ticker_buckets[holding]
+        tb["net_shares"] += share_change
+        if is_buy:
+            tb["etfs_buying"].add(etf)
+        if is_sell:
+            tb["etfs_selling"].add(etf)
+
+    etf_summary: List[Dict[str, Any]] = []
+    for etf, data in etf_buckets.items():
+        buy_events = int(data["buy_events"])
+        sell_events = int(data["sell_events"])
+        net_shares = float(data["net_shares"])
+        etf_summary.append({
+            "etf_ticker": etf,
+            "buy_events": buy_events,
+            "sell_events": sell_events,
+            "net_shares": net_shares,
+            "tickers_touched": len(data["tickers"]),
+            "direction": _etf_direction_label(net_shares, buy_events, sell_events),
+        })
+    etf_summary.sort(key=lambda x: abs(x["net_shares"]), reverse=True)
+
+    ticker_summary: List[Dict[str, Any]] = []
+    for holding, data in ticker_buckets.items():
+        buying = sorted(data["etfs_buying"])
+        selling = sorted(data["etfs_selling"])
+        net_shares = float(data["net_shares"])
+        ticker_summary.append({
+            "holding_ticker": holding,
+            "etfs_buying": buying,
+            "etfs_selling": selling,
+            "net_shares": net_shares,
+            "direction": _etf_direction_label(net_shares, len(buying), len(selling)),
+        })
+    ticker_summary.sort(key=lambda x: abs(x["net_shares"]), reverse=True)
+
+    return {"etf_summary": etf_summary, "ticker_summary": ticker_summary}
+
+
+def parse_etf_ticker_from_article_url(url: str) -> Optional[str]:
+    """Parse ETF ticker from etf-analysis://SMH/2026-06-25 style URLs."""
+    if not url or not url.startswith("etf-analysis://"):
+        return None
+    remainder = url[len("etf-analysis://"):]
+    etf_part = remainder.split("/", 1)[0].strip().upper()
+    return etf_part or None
+
+
+def format_etf_context(etf_context: Dict[str, Any], detail_limit: int = 50) -> str:
+    """Format rich ETF context: summaries, nightly ETF Analysis articles, and notable trades."""
+    days = int(etf_context.get("days") or 7)
+    etf_summary = etf_context.get("etf_summary") or []
+    ticker_summary = etf_context.get("ticker_summary") or []
+    recent_trades = etf_context.get("recent_trades") or []
+    etf_articles = etf_context.get("etf_articles") or []
+
+    if not etf_summary and not ticker_summary and not recent_trades and not etf_articles:
+        return f"ETF Activity (Last {days} Days): No ETF activity found for your holdings."
+
+    sections: List[str] = []
+
+    if etf_summary:
+        lines = [
+            f"ETF Activity Summary (Last {days} Days, your holdings):",
+            "",
+            "ETF   | Buys | Sells | Net Shares   | Tickers | Direction",
+            "------|------|-------|--------------|---------|------------------",
+        ]
+        for row in etf_summary:
+            lines.append(
+                f"{row['etf_ticker']:<5} | {row['buy_events']:4} | {row['sell_events']:5} | "
+                f"{row['net_shares']:+12,.0f} | {row['tickers_touched']:7} | {row['direction']}"
+            )
+        sections.append("\n".join(lines))
+
+    if ticker_summary:
+        top_tickers = ticker_summary[:10]
+        lines = [
+            "",
+            "Portfolio tickers — ETF flow (top by absolute net share change):",
+            "",
+            "Ticker | ETFs buying | ETFs selling | Net direction",
+            "-------|-------------|--------------|------------------",
+        ]
+        for row in top_tickers:
+            buying = ", ".join(row["etfs_buying"]) if row["etfs_buying"] else "—"
+            selling = ", ".join(row["etfs_selling"]) if row["etfs_selling"] else "—"
+            lines.append(
+                f"{row['holding_ticker']:<6} | {buying:<11} | {selling:<12} | {row['direction']}"
+            )
+        sections.append("\n".join(lines))
+
+    if etf_articles:
+        lines = [
+            "",
+            "ETF Analysis Summaries (nightly AI, last 7 days):",
+            "",
+        ]
+        for article in etf_articles:
+            etf = article.get("etf_ticker") or "N/A"
+            title = article.get("title") or "Untitled"
+            sentiment = article.get("sentiment") or "N/A"
+            summary = (article.get("summary") or "").strip()
+            if len(summary) > 300:
+                summary = summary[:297] + "..."
+            matched = article.get("matched_holdings") or []
+            matched_str = f" [holdings: {', '.join(matched)}]" if matched else ""
+            lines.append(f"- {etf} | {title} | {sentiment}{matched_str}")
+            if summary:
+                lines.append(f"  {summary}")
+        sections.append("\n".join(lines))
+
+    if recent_trades:
+        detail = format_etf_trades(
+            recent_trades,
+            limit=detail_limit,
+            header=(
+                f"Notable ETF Holding Trades (Last {days} Days, portfolio holdings, "
+                f"by largest share change)"
+            ),
+        )
+        sections.append(detail)
+
+    return "\n\n".join(sections)
+
+
+def format_etf_trades(
+    trades: List[Dict],
+    limit: int = 50,
+    header: Optional[str] = None,
+) -> str:
     """Format ETF holding trades data for LLM context in compact table format.
     
     Args:
@@ -1033,13 +1221,14 @@ def format_etf_trades(trades: List[Dict], limit: int = 50) -> str:
         Formatted string with ETF trades data
     """
     if not trades:
-        return "ETF Trades (Last 7 Days): No ETF trades found."
-    
+        return header or "ETF Trades (Last 7 Days): No ETF trades found."
+
     # Limit number of trades
     df = trades[:limit] if isinstance(trades, list) else []
-    
+
+    table_header = header or f"ETF Trades (Last 7 Days) ({len(df)} trades)"
     lines = [
-        f"ETF Trades (Last 7 Days) ({len(df)} trades):",
+        table_header + ("" if table_header.endswith(":") else ":"),
         "",
         "Date     | Ticker    | ETF       | Action    | Shares Change | Shares After",
         "---------|-----------|-----------|-----------|---------------|--------------"
@@ -1047,11 +1236,11 @@ def format_etf_trades(trades: List[Dict], limit: int = 50) -> str:
     
     for trade in df:
         # Extract fields (normalize None from DB to avoid len()/slicing on None)
-        trade_date = trade.get('trade_date') or ''
+        trade_date = trade.get('trade_date') or trade.get('date') or ''
         holding_ticker = trade.get('holding_ticker') or 'N/A'
         etf_ticker = trade.get('etf_ticker') or 'N/A'
-        trade_type = trade.get('trade_type') or 'N/A'
-        shares_change = trade.get('shares_change', 0)
+        trade_type = trade.get('trade_type') or trade.get('action') or 'N/A'
+        shares_change = trade.get('shares_change', trade.get('share_change', 0))
         shares_after = trade.get('shares_after', 0)
 
         # Format date

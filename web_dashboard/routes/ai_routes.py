@@ -22,7 +22,8 @@ from flask_data_utils import (
 from ai_context_builder import (
     format_holdings, format_thesis, format_trades,
     format_performance_metrics, format_cash_balances,
-    format_insider_trades, format_congress_trades, format_etf_trades
+    format_insider_trades, format_congress_trades, format_etf_context,
+    aggregate_etf_changes, parse_etf_ticker_from_article_url,
 )
 from ollama_client import load_model_config, check_ollama_health, list_available_models
 from searxng_client import check_searxng_health, get_searxng_client
@@ -136,99 +137,166 @@ def _get_congress_trades_for_portfolio(fund: str, days: Optional[int] = None) ->
         return []
 
 
-def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
-    """Get ETF trades for portfolio tickers from last N days.
+def _empty_etf_context(days: int = 7) -> Dict[str, Any]:
+    return {
+        "etf_summary": [],
+        "ticker_summary": [],
+        "recent_trades": [],
+        "etf_articles": [],
+        "days": days,
+    }
 
-    Uses batch SQL function to fetch all tickers in a single query (vs N queries before).
-    """
+
+def _filter_etf_analysis_articles(
+    articles: List[Dict[str, Any]],
+    portfolio_tickers: List[str],
+    active_etfs: set[str],
+    max_articles: int = 8,
+) -> List[Dict[str, Any]]:
+    """Keep ETF Analysis articles relevant to portfolio holdings or active ETFs."""
+    portfolio_set = {t.strip().upper() for t in portfolio_tickers if t}
+    if not portfolio_set:
+        return []
+
+    def _article_sort_key(article: Dict[str, Any]) -> str:
+        fetched = article.get("fetched_at") or article.get("published_at") or ""
+        return str(fetched)
+
+    matched: List[Dict[str, Any]] = []
+    seen_etfs: set[str] = set()
+
+    for article in sorted(articles, key=_article_sort_key, reverse=True):
+        raw_tickers = article.get("tickers") or []
+        if isinstance(raw_tickers, str):
+            raw_tickers = [raw_tickers]
+        art_ticker_set = {str(t).strip().upper() for t in raw_tickers if t}
+        overlap = sorted(art_ticker_set.intersection(portfolio_set))
+
+        etf_from_url = parse_etf_ticker_from_article_url(str(article.get("url") or ""))
+        url_relevant = bool(etf_from_url and etf_from_url in active_etfs)
+
+        if not overlap and not url_relevant:
+            continue
+
+        etf_ticker = etf_from_url
+        if not etf_ticker and article.get("title"):
+            title = str(article["title"])
+            if " Holdings Analysis" in title:
+                etf_ticker = title.split(" Holdings Analysis", 1)[0].strip().upper()
+
+        dedupe_key = etf_ticker or str(article.get("title") or article.get("id") or "")
+        if dedupe_key in seen_etfs:
+            continue
+        seen_etfs.add(dedupe_key)
+
+        matched.append({
+            "etf_ticker": etf_ticker,
+            "title": article.get("title"),
+            "summary": article.get("summary"),
+            "sentiment": article.get("sentiment"),
+            "matched_holdings": overlap,
+            "published_at": article.get("published_at"),
+            "fetched_at": article.get("fetched_at"),
+        })
+        if len(matched) >= max_articles:
+            break
+
+    return matched
+
+
+def _get_etf_context_for_portfolio(fund: str, days: int = 7) -> Dict[str, Any]:
+    """Fetch ETF activity summaries, notable trades, and nightly ETF Analysis articles."""
+    empty = _empty_etf_context(days)
     try:
-        # Get portfolio tickers
         positions_df = get_current_positions_flask(fund)
         if positions_df.empty:
-            return []
+            return empty
 
         ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
-        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
+        portfolio_tickers = [
+            str(t).strip().upper()
+            for t in positions_df[ticker_col].dropna().unique().tolist()
+            if str(t).strip()
+        ]
         if not portfolio_tickers:
-            return []
+            return empty
 
-        # Get Postgres client for Research DB
         try:
             from postgres_client import PostgresClient
+            from research_repository import ResearchRepository
+
             pc = PostgresClient()
         except Exception as e:
-            logger.warning(f"Error creating Postgres client: {e}")
-            return []
+            logger.warning(f"Error creating Postgres client for ETF context: {e}")
+            return empty
 
-        # Calculate date range
         end_date = date.today()
         start_date = end_date - timedelta(days=days)
 
-        # Batch fetch: single SQL query for all tickers (vs N queries before)
-        # The function returns results sorted by date DESC and limited to 15 rows
+        changes: List[Dict[str, Any]] = []
         try:
-            # Convert tickers to uppercase for consistency
-            tickers_upper = [t.upper() for t in portfolio_tickers]
-            result = pc.execute_query("""
-                SELECT * FROM get_etf_holding_trades_batch(%s, %s::date, %s::date, %s)
-            """, (tickers_upper, start_date.isoformat(), end_date.isoformat(), 15))
-
-            if not result:
-                return []
-
-            # Convert to list of dicts
-            all_trades = []
-            for row in result:
-                all_trades.append({
-                    'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
-                    'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
-                    'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
-                    'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
-                    'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
-                    'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
-                })
-            return all_trades
+            rows = pc.execute_query(
+                """
+                SELECT date, etf_ticker, holding_ticker, share_change, percent_change,
+                       action, shares_before, shares_after
+                FROM etf_holdings_changes
+                WHERE holding_ticker = ANY(%s)
+                  AND date >= %s AND date <= %s
+                ORDER BY ABS(share_change) DESC
+                """,
+                (portfolio_tickers, start_date.isoformat(), end_date.isoformat()),
+            )
+            changes = list(rows or [])
         except Exception as e:
-            logger.warning(f"Error in batch ETF query: {e}. Falling back to per-ticker queries.")
-            # Fallback to per-ticker queries if batch function doesn't exist yet
-            return _get_etf_trades_for_portfolio_fallback(portfolio_tickers, start_date, end_date, pc)
+            logger.warning(f"Error fetching ETF holdings changes: {e}")
 
+        aggregates = aggregate_etf_changes(changes)
+        active_etfs = {row["etf_ticker"] for row in aggregates.get("etf_summary", [])}
+
+        recent_trades: List[Dict[str, Any]] = []
+        for row in changes[:50]:
+            recent_trades.append({
+                "trade_date": row.get("date"),
+                "etf_ticker": row.get("etf_ticker"),
+                "holding_ticker": row.get("holding_ticker"),
+                "trade_type": row.get("action"),
+                "shares_change": row.get("share_change"),
+                "shares_after": row.get("shares_after"),
+                "percent_change": row.get("percent_change"),
+            })
+
+        etf_articles: List[Dict[str, Any]] = []
+        try:
+            repo = ResearchRepository(postgres_client=pc)
+            raw_articles = repo.get_recent_articles(
+                limit=30,
+                days=days,
+                article_type="ETF Analysis",
+            )
+            etf_articles = _filter_etf_analysis_articles(
+                raw_articles,
+                portfolio_tickers,
+                active_etfs,
+            )
+        except Exception as e:
+            logger.warning(f"Error fetching ETF Analysis articles: {e}")
+
+        return {
+            "etf_summary": aggregates.get("etf_summary", []),
+            "ticker_summary": aggregates.get("ticker_summary", []),
+            "recent_trades": recent_trades,
+            "etf_articles": etf_articles,
+            "days": days,
+        }
     except Exception as e:
-        logger.warning(f"Error fetching ETF trades: {e}")
-        return []
+        logger.warning(f"Error fetching ETF context: {e}")
+        return empty
 
 
-def _get_etf_trades_for_portfolio_fallback(
-    portfolio_tickers: List[str],
-    start_date: date,
-    end_date: date,
-    pc: Any
-) -> List[Dict]:
-    """Fallback: fetch ETF trades one ticker at a time (for when batch function unavailable)."""
-    all_trades = []
-    for ticker in portfolio_tickers:
-        try:
-            result = pc.execute_query("""
-                SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
-            """, (ticker.upper(), start_date.isoformat(), end_date.isoformat()))
-
-            if result:
-                for row in result:
-                    all_trades.append({
-                        'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
-                        'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
-                        'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
-                        'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
-                        'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
-                        'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
-                    })
-        except Exception as e:
-            logger.warning(f"Error fetching ETF trades for {ticker}: {e}")
-            continue
-
-    # Sort by date descending
-    all_trades.sort(key=lambda x: x.get('trade_date') or date.min, reverse=True)
-    return all_trades[:15]
+def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
+    """Backward-compatible wrapper: returns detail trade rows from ETF context."""
+    ctx = _get_etf_context_for_portfolio(fund, days=days)
+    return ctx.get("recent_trades", [])
 
 
 @cache_data(ttl=300)
@@ -298,12 +366,12 @@ def _get_context_data_packet(user_id: str, fund: str):
     
     try:
         t0 = time.time()
-        etf_trades = _get_etf_trades_for_portfolio(fund, days=7)
-        timings['etf_trades'] = round((time.time() - t0) * 1000, 1)
+        etf_context = _get_etf_context_for_portfolio(fund, days=7)
+        timings['etf_context'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
-        logger.warning(f"Error loading ETF trades: {e}")
-        etf_trades = []
-        timings['etf_trades'] = 'error'
+        logger.warning(f"Error loading ETF context: {e}")
+        etf_context = _empty_etf_context(7)
+        timings['etf_context'] = 'error'
     
     timings['total_data_fetch'] = round((time.time() - total_start) * 1000, 1)
     logger.info(f"[PERF] Context data fetch timings (ms): {timings}")
@@ -317,7 +385,7 @@ def _get_context_data_packet(user_id: str, fund: str):
         'thesis_data': thesis_data,
         'insider_trades': insider_trades,
         'congress_trades': congress_trades,
-        'etf_trades': etf_trades,
+        'etf_context': etf_context,
         '_timings': timings
     }
 
@@ -361,7 +429,7 @@ def _build_context_from_packet(
     thesis_data = data_packet['thesis_data']
     insider_trades = data_packet.get('insider_trades', [])
     congress_trades = data_packet.get('congress_trades', [])
-    etf_trades = data_packet.get('etf_trades', [])
+    etf_context = data_packet.get('etf_context') or _empty_etf_context()
 
     context_parts = []
 
@@ -409,8 +477,8 @@ def _build_context_from_packet(
 
     if include_etf_trades:
         t0 = time.time()
-        context_parts.append(format_etf_trades(etf_trades, limit=50))
-        format_timings['format_etf_trades'] = round((time.time() - t0) * 1000, 1)
+        context_parts.append(format_etf_context(etf_context, detail_limit=50))
+        format_timings['format_etf_context'] = round((time.time() - t0) * 1000, 1)
 
     format_timings['total_format'] = round((time.time() - total_format_start) * 1000, 1)
     

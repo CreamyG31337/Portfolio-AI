@@ -796,7 +796,7 @@ class AIAssistant {
   - thesis: ${df.thesis ?? 'N/A'}ms
   - insider_trades: ${df.insider_trades ?? 'N/A'}ms
   - congress_trades: ${df.congress_trades ?? 'N/A'}ms
-  - etf_trades: ${df.etf_trades ?? 'N/A'}ms
+  - etf_context: ${df.etf_context ?? df.etf_trades ?? 'N/A'}ms
   → TOTAL DATA FETCH: ${df.total_data_fetch ?? 'N/A'}ms`);
                     console.log(`[AIAssistant] ⏱️ FORMATTING BREAKDOWN:
   - format_holdings: ${ft.format_holdings ?? 'N/A'}ms
@@ -806,7 +806,7 @@ class AIAssistant {
   - format_trades: ${ft.format_trades ?? 'N/A'}ms
   - format_insider_trades: ${ft.format_insider_trades ?? 'N/A'}ms
   - format_congress_trades: ${ft.format_congress_trades ?? 'N/A'}ms
-  - format_etf_trades: ${ft.format_etf_trades ?? 'N/A'}ms
+  - format_etf_context: ${ft.format_etf_context ?? ft.format_etf_trades ?? 'N/A'}ms
   → TOTAL FORMAT: ${ft.total_format ?? 'N/A'}ms`);
                 }
                 
