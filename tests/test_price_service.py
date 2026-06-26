@@ -204,6 +204,33 @@ class TestPriceService(unittest.TestCase):
         self.assertEqual(pos.shares, Decimal('100'))
         self.assertEqual(pos.avg_price, Decimal('140.00'))
         self.assertEqual(pos.company, 'Apple Inc.')
+
+    def test_update_positions_with_historical_prices_skips_trailing_zero_bar(self):
+        """A trailing $0 close must not zero out the position (uses prior bar)."""
+        positions = [
+            Position(
+                ticker='AAPL',
+                shares=Decimal('100'),
+                avg_price=Decimal('140.00'),
+                cost_basis=Decimal('14000.00'),
+                currency='USD',
+                company='Apple Inc.',
+                current_price=Decimal('140.00'),
+            )
+        ]
+        mock_df = pd.DataFrame({'Close': [150.0, 0.0]})
+        self.mock_cache.get_cached_price.return_value = mock_df
+
+        updated, hits, calls = self.service.update_positions_with_prices(
+            positions,
+            use_historical=True,
+            start_date=self.week_ago,
+            end_date=self.today,
+            verbose=False,
+        )
+
+        self.assertEqual(len(updated), 1)
+        self.assertEqual(updated[0].current_price, Decimal('150.0'))
     
     def test_update_positions_with_current_prices(self):
         """Test updating positions with current prices."""

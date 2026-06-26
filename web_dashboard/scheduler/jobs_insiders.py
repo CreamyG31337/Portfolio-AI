@@ -11,7 +11,6 @@ import logging
 import time
 import requests
 import os
-import json
 import base64
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -53,7 +52,12 @@ from scheduler.scheduler_core import log_job_execution
 # Initialize logger
 logger = logging.getLogger(__name__)
 
-from web_fetch_client import fetch_page_via_flaresolverr
+from web_fetch_client import fetch_page_via_flaresolverr, get_web_fetch_client
+
+_INSIDER_DATA_VAR_NAMES = (
+    "recentInsiderTransactionsData",
+    "topMonthlyInsiderTransactionsData",
+)
 
 
 def _get_insider_source_url() -> str:
@@ -129,6 +133,75 @@ def parse_shares(shares_str: str) -> Optional[int]:
         return int(float(clean_str) * multiplier)
     except (ValueError, AttributeError):
         return None
+
+
+def _extract_bracketed_array(script_content: str, var_name: str) -> Optional[str]:
+    """Extract a bracket-balanced array literal assigned to ``var_name``."""
+    marker = f"{var_name} ="
+    idx = script_content.find(marker)
+    if idx < 0:
+        return None
+    start = script_content.find("[", idx)
+    if start < 0:
+        return None
+    depth = 0
+    for pos in range(start, len(script_content)):
+        char = script_content[pos]
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return script_content[start : pos + 1]
+    return None
+
+
+def _parse_insider_trades_from_html(html_content: str) -> List[Dict[str, Any]]:
+    """Parse embedded insider trade rows from the source page HTML."""
+    soup = BeautifulSoup(html_content, "html.parser")
+    for script in soup.find_all("script", src=False):
+        if not script.string:
+            continue
+        script_content = script.string
+        for var_name in _INSIDER_DATA_VAR_NAMES:
+            if var_name not in script_content:
+                continue
+            array_literal = _extract_bracketed_array(script_content, var_name)
+            if not array_literal:
+                logger.debug("Could not extract array for %s", var_name)
+                continue
+            try:
+                trades_data = ast.literal_eval(array_literal)
+            except (ValueError, SyntaxError) as parse_error:
+                logger.warning("Failed to parse %s: %s", var_name, parse_error)
+                continue
+            if isinstance(trades_data, list) and trades_data:
+                logger.info("Found %d trades in %s", len(trades_data), var_name)
+                return trades_data
+    return []
+
+
+def _fetch_insider_trades_from_source(url: str) -> tuple[List[Dict[str, Any]], str]:
+    """Fetch source HTML and parse trades. Retries with direct HTTP if FlareSolverr HTML is unusable."""
+    html_content = fetch_page_via_flaresolverr(url)
+    if html_content:
+        trades_data = _parse_insider_trades_from_html(html_content)
+        if trades_data:
+            return trades_data, "flaresolverr"
+        logger.warning(
+            "FlareSolverr returned HTML but no insider trades data; trying direct fetch..."
+        )
+
+    try:
+        html_content = get_web_fetch_client().fetch_direct_html(url)
+    except requests.exceptions.RequestException as direct_error:
+        logger.warning("Direct fetch failed for insider source: %s", direct_error)
+        return [], "none"
+
+    trades_data = _parse_insider_trades_from_html(html_content)
+    if trades_data:
+        return trades_data, "direct"
+    return [], "none"
 
 
 def fetch_insider_trades_job() -> None:
@@ -226,64 +299,9 @@ def fetch_insider_trades_job() -> None:
         url = source_url
         try:
             logger.info("Fetching insider trades from source...")
-
-            # Try FlareSolverr first
-            html_content = fetch_page_via_flaresolverr(url)
-
-            if not html_content:
-                logger.warning("FlareSolverr failed or unavailable, trying direct request...")
-                # Fallback to direct request
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Connection': 'keep-alive',
-                }
-                response = requests.get(url, headers=headers, timeout=30)
-                response.raise_for_status()
-                html_content = response.text
-
-            # Parse HTML with BeautifulSoup
-            soup = BeautifulSoup(html_content, 'html.parser')
-
-            # Look for embedded data in script tags
-            # The source page embeds insider trades as JavaScript variables
-            inline_scripts = soup.find_all('script', src=False)
-            trades_data = []
-
-            for script in inline_scripts:
-                if not script.string:
-                    continue
-
-                script_content = script.string
-
-                # Look for recentInsiderTransactionsData variable
-                if 'recentInsiderTransactionsData' in script_content or 'topMonthlyInsiderTransactionsData' in script_content:
-                    logger.debug("Found insider transactions data in script")
-
-                    # Extract the JavaScript array
-                    # Pattern: let recentInsiderTransactionsData = [{...}, {...}];
-                    match = re.search(r'(?:recentInsiderTransactionsData|topMonthlyInsiderTransactionsData)\s*=\s*(\[.+?\]);', script_content, re.DOTALL)
-
-                    if match:
-                        json_str = match.group(1)
-                        try:
-                            # Convert JavaScript to valid JSON (replace single quotes with double quotes if needed)
-                            # The source uses Python dict notation which is valid JS but not JSON
-                            json_str_fixed = json_str.replace("'", '"').replace('True', 'true').replace('False', 'false').replace('None', 'null')
-                            trades_data = json.loads(json_str_fixed)
-                            logger.info(f"Found {len(trades_data)} trades in embedded data")
-                            break
-                        except json.JSONDecodeError as e:
-                            logger.warning(f"Failed to parse embedded data: {e}")
-                            # Try ast.literal_eval as fallback (safe for dict/list from source page)
-                            try:
-                                trades_data = ast.literal_eval(json_str)
-                                logger.info(f"Found {len(trades_data)} trades using literal_eval")
-                                break
-                            except Exception as literal_eval_error:
-                                logger.warning(f"literal_eval also failed: {literal_eval_error}")
-                                continue
+            trades_data, fetch_method = _fetch_insider_trades_from_source(url)
+            if trades_data:
+                logger.info("Loaded insider trades via %s", fetch_method)
 
             if not trades_data:
                 logger.warning("No embedded insider trades data found on page")
