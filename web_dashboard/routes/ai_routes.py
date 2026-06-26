@@ -772,6 +772,11 @@ def api_ai_models():
             "details": errors,
         }), 503
 
+    model_ids = [m["id"] for m in formatted_models if m.get("id")]
+    if default_model and model_ids and default_model not in model_ids:
+        from model_registry import resolve_ai_model_preference
+        default_model = resolve_ai_model_preference(default_model, model_ids)
+
     payload: dict[str, object] = {
         "models": formatted_models,
         "default_model": default_model,

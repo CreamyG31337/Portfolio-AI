@@ -9,13 +9,29 @@ Bench/eval-only constants are included for scripts under tests/benchmarks and ve
 from __future__ import annotations
 
 import os
-from typing import List
+from typing import List, Optional
 
 # Same default coding endpoint as glm_config (avoid importing glm_config at module load).
 _DEFAULT_ZHIPU_BASE = "https://api.z.ai/api/coding/paas/v4"
 
 PRIMARY_MODEL_DEFAULT = "glm-5.2"
 CHEAP_MODEL_DEFAULT = "glm-5-turbo"
+
+# GLM ids exposed in UI pickers (Z.AI Coding Plan).
+SUPPORTED_GLM_MODELS: List[str] = [
+    "glm-5.2",
+    "glm-5.1",
+    "glm-5-turbo",
+    "glm-4.5-air",
+]
+
+# Retired GLM ids mapped to the current primary on read.
+DEPRECATED_MODEL_MAP: dict[str, str] = {
+    "glm-4.7": PRIMARY_MODEL_DEFAULT,
+    "glm-4.6": PRIMARY_MODEL_DEFAULT,
+    "glm-4.5": PRIMARY_MODEL_DEFAULT,
+    "glm-5": PRIMARY_MODEL_DEFAULT,
+}
 # Local Ollama roles (summarization primary + queue worker defaults).
 OLLAMA_SUMMARIZING_DEFAULT = "qwen3.6:27b-heretic"
 OLLAMA_QUEUE_PRIMARY_DEFAULT = "granite4.1:8b"
@@ -44,6 +60,28 @@ PROBE_DEFAULT_MODELS: List[str] = [
     "glm-4.5",
     "glm-4.5-air",
 ]
+
+
+def resolve_ai_model_preference(
+    stored: Optional[str],
+    available_ids: Optional[List[str]] = None,
+) -> str:
+    """Normalize a stored model id: apply deprecation map, then clamp to available list."""
+    candidate = (stored or "").strip()
+    if not candidate:
+        candidate = get_primary_model()
+
+    candidate = DEPRECATED_MODEL_MAP.get(candidate, candidate)
+
+    if available_ids is not None:
+        available = [m for m in available_ids if m]
+        if available and candidate not in available:
+            primary = get_primary_model()
+            if primary in available:
+                return primary
+            return available[0]
+
+    return candidate
 
 
 def get_primary_model() -> str:

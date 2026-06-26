@@ -42,6 +42,7 @@ interface ContextPreviewResponse {
 
 interface ModelsResponse {
     models?: Array<{ id: string; name: string }>;
+    default_model?: string;
 }
 
 interface ContextResponse {
@@ -933,11 +934,26 @@ class AIAssistant {
                         const option = document.createElement('option');
                         option.value = model.id;
                         option.textContent = model.name; // API handles display names
-                        if (model.id === this.selectedModel) {
-                            option.selected = true;
-                        }
                         select.appendChild(option);
                     });
+
+                    const preferredId = this.selectedModel || data.default_model || this.config.defaultModel;
+                    const preferredOption = preferredId
+                        ? Array.from(select.options).find((option) => option.value === preferredId)
+                        : null;
+                    if (preferredOption) {
+                        select.value = preferredOption.value;
+                    } else if (select.options.length > 0) {
+                        select.value = select.options[0].value;
+                    }
+
+                    const previousModel = this.selectedModel;
+                    this.selectedModel = select.value;
+                    if (previousModel !== this.selectedModel) {
+                        this.updateModelDisplay();
+                        this.saveModelPreference();
+                    }
+
                     this.updateModelDescription();
                 } else {
                     console.error('Invalid models format received:', data);
