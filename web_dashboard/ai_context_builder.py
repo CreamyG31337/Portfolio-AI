@@ -907,7 +907,7 @@ def format_insider_trades(trades: List[Dict], limit: int = 50) -> str:
         Formatted string with insider trades data
     """
     if not trades:
-        return "Insider Trades (Last 7 Days): No insider trades found."
+        return ""
     
     # Limit number of trades
     df = trades[:limit] if isinstance(trades, list) else []
@@ -958,24 +958,25 @@ def format_insider_trades(trades: List[Dict], limit: int = 50) -> str:
     return "\n".join(lines)
 
 
-def format_congress_trades(trades: List[Dict], limit: int = 50) -> str:
+def format_congress_trades(trades: List[Dict], limit: int = 50, days: int = 30) -> str:
     """Format congress trades data for LLM context in compact table format.
     
     Args:
         trades: List of congress trade dictionaries
         limit: Maximum number of trades to include
+        days: Lookback window label (for header)
         
     Returns:
         Formatted string with congress trades data
     """
     if not trades:
-        return "Congress Trades (Last 7 Days): No congress trades found."
+        return ""
     
     # Limit number of trades
     df = trades[:limit] if isinstance(trades, list) else []
     
     lines = [
-        f"Congress Trades (Last 7 Days) ({len(df)} trades):",
+        f"Congress Trades (Last {days} Days) ({len(df)} trades):",
         "",
         "Date     | Ticker    | Politician            | Chamber  | Type      | Amount",
         "---------|-----------|-----------------------|----------|-----------|----------"

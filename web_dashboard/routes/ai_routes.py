@@ -59,21 +59,69 @@ def _get_ai_context_cache_ttl() -> int:
 # Cached Helper Functions
 # ============================================================================
 
+def _coerce_bool_flag(value: Any, default: bool = True) -> bool:
+    """Parse JSON/form booleans reliably (avoids truthy string \"false\")."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("0", "false", "no", "off"):
+            return False
+        if lowered in ("1", "true", "yes", "on"):
+            return True
+    return bool(value)
+
+
+def _portfolio_ticker_list(positions_df: Any) -> List[str]:
+    """Unique uppercased tickers from a positions DataFrame."""
+    if positions_df is None or getattr(positions_df, "empty", True):
+        return []
+    ticker_col = "ticker" if "ticker" in positions_df.columns else "symbol"
+    return [
+        str(t).strip().upper()
+        for t in positions_df[ticker_col].dropna().unique().tolist()
+        if str(t).strip()
+    ]
+
+
+def _congress_lookup_tickers(portfolio_tickers: List[str]) -> List[str]:
+    """Expand portfolio tickers for US congress_trades (strip exchange suffixes)."""
+    lookup: set[str] = set()
+    for raw in portfolio_tickers:
+        upper = str(raw).strip().upper()
+        if not upper:
+            continue
+        lookup.add(upper)
+        if "." in upper:
+            lookup.add(upper.split(".", 1)[0])
+    return sorted(lookup)
+
+
+def _get_reference_data_supabase_client():
+    """Supabase client for global reference tables (congress/insider trades).
+
+    Congress and insider data are not fund-scoped; service role avoids empty
+    results when the browser JWT is missing or stale for RLS.
+    """
+    try:
+        from supabase_client import SupabaseClient
+        return SupabaseClient(use_service_role=True)
+    except Exception as e:
+        logger.warning(f"Error creating service-role Supabase client: {e}")
+        return get_supabase_client_flask()
+
+
 def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
     """Get insider trades for portfolio tickers from last N days."""
     try:
-        # Get portfolio tickers
         positions_df = get_current_positions_flask(fund)
-        if positions_df.empty:
-            return []
-        
-        ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
-        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
+        portfolio_tickers = _portfolio_ticker_list(positions_df)
         if not portfolio_tickers:
             return []
-        
-        # Get Supabase client
-        client = get_supabase_client_flask()
+
+        client = _get_reference_data_supabase_client()
         if not client:
             return []
         
@@ -84,7 +132,7 @@ def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         # Query insider trades
         result = client.supabase.table("insider_trades")\
             .select("ticker, insider_name, insider_title, transaction_date, disclosure_date, type, shares, price_per_share, value")\
-            .in_("ticker", [t.upper() for t in portfolio_tickers])\
+            .in_("ticker", portfolio_tickers)\
             .gte("transaction_date", start_date.isoformat())\
             .lte("transaction_date", end_date.isoformat())\
             .order("transaction_date", desc=True)\
@@ -97,40 +145,34 @@ def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         return []
 
 
-def _get_congress_trades_for_portfolio(fund: str, days: Optional[int] = None) -> List[Dict]:
-    """Get the most recent congress trades for portfolio tickers."""
+def _get_congress_trades_for_portfolio(fund: str, days: int = 30) -> List[Dict]:
+    """Get recent congress trades for portfolio tickers (default 30d — disclosure lag)."""
     try:
-        # Get portfolio tickers
         positions_df = get_current_positions_flask(fund)
-        if positions_df.empty:
-            return []
-        
-        ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
-        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
+        portfolio_tickers = _portfolio_ticker_list(positions_df)
         if not portfolio_tickers:
             return []
-        
-        # Get Supabase client
-        client = get_supabase_client_flask()
+
+        lookup_tickers = _congress_lookup_tickers(portfolio_tickers)
+        if not lookup_tickers:
+            return []
+
+        client = _get_reference_data_supabase_client()
         if not client:
             return []
-        
-        # Query congress trades
-        # TODO(perf): If this grows large, consider a SQL function/view with ticker array + limit,
-        # plus a composite index on (ticker, transaction_date DESC) in congress_trades_enriched.
+
+        end_date = datetime.now(timezone.utc).date()
+        start_date = end_date - timedelta(days=days)
+
         query = client.supabase.table("congress_trades_enriched")\
             .select("ticker, politician, chamber, party, state, transaction_date, type, amount, owner")\
-            .in_("ticker", [t.upper() for t in portfolio_tickers])\
+            .in_("ticker", lookup_tickers)\
+            .gte("transaction_date", start_date.isoformat())\
+            .lte("transaction_date", end_date.isoformat())\
             .order("transaction_date", desc=True)
 
-        if days is not None:
-            end_date = datetime.now(timezone.utc).date()
-            start_date = end_date - timedelta(days=days)
-            query = query.gte("transaction_date", start_date.isoformat())\
-                .lte("transaction_date", end_date.isoformat())
+        result = query.limit(50).execute()
 
-        result = query.limit(10).execute()
-        
         return result.data if result.data else []
     except Exception as e:
         logger.warning(f"Error fetching congress trades: {e}")
@@ -357,7 +399,7 @@ def _get_context_data_packet(user_id: str, fund: str):
     
     try:
         t0 = time.time()
-        congress_trades = _get_congress_trades_for_portfolio(fund, days=7)
+        congress_trades = _get_congress_trades_for_portfolio(fund, days=30)
         timings['congress_trades'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
         logger.warning(f"Error loading congress trades: {e}")
@@ -385,6 +427,7 @@ def _get_context_data_packet(user_id: str, fund: str):
         'thesis_data': thesis_data,
         'insider_trades': insider_trades,
         'congress_trades': congress_trades,
+        'congress_trades_days': 30,
         'etf_context': etf_context,
         '_timings': timings
     }
@@ -465,14 +508,15 @@ def _build_context_from_packet(
         context_parts.append(format_trades(trades_df, limit=100))
         format_timings['format_trades'] = round((time.time() - t0) * 1000, 1)
 
-    if include_insider_trades:
+    if include_insider_trades and insider_trades:
         t0 = time.time()
         context_parts.append(format_insider_trades(insider_trades, limit=50))
         format_timings['format_insider_trades'] = round((time.time() - t0) * 1000, 1)
 
-    if include_congress_trades:
+    if include_congress_trades and congress_trades:
         t0 = time.time()
-        context_parts.append(format_congress_trades(congress_trades, limit=50))
+        congress_days = int(data_packet.get('congress_trades_days') or 30)
+        context_parts.append(format_congress_trades(congress_trades, limit=50, days=congress_days))
         format_timings['format_congress_trades'] = round((time.time() - t0) * 1000, 1)
 
     if include_etf_trades:
@@ -768,9 +812,9 @@ def api_ai_preview_context():
         include_fund = data.get('include_fundamentals', True)
         include_thesis = data.get('include_thesis', False)
         include_trades = data.get('include_trades', False)
-        include_insider_trades = data.get('include_insider_trades', True)
-        include_congress_trades = data.get('include_congress_trades', True)
-        include_etf_trades = data.get('include_etf_trades', True)
+        include_insider_trades = _coerce_bool_flag(data.get('include_insider_trades'), True)
+        include_congress_trades = _coerce_bool_flag(data.get('include_congress_trades'), True)
+        include_etf_trades = _coerce_bool_flag(data.get('include_etf_trades'), True)
 
         context_string, timings = _get_preview_context_string(
             user_id=user_id,
@@ -877,9 +921,9 @@ def api_ai_context_build():
 
         include_pv = data.get('include_price_volume', True)
         include_fund = data.get('include_fundamentals', True)
-        include_insider_trades = data.get('include_insider_trades', True)
-        include_congress_trades = data.get('include_congress_trades', True)
-        include_etf_trades = data.get('include_etf_trades', True)
+        include_insider_trades = _coerce_bool_flag(data.get('include_insider_trades'), True)
+        include_congress_trades = _coerce_bool_flag(data.get('include_congress_trades'), True)
+        include_etf_trades = _coerce_bool_flag(data.get('include_etf_trades'), True)
 
         context_string, _format_timings = _build_context_from_packet(
             fund=fund,

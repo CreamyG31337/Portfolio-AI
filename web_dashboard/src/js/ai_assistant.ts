@@ -155,10 +155,10 @@ class AIAssistant {
             this.loadFunds();
             this.loadPortfolioTickers();
             this.loadContextItems();
-            this.loadUserPreferences(); // Load user preferences (including includeSearch)
+            await this.loadUserPreferences();
             this.updateUI();
 
-            // Eagerly load context - this enables the send button when done
+            // Load context after preferences so trade toggles are correct
             this.loadContext();
 
             // Initialize display
