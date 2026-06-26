@@ -1819,6 +1819,7 @@ async function startScheduler(): Promise<void> {
 }
 
 
+// TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
 // Global functions for inline onclick handlers
 function toggleParams(id: string): void {
     const el = document.getElementById(`params-${id}`);

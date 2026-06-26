@@ -679,8 +679,9 @@ function openEditModal(trade: Trade): void {
     const name = getCompanyName(trade.ticker || '');
     updateEditCompanyName(name);
 
-    // Open via Flowbite's trigger so the modal is in Flowbite's registry (needed for
-    // data-modal-hide, backdrop, focus trap and Esc handling).
+    // TODO(palette): Use Flowbite Modal API (new Modal(el).show()/hide()) instead of
+    // simulating clicks on hidden trigger buttons — same pattern in closeEditModal,
+    // delete modal helpers, and funds.ts.
     document.getElementById('edit-trade-modal-trigger')?.click();
 }
 

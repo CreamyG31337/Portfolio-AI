@@ -97,7 +97,8 @@ function updateFundIndicators(): void {
     if (elements.cashIndicator) elements.cashIndicator.textContent = label;
 }
 
-// Close edit modal by clicking Flowbite's hide trigger (modal must be initialized via data-modal-target)
+// TODO(palette): Use Flowbite Modal API (new Modal(el).show()/hide()) instead of
+// simulating clicks on data-modal-hide triggers — see trade_entry.ts.
 function closeEditModal(): void {
     document.querySelector<HTMLElement>('[data-modal-hide="edit-fund-modal"]')?.click();
 }

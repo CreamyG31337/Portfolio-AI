@@ -1956,6 +1956,7 @@ class AIAssistant {
             content.appendChild(resultItem);
         });
 
+        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
         header.addEventListener('click', () => {
             content.classList.toggle('hidden');
             const arrow = header.querySelector('span:last-child');
@@ -2005,6 +2006,7 @@ class AIAssistant {
             content.appendChild(articleItem);
         });
 
+        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
         header.addEventListener('click', () => {
             content.classList.toggle('hidden');
             const arrow = header.querySelector('span:last-child');

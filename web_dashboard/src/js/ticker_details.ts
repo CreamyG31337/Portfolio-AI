@@ -1783,7 +1783,7 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
             </div>
         `;
 
-        // Toggle row details and keep chevron aligned with final state.
+        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
         row.querySelector('.research-row-toggle')?.addEventListener('click', () => {
             const chevron = document.getElementById(`${rowId}-chevron`);
             const detail = document.getElementById(rowId);
