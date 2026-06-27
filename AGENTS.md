@@ -12,6 +12,8 @@
 
 ## Environment Setup
 
+- **Repo path (local, not OneDrive):** `C:\Projects\LLM-Micro-Cap-trading-bot`
+- **Migrate from OneDrive:** `.\scripts\migrate_off_onedrive.ps1 -SetupDeps`
 - **Always activate venv first**: `.\venv\Scripts\activate`
 - **Use TEST fund for development**: `trading_data/funds/TEST` (NOT `trading_data/funds/Project Chimera` — that's production)
 - Copy CSVs from Project Chimera → TEST anytime for testing

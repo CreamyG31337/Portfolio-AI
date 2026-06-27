@@ -1,0 +1,20 @@
+# Reduce Cursor indexing load (83k+ files with venv/node_modules).
+venv/
+web_dashboard/venv/
+.venv/
+node_modules/
+web_dashboard/node_modules/
+graphify-out/cache/
+.git/
+**/__pycache__/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.pytest_cache/
+trading_data/**/*.csv
+trading_data/**/*.json
+!trading_data/**/fund_config.json
+!trading_data/**/README.md
+verification/
+debug/
+graphs/
+.pnpm-store/

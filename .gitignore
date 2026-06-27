@@ -203,7 +203,7 @@ debug/insider_junk/
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
-.cursorindexingignore
+# .cursorindexingignore is committed — shared index exclusions for all dev machines
 
 # Marimo
 marimo/_static/
