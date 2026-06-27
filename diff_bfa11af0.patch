@@ -1,0 +1,369 @@
+commit bfa11af0c0ae4bfea51293ce0b4c640b31339aaa
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Fri Jun 26 10:45:17 2026 -0700
+
+    refactor(glm): update GLM model management and deprecate older versions
+
+    - Replaced hardcoded GLM model list with dynamic retrieval from model_registry.
+    - Marked older GLM models (4.5, 4.6, 4.7) as deprecated in model_config.json, directing users to use glm-5.2.
+    - Enhanced user preference handling to migrate deprecated model IDs to supported ones.
+    - Updated AI model selection logic in user_preferences.py and ai_routes.py to ensure compatibility with new model management.
+    - Adjusted front-end model selection to reflect changes in available models.
+
+    These changes improve model management and ensure users are directed towards the latest supported models.
+
+diff --git a/tests/test_model_registry.py b/tests/test_model_registry.py
+new file mode 100644
+index 00000000..3c269c3e
+--- /dev/null
++++ b/tests/test_model_registry.py
+@@ -0,0 +1,57 @@
++"""Tests for AI model preference resolution and deprecated GLM migration."""
++
++from __future__ import annotations
++
++import sys
++from pathlib import Path
++from unittest.mock import patch
++
++import pytest
++
++WEB_DASHBOARD_ROOT = Path(__file__).resolve().parent.parent / "web_dashboard"
++if str(WEB_DASHBOARD_ROOT) not in sys.path:
++    sys.path.insert(0, str(WEB_DASHBOARD_ROOT))
++
++from model_registry import (  # noqa: E402
++    PRIMARY_MODEL_DEFAULT,
++    resolve_ai_model_preference,
++)
++
++
++@pytest.mark.parametrize(
++    "stored,available,expected",
++    [
++        ("glm-4.7", None, PRIMARY_MODEL_DEFAULT),
++        ("glm-4.6", ["glm-5.2", "glm-5.1"], PRIMARY_MODEL_DEFAULT),
++        ("glm-4.7", ["granite4.1:8b"], "granite4.1:8b"),
++        ("glm-5.2", ["glm-5.2", "glm-5.1"], "glm-5.2"),
++        (None, ["granite4.1:8b"], "granite4.1:8b"),
++    ],
++)
++def test_resolve_ai_model_preference(
++    stored: str | None,
++    available: list[str] | None,
++    expected: str,
++) -> None:
++    assert resolve_ai_model_preference(stored, available) == expected
++
++
++def test_get_user_ai_model_migrates_deprecated_preference() -> None:
++    import user_preferences  # noqa: E402
++
++    with patch.object(
++        user_preferences,
++        "get_user_preference",
++        return_value="glm-4.7",
++    ), patch.object(
++        user_preferences,
++        "set_user_preference",
++        return_value=True,
++    ) as mock_set, patch(
++        "ollama_client.list_available_models",
++        return_value=["glm-5.2", "glm-5.1", "granite4.1:8b"],
++    ):
++        result = user_preferences.get_user_ai_model()
++
++    assert result == PRIMARY_MODEL_DEFAULT
++    mock_set.assert_called_once_with("ai_model", PRIMARY_MODEL_DEFAULT)
+diff --git a/web_dashboard/glm_config.py b/web_dashboard/glm_config.py
+index dae31663..3eb71110 100644
+--- a/web_dashboard/glm_config.py
++++ b/web_dashboard/glm_config.py
+@@ -25,17 +25,10 @@ from env_loader import load_project_dotenv
+ load_project_dotenv()
+
+ # Allowlist: order = rough preference for UI; only ids also returned by GET /models are shown.
+-# GLM-5.x / 4.6 availability depends on Z.AI plan; keys that recently lacked 5.x may need cache refresh.
+-GLM_ALLOWED: List[str] = [
+-    "glm-5.2",
+-    "glm-5.1",
+-    "glm-5-turbo",
+-    "glm-5",
+-    "glm-4.7",
+-    "glm-4.6",
+-    "glm-4.5",
+-    "glm-4.5-air",
+-]
++# GLM-5.x / 4.5-air availability depends on Z.AI plan; keys that recently lacked 5.x may need cache refresh.
++from model_registry import SUPPORTED_GLM_MODELS
++
++GLM_ALLOWED: List[str] = list(SUPPORTED_GLM_MODELS)
+ # Static list when API is unavailable
+ GLM_MODELS: List[str] = ["glm-5.2", "glm-5.1", "glm-5-turbo", "glm-4.5-air"]
+
+diff --git a/web_dashboard/model_config.json b/web_dashboard/model_config.json
+index 6f3e37a7..6b8b2324 100644
+--- a/web_dashboard/model_config.json
++++ b/web_dashboard/model_config.json
+@@ -135,14 +135,16 @@
+             "num_ctx": 128000,
+             "temperature": 0.1,
+             "max_tokens": 4096,
+-            "desc": "Zhipu GLM-4.7 via Z.AI. Best quality."
++            "desc": "Zhipu GLM-4.7 via Z.AI. Retired; use glm-5.2.",
++            "hidden": true
+         },
+         "glm-4.5": {
+             "provider": "zhipu",
+             "num_ctx": 128000,
+             "temperature": 0.1,
+             "max_tokens": 4096,
+-            "desc": "Zhipu GLM-4.5 (full MoE) via Z.AI."
++            "desc": "Zhipu GLM-4.5 (full MoE) via Z.AI. Retired; use glm-5.2.",
++            "hidden": true
+         },
+         "glm-4.5-air": {
+             "provider": "zhipu",
+@@ -156,7 +158,8 @@
+             "num_ctx": 200000,
+             "temperature": 0.1,
+             "max_tokens": 4096,
+-            "desc": "Zhipu GLM-4.6 via Z.AI (if enabled for your key)."
++            "desc": "Zhipu GLM-4.6 via Z.AI. Retired; use glm-5.2.",
++            "hidden": true
+         },
+         "glm-5.2": {
+             "provider": "zhipu",
+@@ -184,7 +187,8 @@
+             "num_ctx": 200000,
+             "temperature": 0.1,
+             "max_tokens": 4096,
+-            "desc": "Zhipu GLM-5 base via Z.AI (if enabled for your key)."
++            "desc": "Zhipu GLM-5 base via Z.AI. Retired; use glm-5.2.",
++            "hidden": true
+         },
+         "gemini-2.5-flash": {
+             "provider": "webai",
+diff --git a/web_dashboard/model_registry.py b/web_dashboard/model_registry.py
+index 64c68fa4..fbee7842 100644
+--- a/web_dashboard/model_registry.py
++++ b/web_dashboard/model_registry.py
+@@ -9,13 +9,29 @@ Bench/eval-only constants are included for scripts under tests/benchmarks and ve
+ from __future__ import annotations
+
+ import os
+-from typing import List
++from typing import List, Optional
+
+ # Same default coding endpoint as glm_config (avoid importing glm_config at module load).
+ _DEFAULT_ZHIPU_BASE = "https://api.z.ai/api/coding/paas/v4"
+
+ PRIMARY_MODEL_DEFAULT = "glm-5.2"
+ CHEAP_MODEL_DEFAULT = "glm-5-turbo"
++
++# GLM ids exposed in UI pickers (Z.AI Coding Plan).
++SUPPORTED_GLM_MODELS: List[str] = [
++    "glm-5.2",
++    "glm-5.1",
++    "glm-5-turbo",
++    "glm-4.5-air",
++]
++
++# Retired GLM ids mapped to the current primary on read.
++DEPRECATED_MODEL_MAP: dict[str, str] = {
++    "glm-4.7": PRIMARY_MODEL_DEFAULT,
++    "glm-4.6": PRIMARY_MODEL_DEFAULT,
++    "glm-4.5": PRIMARY_MODEL_DEFAULT,
++    "glm-5": PRIMARY_MODEL_DEFAULT,
++}
+ # Local Ollama roles (summarization primary + queue worker defaults).
+ OLLAMA_SUMMARIZING_DEFAULT = "qwen3.6:27b-heretic"
+ OLLAMA_QUEUE_PRIMARY_DEFAULT = "granite4.1:8b"
+@@ -46,6 +62,28 @@ PROBE_DEFAULT_MODELS: List[str] = [
+ ]
+
+
++def resolve_ai_model_preference(
++    stored: Optional[str],
++    available_ids: Optional[List[str]] = None,
++) -> str:
++    """Normalize a stored model id: apply deprecation map, then clamp to available list."""
++    candidate = (stored or "").strip()
++    if not candidate:
++        candidate = get_primary_model()
++
++    candidate = DEPRECATED_MODEL_MAP.get(candidate, candidate)
++
++    if available_ids is not None:
++        available = [m for m in available_ids if m]
++        if available and candidate not in available:
++            primary = get_primary_model()
++            if primary in available:
++                return primary
++            return available[0]
++
++    return candidate
++
++
+ def get_primary_model() -> str:
+     """Preferred GLM id for most production workloads (chat, jobs using flagship)."""
+     env = os.getenv("AI_PRIMARY_MODEL", "").strip()
+diff --git a/web_dashboard/routes/ai_routes.py b/web_dashboard/routes/ai_routes.py
+index 7b29394b..5c03dc58 100644
+--- a/web_dashboard/routes/ai_routes.py
++++ b/web_dashboard/routes/ai_routes.py
+@@ -772,6 +772,11 @@ def api_ai_models():
+             "details": errors,
+         }), 503
+
++    model_ids = [m["id"] for m in formatted_models if m.get("id")]
++    if default_model and model_ids and default_model not in model_ids:
++        from model_registry import resolve_ai_model_preference
++        default_model = resolve_ai_model_preference(default_model, model_ids)
++
+     payload: dict[str, object] = {
+         "models": formatted_models,
+         "default_model": default_model,
+diff --git a/web_dashboard/src/js/ai_assistant.ts b/web_dashboard/src/js/ai_assistant.ts
+index 163c061d..0f47c53e 100644
+--- a/web_dashboard/src/js/ai_assistant.ts
++++ b/web_dashboard/src/js/ai_assistant.ts
+@@ -42,6 +42,7 @@ interface ContextPreviewResponse {
+
+ interface ModelsResponse {
+     models?: Array<{ id: string; name: string }>;
++    default_model?: string;
+ }
+
+ interface ContextResponse {
+@@ -933,11 +934,26 @@ class AIAssistant {
+                         const option = document.createElement('option');
+                         option.value = model.id;
+                         option.textContent = model.name; // API handles display names
+-                        if (model.id === this.selectedModel) {
+-                            option.selected = true;
+-                        }
+                         select.appendChild(option);
+                     });
++
++                    const preferredId = this.selectedModel || data.default_model || this.config.defaultModel;
++                    const preferredOption = preferredId
++                        ? Array.from(select.options).find((option) => option.value === preferredId)
++                        : null;
++                    if (preferredOption) {
++                        select.value = preferredOption.value;
++                    } else if (select.options.length > 0) {
++                        select.value = select.options[0].value;
++                    }
++
++                    const previousModel = this.selectedModel;
++                    this.selectedModel = select.value;
++                    if (previousModel !== this.selectedModel) {
++                        this.updateModelDisplay();
++                        this.saveModelPreference();
++                    }
++
+                     this.updateModelDescription();
+                 } else {
+                     console.error('Invalid models format received:', data);
+diff --git a/web_dashboard/templates/ai_settings.html b/web_dashboard/templates/ai_settings.html
+index 1099d0ef..58e35416 100644
+--- a/web_dashboard/templates/ai_settings.html
++++ b/web_dashboard/templates/ai_settings.html
+@@ -94,8 +94,9 @@
+                     <select id="ai_summarizing_fallback_model" name="ai_summarizing_fallback_model"
+                         class="border rounded-lg block w-full p-2.5">
+                         <option value="">None</option>
++                        <option value="glm-5.2">GLM 5.2</option>
++                        <option value="glm-5.1">GLM 5.1</option>
+                         <option value="glm-4.5-air">GLM 4.5 Air</option>
+-                        <option value="glm-4.7">GLM 4.7</option>
+                     </select>
+                     <p class="mt-1 text-xs text-text-tertiary">
+                         Used if the primary summarization model fails. Stored in <code
+diff --git a/web_dashboard/user_preferences.py b/web_dashboard/user_preferences.py
+index 3fbf7400..85a87f0c 100644
+--- a/web_dashboard/user_preferences.py
++++ b/web_dashboard/user_preferences.py
+@@ -772,46 +772,52 @@ def clear_preference_cache():
+
+ def get_user_ai_model() -> Optional[str]:
+     """Get user's preferred AI model.
+-
++
+     Fallback order:
+     1. User's personal preference (from user_profiles.preferences)
+     2. System default (from system_settings table)
+-    3. Environment variable OLLAMA_MODEL
+-    4. Hardcoded default 'llama3'
+-
++    3. model_registry.get_primary_model()
++
++    Stale or deprecated ids are migrated to a supported model on read.
++
+     Returns:
+-        Model name (e.g., 'llama3', 'mistral') or None
++        Model name (e.g., 'glm-5.2', 'granite4.1:8b')
+     """
+-    # Check user preference first
+     user_model = get_user_preference('ai_model', default=None)
+-    if user_model:
+-        return user_model
+-
+-    # Fall back to system setting
++    stored: Optional[str] = user_model
++
++    if not stored:
++        try:
++            from settings import get_system_setting
++            system_model = get_system_setting("ai_default_model", default=None)
++            if system_model:
++                stored = str(system_model)
++        except Exception as e:
++            logger.warning(f"Could not load system default model: {e}")
++
++    if not stored:
++        try:
++            from model_registry import get_primary_model
++            stored = get_primary_model()
++        except Exception:
++            from model_registry import PRIMARY_MODEL_DEFAULT
++            stored = PRIMARY_MODEL_DEFAULT
++
++    available: Optional[list[str]] = None
+     try:
+-        from settings import get_system_setting
+-        system_model = get_system_setting("ai_default_model", default=None)
+-        if system_model:
+-            return system_model
++        from ollama_client import list_available_models
++        available = list_available_models()
+     except Exception as e:
+-        logger.warning(f"Could not load system default model: {e}")
+-
+-    try:
+-        from model_registry import get_primary_model
++        logger.debug("Could not load available models for preference resolution: %s", e)
+
+-        return get_primary_model()
+-    except Exception:
+-        from model_registry import PRIMARY_MODEL_DEFAULT
++    from model_registry import resolve_ai_model_preference
++    resolved = resolve_ai_model_preference(stored, available)
+
+-        return PRIMARY_MODEL_DEFAULT
++    if user_model and resolved != user_model:
++        logger.info("Migrating ai_model preference from %s to %s", user_model, resolved)
++        set_user_preference('ai_model', resolved)
+
+-    # Fall back to environment variable (deprotilized in favor of Granite)
+-    # env_model = os.getenv("OLLAMA_MODEL")
+-    # if env_model:
+-    #     return env_model
+-
+-    # Final fallback
+-    # return "llama3"
++    return resolved
+
+
+ def set_user_ai_model(model: str) -> bool:

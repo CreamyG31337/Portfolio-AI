@@ -1,0 +1,154 @@
+commit 99fd59b51c41dc584e834377f072a0343a79a15e
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Fri Jun 26 10:49:28 2026 -0700
+
+    perf: land Bolt vectorization from Jules PRs; palette audit TODOs
+
+    Incorporate ETF watchtower np.where/pd.isna and flask_data_utils list-comp optimizations from open Bolt PRs. Add TODO(palette) markers for Flowbite Modal/Collapse refactors and remaining UI debt; close superseded Jules review PRs.
+
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+diff --git a/web_dashboard/flask_data_utils.py b/web_dashboard/flask_data_utils.py
+index ccd3abef..cad68ab9 100644
+--- a/web_dashboard/flask_data_utils.py
++++ b/web_dashboard/flask_data_utils.py
+@@ -1529,9 +1529,10 @@ def get_biggest_movers_flask(positions_df: pd.DataFrame, display_currency: str,
+     if 'securities' in df.columns:
+         # Handle nested securities data
+         try:
+-            df['company_name'] = df['securities'].apply(
+-                lambda x: x.get('company_name', '') if isinstance(x, dict) else ''
+-            )
++            sec_list = df['securities'].tolist()
++            df['company_name'] = [
++                x.get('company_name', '') if isinstance(x, dict) else '' for x in sec_list
++            ]
+             company_col = 'company_name'
+         except:
+             pass
+diff --git a/web_dashboard/scheduler/jobs_etf_watchtower.py b/web_dashboard/scheduler/jobs_etf_watchtower.py
+index 572ac334..8e08d354 100644
+--- a/web_dashboard/scheduler/jobs_etf_watchtower.py
++++ b/web_dashboard/scheduler/jobs_etf_watchtower.py
+@@ -51,6 +51,7 @@ import re
+ from pathlib import Path
+ from datetime import datetime, timedelta, timezone
+ from typing import List, Dict, Optional, Tuple
++import numpy as np
+ import pandas as pd
+ import requests
+
+@@ -972,7 +973,7 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
+
+     # Add context
+     significant['etf'] = etf_ticker
+-    significant['action'] = significant['share_diff'].apply(lambda x: 'BUY' if x > 0 else 'SELL')
++    significant['action'] = np.where(significant['share_diff'] > 0, 'BUY', 'SELL')
+
+     logger.info(f"📊 {etf_ticker}: Found {len(significant)} significant stock changes out of {len(merged)} holdings")
+
+@@ -988,8 +989,6 @@ def save_holdings_snapshot(pc: PostgresClient, etf_ticker: str, holdings: pd.Dat
+         holdings: Holdings DataFrame
+         date: Snapshot date
+     """
+-    import math
+-
+     date_str = date.strftime('%Y-%m-%d')
+
+     # First, clean the data and aggregate duplicates
+@@ -999,7 +998,7 @@ def save_holdings_snapshot(pc: PostgresClient, etf_ticker: str, holdings: pd.Dat
+     # Remove rows with empty/invalid tickers
+     clean_holdings = clean_holdings[clean_holdings['ticker'].notna()]
+     clean_holdings = clean_holdings[clean_holdings['ticker'] != '']
+-    clean_holdings = clean_holdings[clean_holdings['ticker'].apply(lambda x: not (isinstance(x, float) and math.isnan(x)))]
++    clean_holdings = clean_holdings[~pd.isna(clean_holdings['ticker'])]
+     clean_holdings['ticker'] = clean_holdings['ticker'].astype(str).str.strip()
+
+     # Replace NaN/inf with 0 for numeric columns before aggregation
+diff --git a/web_dashboard/src/js/ai_assistant.ts b/web_dashboard/src/js/ai_assistant.ts
+index 0f47c53e..ee186083 100644
+--- a/web_dashboard/src/js/ai_assistant.ts
++++ b/web_dashboard/src/js/ai_assistant.ts
+@@ -1956,6 +1956,7 @@ class AIAssistant {
+             content.appendChild(resultItem);
+         });
+
++        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
+         header.addEventListener('click', () => {
+             content.classList.toggle('hidden');
+             const arrow = header.querySelector('span:last-child');
+@@ -2005,6 +2006,7 @@ class AIAssistant {
+             content.appendChild(articleItem);
+         });
+
++        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
+         header.addEventListener('click', () => {
+             content.classList.toggle('hidden');
+             const arrow = header.querySelector('span:last-child');
+diff --git a/web_dashboard/src/js/funds.ts b/web_dashboard/src/js/funds.ts
+index 21d97111..bf782636 100644
+--- a/web_dashboard/src/js/funds.ts
++++ b/web_dashboard/src/js/funds.ts
+@@ -97,7 +97,8 @@ function updateFundIndicators(): void {
+     if (elements.cashIndicator) elements.cashIndicator.textContent = label;
+ }
+
+-// Close edit modal by clicking Flowbite's hide trigger (modal must be initialized via data-modal-target)
++// TODO(palette): Use Flowbite Modal API (new Modal(el).show()/hide()) instead of
++// simulating clicks on data-modal-hide triggers — see trade_entry.ts.
+ function closeEditModal(): void {
+     document.querySelector<HTMLElement>('[data-modal-hide="edit-fund-modal"]')?.click();
+ }
+diff --git a/web_dashboard/src/js/jobs.ts b/web_dashboard/src/js/jobs.ts
+index dd5160e8..d4278078 100644
+--- a/web_dashboard/src/js/jobs.ts
++++ b/web_dashboard/src/js/jobs.ts
+@@ -1819,6 +1819,7 @@ async function startScheduler(): Promise<void> {
+ }
+
+
++// TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
+ // Global functions for inline onclick handlers
+ function toggleParams(id: string): void {
+     const el = document.getElementById(`params-${id}`);
+diff --git a/web_dashboard/src/js/ticker_details.ts b/web_dashboard/src/js/ticker_details.ts
+index 1a1d6fc2..02a91e5c 100644
+--- a/web_dashboard/src/js/ticker_details.ts
++++ b/web_dashboard/src/js/ticker_details.ts
+@@ -1783,7 +1783,7 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
+             </div>
+         `;
+
+-        // Toggle row details and keep chevron aligned with final state.
++        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
+         row.querySelector('.research-row-toggle')?.addEventListener('click', () => {
+             const chevron = document.getElementById(`${rowId}-chevron`);
+             const detail = document.getElementById(rowId);
+diff --git a/web_dashboard/src/js/trade_entry.ts b/web_dashboard/src/js/trade_entry.ts
+index 363423df..a6d59b44 100644
+--- a/web_dashboard/src/js/trade_entry.ts
++++ b/web_dashboard/src/js/trade_entry.ts
+@@ -679,8 +679,9 @@ function openEditModal(trade: Trade): void {
+     const name = getCompanyName(trade.ticker || '');
+     updateEditCompanyName(name);
+
+-    // Open via Flowbite's trigger so the modal is in Flowbite's registry (needed for
+-    // data-modal-hide, backdrop, focus trap and Esc handling).
++    // TODO(palette): Use Flowbite Modal API (new Modal(el).show()/hide()) instead of
++    // simulating clicks on hidden trigger buttons — same pattern in closeEditModal,
++    // delete modal helpers, and funds.ts.
+     document.getElementById('edit-trade-modal-trigger')?.click();
+ }
+
+diff --git a/web_dashboard/templates/users.html b/web_dashboard/templates/users.html
+index 7a5d6347..3134640a 100644
+--- a/web_dashboard/templates/users.html
++++ b/web_dashboard/templates/users.html
+@@ -60,6 +60,7 @@
+             <button type="button" id="digest-open-btn" class="btn-outline">
+                 <i class="fas fa-external-link-alt mr-2"></i>Open full digest
+             </button>
++            <!-- TODO(palette): Standardize destructive/send actions via a shared btn-outline-danger utility instead of ad-hoc theme-error classes -->
+             <button type="button" id="digest-send-btn" class="btn-outline border-theme-error-text text-theme-error-text hover:bg-theme-error-bg/20">
+                 <i class="fas fa-paper-plane mr-2"></i>Send
+             </button>

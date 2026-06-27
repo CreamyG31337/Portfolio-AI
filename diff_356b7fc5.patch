@@ -1,0 +1,744 @@
+commit 356b7fc5e169c091e467a75559cf415c1ba476e5
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Fri Jun 26 12:04:53 2026 -0700
+
+    feat(etf): enhance ETF context handling and reporting
+
+    - Introduced new functions to aggregate ETF changes and parse ETF tickers from URLs.
+    - Updated the ETF context formatting to include summaries, notable trades, and relevant articles.
+    - Refactored the ETF trades retrieval logic to improve data handling and presentation.
+    - Adjusted front-end components to reflect changes in ETF activity terminology.
+
+    These enhancements provide a more comprehensive view of ETF activities and improve user experience in the dashboard.
+
+diff --git a/tests/test_ai_etf_context.py b/tests/test_ai_etf_context.py
+new file mode 100644
+index 00000000..ee37c39b
+--- /dev/null
++++ b/tests/test_ai_etf_context.py
+@@ -0,0 +1,157 @@
++#!/usr/bin/env python3
++"""Tests for richer ETF context on the AI assistant."""
++
++import sys
++from pathlib import Path
++
++project_root = Path(__file__).parent.parent
++sys.path.insert(0, str(project_root))
++sys.path.insert(0, str(project_root / "web_dashboard"))
++
++from web_dashboard.ai_context_builder import (
++    aggregate_etf_changes,
++    format_etf_context,
++    parse_etf_ticker_from_article_url,
++)
++from web_dashboard.routes.ai_routes import _filter_etf_analysis_articles
++
++
++def _sample_changes() -> list[dict]:
++    return [
++        {
++            "date": "2026-06-25",
++            "etf_ticker": "SMH",
++            "holding_ticker": "AMD",
++            "share_change": -60534,
++            "action": "SELL",
++            "shares_after": 7289632,
++        },
++        {
++            "date": "2026-06-25",
++            "etf_ticker": "SMH",
++            "holding_ticker": "TSM",
++            "share_change": -121505,
++            "action": "SELL",
++            "shares_after": 14631893,
++        },
++        {
++            "date": "2026-06-25",
++            "etf_ticker": "ARKK",
++            "holding_ticker": "AMD",
++            "share_change": -15224,
++            "action": "SELL",
++            "shares_after": 562946,
++        },
++        {
++            "date": "2026-06-24",
++            "etf_ticker": "SMH",
++            "holding_ticker": "MU",
++            "share_change": 5000,
++            "action": "BUY",
++            "shares_after": 3700000,
++        },
++    ]
++
++
++def test_aggregate_etf_changes_smh_net_selling() -> None:
++    result = aggregate_etf_changes(_sample_changes())
++    etf_by_ticker = {row["etf_ticker"]: row for row in result["etf_summary"]}
++
++    assert etf_by_ticker["SMH"]["sell_events"] == 2
++    assert etf_by_ticker["SMH"]["buy_events"] == 1
++    assert etf_by_ticker["SMH"]["net_shares"] == -177039
++    assert etf_by_ticker["SMH"]["tickers_touched"] == 3
++    assert "net selling" in etf_by_ticker["SMH"]["direction"].lower()
++
++    amd = next(r for r in result["ticker_summary"] if r["holding_ticker"] == "AMD")
++    assert amd["etfs_selling"] == ["ARKK", "SMH"]
++    assert amd["net_shares"] == -75758
++
++
++def test_format_etf_context_empty() -> None:
++    text = format_etf_context({"days": 7})
++    assert "No ETF activity found" in text
++
++
++def test_format_etf_context_with_summaries_and_articles() -> None:
++    aggregates = aggregate_etf_changes(_sample_changes())
++    text = format_etf_context({
++        "days": 7,
++        "etf_summary": aggregates["etf_summary"],
++        "ticker_summary": aggregates["ticker_summary"],
++        "recent_trades": [
++            {
++                "trade_date": "2026-06-25",
++                "holding_ticker": "TSM",
++                "etf_ticker": "SMH",
++                "trade_type": "SELL",
++                "shares_change": -121505,
++                "shares_after": 14631893,
++            }
++        ],
++        "etf_articles": [
++            {
++                "etf_ticker": "SMH",
++                "title": "SMH Holdings Analysis - 2026-06-25",
++                "sentiment": "bearish",
++                "summary": "VanEck trimmed semiconductor exposure across holdings.",
++                "matched_holdings": ["AMD", "TSM"],
++            }
++        ],
++    })
++
++    assert "ETF Activity Summary" in text
++    assert "SMH" in text
++    assert "Portfolio tickers — ETF flow" in text
++    assert "ETF Analysis Summaries" in text
++    assert "Notable ETF Holding Trades" in text
++    assert "VanEck trimmed" in text
++
++
++def test_parse_etf_ticker_from_article_url() -> None:
++    assert parse_etf_ticker_from_article_url("etf-analysis://SMH/2026-06-25") == "SMH"
++    assert parse_etf_ticker_from_article_url("https://example.com") is None
++
++
++def test_filter_etf_analysis_articles_overlap_and_dedupe() -> None:
++    articles = [
++        {
++            "id": 1,
++            "title": "SMH Holdings Analysis - 2026-06-25",
++            "url": "etf-analysis://SMH/2026-06-25",
++            "tickers": ["AMD", "TSM"],
++            "summary": "older",
++            "sentiment": "bearish",
++            "fetched_at": "2026-06-24T00:00:00+00:00",
++        },
++        {
++            "id": 2,
++            "title": "SMH Holdings Analysis - 2026-06-26",
++            "url": "etf-analysis://SMH/2026-06-26",
++            "tickers": ["AMD"],
++            "summary": "newer",
++            "sentiment": "bearish",
++            "fetched_at": "2026-06-26T00:00:00+00:00",
++        },
++        {
++            "id": 3,
++            "title": "IVV Holdings Analysis - 2026-06-25",
++            "url": "etf-analysis://IVV/2026-06-25",
++            "tickers": ["AAPL"],
++            "summary": "unrelated",
++            "sentiment": "neutral",
++            "fetched_at": "2026-06-25T00:00:00+00:00",
++        },
++    ]
++
++    matched = _filter_etf_analysis_articles(
++        articles,
++        portfolio_tickers=["AMD", "MU"],
++        active_etfs={"SMH", "ARKK"},
++        max_articles=8,
++    )
++
++    assert len(matched) == 1
++    assert matched[0]["etf_ticker"] == "SMH"
++    assert matched[0]["summary"] == "newer"
++    assert matched[0]["matched_holdings"] == ["AMD"]
+diff --git a/web_dashboard/ai_context_builder.py b/web_dashboard/ai_context_builder.py
+index f1c4284b..7de7a37d 100644
+--- a/web_dashboard/ai_context_builder.py
++++ b/web_dashboard/ai_context_builder.py
+@@ -1022,7 +1022,195 @@ def format_congress_trades(trades: List[Dict], limit: int = 50) -> str:
+     return "\n".join(lines)
+
+
+-def format_etf_trades(trades: List[Dict], limit: int = 50) -> str:
++def _etf_direction_label(net_shares: float, buy_count: int, sell_count: int) -> str:
++    """Human-readable dominant direction for ETF or ticker rollup."""
++    if buy_count > 0 and sell_count > 0:
++        if net_shares > 0:
++            return "Mixed (net buying)"
++        if net_shares < 0:
++            return "Mixed (net selling)"
++        return "Mixed"
++    if net_shares > 0 or buy_count > 0:
++        return "Net buying"
++    if net_shares < 0 or sell_count > 0:
++        return "Net selling"
++    return "No activity"
++
++
++def aggregate_etf_changes(changes: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
++    """Roll up etf_holdings_changes rows into per-ETF and per-ticker summaries."""
++    etf_buckets: Dict[str, Dict[str, Any]] = {}
++    ticker_buckets: Dict[str, Dict[str, Any]] = {}
++
++    for row in changes:
++        etf = str(row.get("etf_ticker") or "").upper()
++        holding = str(row.get("holding_ticker") or "").upper()
++        if not etf or not holding:
++            continue
++
++        try:
++            share_change = float(row.get("share_change") or row.get("shares_change") or 0)
++        except (TypeError, ValueError):
++            share_change = 0.0
++
++        action = str(row.get("action") or row.get("trade_type") or "").upper()
++        is_buy = action in ("BUY", "PURCHASE")
++        is_sell = action in ("SELL", "SALE")
++
++        if etf not in etf_buckets:
++            etf_buckets[etf] = {
++                "etf_ticker": etf,
++                "buy_events": 0,
++                "sell_events": 0,
++                "net_shares": 0.0,
++                "tickers": set(),
++            }
++        eb = etf_buckets[etf]
++        eb["net_shares"] += share_change
++        eb["tickers"].add(holding)
++        if is_buy:
++            eb["buy_events"] += 1
++        if is_sell:
++            eb["sell_events"] += 1
++
++        if holding not in ticker_buckets:
++            ticker_buckets[holding] = {
++                "holding_ticker": holding,
++                "etfs_buying": set(),
++                "etfs_selling": set(),
++                "net_shares": 0.0,
++            }
++        tb = ticker_buckets[holding]
++        tb["net_shares"] += share_change
++        if is_buy:
++            tb["etfs_buying"].add(etf)
++        if is_sell:
++            tb["etfs_selling"].add(etf)
++
++    etf_summary: List[Dict[str, Any]] = []
++    for etf, data in etf_buckets.items():
++        buy_events = int(data["buy_events"])
++        sell_events = int(data["sell_events"])
++        net_shares = float(data["net_shares"])
++        etf_summary.append({
++            "etf_ticker": etf,
++            "buy_events": buy_events,
++            "sell_events": sell_events,
++            "net_shares": net_shares,
++            "tickers_touched": len(data["tickers"]),
++            "direction": _etf_direction_label(net_shares, buy_events, sell_events),
++        })
++    etf_summary.sort(key=lambda x: abs(x["net_shares"]), reverse=True)
++
++    ticker_summary: List[Dict[str, Any]] = []
++    for holding, data in ticker_buckets.items():
++        buying = sorted(data["etfs_buying"])
++        selling = sorted(data["etfs_selling"])
++        net_shares = float(data["net_shares"])
++        ticker_summary.append({
++            "holding_ticker": holding,
++            "etfs_buying": buying,
++            "etfs_selling": selling,
++            "net_shares": net_shares,
++            "direction": _etf_direction_label(net_shares, len(buying), len(selling)),
++        })
++    ticker_summary.sort(key=lambda x: abs(x["net_shares"]), reverse=True)
++
++    return {"etf_summary": etf_summary, "ticker_summary": ticker_summary}
++
++
++def parse_etf_ticker_from_article_url(url: str) -> Optional[str]:
++    """Parse ETF ticker from etf-analysis://SMH/2026-06-25 style URLs."""
++    if not url or not url.startswith("etf-analysis://"):
++        return None
++    remainder = url[len("etf-analysis://"):]
++    etf_part = remainder.split("/", 1)[0].strip().upper()
++    return etf_part or None
++
++
++def format_etf_context(etf_context: Dict[str, Any], detail_limit: int = 50) -> str:
++    """Format rich ETF context: summaries, nightly ETF Analysis articles, and notable trades."""
++    days = int(etf_context.get("days") or 7)
++    etf_summary = etf_context.get("etf_summary") or []
++    ticker_summary = etf_context.get("ticker_summary") or []
++    recent_trades = etf_context.get("recent_trades") or []
++    etf_articles = etf_context.get("etf_articles") or []
++
++    if not etf_summary and not ticker_summary and not recent_trades and not etf_articles:
++        return f"ETF Activity (Last {days} Days): No ETF activity found for your holdings."
++
++    sections: List[str] = []
++
++    if etf_summary:
++        lines = [
++            f"ETF Activity Summary (Last {days} Days, your holdings):",
++            "",
++            "ETF   | Buys | Sells | Net Shares   | Tickers | Direction",
++            "------|------|-------|--------------|---------|------------------",
++        ]
++        for row in etf_summary:
++            lines.append(
++                f"{row['etf_ticker']:<5} | {row['buy_events']:4} | {row['sell_events']:5} | "
++                f"{row['net_shares']:+12,.0f} | {row['tickers_touched']:7} | {row['direction']}"
++            )
++        sections.append("\n".join(lines))
++
++    if ticker_summary:
++        top_tickers = ticker_summary[:10]
++        lines = [
++            "",
++            "Portfolio tickers — ETF flow (top by absolute net share change):",
++            "",
++            "Ticker | ETFs buying | ETFs selling | Net direction",
++            "-------|-------------|--------------|------------------",
++        ]
++        for row in top_tickers:
++            buying = ", ".join(row["etfs_buying"]) if row["etfs_buying"] else "—"
++            selling = ", ".join(row["etfs_selling"]) if row["etfs_selling"] else "—"
++            lines.append(
++                f"{row['holding_ticker']:<6} | {buying:<11} | {selling:<12} | {row['direction']}"
++            )
++        sections.append("\n".join(lines))
++
++    if etf_articles:
++        lines = [
++            "",
++            "ETF Analysis Summaries (nightly AI, last 7 days):",
++            "",
++        ]
++        for article in etf_articles:
++            etf = article.get("etf_ticker") or "N/A"
++            title = article.get("title") or "Untitled"
++            sentiment = article.get("sentiment") or "N/A"
++            summary = (article.get("summary") or "").strip()
++            if len(summary) > 300:
++                summary = summary[:297] + "..."
++            matched = article.get("matched_holdings") or []
++            matched_str = f" [holdings: {', '.join(matched)}]" if matched else ""
++            lines.append(f"- {etf} | {title} | {sentiment}{matched_str}")
++            if summary:
++                lines.append(f"  {summary}")
++        sections.append("\n".join(lines))
++
++    if recent_trades:
++        detail = format_etf_trades(
++            recent_trades,
++            limit=detail_limit,
++            header=(
++                f"Notable ETF Holding Trades (Last {days} Days, portfolio holdings, "
++                f"by largest share change)"
++            ),
++        )
++        sections.append(detail)
++
++    return "\n\n".join(sections)
++
++
++def format_etf_trades(
++    trades: List[Dict],
++    limit: int = 50,
++    header: Optional[str] = None,
++) -> str:
+     """Format ETF holding trades data for LLM context in compact table format.
+
+     Args:
+@@ -1033,13 +1221,14 @@ def format_etf_trades(trades: List[Dict], limit: int = 50) -> str:
+         Formatted string with ETF trades data
+     """
+     if not trades:
+-        return "ETF Trades (Last 7 Days): No ETF trades found."
+-
++        return header or "ETF Trades (Last 7 Days): No ETF trades found."
++
+     # Limit number of trades
+     df = trades[:limit] if isinstance(trades, list) else []
+-
++
++    table_header = header or f"ETF Trades (Last 7 Days) ({len(df)} trades)"
+     lines = [
+-        f"ETF Trades (Last 7 Days) ({len(df)} trades):",
++        table_header + ("" if table_header.endswith(":") else ":"),
+         "",
+         "Date     | Ticker    | ETF       | Action    | Shares Change | Shares After",
+         "---------|-----------|-----------|-----------|---------------|--------------"
+@@ -1047,11 +1236,11 @@ def format_etf_trades(trades: List[Dict], limit: int = 50) -> str:
+
+     for trade in df:
+         # Extract fields (normalize None from DB to avoid len()/slicing on None)
+-        trade_date = trade.get('trade_date') or ''
++        trade_date = trade.get('trade_date') or trade.get('date') or ''
+         holding_ticker = trade.get('holding_ticker') or 'N/A'
+         etf_ticker = trade.get('etf_ticker') or 'N/A'
+-        trade_type = trade.get('trade_type') or 'N/A'
+-        shares_change = trade.get('shares_change', 0)
++        trade_type = trade.get('trade_type') or trade.get('action') or 'N/A'
++        shares_change = trade.get('shares_change', trade.get('share_change', 0))
+         shares_after = trade.get('shares_after', 0)
+
+         # Format date
+diff --git a/web_dashboard/routes/ai_routes.py b/web_dashboard/routes/ai_routes.py
+index 5c03dc58..d5de1e36 100644
+--- a/web_dashboard/routes/ai_routes.py
++++ b/web_dashboard/routes/ai_routes.py
+@@ -22,7 +22,8 @@ from flask_data_utils import (
+ from ai_context_builder import (
+     format_holdings, format_thesis, format_trades,
+     format_performance_metrics, format_cash_balances,
+-    format_insider_trades, format_congress_trades, format_etf_trades
++    format_insider_trades, format_congress_trades, format_etf_context,
++    aggregate_etf_changes, parse_etf_ticker_from_article_url,
+ )
+ from ollama_client import load_model_config, check_ollama_health, list_available_models
+ from searxng_client import check_searxng_health, get_searxng_client
+@@ -136,99 +137,166 @@ def _get_congress_trades_for_portfolio(fund: str, days: Optional[int] = None) ->
+         return []
+
+
+-def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
+-    """Get ETF trades for portfolio tickers from last N days.
++def _empty_etf_context(days: int = 7) -> Dict[str, Any]:
++    return {
++        "etf_summary": [],
++        "ticker_summary": [],
++        "recent_trades": [],
++        "etf_articles": [],
++        "days": days,
++    }
+
+-    Uses batch SQL function to fetch all tickers in a single query (vs N queries before).
+-    """
++
++def _filter_etf_analysis_articles(
++    articles: List[Dict[str, Any]],
++    portfolio_tickers: List[str],
++    active_etfs: set[str],
++    max_articles: int = 8,
++) -> List[Dict[str, Any]]:
++    """Keep ETF Analysis articles relevant to portfolio holdings or active ETFs."""
++    portfolio_set = {t.strip().upper() for t in portfolio_tickers if t}
++    if not portfolio_set:
++        return []
++
++    def _article_sort_key(article: Dict[str, Any]) -> str:
++        fetched = article.get("fetched_at") or article.get("published_at") or ""
++        return str(fetched)
++
++    matched: List[Dict[str, Any]] = []
++    seen_etfs: set[str] = set()
++
++    for article in sorted(articles, key=_article_sort_key, reverse=True):
++        raw_tickers = article.get("tickers") or []
++        if isinstance(raw_tickers, str):
++            raw_tickers = [raw_tickers]
++        art_ticker_set = {str(t).strip().upper() for t in raw_tickers if t}
++        overlap = sorted(art_ticker_set.intersection(portfolio_set))
++
++        etf_from_url = parse_etf_ticker_from_article_url(str(article.get("url") or ""))
++        url_relevant = bool(etf_from_url and etf_from_url in active_etfs)
++
++        if not overlap and not url_relevant:
++            continue
++
++        etf_ticker = etf_from_url
++        if not etf_ticker and article.get("title"):
++            title = str(article["title"])
++            if " Holdings Analysis" in title:
++                etf_ticker = title.split(" Holdings Analysis", 1)[0].strip().upper()
++
++        dedupe_key = etf_ticker or str(article.get("title") or article.get("id") or "")
++        if dedupe_key in seen_etfs:
++            continue
++        seen_etfs.add(dedupe_key)
++
++        matched.append({
++            "etf_ticker": etf_ticker,
++            "title": article.get("title"),
++            "summary": article.get("summary"),
++            "sentiment": article.get("sentiment"),
++            "matched_holdings": overlap,
++            "published_at": article.get("published_at"),
++            "fetched_at": article.get("fetched_at"),
++        })
++        if len(matched) >= max_articles:
++            break
++
++    return matched
++
++
++def _get_etf_context_for_portfolio(fund: str, days: int = 7) -> Dict[str, Any]:
++    """Fetch ETF activity summaries, notable trades, and nightly ETF Analysis articles."""
++    empty = _empty_etf_context(days)
+     try:
+-        # Get portfolio tickers
+         positions_df = get_current_positions_flask(fund)
+         if positions_df.empty:
+-            return []
++            return empty
+
+         ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
+-        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
++        portfolio_tickers = [
++            str(t).strip().upper()
++            for t in positions_df[ticker_col].dropna().unique().tolist()
++            if str(t).strip()
++        ]
+         if not portfolio_tickers:
+-            return []
++            return empty
+
+-        # Get Postgres client for Research DB
+         try:
+             from postgres_client import PostgresClient
++            from research_repository import ResearchRepository
++
+             pc = PostgresClient()
+         except Exception as e:
+-            logger.warning(f"Error creating Postgres client: {e}")
+-            return []
++            logger.warning(f"Error creating Postgres client for ETF context: {e}")
++            return empty
+
+-        # Calculate date range
+         end_date = date.today()
+         start_date = end_date - timedelta(days=days)
+
+-        # Batch fetch: single SQL query for all tickers (vs N queries before)
+-        # The function returns results sorted by date DESC and limited to 15 rows
++        changes: List[Dict[str, Any]] = []
+         try:
+-            # Convert tickers to uppercase for consistency
+-            tickers_upper = [t.upper() for t in portfolio_tickers]
+-            result = pc.execute_query("""
+-                SELECT * FROM get_etf_holding_trades_batch(%s, %s::date, %s::date, %s)
+-            """, (tickers_upper, start_date.isoformat(), end_date.isoformat(), 15))
+-
+-            if not result:
+-                return []
+-
+-            # Convert to list of dicts
+-            all_trades = []
+-            for row in result:
+-                all_trades.append({
+-                    'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
+-                    'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
+-                    'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
+-                    'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
+-                    'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
+-                    'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
+-                })
+-            return all_trades
++            rows = pc.execute_query(
++                """
++                SELECT date, etf_ticker, holding_ticker, share_change, percent_change,
++                       action, shares_before, shares_after
++                FROM etf_holdings_changes
++                WHERE holding_ticker = ANY(%s)
++                  AND date >= %s AND date <= %s
++                ORDER BY ABS(share_change) DESC
++                """,
++                (portfolio_tickers, start_date.isoformat(), end_date.isoformat()),
++            )
++            changes = list(rows or [])
+         except Exception as e:
+-            logger.warning(f"Error in batch ETF query: {e}. Falling back to per-ticker queries.")
+-            # Fallback to per-ticker queries if batch function doesn't exist yet
+-            return _get_etf_trades_for_portfolio_fallback(portfolio_tickers, start_date, end_date, pc)
+-
+-    except Exception as e:
+-        logger.warning(f"Error fetching ETF trades: {e}")
+-        return []
+-
++            logger.warning(f"Error fetching ETF holdings changes: {e}")
++
++        aggregates = aggregate_etf_changes(changes)
++        active_etfs = {row["etf_ticker"] for row in aggregates.get("etf_summary", [])}
++
++        recent_trades: List[Dict[str, Any]] = []
++        for row in changes[:50]:
++            recent_trades.append({
++                "trade_date": row.get("date"),
++                "etf_ticker": row.get("etf_ticker"),
++                "holding_ticker": row.get("holding_ticker"),
++                "trade_type": row.get("action"),
++                "shares_change": row.get("share_change"),
++                "shares_after": row.get("shares_after"),
++                "percent_change": row.get("percent_change"),
++            })
+
+-def _get_etf_trades_for_portfolio_fallback(
+-    portfolio_tickers: List[str],
+-    start_date: date,
+-    end_date: date,
+-    pc: Any
+-) -> List[Dict]:
+-    """Fallback: fetch ETF trades one ticker at a time (for when batch function unavailable)."""
+-    all_trades = []
+-    for ticker in portfolio_tickers:
++        etf_articles: List[Dict[str, Any]] = []
+         try:
+-            result = pc.execute_query("""
+-                SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
+-            """, (ticker.upper(), start_date.isoformat(), end_date.isoformat()))
+-
+-            if result:
+-                for row in result:
+-                    all_trades.append({
+-                        'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
+-                        'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
+-                        'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
+-                        'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
+-                        'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
+-                        'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
+-                    })
++            repo = ResearchRepository(postgres_client=pc)
++            raw_articles = repo.get_recent_articles(
++                limit=30,
++                days=days,
++                article_type="ETF Analysis",
++            )
++            etf_articles = _filter_etf_analysis_articles(
++                raw_articles,
++                portfolio_tickers,
++                active_etfs,
++            )
+         except Exception as e:
+-            logger.warning(f"Error fetching ETF trades for {ticker}: {e}")
+-            continue
++            logger.warning(f"Error fetching ETF Analysis articles: {e}")
++
++        return {
++            "etf_summary": aggregates.get("etf_summary", []),
++            "ticker_summary": aggregates.get("ticker_summary", []),
++            "recent_trades": recent_trades,
++            "etf_articles": etf_articles,
++            "days": days,
++        }
++    except Exception as e:
++        logger.warning(f"Error fetching ETF context: {e}")
++        return empty
+
+-    # Sort by date descending
+-    all_trades.sort(key=lambda x: x.get('trade_date') or date.min, reverse=True)
+-    return all_trades[:15]
++
++def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
++    """Backward-compatible wrapper: returns detail trade rows from ETF context."""
++    ctx = _get_etf_context_for_portfolio(fund, days=days)
++    return ctx.get("recent_trades", [])
+
+
+ @cache_data(ttl=300)
+@@ -298,12 +366,12 @@ def _get_context_data_packet(user_id: str, fund: str):
+
+     try:
+         t0 = time.time()
+-        etf_trades = _get_etf_trades_for_portfolio(fund, days=7)
+-        timings['etf_trades'] = round((time.time() - t0) * 1000, 1)
++        etf_context = _get_etf_context_for_portfolio(fund, days=7)
++        timings['etf_context'] = round((time.time() - t0) * 1000, 1)
+     except Exception as e:
+-        logger.warning(f"Error loading ETF trades: {e}")
+-        etf_trades = []
+-        timings['etf_trades'] = 'error'
++        logger.warning(f"Error loading ETF context: {e}")
++        etf_context = _empty_etf_context(7)
++        timings['etf_context'] = 'error'
+
+     timings['total_data_fetch'] = round((time.time() - total_start) * 1000, 1)
+     logger.info(f"[PERF] Context data fetch timings (ms): {timings}")
+@@ -317,7 +385,7 @@ def _get_context_data_packet(user_id: str, fund: str):
+         'thesis_data': thesis_data,
+         'insider_trades': insider_trades,
+         'congress_trades': congress_trades,
+-        'etf_trades': etf_trades,
++        'etf_context': etf_context,
+         '_timings': timings
+     }
+
+@@ -361,7 +429,7 @@ def _build_context_from_packet(
+     thesis_data = data_packet['thesis_data']
+     insider_trades = data_packet.get('insider_trades', [])
+     congress_trades = data_packet.get('congress_trades', [])
+-    etf_trades = data_packet.get('etf_trades', [])
++    etf_context = data_packet.get('etf_context') or _empty_etf_context()
+
+     context_parts = []
+
+@@ -409,8 +477,8 @@ def _build_context_from_packet(
+
+     if include_etf_trades:
+         t0 = time.time()
+-        context_parts.append(format_etf_trades(etf_trades, limit=50))
+-        format_timings['format_etf_trades'] = round((time.time() - t0) * 1000, 1)
++        context_parts.append(format_etf_context(etf_context, detail_limit=50))
++        format_timings['format_etf_context'] = round((time.time() - t0) * 1000, 1)
+
+     format_timings['total_format'] = round((time.time() - total_format_start) * 1000, 1)
+
+diff --git a/web_dashboard/src/js/ai_assistant.ts b/web_dashboard/src/js/ai_assistant.ts
+index ee186083..82003e5e 100644
+--- a/web_dashboard/src/js/ai_assistant.ts
++++ b/web_dashboard/src/js/ai_assistant.ts
+@@ -796,7 +796,7 @@ class AIAssistant {
+   - thesis: ${df.thesis ?? 'N/A'}ms
+   - insider_trades: ${df.insider_trades ?? 'N/A'}ms
+   - congress_trades: ${df.congress_trades ?? 'N/A'}ms
+-  - etf_trades: ${df.etf_trades ?? 'N/A'}ms
++  - etf_context: ${df.etf_context ?? df.etf_trades ?? 'N/A'}ms
+   → TOTAL DATA FETCH: ${df.total_data_fetch ?? 'N/A'}ms`);
+                     console.log(`[AIAssistant] ⏱️ FORMATTING BREAKDOWN:
+   - format_holdings: ${ft.format_holdings ?? 'N/A'}ms
+@@ -806,7 +806,7 @@ class AIAssistant {
+   - format_trades: ${ft.format_trades ?? 'N/A'}ms
+   - format_insider_trades: ${ft.format_insider_trades ?? 'N/A'}ms
+   - format_congress_trades: ${ft.format_congress_trades ?? 'N/A'}ms
+-  - format_etf_trades: ${ft.format_etf_trades ?? 'N/A'}ms
++  - format_etf_context: ${ft.format_etf_context ?? ft.format_etf_trades ?? 'N/A'}ms
+   → TOTAL FORMAT: ${ft.total_format ?? 'N/A'}ms`);
+                 }
+
+diff --git a/web_dashboard/templates/ai_assistant.html b/web_dashboard/templates/ai_assistant.html
+index 2a5f303e..4ac5e4d0 100644
+--- a/web_dashboard/templates/ai_assistant.html
++++ b/web_dashboard/templates/ai_assistant.html
+@@ -306,7 +306,7 @@
+                         <label class="flex items-center mb-2 cursor-pointer">
+                             <input type="checkbox" id="toggle-etf-trades" checked
+                                 class="mr-2 w-4 h-4 text-accent bg-dashboard-surface-alt border-border rounded focus:ring-accent focus:ring-2">
+-                            <span class="text-sm text-text-primary">ETF Trades</span>
++                            <span class="text-sm text-text-primary">ETF Activity</span>
+                         </label>
+                     </div>
