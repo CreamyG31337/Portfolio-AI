@@ -2550,12 +2550,12 @@ def api_submit_trade():
                 "requires_rebuild": True
             }), 200
 
-        # 6. Trigger Rebuild if Backdated, or recalc today's metrics
+        # 6. Trigger rebuild on sells (closes can leave stale per-ticker snapshots) or
+        # backdated trades; otherwise recalc today's metrics only.
         is_backdated = trade_dt.date() < datetime.now().date()
         job_id = None
-        if is_backdated:
-            # Backdated trade: rebuild_from_date.py handles both
-            # portfolio_positions AND performance_metrics recalculation
+        if is_backdated or act == "SELL":
+            # rebuild_from_date.py rewrites portfolio_positions from trade_log
             try:
                 job_id = trigger_background_rebuild(fund, trade_dt.date())
             except Exception as rb_e:

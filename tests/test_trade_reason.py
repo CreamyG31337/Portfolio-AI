@@ -3,6 +3,7 @@ from utils.trade_reason import (
     is_boilerplate_buy_rationale,
     is_dividend_reason,
     is_sell_reason,
+    is_trade_sell,
 )
 
 
@@ -21,6 +22,12 @@ def test_infer_trade_action_defaults_to_buy_for_unknown() -> None:
     assert infer_trade_action("manual adjustment", default="BUY") == "BUY"
     assert infer_trade_action(None, default="BUY") == "BUY"
     assert not is_sell_reason("quarterly dividend")
+
+
+def test_is_trade_sell_uses_action_column() -> None:
+    assert is_trade_sell({"action": "SELL", "reason": "Thesis text without sell keyword"})
+    assert not is_trade_sell({"action": "BUY", "reason": "Growth thesis"})
+    assert is_trade_sell({"action": "BUY", "reason": "Rotate out - SELL"})
 
 
 def test_is_boilerplate_buy_rationale() -> None:

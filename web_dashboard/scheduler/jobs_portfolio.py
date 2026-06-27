@@ -15,6 +15,8 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 
+from utils.trade_reason import is_trade_sell
+
 # Add parent directory to path if needed (standard boilerplate for these jobs)
 import sys
 from pathlib import Path
@@ -609,9 +611,8 @@ def update_portfolio_prices_job(
                         shares = Decimal(str(trade.get('shares', 0) or 0))
                         price = Decimal(str(trade.get('price', 0) or 0))
                         cost = shares * price
-                        reason = str(trade.get('reason', '')).upper()
-                        
-                        if 'SELL' in reason:
+
+                        if is_trade_sell(trade):
                             # Simple FIFO: reduce shares and cost proportionally
                             if running_positions[ticker]['shares'] > 0:
                                 cost_per_share = running_positions[ticker]['cost'] / running_positions[ticker]['shares']
@@ -841,7 +842,37 @@ def update_portfolio_prices_job(
                         if len(failed_tickers) == len(current_holdings):
                             logger.warning(f"  All tickers failed for {fund_name} - skipping update")
                             continue
-                    
+
+                        # Carry forward the last known snapshot price for tickers we could not
+                        # fetch, so a transient failure doesn't drop a real holding. The
+                        # latest_positions view anchors every ticker on the fund's max snapshot
+                        # date, so a missing row would hide the position from holdings entirely
+                        # until the next successful fetch.
+                        try:
+                            prior_bound = datetime.combine(target_date, dt_time(0, 0, 0)).isoformat()
+                            prev_rows = client.supabase.table("portfolio_positions")\
+                                .select("ticker,price,date")\
+                                .eq("fund", fund_name)\
+                                .in_("ticker", failed_tickers)\
+                                .lt("date", prior_bound)\
+                                .order("date", desc=True)\
+                                .execute()
+                            last_price_by_ticker = {}
+                            for row in prev_rows.data or []:
+                                t = row.get('ticker')
+                                if t and t not in last_price_by_ticker and row.get('price') is not None:
+                                    last_price_by_ticker[t] = Decimal(str(row['price']))
+                            recovered = []
+                            for t in list(failed_tickers):
+                                if t in last_price_by_ticker:
+                                    current_prices[t] = last_price_by_ticker[t]
+                                    failed_tickers.remove(t)
+                                    recovered.append(t)
+                            if recovered:
+                                logger.warning(f"  Carried forward last snapshot price for {len(recovered)} unfetchable ticker(s): {recovered}")
+                        except Exception as carry_e:
+                            logger.warning(f"  Could not carry forward prices for failed tickers: {carry_e}")
+
                     # Create updated positions for target date
                     # Only include positions where we successfully fetched prices
                     updated_positions = []
@@ -1466,7 +1497,12 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                     
                     logger.info(f"  Processing {len(trading_days)} trading days to build position snapshots...")
                     process_start = time.time()
-                    
+
+                    # Carry-forward cache: most recent known price per ticker across days
+                    # (days are processed chronologically). Lets a single missing day reuse
+                    # the prior price instead of dropping the holding from that snapshot.
+                    last_price_by_ticker = {}
+
                     for day_idx, target_date in enumerate(trading_days, 1):
                         # Progress update every 10 days or on last day
                         if day_idx % 10 == 0 or day_idx == len(trading_days):
@@ -1486,9 +1522,8 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                             shares = Decimal(str(trade.get('shares', 0) or 0))
                             price = Decimal(str(trade.get('price', 0) or 0))
                             cost = shares * price
-                            reason = str(trade.get('reason', '')).upper()
                             
-                            if 'SELL' in reason:
+                            if is_trade_sell(trade):
                                 if running_positions[ticker]['shares'] > 0:
                                     cost_per_share = running_positions[ticker]['cost'] / running_positions[ticker]['shares']
                                     running_positions[ticker]['shares'] -= shares
@@ -1529,14 +1564,20 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                         
                         for ticker, holding in current_holdings.items():
                             if ticker in failed_tickers:
-                                continue  # Skip tickers with no price data
-                            
+                                continue  # No price data anywhere in range - skip entirely
+
                             # OPTIMIZATION: O(1) dict lookup instead of DataFrame operations
                             current_price = price_cache_dict.get((ticker, target_date))
                             if current_price is None:
+                                # Carry forward the most recent known price so a single missing
+                                # day doesn't drop a held position. latest_positions anchors on
+                                # the fund's max snapshot date, so a gap would hide the holding.
+                                current_price = last_price_by_ticker.get(ticker)
+                            if current_price is None:
                                 # ISSUE #3: Better logging - track why day was skipped
-                                logger.debug(f"  {target_date} {ticker}: No price data available in cache (skipping)")
+                                logger.debug(f"  {target_date} {ticker}: No price data available (skipping)")
                                 continue
+                            last_price_by_ticker[ticker] = current_price
                             
                             shares = holding['shares']
                             cost_basis = holding['cost']
