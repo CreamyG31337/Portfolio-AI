@@ -2,6 +2,7 @@
 markers = [
     "bench: opt-in LLM benchmark (OLLAMA_BENCH=1 llm_bench; OLLAMA_QUALITY_BENCH=1 llm_quality_bench; live Ollama/GLM)",
     "live_fetch: opt-in live publisher fetch canaries (RUN_LIVE_FETCH=1 pytest -m live_fetch)",
+    "live_reddit: live Reddit API canary (auto-runs when REDDIT_* creds present; skips in CI)",
 ]
 
 [tool.mypy]
