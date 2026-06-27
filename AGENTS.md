@@ -143,6 +143,15 @@ cp .env.test.template .env
 - Workflow: `list_tables` → `execute_sql` / `apply_migration` for DB work
 - **Never use for production data access** — development/test projects only. Does NOT expose Storage admin tools.
 
+## Graphify (code graph MCP)
+
+- **MCP reads from a fixed path outside OneDrive** — never point MCP at `graphify-out/` inside the synced repo (OneDrive conflicts + agents overwrite it).
+- Install path: `%USERPROFILE%\graphify\LLM-Micro-Cap-trading-bot\graph.json`
+- Build locally: `graphify update .` (writes to repo `graphify-out/` only)
+- **Share between PCs:** `.\scripts\graphify_export.ps1` → transfer zip (USB/email) → `.\scripts\graphify_import.ps1 -ZipPath ...`
+- **Do NOT** run `graphify extract` on the receiving PC unless explicitly rebuilding the graph.
+- Check: `.\scripts\graphify_status.ps1`
+
 ## Test Accounts
 
 Credentials in `web_dashboard/test_credentials.json` (gitignored). Regenerate: `cd web_dashboard; python setup_test_accounts.py`
