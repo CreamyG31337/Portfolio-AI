@@ -331,7 +331,7 @@ class RedditClient:
                 used_rss=True,
             )
 
-        self._wait_for_rate_limit()
+        # Spacing is enforced inside fetch_reddit_rss (shared process limiter).
         rss_result = fetch_reddit_rss(rss_url, user_agent=self.user_agent)
         if rss_result.rate_limited:
             logger.warning(

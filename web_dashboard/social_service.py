@@ -849,7 +849,8 @@ class SocialSentimentService:
             posts = data['data']['children']
             logger.info(f"Found {len(posts)} posts in r/{subreddit}")
             using_rss = self.reddit.rss_enabled
-            
+            comment_fetches_remaining = 3 if using_rss else limit
+
             for child in posts:
                 post = child.get('data', {})
                 if not post:
@@ -870,37 +871,43 @@ class SocialSentimentService:
                 # Fetch comments for context (Deep Dive)
                 comments_text = ""
                 try:
-                    comments_url = f"https://www.reddit.com/comments/{post_id}.json"
-                    if not self.reddit.check_robots_allowed(comments_url):
-                        logger.debug("Comment fetch blocked by robots.txt for post %s", post_id)
-                    else:
-                        comment_result = self.reddit.get_json(
-                            f"/comments/{post_id}",
-                            params={"sort": "top", "limit": 10},
+                    if comment_fetches_remaining <= 0:
+                        logger.debug(
+                            "Skipping comment fetch for %s (RSS comment budget exhausted)",
+                            post_id,
                         )
-
-                        if comment_result.payload is not None:
-                            c_data = comment_result.payload
-                            # Reddit comment structure is [post_listing, comment_listing]
-                            if isinstance(c_data, list) and len(c_data) > 1:
-                                comment_listing = c_data[1]
-                                if 'data' in comment_listing and 'children' in comment_listing['data']:
-                                    for c in comment_listing['data']['children']:
-                                        c_body = c.get('data', {}).get('body', '')
+                    else:
+                        comments_url = f"https://www.reddit.com/comments/{post_id}.json"
+                        if not self.reddit.check_robots_allowed(comments_url):
+                            logger.debug("Comment fetch blocked by robots.txt for post %s", post_id)
+                        else:
+                            comment_fetches_remaining -= 1
+                            comment_result = self.reddit.get_json(
+                                f"/comments/{post_id}",
+                                params={"sort": "top", "limit": 10},
+                            )
+                            if comment_result.payload is not None:
+                                c_data = comment_result.payload
+                                # Reddit comment structure is [post_listing, comment_listing]
+                                if isinstance(c_data, list) and len(c_data) > 1:
+                                    comment_listing = c_data[1]
+                                    if 'data' in comment_listing and 'children' in comment_listing['data']:
+                                        for c in comment_listing['data']['children']:
+                                            c_body = c.get('data', {}).get('body', '')
+                                            if c_body:
+                                                comments_text += f"- {c_body[:500]}...\n"
+                                elif isinstance(c_data, dict):
+                                    comment_children = (c_data.get("data") or {}).get("children") or []
+                                    for c in comment_children[1:]:
+                                        c_data_item = c.get("data", {})
+                                        c_body = (
+                                            c_data_item.get("body")
+                                            or c_data_item.get("selftext")
+                                            or c_data_item.get("title")
+                                            or ""
+                                        )
                                         if c_body:
-                                            comments_text += f"- {c_body[:500]}...\n"
-                            elif isinstance(c_data, dict):
-                                comment_children = (c_data.get("data") or {}).get("children") or []
-                                for c in comment_children[1:]:
-                                    c_data_item = c.get("data", {})
-                                    c_body = (
-                                        c_data_item.get("body")
-                                        or c_data_item.get("selftext")
-                                        or c_data_item.get("title")
-                                        or ""
-                                    )
-                                    if c_body:
-                                        comments_text += f"- {str(c_body)[:500]}...\n"
+                                            comments_text += f"- {str(c_body)[:500]}...\n"
                 except Exception as e:
                     logger.debug(f"Failed to fetch comments for {post_id}: {e}")
                 
