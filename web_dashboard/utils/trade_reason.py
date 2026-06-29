@@ -16,11 +16,15 @@ _SPEC.loader.exec_module(_MODULE)
 normalize_reason_text = _MODULE.normalize_reason_text
 is_dividend_reason = _MODULE.is_dividend_reason
 is_sell_reason = _MODULE.is_sell_reason
+is_boilerplate_buy_rationale = _MODULE.is_boilerplate_buy_rationale
+is_trade_sell = _MODULE.is_trade_sell
 infer_trade_action = _MODULE.infer_trade_action
 
 __all__ = [
     "normalize_reason_text",
     "is_dividend_reason",
     "is_sell_reason",
+    "is_boilerplate_buy_rationale",
+    "is_trade_sell",
     "infer_trade_action",
 ]

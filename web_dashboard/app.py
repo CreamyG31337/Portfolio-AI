@@ -43,12 +43,17 @@ from urllib.parse import urlencode
 from flask_cors import CORS
 
 # Ensure repo-level modules (e.g., utils.*) are importable before route imports.
+# Running `python web_dashboard/app.py` puts web_dashboard on sys.path[0], which
+# shadows project-root `utils` with web_dashboard/utils (incomplete shims).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DASHBOARD_ROOT = Path(__file__).resolve().parent
-if str(WEB_DASHBOARD_ROOT) not in sys.path:
-    sys.path.insert(0, str(WEB_DASHBOARD_ROOT))
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+_project_root = str(PROJECT_ROOT)
+_web_dashboard_root = str(WEB_DASHBOARD_ROOT)
+for _path in (_web_dashboard_root, _project_root):
+    while _path in sys.path:
+        sys.path.remove(_path)
+sys.path.insert(0, _project_root)
+sys.path.insert(1, _web_dashboard_root)
 
 from flask_cache_utils import cache_data, cache_resource
 from rate_limiter import rate_limit

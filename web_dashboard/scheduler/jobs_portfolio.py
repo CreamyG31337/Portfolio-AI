@@ -15,8 +15,6 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 
-from utils.trade_reason import is_trade_sell
-
 # Add parent directory to path if needed (standard boilerplate for these jobs)
 import sys
 from pathlib import Path
@@ -28,20 +26,16 @@ if current_dir.name == 'scheduler':
 else:
     project_root = current_dir.parent.parent
 
-# Also ensure web_dashboard is in path for supabase_client imports
-web_dashboard_path = str(Path(__file__).resolve().parent.parent)
-if web_dashboard_path not in sys.path:
-    sys.path.insert(0, web_dashboard_path)
+# Pin project root first so web_dashboard/utils does not shadow root utils.
+_project_root = str(project_root)
+_web_dashboard_path = str(Path(__file__).resolve().parent.parent)
+for _path in (_web_dashboard_path, _project_root):
+    while _path in sys.path:
+        sys.path.remove(_path)
+sys.path.insert(0, _project_root)
+sys.path.insert(1, _web_dashboard_path)
 
-# CRITICAL: Project root must be inserted LAST (at index 0) to ensure it comes
-# BEFORE web_dashboard in sys.path. This prevents web_dashboard/utils from
-# shadowing the project root's utils package.
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-elif sys.path[0] != str(project_root):
-    # If it is in path but not first, move it to front
-    sys.path.remove(str(project_root))
-    sys.path.insert(0, str(project_root))
+from utils.trade_reason import is_trade_sell
 
 from scheduler.scheduler_core import log_job_execution
 
