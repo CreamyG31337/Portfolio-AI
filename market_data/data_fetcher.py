@@ -283,8 +283,8 @@ class MarketDataFetcher:
                 
                 for col in price_columns:
                     if col in converted_df.columns:
-                        # Convert Decimal to float, multiply, then convert back to Decimal
-                        converted_df[col] = converted_df[col].apply(lambda x: Decimal(str(float(x) * exchange_rate)))
+                        # ⚡ Bolt: Vectorized Decimal conversion
+                        converted_df[col] = (converted_df[col].astype(float) * exchange_rate).astype(str).apply(Decimal)
                 
                 # Update source to indicate conversion
                 new_source = f"{result.source} (USD→CAD @ {exchange_rate:.4f})"

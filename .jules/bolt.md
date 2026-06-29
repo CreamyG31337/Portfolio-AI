@@ -59,3 +59,7 @@
 ## 2026-06-22 - np.where with pandas division and zero denominators
 **Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, pandas evaluates `A / B` for all rows before `np.where` applies its mask. If `B` can be zero, this floods logs with `RuntimeWarning: divide by zero encountered in divide` even when the result is masked.
 **Action:** Use safe division by replacing zeros with `np.nan` before dividing: `df['A'].divide(df['B'].replace(0, np.nan))`.
+
+## YYYY-MM-DD - Pandas Vectorization of Type Casts and String Formatting
+**Learning:** Found that applying lambda functions via `.apply()` for type casting and simple string replacements (like `lambda x: x.isoformat()` or `lambda x: Decimal(str(float(x) * val))`) imposes a severe O(n) Python-level function call overhead.
+**Action:** Replace `.apply(lambda ...)` with direct pandas vectorized methods, such as `.astype(str).str.replace(' ', 'T')` or `(df['col'].astype(float) * val).astype(str).apply(Decimal)`, delegating row execution to optimized lower-level C loops for significant speedups.
