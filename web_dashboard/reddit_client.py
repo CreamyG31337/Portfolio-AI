@@ -464,6 +464,38 @@ def reset_reddit_client() -> None:
     reset_rss_rate_limiter()
 
 
+def check_reddit_connectivity_with_retry(
+    client: RedditClient | None = None,
+    *,
+    max_cooldown_wait: float | None = None,
+) -> RedditConnectivityStatus:
+    """Probe Reddit; wait out one RSS cooldown window before reporting rate-limited.
+
+    Social sentiment and subreddit scanner share the process-wide RSS limiter.
+    When the probe runs during an active cooldown, sleep and retry once so a
+    transient 429 does not fail the whole job.
+    """
+    from reddit_rss import _rss_cooldown_seconds, get_rss_rate_limiter
+
+    reddit = client or get_reddit_client()
+    status = check_reddit_connectivity(reddit)
+    if status.ok or not status.rate_limited or reddit.oauth_enabled:
+        return status
+
+    wait_cap = (
+        max_cooldown_wait
+        if max_cooldown_wait is not None
+        else _rss_cooldown_seconds() + 5.0
+    )
+    wait = min(get_rss_rate_limiter().seconds_until_ready(), wait_cap)
+    if wait <= 0:
+        return status
+
+    logger.info("Reddit RSS cooldown — waiting %.0fs before connectivity retry", wait)
+    time.sleep(wait)
+    return check_reddit_connectivity(reddit)
+
+
 def check_reddit_connectivity(client: RedditClient | None = None) -> RedditConnectivityStatus:
     """Probe Reddit reachability with OAuth or public RSS feeds."""
     reddit = client or get_reddit_client()

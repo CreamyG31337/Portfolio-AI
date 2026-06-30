@@ -47,9 +47,9 @@ def subreddit_scanner_job() -> None:
         target_date = datetime.now(timezone.utc).date()
         mark_job_started(job_id, target_date)
 
-        from reddit_client import check_reddit_connectivity
+        from reddit_client import check_reddit_connectivity_with_retry
 
-        reddit_status = check_reddit_connectivity()
+        reddit_status = check_reddit_connectivity_with_retry()
         if not reddit_status.ok:
             duration_ms = int((time.time() - start_time) * 1000)
             if reddit_status.rate_limited:
@@ -57,7 +57,13 @@ def subreddit_scanner_job() -> None:
                     f"Reddit rate limited — subreddit scanner skipped: {reddit_status.message} "
                     f"(status={reddit_status.status_code})"
                 )
-            elif reddit_status.auth_failed and reddit_status.oauth_configured:
+                logger.warning(message)
+                log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+                mark_job_completed(
+                    job_id, target_date, None, [], duration_ms=duration_ms, message=message
+                )
+                return
+            if reddit_status.auth_failed and reddit_status.oauth_configured:
                 message = (
                     f"Reddit OAuth failed — subreddit scanner skipped: {reddit_status.message} "
                     f"(status={reddit_status.status_code})"

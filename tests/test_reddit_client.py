@@ -120,6 +120,54 @@ def test_check_reddit_connectivity_detects_429(monkeypatch):
     assert status.status_code == 429
 
 
+def test_check_reddit_connectivity_with_retry_waits_for_rss_cooldown(monkeypatch):
+    from reddit_client import (
+        RedditClient,
+        RedditConnectivityStatus,
+        check_reddit_connectivity_with_retry,
+    )
+    from reddit_rss import reset_rss_rate_limiter
+
+    monkeypatch.delenv("REDDIT_CLIENT_ID", raising=False)
+    monkeypatch.delenv("REDDIT_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("REDDIT_USERNAME", raising=False)
+    monkeypatch.delenv("REDDIT_PASSWORD", raising=False)
+
+    reset_rss_rate_limiter()
+    client = RedditClient(min_interval=0)
+    calls: list[int] = []
+
+    def fake_check(_client=None):
+        calls.append(1)
+        if len(calls) == 1:
+            return RedditConnectivityStatus(
+                ok=False,
+                oauth_configured=False,
+                status_code=429,
+                rate_limited=True,
+                auth_failed=False,
+                message="Reddit rate limited (429) during connectivity probe",
+            )
+        return RedditConnectivityStatus(
+            ok=True,
+            oauth_configured=False,
+            status_code=200,
+            rate_limited=False,
+            auth_failed=False,
+            message="Reddit RSS feeds reachable (no API app required)",
+        )
+
+    with patch("reddit_client.check_reddit_connectivity", side_effect=fake_check), patch(
+        "reddit_rss.get_rss_rate_limiter"
+    ) as limiter_mock, patch("reddit_client.time.sleep") as sleep_mock:
+        limiter_mock.return_value.seconds_until_ready.return_value = 5.0
+        status = check_reddit_connectivity_with_retry(client)
+
+    assert status.ok is True
+    assert len(calls) == 2
+    sleep_mock.assert_called_once_with(5.0)
+
+
 def test_get_json_uses_oauth_base_when_configured(monkeypatch):
     from reddit_client import RedditClient
 
