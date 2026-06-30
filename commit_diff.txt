@@ -1,0 +1,120 @@
+commit a9fce71655ebff114ec67e65ea09064ebc4612ae
+Author: Lance Colton <lance.colton@gmail.com>
+Date:   Mon Jun 29 09:44:40 2026 -0700
+
+    refactor: improve sys.path management in app.py and jobs_portfolio.py
+
+    Updated the sys.path handling in app.py and jobs_portfolio.py to ensure the project root is prioritized over the web_dashboard directory. This change prevents potential import conflicts by removing existing paths before reinserting them in the correct order. Additionally, the trade_reason module was updated to include new exports for is_boilerplate_buy_rationale and is_trade_sell, enhancing the module's functionality.
+
+diff --git a/web_dashboard/app.py b/web_dashboard/app.py
+index 86b7e447..9a48b9b8 100644
+--- a/web_dashboard/app.py
++++ b/web_dashboard/app.py
+@@ -43,12 +43,17 @@ from urllib.parse import urlencode
+ from flask_cors import CORS
+
+ # Ensure repo-level modules (e.g., utils.*) are importable before route imports.
++# Running `python web_dashboard/app.py` puts web_dashboard on sys.path[0], which
++# shadows project-root `utils` with web_dashboard/utils (incomplete shims).
+ PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ WEB_DASHBOARD_ROOT = Path(__file__).resolve().parent
+-if str(WEB_DASHBOARD_ROOT) not in sys.path:
+-    sys.path.insert(0, str(WEB_DASHBOARD_ROOT))
+-if str(PROJECT_ROOT) not in sys.path:
+-    sys.path.insert(0, str(PROJECT_ROOT))
++_project_root = str(PROJECT_ROOT)
++_web_dashboard_root = str(WEB_DASHBOARD_ROOT)
++for _path in (_web_dashboard_root, _project_root):
++    while _path in sys.path:
++        sys.path.remove(_path)
++sys.path.insert(0, _project_root)
++sys.path.insert(1, _web_dashboard_root)
+
+ from flask_cache_utils import cache_data, cache_resource
+ from rate_limiter import rate_limit
+diff --git a/web_dashboard/scheduler/jobs_portfolio.py b/web_dashboard/scheduler/jobs_portfolio.py
+index d917ccd6..db7a80ee 100644
+--- a/web_dashboard/scheduler/jobs_portfolio.py
++++ b/web_dashboard/scheduler/jobs_portfolio.py
+@@ -15,8 +15,6 @@ from collections import defaultdict
+ from concurrent.futures import ThreadPoolExecutor, as_completed
+ import pandas as pd
+
+-from utils.trade_reason import is_trade_sell
+-
+ # Add parent directory to path if needed (standard boilerplate for these jobs)
+ import sys
+ from pathlib import Path
+@@ -28,20 +26,16 @@ if current_dir.name == 'scheduler':
+ else:
+     project_root = current_dir.parent.parent
+
+-# Also ensure web_dashboard is in path for supabase_client imports
+-web_dashboard_path = str(Path(__file__).resolve().parent.parent)
+-if web_dashboard_path not in sys.path:
+-    sys.path.insert(0, web_dashboard_path)
++# Pin project root first so web_dashboard/utils does not shadow root utils.
++_project_root = str(project_root)
++_web_dashboard_path = str(Path(__file__).resolve().parent.parent)
++for _path in (_web_dashboard_path, _project_root):
++    while _path in sys.path:
++        sys.path.remove(_path)
++sys.path.insert(0, _project_root)
++sys.path.insert(1, _web_dashboard_path)
+
+-# CRITICAL: Project root must be inserted LAST (at index 0) to ensure it comes
+-# BEFORE web_dashboard in sys.path. This prevents web_dashboard/utils from
+-# shadowing the project root's utils package.
+-if str(project_root) not in sys.path:
+-    sys.path.insert(0, str(project_root))
+-elif sys.path[0] != str(project_root):
+-    # If it is in path but not first, move it to front
+-    sys.path.remove(str(project_root))
+-    sys.path.insert(0, str(project_root))
++from utils.trade_reason import is_trade_sell
+
+ from scheduler.scheduler_core import log_job_execution
+
+diff --git a/web_dashboard/utils/job_tracking.py b/web_dashboard/utils/job_tracking.py
+new file mode 100644
+index 00000000..1fd9e01e
+--- /dev/null
++++ b/web_dashboard/utils/job_tracking.py
+@@ -0,0 +1,17 @@
++"""Compatibility shim for utils.job_tracking imports in Flask runtime."""
++
++from __future__ import annotations
++
++import importlib.util
++from pathlib import Path
++
++_ROOT_MODULE_PATH = Path(__file__).resolve().parents[2] / "utils" / "job_tracking.py"
++_SPEC = importlib.util.spec_from_file_location("_root_job_tracking", _ROOT_MODULE_PATH)
++if _SPEC is None or _SPEC.loader is None:
++    raise ImportError(f"Could not load job_tracking module from {_ROOT_MODULE_PATH}")
++
++_MODULE = importlib.util.module_from_spec(_SPEC)
++_SPEC.loader.exec_module(_MODULE)
++
++__all__ = [name for name in dir(_MODULE) if not name.startswith("_")]
++globals().update({name: getattr(_MODULE, name) for name in __all__})
+diff --git a/web_dashboard/utils/trade_reason.py b/web_dashboard/utils/trade_reason.py
+index 4a98fba4..9541376f 100644
+--- a/web_dashboard/utils/trade_reason.py
++++ b/web_dashboard/utils/trade_reason.py
+@@ -16,11 +16,15 @@ _SPEC.loader.exec_module(_MODULE)
+ normalize_reason_text = _MODULE.normalize_reason_text
+ is_dividend_reason = _MODULE.is_dividend_reason
+ is_sell_reason = _MODULE.is_sell_reason
++is_boilerplate_buy_rationale = _MODULE.is_boilerplate_buy_rationale
++is_trade_sell = _MODULE.is_trade_sell
+ infer_trade_action = _MODULE.infer_trade_action
+
+ __all__ = [
+     "normalize_reason_text",
+     "is_dividend_reason",
+     "is_sell_reason",
++    "is_boilerplate_buy_rationale",
++    "is_trade_sell",
+     "infer_trade_action",
+ ]
