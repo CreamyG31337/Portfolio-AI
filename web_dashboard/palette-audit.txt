@@ -1,0 +1,4 @@
+Issue: Custom modal implementations manually clicking hidden triggers
+Why it matters: Flowbite's JS API (`new Modal(element)`) is the canonical way to control modals programmatically. Manually clicking hidden elements (e.g. `<button id="edit-trade-modal-trigger" class="hidden">`) to trigger Flowbite's data attributes is brittle, bypasses component lifecycle hooks, and can lead to broken focus management.
+Suggestion: Import Modal from Flowbite (or declare it from global window if loaded via CDN) and use `new Modal(element).show()` and `new Modal(element).hide()` instead of simulating clicks on hidden triggers (`document.getElementById('...').click()`). You can then remove the dummy hidden trigger buttons from the HTML templates.
+Scope: Systemic (trade_entry.ts, funds.ts, signals.ts, research.html, _confirm_modal.html, etc.)
