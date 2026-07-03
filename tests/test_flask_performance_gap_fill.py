@@ -164,3 +164,77 @@ def test_performance_metrics_gap_is_filled_from_positions():
 
     gap_day_value = float(result.loc[pd.to_datetime(result["date"]).dt.date == gap_day, "value"].iloc[0])
     assert gap_day_value == 125.0
+
+
+def test_trailing_session_included_on_us_only_holiday():
+    """When US markets are closed but TSX is open, include the session from positions."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    last_session = date(2026, 7, 2)
+    canadian_session = date(2026, 7, 3)  # US Independence Day observed; TSX open
+
+    table_rows = {
+        "performance_metrics": [
+            {
+                "date": last_session.isoformat(),
+                "total_value": 100.0,
+                "cost_basis": 90.0,
+                "unrealized_pnl": 10.0,
+                "fund": "Project Chimera",
+            },
+        ],
+        "portfolio_positions": [
+            {
+                "date": f"{canadian_session.isoformat()}T20:05:00+00:00",
+                "total_value": 0.0,
+                "cost_basis": 0.0,
+                "pnl": 0.0,
+                "fund": "Project Chimera",
+                "currency": "CAD",
+                "total_value_base": 105.0,
+                "cost_basis_base": 90.0,
+                "pnl_base": 15.0,
+                "base_currency": "CAD",
+            },
+        ],
+    }
+
+    toronto_now = datetime(2026, 7, 3, 14, 0, tzinfo=ZoneInfo("America/Toronto"))
+
+    def fake_now(tz=None):
+        if tz is not None:
+            tz_key = getattr(tz, "key", str(tz))
+            if "Toronto" in tz_key:
+                return toronto_now
+        return datetime.now(timezone.utc)
+
+    with patch(
+        "flask_data_utils.get_supabase_client_flask",
+        return_value=_SupabaseFacade(table_rows),
+    ), patch(
+        "flask_data_utils.get_current_positions_flask",
+        return_value=pd.DataFrame(),
+    ), patch(
+        "cache_version.get_cache_version",
+        return_value="v-test-trailing-holiday",
+    ), patch(
+        "flask_data_utils.datetime"
+    ) as mock_datetime:
+        mock_datetime.now = fake_now
+        mock_datetime.combine = datetime.combine
+        mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+        result = calculate_portfolio_value_over_time_flask(
+            fund="Project Chimera",
+            days=30,
+            _cache_version="v-test-trailing-holiday",
+        )
+
+    assert not result.empty
+    result_dates = {d.date() for d in pd.to_datetime(result["date"])}
+    assert last_session in result_dates
+    assert canadian_session in result_dates
+    jul3_value = float(
+        result.loc[pd.to_datetime(result["date"]).dt.date == canadian_session, "value"].iloc[0]
+    )
+    assert jul3_value == 105.0

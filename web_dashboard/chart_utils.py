@@ -241,7 +241,14 @@ def _adjust_to_market_close(df: pd.DataFrame, date_column: str = 'date') -> pd.D
     return df
 
 
-def _filter_trading_days(df: pd.DataFrame, date_column: str = 'date', market: str = 'us') -> pd.DataFrame:
+# North American portfolio charts: keep a day when either US or Canadian markets are open.
+# Aligns with update_portfolio_prices_job (market="any") so TSX sessions show on US-only holidays.
+CHART_TRADING_MARKET = "any"
+
+
+def _filter_trading_days(
+    df: pd.DataFrame, date_column: str = "date", market: str = CHART_TRADING_MARKET
+) -> pd.DataFrame:
     """Remove weekends and holidays from dataset using the centralized utility."""
     if df.empty or date_column not in df.columns:
         return df
@@ -622,7 +629,7 @@ def create_portfolio_value_chart(
     show_weekend_shading: bool = True,
     use_solid_lines: bool = False,
     display_currency: Optional[str] = None,
-    market: str = 'us'
+    market: str = CHART_TRADING_MARKET,
 ) -> go.Figure:
     """Create a line chart showing portfolio value/performance over time.
     
@@ -633,6 +640,7 @@ def create_portfolio_value_chart(
         show_benchmarks: List of benchmark keys to display (e.g., ['sp500', 'qqq'])
         show_weekend_shading: If True, adds gray shading for weekends
         display_currency: Optional display currency (defaults to user preference)
+        market: Trading calendar for filtering/shading ('any' = US or Canadian session)
     """
     # Get display currency
     if display_currency is None:

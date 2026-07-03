@@ -870,22 +870,55 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                                 )
                                 current_pnl += u_pnl * rate
 
-                            # Create row for today (noon UTC) — compare calendar dates only so
-                            # tz-aware portfolio_positions timestamps don't break the check.
-                            today_date = pd.Timestamp.utcnow().normalize() + pd.Timedelta(hours=12)
-                            last_metric_date = pd.to_datetime(daily_totals['date'].max())
-                            if last_metric_date.date() < today_date.date():
-                                new_row = pd.DataFrame([{
-                                    'date': today_date,
-                                    'value': current_val,
-                                    'cost_basis': current_cost,
-                                    'pnl': current_pnl,
-                                    'fund': fund
-                                }])
-                                daily_totals = pd.concat([daily_totals, new_row], ignore_index=True)
+                            # Use Eastern calendar day (America/Toronto) — matches price job and
+                            # Canadian users; avoids UTC day-boundary drift vs local sessions.
+                            from zoneinfo import ZoneInfo
+                            from utils.market_holidays import MarketHolidays
+
+                            today_calendar = datetime.now(ZoneInfo("America/Toronto")).date()
+                            chart_calendar = MarketHolidays()
+                            if chart_calendar.is_trading_day(today_calendar, market="any"):
+                                today_date = pd.Timestamp(today_calendar) + pd.Timedelta(hours=12)
+                                last_metric_date = pd.to_datetime(daily_totals["date"].max())
+                                if last_metric_date.date() < today_calendar:
+                                    new_row = pd.DataFrame([{
+                                        "date": today_date,
+                                        "value": current_val,
+                                        "cost_basis": current_cost,
+                                        "pnl": current_pnl,
+                                        "fund": fund,
+                                    }])
+                                    daily_totals = pd.concat(
+                                        [daily_totals, new_row], ignore_index=True
+                                    )
 
                     except Exception as live_data_error:
                         logger.warning(f"Failed to append live data to performance metrics: {live_data_error}")
+
+                    # Trailing sessions after last metric (e.g. TSX open on US-only holidays)
+                    try:
+                        from zoneinfo import ZoneInfo
+                        from utils.market_holidays import MarketHolidays
+
+                        chart_calendar = MarketHolidays()
+                        through_date = datetime.now(ZoneInfo("America/Toronto")).date()
+                        last_in_series = pd.to_datetime(daily_totals["date"].max()).date()
+                        trailing: list[date] = []
+                        cursor = last_in_series + timedelta(days=1)
+                        while cursor <= through_date:
+                            if chart_calendar.is_trading_day(cursor, market="any"):
+                                trailing.append(cursor)
+                            cursor += timedelta(days=1)
+                        if trailing:
+                            daily_totals = _merge_missing_dates_from_positions(
+                                daily_totals,
+                                trailing,
+                            )
+                    except Exception as trailing_error:
+                        logger.warning(
+                            "Failed to backfill trailing performance dates: %s",
+                            trailing_error,
+                        )
 
                     # Sort ensuring date order
                     daily_totals = daily_totals.sort_values('date').reset_index(drop=True)
@@ -989,8 +1022,10 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
         # Filter weekends (optional, but good for consistency)
         # Import local to avoid circular dep
         try:
-            from chart_utils import _filter_trading_days
-            daily_totals = _filter_trading_days(daily_totals, 'date')
+            from chart_utils import CHART_TRADING_MARKET, _filter_trading_days
+            daily_totals = _filter_trading_days(
+                daily_totals, "date", market=CHART_TRADING_MARKET
+            )
         except ImportError:
             pass
             
