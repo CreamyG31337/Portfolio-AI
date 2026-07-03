@@ -1366,43 +1366,21 @@ def create_sector_allocation_chart(positions_df: pd.DataFrame, fund_name: Option
     sector_df = pd.DataFrame(sector_data)
     
     # Normalize sector names to merge variations (e.g., "Health Care" -> "Healthcare")
-    def normalize_sector_name(sector: str) -> str:
-        """Normalize sector names to handle variations like 'Health Care' vs 'Healthcare'"""
-        if pd.isna(sector) or not sector:
-            return sector
-        
-        sector_str = str(sector).strip()
-        
-        # Normalize common variations
-        # "Health Care" -> "Healthcare"
-        if sector_str.lower() in ['health care', 'healthcare']:
-            return 'Healthcare'
-        
-        # "Financial Services" variations
-        if sector_str.lower() in ['financial services', 'financial']:
-            return 'Financial Services'
-        
-        # "Consumer Cyclical" variations
-        if sector_str.lower() in ['consumer cyclical', 'consumer discretionary']:
-            return 'Consumer Cyclical'
-        
-        # "Consumer Defensive" variations
-        if sector_str.lower() in ['consumer defensive', 'consumer staples']:
-            return 'Consumer Defensive'
-        
-        # "Communication Services" variations
-        if sector_str.lower() in ['communication services', 'communications', 'telecommunication services']:
-            return 'Communication Services'
-        
-        # "Basic Materials" variations
-        if sector_str.lower() in ['basic materials', 'materials']:
-            return 'Basic Materials'
-        
-        # Return original if no normalization needed
-        return sector_str
+    # ⚡ Bolt: Replaced slow .apply() with vectorized .map() dictionary lookup (faster)
+    SECTOR_MAP = {
+        'health care': 'Healthcare', 'healthcare': 'Healthcare',
+        'financial services': 'Financial Services', 'financial': 'Financial Services',
+        'consumer cyclical': 'Consumer Cyclical', 'consumer discretionary': 'Consumer Cyclical',
+        'consumer defensive': 'Consumer Defensive', 'consumer staples': 'Consumer Defensive',
+        'communication services': 'Communication Services', 'communications': 'Communication Services', 'telecommunication services': 'Communication Services',
+        'basic materials': 'Basic Materials', 'materials': 'Basic Materials'
+    }
     
-    # Apply normalization
-    sector_df['sector_normalized'] = sector_df['sector'].apply(normalize_sector_name)
+    # Apply normalization using map
+    # First, apply the strip to all elements to maintain the original behavior for non-mapped values
+    stripped_sectors = sector_df['sector'].astype(str).str.strip()
+    lower_sectors = stripped_sectors.str.lower()
+    sector_df['sector_normalized'] = lower_sectors.map(SECTOR_MAP).fillna(stripped_sectors)
     
     # Log before aggregation to see raw data
     logger.info(f"[Sector Chart] Total positions processed: {len(sector_df)}")
