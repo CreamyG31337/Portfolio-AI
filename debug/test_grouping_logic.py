@@ -20,7 +20,7 @@ def test_grouping_logic():
     print("Testing grouping logic...")
     
     # Get latest snapshot using the repository method
-    repository = SupabaseRepository(fund="TEST")
+    repository = SupabaseRepository(fund_name="TEST")
     snapshot = repository.get_latest_portfolio_snapshot()
     
     if not snapshot:
