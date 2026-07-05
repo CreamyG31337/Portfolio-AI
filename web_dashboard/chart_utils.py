@@ -60,11 +60,7 @@ def _holiday_chart_label(full_name: str) -> str:
 def _add_holiday_shading(fig: go.Figure, start_date: datetime, end_date: datetime,
                          market: str = 'us',
                          holiday_color: Optional[str] = 'rgba(211, 211, 211, 0.3)') -> None:
-    """Add shading for market holidays using the centralized utility.
-
-    All holidays in range are shaded. Labels are added only on non-trading days for
-    the given market calendar (e.g. with market='any', label shared closures only).
-    """
+    """Add shading for market holidays using the centralized utility."""
     holidays_in_range = MARKET_HOLIDAYS.get_holidays_for_range(start_date.date(), end_date.date(), market=market)
 
     for holiday_date in holidays_in_range:
@@ -73,23 +69,18 @@ def _add_holiday_shading(fig: go.Figure, start_date: datetime, end_date: datetim
 
         holiday_name = MARKET_HOLIDAYS.get_holiday_name(holiday_date) or "Holiday"
 
-        vrect_kwargs: Dict[str, Any] = {
-            "x0": start_shade,
-            "x1": end_shade,
-            "fillcolor": holiday_color,
-            "layer": "below",
-            "line_width": 0,
-        }
-        if not MARKET_HOLIDAYS.is_trading_day(holiday_date, market=market):
-            vrect_kwargs.update(
-                annotation_text=_holiday_chart_label(holiday_name),
-                annotation_position="top",
-                annotation_textangle=-90,
-                annotation_font_size=9,
-                annotation_font_color="gray",
-            )
-
-        fig.add_vrect(**vrect_kwargs)
+        fig.add_vrect(
+            x0=start_shade,
+            x1=end_shade,
+            fillcolor=holiday_color,
+            layer="below",
+            line_width=0,
+            annotation_text=_holiday_chart_label(holiday_name),
+            annotation_position="top",
+            annotation_textangle=-90,
+            annotation_font_size=9,
+            annotation_font_color="gray",
+        )
 
 
 # Theme-aware chart helpers
@@ -859,9 +850,6 @@ def create_portfolio_value_chart(
 
         # Holiday shading
         _add_holiday_shading(fig, start_date, end_date, market=market)
-
-        # Prevent holiday annotations from expanding x-axis margins
-        fig.update_xaxes(range=[df["date"].min(), df["date"].max()])
     
     # Title
     title = f"Portfolio {'Performance' if show_normalized else 'Value'} Over Time"

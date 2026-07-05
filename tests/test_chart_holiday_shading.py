@@ -5,13 +5,8 @@ from datetime import datetime
 
 import pandas as pd
 import plotly.graph_objs as go
-import pytest
 
-from chart_utils import (
-    CHART_TRADING_MARKET,
-    _add_holiday_shading,
-    create_portfolio_value_chart,
-)
+from chart_utils import CHART_TRADING_MARKET, _add_holiday_shading
 
 
 def _shape_x0_dates(fig: go.Figure) -> list[datetime]:
@@ -44,7 +39,7 @@ def _annotation_by_text(fig: go.Figure, text: str) -> go.layout.Annotation | Non
 
 
 class TestHolidayShadingLabels:
-    def test_juneteenth_shaded_but_not_labeled(self) -> None:
+    def test_juneteenth_shaded_and_labeled_vertically(self) -> None:
         fig = go.Figure()
         _add_holiday_shading(
             fig,
@@ -54,8 +49,9 @@ class TestHolidayShadingLabels:
         )
 
         assert _has_holiday_shade(fig, 2026, 6, 19)
-        assert "Juneteenth" not in _annotation_texts(fig)
-        assert "Juneteenth National Independence Day" not in _annotation_texts(fig)
+        juneteenth = _annotation_by_text(fig, "Juneteenth")
+        assert juneteenth is not None
+        assert juneteenth.textangle == -90
 
     def test_christmas_labeled_vertically(self) -> None:
         fig = go.Figure()
@@ -72,7 +68,7 @@ class TestHolidayShadingLabels:
         assert christmas.textangle == -90
         assert christmas.yanchor == "top"
 
-    def test_shared_holiday_labels_use_top_position_not_top_left(self) -> None:
+    def test_holiday_labels_use_top_center_not_top_left(self) -> None:
         fig = go.Figure()
         _add_holiday_shading(
             fig,
@@ -85,30 +81,3 @@ class TestHolidayShadingLabels:
         assert good_friday is not None
         assert good_friday.textangle == -90
         assert good_friday.xanchor == "center"
-
-
-class TestPortfolioChartXAxis:
-    @pytest.fixture
-    def sample_portfolio_df(self) -> pd.DataFrame:
-        dates = pd.date_range("2026-06-01", "2026-12-31", freq="B")
-        return pd.DataFrame(
-            {
-                "date": dates,
-                "performance_index": [100.0 + i * 0.1 for i in range(len(dates))],
-                "performance_pct": [i * 0.1 for i in range(len(dates))],
-                "cost_basis": [1000.0] * len(dates),
-            }
-        )
-
-    def test_xaxis_range_clamped_to_data(self, sample_portfolio_df: pd.DataFrame) -> None:
-        fig = create_portfolio_value_chart(
-            sample_portfolio_df,
-            show_normalized=True,
-            show_benchmarks=None,
-            show_weekend_shading=True,
-        )
-
-        x_range = fig.layout.xaxis.range
-        assert x_range is not None
-        assert pd.to_datetime(x_range[0]) == sample_portfolio_df["date"].min()
-        assert pd.to_datetime(x_range[1]) == sample_portfolio_df["date"].max()
