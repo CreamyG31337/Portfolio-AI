@@ -649,14 +649,26 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
         def _merge_missing_dates_from_positions(
             base_daily_totals: pd.DataFrame,
             missing_dates: list[date],
+            *,
+            replace_existing: bool = False,
         ) -> pd.DataFrame:
-            """Fetch and aggregate missing dates from portfolio_positions."""
+            """Fetch and aggregate dates from portfolio_positions.
+
+            When replace_existing is True, rows for those dates are removed from
+            base_daily_totals first (used to fix suspect performance_metrics).
+            """
             if not missing_dates:
                 return base_daily_totals
 
             missing_date_set = set(missing_dates)
             range_start = min(missing_dates)
             range_end = max(missing_dates)
+
+            if replace_existing:
+                keep_mask = ~pd.to_datetime(base_daily_totals["date"]).dt.date.isin(
+                    missing_date_set
+                )
+                base_daily_totals = base_daily_totals.loc[keep_mask].copy()
 
             all_rows = []
             batch_size = 1000
@@ -732,11 +744,106 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                 .reset_index(drop=True)
             )
             logger.info(
-                "Filled %s missing performance date(s) from portfolio_positions for %s",
+                "%s %s performance date(s) from portfolio_positions for %s",
+                "Replaced" if replace_existing else "Filled",
                 len(filled),
                 fund,
             )
             return merged
+
+        def _detect_suspect_metric_dates(
+            metrics_df: pd.DataFrame,
+            positions_df: pd.DataFrame,
+            *,
+            threshold: float = 0.15,
+        ) -> list[date]:
+            """Dates where performance_metrics diverges from position aggregates."""
+            if metrics_df.empty or positions_df.empty:
+                return []
+
+            suspect: list[date] = []
+            pos_by_date = {
+                pd.to_datetime(row["date"]).date(): float(row["value"])
+                for row in positions_df.to_dict("records")
+            }
+            for row in metrics_df.itertuples(index=False):
+                d = pd.to_datetime(row.date).date()
+                pos_val = pos_by_date.get(d)
+                if pos_val is None or pos_val <= 0:
+                    continue
+                met_val = float(row.value)
+                if abs(pos_val - met_val) / pos_val > threshold:
+                    suspect.append(d)
+            return suspect
+
+        def _fetch_position_daily_totals(
+            range_start: date,
+            range_end: date,
+        ) -> pd.DataFrame:
+            """Aggregate portfolio_positions to one row per calendar date."""
+            all_rows: list[dict] = []
+            batch_size = 1000
+            offset = 0
+            while True:
+                query = client.supabase.table("portfolio_positions").select(
+                    "date, total_value, cost_basis, pnl, fund, currency, "
+                    "total_value_base, cost_basis_base, pnl_base, base_currency"
+                )
+                if fund and fund.lower() != "all":
+                    query = query.eq("fund", fund)
+
+                query = (
+                    query.gte("date", f"{range_start}T00:00:00")
+                    .lt("date", f"{range_end}T23:59:59.999999")
+                    .order("date")
+                    .order("id")
+                    .range(offset, offset + batch_size - 1)
+                )
+
+                result = query.execute()
+                rows = result.data or []
+                if not rows:
+                    break
+                all_rows.extend(rows)
+                if len(rows) < batch_size:
+                    break
+                offset += batch_size
+
+            if not all_rows:
+                return pd.DataFrame(columns=["date", "value", "cost_basis", "pnl"])
+
+            df = pd.DataFrame(all_rows)
+            df["date"] = pd.to_datetime(df["date"]).dt.date
+
+            has_preconverted = (
+                "total_value_base" in df.columns
+                and df["total_value_base"].notna().mean() > 0.8
+            )
+            if has_preconverted:
+                value_col, cost_col, pnl_col = (
+                    "total_value_base",
+                    "cost_basis_base",
+                    "pnl_base",
+                )
+            else:
+                value_col, cost_col, pnl_col = "total_value", "cost_basis", "pnl"
+
+            grouped = (
+                df.groupby("date")
+                .agg({value_col: "sum", cost_col: "sum", pnl_col: "sum"})
+                .reset_index()
+                .rename(
+                    columns={
+                        value_col: "value",
+                        cost_col: "cost_basis",
+                        pnl_col: "pnl",
+                    }
+                )
+            )
+            grouped["date"] = (
+                pd.to_datetime(grouped["date"]).dt.normalize() + pd.Timedelta(hours=12)
+            )
+            return grouped
 
         # OPTIMIZATION: Try fetching pre-aggregated metrics first
         # This reduces data transfer from ~50k rows (positions) to ~1k rows (daily summaries)
@@ -787,6 +894,39 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                         daily_totals = (
                             daily_totals.groupby('date', as_index=False)
                             .agg({'value': 'sum', 'cost_basis': 'sum', 'pnl': 'sum'})
+                        )
+
+                    # Replace suspect metrics (e.g. US-only holidays with CAD-only totals)
+                    try:
+                        metric_dates = [
+                            pd.to_datetime(d).date() for d in daily_totals["date"]
+                        ]
+                        if metric_dates:
+                            pos_totals = _fetch_position_daily_totals(
+                                min(metric_dates),
+                                max(metric_dates),
+                            )
+                            suspect_dates = _detect_suspect_metric_dates(
+                                daily_totals,
+                                pos_totals,
+                            )
+                            if suspect_dates:
+                                logger.warning(
+                                    "Replacing %s suspect performance_metrics date(s) "
+                                    "from portfolio_positions for %s: %s",
+                                    len(suspect_dates),
+                                    fund,
+                                    suspect_dates,
+                                )
+                                daily_totals = _merge_missing_dates_from_positions(
+                                    daily_totals,
+                                    suspect_dates,
+                                    replace_existing=True,
+                                )
+                    except Exception as reconcile_error:
+                        logger.warning(
+                            "Failed to reconcile performance_metrics: %s",
+                            reconcile_error,
                         )
 
                     # Append today's live data if needed

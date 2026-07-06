@@ -460,7 +460,10 @@ def _process_performance_metrics_for_date(
     """
     # Get all funds that have data for target_date
     positions_query = client.supabase.table("portfolio_positions")\
-        .select("fund, total_value, cost_basis, pnl, currency, date")\
+        .select(
+            "fund, total_value, cost_basis, pnl, currency, date, "
+            "total_value_base, cost_basis_base, pnl_base"
+        )\
         .gte("date", f"{target_date}T00:00:00")\
         .lt("date", f"{target_date}T23:59:59.999999")
     
@@ -497,23 +500,31 @@ def _process_performance_metrics_for_date(
                 logger.warning(f"⚠️ Position in fund '{fund}' ticker '{pos.get('ticker', 'unknown')}' has invalid currency '{original_currency}'. Defaulting to CAD.")
                 currency = 'CAD'
         
-        # Convert to Decimal for precision
-        total_value = Decimal(str(pos.get('total_value', 0) or 0))
-        cost_basis = Decimal(str(pos.get('cost_basis', 0) or 0))
-        pnl = Decimal(str(pos.get('pnl', 0) or 0))
-        
-        # Convert USD to CAD if needed
-        if currency == 'USD':
-            rate = get_exchange_rate_for_date_from_db(
-                datetime.combine(target_date, dt_time(0, 0, 0)),
-                'USD',
-                'CAD'
-            )
-            if rate:
-                rate_decimal = Decimal(str(rate))
-                total_value *= rate_decimal
-                cost_basis *= rate_decimal
-                pnl *= rate_decimal
+        # Prefer pre-converted base-currency columns (authoritative after price job).
+        # Manual USD conversion fails on US-only holidays when positions are partial at 5 PM ET.
+        base_value = pos.get("total_value_base")
+        if base_value is not None and base_value != "":
+            total_value = Decimal(str(base_value or 0))
+            cost_basis = Decimal(str(pos.get("cost_basis_base", 0) or 0))
+            pnl = Decimal(str(pos.get("pnl_base", 0) or 0))
+        else:
+            # Convert to Decimal for precision
+            total_value = Decimal(str(pos.get("total_value", 0) or 0))
+            cost_basis = Decimal(str(pos.get("cost_basis", 0) or 0))
+            pnl = Decimal(str(pos.get("pnl", 0) or 0))
+
+            # Convert USD to CAD if needed
+            if currency == "USD":
+                rate = get_exchange_rate_for_date_from_db(
+                    datetime.combine(target_date, dt_time(0, 0, 0)),
+                    "USD",
+                    "CAD",
+                )
+                if rate:
+                    rate_decimal = Decimal(str(rate))
+                    total_value *= rate_decimal
+                    cost_basis *= rate_decimal
+                    pnl *= rate_decimal
         
         fund_totals[fund]['total_value'] += total_value
         fund_totals[fund]['cost_basis'] += cost_basis

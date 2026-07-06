@@ -238,3 +238,75 @@ def test_trailing_session_included_on_us_only_holiday():
         result.loc[pd.to_datetime(result["date"]).dt.date == canadian_session, "value"].iloc[0]
     )
     assert jul3_value == 105.0
+
+
+def test_suspect_performance_metrics_replaced_from_positions():
+    """Bad performance_metrics rows are replaced when positions disagree >15%."""
+    good_day = date(2026, 6, 18)
+    bad_day = date(2026, 6, 19)
+
+    table_rows = {
+        "performance_metrics": [
+            {
+                "date": good_day.isoformat(),
+                "total_value": 200.0,
+                "cost_basis": 150.0,
+                "unrealized_pnl": 50.0,
+                "fund": "Project Chimera",
+            },
+            {
+                "date": bad_day.isoformat(),
+                "total_value": 80.0,
+                "cost_basis": 60.0,
+                "unrealized_pnl": 20.0,
+                "fund": "Project Chimera",
+            },
+        ],
+        "portfolio_positions": [
+            {
+                "date": f"{good_day.isoformat()}T20:05:00+00:00",
+                "total_value": 0.0,
+                "cost_basis": 0.0,
+                "pnl": 0.0,
+                "fund": "Project Chimera",
+                "currency": "CAD",
+                "total_value_base": 200.0,
+                "cost_basis_base": 150.0,
+                "pnl_base": 50.0,
+                "base_currency": "CAD",
+            },
+            {
+                "date": f"{bad_day.isoformat()}T20:05:00+00:00",
+                "total_value": 0.0,
+                "cost_basis": 0.0,
+                "pnl": 0.0,
+                "fund": "Project Chimera",
+                "currency": "CAD",
+                "total_value_base": 200.0,
+                "cost_basis_base": 150.0,
+                "pnl_base": 50.0,
+                "base_currency": "CAD",
+            },
+        ],
+    }
+
+    with patch(
+        "flask_data_utils.get_supabase_client_flask",
+        return_value=_SupabaseFacade(table_rows),
+    ), patch(
+        "flask_data_utils.get_current_positions_flask",
+        return_value=pd.DataFrame(),
+    ), patch(
+        "cache_version.get_cache_version",
+        return_value="v-test-suspect-metrics",
+    ):
+        result = calculate_portfolio_value_over_time_flask(
+            fund="Project Chimera",
+            days=30,
+            _cache_version="v-test-suspect-metrics",
+        )
+
+    bad_value = float(
+        result.loc[pd.to_datetime(result["date"]).dt.date == bad_day, "value"].iloc[0]
+    )
+    assert bad_value == 200.0
