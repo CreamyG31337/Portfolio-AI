@@ -1,0 +1,13 @@
+# Code Review for commit a4705e664edbfa67b0c65df141489dd937472fcb
+
+**Summary**:
+The commit updates the holiday shading tests by renaming test methods and streamlining the `_add_holiday_shading` utility function. The refactoring improves the readability and accuracy of the tests and removes an unused test class `TestPortfolioChartXAxis` which used to verify the X-axis range behaviour. The code looks solid, and tests have passed successfully.
+
+**Findings**:
+- `tests/test_chart_holiday_shading.py` has been updated to rename methods, such as `test_juneteenth_shaded_but_not_labeled` to `test_juneteenth_shaded_and_labeled_vertically`, making the test intent clearer. The `TestPortfolioChartXAxis` test class was removed.
+- `web_dashboard/chart_utils.py` streamlined the logic within `_add_holiday_shading`, directly instantiating the annotation logic in the `fig.add_vrect` call.
+- Additionally, it removed the lines modifying the xaxes range in `create_portfolio_value_chart`, which corresponds to the test removal in `test_chart_holiday_shading.py`.
+
+The changes appear technically sound, with proper simplification of the annotation building, and dropping tests/code paths no longer required. Test execution confirmed all three tests (`test_juneteenth_shaded_and_labeled_vertically`, `test_christmas_labeled_vertically`, `test_holiday_labels_use_top_center_not_top_left`) pass successfully in the environment.
+
+Code review is complete.

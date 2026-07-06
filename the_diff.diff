@@ -1,0 +1,143 @@
+diff --git a/tests/test_chart_holiday_shading.py b/tests/test_chart_holiday_shading.py
+index c5cde0c0..28c7e361 100644
+--- a/tests/test_chart_holiday_shading.py
++++ b/tests/test_chart_holiday_shading.py
+@@ -5,13 +5,8 @@ from datetime import datetime
+
+ import pandas as pd
+ import plotly.graph_objs as go
+-import pytest
+
+-from chart_utils import (
+-    CHART_TRADING_MARKET,
+-    _add_holiday_shading,
+-    create_portfolio_value_chart,
+-)
++from chart_utils import CHART_TRADING_MARKET, _add_holiday_shading
+
+
+ def _shape_x0_dates(fig: go.Figure) -> list[datetime]:
+@@ -44,7 +39,7 @@ def _annotation_by_text(fig: go.Figure, text: str) -> go.layout.Annotation | Non
+
+
+ class TestHolidayShadingLabels:
+-    def test_juneteenth_shaded_but_not_labeled(self) -> None:
++    def test_juneteenth_shaded_and_labeled_vertically(self) -> None:
+         fig = go.Figure()
+         _add_holiday_shading(
+             fig,
+@@ -54,8 +49,9 @@ class TestHolidayShadingLabels:
+         )
+
+         assert _has_holiday_shade(fig, 2026, 6, 19)
+-        assert "Juneteenth" not in _annotation_texts(fig)
+-        assert "Juneteenth National Independence Day" not in _annotation_texts(fig)
++        juneteenth = _annotation_by_text(fig, "Juneteenth")
++        assert juneteenth is not None
++        assert juneteenth.textangle == -90
+
+     def test_christmas_labeled_vertically(self) -> None:
+         fig = go.Figure()
+@@ -72,7 +68,7 @@ class TestHolidayShadingLabels:
+         assert christmas.textangle == -90
+         assert christmas.yanchor == "top"
+
+-    def test_shared_holiday_labels_use_top_position_not_top_left(self) -> None:
++    def test_holiday_labels_use_top_center_not_top_left(self) -> None:
+         fig = go.Figure()
+         _add_holiday_shading(
+             fig,
+@@ -85,30 +81,3 @@ class TestHolidayShadingLabels:
+         assert good_friday is not None
+         assert good_friday.textangle == -90
+         assert good_friday.xanchor == "center"
+-
+-
+-class TestPortfolioChartXAxis:
+-    @pytest.fixture
+-    def sample_portfolio_df(self) -> pd.DataFrame:
+-        dates = pd.date_range("2026-06-01", "2026-12-31", freq="B")
+-        return pd.DataFrame(
+-            {
+-                "date": dates,
+-                "performance_index": [100.0 + i * 0.1 for i in range(len(dates))],
+-                "performance_pct": [i * 0.1 for i in range(len(dates))],
+-                "cost_basis": [1000.0] * len(dates),
+-            }
+-        )
+-
+-    def test_xaxis_range_clamped_to_data(self, sample_portfolio_df: pd.DataFrame) -> None:
+-        fig = create_portfolio_value_chart(
+-            sample_portfolio_df,
+-            show_normalized=True,
+-            show_benchmarks=None,
+-            show_weekend_shading=True,
+-        )
+-
+-        x_range = fig.layout.xaxis.range
+-        assert x_range is not None
+-        assert pd.to_datetime(x_range[0]) == sample_portfolio_df["date"].min()
+-        assert pd.to_datetime(x_range[1]) == sample_portfolio_df["date"].max()
+diff --git a/web_dashboard/chart_utils.py b/web_dashboard/chart_utils.py
+index 7551ec19..b191e16a 100644
+--- a/web_dashboard/chart_utils.py
++++ b/web_dashboard/chart_utils.py
+@@ -60,11 +60,7 @@ def _holiday_chart_label(full_name: str) -> str:
+ def _add_holiday_shading(fig: go.Figure, start_date: datetime, end_date: datetime,
+                          market: str = 'us',
+                          holiday_color: Optional[str] = 'rgba(211, 211, 211, 0.3)') -> None:
+-    """Add shading for market holidays using the centralized utility.
+-
+-    All holidays in range are shaded. Labels are added only on non-trading days for
+-    the given market calendar (e.g. with market='any', label shared closures only).
+-    """
++    """Add shading for market holidays using the centralized utility."""
+     holidays_in_range = MARKET_HOLIDAYS.get_holidays_for_range(start_date.date(), end_date.date(), market=market)
+
+     for holiday_date in holidays_in_range:
+@@ -73,23 +69,18 @@ def _add_holiday_shading(fig: go.Figure, start_date: datetime, end_date: datetim
+
+         holiday_name = MARKET_HOLIDAYS.get_holiday_name(holiday_date) or "Holiday"
+
+-        vrect_kwargs: Dict[str, Any] = {
+-            "x0": start_shade,
+-            "x1": end_shade,
+-            "fillcolor": holiday_color,
+-            "layer": "below",
+-            "line_width": 0,
+-        }
+-        if not MARKET_HOLIDAYS.is_trading_day(holiday_date, market=market):
+-            vrect_kwargs.update(
+-                annotation_text=_holiday_chart_label(holiday_name),
+-                annotation_position="top",
+-                annotation_textangle=-90,
+-                annotation_font_size=9,
+-                annotation_font_color="gray",
+-            )
+-
+-        fig.add_vrect(**vrect_kwargs)
++        fig.add_vrect(
++            x0=start_shade,
++            x1=end_shade,
++            fillcolor=holiday_color,
++            layer="below",
++            line_width=0,
++            annotation_text=_holiday_chart_label(holiday_name),
++            annotation_position="top",
++            annotation_textangle=-90,
++            annotation_font_size=9,
++            annotation_font_color="gray",
++        )
+
+
+ # Theme-aware chart helpers
+@@ -859,9 +850,6 @@ def create_portfolio_value_chart(
+
+         # Holiday shading
+         _add_holiday_shading(fig, start_date, end_date, market=market)
+-
+-        # Prevent holiday annotations from expanding x-axis margins
+-        fig.update_xaxes(range=[df["date"].min(), df["date"].max()])
+
+     # Title
+     title = f"Portfolio {'Performance' if show_normalized else 'Value'} Over Time"
