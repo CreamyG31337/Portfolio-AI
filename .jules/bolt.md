@@ -59,3 +59,7 @@
 ## 2026-06-22 - np.where with pandas division and zero denominators
 **Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, pandas evaluates `A / B` for all rows before `np.where` applies its mask. If `B` can be zero, this floods logs with `RuntimeWarning: divide by zero encountered in divide` even when the result is masked.
 **Action:** Use safe division by replacing zeros with `np.nan` before dividing: `df['A'].divide(df['B'].replace(0, np.nan))`.
+
+## 2026-06-23 - Pandas df.apply with Decimal conversion
+**Learning:** Using `df['col'].apply(lambda x: Decimal(str(float(x) * rate)))` is extremely slow due to Python object instantiation overhead per row. Even for type conversions, vectorizing operations in pandas and numpy before object creation is much faster.
+**Action:** Replace `df.apply` with vectorized math and type conversions: `(df['col'].astype(float) * rate).astype(str).apply(Decimal)`. This performs the math at C-speed before finally casting to `Decimal` in Python space. For conditional replacements with `Decimal`, use list comprehensions over a vectorized `.round().fillna()` series, which bypasses Pandas' slow `apply` method overhead entirely.
