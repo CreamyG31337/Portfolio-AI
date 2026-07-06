@@ -44,6 +44,18 @@ BENCHMARK_CONFIG = {
 MARKET_HOLIDAYS = MarketHolidays()
 logger = logging.getLogger(__name__)
 
+# Shorter labels for narrow vertical holiday bands on charts
+_HOLIDAY_CHART_LABELS: Dict[str, str] = {
+    "Martin Luther King, Jr. Day": "MLK Day",
+    "Juneteenth National Independence Day": "Juneteenth",
+    "Presidents' Day": "Presidents' Day",
+}
+
+
+def _holiday_chart_label(full_name: str) -> str:
+    """Return a chart-friendly holiday label (abbreviated when needed)."""
+    return _HOLIDAY_CHART_LABELS.get(full_name, full_name)
+
 
 def _add_holiday_shading(fig: go.Figure, start_date: datetime, end_date: datetime,
                          market: str = 'us',
@@ -63,10 +75,11 @@ def _add_holiday_shading(fig: go.Figure, start_date: datetime, end_date: datetim
             fillcolor=holiday_color,
             layer="below",
             line_width=0,
-            annotation_text=holiday_name,
-            annotation_position="top left",
-            annotation_font_size=10,
-            annotation_font_color="gray"
+            annotation_text=_holiday_chart_label(holiday_name),
+            annotation_position="top",
+            annotation_textangle=-90,
+            annotation_font_size=9,
+            annotation_font_color="gray",
         )
 
 
