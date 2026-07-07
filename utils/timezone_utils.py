@@ -251,7 +251,7 @@ def safe_parse_datetime_column(series_or_str: Union[str, pd.Series], column_name
         return parse_csv_timestamp(series_or_str)
     elif hasattr(series_or_str, 'apply'):
         # Pandas Series - apply timezone-aware parsing to each element
-        return series_or_str.apply(lambda x: parse_csv_timestamp(x) if pd.notna(x) else x)
+        return pd.Series([parse_csv_timestamp(x) if pd.notna(x) else x for x in series_or_str.tolist()])
     else:
         # Fallback for other types
         return pd.to_datetime(series_or_str)

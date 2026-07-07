@@ -758,7 +758,7 @@ def rebuild_portfolio_from_scratch(data_dir: str = None, timezone_str: str = Non
         for col in numeric_columns:
             if col in new_portfolio_df.columns:
                 # Convert Decimal to float, preserving precision
-                new_portfolio_df[col] = new_portfolio_df[col].apply(lambda x: float(x) if isinstance(x, Decimal) else x)
+                new_portfolio_df[col] = new_portfolio_df[col].astype(float)
                 if col == 'Shares':
                     # Round shares to 4 decimal places
                     new_portfolio_df[col] = new_portfolio_df[col].round(4)

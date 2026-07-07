@@ -158,7 +158,7 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     
     # Add context
     significant['etf'] = etf_ticker
-    significant['action'] = significant['share_diff'].apply(lambda x: 'BUY' if x > 0 else 'SELL')
+    significant['action'] = ['BUY' if x > 0 else 'SELL' for x in significant['share_diff'].tolist()]
     
     return significant.to_dict('records')
 
