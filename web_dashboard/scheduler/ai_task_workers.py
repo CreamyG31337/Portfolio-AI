@@ -40,6 +40,7 @@ QUEUE_JOB_TICKER_ANALYSIS = "ticker_analysis"
 QUEUE_JOB_TICKER_META_ANALYSIS = "ticker_meta_analysis"
 QUEUE_JOB_SECTOR_META_ANALYSIS = "sector_meta_analysis"
 QUEUE_JOB_ETF_GROUP_ANALYSIS = "etf_group_analysis"
+QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE = "executive_ticker_resolve"
 
 TERMINAL_ERROR_CLASSES = {
     ERROR_SCHEMA_VIOLATION,
@@ -970,6 +971,119 @@ def etf_group_analysis_task_handler(task: Mapping[str, Any], backend: str) -> No
         raise
 
 
+def enqueue_executive_ticker_tasks(
+    supabase_client: Any,
+    names: Sequence[tuple[str, str, int]],
+    *,
+    enqueued_by: str = "cron",
+    max_attempts: int = 3,
+) -> Dict[str, int]:
+    """Enqueue one ``executive_ticker_resolve`` task per unresolved OGE name.
+
+    ``names`` is a sequence of ``(canonical_name, raw_description, priority)``.
+    ``canonical_name`` is the ``og_asset_ticker_map`` cache key (also used as the
+    task ``target_key`` for dedupe); ``raw_description`` is the original OGE asset
+    text fed to the LLM prompt.
+    """
+
+    stats = {"attempted": 0, "enqueued": 0, "failed": 0}
+    for canonical_name, raw_description, priority in names:
+        stats["attempted"] += 1
+        key = str(canonical_name or "").strip()
+        if not key:
+            stats["failed"] += 1
+            continue
+        try:
+            payload = {
+                "canonical_description": key,
+                "description": str(raw_description or "").strip(),
+                "priority": int(priority),
+            }
+            enqueue_ai_task(
+                supabase_client,
+                analysis_type=QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE,
+                target_key=key,
+                payload=payload,
+                priority=int(priority),
+                enqueued_by=enqueued_by,
+                max_attempts=max_attempts,
+            )
+            stats["enqueued"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logger.warning(
+                "Failed to enqueue executive_ticker_resolve task for %s: %s",
+                key,
+                exc,
+            )
+    return stats
+
+
+def executive_ticker_resolve_task_handler(
+    task: Mapping[str, Any], backend: str
+) -> None:
+    """Resolve one OGE asset description to a ticker via LLM on the given backend.
+
+    The worker is bound to a single backend/model (GLM or an Ollama host), so
+    the pool already spreads these tasks across backends in parallel. A validated
+    hit is cached in ``og_asset_ticker_map`` with ``source='llm'``; a confident
+    "no ticker" answer marks the task done without a write. Transient LLM/infra
+    failures raise :class:`LLMResolutionError` so the queue retries.
+    """
+
+    target_key = str(task.get("target_key") or "").strip()
+    if not target_key:
+        raise ValueError("executive_ticker_resolve task missing target_key")
+
+    payload_raw = task.get("payload")
+    payload: dict[str, Any] = dict(payload_raw) if isinstance(payload_raw, dict) else {}
+    description = str(payload.get("description") or "").strip() or target_key
+
+    model = model_for_backend(backend)
+
+    from executive_ticker_resolver import resolve_from_llm
+    from ollama_client import OllamaClient
+    from supabase_client import SupabaseClient
+
+    from scheduler.jobs_executive import upsert_og_asset_cache_entry
+
+    if backend == BACKEND_GLM:
+        ollama = OllamaClient(force_base_url_only=True)
+    else:
+        base_url = ollama_base_url_for_backend(backend)
+        if not base_url:
+            raise RuntimeError(f"No Ollama base URL configured for backend={backend}")
+        ollama = OllamaClient(base_url=base_url, force_base_url_only=True)
+
+    result = resolve_from_llm(description, ollama_client=ollama, model=model)
+    if not result:
+        logger.info(
+            "executive_ticker_resolve: no validated ticker for %r on %s",
+            target_key,
+            backend,
+        )
+        return
+
+    ticker, asset_type, confidence = result
+    supabase = SupabaseClient(use_service_role=True)
+    upsert_og_asset_cache_entry(
+        supabase,
+        canonical_description=target_key,
+        ticker=ticker,
+        source="llm",
+        confidence=confidence,
+        asset_type=asset_type,
+    )
+    logger.info(
+        "executive_ticker_resolve: %r -> %s (%.2f, %s) via %s",
+        target_key,
+        ticker,
+        confidence,
+        asset_type,
+        backend,
+    )
+
+
 def _mark_legacy_etf_queue_outcome(
     supabase: Any,
     queue_id: str,
@@ -1069,6 +1183,10 @@ def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandl
         handlers[QUEUE_JOB_SECTOR_META_ANALYSIS] = sector_meta_analysis_task_handler
     if QUEUE_JOB_ETF_GROUP_ANALYSIS in jobs:
         handlers[QUEUE_JOB_ETF_GROUP_ANALYSIS] = etf_group_analysis_task_handler
+    if QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE in jobs:
+        handlers[QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE] = (
+            executive_ticker_resolve_task_handler
+        )
     return handlers
 
 

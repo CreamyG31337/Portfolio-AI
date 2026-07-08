@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Literal, Optional, Set
+from typing import Any, Dict, Iterable, List, Literal, Optional, Set
 
 from research_utils import normalize_ticker, validate_ticker_format
 from ticker_inference import _canonicalize_company_name, infer_tickers_from_companies
@@ -167,8 +167,77 @@ def _throttle_yfinance() -> None:
     _yfinance_last_call = time.time()
 
 
-def resolve_from_yfinance(company_name: str) -> Optional[tuple[str, str, float]]:
+def _is_us_primary_symbol(symbol: str) -> bool:
+    """US primary listings have no exchange suffix (no dot) and are short letters.
+
+    Foreign secondary listings look like AB4.F, WA3.MU, CM.TO, ENV.AX, US2927651040.SG.
+    """
+    return bool(re.fullmatch(r"[A-Z]{1,5}", symbol or ""))
+
+
+def _lead_token(oge_canonical: str) -> Optional[str]:
+    """Distinctive lead brand token from an OGE name (first token >= 3 chars)."""
+    tokens = oge_canonical.split()
+    for tok in tokens:
+        if len(tok) >= 3:
+            return tok
+    for tok in tokens:
+        if len(tok) >= 2:
+            return tok
+    return None
+
+
+def _matches_company(oge_canonical: str, candidate_name: str) -> bool:
+    """Strong match: token overlap AND the OGE lead brand token is present.
+
+    The lead-token gate rejects loose single-common-token matches such as
+    'JBG SMITH PPTYS' -> 'A. O. Smith' (only 'SMITH' overlaps).
+    """
+    if not _names_overlap(oge_canonical, candidate_name):
+        return False
+    lead = _lead_token(oge_canonical)
+    if not lead:
+        return False
+    candidate_tokens = set(_canonicalize_company_name(candidate_name).split())
+    return lead in candidate_tokens
+
+
+def _select_best_equity(
+    oge_canonical: str, equity_quotes: List[dict]
+) -> Optional[dict]:
+    """Pick a single unambiguous US-primary equity/ETF.
+
+    Requires a strong name match (overlap + lead-token), then keeps only US
+    primary listings (no foreign exchange suffix). Accepts when exactly one
+    distinct symbol remains, or when all remaining candidates map to the same
+    company name (shortest symbol wins — e.g. common shares over unit tickers).
+    """
+    matching = [q for q in equity_quotes if _matches_company(oge_canonical, q["name"])]
+    if not matching:
+        return None
+
+    primary = [q for q in matching if _is_us_primary_symbol(q["symbol"])]
+    if not primary:
+        return None
+
+    distinct_symbols = {q["symbol"] for q in primary}
+    if len(distinct_symbols) == 1:
+        return min(primary, key=lambda q: len(q["symbol"]))
+
+    distinct_names = {_canonicalize_company_name(q["name"]) for q in primary}
+    if len(distinct_names) == 1:
+        return min(primary, key=lambda q: len(q["symbol"]))
+
+    return None
+
+
+def resolve_from_yfinance(
+    company_name: str, *, max_retries: int = 3
+) -> Optional[tuple[str, str, float]]:
     """Search yfinance for a single unambiguous equity/ETF match.
+
+    Prefers the US primary listing when a company has foreign secondary listings.
+    Retries with exponential backoff on rate limiting.
 
     Returns (ticker, quote_type, confidence) or None.
     """
@@ -181,20 +250,38 @@ def resolve_from_yfinance(company_name: str) -> Optional[tuple[str, str, float]]
         logger.warning("yfinance not installed; skipping yfinance ticker resolution")
         return None
 
-    _throttle_yfinance()
+    try:
+        from yfinance.exceptions import YFRateLimitError
+    except ImportError:  # older yfinance without the dedicated exception
+        YFRateLimitError = None  # type: ignore[assignment]
+
     oge_canonical = canonicalize_oge_company_name(company_name)
 
-    try:
-        search = yf.Search(
-            company_name,
-            max_results=8,
-            news_count=0,
-            enable_fuzzy_query=True,
-        )
-        quotes = search.quotes if hasattr(search, "quotes") else []
-    except Exception as exc:
-        logger.debug("yfinance search failed for %r: %s", company_name, exc)
-        return None
+    quotes: List[dict] = []
+    for attempt in range(max_retries):
+        _throttle_yfinance()
+        try:
+            search = yf.Search(
+                company_name,
+                max_results=10,
+                news_count=0,
+                enable_fuzzy_query=True,
+            )
+            quotes = search.quotes if hasattr(search, "quotes") else []
+            break
+        except Exception as exc:  # noqa: BLE001
+            is_rate_limit = YFRateLimitError is not None and isinstance(
+                exc, YFRateLimitError
+            )
+            if is_rate_limit and attempt < max_retries - 1:
+                backoff = 2.0 * (2**attempt)
+                logger.debug(
+                    "yfinance rate-limited on %r; backing off %.1fs", company_name, backoff
+                )
+                time.sleep(backoff)
+                continue
+            logger.debug("yfinance search failed for %r: %s", company_name, exc)
+            return None
 
     equity_quotes: List[dict] = []
     for quote in quotes or []:
@@ -207,16 +294,170 @@ def resolve_from_yfinance(company_name: str) -> Optional[tuple[str, str, float]]
         if not symbol:
             continue
         long_name = str(quote.get("longname") or quote.get("shortname") or "")
-        if not _names_overlap(oge_canonical, long_name):
-            continue
-        equity_quotes.append({"symbol": symbol, "quote_type": quote_type, "name": long_name})
+        equity_quotes.append(
+            {"symbol": symbol, "quote_type": quote_type, "name": long_name}
+        )
 
-    if len(equity_quotes) != 1:
+    match = _select_best_equity(oge_canonical, equity_quotes)
+    if not match:
         return None
 
-    match = equity_quotes[0]
     asset_type = "ETF" if match["quote_type"] == "ETF" else "Stock"
     return match["symbol"], asset_type, 0.75
+
+
+class LLMResolutionError(RuntimeError):
+    """Transient LLM/infra failure; the caller should retry (not mark done)."""
+
+
+_LLM_TICKER_PROMPT = """You map a U.S. government financial-disclosure asset description to its stock ticker.
+
+Asset description (from an OGE Form 278-T filing):
+"{description}"
+
+Rules:
+- Return the ticker of the U.S.-listed common stock or ETF for this issuer.
+- Use the PRIMARY U.S. listing symbol only (no exchange suffix like .F, .TO, .SG).
+- If it is a bond, municipal security, private fund, or you are not confident it
+  is a U.S.-listed equity/ETF, return null for the ticker.
+- Do NOT guess. Precision matters far more than coverage.
+
+Return ONLY compact JSON, no prose:
+{{"ticker": "SYM or null", "company_name": "official company name or null", "confidence": 0.0}}
+"""
+
+
+def _build_llm_ticker_prompt(description: str) -> str:
+    return _LLM_TICKER_PROMPT.format(description=(description or "").strip()[:300])
+
+
+def _parse_llm_ticker_json(text: str) -> Optional[dict]:
+    """Parse the model's JSON reply, tolerating code fences and extra prose."""
+    import json
+
+    if not text or not text.strip():
+        return None
+    cleaned = re.sub(r"```(?:json)?", "", text).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if not match:
+            return None
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+
+
+def confirm_ticker_symbol(
+    symbol: str, description: str, llm_company_name: Optional[str] = None
+) -> Optional[tuple[str, str]]:
+    """Verify a proposed ticker actually exists and belongs to this issuer.
+
+    Guards against LLM hallucination: looks the symbol up on yfinance, confirms
+    it resolves to a U.S. primary equity/ETF, and requires the real company name
+    to token-overlap the OGE description (or the model's proposed name).
+
+    Returns (normalized_symbol, asset_type) when confirmed, else None.
+    """
+    normalized = _validate_resolved_ticker(symbol)
+    if not normalized or not _is_us_primary_symbol(normalized):
+        return None
+
+    try:
+        import yfinance as yf
+    except ImportError:
+        logger.warning("yfinance not installed; cannot validate LLM ticker")
+        return None
+
+    _throttle_yfinance()
+    try:
+        search = yf.Search(
+            normalized, max_results=10, news_count=0, enable_fuzzy_query=False
+        )
+        quotes = search.quotes if hasattr(search, "quotes") else []
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("yfinance validation search failed for %r: %s", normalized, exc)
+        return None
+
+    exact = None
+    for quote in quotes or []:
+        if str(quote.get("symbol") or "").upper().strip() == normalized:
+            exact = quote
+            break
+    if not exact:
+        return None
+
+    quote_type = str(exact.get("quoteType") or exact.get("typeDisp") or "").upper()
+    if quote_type not in ("EQUITY", "ETF"):
+        return None
+
+    real_name = str(exact.get("longname") or exact.get("shortname") or "")
+    oge_canonical = canonicalize_oge_company_name(description)
+    name_ok = _matches_company(oge_canonical, real_name)
+    if not name_ok and llm_company_name:
+        name_ok = _matches_company(
+            canonicalize_oge_company_name(llm_company_name), real_name
+        )
+    if not name_ok:
+        return None
+
+    asset_type = "ETF" if quote_type == "ETF" else "Stock"
+    return normalized, asset_type
+
+
+def resolve_from_llm(
+    description: str,
+    *,
+    ollama_client: Any,
+    model: Optional[str] = None,
+    validate: bool = True,
+) -> Optional[tuple[str, str, float]]:
+    """Resolve a ticker via LLM, then validate before trusting it.
+
+    Returns (ticker, asset_type, confidence) on a validated hit, or None when
+    the model declines / the proposal fails validation. Raises
+    :class:`LLMResolutionError` on transient infra failure so the queue retries.
+    """
+    prompt = _build_llm_ticker_prompt(description)
+    try:
+        raw = ollama_client.generate_completion(
+            prompt, model=model, json_mode=True, temperature=0.0
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise LLMResolutionError(f"LLM call failed: {exc}") from exc
+
+    if raw is None or not str(raw).strip():
+        # generate_completion swallows infra errors and returns None; treat as
+        # transient so the task is retried rather than marked done.
+        raise LLMResolutionError("LLM returned no response")
+
+    parsed = _parse_llm_ticker_json(str(raw))
+    if not parsed:
+        return None
+
+    proposed = parsed.get("ticker")
+    if proposed is None or str(proposed).strip().lower() in ("", "null", "none"):
+        return None
+
+    llm_name = parsed.get("company_name")
+    try:
+        confidence = float(parsed.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    if not validate:
+        normalized = _validate_resolved_ticker(proposed)
+        if not normalized or not _is_us_primary_symbol(normalized):
+            return None
+        return normalized, "Stock", min(confidence, 0.6)
+
+    confirmed = confirm_ticker_symbol(str(proposed), description, llm_name)
+    if not confirmed:
+        return None
+    symbol, asset_type = confirmed
+    return symbol, asset_type, max(0.6, min(confidence, 0.85))
 
 
 def load_og_asset_ticker_cache(
