@@ -17,7 +17,8 @@ CREATE TABLE congress_trades (
     party VARCHAR(50),
     state VARCHAR(2),
     owner VARCHAR(100) NOT NULL DEFAULT 'Unknown'::character varying,
-    politician_id INTEGER
+    politician_id INTEGER,
+    asset_description TEXT
 ,
     PRIMARY KEY (id)
 );

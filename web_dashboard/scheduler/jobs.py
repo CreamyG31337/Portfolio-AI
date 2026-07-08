@@ -366,6 +366,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'hour': '19,21,23,1', 'minute': 10, 'timezone': 'America/Los_Angeles'}
         ]
     },
+    'executive_trades': {
+        'name': '🏛️ Executive Trade Fetch',
+        'description': 'Fetch presidential executive branch trades from Open Cabinet (ticker-resolved)',
+        'default_interval_minutes': 10080,
+        'enabled_by_default': True,
+        'icon': '🏛️',
+        'cron_triggers': [
+            {'day_of_week': 'sun', 'hour': 6, 'minute': 0, 'timezone': 'America/Los_Angeles'}
+        ]
+    },
     'archive_retry': {
         'name': '📚 Archive Retry',
         'description': 'Check for archived versions of paywalled articles and process them',
@@ -749,6 +759,9 @@ from scheduler.jobs_congress import (
     scrape_congress_trades_job
 )
 
+# Import executive trades jobs
+from scheduler.jobs_executive import fetch_executive_trades_job
+
 # Import insider trades jobs
 from scheduler.jobs_insiders import (
     fetch_insider_trades_job
@@ -837,6 +850,8 @@ __all__ = [
     'analyze_congress_trades_job',
     'rescore_congress_sessions_job',
     'scrape_congress_trades_job',
+    # Executive trades jobs
+    'fetch_executive_trades_job',
     # Insider trades jobs
     'fetch_insider_trades_job',
     # Opportunity discovery
@@ -1898,6 +1913,27 @@ def register_default_jobs(scheduler) -> None:
                 coalesce=True
             )
             logger.info("Registered job: analyze_congress_trades (every 30 minutes)")
+
+    # Executive trades - weekly Open Cabinet poll
+    if AVAILABLE_JOBS.get('executive_trades', {}).get('enabled_by_default', True):
+        executive_triggers = AVAILABLE_JOBS['executive_trades'].get('cron_triggers', [])
+        if executive_triggers:
+            trigger_config = executive_triggers[0]
+            scheduler.add_job(
+                fetch_executive_trades_job,
+                trigger=CronTrigger(
+                    day_of_week=trigger_config.get('day_of_week', 'sun'),
+                    hour=trigger_config['hour'],
+                    minute=trigger_config['minute'],
+                    timezone=trigger_config.get('timezone', 'America/Los_Angeles'),
+                ),
+                id='executive_trades_fetch',
+                name=f"{get_job_icon('executive_trades')} Executive Trade Fetch",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            logger.info("Registered job: executive_trades_fetch (weekly Sunday 6:00 AM PT)")
 
     # Congress trade returns - daily (Eastern time, after market data settles)
     if AVAILABLE_JOBS.get('congress_trade_returns', {}).get('enabled_by_default', True):
