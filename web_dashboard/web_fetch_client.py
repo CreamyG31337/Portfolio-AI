@@ -167,9 +167,15 @@ class WebFetchClient:
         max_timeout_ms: int = DEFAULT_FLARESOLVERR_MAX_TIMEOUT_MS,
         request_timeout_seconds: Optional[float] = None,
         extra_headers: Optional[Mapping[str, str]] = None,
+        cookies: Optional[Mapping[str, str]] = None,
         require_http_200: bool = False,
     ) -> Optional[FlareSolverrSolution]:
-        """Fetch ``url`` through FlareSolverr. Returns ``None`` on any failure."""
+        """Fetch ``url`` through FlareSolverr. Returns ``None`` on any failure.
+
+        ``cookies`` is a name->value mapping sent to the target site (e.g. an
+        authenticated session), letting FlareSolverr solve a Cloudflare
+        challenge while carrying our own login.
+        """
         if not self.flaresolverr_url:
             return None
 
@@ -180,6 +186,12 @@ class WebFetchClient:
         }
         if extra_headers:
             payload["headers"] = dict(extra_headers)
+        if cookies:
+            payload["cookies"] = [
+                {"name": name, "value": value}
+                for name, value in cookies.items()
+                if name and value
+            ]
 
         post_timeout = request_timeout_seconds
         if post_timeout is None:
@@ -285,11 +297,13 @@ class WebFetchClient:
         *,
         max_timeout_ms: int = DEFAULT_FLARESOLVERR_MAX_TIMEOUT_MS,
         request_timeout_seconds: Optional[float] = None,
+        cookies: Optional[Mapping[str, str]] = None,
     ) -> Optional[dict[str, Any]]:
         solution = self.fetch_via_flaresolverr(
             url,
             max_timeout_ms=max_timeout_ms,
             request_timeout_seconds=request_timeout_seconds,
+            cookies=cookies,
             require_http_200=True,
         )
         if solution is None:

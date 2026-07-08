@@ -337,6 +337,7 @@ backups/**/*.dump
 
 webai_cookies.json
 ai_service_cookies.json
+reddit_cookies.json
 
 # Vendor/backup packages (local copies in case packages disappear)
 vendor/

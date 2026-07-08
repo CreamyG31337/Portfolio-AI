@@ -68,6 +68,11 @@ def subreddit_scanner_job() -> None:
                     f"Reddit OAuth failed — subreddit scanner skipped: {reddit_status.message} "
                     f"(status={reddit_status.status_code})"
                 )
+            elif reddit_status.auth_failed and reddit_status.cookie_configured:
+                message = (
+                    f"Reddit session expired — subreddit scanner skipped: {reddit_status.message} "
+                    f"(status={reddit_status.status_code})"
+                )
             else:
                 message = (
                     f"Reddit unavailable — subreddit scanner skipped: {reddit_status.message} "
@@ -135,7 +140,7 @@ def subreddit_scanner_job() -> None:
                     summary_msg.append(f"r/{sub}: 0")
                     
                 # Shared RSS rate limiter spaces requests; no extra sleep needed in RSS mode.
-                if social_service.reddit.oauth_enabled:
+                if social_service.reddit.oauth_enabled or social_service.reddit.cookie_enabled:
                     time.sleep(5)
                 
             except Exception as e:

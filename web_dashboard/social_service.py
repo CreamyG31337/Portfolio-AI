@@ -619,7 +619,13 @@ class SocialSentimentService:
                         continue
 
             if not all_posts and reddit_errors:
-                transport = "rss" if self.reddit.rss_enabled else "oauth"
+                transport = (
+                    "rss"
+                    if self.reddit.rss_enabled
+                    else "cookies"
+                    if self.reddit.cookie_enabled
+                    else "oauth"
+                )
                 if "429" in reddit_errors:
                     logger.error(
                         "Reddit rate limited for %s (transport=%s): %s",
@@ -831,7 +837,13 @@ class SocialSentimentService:
                 return []
 
             if result.payload is None:
-                transport = "rss" if result.used_rss else "oauth"
+                transport = (
+                    "rss"
+                    if result.used_rss
+                    else "cookies"
+                    if result.used_cookies
+                    else "oauth"
+                )
                 logger.warning(
                     "Subreddit scan failed for r/%s status=%s transport=%s",
                     subreddit,

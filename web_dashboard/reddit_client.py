@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Reddit client for social sentiment and subreddit discovery jobs.
 
-Uses OAuth when legacy credentials exist; otherwise reads public Reddit RSS feeds
-(no API app or Reddit account required).
+Auth priority:
+1. Legacy OAuth app credentials (if all four REDDIT_* vars + client id/secret)
+2. Browser session cookies (file/env) or username/password login
+3. Public RSS feeds (increasingly blocked; fallback only)
 """
 
 from __future__ import annotations
@@ -13,11 +15,13 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import requests
 
 from env_loader import load_project_dotenv
+from reddit_cookies import load_reddit_cookies, reddit_cookie_configured, reset_reddit_cookie_cache
+from reddit_login import reddit_password_configured
 from reddit_rss import (
     BROWSER_USER_AGENT,
     RedditFeedCache,
@@ -57,6 +61,7 @@ class RedditRequestResult:
     used_oauth: bool
     rate_limited: bool
     used_rss: bool = False
+    used_cookies: bool = False
 
 
 @dataclass
@@ -65,6 +70,7 @@ class RedditConnectivityStatus:
 
     ok: bool
     oauth_configured: bool
+    cookie_configured: bool
     status_code: int | None
     rate_limited: bool
     auth_failed: bool
@@ -155,6 +161,7 @@ class RedditClient:
         min_interval: float | None = None,
     ) -> None:
         self._oauth_enabled = reddit_oauth_configured()
+        self._cookie_enabled = not self._oauth_enabled and reddit_cookie_configured()
         if self._oauth_enabled:
             self.user_agent = os.getenv("REDDIT_USER_AGENT", user_agent).strip() or user_agent
             self.min_interval = min_interval if min_interval is not None else 2.0
@@ -165,8 +172,14 @@ class RedditClient:
         self._access_token: str | None = None
         self._token_expires_at = 0.0
         self._feed_cache = RedditFeedCache(user_agent=self.user_agent)
+        self._cookie_session = requests.Session()
         if self._oauth_enabled:
             logger.info("Reddit client using OAuth API")
+        elif self._cookie_enabled:
+            if reddit_password_configured():
+                logger.info("Reddit client using username/password login (session cookies)")
+            else:
+                logger.info("Reddit client using browser session cookies")
         else:
             logger.info(
                 "Reddit client using public RSS feeds (no API app required). "
@@ -179,8 +192,12 @@ class RedditClient:
         return self._oauth_enabled
 
     @property
+    def cookie_enabled(self) -> bool:
+        return self._cookie_enabled
+
+    @property
     def rss_enabled(self) -> bool:
-        return not self._oauth_enabled
+        return not self._oauth_enabled and not self._cookie_enabled
 
     @property
     def feed_cache(self) -> RedditFeedCache:
@@ -188,7 +205,7 @@ class RedditClient:
 
     def warm_sentiment_feed_cache(self, *, force: bool = False) -> RedditRssWarmStats:
         """Prefetch finance subreddit hot feeds for ticker filtering (RSS mode)."""
-        if self._oauth_enabled:
+        if self._oauth_enabled or self._cookie_enabled:
             return RedditRssWarmStats(
                 subs_requested=0,
                 subs_fetched=0,
@@ -263,6 +280,7 @@ class RedditClient:
         *,
         path: str,
         use_oauth: bool,
+        used_cookies: bool = False,
     ) -> RedditRequestResult:
         status_code = response.status_code
         if status_code == 429:
@@ -272,6 +290,7 @@ class RedditClient:
                 used_oauth=use_oauth,
                 rate_limited=True,
                 used_rss=False,
+                used_cookies=used_cookies,
             )
 
         if status_code != 200:
@@ -286,6 +305,7 @@ class RedditClient:
                 payload=None,
                 used_oauth=use_oauth,
                 rate_limited=False,
+                used_cookies=used_cookies,
             )
 
         try:
@@ -296,6 +316,7 @@ class RedditClient:
                 payload=None,
                 used_oauth=use_oauth,
                 rate_limited=False,
+                used_cookies=used_cookies,
             )
 
         if not isinstance(payload, dict):
@@ -304,6 +325,7 @@ class RedditClient:
                 payload=None,
                 used_oauth=use_oauth,
                 rate_limited=False,
+                used_cookies=used_cookies,
             )
 
         return RedditRequestResult(
@@ -312,6 +334,164 @@ class RedditClient:
             used_oauth=use_oauth,
             rate_limited=False,
             used_rss=False,
+            used_cookies=used_cookies,
+        )
+
+    def _cookie_headers(self, cookies: Mapping[str, str] | None = None) -> dict[str, str]:
+        headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        token_v2 = (cookies or {}).get("token_v2", "").strip()
+        # Legacy .json endpoints authenticate via reddit_session cookie only.
+        # Sending a guest token_v2 Bearer alongside reddit_session causes 403s.
+        if token_v2 and not (cookies or {}).get("reddit_session"):
+            headers["Authorization"] = f"Bearer {token_v2}"
+        return headers
+
+    def _cookie_json_url(self, path: str, cookies: Mapping[str, str]) -> str:
+        normalized = path if path.startswith("/") else f"/{path}"
+        if normalized.endswith(".json"):
+            suffix = normalized
+        else:
+            suffix = f"{normalized}.json"
+        if cookies.get("token_v2") and not cookies.get("reddit_session"):
+            return f"{OAUTH_BASE}{suffix}"
+        return f"{LEGACY_BASE}{suffix}"
+
+    def _get_json_via_cookies(
+        self,
+        path: str,
+        params: Mapping[str, Any] | None,
+    ) -> RedditRequestResult:
+        cookies = load_reddit_cookies()
+        if not cookies:
+            logger.warning("Reddit cookie auth enabled but cookies missing at request time")
+            return RedditRequestResult(
+                status_code=401,
+                payload=None,
+                used_oauth=False,
+                rate_limited=False,
+                used_cookies=True,
+            )
+
+        normalized = path if path.startswith("/") else f"/{path}"
+        url = self._cookie_json_url(path, cookies)
+
+        self._wait_for_rate_limit()
+        try:
+            response = self._cookie_session.get(
+                url,
+                headers=self._cookie_headers(cookies),
+                cookies=cookies,
+                params=params,
+                timeout=15,
+            )
+        except requests.RequestException as exc:
+            logger.warning("Reddit cookie request failed path=%s: %s", path, exc)
+            return RedditRequestResult(
+                status_code=0,
+                payload=None,
+                used_oauth=False,
+                rate_limited=False,
+                used_cookies=True,
+            )
+
+        if response.status_code == 429:
+            return RedditRequestResult(
+                status_code=429,
+                payload=None,
+                used_oauth=False,
+                rate_limited=True,
+                used_cookies=True,
+            )
+
+        result = self._result_from_response(
+            response,
+            path=path,
+            use_oauth=False,
+            used_cookies=True,
+        )
+
+        active_cookies = cookies
+        if result.status_code in (401, 403) and reddit_password_configured():
+            logger.info("Reddit session rejected — re-logging in with username/password")
+            reset_reddit_cookie_cache()
+            fresh = load_reddit_cookies()
+            if fresh and fresh != cookies:
+                self._wait_for_rate_limit()
+                try:
+                    retry = self._cookie_session.get(
+                        url,
+                        headers=self._cookie_headers(fresh),
+                        cookies=fresh,
+                        params=params,
+                        timeout=15,
+                    )
+                    result = self._result_from_response(
+                        retry,
+                        path=path,
+                        use_oauth=False,
+                        used_cookies=True,
+                    )
+                    active_cookies = fresh
+                except requests.RequestException as exc:
+                    logger.warning("Reddit cookie retry failed path=%s: %s", path, exc)
+
+        # Cloudflare-style block (403/503): retry via FlareSolverr carrying our session.
+        if result.status_code in (403, 503):
+            fallback = self._get_json_via_flaresolverr(url, params, active_cookies)
+            if fallback is not None:
+                return fallback
+
+        return result
+
+    def _get_json_via_flaresolverr(
+        self,
+        url: str,
+        params: Mapping[str, Any] | None,
+        cookies: Mapping[str, str],
+    ) -> RedditRequestResult | None:
+        """Fetch a Reddit JSON URL through FlareSolverr (Cloudflare bypass)."""
+        try:
+            from web_fetch_client import get_flaresolverr_url, get_web_fetch_client
+        except ImportError:
+            return None
+
+        if not get_flaresolverr_url():
+            return None
+
+        full_url = url
+        if params:
+            query = urlencode(
+                {k: v for k, v in dict(params).items() if v is not None},
+                doseq=True,
+            )
+            if query:
+                sep = "&" if "?" in full_url else "?"
+                full_url = f"{full_url}{sep}{query}"
+
+        try:
+            payload = get_web_fetch_client().fetch_json_via_flaresolverr(
+                full_url,
+                cookies=dict(cookies),
+            )
+        except Exception as exc:
+            logger.debug("Reddit FlareSolverr fallback error for %s: %s", url, exc)
+            return None
+
+        if not isinstance(payload, dict):
+            logger.warning("Reddit FlareSolverr fallback returned no JSON for %s", url)
+            return None
+
+        logger.info("Reddit fetched via FlareSolverr fallback: %s", url)
+        return RedditRequestResult(
+            status_code=200,
+            payload=payload,
+            used_oauth=False,
+            rate_limited=False,
+            used_cookies=True,
         )
 
     def _get_json_via_rss(
@@ -381,7 +561,9 @@ class RedditClient:
         *,
         params: Mapping[str, Any] | None = None,
     ) -> RedditRequestResult:
-        """Fetch a Reddit listing via OAuth API or public RSS fallback."""
+        """Fetch a Reddit listing via OAuth, session cookies, or public RSS."""
+        if self._cookie_enabled:
+            return self._get_json_via_cookies(path, params)
         if not self._oauth_enabled:
             return self._get_json_via_rss(path, params)
 
@@ -462,6 +644,7 @@ def reset_reddit_client() -> None:
     global _reddit_client
     _reddit_client = None
     reset_rss_rate_limiter()
+    reset_reddit_cookie_cache()
 
 
 def check_reddit_connectivity_with_retry(
@@ -500,6 +683,7 @@ def check_reddit_connectivity(client: RedditClient | None = None) -> RedditConne
     """Probe Reddit reachability with OAuth or public RSS feeds."""
     reddit = client or get_reddit_client()
     oauth_configured = reddit.oauth_enabled
+    cookie_configured = reddit.cookie_enabled
 
     try:
         result = reddit.get_json(CONNECTIVITY_PROBE_PATH, params={"limit": 1})
@@ -509,6 +693,7 @@ def check_reddit_connectivity(client: RedditClient | None = None) -> RedditConne
         return RedditConnectivityStatus(
             ok=False,
             oauth_configured=oauth_configured,
+            cookie_configured=cookie_configured,
             status_code=status_code,
             rate_limited=False,
             auth_failed=auth_failed,
@@ -518,6 +703,7 @@ def check_reddit_connectivity(client: RedditClient | None = None) -> RedditConne
         return RedditConnectivityStatus(
             ok=False,
             oauth_configured=oauth_configured,
+            cookie_configured=cookie_configured,
             status_code=None,
             rate_limited=False,
             auth_failed=False,
@@ -528,6 +714,7 @@ def check_reddit_connectivity(client: RedditClient | None = None) -> RedditConne
         return RedditConnectivityStatus(
             ok=False,
             oauth_configured=oauth_configured,
+            cookie_configured=cookie_configured,
             status_code=429,
             rate_limited=True,
             auth_failed=False,
@@ -535,19 +722,30 @@ def check_reddit_connectivity(client: RedditClient | None = None) -> RedditConne
         )
 
     if result.status_code in (401, 403):
+        if result.used_oauth:
+            block_message = f"Reddit OAuth rejected (HTTP {result.status_code})"
+        elif result.used_cookies:
+            block_message = (
+                f"Reddit session cookies rejected (HTTP {result.status_code}) "
+                "— re-export reddit_session from your browser"
+            )
+        else:
+            block_message = f"Reddit RSS blocked (HTTP {result.status_code})"
         return RedditConnectivityStatus(
             ok=False,
             oauth_configured=oauth_configured,
+            cookie_configured=cookie_configured,
             status_code=result.status_code,
             rate_limited=False,
-            auth_failed=True,
-            message=f"Reddit OAuth rejected (HTTP {result.status_code})",
+            auth_failed=result.used_oauth or result.used_cookies,
+            message=block_message,
         )
 
     if result.payload is None or result.status_code != 200:
         return RedditConnectivityStatus(
             ok=False,
             oauth_configured=oauth_configured,
+            cookie_configured=cookie_configured,
             status_code=result.status_code,
             rate_limited=False,
             auth_failed=False,
@@ -559,6 +757,7 @@ def check_reddit_connectivity(client: RedditClient | None = None) -> RedditConne
         return RedditConnectivityStatus(
             ok=False,
             oauth_configured=oauth_configured,
+            cookie_configured=cookie_configured,
             status_code=result.status_code,
             rate_limited=False,
             auth_failed=False,
@@ -567,6 +766,8 @@ def check_reddit_connectivity(client: RedditClient | None = None) -> RedditConne
 
     if result.used_rss:
         message = "Reddit RSS feeds reachable (no API app required)"
+    elif result.used_cookies:
+        message = "Reddit API reachable via browser session cookies"
     elif oauth_configured:
         message = "Reddit API reachable via OAuth"
     else:
@@ -575,6 +776,7 @@ def check_reddit_connectivity(client: RedditClient | None = None) -> RedditConne
     return RedditConnectivityStatus(
         ok=True,
         oauth_configured=oauth_configured,
+        cookie_configured=cookie_configured,
         status_code=200,
         rate_limited=False,
         auth_failed=False,
