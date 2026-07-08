@@ -220,6 +220,18 @@ Return JSON with TWO fields:
 The confidence_score (0.0-1.0) indicates how certain you are about the conflict_score. Use high confidence (>0.8) for clear-cut cases, medium (0.5-0.8) for typical cases, and low (<0.5) for ambiguous situations.
 """
 
+
+def sync_supabase_conflict_score(
+    supabase: SupabaseClient,
+    trade_id: int,
+    conflict_score: float,
+) -> None:
+    """Mirror analysis score to Supabase so the scheduler queue (conflict_score IS NULL) drains."""
+    supabase.supabase.table("congress_trades").update(
+        {"conflict_score": conflict_score}
+    ).eq("id", trade_id).execute()
+
+
 def fix_failed_scores(client: SupabaseClient):
     """Reset trades with 0.0 score and failure notes to NULL so they can be retried.
     
@@ -800,6 +812,7 @@ def analyze_session(
                         """,
                         (trade['id'], session_id, 0.0, 1.0, f"Auto-filtered: {skip_reason}", "ROUTINE", model, 1)
                     )
+                    sync_supabase_conflict_score(supabase, trade['id'], 0.0)
                 except Exception as e:
                     logger.error(f"Failed to save filtered analysis for trade {trade['id']}: {e}")
             
@@ -930,6 +943,7 @@ def analyze_session(
                     """,
                     (trade['id'], session_id, conflict_score, confidence_score, reasoning, risk_pattern, model, 1)
                 )
+                sync_supabase_conflict_score(supabase, trade['id'], conflict_score)
             except Exception as e:
                 logger.error(f"Failed to save analysis for trade {trade['id']}: {e}")
         
@@ -1185,6 +1199,7 @@ def main():
                                 """,
                                 (trade['id'], score, confidence, reasoning, args.model, 1)
                             )
+                            sync_supabase_conflict_score(client, trade['id'], score)
                             logger.info(f"   [SCORED] conflict={score:.2f}, confidence={confidence:.2f}")
                             total_processed += 1
                         except Exception as db_error:

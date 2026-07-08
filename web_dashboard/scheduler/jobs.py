@@ -337,7 +337,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     },
     'congress_trades': {
         'name': '🏛️ Congress Trade Fetch',
-        'description': 'Fetch and analyze congressional stock trades from FMP API',
+        'description': 'Fetch congressional stock trades from FMP API (scoring handled by Congress Trade Analysis job)',
         'default_interval_minutes': 360,  # 6 hours (but uses cron triggers)
         'enabled_by_default': True,
         'icon': '🏛️',
@@ -358,9 +358,13 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     'analyze_congress_trades': {
         'name': '🏛️ Congress Trade Analysis',
         'description': 'Calculate conflict scores for unscored congress trades using committee data',
-        'default_interval_minutes': 30,  # Every 30 minutes
-        'enabled_by_default': False,  # DISABLED during session backfill - re-enable after
-        'icon': '🏛️'
+        'default_interval_minutes': 30,
+        'enabled_by_default': True,
+        'icon': '🏛️',
+        'cron_triggers': [
+            # ~10 min after each fetch window (fetch usually finishes in ~5 min)
+            {'hour': '19,21,23,1', 'minute': 10, 'timezone': 'America/Los_Angeles'}
+        ]
     },
     'archive_retry': {
         'name': '📚 Archive Retry',
@@ -1864,22 +1868,36 @@ def register_default_jobs(scheduler) -> None:
             )
             logger.info("Registered job: congress_trades_fetch (every 12 minutes - 120 runs/day, 240 API calls/day)")
     
-    # Analyze congress trades job - nightly after fetch batches (Pacific time)
+    # Analyze congress trades job - after each fetch window (Pacific time)
     if AVAILABLE_JOBS['analyze_congress_trades']['enabled_by_default']:
-        scheduler.add_job(
-            analyze_congress_trades_job,
-            trigger=CronTrigger(
-                hour=2,
-                minute=0,
-                timezone='America/Los_Angeles'
-            ),
-            id='analyze_congress_trades',
-            name=f"{get_job_icon('analyze_congress_trades')} Congress Trade Analysis",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True
-        )
-        logger.info("Registered job: analyze_congress_trades (daily at 2:00 AM PT)")
+        analyze_triggers = AVAILABLE_JOBS['analyze_congress_trades'].get('cron_triggers', [])
+        if analyze_triggers:
+            trigger_config = analyze_triggers[0]
+            scheduler.add_job(
+                analyze_congress_trades_job,
+                trigger=CronTrigger(
+                    hour=trigger_config['hour'],
+                    minute=trigger_config['minute'],
+                    timezone=trigger_config.get('timezone', 'America/Los_Angeles')
+                ),
+                id='analyze_congress_trades',
+                name=f"{get_job_icon('analyze_congress_trades')} Congress Trade Analysis",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: analyze_congress_trades (10 min after each fetch: 7:10/9:10/11:10 PM and 1:10 AM PT)")
+        else:
+            scheduler.add_job(
+                analyze_congress_trades_job,
+                trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['analyze_congress_trades']['default_interval_minutes']),
+                id='analyze_congress_trades',
+                name=f"{get_job_icon('analyze_congress_trades')} Congress Trade Analysis",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: analyze_congress_trades (every 30 minutes)")
 
     # Congress trade returns - daily (Eastern time, after market data settles)
     if AVAILABLE_JOBS.get('congress_trade_returns', {}).get('enabled_by_default', True):
