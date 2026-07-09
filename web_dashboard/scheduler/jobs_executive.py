@@ -188,7 +188,9 @@ def process_executive_transactions(
             "amount": amount,
             "asset_type": resolution.asset_type,
             "asset_description": description,
-            "notes": "Source: Open Cabinet OGE 278-T",
+            "notes": (
+                f"Source: Open Cabinet OGE 278-T; instrument: {resolution.asset_type}"
+            ),
         }
 
         if dry_run:

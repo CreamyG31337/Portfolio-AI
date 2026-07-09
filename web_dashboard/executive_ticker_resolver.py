@@ -51,24 +51,87 @@ _OGE_EXTRA_SUFFIX_TOKENS = {
     "CL",
 }
 
-_BOND_MARKERS = (
-    "DUE ",
-    "YIELD TO MATURITY",
-    "DIST TE",
-    "DISTRICT",
+_OGE_ASSET_TYPES = (
+    "Stock",
+    "Preferred",
+    "Corporate Bond",
+    "ETF",
+    "Municipal Bond",
+    "Treasury",
+    "Other",
+)
+
+# Issuer-level fixed income we still map to a parent equity ticker.
+_PREFERRED_MARKERS = (
+    " PFD",
+    "PFD ",
+    "PREFERRED",
+    " DEP RP",
+    "DEP SH",
+    " DEP SH",
+    "CONV PFD",
+    " ALT TIER",
+    " TIER I",
+    " TIER 6",
+    " PERP ",
+    " PERP",
+    "SUB GLBL",
+    " PE ",
+)
+
+_CORPORATE_BOND_MARKERS = (
+    " NTS ",
+    " NT ",
+    "DEBENTURE",
+    "SR NT",
+    "UNSECURED",
+    " B E ",
+    "YTM",
+    "PAR VALUE",
+    "CALL MW",
+    "ACCRUED INT",
+    " DTD",
+    "NOTE DUE",
+    " SR UNSECURED",
+)
+
+_MUNI_MARKERS = (
     "MUNI",
     "MUNICIPAL",
-    "TREAS",
-    "TREASURY",
-    " REVENUE",
-    " BOND",
-    " NOTE DUE",
-    " SR NT",
-    " SR UNSECURED",
-    " DEBENTURE",
+    "DIST TE",
+    "DISTRICT",
     " BE/R/",
-    " FC ",
-    " DTD ",
+    " REVENUE",
+    "WTR DIST",
+    "TAX WTR",
+    "SURPLUS REV",
+    "CTF OBLIG",
+    " OID ",
+)
+
+_TREASURY_MARKERS = (
+    "TREASURY",
+    "TREAS ",
+    " TREAS",
+    "T-BILL",
+    " T NOTE",
+    " T BOND",
+    "UNITED STATES TREAS",
+)
+
+_ETF_MARKERS = (
+    " ETF",
+    "SPDR",
+    "SELECT SECTOR",
+    "ISHARES",
+    "VANGUARD",
+)
+
+# Legacy skip list (munis / no-equity-issuer paper only).
+_BOND_MARKERS = _MUNI_MARKERS + _TREASURY_MARKERS + (
+    "DUE ",
+    "YIELD TO MATURITY",
+    " BOND",
 )
 
 _TICKER_SUFFIX_RE = re.compile(r" - ([A-Z]{1,5})$")
@@ -113,12 +176,65 @@ def canonicalize_oge_company_name(description: str) -> str:
     return " ".join(tokens)
 
 
+def classify_oge_asset_type(description: str) -> str:
+    """Classify the OGE asset description into a coarse product category.
+
+    Used for ``congress_trades.asset_type`` so executive rows distinguish common
+    stock from preferred shares, corporate bonds, ETFs, etc. The original OGE
+    text remains in ``asset_description`` for audit.
+    """
+    text = (description or "").strip().upper()
+    if not text:
+        return "Other"
+
+    if any(marker in text for marker in _TREASURY_MARKERS):
+        return "Treasury"
+    if any(marker in text for marker in _MUNI_MARKERS):
+        return "Municipal Bond"
+    if any(marker in text for marker in _ETF_MARKERS):
+        return "ETF"
+    if any(marker in text for marker in _PREFERRED_MARKERS):
+        return "Preferred"
+    if any(marker in text for marker in _CORPORATE_BOND_MARKERS):
+        return "Corporate Bond"
+    if re.search(r"\b\d+\s+\d{5,6}\b", text):
+        # Coupon / maturity clusters common on corporate notes (e.g. 6 100 010734).
+        return "Corporate Bond"
+
+    if "EQUITY" in text or _CLASS_SHARE_RE.search(text):
+        return "Stock"
+    if parse_ticker_suffix(description):
+        return "Stock"
+    return "Stock"
+
+
+def should_skip_oge_ingest(description: str) -> bool:
+    """Return True when the filing has no meaningful public-equity issuer to track."""
+    category = classify_oge_asset_type(description)
+    return category in ("Municipal Bond", "Treasury")
+
+
+def asset_type_for_oge_description(
+    description: str, *, quote_type: Optional[str] = None
+) -> str:
+    """Resolve display asset_type: OGE text wins unless only yfinance proves ETF."""
+    classified = classify_oge_asset_type(description)
+    if classified != "Stock":
+        return classified
+    if quote_type and str(quote_type).upper() == "ETF":
+        return "ETF"
+    return classified
+
+
 def is_bond_or_muni(description: str) -> bool:
-    """Heuristic: skip fixed-income descriptions that have no equity ticker."""
+    """Heuristic: skip munis/treasuries with no equity issuer mapping."""
+    if should_skip_oge_ingest(description):
+        return True
+    # Legacy broad markers still catch odd muni phrasing missed above.
     text = (description or "").upper()
     if not text:
         return False
-    return any(marker in text for marker in _BOND_MARKERS)
+    return any(marker in text for marker in ("DUE ", "YIELD TO MATURITY", " BE/R/"))
 
 
 def parse_ticker_suffix(description: str) -> Optional[str]:
@@ -500,23 +616,24 @@ def resolve_executive_asset(
         return ExecutiveTickerResolution(
             ticker=None,
             source="skipped_bond",
-            asset_type="Bond",
+            asset_type=classify_oge_asset_type(raw_description),
             canonical_description=canonical,
             company_name=company_name,
             confidence=0.0,
             skip_reason="bond_or_muni",
         )
 
+    product_type = classify_oge_asset_type(raw_description)
+
     cache_map = cache or {}
     cached = cache_map.get(canonical)
     if cached:
         ticker = _validate_resolved_ticker(cached.get("ticker"))
         if ticker:
-            asset_type = "ETF" if str(cached.get("asset_type") or "").upper() == "ETF" else "Stock"
             return ExecutiveTickerResolution(
                 ticker=ticker,
                 source="cache",
-                asset_type=asset_type,
+                asset_type=product_type,
                 canonical_description=canonical,
                 company_name=company_name,
                 confidence=float(cached.get("confidence") or 1.0),
@@ -531,7 +648,7 @@ def resolve_executive_asset(
             return ExecutiveTickerResolution(
                 ticker=ticker,
                 source=source_name,  # type: ignore[arg-type]
-                asset_type="Stock",
+                asset_type=product_type,
                 canonical_description=canonical,
                 company_name=company_name,
                 confidence=0.95,
@@ -542,7 +659,7 @@ def resolve_executive_asset(
         return ExecutiveTickerResolution(
             ticker=securities_ticker,
             source="securities",
-            asset_type="Stock",
+            asset_type=product_type,
             canonical_description=canonical,
             company_name=company_name,
             confidence=0.9,
@@ -551,11 +668,13 @@ def resolve_executive_asset(
     if use_yfinance:
         yf_result = resolve_from_yfinance(company_name)
         if yf_result:
-            ticker, asset_type, confidence = yf_result
+            ticker, quote_type, confidence = yf_result
             return ExecutiveTickerResolution(
                 ticker=ticker,
                 source="yfinance",
-                asset_type=asset_type,
+                asset_type=asset_type_for_oge_description(
+                    raw_description, quote_type=quote_type
+                ),
                 canonical_description=canonical,
                 company_name=company_name,
                 confidence=confidence,
@@ -564,7 +683,7 @@ def resolve_executive_asset(
     return ExecutiveTickerResolution(
         ticker=None,
         source="unresolved",
-        asset_type="Stock",
+        asset_type=product_type,
         canonical_description=canonical,
         company_name=company_name,
         confidence=0.0,

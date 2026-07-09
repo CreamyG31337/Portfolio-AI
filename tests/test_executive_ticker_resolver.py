@@ -23,6 +23,7 @@ from executive_ticker_resolver import (  # noqa: E402
     _select_best_equity,
     canonicalize_oge_company_name,
     canonicalize_oge_description,
+    classify_oge_asset_type,
     confirm_ticker_symbol,
     is_bond_or_muni,
     parse_ticker_suffix,
@@ -42,6 +43,41 @@ FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "trump_transaction
 def test_is_bond_or_muni_detects_municipal_description() -> None:
     assert is_bond_or_muni("TARRANT REGL WTR DIST TE RV BE/R/ 5 DUE 030134")
     assert not is_bond_or_muni("AAR CORP")
+    assert not is_bond_or_muni("PNC FINL PERP 6 2500")
+
+
+def test_classify_oge_asset_type_examples() -> None:
+    assert classify_oge_asset_type("BANK OF AMERICA CORPORATION - BAC") == "Stock"
+    assert classify_oge_asset_type("PNC FINL PERP 6 2500") == "Preferred"
+    assert classify_oge_asset_type("KEY DP SH PFD H GTO 08 24 22") == "Preferred"
+    assert (
+        classify_oge_asset_type("GENL MOTORS FINL 6 100 010734 DT0120723")
+        == "Corporate Bond"
+    )
+    assert (
+        classify_oge_asset_type("STE STRT COMTN SR SLCT SCTR SPDR ETF") == "ETF"
+    )
+    assert (
+        classify_oge_asset_type("TARRANT REGL WTR DIST TE RV BE/R/ 5 DUE 030134")
+        == "Municipal Bond"
+    )
+
+
+def test_resolve_executive_asset_sets_preferred_type_from_cache() -> None:
+    description = "PNC FINL PERP 6 2500"
+    key = canonicalize_oge_company_name(description)
+    cache = {
+        key: {
+            "canonical_description": key,
+            "ticker": "PNC",
+            "source": "llm",
+            "confidence": 0.85,
+            "asset_type": "Stock",
+        }
+    }
+    result = resolve_executive_asset(description, cache=cache)
+    assert result.ticker == "PNC"
+    assert result.asset_type == "Preferred"
 
 
 def test_parse_ticker_suffix_from_description() -> None:

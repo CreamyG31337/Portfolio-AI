@@ -1066,20 +1066,23 @@ def executive_ticker_resolve_task_handler(
 
     ticker, asset_type, confidence = result
     supabase = SupabaseClient(use_service_role=True)
+    from executive_ticker_resolver import classify_oge_asset_type
+
+    product_type = classify_oge_asset_type(description)
     upsert_og_asset_cache_entry(
         supabase,
         canonical_description=target_key,
         ticker=ticker,
         source="llm",
         confidence=confidence,
-        asset_type=asset_type,
+        asset_type=product_type,
     )
     logger.info(
         "executive_ticker_resolve: %r -> %s (%.2f, %s) via %s",
         target_key,
         ticker,
         confidence,
-        asset_type,
+        product_type,
         backend,
     )
 
