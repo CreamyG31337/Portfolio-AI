@@ -249,12 +249,59 @@ def safe_parse_datetime_column(series_or_str: Union[str, pd.Series], column_name
     if isinstance(series_or_str, str):
         # Single string - use existing timezone-aware function
         return parse_csv_timestamp(series_or_str)
-    elif hasattr(series_or_str, 'apply'):
-        # Pandas Series - apply timezone-aware parsing to each element
-        return series_or_str.apply(lambda x: parse_csv_timestamp(x) if pd.notna(x) else x)
-    else:
-        # Fallback for other types
+
+    if not hasattr(series_or_str, 'str') and not hasattr(series_or_str, 'apply'):
         return pd.to_datetime(series_or_str)
+
+    import numpy as np
+    import warnings
+
+    s_cleaned = series_or_str.astype(str)
+
+    # 1. Replace timezone abbreviations with offsets
+    replacements = {
+        " PST": "-08:00", " PDT": "-07:00",
+        " MST": "-07:00", " MDT": "-06:00",
+        " CST": "-06:00", " CDT": "-05:00",
+        " EST": "-05:00", " EDT": "-04:00"
+    }
+    for abbr, offset in replacements.items():
+        s_cleaned = s_cleaned.str.replace(abbr, offset)
+
+    # 2. Identify strings with offsets and missing values
+    has_offset = s_cleaned.str.contains(r'[-+]\d{2}:\d{2}$') | s_cleaned.str.contains("UTC|GMT", regex=True)
+    is_missing = s_cleaned.isna() | (s_cleaned == 'nan') | (s_cleaned == 'NaT')
+
+    # 3. Apply default configured timezone offset to strings without one
+    tz = get_trading_timezone()
+
+    # Safely get the offset utilizing a current datetime object to account for DST
+    from datetime import datetime
+    now_dt = datetime.now(tz)
+    total_seconds = int(now_dt.utcoffset().total_seconds())
+
+    offset_hours = total_seconds // 3600
+    offset_minutes = (abs(total_seconds) % 3600) // 60
+
+    # Format the offset string correctly handling fractional hour timezones
+    offset_str = f"{offset_hours:03d}:{offset_minutes:02d}" if offset_hours < 0 else f"+{offset_hours:02d}:{offset_minutes:02d}"
+
+    s_cleaned = np.where(~has_offset & ~is_missing, s_cleaned + offset_str, s_cleaned)
+    s_cleaned = np.where(is_missing, np.nan, s_cleaned)
+
+    # 4. Parse datetimes safely
+    # For mixed offsets, convert to UTC first using utc=True (standardizes them to datetime64[ns, UTC])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        parsed = pd.to_datetime(s_cleaned, utc=True)
+
+    # If returned as Index, convert back to Series
+    if isinstance(parsed, pd.Index):
+        parsed = pd.Series(parsed, index=series_or_str.index)
+
+    # Crucial: the rest of the app expects local time context for grouping/filtering dates.
+    # Convert the UTC series back to the proper local trading timezone.
+    return parsed.dt.tz_convert(tz)
 
 
 def get_market_close_time_local() -> int:

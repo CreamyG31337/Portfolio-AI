@@ -82,3 +82,21 @@ def test_get_first_trade_dates_flask_uses_optimized_selection():
         mock_table.select.assert_called_with("ticker, date")
         # And limit should be 5000 (or whatever we set)
         mock_order.limit.assert_called_with(5000)
+
+def test_safe_parse_datetime_column_vectorized():
+    """Test that safe_parse_datetime_column works with series and correctly applies vectorization."""
+    from utils.timezone_utils import safe_parse_datetime_column
+
+    # Mixed formats with abbreviations
+    dates = pd.Series([
+        "2023-01-01 10:00:00 PST",
+        "2023-06-01 10:00:00 PDT",
+        "2023-06-01 10:00:00"
+    ])
+
+    result = safe_parse_datetime_column(dates)
+
+    assert len(result) == 3
+    # Check that it returns a Series and properly parses to timezone aware format
+    assert isinstance(result, pd.Series)
+    assert pd.api.types.is_datetime64_any_dtype(result)
