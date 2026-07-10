@@ -313,6 +313,18 @@
     </nav>
 </div>
 
+<!-- Insights (human thesis threads) -->
+<div id="insights-section" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-4 mb-6 border border-border">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 class="text-lg font-bold text-text-primary"><i class="fas fa-lightbulb mr-2 text-accent"></i>Insights</h2>
+        <a id="insights-view-all-link" href="/insights" class="text-xs text-accent underline">View all insights</a>
+    </div>
+    <div id="ticker-insights-list" class="text-sm text-text-secondary space-y-2"></div>
+    <p id="ticker-insights-empty" class="hidden text-sm text-text-secondary mt-2">
+        No active theses for this ticker. <a href="/insights" class="text-accent underline">Create one on Insights</a>.
+    </p>
+</div>
+
 <!-- Evidence timeline (stances + articles) -->
 <div id="evidence-timeline-section" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-4 mb-6 border border-border">
     <h2 class="text-lg font-bold text-text-primary mb-3"><i class="fas fa-stream mr-2 text-accent"></i>Evidence timeline</h2>

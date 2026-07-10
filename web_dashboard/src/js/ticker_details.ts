@@ -887,6 +887,49 @@ async function loadModelOptions(): Promise<void> {
 
 
 // Load all ticker data
+async function loadTickerInsights(ticker: string, seq?: number): Promise<void> {
+    const section = document.getElementById('insights-section');
+    const list = document.getElementById('ticker-insights-list');
+    const empty = document.getElementById('ticker-insights-empty');
+    const viewAll = document.getElementById('insights-view-all-link') as HTMLAnchorElement | null;
+    if (!section || !list) return;
+    if (viewAll) {
+        viewAll.href = `/insights?ticker=${encodeURIComponent(ticker)}`;
+    }
+    try {
+        const resp = await fetch(`/api/ticker/${encodeURIComponent(ticker)}/insights`, {
+            credentials: 'include',
+        });
+        if (seq !== undefined && isStaleLoad(seq, ticker)) return;
+        if (!resp.ok) {
+            section.classList.add('hidden');
+            return;
+        }
+        const body = await resp.json() as { data?: Array<Record<string, unknown>> };
+        const rows = body.data || [];
+        if (!rows.length) {
+            list.innerHTML = '';
+            empty?.classList.remove('hidden');
+            section.classList.remove('hidden');
+            return;
+        }
+        empty?.classList.add('hidden');
+        list.innerHTML = rows.slice(0, 8).map((row) => {
+            const id = String(row.id || '');
+            const title = String(row.title || 'Untitled');
+            const disp = String(row.disposition || 'neutral');
+            const intent = String(row.intent || 'monitor');
+            return `<a href="/insights#${encodeURIComponent(id)}" class="block border border-border rounded-lg p-3 hover:border-accent/50">
+                <span class="text-xs uppercase text-text-tertiary">${disp} · ${intent}</span>
+                <span class="block font-medium text-text-primary mt-1">${title}</span>
+            </a>`;
+        }).join('');
+        section.classList.remove('hidden');
+    } catch {
+        section.classList.add('hidden');
+    }
+}
+
 async function loadEvidenceTimeline(ticker: string, seq?: number): Promise<void> {
     const section = document.getElementById('evidence-timeline-section');
     const list = document.getElementById('evidence-timeline-list');
@@ -977,6 +1020,9 @@ async function loadTickerData(ticker: string): Promise<void> {
         await loadTickerAnalysis(ticker, seq);
         if (isStaleLoad(seq, ticker)) return;
         await loadTickerAnalysisContext(ticker, seq);
+        if (isStaleLoad(seq, ticker)) return;
+
+        await loadTickerInsights(ticker, seq);
         if (isStaleLoad(seq, ticker)) return;
 
         await loadEvidenceTimeline(ticker, seq);
@@ -3579,6 +3625,8 @@ function hideAllSections(): void {
         'congress-section',
         'insider-trades-section',
         'watchlist-section',
+        'insights-section',
+        'evidence-timeline-section',
         'signals-section',
         'ai-analysis-section'
     ];

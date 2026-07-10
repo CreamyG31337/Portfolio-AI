@@ -765,6 +765,13 @@ except Exception as e:
     logger.error(f"Failed to register Intelligence Blueprint: {e}", exc_info=True)
 
 try:
+    from routes.insights_routes import insights_bp
+    app.register_blueprint(insights_bp)
+    logger.info("✅ Registered Insights Blueprint")
+except Exception as e:
+    logger.error(f"Failed to register Insights Blueprint: {e}", exc_info=True)
+
+try:
     from routes.research_routes import research_bp
     app.register_blueprint(research_bp)
     logger.info("✅ Registered Research Blueprint")

@@ -8,6 +8,7 @@ Shared navigation configuration for both Streamlit and Flask.
 MIGRATED_PAGES = {
     'today': '/today',
     'ideas': '/ideas',
+    'insights': '/insights',
     'track_record': '/track-record',
     'dashboard': '/dashboard',
     'settings': '/settings',  # Routed to Flask via Caddy /v2/* handler
@@ -76,6 +77,7 @@ def get_navigation_links() -> list:
     links = [
         {'name': 'Today', 'page': 'today', 'icon': '📋'},
         {'name': 'Ideas', 'page': 'ideas', 'icon': '💡'},
+        {'name': 'Insights', 'page': 'insights', 'icon': '📝'},
         {'name': 'Track record', 'page': 'track_record', 'icon': '🎯'},
         {'name': 'Research Repository', 'page': 'research', 'icon': '📚'},
         {'name': 'Newsletters', 'page': 'newsletters', 'icon': '📧'},

@@ -43,6 +43,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/dilution_observations.sql
 \i tables/filing_events.sql
 \i tables/confluence_events.sql
+\i tables/ticker_theses.sql
+\i tables/thesis_entries.sql
+\i tables/thesis_evidence.sql
 
 -- FUNCTIONS
 \i functions/array_to_halfvec.sql

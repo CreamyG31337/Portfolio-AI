@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Insights - Portfolio Dashboard{% endblock %}
+{% block page_title %}Insights{% endblock %}
+{% block page_subtitle %}Thesis threads — human research separate from automated signals{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <p class="text-sm text-text-secondary mb-4">
+        Capture bullish/bearish/neutral theses with seek entry/exit intent. Archive hides threads from the default list (recycle bin).
+    </p>
+
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+        <label class="flex items-center gap-2 text-sm text-text-primary">
+            <input type="checkbox" id="insights-show-archived"
+                class="rounded text-accent focus:ring-accent bg-dashboard-surface-alt border-border">
+            Show archived
+        </label>
+        <select id="insights-filter-intent"
+            class="text-sm bg-dashboard-surface-alt border border-border rounded-lg px-2 py-1 text-text-primary">
+            <option value="">All intents</option>
+            <option value="seek_entry">Seek entry</option>
+            <option value="seek_exit">Seek exit</option>
+            <option value="monitor">Monitor</option>
+        </select>
+        <select id="insights-filter-disposition"
+            class="text-sm bg-dashboard-surface-alt border border-border rounded-lg px-2 py-1 text-text-primary">
+            <option value="">All dispositions</option>
+            <option value="bullish">Bullish</option>
+            <option value="bearish">Bearish</option>
+            <option value="neutral">Neutral</option>
+        </select>
+        <input type="text" id="insights-filter-ticker" placeholder="Ticker"
+            class="text-sm bg-dashboard-surface-alt border border-border rounded-lg px-2 py-1 w-24 text-text-primary uppercase">
+        <button type="button" id="insights-refresh-btn"
+            class="px-3 py-1 text-sm border border-border rounded-lg hover:bg-dashboard-surface-alt text-text-primary">
+            Refresh
+        </button>
+        <button type="button" id="insights-new-btn"
+            class="px-3 py-1 text-sm font-medium text-white bg-accent rounded-lg hover:opacity-90">
+            New thesis
+        </button>
+    </div>
+
+    <div id="insights-loading" class="text-sm text-text-secondary">Loading insights…</div>
+    <div id="insights-error" class="hidden text-sm text-theme-error-text mb-4"></div>
+    <div id="insights-list" class="space-y-3"></div>
+</div>
+
+<!-- New thesis modal -->
+<div id="insights-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-dashboard-surface border border-border rounded-lg shadow-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <h3 class="text-lg font-semibold text-text-primary mb-4">New thesis</h3>
+        <form id="insights-form" class="space-y-3">
+            <div>
+                <label class="text-xs text-text-secondary" for="ins-ticker">Ticker</label>
+                <input id="ins-ticker" required maxlength="20"
+                    class="w-full mt-1 bg-dashboard-background border border-border rounded-lg px-3 py-2 text-text-primary uppercase">
+            </div>
+            <div>
+                <label class="text-xs text-text-secondary" for="ins-title">Title</label>
+                <input id="ins-title" maxlength="200"
+                    class="w-full mt-1 bg-dashboard-background border border-border rounded-lg px-3 py-2 text-text-primary">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-text-secondary" for="ins-disposition">Disposition</label>
+                    <select id="ins-disposition"
+                        class="w-full mt-1 bg-dashboard-background border border-border rounded-lg px-2 py-2 text-text-primary">
+                        <option value="bullish">Bullish</option>
+                        <option value="bearish">Bearish</option>
+                        <option value="neutral" selected>Neutral</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs text-text-secondary" for="ins-intent">Intent</label>
+                    <select id="ins-intent"
+                        class="w-full mt-1 bg-dashboard-background border border-border rounded-lg px-2 py-2 text-text-primary">
+                        <option value="seek_entry">Seek entry</option>
+                        <option value="seek_exit">Seek exit</option>
+                        <option value="monitor" selected>Monitor</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="text-xs text-text-secondary" for="ins-body">Opening note</label>
+                <textarea id="ins-body" required rows="5"
+                    class="w-full mt-1 bg-dashboard-background border border-border rounded-lg px-3 py-2 text-text-primary"></textarea>
+            </div>
+            <div>
+                <label class="text-xs text-text-secondary" for="ins-source-url">Source URL (optional)</label>
+                <input id="ins-source-url" type="url"
+                    class="w-full mt-1 bg-dashboard-background border border-border rounded-lg px-3 py-2 text-text-primary">
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" id="insights-modal-cancel"
+                    class="px-3 py-1 text-sm border border-border rounded-lg text-text-primary">Cancel</button>
+                <button type="submit"
+                    class="px-3 py-1 text-sm font-medium text-white bg-accent rounded-lg">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Detail drawer -->
+<div id="insights-detail" class="hidden fixed inset-y-0 right-0 z-40 w-full max-w-xl bg-dashboard-surface border-l border-border shadow-xl overflow-y-auto p-6">
+    <button type="button" id="insights-detail-close" class="text-sm text-text-secondary mb-4">← Back</button>
+    <div id="insights-detail-body"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/insights.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+{% endblock %}

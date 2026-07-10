@@ -286,8 +286,20 @@ def ticker_evidence_timeline(ticker: str):
             )
         except Exception as conf_exc:
             logger.warning("evidence-timeline confluence lookup failed: %s", conf_exc)
+        user_insights: list[dict[str, Any]] = []
+        try:
+            from user_insights_service import fetch_thesis_timeline_events
+
+            user_insights = fetch_thesis_timeline_events(pg, ticker_u, limit=20)
+        except Exception as ui_exc:
+            logger.warning("evidence-timeline user insights lookup failed: %s", ui_exc)
         events = _serialize_rows(
-            list(stances) + list(articles) + list(dilution) + list(filings) + list(confluence)
+            list(stances)
+            + list(articles)
+            + list(dilution)
+            + list(filings)
+            + list(confluence)
+            + list(user_insights)
         )
         events.sort(key=lambda e: e.get("event_at") or "", reverse=True)
         return jsonify({"ticker": ticker_u, "events": events[:60]})
