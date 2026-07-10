@@ -34,15 +34,15 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-# Repo root first so `data.*` resolves to root data/ (not a shadowed package).
-# web_dashboard second for supabase_client / ollama_client / scripts.
+# web_dashboard first so utils.session_manager resolves correctly.
+# Repo root second so data.* still resolves to root data/ (web_dashboard/data removed).
 _web_dashboard_root = Path(__file__).resolve().parent.parent
 _repo_root = _web_dashboard_root.parent
-for _path in (str(_web_dashboard_root), str(_repo_root)):
+for _path in (str(_repo_root), str(_web_dashboard_root)):
     if _path in sys.path:
         sys.path.remove(_path)
-sys.path.insert(0, str(_web_dashboard_root))
 sys.path.insert(0, str(_repo_root))
+sys.path.insert(0, str(_web_dashboard_root))
 
 # Load environment variables
 from dotenv import load_dotenv
