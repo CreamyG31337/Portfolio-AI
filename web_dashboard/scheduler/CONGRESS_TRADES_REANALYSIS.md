@@ -41,3 +41,10 @@ python web_dashboard\scripts\analyze_congress_trades_batch.py --sessions --resco
 
 - **Scheduler job (UI):** `rescore_congress_sessions_job` in `jobs_congress.py` runs the same batch script via subprocess; starting it from the UI ties it to the app process.
 - **Batch script:** `web_dashboard/scripts/analyze_congress_trades_batch.py` (session-based analysis with `--sessions`).
+- **AI task queue catch-up:** When `analyze_congress_trades` is in `AI_QUEUE_JOBS`, the cron enqueues tasks and workers (Granite/AMD, Qwen/desktop, GLM) score in parallel. Bulk backlog:
+
+```powershell
+python web_dashboard\scripts\enqueue_congress_trade_analysis.py --priority 0
+```
+
+Re-runnable / resumable. Deploy default includes the job in `.woodpecker.yml` `AI_QUEUE_JOBS`.

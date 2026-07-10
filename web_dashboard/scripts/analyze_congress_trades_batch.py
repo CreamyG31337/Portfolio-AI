@@ -536,7 +536,14 @@ def get_trade_context(client: SupabaseClient, trade: Dict[str, Any], use_cache: 
         
     return context
 
-def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, verbose: bool = False, max_retries: int = 2) -> Dict[str, Any]:
+def analyze_trade(
+    ollama: OllamaClient,
+    context: Dict[str, Any],
+    model: str,
+    verbose: bool = False,
+    max_retries: int = 2,
+    model_chain_override: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """Run AI analysis on a single trade with structured JSON output.
     
     Args:
@@ -545,6 +552,7 @@ def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, ver
         model: Model name to use
         verbose: Whether to print streaming output
         max_retries: Maximum number of retry attempts for transient failures
+        model_chain_override: When set (e.g. queue workers), try only these models
     
     Returns:
         Dictionary with conflict_score, confidence_score, and reasoning, or None on failure
@@ -585,6 +593,7 @@ def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, ver
                     "politician": context.get("politician"),
                     "tickers_extracted": [context.get("ticker")] if context.get("ticker") else None,
                 },
+                model_chain_override=model_chain_override,
             )
             model = model_used
             if verbose and full_response:

@@ -514,6 +514,87 @@ def fetch_congress_trades_job() -> None:
         logger.error(f"❌ Congress trades job failed: {e}", exc_info=True)
 
 
+def _analyze_congress_trades_queue_enabled() -> bool:
+    try:
+        from scheduler.ai_task_workers import is_ai_queue_job_enabled
+
+        return is_ai_queue_job_enabled("analyze_congress_trades")
+    except Exception as exc:
+        logger.warning(
+            "AI queue mode check failed for analyze_congress_trades (using legacy path): %s",
+            exc,
+        )
+        return False
+
+
+def _run_analyze_congress_trades_enqueue_mode(job_id: str, start_time: float) -> None:
+    """Queue-mode: enqueue newest unscored trades; workers score on three backends."""
+
+    from utils.job_tracking import mark_job_completed, mark_job_failed, mark_job_started
+    from scheduler.ai_task_workers import (
+        AIQueueConfig,
+        enqueue_congress_trade_analysis_tasks,
+    )
+    from supabase_client import SupabaseClient
+    import os
+
+    target_date = datetime.now(timezone.utc).date()
+    mark_job_started(job_id, target_date)
+
+    # Modest priority so catch-up bulk (priority 0) stays behind, but cron work
+    # still runs ahead of pure backlog dumps.
+    cron_priority = 10
+    batch_size = 40
+
+    try:
+        client = SupabaseClient(use_service_role=True)
+        resp = (
+            client.supabase.table("congress_trades")
+            .select("id")
+            .is_("conflict_score", "null")
+            .order("transaction_date", desc=True)
+            .order("id", desc=True)
+            .limit(batch_size)
+            .execute()
+        )
+        trade_ids = [int(r["id"]) for r in (resp.data or [])]
+        if not trade_ids:
+            duration_ms = int((time.time() - start_time) * 1000)
+            message = "No unscored trades to enqueue"
+            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+            logger.info("✅ %s", message)
+            return
+
+        config = AIQueueConfig.from_env()
+        enqueued_by = os.getenv("AI_QUEUE_ENQUEUED_BY", "cron").strip() or "cron"
+        stats = enqueue_congress_trade_analysis_tasks(
+            client,
+            trade_ids,
+            priority=cron_priority,
+            enqueued_by=enqueued_by,
+            max_attempts=config.max_attempts,
+        )
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = (
+            f"Enqueued {stats['enqueued']}/{stats['attempted']} analyze_congress_trades "
+            f"task(s); failed={stats['failed']}."
+        )
+        ok = stats["failed"] == 0
+        log_job_execution(job_id, success=ok, message=message, duration_ms=duration_ms)
+        if ok:
+            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+        else:
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        logger.info("✅ Congress trades enqueue complete: %s", message)
+    except Exception as exc:
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = f"Congress trades enqueue failed: {exc}"
+        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        logger.error("❌ %s", message, exc_info=True)
+
+
 def analyze_congress_trades_job() -> None:
     """Analyze unscored congress trades using committee data to calculate conflict scores.
     
@@ -525,9 +606,16 @@ def analyze_congress_trades_job() -> None:
     
     Note: This is a wrapper around analyze_congress_trades_batch.py logic.
     Processes in batches to avoid overwhelming Ollama.
+
+    When ``analyze_congress_trades`` is in ``AI_QUEUE_JOBS``, this job only
+    enqueues tasks; backend-bound workers perform the LLM scoring.
     """
     job_id = 'analyze_congress_trades'
     start_time = time.time()
+
+    if _analyze_congress_trades_queue_enabled():
+        _run_analyze_congress_trades_enqueue_mode(job_id, start_time)
+        return
 
     # Global AI lock (prevent overlapping AI jobs)
     try:

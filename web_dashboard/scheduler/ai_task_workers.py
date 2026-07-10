@@ -41,6 +41,7 @@ QUEUE_JOB_TICKER_META_ANALYSIS = "ticker_meta_analysis"
 QUEUE_JOB_SECTOR_META_ANALYSIS = "sector_meta_analysis"
 QUEUE_JOB_ETF_GROUP_ANALYSIS = "etf_group_analysis"
 QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE = "executive_ticker_resolve"
+QUEUE_JOB_ANALYZE_CONGRESS_TRADES = "analyze_congress_trades"
 
 TERMINAL_ERROR_CLASSES = {
     ERROR_SCHEMA_VIOLATION,
@@ -1173,6 +1174,171 @@ def get_ai_task_worker_pool() -> Optional[AIQueueWorkerPool]:
     return _worker_pool
 
 
+def enqueue_congress_trade_analysis_tasks(
+    supabase_client: Any,
+    trade_ids: Sequence[int],
+    *,
+    priority: int = 0,
+    enqueued_by: str = "cron",
+    max_attempts: int = 3,
+) -> Dict[str, int]:
+    """Enqueue one ``analyze_congress_trades`` task per trade id.
+
+    Catch-up bulk should use low ``priority`` (default 0) so ticker/meta/ETF
+    work (higher priority) leases first. ``target_key`` is the string trade id
+    for active-row dedupe on re-enqueue.
+    """
+
+    stats = {"attempted": 0, "enqueued": 0, "failed": 0}
+    for raw_id in trade_ids:
+        stats["attempted"] += 1
+        try:
+            trade_id = int(raw_id)
+        except (TypeError, ValueError):
+            stats["failed"] += 1
+            continue
+        if trade_id <= 0:
+            stats["failed"] += 1
+            continue
+        target_key = str(trade_id)
+        try:
+            enqueue_ai_task(
+                supabase_client,
+                analysis_type=QUEUE_JOB_ANALYZE_CONGRESS_TRADES,
+                target_key=target_key,
+                payload={"trade_id": trade_id, "priority": int(priority)},
+                priority=int(priority),
+                enqueued_by=enqueued_by,
+                max_attempts=max_attempts,
+            )
+            stats["enqueued"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logger.warning(
+                "Failed to enqueue analyze_congress_trades task for trade_id=%s: %s",
+                trade_id,
+                exc,
+            )
+    return stats
+
+
+def congress_trade_analysis_task_handler(task: Mapping[str, Any], backend: str) -> None:
+    """Score one congress trade on the assigned backend; sync Supabase conflict_score."""
+
+    payload = task.get("payload") if isinstance(task.get("payload"), dict) else {}
+    raw_id = payload.get("trade_id") or task.get("target_key")
+    try:
+        trade_id = int(raw_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"analyze_congress_trades task missing trade_id (target_key={task.get('target_key')!r})"
+        ) from exc
+
+    model = model_for_backend(backend)
+
+    from ollama_client import OllamaClient
+    from postgres_client import PostgresClient
+    from scripts.analyze_congress_trades_batch import (
+        analyze_trade,
+        get_trade_context,
+        is_low_risk_asset,
+        sync_supabase_conflict_score,
+    )
+    from supabase_client import SupabaseClient
+
+    supabase = SupabaseClient(use_service_role=True)
+    postgres = PostgresClient()
+
+    existing = (
+        supabase.supabase.table("congress_trades")
+        .select("id,conflict_score")
+        .eq("id", trade_id)
+        .limit(1)
+        .execute()
+    )
+    rows = existing.data or []
+    if not rows:
+        raise ValueError(f"congress trade id={trade_id} not found")
+    if rows[0].get("conflict_score") is not None:
+        logger.info(
+            "analyze_congress_trades trade_id=%s already scored (%.3f); skipping",
+            trade_id,
+            float(rows[0]["conflict_score"]),
+        )
+        return
+
+    trade_resp = (
+        supabase.supabase.table("congress_trades_enriched")
+        .select("*")
+        .eq("id", trade_id)
+        .limit(1)
+        .execute()
+    )
+    trade_rows = trade_resp.data or []
+    if not trade_rows:
+        raise ValueError(f"congress trade id={trade_id} missing from enriched view")
+    trade = trade_rows[0]
+
+    if backend == BACKEND_GLM:
+        ollama = OllamaClient(force_base_url_only=True)
+    else:
+        base_url = ollama_base_url_for_backend(backend)
+        if not base_url:
+            raise RuntimeError(f"No Ollama base URL configured for backend={backend}")
+        ollama = OllamaClient(base_url=base_url, force_base_url_only=True)
+
+    context = get_trade_context(supabase, trade)
+    is_low_risk, filter_reason = is_low_risk_asset(context)
+    if is_low_risk:
+        analysis = {
+            "conflict_score": 0.0,
+            "confidence_score": 1.0,
+            "reasoning": f"Auto-filtered: {filter_reason}",
+        }
+        model_used = "auto-filter"
+    else:
+        analysis = analyze_trade(
+            ollama,
+            context,
+            model,
+            model_chain_override=[model],
+        )
+        model_used = model
+
+    if not analysis or "conflict_score" not in analysis:
+        raise RuntimeError(
+            f"analyze_congress_trades returned no score for trade_id={trade_id} on {backend}"
+        )
+
+    score = float(analysis["conflict_score"])
+    confidence = float(analysis.get("confidence_score", 0.75))
+    reasoning = analysis.get("reasoning", "No reasoning provided")
+
+    postgres.execute_update(
+        """
+        INSERT INTO congress_trades_analysis
+            (trade_id, conflict_score, confidence_score, reasoning, model_used, analysis_version)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (trade_id, model_used, analysis_version)
+        DO UPDATE SET
+            conflict_score = EXCLUDED.conflict_score,
+            confidence_score = EXCLUDED.confidence_score,
+            reasoning = EXCLUDED.reasoning,
+            analyzed_at = NOW()
+        """,
+        (trade_id, score, confidence, reasoning, model_used, 1),
+    )
+    sync_supabase_conflict_score(supabase, trade_id, score)
+    logger.info(
+        "analyze_congress_trades scored trade_id=%s conflict=%.2f confidence=%.2f backend=%s model=%s",
+        trade_id,
+        score,
+        confidence,
+        backend,
+        model_used,
+    )
+
+
 def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandler]:
     """Build handlers for queue-managed jobs that are enabled in config."""
 
@@ -1190,6 +1356,8 @@ def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandl
         handlers[QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE] = (
             executive_ticker_resolve_task_handler
         )
+    if QUEUE_JOB_ANALYZE_CONGRESS_TRADES in jobs:
+        handlers[QUEUE_JOB_ANALYZE_CONGRESS_TRADES] = congress_trade_analysis_task_handler
     return handlers
 
 
