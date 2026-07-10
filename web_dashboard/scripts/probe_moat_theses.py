@@ -321,7 +321,10 @@ def main() -> int:
         print(f"  local={draft.get('used_local_research')} web={draft.get('used_web')}")
         body = str(draft.get("body") or "")
         print("  --- body ---")
-        print(body[:1500])
+        try:
+            print(body[:1500])
+        except UnicodeEncodeError:
+            print(body[:1500].encode("ascii", errors="replace").decode("ascii"))
         print("  ------------")
 
         if args.write:
