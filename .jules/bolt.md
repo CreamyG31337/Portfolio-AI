@@ -59,3 +59,7 @@
 ## 2026-06-22 - np.where with pandas division and zero denominators
 **Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, pandas evaluates `A / B` for all rows before `np.where` applies its mask. If `B` can be zero, this floods logs with `RuntimeWarning: divide by zero encountered in divide` even when the result is masked.
 **Action:** Use safe division by replacing zeros with `np.nan` before dividing: `df['A'].divide(df['B'].replace(0, np.nan))`.
+
+## 2024-05-18 - Pandas Timezone Stripping Performance
+**Learning:** Using `.apply(lambda x: x.strftime(...))` on a Pandas Series of timezone-aware timestamps is extremely slow and drops timezone offset information. Conversely, `pd.to_datetime(s, utc=True)` is fast but loses local wall-clock time if the data spans mixed offsets (like Daylight Saving Time boundaries). `s.dt.tz_localize(None)` will also fail on mixed offsets.
+**Action:** To safely strip timezones while preserving local wall-clock time across mixed offsets at maximum speed, use a list comprehension: `pd.to_datetime([d.replace(tzinfo=None) if hasattr(d, 'tzinfo') else d for d in s])`. This avoids the row-wise overhead of `.apply()` while preventing regressions from mixed offset `TypeError`s.
