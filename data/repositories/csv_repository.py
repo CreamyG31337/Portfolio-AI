@@ -80,9 +80,12 @@ class CSVRepository(BaseRepository):
 
             # Parse timestamps with timezone awareness
             # _parse_csv_timestamp returns timezone-aware pandas Timestamps
-            from utils.timezone_utils import safe_parse_datetime_column
-            # Use vectorized parsing
-            df['Date'] = safe_parse_datetime_column(df['Date'])
+            parsed_dates = df['Date'].apply(self._parse_csv_timestamp)
+            # Convert to datetime64 by extracting components (avoids timezone conversion issues)
+            df['Date'] = pd.to_datetime(parsed_dates.apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if hasattr(x, 'strftime') else str(x)))
+            # Add timezone info back
+            if not parsed_dates.empty and hasattr(parsed_dates.iloc[0], 'tz'):
+                df['Date'] = df['Date'].dt.tz_localize(parsed_dates.iloc[0].tz)
 
             self._portfolio_cache = df
             self._portfolio_mtime = current_mtime
@@ -119,9 +122,10 @@ class CSVRepository(BaseRepository):
                 # Re-parse dates if they're strings
                 from utils.timezone_utils import get_trading_timezone
                 trading_tz = get_trading_timezone()
-                from utils.timezone_utils import safe_parse_datetime_column
-                # Use vectorized parsing
-                df['Date'] = safe_parse_datetime_column(df['Date'])
+                parsed_dates = df['Date'].apply(self._parse_csv_timestamp)
+                df['Date'] = pd.to_datetime(parsed_dates.apply(lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if hasattr(x, 'strftime') else str(x)))
+                if not parsed_dates.empty and hasattr(parsed_dates.iloc[0], 'tz'):
+                    df['Date'] = df['Date'].dt.tz_localize(parsed_dates.iloc[0].tz)
             
             # Filter by date range if provided
             if date_range:
@@ -472,9 +476,7 @@ class CSVRepository(BaseRepository):
                 return []
             
             # Parse timestamps
-            from utils.timezone_utils import safe_parse_datetime_column
-            # Use vectorized parsing
-            df['Date'] = safe_parse_datetime_column(df['Date'])
+            df['Date'] = df['Date'].apply(self._parse_csv_timestamp)
             # Ensure the Date column is properly converted to datetime dtype
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 
@@ -544,9 +546,7 @@ class CSVRepository(BaseRepository):
                 combined_df = pd.concat([existing_df, new_trade_df], ignore_index=True)
                 
                 # Convert Date column to datetime for proper sorting using timezone-aware parsing
-                from utils.timezone_utils import safe_parse_datetime_column
-                # Use vectorized parsing
-                combined_df['Date'] = safe_parse_datetime_column(combined_df['Date'])
+                combined_df['Date'] = combined_df['Date'].apply(self._parse_csv_timestamp)
                 
                 # Sort by date
                 combined_df = combined_df.sort_values('Date')

@@ -59,7 +59,3 @@
 ## 2026-06-22 - np.where with pandas division and zero denominators
 **Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, pandas evaluates `A / B` for all rows before `np.where` applies its mask. If `B` can be zero, this floods logs with `RuntimeWarning: divide by zero encountered in divide` even when the result is masked.
 **Action:** Use safe division by replacing zeros with `np.nan` before dividing: `df['A'].divide(df['B'].replace(0, np.nan))`.
-
-## 2024-05-18 - Pandas iterrows Timezone Overhead
-**Learning:** In `utils/timezone_utils.py`, `safe_parse_datetime_column` was iteratively parsing timezone abbreviations via `.apply(lambda)` and stripping/reapplying timezones per-row, causing massive O(N) object instantiation overhead on CSV reads. It also previously crashed with `AttributeError` when incorrectly using `tz.utcoffset(None)`.
-**Action:** When adjusting datetime columns by timezone abbreviations across entire DataFrames, entirely skip iterative loops and use `.str.replace()` for abbreviations, imputation using `np.where`, and then bulk `pd.to_datetime(..., utc=True)` before a final vectorized `.dt.tz_convert(tz)` for a massive 100x vectorization speedup. Always pass a concrete `datetime` object to `.utcoffset()` when resolving local timezone offsets instead of `None` to prevent `AttributeError`.
