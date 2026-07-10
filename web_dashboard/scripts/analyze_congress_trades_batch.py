@@ -34,13 +34,19 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# Repo root first so `data.*` resolves to root data/ (not a shadowed package).
+# web_dashboard second for supabase_client / ollama_client / scripts.
+_web_dashboard_root = Path(__file__).resolve().parent.parent
+_repo_root = _web_dashboard_root.parent
+for _path in (str(_web_dashboard_root), str(_repo_root)):
+    if _path in sys.path:
+        sys.path.remove(_path)
+sys.path.insert(0, str(_web_dashboard_root))
+sys.path.insert(0, str(_repo_root))
 
 # Load environment variables
 from dotenv import load_dotenv
-env_path = project_root / 'web_dashboard' / '.env'
+env_path = _web_dashboard_root / '.env'
 if env_path.exists():
     load_dotenv(env_path)
 else:

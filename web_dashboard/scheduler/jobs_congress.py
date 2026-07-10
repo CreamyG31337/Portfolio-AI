@@ -577,15 +577,27 @@ def analyze_congress_trades_job() -> None:
             mark_job_failed('analyze_congress_trades', target_date, None, message, duration_ms=duration_ms)
             return
         
-        # Import analysis functions from batch script
-        # We'll import the functions directly to reuse the logic
+        # Import analysis functions from batch script.
+        # Keep repo root ahead of web_dashboard so `data.*` resolves to root data/
+        # (web_dashboard/data previously shadowed it and broke committee_jurisdictions).
+        # web_dashboard must still be on the path for `scripts.*`.
         import sys
         from pathlib import Path
-        project_root = Path(__file__).parent.parent.parent
-        sys.path.insert(0, str(project_root))
-        sys.path.insert(0, str(project_root / 'web_dashboard'))
-        
-        # Import the analysis functions
+        _job_repo_root = Path(__file__).resolve().parent.parent.parent
+        _job_web_dashboard = _job_repo_root / 'web_dashboard'
+        for _p in (str(_job_web_dashboard), str(_job_repo_root)):
+            if _p in sys.path:
+                sys.path.remove(_p)
+        sys.path.insert(0, str(_job_web_dashboard))
+        sys.path.insert(0, str(_job_repo_root))
+        # Drop a cached wrong `data` package if web_dashboard/data was imported earlier
+        for _k in sorted(list(sys.modules), key=len, reverse=True):
+            if _k == 'data' or _k.startswith('data.'):
+                mod = sys.modules.get(_k)
+                mod_file = getattr(mod, '__file__', '') or ''
+                if 'web_dashboard' in mod_file.replace('\\', '/'):
+                    sys.modules.pop(_k, None)
+
         # Note: fix_failed_scores is NOT imported - it should only be run manually via --fix-only flag
         from scripts.analyze_congress_trades_batch import (
             get_trade_context,
