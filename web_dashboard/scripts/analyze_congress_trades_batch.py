@@ -742,7 +742,23 @@ def analyze_session(
                     .order("transaction_date", desc=False)\
                     .execute()
                 if not response.data:
-                    logger.warning(f"No trades found for session {session_id} (politician={politician_name}, {start_str} to {end_str})")
+                    logger.warning(
+                        f"No trades found for session {session_id} "
+                        f"(politician={politician_name}, {start_str} to {end_str}); "
+                        "clearing needs_reanalysis so it does not block the queue"
+                    )
+                    # Orphan/stale session: keep it from being retried forever.
+                    postgres.execute_update(
+                        """
+                        UPDATE congress_trade_sessions
+                        SET needs_reanalysis = FALSE,
+                            last_analyzed_at = NOW(),
+                            ai_summary = COALESCE(ai_summary, 'Skipped: no matching trades found'),
+                            updated_at = NOW()
+                        WHERE id = %s
+                        """,
+                        (session_id,),
+                    )
                     return False
                 trade_ids = [row['id'] for row in response.data]
                 logger.info(f"   [LINK] Session {session_id}: resolved {len(trade_ids)} trades from Supabase (date range)")
@@ -764,7 +780,25 @@ def analyze_session(
             except Exception as e:
                 logger.error(f"Failed to fetch trades chunk {i}: {e}")
                 return False
-        
+
+        if not trades:
+            logger.warning(
+                f"Session {session_id} linked trade_ids but none loaded from Supabase; "
+                "clearing needs_reanalysis"
+            )
+            postgres.execute_update(
+                """
+                UPDATE congress_trade_sessions
+                SET needs_reanalysis = FALSE,
+                    last_analyzed_at = NOW(),
+                    ai_summary = COALESCE(ai_summary, 'Skipped: linked trades missing in Supabase'),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (session_id,),
+            )
+            return False
+
         if not trades:
             logger.warning(f"No trade data found in Supabase for session {session_id}")
             return False
