@@ -41,36 +41,75 @@ def _holdings(fund: str) -> list[str]:
     return sorted(tickers)
 
 
+WEAK_CONTEXT_MARKERS = (
+    "does not contain",
+    "lack of direct evidence",
+    "no direct information",
+    "cannot assess",
+    "no specific metrics",
+    "unrelated topics",
+    "unrelated content",
+    "insufficient",
+    "not elaborate on",
+    "no clear moat",
+    "ambiguous competitive moat",
+)
+
+
+def _ticker_like_patterns(ticker: str) -> list[str]:
+    """Avoid substring false positives for short tickers (KO→Korea, PRE→premium)."""
+    t = ticker.upper().strip()
+    # Short / ambiguous symbols: only exact ticker-array membership, no ILIKE.
+    if len(t.split(".")[0]) <= 3:
+        return []
+    return [f"%{t}%"]
+
+
 def _ticker_articles(pg: Any, ticker: str, limit: int = 8) -> list[dict[str, Any]]:
-    rows = pg.execute_query(
-        """
-        SELECT id, title, article_type, source, summary,
-               LEFT(COALESCE(content, ''), 1200) AS content_snip,
-               published_at
-        FROM research_articles
-        WHERE %s = ANY(tickers)
-           OR title ILIKE %s
-           OR summary ILIKE %s
-        ORDER BY COALESCE(published_at, fetched_at) DESC NULLS LAST
-        LIMIT %s
-        """,
-        (ticker, f"%{ticker}%", f"%{ticker}%", limit),
-    )
+    patterns = _ticker_like_patterns(ticker)
+    if patterns:
+        rows = pg.execute_query(
+            """
+            SELECT id, title, article_type, source, summary,
+                   LEFT(COALESCE(content, ''), 1200) AS content_snip,
+                   published_at
+            FROM research_articles
+            WHERE %s = ANY(tickers)
+               OR title ILIKE %s
+               OR summary ILIKE %s
+            ORDER BY COALESCE(published_at, fetched_at) DESC NULLS LAST
+            LIMIT %s
+            """,
+            (ticker, patterns[0], patterns[0], limit),
+        )
+    else:
+        rows = pg.execute_query(
+            """
+            SELECT id, title, article_type, source, summary,
+                   LEFT(COALESCE(content, ''), 1200) AS content_snip,
+                   published_at
+            FROM research_articles
+            WHERE %s = ANY(tickers)
+            ORDER BY COALESCE(published_at, fetched_at) DESC NULLS LAST
+            LIMIT %s
+            """,
+            (ticker, limit),
+        )
     return [dict(r) for r in rows]
 
 
-def _semantic_moat(pg: Any, ticker: str, limit: int = 5) -> list[dict[str, Any]]:
+def _semantic_moat(pg: Any, ticker: str, company: str = "", limit: int = 5) -> list[dict[str, Any]]:
     from ollama_client import get_ollama_client
 
     client = get_ollama_client()
     if not client:
         return []
-    query = f"{ticker} competitive moat durable advantage business model"
+    query = f"{company} {ticker} competitive moat durable advantage business model".strip()
     emb = client.generate_embedding(query)
     if not emb:
         return []
     embedding_str = "[" + ",".join(str(float(x)) for x in emb) + "]"
-    # Prefer ticker-tagged hits; fall back to global similarity.
+    # Prefer ticker-tagged hits only for short/ambiguous symbols.
     rows = pg.execute_query(
         """
         SELECT id, title, article_type, source, summary,
@@ -84,31 +123,22 @@ def _semantic_moat(pg: Any, ticker: str, limit: int = 5) -> list[dict[str, Any]]
         """,
         (embedding_str, ticker, embedding_str, embedding_str, limit),
     )
-    if rows:
+    if rows or not _ticker_like_patterns(ticker):
         return [dict(r) for r in rows]
+    # Longer tickers only: optional title/summary ILIKE fallback (still risky for common words).
+    pat = f"%{ticker}%"
     rows = pg.execute_query(
         """
         SELECT id, title, article_type, source, summary,
                1 - (embedding <=> %s::vector) AS similarity
         FROM research_articles
         WHERE embedding IS NOT NULL
-          AND (
-            title ILIKE %s OR summary ILIKE %s
-            OR COALESCE(content, '') ILIKE %s
-          )
-          AND 1 - (embedding <=> %s::vector) >= 0.40
+          AND (title ILIKE %s OR summary ILIKE %s)
+          AND 1 - (embedding <=> %s::vector) >= 0.45
         ORDER BY embedding <=> %s::vector
         LIMIT %s
         """,
-        (
-            embedding_str,
-            f"%{ticker}%",
-            f"%{ticker}%",
-            f"%{ticker}%",
-            embedding_str,
-            embedding_str,
-            limit,
-        ),
+        (embedding_str, pat, pat, embedding_str, embedding_str, limit),
     )
     return [dict(r) for r in rows]
 
@@ -122,7 +152,11 @@ def _web_search(ticker: str, company_hint: str = "") -> list[dict[str, str]]:
         sx = get_searxng_client()
         if not sx:
             return []
-        q = f"{ticker} {company_hint} competitive moat competitive advantage".strip()
+        # Company name first; quote ticker to reduce Korea/etc. collisions for KO.
+        if company_hint:
+            q = f'"{company_hint}" OR "{ticker}" stock competitive moat advantage brand'
+        else:
+            q = f'"{ticker}" stock competitive moat advantage'
         data = sx.search_web(q, max_results=5) or {}
         results = data.get("results") or data.get("items") or []
         out: list[dict[str, str]] = []
@@ -138,6 +172,21 @@ def _web_search(ticker: str, company_hint: str = "") -> list[dict[str, str]]:
     except Exception as exc:
         print(f"  [searxng] skipped: {exc}")
         return []
+
+
+def _is_weak_draft(draft: dict[str, Any]) -> bool:
+    body = str(draft.get("body") or "").lower()
+    title = str(draft.get("title") or "").lower()
+    blob = f"{title}\n{body}"
+    if any(m in blob for m in WEAK_CONTEXT_MARKERS):
+        return True
+    conf = draft.get("confidence")
+    try:
+        if conf is not None and float(conf) < 0.35 and str(draft.get("disposition")).lower() == "neutral":
+            return True
+    except (TypeError, ValueError):
+        pass
+    return False
 
 
 def _company_name(pg: Any, ticker: str) -> str:
@@ -267,23 +316,44 @@ def main() -> int:
         action="store_true",
         help="Skip tickers that already have an active thesis (keeps prior drafts)",
     )
+    parser.add_argument(
+        "--rewrite-weak",
+        action="store_true",
+        help="Only process tickers whose existing opening looks like weak/insufficient context",
+    )
     parser.add_argument("--no-web", action="store_true", help="Skip SearXNG")
     parser.add_argument("--author", default="llm-moat-probe@local")
     args = parser.parse_args()
 
     from postgres_client import PostgresClient
-    from user_insights_service import create_thesis, list_theses
+    from user_insights_service import create_thesis, list_theses, get_thesis_detail, archive_thesis
 
     pg = PostgresClient()
 
     if args.ticker:
         tickers = [t.upper().strip() for t in args.ticker]
+    elif args.rewrite_weak:
+        tickers = []
+        for r in list_theses(pg, include_archived=False, limit=500):
+            detail = get_thesis_detail(pg, str(r["id"]))
+            entries = detail.get("entries") or []
+            opening = next(
+                (e for e in entries if e.get("entry_kind") == "opening"),
+                entries[0] if entries else None,
+            )
+            body = (opening or {}).get("body") or ""
+            title = r.get("title") or ""
+            fake = {"body": body, "title": title, "disposition": r.get("disposition"), "confidence": 0.2}
+            if _is_weak_draft(fake) or "[WEAK CONTEXT]" in title:
+                tickers.append(str(r.get("ticker") or "").upper())
+        tickers = sorted(set(t for t in tickers if t))
+        print(f"rewrite-weak: found {len(tickers)} weak theses: {tickers}")
     elif args.all_holdings:
         tickers = _holdings(args.fund)
     else:
         tickers = _holdings(args.fund)[: max(1, args.limit)]
 
-    if args.skip_existing:
+    if args.skip_existing and not args.rewrite_weak:
         existing = list_theses(pg, include_archived=False, limit=500)
         have = {(r.get("ticker") or "").upper() for r in existing}
         before = len(tickers)
@@ -301,7 +371,7 @@ def main() -> int:
         print(f"  ticker-tagged articles={len(articles)}")
         semantic: list[dict[str, Any]] = []
         try:
-            semantic = _semantic_moat(pg, ticker)
+            semantic = _semantic_moat(pg, ticker, company=company)
             print(f"  semantic hits={len(semantic)}")
         except Exception as exc:
             print(f"  semantic failed: {exc}")
@@ -316,7 +386,23 @@ def main() -> int:
             print(f"  draft FAILED: {exc}")
             continue
 
-        print(f"  disposition={draft.get('disposition')} confidence={draft.get('confidence')}")
+        # One retry with company-first web search if context was polluted/weak.
+        if _is_weak_draft(draft) and company and not args.no_web:
+            print("  weak draft detected — retrying with company-focused web search")
+            web2 = _web_search(ticker, company)
+            ctx2 = _build_context(ticker, company, articles, [], web2)
+            try:
+                draft2 = _draft_moat(ticker, ctx2)
+                if not _is_weak_draft(draft2):
+                    draft = draft2
+                else:
+                    draft = draft2
+                    print("  retry still weak — will flag")
+            except Exception as exc:
+                print(f"  retry FAILED: {exc}")
+
+        weak = _is_weak_draft(draft)
+        print(f"  disposition={draft.get('disposition')} confidence={draft.get('confidence')} weak={weak}")
         print(f"  title={draft.get('title')}")
         print(f"  local={draft.get('used_local_research')} web={draft.get('used_web')}")
         body = str(draft.get("body") or "")
@@ -334,17 +420,40 @@ def main() -> int:
                 disp = "neutral"
             urls = draft.get("evidence_urls") or []
             source_url = urls[0] if urls else None
+            title = str(draft.get("title") or f"[LLM draft] Moat — {ticker}")
+            if weak and "[WEAK CONTEXT]" not in title:
+                title = title.replace("[LLM draft]", "[LLM draft][WEAK CONTEXT]", 1)
+                if "[WEAK CONTEXT]" not in title:
+                    title = f"[LLM draft][WEAK CONTEXT] {title}"
+            tags = ["llm_draft", "moat"]
+            if weak:
+                tags.append("weak_context")
+
+            if args.rewrite_weak:
+                # Archive prior weak theses for this ticker before writing a replacement.
+                for r in list_theses(pg, ticker=ticker, include_archived=False, limit=50):
+                    try:
+                        archive_thesis(
+                            pg,
+                            thesis_id=str(r["id"]),
+                            actor=args.author,
+                            is_admin=True,
+                        )
+                        print(f"  archived prior thesis {r.get('id')}")
+                    except Exception as exc:
+                        print(f"  archive skipped: {exc}")
+
             detail = create_thesis(
                 pg,
                 ticker=ticker,
-                title=str(draft.get("title") or f"[LLM draft] Moat — {ticker}"),
+                title=title,
                 disposition=disp,
                 intent=intent,
                 body=body + "\n\n_(Generated by moat probe script; review before trusting.)_",
                 created_by=args.author,
                 source_url=source_url,
                 source_type="llm_moat_probe",
-                tags=["llm_draft", "moat"],
+                tags=tags,
             )
             print(f"  CREATED thesis id={detail.get('id')}", flush=True)
 
