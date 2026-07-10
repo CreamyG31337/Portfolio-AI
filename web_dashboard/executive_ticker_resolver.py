@@ -199,8 +199,11 @@ def classify_oge_asset_type(description: str) -> str:
         return "Corporate Bond"
     if re.search(r"\b\d+\s+\d{5,6}\b", text):
         # Coupon / maturity clusters common on corporate notes (e.g. 6 100 010734).
+        # TODO: compile this pattern at module level if ingest volume grows.
         return "Corporate Bond"
 
+    # TODO: fallthrough always returns Stock — collapse the EQUITY / suffix
+    # checks into a single `return "Stock"` (or use "Other" as true default).
     if "EQUITY" in text or _CLASS_SHARE_RE.search(text):
         return "Stock"
     if parse_ticker_suffix(description):

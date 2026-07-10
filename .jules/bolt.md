@@ -63,3 +63,14 @@
 ## 2026-06-23 - Pandas df.apply with Decimal conversion
 **Learning:** Using `df['col'].apply(lambda x: Decimal(str(float(x) * rate)))` is extremely slow due to Python object instantiation overhead per row. Even for type conversions, vectorizing operations in pandas and numpy before object creation is much faster.
 **Action:** Replace `df.apply` with vectorized math and type conversions: `(df['col'].astype(float) * rate).astype(str).apply(Decimal)`. This performs the math at C-speed before finally casting to `Decimal` in Python space. For conditional replacements with `Decimal`, use list comprehensions over a vectorized `.round().fillna()` series, which bypasses Pandas' slow `apply` method overhead entirely.
+## 2026-07-10 - Vectorized sector name normalization
+**Learning:** Per-row `.apply(normalize_sector_name)` for a small fixed synonym map is unnecessary Python overhead in chart aggregation.
+**Action:** Pre-strip the series, `.str.lower().map(dict)`, then `.fillna(stripped)` so unmapped values keep their original spelling. Restore NaN/empty from the original column after `astype(str)`.
+
+## 2026-07-10 - CSVRepository timezone strip without strftime apply
+**Learning:** `parsed_dates.apply(lambda x: x.strftime(...))` is a slow way to drop tz while keeping wall-clock time; mixed-offset Series also break naive vectorized tz ops.
+**Action:** Use a list comprehension with `d.replace(tzinfo=None)` then `pd.to_datetime(...)`, and re-localize from the first parsed tz (same contract as before).
+
+## 2026-07-10 - Vectorized ISO date strings in price history API
+**Learning:** Row-wise `.apply(lambda x: x.isoformat())` in `/api/ticker/.../history` is pure formatting overhead.
+**Action:** `series.astype(str).str.replace(' ', 'T', n=1)` produces ISO-like strings without per-row Python calls.

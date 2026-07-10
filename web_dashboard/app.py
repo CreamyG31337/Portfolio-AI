@@ -4166,10 +4166,10 @@ def api_ticker_price_history():
         if price_df.empty:
             return jsonify({"data": []})
 
-        # Convert dates to ISO strings
+        # Convert dates to ISO strings (vectorized; avoid per-row .apply isoformat)
         price_df = price_df.copy()
         if 'date' in price_df.columns:
-            price_df['date'] = price_df['date'].apply(lambda x: x.isoformat() if hasattr(x, 'isoformat') else str(x))
+            price_df['date'] = price_df['date'].astype(str).str.replace(' ', 'T', n=1, regex=False)
 
         return jsonify({"data": price_df.to_dict('records')})
     except Exception as e:

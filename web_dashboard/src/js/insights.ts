@@ -267,6 +267,8 @@ async function attachUrl(thesisId: string): Promise<void> {
 }
 
 function wireModal(): void {
+  // TODO(palette): Convert #insights-modal to Flowbite Modal markup + API
+  // (aria/focus/Esc) instead of manual .hidden toggles — see trade_entry.ts.
   const modal = document.getElementById("insights-modal");
   const form = document.getElementById("insights-form") as HTMLFormElement | null;
   document.getElementById("insights-new-btn")?.addEventListener("click", () => modal?.classList.remove("hidden"));
