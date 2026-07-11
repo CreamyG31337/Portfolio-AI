@@ -272,9 +272,11 @@ def _filter_trading_days(
 
     # Use the is_trading_day method from the utility
     # Handle NaT values gracefully: treat them as non-trading days (filter them out)
-    trading_days_mask = df[date_column].apply(
-        lambda x: False if pd.isna(x) else MARKET_HOLIDAYS.is_trading_day(x.date(), market=market)
-    )
+    # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+    trading_days_mask = [
+        False if pd.isna(x) else MARKET_HOLIDAYS.is_trading_day(x.date(), market=market)
+        for x in df[date_column].tolist()
+    ]
 
     return df[trading_days_mask]
 
