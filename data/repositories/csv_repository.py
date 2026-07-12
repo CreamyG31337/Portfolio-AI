@@ -80,7 +80,8 @@ class CSVRepository(BaseRepository):
 
             # Parse timestamps with timezone awareness
             # _parse_csv_timestamp returns timezone-aware pandas Timestamps
-            parsed_dates = df['Date'].apply(self._parse_csv_timestamp)
+            # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+            parsed_dates = pd.Series([self._parse_csv_timestamp(x) if pd.notna(x) else x for x in df['Date'].tolist()], index=df.index)
             # Strip tz while preserving wall-clock time (list comp avoids slow .apply strftime)
             df['Date'] = pd.to_datetime(
                 [d.replace(tzinfo=None) if hasattr(d, "tzinfo") else d for d in parsed_dates]
@@ -124,7 +125,8 @@ class CSVRepository(BaseRepository):
                 # Re-parse dates if they're strings
                 from utils.timezone_utils import get_trading_timezone
                 trading_tz = get_trading_timezone()
-                parsed_dates = df['Date'].apply(self._parse_csv_timestamp)
+                # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+                parsed_dates = pd.Series([self._parse_csv_timestamp(x) if pd.notna(x) else x for x in df['Date'].tolist()], index=df.index)
                 df['Date'] = pd.to_datetime(
                     [d.replace(tzinfo=None) if hasattr(d, "tzinfo") else d for d in parsed_dates]
                 )
@@ -281,9 +283,8 @@ class CSVRepository(BaseRepository):
 
                     # Convert to string for CSV
                     write_df = combined_df.copy()
-                    write_df['Date'] = write_df['Date'].apply(
-                        lambda x: self._format_timestamp_for_csv(x) if pd.notna(x) else ''
-                    )
+                    # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+                    write_df['Date'] = [self._format_timestamp_for_csv(x) if pd.notna(x) else '' for x in write_df['Date'].tolist()]
                     write_df.to_csv(self.portfolio_file, index=False)
                     # Only update cache after successful write to avoid phantom data on write failure
                     self._portfolio_cache = combined_df.copy()
@@ -292,9 +293,8 @@ class CSVRepository(BaseRepository):
                     # No duplicates, append normally
                     # Write to CSV
                     write_df = df.copy()
-                    write_df['Date'] = write_df['Date'].apply(
-                        lambda x: self._format_timestamp_for_csv(x) if pd.notna(x) else ''
-                    )
+                    # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+                    write_df['Date'] = [self._format_timestamp_for_csv(x) if pd.notna(x) else '' for x in write_df['Date'].tolist()]
                     write_df.to_csv(self.portfolio_file, mode='a', header=False, index=False)
                     # Only update cache after successful write to avoid phantom data on write failure
                     self._portfolio_cache = pd.concat([existing_df_cache, df], ignore_index=True)
@@ -303,9 +303,8 @@ class CSVRepository(BaseRepository):
                 # File doesn't exist or is empty, create new
                 # Write to CSV
                 write_df = df.copy()
-                write_df['Date'] = write_df['Date'].apply(
-                    lambda x: self._format_timestamp_for_csv(x) if pd.notna(x) else ''
-                )
+                # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+                write_df['Date'] = [self._format_timestamp_for_csv(x) if pd.notna(x) else '' for x in write_df['Date'].tolist()]
                 write_df.to_csv(self.portfolio_file, index=False)
                 # Only update cache after successful write to avoid phantom data on write failure
                 self._portfolio_cache = df.copy()
@@ -429,9 +428,11 @@ class CSVRepository(BaseRepository):
                     existing_df = existing_df.drop('Date_Only', axis=1)  # Remove helper column
 
                     # Ensure Date column is formatted as string for CSV
-                    existing_df['Date'] = existing_df['Date'].apply(
-                        lambda x: self._format_timestamp_for_csv(x) if hasattr(x, 'strftime') else (x if isinstance(x, str) else self._format_timestamp_for_csv(pd.to_datetime(x)))
-                    )
+                    # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+                    existing_df['Date'] = [
+                        self._format_timestamp_for_csv(x) if hasattr(x, 'strftime') else (x if isinstance(x, str) else self._format_timestamp_for_csv(pd.to_datetime(x)))
+                        for x in existing_df['Date'].tolist()
+                    ]
 
                     existing_df.to_csv(self.portfolio_file, index=False)
                     # Invalidate cache
@@ -480,7 +481,8 @@ class CSVRepository(BaseRepository):
                 return []
             
             # Parse timestamps
-            df['Date'] = df['Date'].apply(self._parse_csv_timestamp)
+            # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+            df['Date'] = [self._parse_csv_timestamp(x) if pd.notna(x) else x for x in df['Date'].tolist()]
             # Ensure the Date column is properly converted to datetime dtype
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 
@@ -550,16 +552,16 @@ class CSVRepository(BaseRepository):
                 combined_df = pd.concat([existing_df, new_trade_df], ignore_index=True)
                 
                 # Convert Date column to datetime for proper sorting using timezone-aware parsing
-                combined_df['Date'] = combined_df['Date'].apply(self._parse_csv_timestamp)
+                # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+                combined_df['Date'] = [self._parse_csv_timestamp(x) if pd.notna(x) else x for x in combined_df['Date'].tolist()]
                 
                 # Sort by date
                 combined_df = combined_df.sort_values('Date')
                 
                 # Convert Date back to string format for CSV
                 from utils.timezone_utils import format_timestamp_for_csv
-                combined_df['Date'] = combined_df['Date'].apply(
-                    lambda x: format_timestamp_for_csv(x) if pd.notna(x) else ''
-                )
+                # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+                combined_df['Date'] = [format_timestamp_for_csv(x) if pd.notna(x) else '' for x in combined_df['Date'].tolist()]
                 
                 # Write sorted trades back to file
                 combined_df.to_csv(self.trade_log_file, index=False, lineterminator='\n')

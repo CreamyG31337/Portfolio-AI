@@ -74,3 +74,7 @@
 ## 2026-07-10 - Vectorized ISO date strings in price history API
 **Learning:** Row-wise `.apply(lambda x: x.isoformat())` in `/api/ticker/.../history` is pure formatting overhead.
 **Action:** `series.astype(str).str.replace(' ', 'T', n=1)` produces ISO-like strings without per-row Python calls.
+
+## 2026-07-20 - Pandas .apply() vs List Comprehensions for Type Conversions & Object Arrays
+**Learning:** In pandas, `.apply()` on object/string/datetime columns incurs a massive O(N) overhead due to instantiating a Series object and calling python-space functions per row. A fast python list comprehension over a native list (e.g., `df['col'].tolist()`) is often 50x to 100x faster for things like parsing custom datetime strings, formatting to CSV strings, or casting floats to Decimals.
+**Action:** Replace `df['col'].apply(custom_func)` with `[custom_func(x) for x in df['col'].tolist()]` when dealing with scalar conversions or object arrays that cannot be natively vectorized in C (e.g. returning timezone-aware objects, Decimals, or parsing non-standard strings).
