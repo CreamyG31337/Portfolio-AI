@@ -125,6 +125,114 @@ def _first_env(*names: str) -> Optional[str]:
     return None
 
 
+def backend_is_configured(backend: str) -> bool:
+    """True when env has enough config to run this backend (URL or API key).
+
+    Missing secondary Ollama / GLM config is common for single-host OSS installs;
+    those backends simply start with zero workers. Fully configured deployments
+    (primary + secondary + GLM) are unchanged.
+    """
+
+    if backend == BACKEND_GLM:
+        try:
+            from glm_config import get_zhipu_api_key
+
+            return bool(get_zhipu_api_key())
+        except Exception:
+            return bool(
+                os.getenv("ZHIPU_API_KEY", "").strip()
+                or os.getenv("GLM_4_API_KEY", "").strip()
+            )
+    if backend in (BACKEND_OLLAMA_PRIMARY, BACKEND_OLLAMA_SECONDARY):
+        return bool(ollama_base_url_for_backend(backend))
+    return False
+
+
+def probe_backend_health(
+    backend: str,
+    *,
+    timeout_sec: float = 3.0,
+) -> tuple[bool, str]:
+    """Lightweight reachability check. Returns ``(ok, detail)``.
+
+    Ollama: ``GET {base}/api/tags``. GLM: API key present (no network call).
+    """
+
+    if backend == BACKEND_GLM:
+        if backend_is_configured(backend):
+            return True, "ZHIPU/GLM API key present"
+        return False, "ZHIPU_API_KEY / GLM_4_API_KEY not set"
+
+    base_url = ollama_base_url_for_backend(backend)
+    if not base_url:
+        return False, f"no Ollama base URL configured for {backend}"
+
+    try:
+        import requests
+
+        resp = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=timeout_sec)
+        if resp.status_code >= 400:
+            return False, f"{base_url} returned HTTP {resp.status_code}"
+        return True, f"{base_url} ok"
+    except Exception as exc:
+        return False, f"{base_url} unreachable: {exc}"
+
+
+def resolve_effective_worker_counts(
+    config: AIQueueConfig,
+    *,
+    strict_health: Optional[bool] = None,
+    probe: Optional[Callable[[str], tuple[bool, str]]] = None,
+) -> Dict[str, int]:
+    """Apply config counts, then drop backends that are not configured.
+
+    When ``AI_QUEUE_STRICT_BACKEND_HEALTH`` is truthy (or ``strict_health=True``),
+    also drop backends that fail a health probe. Default is non-strict so a
+    transient blip at scheduler boot does not disable a configured host.
+    """
+
+    if strict_health is None:
+        strict_health = _env_bool(os.getenv("AI_QUEUE_STRICT_BACKEND_HEALTH"), default=False)
+    probe_fn = probe or (lambda b: probe_backend_health(b))
+
+    effective: Dict[str, int] = {}
+    for backend, count in config.worker_counts.items():
+        requested = max(0, int(count))
+        if requested <= 0:
+            effective[backend] = 0
+            continue
+        if not backend_is_configured(backend):
+            logger.info(
+                "AI queue: skipping %s workers for %s (not configured)",
+                requested,
+                backend,
+            )
+            effective[backend] = 0
+            continue
+        if strict_health:
+            ok, detail = probe_fn(backend)
+            if not ok:
+                logger.warning(
+                    "AI queue: skipping %s workers for %s (health check failed: %s)",
+                    requested,
+                    backend,
+                    detail,
+                )
+                effective[backend] = 0
+                continue
+        else:
+            ok, detail = probe_fn(backend)
+            if not ok:
+                logger.warning(
+                    "AI queue: starting %s workers for %s despite health warning: %s",
+                    requested,
+                    backend,
+                    detail,
+                )
+        effective[backend] = requested
+    return effective
+
+
 def model_for_backend(backend: str) -> str:
     """Resolve the single model a backend-bound worker should use."""
 
@@ -266,7 +374,8 @@ class AIQueueWorkerPool:
 
             self._stop_event.clear()
             self._threads = []
-            for backend, count in self.config.worker_counts.items():
+            effective_counts = resolve_effective_worker_counts(self.config)
+            for backend, count in effective_counts.items():
                 for ordinal in range(count):
                     thread = threading.Thread(
                         target=self._worker_loop,
@@ -277,12 +386,24 @@ class AIQueueWorkerPool:
                     thread.start()
                     self._threads.append(thread)
 
+            if not self._threads:
+                logger.warning(
+                    "AI task workers not started: no backends configured/healthy "
+                    "(check OLLAMA_BASE_URL and/or ZHIPU_API_KEY)"
+                )
+                return False
+
             logger.info(
-                "Started %d AI task worker(s) for jobs=%s",
+                "Started %d AI task worker(s) for jobs=%s backends=%s",
                 len(self._threads),
                 ",".join(analysis_types),
+                ",".join(
+                    f"{backend}:{count}"
+                    for backend, count in effective_counts.items()
+                    if count > 0
+                ),
             )
-            return bool(self._threads)
+            return True
 
     def stop(self, *, wait: bool = True, timeout: float = 5.0) -> None:
         """Signal workers to stop and optionally wait for thread exit."""
@@ -1190,6 +1311,8 @@ def enqueue_congress_trade_analysis_tasks(
     """
 
     stats = {"attempted": 0, "enqueued": 0, "failed": 0}
+    total = len(trade_ids)
+    progress_every = 500
     for raw_id in trade_ids:
         stats["attempted"] += 1
         try:
@@ -1218,6 +1341,14 @@ def enqueue_congress_trade_analysis_tasks(
                 "Failed to enqueue analyze_congress_trades task for trade_id=%s: %s",
                 trade_id,
                 exc,
+            )
+        if total > progress_every and stats["attempted"] % progress_every == 0:
+            logger.info(
+                "Enqueue progress: %s/%s attempted (enqueued=%s failed=%s)",
+                stats["attempted"],
+                total,
+                stats["enqueued"],
+                stats["failed"],
             )
     return stats
 

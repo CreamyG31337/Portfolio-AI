@@ -15,6 +15,7 @@ from web_dashboard.scheduler.ai_task_workers import (
     ERROR_TIMEOUT_GLM,
     ERROR_UNSUPPORTED_TASK,
     UnsupportedTaskError,
+    backend_is_configured,
     build_task_handlers,
     classify_error,
     congress_trade_analysis_task_handler,
@@ -26,6 +27,7 @@ from web_dashboard.scheduler.ai_task_workers import (
     etf_group_analysis_task_handler,
     model_for_backend,
     ollama_base_url_for_backend,
+    resolve_effective_worker_counts,
     retry_delay_seconds,
     sector_meta_analysis_task_handler,
     should_increment_attempts,
@@ -81,6 +83,106 @@ def test_worker_pool_does_not_start_without_registered_handlers():
 
     assert pool.start() is False
     assert pool.running is False
+
+
+def test_resolve_effective_worker_counts_skips_unconfigured_backends(monkeypatch):
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
+    monkeypatch.delenv("AI_QUEUE_OLLAMA_PRIMARY_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_2", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_NVIDIA", raising=False)
+    monkeypatch.delenv("AI_QUEUE_OLLAMA_SECONDARY_BASE_URL", raising=False)
+    monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
+    monkeypatch.delenv("GLM_4_API_KEY", raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://primary:11434")
+    monkeypatch.setattr(
+        "web_dashboard.scheduler.ai_task_workers.backend_is_configured",
+        lambda backend: backend == "ollama_primary",
+    )
+
+    config = AIQueueConfig.from_env(
+        {
+            "AI_QUEUE_ENABLED": "true",
+            "AI_QUEUE_JOBS": "ticker_analysis",
+            "AI_QUEUE_WORKERS_OLLAMA_PRIMARY": "1",
+            "AI_QUEUE_WORKERS_OLLAMA_SECONDARY": "1",
+            "AI_QUEUE_WORKERS_GLM": "3",
+        }
+    )
+    effective = resolve_effective_worker_counts(
+        config,
+        strict_health=False,
+        probe=lambda _b: (True, "ok"),
+    )
+    assert effective["ollama_primary"] == 1
+    assert effective["ollama_secondary"] == 0
+    assert effective["glm"] == 0
+
+
+def test_backend_is_configured_ollama_requires_base_url(monkeypatch):
+    monkeypatch.setattr(
+        "web_dashboard.scheduler.ai_task_workers.ollama_base_url_for_backend",
+        lambda backend: "http://x:11434" if backend == "ollama_primary" else None,
+    )
+    assert backend_is_configured("ollama_primary") is True
+    assert backend_is_configured("ollama_secondary") is False
+
+
+def test_resolve_effective_worker_counts_strict_health_zeros_unhealthy(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://primary:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL_2", "http://secondary:11434")
+    monkeypatch.setenv("ZHIPU_API_KEY", "test-key")
+
+    config = AIQueueConfig.from_env(
+        {
+            "AI_QUEUE_ENABLED": "true",
+            "AI_QUEUE_JOBS": "ticker_analysis",
+            "AI_QUEUE_WORKERS_OLLAMA_PRIMARY": "1",
+            "AI_QUEUE_WORKERS_OLLAMA_SECONDARY": "1",
+            "AI_QUEUE_WORKERS_GLM": "2",
+        }
+    )
+
+    def probe(backend: str):
+        if backend == "ollama_secondary":
+            return False, "unreachable"
+        return True, "ok"
+
+    effective = resolve_effective_worker_counts(config, strict_health=True, probe=probe)
+    assert effective == {
+        "ollama_primary": 1,
+        "ollama_secondary": 0,
+        "glm": 2,
+    }
+
+
+def test_resolve_effective_worker_counts_non_strict_keeps_unhealthy_configured(
+    monkeypatch,
+):
+    """Production default: warn on probe failure but still start configured workers."""
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://primary:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL_2", "http://secondary:11434")
+    monkeypatch.setenv("ZHIPU_API_KEY", "test-key")
+
+    config = AIQueueConfig.from_env(
+        {
+            "AI_QUEUE_ENABLED": "true",
+            "AI_QUEUE_JOBS": "ticker_analysis",
+            "AI_QUEUE_WORKERS_OLLAMA_PRIMARY": "1",
+            "AI_QUEUE_WORKERS_OLLAMA_SECONDARY": "1",
+            "AI_QUEUE_WORKERS_GLM": "3",
+        }
+    )
+    effective = resolve_effective_worker_counts(
+        config,
+        strict_health=False,
+        probe=lambda _b: (False, "boot blip"),
+    )
+    assert effective == {
+        "ollama_primary": 1,
+        "ollama_secondary": 1,
+        "glm": 3,
+    }
 
 
 def test_lease_one_uses_backend_and_enabled_analysis_types():

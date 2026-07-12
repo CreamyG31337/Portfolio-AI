@@ -3,8 +3,10 @@
 Enqueue unscored congress trades into the AI task queue for parallel catch-up.
 
 Resumable: re-running is safe (active pending/leased rows dedupe on trade id).
-Workers (Granite/AMD, Qwen/desktop, GLM) drain ``ai_task_queue`` when
-``analyze_congress_trades`` is listed in ``AI_QUEUE_JOBS``.
+Configured queue workers (primary Ollama, optional secondary Ollama, optional GLM)
+drain ``ai_task_queue`` when ``analyze_congress_trades`` is listed in ``AI_QUEUE_JOBS``.
+Unconfigured backends are skipped automatically (single-host installs need only
+``OLLAMA_BASE_URL``).
 
 Usage (repo root, venv active):
   python web_dashboard/scripts/enqueue_congress_trade_analysis.py

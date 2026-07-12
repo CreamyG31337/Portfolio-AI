@@ -230,6 +230,9 @@ Worker and lease settings:
 - `AI_QUEUE_POLL_IDLE_SEC=2`
 - `AI_QUEUE_BACKOFF_BASE_SEC=30`
 - `AI_QUEUE_MAX_ATTEMPTS=3`
+- `AI_QUEUE_STRICT_BACKEND_HEALTH=false` — when true, drop backends that fail the boot probe; default warns but still starts configured workers
+
+**Backend enablement:** At start, `resolve_effective_worker_counts()` zeros workers for backends that lack config (`OLLAMA_BASE_URL` / `_2` / ZHIPU key). A fully configured three-backend deploy is unchanged. Single-host OSS installs only need primary Ollama.
 
 Existing model settings remain in the existing model configuration and settings modules. The queue should decide which backend runs a task, not invent a new model registry.
 

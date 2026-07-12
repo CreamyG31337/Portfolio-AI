@@ -155,7 +155,8 @@ STEP 1: REGULATORY LINK?
 - Does the Committee Definition above explicitly cover the stock's industry?
   - *YES:* Proceed to Step 2.
   - *NO:* Mark as "NO_RELATIONSHIP" (Score 0.0).
-
+- Hard rule: Financial Services / Banking ≠ jurisdiction over every large-cap stock.
+  Only banks, insurance, fintech, securities markets, or similarly regulated firms count.
 STEP 2: DIRECTION OF TRADE?
 - **BUYING:** This is an active bet on the sector.
   - *Verdict:* If Link is YES -> "CONFLICT_BUY" (Score 0.9).
@@ -207,8 +208,13 @@ Data:
 Task:
 Calculate a 'conflict_score' from 0.0 to 1.0 based on these rules:
 1. HIGH SCORE (0.8-1.0): Direct overlap (e.g., Armed Services member buying Defense stock, spouse trades, timing near votes).
-2. MEDIUM SCORE (0.4-0.7): Sector overlap or related industries.
+2. MEDIUM SCORE (0.4-0.7): Sector overlap or related industries — only when the committee's stated jurisdiction covers that sector.
 3. LOW SCORE (0.0-0.3): Broad index funds or clearly unrelated industries.
+
+Hard rules (do not stretch):
+- Financial Services / Banking committees regulate banks, insurance, fintech, securities markets — NOT every large-cap equity.
+- Do NOT score medium/high merely because a stock is "big" or "in the market." Require a concrete committee↔sector link.
+- House/Senate Administration, Homeland Security, Education, etc. do not imply jurisdiction over consumer staples, grocery, or unrelated tech.
 
 Consider:
 - Committee jurisdiction over company's sector
