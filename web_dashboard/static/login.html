@@ -147,7 +147,7 @@
             <button type="submit" id="submitBtn">Login</button>
             <div class="error" id="errorMsg"></div>
         </form>
-        <div class="loading" id="loadingMsg" style="display: none;">Logging in...</div>
+        <div class="loading hidden" id="loadingMsg">Logging in...</div>
     </div>
     
     <script>
@@ -195,7 +195,7 @@
         
         if (!SUPABASE_URL || !SUPABASE_KEY) {
             document.getElementById('errorMsg').textContent = 'Configuration error: Supabase credentials not found.';
-            document.getElementById('errorMsg').style.display = 'block';
+            document.getElementById('errorMsg').classList.remove('hidden');
         }
         
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
@@ -213,19 +213,19 @@
             // Validate inputs
             if (!email || !password) {
                 errorMsg.textContent = 'Please enter both email and password';
-                errorMsg.style.display = 'block';
+                errorMsg.classList.remove('hidden');
                 return;
             }
             
             if (!SUPABASE_URL || !SUPABASE_KEY) {
                 errorMsg.textContent = 'Configuration error: Supabase credentials not found.';
-                errorMsg.style.display = 'block';
+                errorMsg.classList.remove('hidden');
                 return;
             }
             
             // Hide error, show loading
-            errorMsg.style.display = 'none';
-            loadingMsg.style.display = 'block';
+            errorMsg.classList.add('hidden');
+            loadingMsg.classList.remove('hidden');
             submitBtn.disabled = true;
             
             try {
@@ -255,14 +255,14 @@
                     const errorText = data.msg || data.error_description || data.error || 'Login failed';
                     console.error('Login failed:', { status: response.status, error: errorText, data: data });
                     errorMsg.textContent = `Login failed: ${errorText}`;
-                    errorMsg.style.display = 'block';
-                    loadingMsg.style.display = 'none';
+                    errorMsg.classList.remove('hidden');
+                    loadingMsg.classList.add('hidden');
                     submitBtn.disabled = false;
                 }
             } catch (error) {
                 errorMsg.textContent = 'Network error: ' + error.message;
-                errorMsg.style.display = 'block';
-                loadingMsg.style.display = 'none';
+                errorMsg.classList.remove('hidden');
+                loadingMsg.classList.add('hidden');
                 submitBtn.disabled = false;
             }
         });

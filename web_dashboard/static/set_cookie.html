@@ -87,7 +87,7 @@
     <div class="message-container" id="messageContainer">
         <div class="message-title" id="messageTitle">Processing...</div>
         <div class="message-text" id="messageText">Please wait...</div>
-        <div class="message-reason" id="messageReason" style="display: none;"></div>
+        <div class="message-reason hidden" id="messageReason"></div>
     </div>
     <script>
         (function () {
@@ -166,7 +166,7 @@
 
                 if (msg.showReason && msg.reason) {
                     reasonDiv.textContent = msg.reason;
-                    reasonDiv.style.display = 'block';
+                    reasonDiv.classList.remove('hidden');
                 }
 
                 // Add appropriate styling
