@@ -1,0 +1,28 @@
+web_dashboard/templates/email/digest_thin.html:1:<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;background:#0f172a;color:#e2e8f0;">
+web_dashboard/templates/email/digest_thin.html:3:    <td style="padding:24px;background:linear-gradient(135deg,#2563eb,#1d4ed8);">
+web_dashboard/templates/email/digest_thin.html:4:      <h1 style="margin:0;font-size:20px;color:#fff;">Portfolio digest</h1>
+web_dashboard/templates/email/digest_thin.html:5:      <p style="margin:8px 0 0;font-size:13px;color:#bfdbfe;">As of {{ as_of }}{% if week_label %} — {{ week_label }}{% endif %}</p>
+web_dashboard/templates/email/digest_thin.html:9:    <td style="padding:20px 24px;">
+web_dashboard/templates/email/digest_thin.html:10:      <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#cbd5e1;">
+web_dashboard/templates/email/digest_thin.html:14:      <p style="margin:0 0 12px;font-size:12px;color:#94a3b8;">Quick view (images expire with this issue)</p>
+web_dashboard/templates/email/digest_thin.html:15:      <p style="margin:0 0 8px;">{% if kpi_value_url %}<img src="{{ kpi_value_url }}" alt="" width="320" height="80" style="display:block;max-width:100%;border-radius:8px;" />{% endif %}</p>
+web_dashboard/templates/email/digest_thin.html:16:      <p style="margin:0 0 16px;">{% if kpi_week_url %}<img src="{{ kpi_week_url }}" alt="" width="320" height="80" style="display:block;max-width:100%;border-radius:8px;" />{% endif %}</p>
+web_dashboard/templates/email/digest_thin.html:19:      <p style="margin:0 0 12px;">
+web_dashboard/templates/email/digest_thin.html:20:        <a href="{{ digest_url }}" style="display:inline-block;padding:12px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;">View digest</a>
+web_dashboard/templates/email/digest_thin.html:24:      <p style="margin:0;">
+web_dashboard/templates/email/digest_thin.html:25:        <a href="{{ dashboard_url }}" style="color:#60a5fa;font-size:14px;">Open dashboard</a>
+web_dashboard/templates/email/digest_thin.html:29:      <hr style="border:none;border-top:1px solid #334155;margin:20px 0;">
+web_dashboard/templates/email/digest_thin.html:30:      <p style="margin:0 0 6px;font-size:12px;color:#94a3b8;text-transform:uppercase;">Market brief</p>
+web_dashboard/templates/email/digest_thin.html:31:      <p style="margin:0;font-size:15px;font-weight:bold;color:#f1f5f9;">{{ market_brief.headline }}</p>
+web_dashboard/templates/email/digest_thin.html:33:      <hr style="border:none;border-top:1px solid #334155;margin:20px 0;">
+web_dashboard/templates/email/digest_thin.html:34:      <p style="margin:0;font-size:11px;color:#64748b;">{% if manage_url %}<a href="{{ manage_url }}" style="color:#60a5fa;">Manage email digest</a> — {% endif %}Snapshot links expire with this issue.</p>
+web_dashboard/templates/digest/digest_full.html:61:      <h2 style="font-size:1rem;margin:24px 0 8px;">Market brief</h2>
+web_dashboard/templates/digest/digest_full.html:62:      <p style="margin:0 0 8px;font-weight:600;">{{ market_brief.headline }}</p>
+web_dashboard/templates/digest/digest_full.html:64:      <p style="margin:0;font-size:0.9rem;color:#cbd5e1;line-height:1.5;">{{ market_brief.narrative }}</p>
+web_dashboard/templates/digest/digest_full.html:69:      <h2 style="font-size:1rem;margin:24px 0 8px;">Movers (5d %)</h2>
+web_dashboard/templates/digest/digest_full.html:70:      <div style="display:flex;flex-wrap:wrap;gap:24px;">
+web_dashboard/templates/digest/digest_full.html:71:        <div style="flex:1;min-width:260px;">
+web_dashboard/templates/digest/digest_full.html:82:        <div style="flex:1;min-width:260px;">
+web_dashboard/templates/digest/digest_full.html:97:      <h2 style="font-size:1rem;margin:24px 0 8px;">Action queue</h2>
+web_dashboard/templates/digest/digest_full.html:98:      <ul class="actions" style="padding-left:18px;">
+web_dashboard/templates/digest/digest_full.html:105:      <p style="margin-top:24px;font-size:0.8rem;color:#64748b;">Log in to the dashboard for live positions and charts. This page expires with the newsletter issue.</p>
