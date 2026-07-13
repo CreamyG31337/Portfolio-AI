@@ -1,4 +1,4 @@
--- Conversation log for a thesis thread (users, reviews; llm_reply in v2).
+-- Conversation log for a thesis thread (users, reviews, advisory llm_reply from eval job).
 CREATE TABLE IF NOT EXISTS thesis_entries (
     id UUID NOT NULL DEFAULT gen_random_uuid(),
     thesis_id UUID NOT NULL REFERENCES ticker_theses(id) ON DELETE CASCADE,

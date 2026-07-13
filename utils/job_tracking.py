@@ -56,6 +56,7 @@ AI_JOB_NAMES = {
     'sector_meta_analysis',
     'market_daily_brief',
     'action_queue_ai_review',
+    'insights_thesis_evaluation',
     'ui_ai_summaries',
 }
 

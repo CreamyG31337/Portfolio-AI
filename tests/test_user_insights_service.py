@@ -1,5 +1,6 @@
 """Unit tests for thesis / Insights service."""
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -10,10 +11,15 @@ from web_dashboard.user_insights_service import (
     ThesisPermissionError,
     _normalize_ticker,
     add_entry,
+    add_llm_reply,
     archive_thesis,
+    classify_due_status,
     create_thesis,
     get_thesis_row,
+    is_weak_thesis,
     list_theses,
+    list_theses_due,
+    thesis_reviewed_at,
 )
 
 
@@ -155,3 +161,138 @@ def test_add_entry_review_updates_header(mock_embed):
     assert result["thesis"]["ticker"] == "MSFT"
     update_calls = [str(c) for c in pg.execute_update.call_args_list]
     assert any("UPDATE ticker_theses" in c for c in update_calls)
+
+
+def test_classify_due_status_windows():
+    now = datetime(2026, 7, 13, tzinfo=UTC)
+    assert classify_due_status(now - timedelta(days=5), now=now) is None
+    assert classify_due_status(now - timedelta(days=14), now=now) == "due_for_review"
+    assert classify_due_status(now - timedelta(days=20), now=now) == "due_for_review"
+    assert classify_due_status(now - timedelta(days=30), now=now) == "stale"
+    assert classify_due_status(None, now=now) == "stale"
+
+
+def test_is_weak_thesis_title_and_tags():
+    assert is_weak_thesis(title="[LLM draft][WEAK CONTEXT] COST")
+    assert is_weak_thesis(opening_body="[WEAK CONTEXT] Thin sources.")
+    assert is_weak_thesis(opening_metadata={"tags": ["llm_draft", "weak_context"]})
+    assert not is_weak_thesis(title="Solid moat", opening_body="Scale advantages.")
+
+
+def test_thesis_reviewed_at_prefers_last_reviewed():
+    created = datetime(2026, 1, 1, tzinfo=UTC)
+    reviewed = datetime(2026, 6, 1, tzinfo=UTC)
+    assert thesis_reviewed_at({"created_at": created, "last_reviewed_at": reviewed}) == reviewed
+    assert thesis_reviewed_at({"created_at": created, "last_reviewed_at": None}) == created
+
+
+def test_list_theses_due_sorts_weak_first():
+    pg = MagicMock()
+    now = datetime(2026, 7, 13, tzinfo=UTC)
+    old = now - timedelta(days=40)
+    mid = now - timedelta(days=16)
+    fresh = now - timedelta(days=2)
+    pg.execute_query.return_value = [
+        {
+            "id": uuid4(),
+            "ticker": "FRESH",
+            "title": "Fresh",
+            "status": "active",
+            "created_at": fresh,
+            "last_reviewed_at": fresh,
+            "opening_body": "ok",
+            "opening_metadata": {},
+            "entry_count": 1,
+            "evidence_count": 0,
+        },
+        {
+            "id": uuid4(),
+            "ticker": "STALE",
+            "title": "Stale normal",
+            "status": "active",
+            "created_at": old,
+            "last_reviewed_at": old,
+            "opening_body": "ok",
+            "opening_metadata": {},
+            "entry_count": 1,
+            "evidence_count": 0,
+        },
+        {
+            "id": uuid4(),
+            "ticker": "WEAK",
+            "title": "[LLM draft][WEAK CONTEXT] Weak",
+            "status": "active",
+            "created_at": mid,
+            "last_reviewed_at": mid,
+            "opening_body": "thin",
+            "opening_metadata": {"tags": ["weak_context"]},
+            "entry_count": 1,
+            "evidence_count": 0,
+        },
+    ]
+    rows = list_theses_due(pg, now=now, limit=10)
+    tickers = [r["ticker"] for r in rows]
+    assert "FRESH" not in tickers
+    assert tickers[0] == "WEAK"
+    assert rows[0]["is_weak"] is True
+    assert any(r["ticker"] == "STALE" and r["review_status"] == "stale" for r in rows)
+
+
+@patch("web_dashboard.user_insights_service._try_embedding", return_value=None)
+def test_add_llm_reply_does_not_bump_last_reviewed(mock_embed):
+    pg = MagicMock()
+    thesis_id = str(uuid4())
+    thesis_row = {
+        "id": thesis_id,
+        "ticker": "MSFT",
+        "status": "active",
+        "disposition": "bullish",
+        "intent": "monitor",
+        "last_reviewed_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "entry_count": 2,
+        "evidence_count": 0,
+    }
+
+    def query_side_effect(*_args, **_kwargs):
+        sql = (_args[0] if _args else "") or ""
+        if "SELECT t.*" in sql or "FROM ticker_theses" in sql:
+            return [thesis_row]
+        if "INSERT INTO thesis_entries" in sql:
+            assert "llm_reply" in sql
+            assert "'llm'" in sql or '"llm"' in sql or ", 'llm'," in sql or "llm'," in sql
+            return [{"id": uuid4()}]
+        if "FROM thesis_entries" in sql:
+            return [{"id": uuid4(), "entry_kind": "llm_reply", "body": "HOLDS"}]
+        if "FROM thesis_evidence" in sql:
+            return []
+        return [thesis_row]
+
+    pg.execute_query.side_effect = query_side_effect
+
+    result = add_llm_reply(
+        pg,
+        thesis_id=thesis_id,
+        body="Advisory: HOLDS",
+        metadata={"verdict": "HOLDS"},
+        model_used="test-model",
+    )
+    assert result["entry_id"]
+    update_sql = pg.execute_update.call_args[0][0]
+    assert "last_reviewed_at" not in update_sql
+    assert "updated_at" in update_sql
+
+
+def test_add_entry_rejects_llm_reply():
+    pg = MagicMock()
+    thesis_id = str(uuid4())
+    pg.execute_query.return_value = [
+        {"id": thesis_id, "disposition": "bullish", "intent": "monitor", "status": "active"}
+    ]
+    with pytest.raises(ValueError, match="invalid entry_kind"):
+        add_entry(
+            pg,
+            thesis_id=thesis_id,
+            entry_kind="llm_reply",
+            body="nope",
+            author_id="user@example.com",
+        )

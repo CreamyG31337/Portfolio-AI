@@ -427,6 +427,31 @@ Return JSON only:
     "one_liner": "max 200 chars, no line breaks"
 }}"""
 
+# Advisory review of a human Insights thesis vs stored research — not trade instructions.
+INSIGHTS_THESIS_EVALUATION_PROMPT = """You review a human-authored ticker thesis against saved AI research.
+This is advisory only for a human-in-the-loop Insights thread. Do NOT invent prices or recommend specific trades.
+If the thesis is a weak/bootstrap draft (weak_context), say so clearly.
+
+## Thesis
+{thesis_json}
+
+## Saved research (may be empty)
+{research_excerpt}
+
+## Task
+Compare the human disposition/intent with the research. Prefer HOLDS when they broadly agree,
+TENSION when research contradicts the thesis, STALE_THESIS when the thesis looks outdated vs newer research,
+INSUFFICIENT_DATA when research is missing or too thin.
+
+Return JSON only:
+{{
+    "verdict": "HOLDS|TENSION|STALE_THESIS|INSUFFICIENT_DATA",
+    "one_liner": "max 200 chars, no line breaks",
+    "suggested_disposition": "bullish|bearish|neutral|null",
+    "suggested_intent": "seek_entry|seek_exit|monitor|null",
+    "evidence_notes": "optional short note under 400 chars"
+}}"""
+
 # Dashboard portfolio overview from structured fund metrics only — not trade instructions.
 DASHBOARD_PORTFOLIO_OVERVIEW_PROMPT = """You are a portfolio analyst. Input is ONLY a JSON digest of current fund metrics
 (weights, sector mix, P&L percentages, period change). Treat numbers as reported; do not invent tickers or prices not listed.

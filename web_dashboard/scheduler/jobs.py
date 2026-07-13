@@ -193,6 +193,20 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '⚡',
     },
+    'insights_thesis_evaluation': {
+        'name': 'Insights Thesis Evaluation',
+        'description': (
+            'Advisory llm_reply on due/stale human ticker theses '
+            '(not fund thesis_update_job; no disposition flips)'
+        ),
+        'default_interval_minutes': 1440,
+        # Low frequency until trusted; admin can still run manually.
+        'enabled_by_default': True,
+        'icon': '🧵',
+        'cron_triggers': [
+            {'day_of_week': 'tue,thu', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'},
+        ],
+    },
     'stance_outcomes': {
         'name': 'Stance Outcomes Scoring',
         'description': 'Nightly no-LLM scoring of stance_history rows at 7/30/90d vs ^RUT',
@@ -720,6 +734,7 @@ from scheduler.jobs_dashboard_research import (
     action_queue_ai_review_job,
     market_daily_brief_job,
 )
+from scheduler.jobs_insights_thesis_evaluation import insights_thesis_evaluation_job
 from scheduler.jobs_stance_outcomes import stance_outcomes_job
 from scheduler.jobs_contradiction_drilldown import contradiction_drilldown_job
 from scheduler.jobs_dilution_watch import dilution_watch_job
@@ -825,6 +840,7 @@ __all__ = [
     'populate_performance_metrics_job',
     'market_daily_brief_job',
     'action_queue_ai_review_job',
+    'insights_thesis_evaluation_job',
     'stance_outcomes_job',
     'contradiction_drilldown_job',
     'dilution_watch_job',
@@ -1628,6 +1644,27 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: action_queue_ai_review (weekdays 7:00 PM ET)")
+
+    insights_cfg = AVAILABLE_JOBS.get('insights_thesis_evaluation', {})
+    if insights_cfg.get('enabled_by_default', True):
+        insights_triggers = insights_cfg.get('cron_triggers') or [
+            {'day_of_week': 'tue,thu', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'},
+        ]
+        for i, trigger_kwargs in enumerate(insights_triggers):
+            job_suffix = '' if i == 0 else f'_{i}'
+            scheduler.add_job(
+                insights_thesis_evaluation_job,
+                trigger=CronTrigger(**trigger_kwargs),
+                id=f'insights_thesis_evaluation{job_suffix}',
+                name=f"{get_job_icon('insights_thesis_evaluation')} Insights Thesis Evaluation",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+        logger.info(
+            "Registered job: insights_thesis_evaluation (%s)",
+            insights_triggers,
+        )
 
     if AVAILABLE_JOBS.get('ui_ai_summaries', {}).get('enabled_by_default', True):
         scheduler.add_job(

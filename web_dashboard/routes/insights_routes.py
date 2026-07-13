@@ -21,6 +21,7 @@ from user_insights_service import (
     get_thesis_detail,
     hard_delete_thesis,
     list_theses,
+    list_theses_due,
     restore_thesis,
     update_thesis_title,
 )
@@ -72,6 +73,25 @@ def list_insights_api():
         return jsonify({"data": rows})
     except Exception as exc:
         logger.error("insights list failed: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@insights_bp.route("/api/insights/due", methods=["GET"])
+@require_auth
+def list_insights_due_api():
+    try:
+        pg = PostgresClient()
+        soft = request.args.get("soft_days", default=14, type=int)
+        hard = request.args.get("hard_days", default=30, type=int)
+        rows = list_theses_due(
+            pg,
+            soft_days=soft or 14,
+            hard_days=hard or 30,
+            limit=request.args.get("limit", default=100, type=int),
+        )
+        return jsonify({"data": rows, "soft_days": soft or 14, "hard_days": hard or 30})
+    except Exception as exc:
+        logger.error("insights due list failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500
 
 

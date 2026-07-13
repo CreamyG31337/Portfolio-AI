@@ -6,6 +6,7 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 | Doc | Relationship to this one |
 |-----|--------------------------|
 | [`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | **The active implementation brief** (created 2026-06-11, after Phases A–F shipped): stance provenance, dilution watch (shares-outstanding + EDGAR filings), confluence scorer. Start there for current work. |
+| [`docs/INSIGHTS.md`](INSIGHTS.md) | Human thesis threads (`/insights`, Research `ticker_theses`). Due-for-review + advisory `llm_reply` eval job. Not Sector Insights; not fund `fund_thesis`. |
 | [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md) | Deep detail on the meta-analysis layers (Phases 1–3 shipped). This doc supersedes its "Later phases" section as the prioritized plan. |
 | [`docs/AI_TASK_QUEUE_DESIGN.md`](AI_TASK_QUEUE_DESIGN.md) | Infra status for the AI task queue. Any new LLM job in this plan should be queue-managed. |
 | [`docs/DASHBOARD_RESEARCH_LOOP.md`](DASHBOARD_RESEARCH_LOOP.md) | How the Action Queue / market brief / enrichment currently fit together. |
@@ -47,6 +48,7 @@ flowchart LR
     subgraph Decide["3 · DECIDE — exists, but buried"]
         C1["Action Queue + ai_review<br/>ALIGNED / TENSION / STALE"]
         C2["Advisory rebalance"]
+        C3["Insights theses + due review<br/>/insights · llm_reply advisory"]
     end
     subgraph Learn["4 · LEARN — missing entirely (Pillar 1)"]
         D1["stance_history ledger"]
@@ -223,6 +225,55 @@ the input for deciding which collection jobs to keep (the Learn→Collect dashed
 - **Trade journal tie-in**: when a trade is logged, snapshot the artifacts that existed at that
   moment (stance, signals, queue verdict) so retrospectives show what the system believed at
   trade time.
+
+### 2.6 Insights — human thesis threads (shipped + backlog)
+
+**Shipped:** `/insights` + Research tables `ticker_theses` / `thesis_entries` /
+`thesis_evidence`. Soft archive. Axes: disposition × intent. Human `review` bumps
+`last_reviewed_at`. Moat bootstrap script is optional and noisy — see
+[`INSIGHTS.md`](INSIGHTS.md).
+
+**Immediate review loop (shipped 2026-07):** due queue (14d soft / 30d hard) +
+`insights_thesis_evaluation` job posting advisory `llm_reply` only (no disposition flip,
+no `stance_history` writes). Pattern donor: `action_queue_ai_review_job` — separate
+prompt/table. Do **not** confuse with fund `thesis_update_job`. Schedule: Tue/Thu 18:30 ET
+(global AI lock). Details: [`INSIGHTS.md`](INSIGHTS.md).
+
+#### Backlog R1 — Inject active theses into `ticker_meta` artifact bundle
+
+**Why later:** meta digests invalidate on bundle change (`needs_refresh`). Injecting ~97
+existing theses would enqueue a large meta backlog. Roll out holdings-only or
+recently-updated theses first.
+
+**Design notes:**
+
+- Injection site: end of `build_artifact_bundle_with_evidence` — section
+  `### Human thesis threads`, append family `"human_thesis"`.
+- Pull via `list_theses` / `get_thesis_detail` (active only; truncate opening + latest
+  review/`llm_reply`).
+- Label bootstrap / `weak_context` clearly so meta does not launder weak SearXNG noise
+  into stance (short-ticker false matches taught this the hard way).
+- Keep naming distinct from fund philosophy (`Human ticker thesis` vs `fund_thesis`).
+
+#### Backlog R2 — Ideas / Today stale + contradiction surfacing
+
+**Why later:** needs stable `llm_reply` verdicts from the eval job and product placement
+decisions (new Today block vs badge on existing rows).
+
+**Design notes:**
+
+- Today block candidate: “Theses due / in tension” from `list_theses_due` + latest
+  `llm_reply.verdict in (TENSION, STALE_THESIS)`.
+- Ideas: badge tickers that already appear as discovery/queue items — avoid a third inbox.
+- Until R1 ships, rely on eval-job verdicts only; after R1, meta contradictions vs human
+  disposition become first-class.
+- Click-through to `/insights?thesis=…` for human `review` (still advisory).
+
+#### Backlog R3 — Optional stance ledger for thesis advice
+
+If we score “system said TENSION” hit rates later: `record_stance_safe(..., source=
+"thesis_ai_review")` with mechanical stance from *suggested* disposition — never overwrite
+`ticker_meta` / `action_queue_ai_review` sources.
 
 ---
 
@@ -432,6 +483,9 @@ flowchart TD
   `GET /api/liquidity/panel`, Today-screen block. Days-to-exit = shares / (10% × 1-mo avg
   daily volume), share-based so currency never enters the math; yfinance volumes cached 6h
   and kept out of the briefing payload (panel loads async). Holdings-table column still open.
+- [x] **§2.6 Insights review loop v1** (2026-07): due-for-review UI (`GET /api/insights/due`),
+  `insights_thesis_evaluation` advisory `llm_reply` job. Meta injection + Today/Ideas
+  surfacing remain backlog (R1–R2).
 
 Quick wins remaining: 2.5 badges rollout slots into any phase as a palate cleanser.
 

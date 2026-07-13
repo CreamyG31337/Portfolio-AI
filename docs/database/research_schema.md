@@ -1,28 +1,100 @@
 # Research Database Database Schema
 
-**Generated:** 2026-02-09 18:52:50
+**Generated:** 2026-07-13 14:12:47
 
-**Total Tables:** 15
+**Total Tables:** 30
 
 ---
 
 ## Table of Contents
 
+- [action_queue_ai_review](#action-queue-ai-review)
+- [confluence_events](#confluence-events)
 - [congress_trade_sessions](#congress-trade-sessions)
 - [congress_trades_analysis](#congress-trades-analysis)
+- [dilution_observations](#dilution-observations)
 - [etf_holdings_log](#etf-holdings-log)
 - [extracted_tickers](#extracted-tickers)
+- [filing_events](#filing-events)
+- [idea_triage](#idea-triage)
+- [market_daily_brief](#market-daily-brief)
 - [market_relationships](#market-relationships)
 - [newsletters](#newsletters)
 - [post_summaries](#post-summaries)
 - [research_articles](#research-articles)
 - [rss_feeds](#rss-feeds)
+- [sector_meta_analysis](#sector-meta-analysis)
 - [securities](#securities)
 - [sentiment_sessions](#sentiment-sessions)
 - [social_metrics](#social-metrics)
 - [social_posts](#social-posts)
 - [social_sentiment_analysis](#social-sentiment-analysis)
+- [stance_history](#stance-history)
+- [stance_outcomes](#stance-outcomes)
+- [thesis_entries](#thesis-entries)
+- [thesis_evidence](#thesis-evidence)
 - [ticker_analysis](#ticker-analysis)
+- [ticker_meta_analysis](#ticker-meta-analysis)
+- [ticker_theses](#ticker-theses)
+- [ui_ai_rollup_fund](#ui-ai-rollup-fund)
+- [ui_ai_summary](#ui-ai-summary)
+
+---
+
+## action_queue_ai_review
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `fund_key` | TEXT | ✗ | ''::text |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `signal_analysis_date` | DATE | ✓ | - |
+| `verdict` | VARCHAR(30) | ✗ | - |
+| `one_liner` | TEXT | ✓ | - |
+| `model_used` | VARCHAR(100) | ✓ | - |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `action_queue_ai_review_unique_key` | `fund_key`, `ticker`, `signal_analysis_date` | ✓ |
+| `idx_action_queue_ai_review_ticker` | `ticker` | ✗ |
+| `idx_action_queue_ai_review_updated` | `updated_at` | ✗ |
+
+---
+
+## confluence_events
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `as_of` | TIMESTAMP | ✗ | - |
+| `direction` | VARCHAR(10) | ✗ | - |
+| `score` | INTEGER | ✗ | - |
+| `families` | JSONB | ✗ | - |
+| `details` | JSONB | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_confluence_asof` | `as_of` | ✗ |
+| `idx_confluence_ticker_asof` | `ticker`, `as_of` | ✗ |
 
 ---
 
@@ -108,6 +180,36 @@
 
 ---
 
+## dilution_observations
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `as_of` | DATE | ✗ | - |
+| `window_days` | INTEGER | ✗ | - |
+| `shares_start` | NUMERIC(20, 2) | ✓ | - |
+| `shares_end` | NUMERIC(20, 2) | ✓ | - |
+| `pct_change` | NUMERIC(10, 2) | ✓ | - |
+| `flagged` | BOOLEAN | ✗ | true |
+| `created_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `dilution_observations_ticker_as_of_window_days_key` | `ticker`, `as_of`, `window_days` | ✓ |
+| `idx_dilution_obs_asof` | `as_of` | ✗ |
+| `idx_dilution_obs_ticker_asof` | `ticker`, `as_of` | ✗ |
+
+---
+
 ## etf_holdings_log
 
 ### Columns
@@ -163,6 +265,93 @@
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `analysis_id` | `social_sentiment_analysis`.`id` | NO ACTION | NO ACTION |
+
+---
+
+## filing_events
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `cik` | VARCHAR(20) | ✓ | - |
+| `form_type` | VARCHAR(40) | ✗ | - |
+| `category` | VARCHAR(20) | ✗ | - |
+| `direction` | VARCHAR(10) | ✗ | - |
+| `filed_at` | DATE | ✓ | - |
+| `accession_no` | VARCHAR(30) | ✗ | - |
+| `title` | TEXT | ✓ | - |
+| `url` | TEXT | ✓ | - |
+| `raw` | JSONB | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `filing_events_accession_no_key` | `accession_no` | ✓ |
+| `idx_filing_events_filed` | `filed_at` | ✗ |
+| `idx_filing_events_ticker_filed` | `ticker`, `filed_at` | ✗ |
+
+---
+
+## idea_triage
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `article_id` | UUID | ✗ | - |
+| `status` | VARCHAR(20) | ✗ | - |
+| `decided_at` | TIMESTAMP | ✓ | now() |
+| `decided_by` | VARCHAR(100) | ✓ | - |
+| `notes` | TEXT | ✓ | - |
+| `snooze_until` | TIMESTAMP | ✓ | - |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idea_triage_article_unique` | `article_id` | ✓ |
+| `idx_idea_triage_status` | `status`, `decided_at` | ✗ |
+
+---
+
+## market_daily_brief
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `brief_date` | DATE | ✗ | - |
+| `headline` | VARCHAR(200) | ✓ | - |
+| `narrative` | TEXT | ✓ | - |
+| `regime_json` | JSONB | ✓ | - |
+| `inputs_digest` | JSONB | ✓ | - |
+| `model_used` | VARCHAR(100) | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `brief_date`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_market_daily_brief_updated` | `updated_at` | ✗ |
 
 ---
 
@@ -224,6 +413,13 @@
 | `processed_at` | TIMESTAMP | ✓ | - |
 | `message_id` | VARCHAR(500) | ✓ | - |
 | `article_url` | TEXT | ✓ | - |
+| `ticker_sentiment` | JSONB | ✓ | - |
+| `sentiment` | VARCHAR(20) | ✓ | - |
+| `sentiment_score` | DOUBLE PRECISION | ✓ | - |
+| `claims` | JSONB | ✓ | - |
+| `fact_check` | TEXT | ✓ | - |
+| `conclusion` | TEXT | ✓ | - |
+| `logic_check` | VARCHAR(20) | ✓ | - |
 
 ### Primary Key
 
@@ -290,6 +486,8 @@
 | `archive_submitted_at` | TIMESTAMP | ✓ | - |
 | `archive_checked_at` | TIMESTAMP | ✓ | - |
 | `archive_url` | TEXT | ✓ | - |
+| `ticker_sentiment` | JSONB | ✓ | - |
+| `ticker_validated_at` | TIMESTAMP | ✓ | - |
 
 ### Primary Key
 
@@ -301,6 +499,8 @@
 |------|---------|--------|
 | `idx_research_articles_archive_submitted` | `archive_submitted_at` | ✗ |
 | `idx_research_articles_archive_url` | `archive_url` | ✗ |
+| `idx_research_articles_embedding` | `embedding` | ✗ |
+| `idx_research_articles_unvalidated` | `fetched_at` | ✗ |
 | `idx_research_claims` | `claims` | ✗ |
 | `idx_research_fetched` | `fetched_at` | ✗ |
 | `idx_research_fund` | `fund` | ✗ |
@@ -340,6 +540,43 @@
 | `idx_rss_feeds_enabled` | `enabled` | ✗ |
 | `idx_rss_feeds_last_fetched` | `last_fetched_at` | ✗ |
 | `rss_feeds_url_key` | `url` | ✓ |
+
+---
+
+## sector_meta_analysis
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `sector` | VARCHAR(120) | ✗ | - |
+| `run_date` | DATE | ✗ | - |
+| `sector_stance` | VARCHAR(40) | ✗ | - |
+| `momentum_state` | VARCHAR(40) | ✗ | - |
+| `news_pressure` | VARCHAR(40) | ✗ | - |
+| `rotation_rank` | INTEGER | ✗ | 0 |
+| `confidence` | NUMERIC(5, 4) | ✗ | - |
+| `key_drivers` | JSONB | ✗ | '[]'::jsonb |
+| `risk_flags` | JSONB | ✗ | '[]'::jsonb |
+| `as_of` | TIMESTAMP | ✗ | - |
+| `full_result` | JSONB | ✓ | - |
+| `model_used` | VARCHAR(100) | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_sector_meta_analysis_run_date` | `run_date` | ✗ |
+| `idx_sector_meta_analysis_sector` | `sector` | ✗ |
+| `idx_sector_meta_analysis_updated` | `updated_at` | ✗ |
+| `sector_meta_analysis_sector_run_date_key` | `sector`, `run_date` | ✓ |
 
 ---
 
@@ -491,6 +728,148 @@
 
 ---
 
+## stance_history
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `fund_key` | TEXT | ✗ | ''::text |
+| `source` | VARCHAR(40) | ✗ | - |
+| `stance` | VARCHAR(40) | ✓ | - |
+| `confidence` | NUMERIC(5, 4) | ✓ | - |
+| `as_of` | TIMESTAMP | ✗ | now() |
+| `price_at_stance` | NUMERIC(14, 4) | ✓ | - |
+| `drivers` | ARRAY | ✓ | - |
+| `risks` | ARRAY | ✓ | - |
+| `model_used` | VARCHAR(100) | ✓ | - |
+| `requested_by` | VARCHAR(100) | ✓ | - |
+| `source_ref_id` | UUID | ✓ | - |
+| `metadata` | JSONB | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_stance_history_as_of` | `as_of` | ✗ |
+| `idx_stance_history_ticker_source_asof` | `ticker`, `source`, `fund_key`, `as_of` | ✗ |
+
+---
+
+## stance_outcomes
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `stance_id` | UUID | ✗ | - |
+| `horizon_days` | SMALLINT | ✗ | - |
+| `baseline_price` | NUMERIC(14, 4) | ✓ | - |
+| `end_price` | NUMERIC(14, 4) | ✓ | - |
+| `ticker_return` | NUMERIC(10, 6) | ✓ | - |
+| `benchmark_return` | NUMERIC(10, 6) | ✓ | - |
+| `excess_return` | NUMERIC(10, 6) | ✓ | - |
+| `scored_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Foreign Keys
+
+| Column | References | On Delete | On Update |
+|--------|------------|-----------|------------|
+| `stance_id` | `stance_history`.`id` | NO ACTION | NO ACTION |
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_stance_outcomes_stance` | `stance_id` | ✗ |
+| `stance_outcomes_unique` | `stance_id`, `horizon_days` | ✓ |
+
+---
+
+## thesis_entries
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `thesis_id` | UUID | ✗ | - |
+| `entry_kind` | VARCHAR(30) | ✗ | - |
+| `author_kind` | VARCHAR(20) | ✗ | - |
+| `author_id` | VARCHAR(100) | ✓ | - |
+| `body` | TEXT | ✗ | - |
+| `created_at` | TIMESTAMP | ✗ | now() |
+| `metadata` | JSONB | ✗ | '{}'::jsonb |
+| `embedding` | NULL | ✓ | - |
+
+### Primary Key
+
+- `id`
+
+### Foreign Keys
+
+| Column | References | On Delete | On Update |
+|--------|------------|-----------|------------|
+| `thesis_id` | `ticker_theses`.`id` | NO ACTION | NO ACTION |
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_thesis_entries_thread` | `thesis_id`, `created_at` | ✗ |
+
+---
+
+## thesis_evidence
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `thesis_id` | UUID | ✗ | - |
+| `entry_id` | UUID | ✓ | - |
+| `evidence_kind` | VARCHAR(40) | ✗ | - |
+| `ref_id` | UUID | ✓ | - |
+| `url` | TEXT | ✓ | - |
+| `title` | TEXT | ✓ | - |
+| `snippet` | TEXT | ✓ | - |
+| `relation` | VARCHAR(20) | ✗ | 'context'::character varying |
+| `created_by` | VARCHAR(100) | ✗ | - |
+| `created_at` | TIMESTAMP | ✗ | now() |
+
+### Primary Key
+
+- `id`
+
+### Foreign Keys
+
+| Column | References | On Delete | On Update |
+|--------|------------|-----------|------------|
+| `entry_id` | `thesis_entries`.`id` | NO ACTION | NO ACTION |
+| `thesis_id` | `ticker_theses`.`id` | NO ACTION | NO ACTION |
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_thesis_evidence_article` | `ref_id` | ✗ |
+| `idx_thesis_evidence_thesis` | `thesis_id` | ✗ |
+
+---
+
 ## ticker_analysis
 
 ### Columns
@@ -503,9 +882,9 @@
 | `analysis_date` | DATE | ✗ | - |
 | `data_start_date` | DATE | ✗ | - |
 | `data_end_date` | DATE | ✗ | - |
-| `sentiment` | VARCHAR(20) | ✓ | - |
-| `sentiment_score` | NUMERIC(3, 2) | ✓ | - |
-| `confidence_score` | NUMERIC(3, 2) | ✓ | - |
+| `sentiment` | VARCHAR(40) | ✓ | - |
+| `sentiment_score` | NUMERIC(5, 4) | ✓ | - |
+| `confidence_score` | NUMERIC(5, 4) | ✓ | - |
 | `themes` | ARRAY | ✓ | - |
 | `summary` | TEXT | ✓ | - |
 | `analysis_text` | TEXT | ✓ | - |
@@ -520,11 +899,11 @@
 | `model_used` | VARCHAR(50) | ✓ | 'granite3.3:8b'::character varying |
 | `analysis_version` | INTEGER | ✓ | 1 |
 | `requested_by` | VARCHAR(100) | ✓ | - |
-| `stance` | VARCHAR(10) | ✓ | - |
-| `timeframe` | VARCHAR(20) | ✓ | - |
-| `entry_zone` | VARCHAR(50) | ✓ | - |
-| `target_price` | VARCHAR(20) | ✓ | - |
-| `stop_loss` | VARCHAR(20) | ✓ | - |
+| `stance` | VARCHAR(20) | ✓ | - |
+| `timeframe` | VARCHAR(60) | ✓ | - |
+| `entry_zone` | VARCHAR(100) | ✓ | - |
+| `target_price` | VARCHAR(60) | ✓ | - |
+| `stop_loss` | VARCHAR(60) | ✓ | - |
 | `key_levels` | JSONB | ✓ | - |
 | `catalysts` | ARRAY | ✓ | - |
 | `risks` | ARRAY | ✓ | - |
@@ -547,27 +926,133 @@
 
 ---
 
-## stance_history (manual add 2026-06-10)
+## ticker_meta_analysis
 
-Append-only AI/mechanical stance ledger. Deduped on insert per `(ticker, source, fund_key)`.
+### Columns
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID | PK |
-| `ticker` | VARCHAR(10) | |
-| `fund_key` | TEXT | default `''`; set for action_queue rows |
-| `source` | VARCHAR(40) | `ticker_meta_analysis`, `ticker_analysis`, `action_queue_ai_review` |
-| `stance` | VARCHAR(40) | directional label; mechanical action for queue |
-| `confidence` | NUMERIC(5,4) | |
-| `metadata` | JSONB | e.g. AI `verdict`, `one_liner` |
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `ticker` | VARCHAR(10) | ✗ | - |
+| `source_analysis_id` | UUID | ✓ | - |
+| `source_analysis_snapshot_at` | TIMESTAMP | ✓ | - |
+| `unified_conviction` | VARCHAR(40) | ✓ | - |
+| `confidence_adjusted` | NUMERIC(4, 3) | ✓ | - |
+| `contradictions` | JSONB | ✓ | - |
+| `what_changed_vs_last_run` | TEXT | ✓ | - |
+| `action_items` | ARRAY | ✓ | - |
+| `narrative` | TEXT | ✓ | - |
+| `full_result` | JSONB | ✓ | - |
+| `model_used` | VARCHAR(100) | ✓ | - |
+| `requested_by` | VARCHAR(100) | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+| `artifact_bundle_digest` | VARCHAR(64) | ✓ | - |
 
-## stance_outcomes (manual add 2026-06-10)
+### Primary Key
 
-Scored returns vs ^RUT at 7/30/90d horizons. V1 scores BUY/SELL (and meta directional labels); excludes RISK/WATCH.
+- `id`
 
-## idea_triage (manual add 2026-06-10)
+### Indexes
 
-Ideas inbox decisions: `accepted` | `dismissed` | `snoozed` per `article_id`.
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_ticker_meta_analysis_ticker` | `ticker` | ✗ |
+| `idx_ticker_meta_analysis_updated` | `updated_at` | ✗ |
+| `idx_ticker_meta_source` | `source_analysis_id` | ✗ |
+| `ticker_meta_analysis_ticker_key` | `ticker` | ✓ |
+
+---
+
+## ticker_theses
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `title` | TEXT | ✗ | - |
+| `disposition` | VARCHAR(20) | ✗ | - |
+| `intent` | VARCHAR(20) | ✗ | - |
+| `status` | VARCHAR(20) | ✗ | 'active'::character varying |
+| `created_by` | VARCHAR(100) | ✗ | - |
+| `created_at` | TIMESTAMP | ✗ | now() |
+| `updated_at` | TIMESTAMP | ✗ | now() |
+| `last_reviewed_at` | TIMESTAMP | ✓ | - |
+| `archived_at` | TIMESTAMP | ✓ | - |
+| `archived_by` | VARCHAR(100) | ✓ | - |
+| `embedding` | NULL | ✓ | - |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_theses_disposition` | `disposition` | ✗ |
+| `idx_theses_intent` | `intent` | ✗ |
+| `idx_theses_ticker_active` | `ticker` | ✗ |
+| `idx_theses_updated` | `updated_at` | ✗ |
+
+---
+
+## ui_ai_rollup_fund
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `fund` | VARCHAR(200) | ✗ | - |
+| `headline` | VARCHAR(300) | ✓ | - |
+| `narrative` | TEXT | ✓ | - |
+| `sources_used` | JSONB | ✓ | - |
+| `inputs_digest` | VARCHAR(64) | ✗ | - |
+| `model_used` | VARCHAR(100) | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `fund`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_ui_ai_rollup_fund_updated` | `updated_at` | ✗ |
+
+---
+
+## ui_ai_summary
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `scope` | VARCHAR(80) | ✗ | - |
+| `scope_key` | VARCHAR(256) | ✗ | - |
+| `content_class` | VARCHAR(20) | ✗ | 'price_linked'::character varying |
+| `summary_json` | JSONB | ✗ | '{}'::jsonb |
+| `inputs_digest` | VARCHAR(64) | ✗ | - |
+| `model_used` | VARCHAR(100) | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_ui_ai_summary_content_class` | `content_class`, `updated_at` | ✗ |
+| `idx_ui_ai_summary_scope_updated` | `scope`, `updated_at` | ✗ |
+| `ui_ai_summary_scope_key_unique` | `scope`, `scope_key` | ✓ |
 
 ---
 

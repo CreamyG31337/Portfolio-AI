@@ -49,8 +49,13 @@ Optional nightly (or on-demand) LLM pass that stores a compact **verdict** (e.g.
 |--------|---------|-------------------|
 | Dashboard | Portfolio summary, Action Queue, Market brief card | `/api/dashboard/summary`, `/api/dashboard/action-queue`, `/api/dashboard/market-brief` |
 | Ticker detail | Full ticker AI analysis + meta synthesis | `/api/v2/ticker/<t>/analysis`, `/api/v2/ticker/<t>/meta-analysis` |
+| Insights | Human thesis threads (org-wide); due-for-review queue | `/insights`, `/api/insights`, `/api/insights/due`, `/api/ticker/<t>/insights` |
 | Research | Articles, semantic search | Research routes / `research_articles` |
 | Jobs admin | Schedule / run jobs | Scheduler UI / `jobs.py` |
+
+Insights (`/insights`) is **not** Sector Insights (`/sector_insights`). Thesis eval job
+(`insights_thesis_evaluation`) posts advisory `llm_reply` entries; it does not update
+Action Queue review rows. See [`docs/INSIGHTS.md`](INSIGHTS.md).
 
 ## Related docs
 

@@ -107,6 +107,32 @@ def test_ticker_insights_api(client, auth_ok):
 
 
 @skip_without_plotly
+def test_list_insights_due_api(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    rows = [{
+        "id": "t1",
+        "ticker": "MSFT",
+        "title": "Cloud moat",
+        "disposition": "bullish",
+        "intent": "monitor",
+        "status": "active",
+        "review_status": "stale",
+        "is_weak": False,
+        "age_days": 40,
+    }]
+    with patch("routes.insights_routes.PostgresClient", return_value=MagicMock()), patch(
+        "routes.insights_routes.list_theses_due",
+        return_value=rows,
+    ) as mock_due:
+        resp = client.get("/api/insights/due?soft_days=14&hard_days=30")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["data"][0]["review_status"] == "stale"
+    assert body["soft_days"] == 14
+    mock_due.assert_called_once()
+
+
+@skip_without_plotly
 def test_delete_insight_admin_only(client, auth_ok):
     from user_insights_service import ThesisPermissionError
 

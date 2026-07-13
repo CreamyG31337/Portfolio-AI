@@ -105,6 +105,7 @@ Run the right test suite based on what you're changing (both suites use the root
 ## Meta Analysis (market → sector → ticker)
 
 - **North star:** human-in-the-loop buy/sell *ideas* from layered evidence (not auto-trading). Phased — see `docs/meta_analysis_roadmap.md`
+- **Human theses:** Insights (`/insights`, Research `ticker_theses`) — see `docs/INSIGHTS.md`. Do not confuse with Sector Insights (`/sector_insights`) or fund `fund_thesis`.
 - Pipeline: `etf_watchtower → etf_holdings_log (Research)` → `etf_group_analysis → research_articles` → `sector_meta_analysis → /sector_insights` → `ticker_meta_analysis`
 - **Do not** read Supabase `etf_holdings_log` (dropped May 2026 — holdings live in Research DB)
 - Catch-up after outage: `python web_dashboard/scripts/backfill_etf_sector_meta.py` — see `docs/ETF_SECTOR_META_OPS.md`
@@ -113,7 +114,7 @@ Run the right test suite based on what you're changing (both suites use the root
 ## Database Schema
 
 - **Source of truth:** SQL files at `database/schema/supabase/` and `database/schema/research/` (`_init_schema.sql` ties each together). `database/archive/` is historical context only.
-- Docs (markdown + JSON) at `docs/database/` — Supabase prod (29 tables) and Research/AI DB (13 tables)
+- Docs (markdown + JSON) at `docs/database/` — Supabase prod (~40 tables) and Research/AI DB (~30 tables, includes Insights `ticker_theses` / `thesis_entries` / `thesis_evidence`). Regenerate after DB changes.
 - Generate docs: `.\web_dashboard\venv\Scripts\python.exe scripts\generate_schema_docs.py`
 - Export SQL: `.\web_dashboard\venv\Scripts\python.exe scripts\export_clean_schema.py` — **always run after production DB changes**
 

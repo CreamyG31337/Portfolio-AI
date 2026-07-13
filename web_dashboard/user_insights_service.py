@@ -23,9 +23,76 @@ VALID_EVIDENCE_KINDS = frozenset({
 })
 VALID_RELATIONS = frozenset({"supports", "contradicts", "context"})
 
+DEFAULT_SOFT_DUE_DAYS = 14
+DEFAULT_HARD_STALE_DAYS = 30
+WEAK_CONTEXT_MARKER = "[WEAK CONTEXT]"
+
 
 def _normalize_ticker(ticker: str) -> str:
     return (ticker or "").upper().strip()
+
+
+def _parse_ts(val: Any) -> datetime | None:
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        if val.tzinfo is None:
+            return val.replace(tzinfo=UTC)
+        return val
+    if isinstance(val, str):
+        try:
+            parsed = datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed
+    return None
+
+
+def thesis_reviewed_at(row: dict[str, Any]) -> datetime | None:
+    """Effective review timestamp: last human review, else created_at."""
+    return _parse_ts(row.get("last_reviewed_at")) or _parse_ts(row.get("created_at"))
+
+
+def is_weak_thesis(
+    *,
+    title: str | None = None,
+    opening_body: str | None = None,
+    opening_metadata: dict[str, Any] | list[Any] | None = None,
+) -> bool:
+    """True for moat/bootstrap drafts tagged weak_context or WEAK CONTEXT marker."""
+    if title and WEAK_CONTEXT_MARKER in title:
+        return True
+    if opening_body and (
+        opening_body.lstrip().startswith(WEAK_CONTEXT_MARKER)
+        or WEAK_CONTEXT_MARKER in opening_body[:80]
+    ):
+        return True
+    meta = opening_metadata if isinstance(opening_metadata, dict) else {}
+    tags = meta.get("tags") if isinstance(meta.get("tags"), list) else []
+    return any(str(t).strip().lower() == "weak_context" for t in tags)
+
+
+def classify_due_status(
+    reviewed_at: datetime | None,
+    *,
+    soft_days: int = DEFAULT_SOFT_DUE_DAYS,
+    hard_days: int = DEFAULT_HARD_STALE_DAYS,
+    now: datetime | None = None,
+) -> str | None:
+    """Return 'stale', 'due_for_review', or None if still fresh."""
+    if reviewed_at is None:
+        return "stale"
+    now_ts = now or datetime.now(UTC)
+    if reviewed_at.tzinfo is None:
+        reviewed_at = reviewed_at.replace(tzinfo=UTC)
+    age_days = (now_ts - reviewed_at).total_seconds() / 86400.0
+    if age_days >= hard_days:
+        return "stale"
+    if age_days >= soft_days:
+        return "due_for_review"
+    return None
 
 
 def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -136,6 +203,90 @@ def list_theses(
         tuple(params),
     )
     return [_serialize_row(dict(r)) for r in rows]
+
+
+def list_theses_due(
+    pg: Any,
+    *,
+    soft_days: int = DEFAULT_SOFT_DUE_DAYS,
+    hard_days: int = DEFAULT_HARD_STALE_DAYS,
+    include_weak_always: bool = True,
+    limit: int = 100,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Active theses due for human review (soft/hard age) and/or weak drafts.
+
+    Does not bump last_reviewed_at. Sorted: weak first, then stale before soft, then oldest.
+    """
+    soft = max(1, soft_days)
+    hard = max(soft, hard_days)
+    now_ts = now or datetime.now(UTC)
+    # Fetch a wider pool then classify in Python so weak always-include works.
+    fetch_limit = max(1, min(limit * 4, 500))
+    rows = pg.execute_query(
+        """
+        SELECT t.*,
+               (SELECT COUNT(*)::int FROM thesis_entries e WHERE e.thesis_id = t.id) AS entry_count,
+               (SELECT COUNT(*)::int FROM thesis_evidence ev WHERE ev.thesis_id = t.id) AS evidence_count,
+               (
+                   SELECT e.body FROM thesis_entries e
+                   WHERE e.thesis_id = t.id AND e.entry_kind = 'opening'
+                   ORDER BY e.created_at ASC
+                   LIMIT 1
+               ) AS opening_body,
+               (
+                   SELECT e.metadata FROM thesis_entries e
+                   WHERE e.thesis_id = t.id AND e.entry_kind = 'opening'
+                   ORDER BY e.created_at ASC
+                   LIMIT 1
+               ) AS opening_metadata
+        FROM ticker_theses t
+        WHERE t.status = 'active'
+        ORDER BY COALESCE(t.last_reviewed_at, t.created_at) ASC NULLS FIRST
+        LIMIT %s
+        """,
+        (fetch_limit,),
+    )
+
+    due: list[dict[str, Any]] = []
+    for raw in rows:
+        row = _serialize_row(dict(raw))
+        opening_meta = row.get("opening_metadata")
+        if isinstance(opening_meta, str):
+            try:
+                opening_meta = json.loads(opening_meta)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                opening_meta = {}
+        weak = is_weak_thesis(
+            title=str(row.get("title") or ""),
+            opening_body=str(row.get("opening_body") or ""),
+            opening_metadata=opening_meta if isinstance(opening_meta, dict) else {},
+        )
+        reviewed = thesis_reviewed_at(row)
+        status = classify_due_status(
+            reviewed, soft_days=soft, hard_days=hard, now=now_ts
+        )
+        if status is None and not (include_weak_always and weak):
+            continue
+        if status is None and weak:
+            status = "due_for_review"
+        age_days = None
+        if reviewed is not None:
+            age_days = round((now_ts - reviewed).total_seconds() / 86400.0, 1)
+        row["review_status"] = status
+        row["is_weak"] = weak
+        row["age_days"] = age_days
+        row["reviewed_at"] = reviewed.isoformat() if reviewed else None
+        due.append(row)
+
+    due.sort(
+        key=lambda r: (
+            0 if r.get("is_weak") else 1,
+            0 if r.get("review_status") == "stale" else 1,
+            -(r.get("age_days") or 0),
+        )
+    )
+    return due[: max(1, min(limit, 500))]
 
 
 def list_entries(pg: Any, thesis_id: str) -> list[dict[str, Any]]:
@@ -351,6 +502,53 @@ def add_entry(
             RETURNING id
             """,
             (thesis_id, kind, author_id, body.strip(), json.dumps(meta)),
+        )
+    entry = _serialize_row(dict(rows[0])) if rows else {}
+    return {"entry_id": entry.get("id"), "thesis": get_thesis_detail(pg, thesis_id)}
+
+
+def add_llm_reply(
+    pg: Any,
+    *,
+    thesis_id: str,
+    body: str,
+    metadata: dict[str, Any] | None = None,
+    author_id: str = "insights_thesis_evaluation",
+    model_used: str | None = None,
+) -> dict[str, Any]:
+    """Insert an advisory llm_reply. Does NOT bump last_reviewed_at or change disposition."""
+    if not body.strip():
+        raise ValueError("body is required")
+    get_thesis_row(pg, thesis_id)
+    meta: dict[str, Any] = dict(metadata or {})
+    if model_used:
+        meta["model_used"] = model_used
+    now = datetime.now(UTC)
+    # Touch updated_at only — human review is what clears due/stale.
+    pg.execute_update(
+        "UPDATE ticker_theses SET updated_at = %s WHERE id = %s::uuid",
+        (now, thesis_id),
+    )
+    entry_embed = _try_embedding(body.strip())
+    if entry_embed:
+        rows = pg.execute_query(
+            """
+            INSERT INTO thesis_entries (
+                thesis_id, entry_kind, author_kind, author_id, body, metadata, embedding
+            ) VALUES (%s::uuid, 'llm_reply', 'llm', %s, %s, %s::jsonb, %s)
+            RETURNING id
+            """,
+            (thesis_id, author_id, body.strip(), json.dumps(meta), entry_embed),
+        )
+    else:
+        rows = pg.execute_query(
+            """
+            INSERT INTO thesis_entries (
+                thesis_id, entry_kind, author_kind, author_id, body, metadata
+            ) VALUES (%s::uuid, 'llm_reply', 'llm', %s, %s, %s::jsonb)
+            RETURNING id
+            """,
+            (thesis_id, author_id, body.strip(), json.dumps(meta)),
         )
     entry = _serialize_row(dict(rows[0])) if rows else {}
     return {"entry_id": entry.get("id"), "thesis": get_thesis_detail(pg, thesis_id)}

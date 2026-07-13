@@ -12,6 +12,9 @@ interface ThesisRow {
   updated_at?: string;
   entry_count?: number;
   evidence_count?: number;
+  review_status?: string;
+  is_weak?: boolean;
+  age_days?: number | null;
 }
 
 interface ThesisEntry {
@@ -70,35 +73,77 @@ function formatDate(iso?: string): string {
   }
 }
 
+function reviewBadge(row: ThesisRow): string {
+  const bits: string[] = [];
+  if (row.is_weak) {
+    bits.push(
+      `<span class="px-2 py-0.5 text-xs rounded border border-amber-600/40 text-amber-700 dark:text-amber-400">weak</span>`
+    );
+  }
+  if (row.review_status === "stale") {
+    bits.push(
+      `<span class="px-2 py-0.5 text-xs rounded border border-red-500/40 text-red-600">stale${
+        row.age_days != null ? ` ${row.age_days}d` : ""
+      }</span>`
+    );
+  } else if (row.review_status === "due_for_review") {
+    bits.push(
+      `<span class="px-2 py-0.5 text-xs rounded border border-amber-500/40 text-amber-600">due${
+        row.age_days != null ? ` ${row.age_days}d` : ""
+      }</span>`
+    );
+  }
+  return bits.join("");
+}
+
 async function loadTheses(): Promise<void> {
   const loading = document.getElementById("insights-loading");
   const errEl = document.getElementById("insights-error");
   const list = document.getElementById("insights-list");
+  const dueHint = document.getElementById("insights-due-hint");
   if (!list) return;
 
   const archived = (document.getElementById("insights-show-archived") as HTMLInputElement)?.checked;
+  const dueOnly = (document.getElementById("insights-due-only") as HTMLInputElement)?.checked;
   const intent = (document.getElementById("insights-filter-intent") as HTMLSelectElement)?.value || "";
   const disposition = (document.getElementById("insights-filter-disposition") as HTMLSelectElement)?.value || "";
   const ticker = (document.getElementById("insights-filter-ticker") as HTMLInputElement)?.value.trim().toUpperCase();
 
-  const params = new URLSearchParams();
-  if (archived) params.set("include_archived", "1");
-  if (intent) params.set("intent", intent);
-  if (disposition) params.set("disposition", disposition);
-  if (ticker) params.set("ticker", ticker);
+  if (dueHint) {
+    if (dueOnly) dueHint.classList.remove("hidden");
+    else dueHint.classList.add("hidden");
+  }
 
   if (loading) loading.classList.remove("hidden");
   if (errEl) errEl.classList.add("hidden");
 
   try {
-    const resp = await fetch(`/api/insights?${params.toString()}`, { credentials: "include" });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const body = (await resp.json()) as { data: ThesisRow[] };
-    const rows = body.data || [];
+    let rows: ThesisRow[] = [];
+    if (dueOnly) {
+      const resp = await fetch("/api/insights/due?limit=100", { credentials: "include" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const body = (await resp.json()) as { data: ThesisRow[] };
+      rows = body.data || [];
+      if (ticker) rows = rows.filter((r) => r.ticker === ticker);
+      if (intent) rows = rows.filter((r) => r.intent === intent);
+      if (disposition) rows = rows.filter((r) => r.disposition === disposition);
+    } else {
+      const params = new URLSearchParams();
+      if (archived) params.set("include_archived", "1");
+      if (intent) params.set("intent", intent);
+      if (disposition) params.set("disposition", disposition);
+      if (ticker) params.set("ticker", ticker);
+      const resp = await fetch(`/api/insights?${params.toString()}`, { credentials: "include" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const body = (await resp.json()) as { data: ThesisRow[] };
+      rows = body.data || [];
+    }
     if (loading) loading.classList.add("hidden");
 
     if (!rows.length) {
-      list.innerHTML = `<p class="text-sm text-text-secondary">No theses yet. Create one to capture your view on a ticker.</p>`;
+      list.innerHTML = dueOnly
+        ? `<p class="text-sm text-text-secondary">Nothing due for review.</p>`
+        : `<p class="text-sm text-text-secondary">No theses yet. Create one to capture your view on a ticker.</p>`;
       return;
     }
 
@@ -113,6 +158,7 @@ async function loadTheses(): Promise<void> {
             <a href="/ticker?ticker=${encodeURIComponent(row.ticker)}" class="font-bold text-accent underline" onclick="event.stopPropagation()">${row.ticker}</a>
             <span class="px-2 py-0.5 text-xs font-semibold rounded border ${badgeClass(row.disposition)}">${row.disposition}</span>
             <span class="px-2 py-0.5 text-xs rounded border border-border text-text-secondary">${intentLabel(row.intent)}</span>
+            ${reviewBadge(row)}
             ${archivedBadge}
           </div>
           <h3 class="font-medium text-text-primary">${row.title}</h3>
@@ -149,12 +195,22 @@ async function openDetail(thesisId: string): Promise<void> {
     const payload = (await resp.json()) as { data: ThesisDetail };
     const t = payload.data;
     const entries = (t.entries || [])
-      .map(
-        (e) => `<div class="border-l-2 border-amber-500/50 pl-3 py-2 mb-2">
-          <p class="text-xs text-text-secondary">${e.entry_kind} · ${e.author_id || e.author_kind} · ${formatDate(e.created_at)}</p>
+      .map((e) => {
+        const border =
+          e.entry_kind === "llm_reply"
+            ? "border-sky-500/50"
+            : e.entry_kind === "review"
+              ? "border-amber-500/50"
+              : "border-border";
+        const verdict =
+          e.entry_kind === "llm_reply" && e.metadata && typeof e.metadata.verdict === "string"
+            ? ` · ${escapeHtml(e.metadata.verdict)}`
+            : "";
+        return `<div class="border-l-2 ${border} pl-3 py-2 mb-2">
+          <p class="text-xs text-text-secondary">${e.entry_kind}${verdict} · ${e.author_id || e.author_kind} · ${formatDate(e.created_at)}</p>
           <p class="text-sm text-text-primary whitespace-pre-wrap">${escapeHtml(e.body)}</p>
-        </div>`
-      )
+        </div>`;
+      })
       .join("");
     const evidence = (t.evidence || [])
       .map((ev) => {
@@ -305,6 +361,7 @@ document.addEventListener("DOMContentLoaded", () => {
   wireModal();
   document.getElementById("insights-refresh-btn")?.addEventListener("click", () => void loadTheses());
   document.getElementById("insights-show-archived")?.addEventListener("change", () => void loadTheses());
+  document.getElementById("insights-due-only")?.addEventListener("change", () => void loadTheses());
   document.getElementById("insights-filter-intent")?.addEventListener("change", () => void loadTheses());
   document.getElementById("insights-filter-disposition")?.addEventListener("change", () => void loadTheses());
   document.getElementById("insights-filter-ticker")?.addEventListener("change", () => void loadTheses());
