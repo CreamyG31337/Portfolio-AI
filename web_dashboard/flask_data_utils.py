@@ -1588,19 +1588,22 @@ def get_first_trade_dates_flask(fund: Optional[str] = None) -> Dict[str, datetim
         return {}
 
     try:
-        # Optimized: Only fetch ticker and date columns, avoiding massive join and payload
-        query = client.supabase.table("trade_log").select("ticker, date")
-        if fund:
-            query = query.eq("fund", fund)
+        from supabase_pagination import fetch_all_rows
 
-        # Limit to 5000 most recent trades (approximate coverage)
-        # Fetching 5000 rows of just 2 columns is very light compared to 5000 rows of ALL columns + joined securities
-        result = query.order("date", desc=True).limit(5000).execute()
-
-        if not result.data:
+        # Full paginated read of ticker+date (PostgREST caps each page at 1000).
+        filters = [("fund", "eq", fund)] if fund else None
+        rows = fetch_all_rows(
+            client,
+            "trade_log",
+            "ticker, date",
+            filters=filters,
+            order="date",
+            order_desc=True,
+        )
+        if not rows:
             return {}
-            
-        df = pd.DataFrame(result.data)
+
+        df = pd.DataFrame(rows)
         if df.empty or 'date' not in df.columns or 'ticker' not in df.columns:
             return {}
 
@@ -1762,7 +1765,7 @@ def fetch_unique_column_values_parallel(
     supabase_client,
     table: str,
     column: str,
-    chunk_size: int = 5000,
+    chunk_size: int = 1000,
     max_workers: int = 10,
     max_rows: int = 200000,
 ) -> List[str]:
@@ -1775,7 +1778,7 @@ def fetch_unique_column_values_parallel(
         supabase_client: Authenticated SupabaseClient instance.
         table: Table name to query.
         column: Column name to extract unique values from.
-        chunk_size: Number of rows per parallel chunk (default 5000).
+        chunk_size: Rows per parallel chunk (clamped to PostgREST max of 1000).
         max_workers: Maximum ThreadPoolExecutor workers (default 10).
         max_rows: Safety cap on total rows fetched (default 200k).
 
@@ -1783,6 +1786,8 @@ def fetch_unique_column_values_parallel(
         Sorted list of unique non-null string values.
     """
     import concurrent.futures
+
+    from supabase_pagination import clamp_page_size, page_ranges
 
     if supabase_client is None:
         return []
@@ -1820,11 +1825,9 @@ def fetch_unique_column_values_parallel(
         if total == 0:
             return []
 
-        # 2. Build chunk ranges
-        chunks = []
-        for offset in range(0, total, chunk_size):
-            end = min(offset + chunk_size - 1, total - 1)
-            chunks.append((offset, end))
+        # PostgREST silently caps each response at 1000 rows — never ask for more.
+        chunk_size = clamp_page_size(chunk_size)
+        chunks = page_ranges(total, chunk_size)
 
         # 3. Fetch chunks in parallel
         all_values: set = set()

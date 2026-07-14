@@ -5324,18 +5324,22 @@ def _get_congress_trades_stats_cached(
 
             # B. Parallel Data Fetch (IDs + Tickers + optional columns)
             # If we can't use fast counts, we need chamber/type to count in Python
+            # PostgREST hard-caps each response at 1000 rows, so chunk at that size.
             cols = "id, ticker" if use_fast_counts else "id, ticker, chamber, type"
+            chunk_size = 1000
 
-            def _fetch_chunk(offset, chunk_size):
+            def _fetch_chunk(offset: int, size: int):
                 q = _supabase_client.supabase.table("congress_trades_enriched").select(cols)
                 q = _apply_filters_to_query(q)
                 # Order by ID to ensure stable pagination
                 q = q.order("id")
-                return q.range(offset, offset + chunk_size - 1).execute().data
+                return q.range(offset, offset + size - 1).execute().data
 
-            chunk_size = 5000
-            num_chunks = (total_filtered_rows // chunk_size) + 1
-            fetch_futures = [executor.submit(_fetch_chunk, i * chunk_size, chunk_size) for i in range(num_chunks)]
+            num_chunks = max(1, (total_filtered_rows + chunk_size - 1) // chunk_size)
+            fetch_futures = [
+                executor.submit(_fetch_chunk, i * chunk_size, chunk_size)
+                for i in range(num_chunks)
+            ]
 
             # C. Most Active (Last 31 Days)
             def _get_most_active():
@@ -5428,8 +5432,14 @@ def _get_congress_trades_stats_cached(
             if row.get('ticker'):
                 unique_tickers.add(row['ticker'])
 
-        # Recalculate stats based on final filtered set
-        total_trades = len(final_trades)
+        # Recalculate stats based on final filtered set.
+        # Prefer the exact PostgREST count when we did a full fetch without
+        # analysis/score post-filters — len(final_trades) used to be wrong when
+        # a single "chunk" request was silently truncated at the 1000-row cap.
+        if use_fast_counts and len(fetched_rows) >= total_filtered_rows:
+            total_trades = total_filtered_rows
+        else:
+            total_trades = len(final_trades)
         analyzed_count = sum(1 for r in final_trades if r.get('id') in pg_analysis_map)
         high_risk_count = sum(1 for r in final_trades if r.get('id') in pg_analysis_map and pg_analysis_map[r['id']] >= 0.7)
 

@@ -1161,7 +1161,9 @@ export function initializeCongressTradesGrid(tradesData: CongressTrade[]): void 
         // Infinite row model settings
         rowModelType: 'infinite',
         cacheBlockSize: 100, // Fetch 100 rows at a time
-        maxBlocksInCache: 10, // Keep up to 10 blocks (1000 rows) in memory
+        // Keep enough blocks that a full Executive (~3k) / large Congress set
+        // can page without thrashing; PostgREST remains the source of truth.
+        maxBlocksInCache: 50,
         infiniteInitialRowCount: 100, // Initial placeholder count
         pagination: true,
         paginationPageSize: 100,
@@ -1316,11 +1318,14 @@ function createDatasource(): AgGridDatasource {
 
                 console.log(`[CongressTrades] Received ${trades.length} trades (total: ${total})`);
 
-                // Calculate lastRow for AgGrid
-                // If we have fewer rows than requested, we've reached the end
-                let lastRow = -1; // -1 means unknown/more data available
-                if (trades.length < limit || !data.has_more) {
-                    lastRow = startRow + trades.length;
+                // Always pass the known server total so AG Grid pagination can
+                // walk past the in-memory block cache (maxBlocksInCache * page).
+                // Falling back to end-of-data detection only when total is unknown.
+                let lastRow = total > 0 ? total : -1;
+                if (total <= 0) {
+                    if (trades.length < limit || !data.has_more) {
+                        lastRow = startRow + trades.length;
+                    }
                 }
 
                 successCallback(trades, lastRow);

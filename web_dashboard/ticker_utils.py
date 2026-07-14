@@ -206,10 +206,11 @@ def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
         if total == 0:
             return tickers
 
-        # 2. Build chunks and fetch in parallel
-        chunk_size = 5000
-        chunks = [(offset, min(offset + chunk_size - 1, total - 1))
-                  for offset in range(0, total, chunk_size)]
+        # PostgREST silently caps each response at 1000 rows — never ask for more.
+        from supabase_pagination import clamp_page_size, page_ranges
+
+        chunk_size = clamp_page_size(1000)
+        chunks = page_ranges(total, chunk_size)
 
         def _fetch_chunk(range_tuple):
             start, end = range_tuple
