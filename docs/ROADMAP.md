@@ -297,6 +297,14 @@ meta conflict) with Insights attention into a ranked `advise_pack` on Today brie
 not auto-trade). Flags `dual_tension` when queue and thesis both say TENSION; BUY+SELL conflict
 prefers SELL. UI: `#today-advise` after market regime.
 
+#### Advise v1 — Learn reweight + lock-retry for queue review — **shipped 2026-07**
+
+**Shipped:** Advise scores multiply by track-record hit rates (source + ALIGNED/TENSION verdict)
+when sample sizes are large enough; recent confluence bullish/risk adjusts rank (risk can
+downgrade BUY→RISK). `action_queue_ai_review` and `insights_thesis_evaluation` schedule a
+one-shot AI-lock retry (same pattern as market brief / UI summaries) and log
+`skipped_ai_lock` instead of failing silently.
+
 ---
 
 ## Pillar 3 — Smarter loops (only after Pillars 1–2)

@@ -16,6 +16,8 @@ _market_daily_brief_run_lock = threading.Lock()
 # Single pending one-shot retry when skipped due to global AI lock (replace_existing).
 _MARKET_DAILY_BRIEF_LOCK_RETRY_JOB_ID = "market_daily_brief_lock_retry"
 _MARKET_DAILY_BRIEF_LOCK_RETRY_DELAY_SEC = 60
+_ACTION_QUEUE_AI_REVIEW_LOCK_RETRY_JOB_ID = "action_queue_ai_review_lock_retry"
+_ACTION_QUEUE_AI_REVIEW_LOCK_RETRY_DELAY_SEC = 120
 
 try:
     from scheduler.scheduler_core import log_job_execution
@@ -177,6 +179,38 @@ def _signal_date_to_sql(val: Any) -> date | None:
         return None
 
 
+def _schedule_action_queue_ai_review_after_ai_lock(blocking_job: str) -> None:
+    """Re-run queue AI review soon after the global AI lock clears (one-shot)."""
+    try:
+        from scheduler.scheduler_core import get_scheduler
+
+        sched = get_scheduler(create=False)
+        if not sched or not getattr(sched, "running", False):
+            return
+        run_date = datetime.now(UTC) + timedelta(
+            seconds=_ACTION_QUEUE_AI_REVIEW_LOCK_RETRY_DELAY_SEC
+        )
+        sched.add_job(
+            action_queue_ai_review_job,
+            trigger="date",
+            run_date=run_date,
+            id=_ACTION_QUEUE_AI_REVIEW_LOCK_RETRY_JOB_ID,
+            name="Action Queue AI Review (retry after AI lock)",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info(
+            "Scheduled action_queue_ai_review retry at %s UTC (%ss) while AI lock held by %s",
+            run_date.isoformat(),
+            _ACTION_QUEUE_AI_REVIEW_LOCK_RETRY_DELAY_SEC,
+            blocking_job,
+        )
+    except Exception as exc:
+        logger.warning("Could not schedule action_queue_ai_review lock retry: %s", exc)
+
+
 def action_queue_ai_review_job() -> None:
     job_id = "action_queue_ai_review"
     start = time.time()
@@ -187,6 +221,16 @@ def action_queue_ai_review_job() -> None:
         running = get_running_ai_job(exclude_job_name=job_id)
         if running:
             logger.info("AI lock active (%s). Skipping %s.", running, job_id)
+            _schedule_action_queue_ai_review_after_ai_lock(running)
+            try:
+                log_job_execution(
+                    job_id,
+                    True,
+                    f"skipped_ai_lock holder={running} retry_scheduled",
+                    int((time.time() - start) * 1000),
+                )
+            except Exception:
+                pass
             return
     except Exception as exc:
         logger.warning("AI lock check failed: %s", exc)

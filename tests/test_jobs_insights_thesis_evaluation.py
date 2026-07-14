@@ -244,8 +244,12 @@ def test_insights_thesis_evaluation_skips_when_ai_lock_held(mock_log) -> None:
         "utils.job_tracking.get_running_ai_job",
         return_value="ticker_meta_analysis",
     ), patch(
+        "web_dashboard.scheduler.jobs_insights_thesis_evaluation._schedule_insights_eval_after_ai_lock",
+    ) as mock_retry, patch(
         "user_insights_service.list_theses_due",
     ) as mock_due:
         insights_thesis_evaluation_job()
     mock_due.assert_not_called()
-    mock_log.assert_not_called()
+    mock_retry.assert_called_once_with("ticker_meta_analysis")
+    mock_log.assert_called_once()
+    assert "skipped_ai_lock" in mock_log.call_args[0][2]

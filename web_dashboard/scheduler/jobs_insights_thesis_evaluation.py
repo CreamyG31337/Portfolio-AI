@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from scheduler.scheduler_core import log_job_execution
@@ -24,6 +24,38 @@ JOB_ID = "insights_thesis_evaluation"
 MAX_PER_RUN = 8
 # Over-fetch due list so digest skips still fill the LLM batch.
 CANDIDATE_FETCH_MULTIPLIER = 4
+_LOCK_RETRY_JOB_ID = "insights_thesis_evaluation_lock_retry"
+_LOCK_RETRY_DELAY_SEC = 120
+
+
+def _schedule_insights_eval_after_ai_lock(blocking_job: str) -> None:
+    """Re-run thesis eval soon after the global AI lock clears (one-shot)."""
+    try:
+        from scheduler.scheduler_core import get_scheduler
+
+        sched = get_scheduler(create=False)
+        if not sched or not getattr(sched, "running", False):
+            return
+        run_date = datetime.now(UTC) + timedelta(seconds=_LOCK_RETRY_DELAY_SEC)
+        sched.add_job(
+            insights_thesis_evaluation_job,
+            trigger="date",
+            run_date=run_date,
+            id=_LOCK_RETRY_JOB_ID,
+            name="Insights Thesis Evaluation (retry after AI lock)",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info(
+            "Scheduled insights_thesis_evaluation retry at %s UTC (%ss) while AI lock held by %s",
+            run_date.isoformat(),
+            _LOCK_RETRY_DELAY_SEC,
+            blocking_job,
+        )
+    except Exception as exc:
+        logger.warning("Could not schedule insights_thesis_evaluation lock retry: %s", exc)
 
 
 def _research_excerpt(postgres: Any, ticker: str) -> tuple[str, dict[str, Any]]:
@@ -113,6 +145,16 @@ def insights_thesis_evaluation_job() -> None:
         running = get_running_ai_job(exclude_job_name=job_id)
         if running:
             logger.info("AI lock active (%s). Skipping %s.", running, job_id)
+            _schedule_insights_eval_after_ai_lock(running)
+            try:
+                log_job_execution(
+                    job_id,
+                    True,
+                    f"skipped_ai_lock holder={running} retry_scheduled",
+                    int((time.time() - start) * 1000),
+                )
+            except Exception:
+                pass
             return
         mark_job_started(job_id, target_date)
     except Exception as exc:

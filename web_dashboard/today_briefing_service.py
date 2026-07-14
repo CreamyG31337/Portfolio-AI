@@ -189,10 +189,22 @@ def build_today_briefing(
     advise_pack: list[dict[str, Any]] = []
     try:
         from advise_service import build_advise_recommendations
+        from track_record_service import build_track_record_summary
+
+        # Prefer 7d (more samples); fall back shape is still valid if empty.
+        track_summary: dict[str, Any] | None = None
+        try:
+            track_summary = build_track_record_summary(pg, horizon_days=7)
+            if int(track_summary.get("total_scored") or 0) < 30:
+                track_summary = build_track_record_summary(pg, horizon_days=30)
+        except Exception as tr_exc:
+            logger.warning("Today briefing: track record for advise failed: %s", tr_exc)
 
         advise_pack = build_advise_recommendations(
             action_queue=actions,
             theses_attention=theses_attention,
+            track_record=track_summary,
+            confluence_events=confluence_events,
             limit=12,
         )
     except Exception as exc:

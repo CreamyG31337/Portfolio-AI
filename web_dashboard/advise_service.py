@@ -1,7 +1,8 @@
-"""Advise v0 — ranked buy/sell suggestions from existing artifacts (no LLM).
+"""Advise — ranked buy/sell suggestions from existing artifacts (no LLM).
 
-Merges Action Queue rows, queue AI review verdicts, and Insights thesis
-attention into one ranked list. Does not place trades.
+v0: merge Action Queue + Insights attention.
+v1: reweight by track-record hit rates + recent confluence (Learn → Decide).
+Does not place trades.
 """
 
 from __future__ import annotations
@@ -23,6 +24,11 @@ _BEARISH_META = frozenset(
 _BULLISH_META = frozenset(
     {"BULLISH", "STRONG_BULLISH", "VERY_BULLISH", "BUY"}
 )
+
+# Min scored outcomes before we trust a hit-rate adjustment.
+_MIN_SCORED_FOR_LEARN = 12
+_HIT_BOOST_THRESHOLD = 0.55
+_HIT_PENALTY_THRESHOLD = 0.45
 
 
 def disposition_to_advise(disposition: str | None, intent: str | None) -> str:
@@ -74,16 +80,97 @@ def _meta_conflicts_with_action(action: str, meta_conviction: str | None) -> boo
     return False
 
 
+def learn_weight_multiplier(
+    *,
+    source_hit_rate: float | None,
+    source_scored: int,
+    verdict_hit_rate: float | None = None,
+    verdict_scored: int = 0,
+) -> tuple[float, list[str]]:
+    """Return (multiplier, reason chips) from track-record rates.
+
+    Neutral (1.0) when samples are thin. Boost reliable sources/verdicts;
+    soft-penalize coin-flip-or-worse so Advise leans on what historically works.
+    """
+    reasons: list[str] = []
+    mult = 1.0
+
+    if source_hit_rate is not None and source_scored >= _MIN_SCORED_FOR_LEARN:
+        if source_hit_rate >= _HIT_BOOST_THRESHOLD:
+            bump = min(0.35, (source_hit_rate - _HIT_BOOST_THRESHOLD) * 1.5)
+            mult += bump
+            reasons.append(f"learn_src+{source_hit_rate:.0%}")
+        elif source_hit_rate <= _HIT_PENALTY_THRESHOLD:
+            cut = min(0.30, (_HIT_PENALTY_THRESHOLD - source_hit_rate) * 1.2)
+            mult -= cut
+            reasons.append(f"learn_src-{source_hit_rate:.0%}")
+
+    if verdict_hit_rate is not None and verdict_scored >= max(5, _MIN_SCORED_FOR_LEARN // 2):
+        if verdict_hit_rate >= _HIT_BOOST_THRESHOLD:
+            bump = min(0.25, (verdict_hit_rate - _HIT_BOOST_THRESHOLD) * 1.2)
+            mult += bump
+            reasons.append(f"learn_verdict+{verdict_hit_rate:.0%}")
+        elif verdict_hit_rate <= _HIT_PENALTY_THRESHOLD:
+            cut = min(0.20, (_HIT_PENALTY_THRESHOLD - verdict_hit_rate) * 1.0)
+            mult -= cut
+            reasons.append(f"learn_verdict-{verdict_hit_rate:.0%}")
+
+    return max(0.55, min(1.6, mult)), reasons
+
+
+def _index_track_record(summary: dict[str, Any] | None) -> tuple[
+    dict[str, tuple[float | None, int]],
+    dict[str, tuple[float | None, int]],
+]:
+    """Map source/verdict → (hit_rate, scored_n)."""
+    if not summary:
+        return {}, {}
+    rates_s = summary.get("hit_rate_by_source") or {}
+    counts_s = summary.get("counts_by_source") or {}
+    rates_v = summary.get("hit_rate_by_verdict") or {}
+    counts_v = summary.get("counts_by_verdict") or {}
+    by_src: dict[str, tuple[float | None, int]] = {}
+    for src, rate in rates_s.items():
+        scored = int((counts_s.get(src) or {}).get("scored") or 0)
+        by_src[str(src)] = (rate, scored)
+    by_ver: dict[str, tuple[float | None, int]] = {}
+    for ver, rate in rates_v.items():
+        scored = int((counts_v.get(ver) or {}).get("scored") or 0)
+        by_ver[str(ver).upper()] = (rate, scored)
+    return by_src, by_ver
+
+
+def _confluence_index(
+    events: list[dict[str, Any]] | None,
+) -> dict[str, dict[str, Any]]:
+    """Best recent confluence event per ticker."""
+    out: dict[str, dict[str, Any]] = {}
+    for ev in events or []:
+        t = str(ev.get("ticker") or "").upper().strip()
+        if not t:
+            continue
+        prev = out.get(t)
+        score = float(ev.get("score") or 0)
+        if prev is None or score >= float(prev.get("score") or 0):
+            out[t] = ev
+    return out
+
+
 def build_advise_recommendations(
     *,
     action_queue: list[dict[str, Any]] | None = None,
     theses_attention: list[dict[str, Any]] | None = None,
+    track_record: dict[str, Any] | None = None,
+    confluence_events: list[dict[str, Any]] | None = None,
     limit: int = 12,
 ) -> list[dict[str, Any]]:
     """Rank tickers the system would nudge a human to BUY / SELL / RISK / WATCH.
 
-    Pure merge of already-computed queue + Insights attention. No LLM, no DB.
+    Pure merge + Learn reweight. No LLM. Optional ``track_record`` /
+    ``confluence_events`` keep the core testable without DB.
     """
+    by_src, by_ver = _index_track_record(track_record)
+    conf_by_ticker = _confluence_index(confluence_events)
     by_ticker: dict[str, dict[str, Any]] = {}
 
     for item in action_queue or []:
@@ -120,6 +207,30 @@ def build_advise_recommendations(
                 score += 12.0
                 reasons.append("meta_conflict")
 
+        # Learn: weight queue mechanical action by historical queue-review source
+        # performance, and ALIGNED/TENSION by verdict calibration when available.
+        src_rate, src_n = by_src.get("action_queue_ai_review", (None, 0))
+        ver_rate, ver_n = by_ver.get(queue_verdict, (None, 0)) if queue_verdict else (None, 0)
+        # Meta conviction available → also blend meta learn weight lightly
+        meta_rate, meta_n = by_src.get("ticker_meta_analysis", (None, 0))
+        mult_q, learn_bits = learn_weight_multiplier(
+            source_hit_rate=src_rate,
+            source_scored=src_n,
+            verdict_hit_rate=ver_rate,
+            verdict_scored=ver_n,
+        )
+        if meta_c and meta_n >= _MIN_SCORED_FOR_LEARN and meta_rate is not None:
+            mult_m, bits_m = learn_weight_multiplier(
+                source_hit_rate=meta_rate,
+                source_scored=meta_n,
+            )
+            # Average toward meta when research_context is present
+            mult_q = (mult_q + mult_m) / 2.0
+            learn_bits = learn_bits + [b.replace("learn_src", "learn_meta") for b in bits_m]
+        if abs(mult_q - 1.0) > 0.01:
+            score *= mult_q
+            reasons.extend(learn_bits)
+
         by_ticker[ticker] = {
             "ticker": ticker,
             "advise": action,
@@ -132,6 +243,7 @@ def build_advise_recommendations(
             "dual_tension": False,
             "meta_conviction": meta_c,
             "confidence": conf or None,
+            "confluence_direction": None,
         }
 
     for row in theses_attention or []:
@@ -154,11 +266,19 @@ def build_advise_recommendations(
             score_delta += 12.0
             reason_bits.append("thesis_ai:STALE_THESIS")
         if "weak" in reasons_in:
-            # Weak noise should not dominate buy/sell ranking
             score_delta -= 6.0
             reason_bits.append("weak")
         if "stale" in reasons_in or "due_for_review" in reasons_in:
             score_delta += 4.0
+
+        thesis_rate, thesis_n = by_src.get("thesis_ai_review", (None, 0))
+        mult_t, learn_t = learn_weight_multiplier(
+            source_hit_rate=thesis_rate,
+            source_scored=thesis_n,
+        )
+        if abs(mult_t - 1.0) > 0.01:
+            score_delta *= mult_t
+            reason_bits.extend(learn_t)
 
         existing = by_ticker.get(ticker)
         if existing is None:
@@ -174,6 +294,7 @@ def build_advise_recommendations(
                 "dual_tension": False,
                 "meta_conviction": None,
                 "confidence": None,
+                "confluence_direction": None,
             }
             continue
 
@@ -187,7 +308,6 @@ def build_advise_recommendations(
             existing["score"] = round(float(existing["score"]) + 10.0, 1)
             existing["reasons"].append("dual_tension")
 
-        # If queue says BUY but thesis leans SELL (or reverse), prefer the more defensive advise
         qa = str(existing.get("advise") or "").upper()
         if {qa, thesis_advise} == {"BUY", "SELL"}:
             existing["advise"] = "SELL"
@@ -195,6 +315,32 @@ def build_advise_recommendations(
             existing["score"] = round(float(existing["score"]) + 8.0, 1)
         elif _ADVISE_PRIORITY.get(thesis_advise, 99) < _ADVISE_PRIORITY.get(qa, 99):
             existing["advise"] = thesis_advise
+
+    # Confluence: reinforce directionally aligned advises; flag risk
+    for ticker, row in by_ticker.items():
+        ev = conf_by_ticker.get(ticker)
+        if not ev:
+            continue
+        direction = str(ev.get("direction") or "").lower()
+        cscore = float(ev.get("score") or 0)
+        row["confluence_direction"] = direction or None
+        advise = str(row.get("advise") or "").upper()
+        if direction == "bullish" and advise in ("BUY", "WATCH"):
+            row["score"] = round(float(row["score"]) + 6.0 + min(4.0, cscore), 1)
+            row["reasons"] = list(row.get("reasons") or []) + ["confluence:bullish"]
+        elif direction == "bullish" and advise in ("SELL", "RISK"):
+            row["score"] = round(float(row["score"]) + 5.0, 1)
+            row["reasons"] = list(row.get("reasons") or []) + ["confluence_vs_sell"]
+        elif direction == "risk":
+            if advise in ("SELL", "RISK"):
+                row["score"] = round(float(row["score"]) + 8.0, 1)
+            else:
+                # Risk confluence on a BUY → prefer RISK attention
+                if advise == "BUY":
+                    row["advise"] = "RISK"
+                    row["reasons"] = list(row.get("reasons") or []) + ["confluence:risk→RISK"]
+                row["score"] = round(float(row["score"]) + 6.0, 1)
+            row["reasons"] = list(row.get("reasons") or []) + ["confluence:risk"]
 
     ranked = list(by_ticker.values())
     ranked.sort(

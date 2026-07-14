@@ -77,7 +77,7 @@ Prompt: `INSIGHTS_THESIS_EVALUATION_PROMPT` in `web_dashboard/ai_prompts.py`.
 | **`ticker_meta_analysis` artifact bundle** | **Shipped (R1)** — family `human_thesis`; default scope **production holdings only** via `META_ANALYSIS_HUMAN_THESIS` / `META_ANALYSIS_HUMAN_THESIS_SCOPE`. **Skips unreviewed weak/bootstrap** drafts (no human `review` yet) |
 | **Today / Ideas surfacing** | **Shipped (R2)** — Today `theses_attention`; Ideas `thesis_attention` badges; `/insights?thesis=` deep links |
 | **`stance_history` (`thesis_ai_review`)** | **Shipped (R3)** — eval records suggested/current disposition; no flip of thesis header |
-| **Advise v0** | **Shipped** — Today `advise_pack` ranks BUY/SELL/RISK/WATCH from queue + theses (no LLM) |
+| **Advise v0/v1** | **Shipped** — Today `advise_pack` ranks BUY/SELL/RISK/WATCH; v1 reweights by track-record + confluence |
 
 Env (see `web_dashboard/env.example`):
 
@@ -115,7 +115,7 @@ Do not add a fourth LLM pass on the same evidence without retiring one of these.
 | **Fund `thesis_update_job`** | Fund philosophy | “What’s the *book-level* thesis?” | Supabase `fund_thesis*` | Yes | Fund editors |
 | **Sector Insights** | Sector / ETF meta | “What’s rotating at the sector layer?” | `sector_meta_analysis` UI | Meta jobs | N/A |
 | **Today / Ideas (R2)** | Attention routing | “What deserves a click *today*?” | Nothing new — reads due/TENSION | **No LLM** | Optional — inspect threads |
-| **Advise v0** | Ranked nudge list | “What would we *tell you* to buy/sell?” | Nothing — merges queue + theses | **No LLM** | You decide; never auto-trades |
+| **Advise v0/v1** | Ranked nudge list | “What would we *tell you* to buy/sell?” | Nothing — merges queue + theses + Learn/confluence | **No LLM** | You decide; never auto-trades |
 | **`stance_history` / `thesis_ai_review` (R3)** | Learn ledger row | “What did thesis advice say, for scoring later?” | Research `stance_history` | Via eval job | N/A |
 
 Presentation (Today badges, Ideas, Advise pack) is **not** another analysis layer.
