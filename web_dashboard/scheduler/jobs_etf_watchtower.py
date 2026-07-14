@@ -362,9 +362,11 @@ def fetch_ishares_holdings(etf_ticker: str, csv_url: str, date: Optional[datetim
             
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '-']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
         # Filter to valid stock tickers only (exclude cash/futures/malformed symbols)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         # Truncate ticker to avoid DB errors (max 50 chars)
         df['ticker'] = df['ticker'].astype(str).str.slice(0, 50)
         df['shares'] = pd.to_numeric(df['shares'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
@@ -436,8 +438,10 @@ def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str, date: Optional[datetime]
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert numeric columns
         if 'shares' in df.columns:
@@ -526,8 +530,10 @@ def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str, date: Optiona
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert numeric columns (remove commas)
         if 'shares' in df.columns:
@@ -612,8 +618,10 @@ def fetch_ark_holdings(etf_ticker: str, csv_url: str, date: Optional[datetime] =
         # Clean data
         df = df[df['ticker'].notna()]  # Remove empty rows
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert shares to numeric (remove commas first)
         if 'shares' in df.columns:
@@ -693,11 +701,14 @@ def fetch_direxion_holdings(etf_ticker: str, csv_url: str, date: Optional[dateti
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Filter to valid stock tickers only (exclude cash, futures, etc.)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert numeric columns
         if 'shares' in df.columns:
@@ -808,10 +819,12 @@ def fetch_vaneck_holdings(etf_ticker: str, xlsx_url: str, date: Optional[datetim
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
         
         # Filter to valid stock tickers only
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert numeric columns
         if 'shares' in df.columns:
@@ -935,7 +948,8 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     
     # Filter out non-stock tickers (cash, futures, derivatives)
     before_filter = len(significant)
-    significant = significant[significant['ticker'].apply(is_stock_ticker)].copy()
+    # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+    significant = significant[np.array([is_stock_ticker(x) for x in significant['ticker'].tolist()], dtype=bool)].copy()
     filtered_out = before_filter - len(significant)
 
     if filtered_out > 0:
