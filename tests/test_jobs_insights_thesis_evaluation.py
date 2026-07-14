@@ -68,6 +68,9 @@ def test_insights_thesis_evaluation_posts_llm_reply_without_disposition_flip(moc
         "user_insights_service.should_skip_thesis_eval",
         return_value=(False, "digest123", ""),
     ), patch(
+        "stance_history.record_stance_safe",
+        return_value=True,
+    ) as mock_ledger, patch(
         "ticker_analysis_service.extract_json",
         side_effect=lambda s: {
             "verdict": "HOLDS",
@@ -86,6 +89,9 @@ def test_insights_thesis_evaluation_posts_llm_reply_without_disposition_flip(moc
     assert kwargs["metadata"]["verdict"] == "HOLDS"
     assert kwargs["metadata"]["suggested_disposition"] == "bearish"
     assert kwargs["metadata"]["research_digest"] == "digest123"
+    mock_ledger.assert_called_once()
+    assert mock_ledger.call_args.kwargs["source"] == "thesis_ai_review"
+    assert mock_ledger.call_args.kwargs["stance"] == "BEARISH"
     # Job only inserts llm_reply; never flips disposition via add_entry/update.
     assert mock_detail.call_count >= 2  # before + after invariant check
     mock_log.assert_called()

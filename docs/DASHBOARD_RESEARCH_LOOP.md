@@ -48,6 +48,7 @@ Optional nightly (or on-demand) LLM pass that stores a compact **verdict** (e.g.
 | Screen | Purpose | Key APIs / routes |
 |--------|---------|-------------------|
 | Dashboard | Portfolio summary, Action Queue, Market brief card | `/api/dashboard/summary`, `/api/dashboard/action-queue`, `/api/dashboard/market-brief` |
+| Today | Regime + **Advise pack** (ranked buy/sell) + flips + queue + Insights attention | `/api/today/briefing` (`advise_pack`) |
 | Ticker detail | Full ticker AI analysis + meta synthesis | `/api/v2/ticker/<t>/analysis`, `/api/v2/ticker/<t>/meta-analysis` |
 | Insights | Human thesis threads (org-wide); due-for-review queue | `/insights`, `/api/insights`, `/api/insights/due`, `/api/ticker/<t>/insights` |
 | Research | Articles, semantic search | Research routes / `research_articles` |

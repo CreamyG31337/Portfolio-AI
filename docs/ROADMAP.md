@@ -281,11 +281,21 @@ inbox. Deep links: `/insights?thesis=<id>` (and `#id`) open the thread detail.
   verdicts + due queue.
 - Click-through to `/insights?thesis=…` for human `review` (still advisory).
 
-#### Backlog R3 — Optional stance ledger for thesis advice
+#### Backlog R3 — Optional stance ledger for thesis advice — **shipped 2026-07**
 
-If we score “system said TENSION” hit rates later: `record_stance_safe(..., source=
-"thesis_ai_review")` with mechanical stance from *suggested* disposition — never overwrite
-`ticker_meta` / `action_queue_ai_review` sources.
+**Shipped:** `insights_thesis_evaluation` calls `record_stance_safe(..., source=
+"thesis_ai_review")` for `HOLDS` / `TENSION` / `STALE_THESIS` (not `INSUFFICIENT_DATA`).
+Stance = suggested disposition if present, else current thesis disposition (mapped to
+BULLISH/BEARISH/NEUTRAL). Metadata keeps verdict + `advisory_only`. Separate source — never
+overwrites `ticker_meta_analysis` / `action_queue_ai_review` rows. Enables hit-rate
+calibration of thesis advice vs queue TENSION later.
+
+#### Advise v0 — ranked buy/sell pack — **shipped 2026-07**
+
+**Shipped:** `advise_service.build_advise_recommendations` merges Action Queue (+ AI review +
+meta conflict) with Insights attention into a ranked `advise_pack` on Today briefing (no LLM,
+not auto-trade). Flags `dual_tension` when queue and thesis both say TENSION; BUY+SELL conflict
+prefers SELL. UI: `#today-advise` after market regime.
 
 ---
 

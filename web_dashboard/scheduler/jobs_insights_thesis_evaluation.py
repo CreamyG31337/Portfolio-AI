@@ -233,6 +233,51 @@ def insights_thesis_evaluation_job() -> None:
                     model_used=model_used,
                 )
 
+                # R3: optional Learn ledger — suggested (or current) disposition only.
+                # Never writes under ticker_meta / action_queue_ai_review sources.
+                if verdict.upper() in ("HOLDS", "TENSION", "STALE_THESIS"):
+                    try:
+                        from stance_history import record_stance_safe
+
+                        sug = (suggested_disp or prior_disp or "").strip().lower()
+                        stance_map = {
+                            "bullish": "BULLISH",
+                            "bearish": "BEARISH",
+                            "neutral": "NEUTRAL",
+                        }
+                        ledger_stance = stance_map.get(sug)
+                        if ledger_stance:
+                            conf_by_verdict = {
+                                "TENSION": 0.7,
+                                "STALE_THESIS": 0.55,
+                                "HOLDS": 0.5,
+                            }
+                            record_stance_safe(
+                                postgres,
+                                ticker=ticker,
+                                source="thesis_ai_review",
+                                stance=ledger_stance,
+                                confidence=conf_by_verdict.get(verdict.upper(), 0.5),
+                                model_used=model_used,
+                                source_ref_id=thesis_id,
+                                metadata={
+                                    "verdict": verdict,
+                                    "one_liner": one_liner,
+                                    "thesis_id": thesis_id,
+                                    "suggested_disposition": suggested_disp,
+                                    "suggested_intent": suggested_intent,
+                                    "prior_disposition": prior_disp,
+                                    "advisory_only": True,
+                                    "research_digest": digest,
+                                },
+                            )
+                    except Exception as ledger_exc:
+                        logger.warning(
+                            "stance_history thesis_ai_review hook failed for %s: %s",
+                            ticker,
+                            ledger_exc,
+                        )
+
                 # Link known meta/analysis evidence when IDs present (best-effort).
                 entry_id = result.get("entry_id")
                 meta_id = refs.get("ticker_meta_analysis_id")

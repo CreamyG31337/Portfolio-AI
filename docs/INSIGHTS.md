@@ -76,7 +76,8 @@ Prompt: `INSIGHTS_THESIS_EVALUATION_PROMPT` in `web_dashboard/ai_prompts.py`.
 | Ticker evidence timeline | Shipped (`fetch_thesis_timeline_events`) |
 | **`ticker_meta_analysis` artifact bundle** | **Shipped (R1)** — family `human_thesis`; default scope **production holdings only** via `META_ANALYSIS_HUMAN_THESIS` / `META_ANALYSIS_HUMAN_THESIS_SCOPE`. **Skips unreviewed weak/bootstrap** drafts (no human `review` yet) |
 | **Today / Ideas surfacing** | **Shipped (R2)** — Today `theses_attention`; Ideas `thesis_attention` badges; `/insights?thesis=` deep links |
-| `stance_history` | Not written (R3 optional) |
+| **`stance_history` (`thesis_ai_review`)** | **Shipped (R3)** — eval records suggested/current disposition; no flip of thesis header |
+| **Advise v0** | **Shipped** — Today `advise_pack` ranks BUY/SELL/RISK/WATCH from queue + theses (no LLM) |
 
 Env (see `web_dashboard/env.example`):
 
@@ -113,10 +114,12 @@ Do not add a fourth LLM pass on the same evidence without retiring one of these.
 | **`action_queue_ai_review`** | One mechanical queue row | “Is this *BUY/SELL/RISK/WATCH* aligned with research?” | Action-queue review rows (fund × ticker × signal date) | Yes — queue item + research context | N/A — mechanical action still from signals |
 | **Fund `thesis_update_job`** | Fund philosophy | “What’s the *book-level* thesis?” | Supabase `fund_thesis*` | Yes | Fund editors |
 | **Sector Insights** | Sector / ETF meta | “What’s rotating at the sector layer?” | `sector_meta_analysis` UI | Meta jobs | N/A |
-| **Today / Ideas (R2)** | Attention routing | “What deserves a click *today*?” | Nothing new — reads due/TENSION | **No LLM** | Human reviews via `/insights` |
+| **Today / Ideas (R2)** | Attention routing | “What deserves a click *today*?” | Nothing new — reads due/TENSION | **No LLM** | Optional — inspect threads |
+| **Advise v0** | Ranked nudge list | “What would we *tell you* to buy/sell?” | Nothing — merges queue + theses | **No LLM** | You decide; never auto-trades |
+| **`stance_history` / `thesis_ai_review` (R3)** | Learn ledger row | “What did thesis advice say, for scoring later?” | Research `stance_history` | Via eval job | N/A |
 
-Presentation (Today badges, Ideas `thesis_attention`) is **not** another analysis layer.
-`stance_history` is the planned Learn ledger — Insights does **not** write it in v1 (R3 optional).
+Presentation (Today badges, Ideas, Advise pack) is **not** another analysis layer.
+Insights **does** append `thesis_ai_review` rows to `stance_history` (separate source from meta/queue).
 
 ### Data-flow chart
 
@@ -194,7 +197,7 @@ Meta can ingest theses (R1); eval can read meta. That is deliberate tension, not
 | `thesis_update_job` / `fund_thesis` | Fund-level philosophy in Supabase |
 | `insights_thesis_evaluation` | Thesis ↔ research advisory `llm_reply` |
 | `action_queue_ai_review` | Queue row ↔ research; different table/prompt |
-| `stance_history` | Automated stance ledger — Insights does not write it in v1 |
+| `stance_history` / `thesis_ai_review` | Learn ledger; Insights eval appends advisory rows (R3) |
 
 ## Related
 

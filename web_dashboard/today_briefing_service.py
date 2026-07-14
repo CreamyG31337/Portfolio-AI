@@ -186,9 +186,22 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: theses attention failed: %s", exc)
 
+    advise_pack: list[dict[str, Any]] = []
+    try:
+        from advise_service import build_advise_recommendations
+
+        advise_pack = build_advise_recommendations(
+            action_queue=actions,
+            theses_attention=theses_attention,
+            limit=12,
+        )
+    except Exception as exc:
+        logger.warning("Today briefing: advise pack failed: %s", exc)
+
     return {
         "market_regime": regime,
         "market_brief_headline": (brief_row or {}).get("headline"),
+        "advise_pack": advise_pack,
         "stance_flips": fetch_stance_flips(pg, days=2, limit=20),
         "action_queue": actions,
         "alpha_articles": fetch_alpha_ideas(pg, limit=15),
